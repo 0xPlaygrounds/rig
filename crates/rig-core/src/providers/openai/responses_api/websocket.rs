@@ -1199,6 +1199,111 @@ mod tests {
         server.await.expect("server task should finish");
     }
 
+    /// #2258 P2: the websocket session shares `decode_item_chunk`, so text for
+    /// one message item interleaved with reasoning must aggregate as one text
+    /// part here too.
+    #[tokio::test]
+    async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let address = listener.local_addr().expect("listener should have address");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("server should accept");
+            let mut socket = accept_async(stream)
+                .await
+                .expect("server should upgrade websocket");
+
+            socket
+                .next()
+                .await
+                .expect("request should exist")
+                .expect("request should be valid");
+
+            let events = [
+                json!({
+                    "type": "response.output_text.delta",
+                    "content_index": 0,
+                    "delta": "hello ",
+                    "item_id": "msg_1",
+                    "logprobs": [],
+                    "output_index": 0,
+                    "sequence_number": 1
+                }),
+                json!({
+                    "type": "response.reasoning_summary_text.delta",
+                    "delta": "because",
+                    "item_id": "rs_2",
+                    "output_index": 1,
+                    "summary_index": 0,
+                    "sequence_number": 2
+                }),
+                json!({
+                    "type": "response.output_text.delta",
+                    "content_index": 0,
+                    "delta": "world",
+                    "item_id": "msg_1",
+                    "logprobs": [],
+                    "output_index": 0,
+                    "sequence_number": 3
+                }),
+                json!({
+                    "type": "response.completed",
+                    "sequence_number": 4,
+                    "response": serde_json::to_value(sample_response(ResponseStatus::Completed))
+                        .expect("response should serialize"),
+                }),
+            ];
+            for event in events {
+                socket
+                    .send(Message::text(event.to_string()))
+                    .await
+                    .expect("event should send");
+            }
+        });
+
+        let base_url = format!("http://{address}/v1");
+        let client = crate::providers::openai::Client::builder()
+            .api_key("test-key")
+            .base_url(&base_url)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-4o");
+        let mut session = client
+            .responses_websocket("gpt-4o")
+            .await
+            .expect("session should connect");
+
+        let normalized = session
+            .completion(model.completion_request("hello").build())
+            .await
+            .expect("interleaved turn should normalize");
+
+        let texts: Vec<_> = normalized
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            ["hello world"],
+            "same-item text must aggregate as one part around the reasoning"
+        );
+        assert!(
+            normalized.choice.iter().any(|content| matches!(
+                content,
+                crate::completion::AssistantContent::Reasoning(_)
+            )),
+            "the interleaved reasoning must survive"
+        );
+
+        server.await.expect("server task should finish");
+    }
+
     #[tokio::test]
     async fn completed_turn_without_deltas_falls_back_to_terminal_body() {
         let listener = TcpListener::bind("127.0.0.1:0")

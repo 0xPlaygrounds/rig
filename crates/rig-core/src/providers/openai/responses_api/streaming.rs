@@ -381,6 +381,14 @@ pub(crate) struct RawChoiceAccumulator {
     /// appends the restated content beside the delta-built part instead of
     /// superseding it (#2258 F3, the ChatGPT envelope-less replay path).
     minted_reasoning_ids: std::collections::HashMap<u64, String>,
+    /// Tool-call identities minted for function-call items whose wire events
+    /// carried no `fc_*` id (gateways and the ChatGPT envelope-less replay
+    /// bodies), keyed by output slot. Mirrors `minted_reasoning_ids`: the
+    /// added/delta/done events of one item must all share one assembly key —
+    /// forwarding `""` verbatim would let two parallel id-less calls share the
+    /// empty key, and an id-less delta whose done restates a real `fc_*` id
+    /// would leave the fragments dangling under a different key.
+    minted_tool_ids: std::collections::HashMap<u64, String>,
     /// The message item whose text block is currently open. A text or
     /// refusal delta carrying a different `item_id` opens a new text block
     /// (`TextStart` keyed by that item id), so two `message` output items
@@ -404,6 +412,7 @@ impl RawChoiceAccumulator {
             tool_calls: Vec::new(),
             saw_terminal: false,
             minted_reasoning_ids: std::collections::HashMap::new(),
+            minted_tool_ids: std::collections::HashMap::new(),
             current_text_item: None,
         }
     }
@@ -455,12 +464,29 @@ impl RawChoiceAccumulator {
                 item: Output::FunctionCall(func),
                 ..
             }) => {
+                // A function-call item interleaving a message item closes the
+                // open text block; forget it so a later delta for that message
+                // re-emits `TextStart` and reactivates its block downstream.
+                self.current_text_item = None;
+                let id = if func.id.is_empty() {
+                    // Gateways (and ChatGPT's envelope-less replay bodies) can
+                    // omit the `fc_*` id; mint the slot-derived identity so
+                    // parallel id-less calls never share the `""` assembly key.
+                    let minted = format!("output-{output_index}");
+                    self.minted_tool_ids.insert(output_index, minted.clone());
+                    minted
+                } else {
+                    func.id
+                };
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id: func.id,
+                    id,
                     content: streaming::ToolCallDeltaContent::Name(func.name),
                 });
             }
             ItemChunkKind::OutputItemDone(message) => {
+                // Any completed item ends the block it carried; a text delta
+                // arriving afterwards belongs to a (re)opened block.
+                self.current_text_item = None;
                 self.push_output_item_done(
                     message.item,
                     output_index,
@@ -473,6 +499,12 @@ impl RawChoiceAccumulator {
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
             ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
+                // Reasoning interleaving text closes the open text block
+                // downstream (`PartsAccumulator::reasoning_delta`); forget the
+                // open message item so a later delta for the *same* item
+                // re-emits `TextStart {id}` and reactivates its block instead
+                // of silently opening a boundary-minted sibling (#2258 P2).
+                self.current_text_item = None;
                 let id = reasoning_item_id(&outer_item_id);
                 if outer_item_id.is_none() {
                     self.minted_reasoning_ids.insert(output_index, id.clone());
@@ -483,6 +515,8 @@ impl RawChoiceAccumulator {
                 });
             }
             ItemChunkKind::ReasoningTextDelta(delta) => {
+                // Same interleaving boundary as the summary-delta arm above.
+                self.current_text_item = None;
                 let id = reasoning_item_id(&outer_item_id);
                 if outer_item_id.is_none() {
                     self.minted_reasoning_ids.insert(output_index, id.clone());
@@ -497,12 +531,24 @@ impl RawChoiceAccumulator {
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
             ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                if let Some(item_id) = outer_item_id {
-                    immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                        id: item_id,
-                        content: streaming::ToolCallDeltaContent::Delta(delta.delta),
-                    });
-                }
+                // Tool output interleaving text is a block boundary too.
+                self.current_text_item = None;
+                // An id-less args delta gets the same minted slot identity as
+                // the reasoning fallback — dropping the fragment would make
+                // the call vanish entirely when the stream truncates before
+                // the authoritative `output_item.done` restatement (#2258 P3).
+                let id = match outer_item_id {
+                    Some(item_id) => item_id,
+                    None => {
+                        let minted = format!("output-{output_index}");
+                        self.minted_tool_ids.insert(output_index, minted.clone());
+                        minted
+                    }
+                };
+                immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
+                    id,
+                    content: streaming::ToolCallDeltaContent::Delta(delta.delta),
+                });
             }
             _ => {}
         }
@@ -570,8 +616,20 @@ impl RawChoiceAccumulator {
                 // authoritative over any assembled fragments, and the shared
                 // accumulator correlates by the shared item id (minting the
                 // internal id if no fragments preceded).
+                //
+                // Identity mirrors the reasoning arm below: when this slot's
+                // added/delta events carried no `fc_*` id they were keyed by
+                // the minted `output-{index}` identity, and the done event
+                // must find that same key (even when it restates a real id)
+                // or the assembled fragments dangle. A slot with no minted
+                // identity keeps the wire id, minting only when it is empty.
+                let item_id = match self.minted_tool_ids.remove(&output_index) {
+                    Some(minted) => minted,
+                    None if func.id.is_empty() => format!("output-{output_index}"),
+                    None => func.id.clone(),
+                };
                 let mut end = streaming::ToolInputEnd::new(
-                    func.id.clone(),
+                    item_id.clone(),
                     streaming::UnparseableToolInput::Drop,
                 );
                 end.name = Some(func.name);
@@ -587,7 +645,7 @@ impl RawChoiceAccumulator {
                     Ok(arguments) => end.arguments = Some(arguments),
                     Err(_) => {
                         immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                            id: func.id,
+                            id: item_id,
                             content: streaming::ToolCallDeltaContent::Delta(
                                 func.arguments.as_str().to_owned(),
                             ),
@@ -2542,19 +2600,19 @@ mod tests {
         );
 
         // Live-path parity, pinned: a function-call-arguments delta with no
-        // `item_id` is dropped (the live loop cannot attribute it), not an
-        // error as the old field-level salvage made it.
+        // `item_id` is keyed by the minted slot identity (the repair injects
+        // `output_index: 0`), matching the live loop — it must flow into
+        // assembly instead of vanishing.
         let body = format!(
             "data: {}\ndata: {completed}\n",
             json!({ "type": "response.function_call_arguments.delta", "delta": "{}" })
         );
         let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
-            .expect("an unattributable args delta is dropped, matching the live loop");
-        assert!(
-            choices
-                .iter()
-                .all(|choice| !matches!(choice, RawStreamingChoice::ToolCallDelta { .. }))
-        );
+            .expect("an id-less args delta must repair and decode");
+        assert!(choices.iter().any(|choice| matches!(
+            choice,
+            RawStreamingChoice::ToolCallDelta { id, .. } if id == "output-0"
+        )));
 
         // Live-path parity, pinned: an envelope-less bookkeeping event whose
         // data is intact (`.done` events) is a no-op, not an error as the old
@@ -2655,6 +2713,247 @@ mod tests {
         assert_eq!(
             occurrences, 1,
             "the restated summary must supersede its deltas, not duplicate them"
+        );
+    }
+
+    /// #2258 P2: text deltas for one message item interleaved with reasoning
+    /// must aggregate as ONE text part. Interleaving reasoning closes the open
+    /// text block downstream, so the adapter must re-emit `TextStart` with the
+    /// same item id when the item's text resumes — the accumulator's keyed
+    /// reactivation then reopens the block instead of minting a sibling.
+    #[tokio::test]
+    async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
+        let events = [
+            json!({
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "hello "
+            }),
+            json!({
+                "type": "response.reasoning_summary_text.delta",
+                "item_id": "rs_2",
+                "output_index": 1,
+                "summary_index": 0,
+                "sequence_number": 2,
+                "delta": "because"
+            }),
+            json!({
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 3,
+                "delta": "world"
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 4,
+                "response": sample_response(ResponseStatus::Completed),
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the interleaved stream must decode");
+        // The resumed item re-announces its block: two `TextStart { msg_1 }`.
+        let starts = raw_choices
+            .iter()
+            .filter(|choice| {
+                matches!(
+                    choice,
+                    RawStreamingChoice::TextStart { id, .. } if id == "msg_1"
+                )
+            })
+            .count();
+        assert_eq!(
+            starts, 2,
+            "returning to the same item must re-emit its TextStart: {raw_choices:?}"
+        );
+
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a text-bearing replay is not empty");
+        let texts: Vec<_> = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            ["hello world"],
+            "same-item text must aggregate as one part around the reasoning"
+        );
+        assert!(
+            response.choice.iter().any(|content| matches!(
+                content,
+                crate::completion::AssistantContent::Reasoning(_)
+            )),
+            "the interleaved reasoning must survive"
+        );
+    }
+
+    /// #2258 P3: two parallel function calls whose events all lack `fc_*` ids
+    /// must not share the `""` assembly key — each slot gets a minted
+    /// `output-{index}` identity shared by its added/delta/done events, so two
+    /// distinct calls assemble.
+    #[tokio::test]
+    async fn parallel_id_less_function_calls_assemble_distinctly() {
+        let call_item = |name: &str, call_id: &str, arguments: &str| {
+            json!({
+                "type": "function_call",
+                "call_id": call_id,
+                "name": name,
+                "arguments": arguments,
+                "status": "completed",
+            })
+        };
+        let events = [
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": call_item("tool_a", "call_a", ""),
+            }),
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 1,
+                "sequence_number": 2,
+                "item": call_item("tool_b", "call_b", ""),
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "sequence_number": 3,
+                "delta": "{\"x\":1}"
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 1,
+                "sequence_number": 4,
+                "delta": "{\"y\":2}"
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 5,
+                "item": call_item("tool_a", "call_a", "{\"x\":1}"),
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 1,
+                "sequence_number": 6,
+                "item": call_item("tool_b", "call_b", "{\"y\":2}"),
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 7,
+                "response": sample_response(ResponseStatus::Completed),
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the id-less parallel-call stream must decode");
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a tool-bearing replay is not empty");
+
+        let mut calls: Vec<_> = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::ToolCall(call) => Some((
+                    call.function.name.clone(),
+                    call.function.arguments.to_string(),
+                )),
+                _ => None,
+            })
+            .collect();
+        calls.sort();
+        assert_eq!(
+            calls,
+            [
+                ("tool_a".to_owned(), json!({"x": 1}).to_string()),
+                ("tool_b".to_owned(), json!({"y": 2}).to_string()),
+            ],
+            "each id-less slot must assemble its own call"
+        );
+    }
+
+    /// #2258 P3: id-less argument fragments must surface as deltas (keyed by
+    /// the minted slot identity) rather than vanish; when the stream truncates
+    /// before the authoritative `output_item.done` restatement, the settled
+    /// truncation policy still applies — partial arguments never fabricate a
+    /// call.
+    #[tokio::test]
+    async fn id_less_args_deltas_surface_and_truncation_fabricates_no_call() {
+        let events = [
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "call_id": "call_a",
+                    "name": "tool_a",
+                    "arguments": "",
+                    "status": "in_progress",
+                },
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "sequence_number": 2,
+                "delta": "{\"loc\":"
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the truncated id-less stream must decode");
+        // The fragment flowed into assembly under the minted identity.
+        assert!(
+            raw_choices.iter().any(|choice| matches!(
+                choice,
+                RawStreamingChoice::ToolCallDelta {
+                    id,
+                    content: crate::streaming::ToolCallDeltaContent::Delta(delta),
+                } if id == "output-0" && delta == "{\"loc\":"
+            )),
+            "the id-less args fragment must surface as a delta: {raw_choices:?}"
+        );
+
+        // No done restatement arrived: the truncation policy withholds the
+        // call rather than fabricating one from partial arguments.
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize");
+        assert!(
+            response.is_none(),
+            "partial arguments must not fabricate a call: {response:?}"
         );
     }
 
