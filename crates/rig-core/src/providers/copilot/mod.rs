@@ -35,6 +35,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
 };
+use crate::providers::internal::wire;
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
 use crate::streaming::{self, RawStreamingChoice, StreamingCompletionResponse};
@@ -1687,29 +1688,25 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
         &self,
         data: &str,
     ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        // Chat completion chunks carry no `type` discriminator, so a frame is
-        // recognized by `"object": "chat.completion.chunk"` or the presence
-        // of `"choices"`. A recognizable chunk that fails the full parse has
-        // a data-level defect and is surfaced as an `Err` item; valid JSON
-        // that isn't a recognizable chunk is an event this client doesn't
-        // know yet and is skipped for forward compatibility. Invalid JSON is
-        // a genuinely corrupt frame, also surfaced as an `Err` item; the
-        // shared compat layer keeps consuming, so a later genuine terminal
-        // still completes the stream.
-        let data = match serde_json::from_str::<ChatStreamingChunk>(data) {
-            Ok(chunk) => chunk,
-            Err(error) => {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(data) {
-                    let is_chat_chunk = value
-                        .get("object")
-                        .and_then(serde_json::Value::as_str)
-                        .is_some_and(|object| object == "chat.completion.chunk")
-                        || value.get("choices").is_some();
-                    if !is_chat_chunk {
-                        tracing::warn!("skipping unrecognized Copilot chat SSE event: {error:?}");
-                        return Ok(None);
-                    }
-                }
+        // Frame policy for Copilot's chat SSE wire — same classify as the
+        // shared OpenAI-compatible chat profile (see
+        // `providers::internal::wire::classify_chat_completions_frame` for
+        // the recognizability dispatch):
+        //
+        // | classify  | action                                              |
+        // |-----------|-----------------------------------------------------|
+        // | `Known`   | normalize below                                     |
+        // | `Unknown` | warn + skip (forward compatibility)                 |
+        // | `Corrupt` | surface an `Err` item; the shared compat layer      |
+        // |           | keeps consuming, so a later genuine terminal still  |
+        // |           | completes the stream                                |
+        let data = match wire::classify_chat_completions_frame::<ChatStreamingChunk>(data) {
+            wire::WireEvent::Known(chunk) => chunk,
+            wire::WireEvent::Unknown { event_type, .. } => {
+                tracing::warn!(event_type, "skipping unrecognized Copilot chat SSE event");
+                return Ok(None);
+            }
+            wire::WireEvent::Corrupt(error) => {
                 return Err(CompletionError::from(error));
             }
         };

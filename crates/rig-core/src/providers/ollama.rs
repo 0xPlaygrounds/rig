@@ -46,6 +46,7 @@ use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::providers::internal;
 use crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::{
@@ -835,12 +836,22 @@ where
                 for line in line_buf.decode(&bytes) {
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
 
-                    let response: CompletionResponse = match serde_json::from_slice(&line) {
-                        Ok(response) => response,
-                        Err(err) => {
-                            // Surface the malformed line but keep consuming:
-                            // a later genuine `done: true` record can still
-                            // complete the stream with its terminal record.
+                    // Frame policy for the Ollama NDJSON wire (see
+                    // `providers::internal::wire`) — the wire carries no
+                    // discriminator, so a line either decodes as the
+                    // response shape or is corrupt:
+                    //
+                    // | classify  | action                                  |
+                    // |-----------|-----------------------------------------|
+                    // | `Known`   | apply below                             |
+                    // | `Unknown` | unpopulated for an undiscriminated wire |
+                    // | `Corrupt` | yield an `Err` item, keep consuming so  |
+                    // |           | a later genuine `done: true` record can |
+                    // |           | still complete the stream               |
+                    let response = match internal::wire::classify_untyped_line::<CompletionResponse>(&line) {
+                        internal::wire::WireEvent::Known(response) => response,
+                        internal::wire::WireEvent::Unknown { .. } => continue,
+                        internal::wire::WireEvent::Corrupt(err) => {
                             yield Err(CompletionError::JsonError(err));
                             continue;
                         }
@@ -1380,6 +1391,31 @@ pub struct ImageUrl {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // The NDJSON wire has no discriminator, so its classify has exactly two
+    // outcomes: the response shape or corrupt.
+    #[test]
+    fn classify_ndjson_line_is_known_or_corrupt() {
+        let line = json!({
+            "model": "llama3.2",
+            "created_at": "2024-01-01T00:00:00Z",
+            "message": {"role": "assistant", "content": "hi"},
+            "done": false,
+        })
+        .to_string();
+        assert!(matches!(
+            internal::wire::classify_untyped_line::<CompletionResponse>(line.as_bytes()),
+            internal::wire::WireEvent::Known(_)
+        ));
+        assert!(matches!(
+            internal::wire::classify_untyped_line::<CompletionResponse>(b"{not json"),
+            internal::wire::WireEvent::Corrupt(_)
+        ));
+        assert!(matches!(
+            internal::wire::classify_untyped_line::<CompletionResponse>(br#"{"done": 42}"#),
+            internal::wire::WireEvent::Corrupt(_)
+        ));
+    }
 
     #[test]
     fn splits_legacy_reasoning_with_or_without_opening_marker() {

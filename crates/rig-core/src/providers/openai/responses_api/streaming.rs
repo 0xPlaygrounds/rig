@@ -4,6 +4,7 @@ use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::message::ReasoningContent;
+use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
@@ -247,6 +248,18 @@ fn is_known_responses_event_type(kind: &str) -> bool {
             | "response.reasoning_summary_text.done"
             | "response.reasoning_text.delta"
     )
+}
+
+/// Classify one Responses SSE frame; see
+/// [`crate::providers::internal::wire`] for the dispatch contract.
+///
+/// Shared by the live SSE loop and the buffered
+/// [`raw_choices_from_sse_body`] path so both apply the same known/unknown
+/// boundary. Provider `error` events are checked separately before this,
+/// because their `type` is outside the modeled set yet must fail the stream
+/// rather than be skipped as unknown.
+fn classify_responses_frame(data: &str) -> WireEvent<StreamingCompletionChunk> {
+    wire::classify_tagged_frame(data, is_known_responses_event_type)
 }
 
 fn provider_response_from_responses_sse_data(data: &str) -> Option<CompletionError> {
@@ -627,28 +640,52 @@ pub(crate) fn raw_choices_from_sse_body(
             continue;
         }
 
-        if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
-            match chunk {
-                StreamingCompletionChunk::Delta(chunk) => {
-                    raw_choices.extend(accumulator.decode_item_chunk(chunk, options));
-                }
-                StreamingCompletionChunk::Response(chunk) => {
-                    let ResponseChunk { kind, response, .. } = *chunk;
-                    accumulator.record_response_chunk(kind, response, data)?;
-                }
-            }
-            continue;
+        // Provider `error` events fail the operation, mirroring the live
+        // loop's pre-classify check.
+        if let Some(error) = provider_response_from_responses_sse_data(data) {
+            return Err(error);
         }
 
-        // This is a buffered unary path: there is no stream to carry error
-        // items, so a corrupt frame that would be yielded as an `Err` item on
-        // the live loop must instead fail the whole operation — the
-        // alternative is a successful-but-incomplete completion.
+        // Frame policy for the buffered (unary) Responses SSE body — shares
+        // `classify_responses_frame` with the live loop, but there is no
+        // stream to carry `Err` items, so defects fail the whole operation:
+        //
+        // | classify  | action                                              |
+        // |-----------|-----------------------------------------------------|
+        // | `Known`   | apply to the accumulator                            |
+        // | `Unknown` | skip (forward compatibility)                        |
+        // | `Corrupt`, invalid JSON | fail the operation — the alternative  |
+        // |           | is a successful-but-incomplete completion           |
+        // | `Corrupt`, valid JSON   | field-level salvage below: replayed   |
+        // |           | bodies (ChatGPT) omit envelope fields the full      |
+        // |           | typed decode requires, so the known kinds are       |
+        // |           | re-read by field; a known kind that still lacks its |
+        // |           | content is a data-level defect and fails            |
+        let corrupt = match classify_responses_frame(data) {
+            WireEvent::Known(chunk) => {
+                match chunk {
+                    StreamingCompletionChunk::Delta(chunk) => {
+                        raw_choices.extend(accumulator.decode_item_chunk(chunk, options));
+                    }
+                    StreamingCompletionChunk::Response(chunk) => {
+                        let ResponseChunk { kind, response, .. } = *chunk;
+                        accumulator.record_response_chunk(kind, response, data)?;
+                    }
+                }
+                continue;
+            }
+            WireEvent::Unknown { event_type, .. } => {
+                tracing::warn!(event_type, "skipping unrecognized Responses SSE event");
+                continue;
+            }
+            WireEvent::Corrupt(error) => error,
+        };
+
         let value = match serde_json::from_str::<serde_json::Value>(data) {
             Ok(value) => value,
-            Err(error) => {
+            Err(_) => {
                 return Err(CompletionError::ResponseError(format!(
-                    "invalid JSON frame in buffered Responses SSE body: {error}"
+                    "invalid JSON frame in buffered Responses SSE body: {corrupt}"
                 )));
             }
         };
@@ -942,36 +979,27 @@ where
                         break;
                     }
 
-                    let data = match serde_json::from_str::<StreamingCompletionChunk>(&evt.data) {
-                        Ok(data) => data,
-                        Err(error) => {
-                            // An unknown `type` is an event this client
-                            // doesn't model yet (xAI and other
-                            // Responses-compatible gateways emit extras) —
-                            // skip it for forward compatibility, mirroring
-                            // `ItemChunkKind::Unknown`. A known type that
-                            // fails to decode, or a frame that isn't JSON at
-                            // all, is a corrupt frame: surface it but keep
-                            // consuming — SSE self-synchronizes on blank
-                            // lines, so a later genuine terminal event can
-                            // still complete the stream, and without one the
-                            // missing `saw_terminal` suppresses the terminal
-                            // record.
-                            let is_unknown_event = serde_json::from_str::<serde_json::Value>(&evt.data)
-                                .is_ok_and(|value| {
-                                    value
-                                        .get("type")
-                                        .and_then(serde_json::Value::as_str)
-                                        .is_some_and(|kind| !is_known_responses_event_type(kind))
-                                });
-                            if is_unknown_event {
-                                tracing::warn!(
-                                    "skipping unrecognized Responses SSE event: {:?}",
-                                    error
-                                );
-                            } else {
-                                yield Err(CompletionError::from(error));
-                            }
+                    // Frame policy for the live Responses SSE loop:
+                    //
+                    // | classify  | action                                     |
+                    // |-----------|--------------------------------------------|
+                    // | `Known`   | apply to the accumulator below             |
+                    // | `Unknown` | warn + skip (xAI and other Responses-      |
+                    // |           | compatible gateways emit extra events)     |
+                    // | `Corrupt` | yield an `Err` item, keep consuming — SSE  |
+                    // |           | self-synchronizes on blank lines, so a     |
+                    // |           | later genuine terminal event can still     |
+                    // |           | complete the stream, and without one the   |
+                    // |           | missing `saw_terminal` suppresses the      |
+                    // |           | terminal record                            |
+                    let data = match classify_responses_frame(&evt.data) {
+                        WireEvent::Known(data) => data,
+                        WireEvent::Unknown { event_type, .. } => {
+                            tracing::warn!(event_type, "skipping unrecognized Responses SSE event");
+                            continue;
+                        }
+                        WireEvent::Corrupt(error) => {
+                            yield Err(CompletionError::from(error));
                             continue;
                         }
                     };
@@ -1110,7 +1138,7 @@ pub struct ContentPartChunk {
     pub part: ContentPartChunkPart,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentPartChunkPart {
     OutputText {
@@ -1128,6 +1156,42 @@ pub enum ContentPartChunkPart {
     /// [`Output::Unknown`](super::Output).
     #[serde(untagged)]
     Unknown(serde_json::Value),
+}
+
+/// Hand-written tag dispatch instead of a trailing `#[serde(untagged)]`
+/// variant: on an internally-tagged enum the untagged fallback also swallows
+/// a *known* tag with an invalid payload, silently demoting a data-level
+/// defect to a skippable unknown part
+/// (`rig-2257-code-review-findings-34ee8ba5.md` P2). Here a known part tag
+/// must decode fully or error; only an unmodeled (or absent) tag falls back
+/// to [`ContentPartChunkPart::Unknown`], preserving the value verbatim.
+impl<'de> Deserialize<'de> for ContentPartChunkPart {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let text_field = |part: &str| -> Result<String, D::Error> {
+            value
+                .get("text")
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| {
+                    serde::de::Error::custom(format!(
+                        "`{part}` content part is missing a string `text` field"
+                    ))
+                })
+        };
+        match value.get("type").and_then(serde_json::Value::as_str) {
+            Some("output_text") => Ok(Self::OutputText {
+                text: text_field("output_text")?,
+            }),
+            Some("summary_text") => Ok(Self::SummaryText {
+                text: text_field("summary_text")?,
+            }),
+            _ => Ok(Self::Unknown(value)),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1256,14 +1320,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        ItemChunkKind, StreamingCompletionChunk, raw_choices_from_sse_body,
-        reasoning_choices_from_done_item,
+        ContentPartChunkPart, ItemChunkKind, StreamingCompletionChunk, classify_responses_frame,
+        raw_choices_from_sse_body, reasoning_choices_from_done_item,
     };
     use crate::completion::CompletionModel;
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
+    use crate::providers::internal::wire::WireEvent;
     use crate::providers::openai::responses_api::{
         AdditionalParameters, CompletionResponse, IncompleteDetailsReason, OutputTokensDetails,
         ReasoningSummary, ResponseError, ResponseObject, ResponseStatus, ResponsesUsage,
@@ -1273,6 +1338,115 @@ mod tests {
     use crate::{client::CompletionClient, providers::openai};
     use futures::StreamExt;
     use serde_json::{self, json};
+
+    #[test]
+    fn classify_known_event_decodes() {
+        let frame = json!({
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": "hi",
+        })
+        .to_string();
+        assert!(matches!(
+            classify_responses_frame(&frame),
+            WireEvent::Known(StreamingCompletionChunk::Delta(_))
+        ));
+    }
+
+    #[test]
+    fn classify_unknown_event_type_is_unknown() {
+        let frame = json!({
+            "type": "response.web_search_call.searching",
+            "output_index": 0,
+            "sequence_number": 1,
+        })
+        .to_string();
+        assert!(matches!(
+            classify_responses_frame(&frame),
+            WireEvent::Unknown { event_type, .. } if event_type == "response.web_search_call.searching"
+        ));
+    }
+
+    #[test]
+    fn classify_invalid_json_is_corrupt() {
+        assert!(matches!(
+            classify_responses_frame("{not json"),
+            WireEvent::Corrupt(_)
+        ));
+    }
+
+    #[test]
+    fn classify_known_event_with_defective_payload_is_corrupt() {
+        let frame = json!({
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": 42,
+        })
+        .to_string();
+        assert!(matches!(
+            classify_responses_frame(&frame),
+            WireEvent::Corrupt(_)
+        ));
+    }
+
+    // The P2 probe shape from `rig-2257-code-review-findings-34ee8ba5.md`: a
+    // known part tag whose payload is schema-defective must classify as
+    // `Corrupt`, not slide into the unknown-part catch-all.
+    #[test]
+    fn classify_defective_known_content_part_is_corrupt() {
+        let frame = json!({
+            "type": "response.content_part.added",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "part": {"type": "output_text", "text": 42},
+        })
+        .to_string();
+        assert!(matches!(
+            classify_responses_frame(&frame),
+            WireEvent::Corrupt(_)
+        ));
+    }
+
+    #[test]
+    fn content_part_known_tag_decodes() {
+        let part: ContentPartChunkPart =
+            serde_json::from_value(json!({"type": "output_text", "text": "hi"})).unwrap();
+        assert!(matches!(part, ContentPartChunkPart::OutputText { text } if text == "hi"));
+    }
+
+    #[test]
+    fn content_part_known_tag_with_defective_payload_errors() {
+        let result = serde_json::from_value::<ContentPartChunkPart>(
+            json!({"type": "output_text", "text": 42}),
+        );
+        assert!(result.is_err());
+        let result = serde_json::from_value::<ContentPartChunkPart>(
+            json!({"type": "summary_text", "text": 42}),
+        );
+        assert!(result.is_err());
+    }
+
+    // `refusal` and `reasoning_text` part tags are not in the modeled set:
+    // they must stay skippable no-ops (the content arrives via the
+    // corresponding delta events), round-tripping the value verbatim.
+    #[test]
+    fn content_part_unknown_tag_is_preserved_verbatim() {
+        let wire = json!({"type": "refusal", "refusal": "no"});
+        let part: ContentPartChunkPart = serde_json::from_value(wire.clone()).unwrap();
+        let ContentPartChunkPart::Unknown(value) = &part else {
+            panic!("unmodeled part tag must fall back to Unknown");
+        };
+        assert_eq!(value, &wire);
+        assert_eq!(serde_json::to_value(&part).unwrap(), wire);
+    }
 
     fn sample_response(status: ResponseStatus) -> CompletionResponse {
         CompletionResponse {

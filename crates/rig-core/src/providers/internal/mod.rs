@@ -2,6 +2,7 @@
 
 pub(crate) mod auth;
 pub(crate) mod openai_chat_completions_compatible;
+pub(crate) mod wire;
 
 pub(crate) fn completion_usage(
     input_tokens: u64,

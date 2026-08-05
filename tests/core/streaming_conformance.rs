@@ -78,12 +78,11 @@ conformance_suite!(gemini_rest_suite, gemini_rest::fixture);
 conformance_suite!(cohere_suite, cohere::fixture);
 conformance_suite!(ollama_suite, ollama::fixture);
 
-// The defective-known-payload family is split out because for the OpenAI
-// Responses fixture it pins the open P2 in
-// `rig-2257-code-review-findings-34ee8ba5.md` ("Round-5 known-type strictness
-// silently reverted for content parts"): the trailing `#[serde(untagged)]
-// Unknown` variant on `ContentPartChunkPart` swallows a known tag with a
-// malformed payload, so no `Err` is surfaced on current main.
+// The defective-known-payload family. For the OpenAI Responses fixture it
+// pins the P2 in `rig-2257-code-review-findings-34ee8ba5.md` ("Round-5
+// known-type strictness silently reverted for content parts"), fixed by the
+// hand-written tag dispatch on `ContentPartChunkPart`: a known part tag with
+// a malformed payload classifies as `Corrupt` and surfaces an `Err` item.
 mod defective_known_event {
     use super::*;
 
@@ -92,14 +91,11 @@ mod defective_known_event {
         openai_chat::fixture,
         conformance::defective_known_event_surfaces_err
     );
-    #[tokio::test]
-    #[ignore = "known failure on main: fixed in phase 3 — rig-2257-code-review-findings-34ee8ba5.md P2 (content-part untagged fallback swallows known-tag defects)"]
-    async fn openai_responses() {
-        let fixture = openai_responses::fixture();
-        conformance::defective_known_event_surfaces_err(&fixture)
-            .await
-            .expect("scenario should hold");
-    }
+    conformance_test!(
+        openai_responses,
+        openai_responses::fixture,
+        conformance::defective_known_event_surfaces_err
+    );
     conformance_test!(
         gemini_rest,
         gemini_rest::fixture,

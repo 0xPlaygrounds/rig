@@ -5,6 +5,7 @@ use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     CohereCompletionRequest, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
 };
+use crate::providers::internal::wire;
 use crate::streaming::{
     RawStreamingChoice, RawStreamingResult, RawStreamingToolCall, StreamFinal, ToolCallDeltaContent,
 };
@@ -197,32 +198,29 @@ where
                             continue;
                         }
 
-                        let event: StreamingEvent = match serde_json::from_str(data_str) {
-                            Ok(ev) => ev,
-                            Err(err) => {
-                                // An unknown `type` is an event this client
-                                // doesn't know yet — skip it for forward
-                                // compatibility. A *known* `type` that fails
-                                // the full parse has a data-level defect, and
-                                // invalid JSON is a genuinely corrupt frame:
-                                // both are surfaced as `Err` items, but the
-                                // loop keeps consuming so a later genuine
-                                // `message-end` event can still complete the
-                                // stream with its terminal record.
-                                let is_unknown_event_type = serde_json::from_str::<serde_json::Value>(data_str)
-                                    .ok()
-                                    .and_then(|value| {
-                                        value
-                                            .get("type")
-                                            .and_then(serde_json::Value::as_str)
-                                            .map(|event_type| !KNOWN_EVENT_TYPES.contains(&event_type))
-                                    })
-                                    .unwrap_or(false);
-                                if is_unknown_event_type {
-                                    tracing::warn!("skipping unrecognized Cohere SSE event: {err:?}");
-                                } else {
-                                    yield Err(CompletionError::JsonError(err));
-                                }
+                        // Frame policy for the Cohere SSE wire (see
+                        // `providers::internal::wire` for the `type`
+                        // dispatch against `KNOWN_EVENT_TYPES`):
+                        //
+                        // | classify  | action                              |
+                        // |-----------|-------------------------------------|
+                        // | `Known`   | apply below                         |
+                        // | `Unknown` | warn + skip (forward compatibility) |
+                        // | `Corrupt` | yield an `Err` item, keep consuming |
+                        // |           | so a later genuine `message-end`    |
+                        // |           | can still complete the stream with  |
+                        // |           | its terminal record                 |
+                        let event = match wire::classify_tagged_frame::<StreamingEvent>(
+                            data_str,
+                            |event_type| KNOWN_EVENT_TYPES.contains(&event_type),
+                        ) {
+                            wire::WireEvent::Known(event) => event,
+                            wire::WireEvent::Unknown { event_type, .. } => {
+                                tracing::warn!(event_type, "skipping unrecognized Cohere SSE event");
+                                continue;
+                            }
+                            wire::WireEvent::Corrupt(err) => {
+                                yield Err(CompletionError::JsonError(err));
                                 continue;
                             }
                         };
@@ -371,6 +369,43 @@ mod tests {
             .http_client(http_client)
             .build()
             .expect("client should build")
+    }
+
+    fn classify(data: &str) -> wire::WireEvent<StreamingEvent> {
+        wire::classify_tagged_frame(data, |event_type| KNOWN_EVENT_TYPES.contains(&event_type))
+    }
+
+    #[test]
+    fn classify_known_event_decodes() {
+        let frame = json!({
+            "type": "content-delta",
+            "delta": {"message": {"content": {"text": "hi"}}},
+        })
+        .to_string();
+        assert!(matches!(
+            classify(&frame),
+            wire::WireEvent::Known(StreamingEvent::ContentDelta { .. })
+        ));
+    }
+
+    #[test]
+    fn classify_unknown_event_type_is_unknown() {
+        let frame = json!({"type": "citation-start"}).to_string();
+        assert!(matches!(
+            classify(&frame),
+            wire::WireEvent::Unknown { event_type, .. } if event_type == "citation-start"
+        ));
+    }
+
+    #[test]
+    fn classify_invalid_json_is_corrupt() {
+        assert!(matches!(classify("{not json"), wire::WireEvent::Corrupt(_)));
+    }
+
+    #[test]
+    fn classify_known_event_with_defective_payload_is_corrupt() {
+        let frame = json!({"type": "content-delta", "delta": 42}).to_string();
+        assert!(matches!(classify(&frame), wire::WireEvent::Corrupt(_)));
     }
 
     #[tokio::test]
