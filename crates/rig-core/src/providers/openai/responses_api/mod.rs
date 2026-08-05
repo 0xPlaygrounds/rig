@@ -620,7 +620,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             other_items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCall(OutputFunctionCall {
-                                    arguments: function.arguments,
+                                    arguments: function.arguments.into(),
                                     call_id: require_call_id(call_id, "Assistant tool call")?,
                                     id: tool_id,
                                     name: function.name,
@@ -2193,9 +2193,21 @@ impl From<Output> for Vec<completion::AssistantContent> {
                 call_id,
                 name,
                 ..
-            }) => vec![completion::AssistantContent::tool_call_with_call_id(
-                id, call_id, name, arguments,
-            )],
+            }) => match arguments.parse() {
+                Ok(arguments) => vec![completion::AssistantContent::tool_call_with_call_id(
+                    id, call_id, name, arguments,
+                )],
+                // Truncation policy: arguments the wire never finished (a
+                // turn cut by `max_output_tokens` mid-tool-call) do not
+                // fabricate a call the model never fully made.
+                Err(_) => {
+                    tracing::debug!(
+                        tool = %name,
+                        "dropping tool call whose arguments never fully arrived"
+                    );
+                    Vec::new()
+                }
+            },
             Output::Reasoning {
                 id,
                 summary,
@@ -2253,11 +2265,69 @@ pub struct OutputFunctionCall {
     /// output by `call_id` alone.
     #[serde(default, skip_serializing_if = "is_not_function_call_item_id")]
     pub id: String,
-    #[serde(with = "json_utils::stringified_json")]
-    pub arguments: serde_json::Value,
+    pub arguments: FunctionCallArguments,
     pub call_id: String,
     pub name: String,
     pub status: ToolStatus,
+}
+
+/// The wire form of a Responses `function_call` item's `arguments`: the raw
+/// string exactly as the provider sent it, parsed into JSON only at
+/// consumption time.
+///
+/// The Responses wire genuinely emits arguments that are not valid JSON: a
+/// turn cut by `max_output_tokens` mid-tool-call restates the call on
+/// `response.output_item.done` (and in `response.incomplete`'s `output[]`)
+/// with the arguments truncated mid-JSON (e.g. `"{\""`) and item status
+/// `incomplete`. Decoding the string eagerly (the old
+/// `json_utils::stringified_json` field) rejected those frames wholesale, so
+/// the stream classified them `Corrupt` instead of ending with a `Length`
+/// terminal. Keeping the raw string makes the typed model accept what the
+/// wire sends; whether a truncated call surfaces is decided by the settled
+/// truncation policy at parse time (partial arguments never fabricate a
+/// call).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionCallArguments(String);
+
+impl FunctionCallArguments {
+    /// Parse the raw wire string into JSON arguments. An empty string is a
+    /// parameterless invocation (`{}`); anything else must parse as JSON.
+    pub fn parse(&self) -> serde_json::Result<serde_json::Value> {
+        json_utils::parse_tool_arguments(&self.0)
+    }
+
+    /// The raw wire string, exactly as the provider sent it.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<serde_json::Value> for FunctionCallArguments {
+    /// Encode already-parsed arguments (Rig's canonical tool-call form) in
+    /// the wire's stringified-JSON spelling.
+    fn from(value: serde_json::Value) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl Serialize for FunctionCallArguments {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for FunctionCallArguments {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // The wire spells arguments as a string; a non-string payload is
+        // still a schema defect of the known `function_call` shape.
+        String::deserialize(deserializer).map(Self)
+    }
 }
 
 /// See [`OutputFunctionCall::id`]: only provider-native `fc` item IDs may be
@@ -2843,7 +2913,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                                     .into(),
                                             )
                                         })?,
-                                        arguments: function.arguments,
+                                        arguments: function.arguments.into(),
                                         id: tool_id,
                                         name: function.name,
                                         status: ToolStatus::Completed,

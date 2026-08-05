@@ -1827,6 +1827,86 @@ pub mod fixtures {
             }))
         }
 
+        /// Synthetic twin of the recorded
+        /// `openai/streaming_grammar/incomplete_mid_tool_call` cassette: a
+        /// forced tool call cut by `max_output_tokens` mid-arguments. The wire
+        /// restates the call on `response.output_item.done` with the
+        /// arguments truncated mid-JSON and item status `incomplete`, then
+        /// ends with a genuine `response.incomplete` terminal.
+        pub fn incomplete_mid_tool_call_frames() -> Vec<WireInput> {
+            vec![
+                sse(&json!({
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "sequence_number": 1,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "arguments": "",
+                        "call_id": "call_1",
+                        "name": "add",
+                        "status": "in_progress",
+                    },
+                })),
+                sse(&json!({
+                    "type": "response.function_call_arguments.delta",
+                    "item_id": "fc_1",
+                    "output_index": 0,
+                    "sequence_number": 2,
+                    "delta": "{\"x",
+                })),
+                sse(&json!({
+                    "type": "response.function_call_arguments.delta",
+                    "item_id": "fc_1",
+                    "output_index": 0,
+                    "sequence_number": 3,
+                    "delta": "\":48151",
+                })),
+                sse(&json!({
+                    "type": "response.function_call_arguments.done",
+                    "item_id": "fc_1",
+                    "output_index": 0,
+                    "sequence_number": 4,
+                    "arguments": "{\"x\":48151",
+                })),
+                sse(&json!({
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "sequence_number": 5,
+                    "item": {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "arguments": "{\"x\":48151",
+                        "call_id": "call_1",
+                        "name": "add",
+                        "status": "incomplete",
+                    },
+                })),
+                sse(&json!({
+                    "type": "response.incomplete",
+                    "sequence_number": 6,
+                    "response": {
+                        "id": "resp_1",
+                        "object": "response",
+                        "created_at": 0,
+                        "status": "incomplete",
+                        "incomplete_details": {"reason": "max_output_tokens"},
+                        "model": "gpt-5.4",
+                        "output": [{
+                            "type": "function_call",
+                            "id": "fc_1",
+                            "arguments": "{\"x\":48151",
+                            "call_id": "call_1",
+                            "name": "add",
+                            "status": "incomplete",
+                        }],
+                        "tools": [],
+                        "usage": usage_json(),
+                    },
+                })),
+            ]
+        }
+
         fn reasoning_done_item(
             id: &str,
             summary: serde_json::Value,

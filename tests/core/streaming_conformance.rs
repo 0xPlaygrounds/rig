@@ -304,6 +304,56 @@ mod grammar_guards {
         );
     }
 
+    /// Synthetic twin of the recorded
+    /// `openai/streaming_grammar/incomplete_mid_tool_call` cassette: a turn
+    /// cut by `max_output_tokens` mid-tool-call. The wire restates the call
+    /// on `response.output_item.done` with arguments truncated mid-JSON and
+    /// item status `incomplete`, then ends with `response.incomplete`. The
+    /// pipeline must accept both frames (no `Corrupt` classification), end
+    /// with a `Length` terminal, and — per the settled truncation policy —
+    /// never fabricate a tool call from the partial arguments.
+    #[tokio::test]
+    async fn incomplete_mid_tool_call_ends_with_length_and_no_fabricated_call() {
+        use rig_core::completion::FinishReason;
+        use rig_core::message::AssistantContent;
+
+        let driver = openai_responses::driver();
+        let drained = driver
+            .drive(conformance::ok_chunks(
+                openai_responses::incomplete_mid_tool_call_frames(),
+            ))
+            .await
+            .expect("stream should drive");
+
+        assert_eq!(
+            drained.error_count(),
+            0,
+            "the wire's genuine incomplete shape must not surface errors: {:?}",
+            drained.items
+        );
+        let response = drained
+            .response
+            .as_ref()
+            .expect("a genuine response.incomplete terminal must produce a terminal record");
+        assert_eq!(
+            response.finish_reason,
+            Some(FinishReason::Length),
+            "max_output_tokens incompletion must normalize to a Length finish"
+        );
+        assert!(
+            drained.tool_call_names().is_empty(),
+            "partial arguments must not fabricate a streamed tool call, got {:?}",
+            drained.tool_call_names()
+        );
+        assert!(
+            !drained
+                .choice
+                .iter()
+                .any(|content| matches!(content, AssistantContent::ToolCall(_))),
+            "partial arguments must not fabricate an aggregated tool call"
+        );
+    }
+
     /// The item-0 identity pin (#2258) on the wire: several llama.cpp/vllm-
     /// style chat-compat gateways stream tool-call deltas with NO ids, keyed
     /// by chunk index alone. Two such calls interleaving their argument

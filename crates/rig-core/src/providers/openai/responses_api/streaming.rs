@@ -570,10 +570,30 @@ impl RawChoiceAccumulator {
                 // authoritative over any assembled fragments, and the shared
                 // accumulator correlates by the shared item id (minting the
                 // internal id if no fragments preceded).
-                let mut end =
-                    streaming::ToolInputEnd::new(func.id, streaming::UnparseableToolInput::Drop);
+                let mut end = streaming::ToolInputEnd::new(
+                    func.id.clone(),
+                    streaming::UnparseableToolInput::Drop,
+                );
                 end.name = Some(func.name);
-                end.arguments = Some(func.arguments);
+                // The restated arguments are authoritative when they parse. A
+                // turn cut by `max_output_tokens` mid-tool-call restates them
+                // truncated mid-JSON (item status `incomplete`); routing the
+                // raw string through the assembly buffer instead lets the
+                // shared accumulator apply the settled truncation policy
+                // (`UnparseableToolInput::Drop` — partial arguments never
+                // fabricate a call), including when no argument fragments
+                // preceded the done item.
+                match func.arguments.parse() {
+                    Ok(arguments) => end.arguments = Some(arguments),
+                    Err(_) => {
+                        immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
+                            id: func.id,
+                            content: streaming::ToolCallDeltaContent::Delta(
+                                func.arguments.as_str().to_owned(),
+                            ),
+                        });
+                    }
+                }
                 end.call_id = Some(func.call_id);
                 let end = streaming::RawStreamingChoice::ToolInputEnd(end);
 

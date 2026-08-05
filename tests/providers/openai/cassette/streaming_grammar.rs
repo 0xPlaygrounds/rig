@@ -595,16 +595,14 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
 /// `Length` finish, and any tool call that did surface must carry object
 /// arguments (never a corrupted fragment).
 ///
-/// WIRE DIVERGENCE (captured in the cassette): the wire cuts the function
-/// call's `arguments` mid-JSON (`"arguments":"{\""`, item and response status
-/// `incomplete`), and rig's Responses parse rejects both the
-/// `response.output_item.done` and `response.incomplete` frames ("data did
-/// not match any variant of untagged enum StreamingCompletionChunk"), so the
-/// stream errors instead of terminating with `Length`. The assertion below
-/// states what the wire means; do not weaken it — fix the parse to tolerate
-/// truncated arguments on incomplete items, then drop the ignore.
+/// The cassette captures the wire's genuine incomplete shape: the function
+/// call's `arguments` are cut mid-JSON (`"arguments":"{\"x\":48151"`, item
+/// and response status `incomplete`). The typed models keep `arguments` as
+/// the raw wire string (`FunctionCallArguments`) and parse at consumption
+/// time, so both the `response.output_item.done` and `response.incomplete`
+/// frames decode; the truncation policy drops the partial call instead of
+/// fabricating one, and the terminal normalizes to `Length`.
 #[tokio::test]
-#[ignore = "wire divergence: truncated tool-call arguments on response.incomplete fail the Responses frame parse"]
 async fn incomplete_mid_tool_call_normalizes_to_length() {
     with_openai_cassette(
         "streaming_grammar/incomplete_mid_tool_call",
