@@ -81,10 +81,12 @@ macro_rules! streaming_conformance_suite {
         #[test]
         fn derived_capabilities_match_the_manifest() {
             let derived = suite_fixture().capabilities();
-            let expected =
-                $crate::test_utils::streaming_conformance::SuiteCapabilities::from_names(&[
-                    $(stringify!($cap)),*
-                ]);
+            let expected = match $crate::test_utils::streaming_conformance::SuiteCapabilities::from_names(&[
+                $(stringify!($cap)),*
+            ]) {
+                Ok(expected) => expected,
+                Err(error) => panic!("{error}"),
+            };
             assert_eq!(
                 derived, expected,
                 "fixture-derived capabilities changed; update this suite's `manifest:` \

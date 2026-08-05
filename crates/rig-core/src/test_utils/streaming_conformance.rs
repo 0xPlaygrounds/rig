@@ -132,10 +132,11 @@ pub struct SuiteCapabilities {
 }
 
 impl SuiteCapabilities {
-    /// Build a capability set from manifest names. Unknown names panic so a
-    /// typo in a suite's `manifest:` list fails loudly rather than silently
-    /// asserting an empty flag.
-    pub fn from_names(names: &[&str]) -> Self {
+    /// Build a capability set from manifest names. An unknown name is an
+    /// error so a typo in a suite's `manifest:` list fails loudly rather
+    /// than silently asserting an empty flag; the macro-expanded test
+    /// asserts on it.
+    pub fn from_names(names: &[&str]) -> Result<Self, String> {
         let mut caps = Self::default();
         for name in names {
             match *name {
@@ -147,10 +148,14 @@ impl SuiteCapabilities {
                 "defective_known_frame" => caps.defective_known_frame = true,
                 "delta_less_prelude" => caps.delta_less_prelude = true,
                 "refusal" => caps.refusal = true,
-                other => panic!("unknown capability name in suite manifest: {other}"),
+                other => {
+                    return Err(format!(
+                        "unknown capability name in suite manifest: {other}"
+                    ));
+                }
             }
         }
-        caps
+        Ok(caps)
     }
 }
 
