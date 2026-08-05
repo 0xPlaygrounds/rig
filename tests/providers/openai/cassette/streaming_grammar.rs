@@ -817,3 +817,89 @@ async fn incomplete_max_output_tokens_normalizes_to_length() {
     )
     .await;
 }
+
+/// Reasoning and answer text in one streamed turn aggregate as *discrete*
+/// parts: the reasoning item(s) and the message item keep their wire
+/// boundaries, and the answer text lands in exactly one text part carrying
+/// the whole streamed answer — never split around, absorbed into, or
+/// reordered against the interleaved reasoning.
+///
+/// This is the live pin for the text-boundary contract behind the
+/// same-item reactivation fix (a text block interrupted by a non-text item
+/// must resume as the *same* part, not open a second one). The stronger
+/// shape — visible message text preceding a function call in one turn — is
+/// **not inducible**: gpt-5.6 answers a tool-bearing turn with the call
+/// alone, even under a strict two-part output instruction (verified over
+/// two recording attempts), so the reasoning interleave is the closest
+/// real traffic gets to the contract.
+#[tokio::test]
+async fn reasoning_and_answer_text_aggregate_as_discrete_parts() {
+    with_openai_cassette(
+        "streaming_grammar/reasoning_then_text",
+        |client| async move {
+            let model = client.completion_model(openai::GPT_5_6);
+            let request = model
+                .completion_request(
+                    "How many positive integers n < 200 are divisible by 6 but not by 4? \
+                     Work it out, then answer with just the number.",
+                )
+                .additional_params(json!({
+                    "reasoning": { "effort": "high", "summary": "detailed" }
+                }))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_terminal(&run, FinishReason::Stop);
+            assert!(
+                !run.text.trim().is_empty(),
+                "the turn should stream visible answer text"
+            );
+
+            let reasoning_parts = run
+                .choice
+                .iter()
+                .filter(|content| matches!(content, AssistantContent::Reasoning(_)))
+                .count();
+            assert!(
+                reasoning_parts > 0,
+                "a high-effort turn should aggregate reasoning parts"
+            );
+
+            let text_parts: Vec<&str> = run
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                text_parts.len(),
+                1,
+                "the answer must aggregate as exactly one text part, not split \
+                 around the interleaved reasoning: {text_parts:?}"
+            );
+            assert_eq!(
+                text_parts.first().copied().unwrap_or_default(),
+                run.text,
+                "the single text part must carry the whole streamed answer"
+            );
+
+            // Wire order is preserved: every reasoning part precedes the text.
+            let items: Vec<&AssistantContent> = run.choice.iter().collect();
+            let first_text = items
+                .iter()
+                .position(|content| matches!(content, AssistantContent::Text(_)))
+                .expect("a text part exists");
+            let last_reasoning = items
+                .iter()
+                .rposition(|content| matches!(content, AssistantContent::Reasoning(_)))
+                .expect("a reasoning part exists");
+            assert!(
+                last_reasoning < first_text,
+                "reasoning items precede the answer text in wire order"
+            );
+        },
+    )
+    .await;
+}

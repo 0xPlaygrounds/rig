@@ -282,6 +282,33 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                 1,
                 "signed restatement must not duplicate the thinking text;\naggregated: {aggregated:?}"
             );
+            // The wire attaches `thoughtSignature` to a trailing part with no
+            // `thought` flag (recorded: `{"text":"","thoughtSignature":"…"}`),
+            // so a `thought: true`-gated signature path never sees it. The
+            // signature is replay-required provider state — Gemini rejects a
+            // replayed turn missing it — so it must reach the aggregated
+            // reasoning.
+            let signatures: Vec<&str> = run
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+                    _ => None,
+                })
+                .flatten()
+                .filter_map(|part| match part {
+                    ReasoningContent::Text {
+                        signature: Some(signature),
+                        ..
+                    } => Some(signature.as_str()),
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                signatures.iter().any(|signature| !signature.is_empty()),
+                "the recorded thought_signature must survive onto the aggregated reasoning, got {:?}",
+                run.choice
+            );
         },
     )
     .await;

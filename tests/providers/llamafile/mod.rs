@@ -19,6 +19,7 @@ mod cassette {
     mod agent;
     mod embeddings;
     mod streaming;
+    mod streaming_grammar;
     mod streaming_tools;
     mod tools;
 }

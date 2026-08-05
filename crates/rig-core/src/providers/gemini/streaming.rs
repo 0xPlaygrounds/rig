@@ -345,8 +345,22 @@ impl GeminiRestAdapter {
             }
             Part {
                 part: PartKind::Text(text),
+                thought_signature,
                 ..
             } => {
+                // The wire attaches `thoughtSignature` to a trailing part
+                // that carries no `thought` flag at all — recorded traffic
+                // shows `{"text":"","thoughtSignature":"..."}` — so the
+                // signature must be recognized here as well as in the
+                // `thought: true` arm above, which real streams never reach
+                // for the signature. Dropping it costs the replay-required
+                // provider state Gemini validates (`MISSING_THOUGHT_SIGNATURE`).
+                if let Some(signature) = thought_signature {
+                    out.push(Ok(shared_parts::signed_reasoning(
+                        std::mem::take(&mut self.thought_buffer),
+                        signature,
+                    )));
+                }
                 if !text.is_empty() {
                     // Non-thought output closes the open reasoning item
                     // (accumulator minted-id boundary).

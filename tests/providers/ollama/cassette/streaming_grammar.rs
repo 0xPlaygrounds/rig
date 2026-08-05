@@ -7,9 +7,14 @@
 //! Re-record with (local Ollama daemon with `qwen3:4b` pulled, no key needed):
 //! `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama streaming_grammar -- --test-threads=1`
 //!
-//! Ollama's wire ships tool calls without ids, so the grammar mints identities
-//! in the reserved `tool-{index}` namespace — these recordings pin that minted
-//! behavior (2258 item 0) against real traffic.
+//! Ollama's native wire ships tool calls without ids — its `ToolCall` type has
+//! no id field at all — and this provider derives each call's identity from
+//! the function name rather than minting a `tool-{index}` identity (the mint
+//! is the chat-compat adapter's fallback and is pinned by the synthetic
+//! `id_less_parallel_tool_calls_assemble_distinct_on_the_chat_wire` corpus
+//! scenario). What these recordings pin against real traffic is the property
+//! that matters downstream: parallel calls on an id-less wire stay distinct
+//! and assemble with uncorrupted arguments.
 
 use futures::StreamExt;
 use rig::OneOrMany;
