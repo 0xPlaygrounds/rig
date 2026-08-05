@@ -677,13 +677,13 @@ fn openai_reasoning_from_core(
     };
     // Provenance gate: ids in the reserved boundary-minted namespaces
     // (`reasoning-{n}`, `block-{n}`, `output-{n}` — see
-    // `streaming::MINTED_REASONING_ID_NAMESPACES`) were fabricated by rig, not
+    // `streaming::MINTED_ID_NAMESPACES`) were fabricated by rig, not
     // issued by OpenAI. Serializing one upstream risks a 400 on multi-turn:
     // reachable via cross-provider replay (another provider's reasoning
     // history swapped onto a Responses model) and via a same-provider
     // delta-only stream whose deltas lacked `item_id`. Mirror main's handling
     // of id-less reasoning: drop the item from request input.
-    if crate::streaming::is_boundary_minted_reasoning_id(&id) {
+    if crate::streaming::is_boundary_minted_id(&id) {
         return Ok(None);
     }
 

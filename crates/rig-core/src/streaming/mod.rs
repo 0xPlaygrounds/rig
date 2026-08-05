@@ -7,21 +7,22 @@
 
 mod parts;
 
-/// Reserved id namespaces for reasoning identities minted at the provider
-/// boundary rather than read off the wire: `reasoning-{n}` (gemini REST /
+/// Reserved id namespaces for identities minted at the provider boundary
+/// rather than read off the wire: `reasoning-{n}` (gemini REST /
 /// interactions / gRPC, ollama, chat-compat `reasoning_content`, candle),
-/// `block-{n}` (anthropic, bedrock), and `output-{n}` (the OpenAI Responses
-/// fallback for delta events lacking `item_id`). Wire-supplied ids must never
-/// use these shapes; they gate two behaviors: the [`PartsAccumulator`]
-/// interleaving boundary (a minted id is a per-stream constant, so other
-/// output must close the open reasoning item) and the OpenAI Responses
-/// request-serialization guard (a minted id must not be replayed upstream as
-/// if the provider issued it).
-pub(crate) const MINTED_REASONING_ID_NAMESPACES: [&str; 3] = ["reasoning-", "block-", "output-"];
+/// `block-{n}` (anthropic, bedrock), `output-{n}` (the OpenAI Responses
+/// fallback for delta events lacking `item_id`), and `tool-{index}`
+/// (chat-compat tool-call fragments whose wire omits the tool-call id).
+/// Wire-supplied ids must never use these shapes; they gate two behaviors:
+/// the [`PartsAccumulator`] interleaving boundary (a minted *reasoning* id is
+/// a per-stream constant, so other output must close the open reasoning item)
+/// and the OpenAI Responses request-serialization guard (a minted id must not
+/// be replayed upstream as if the provider issued it).
+pub(crate) const MINTED_ID_NAMESPACES: [&str; 4] = ["reasoning-", "block-", "output-", "tool-"];
 
-/// Whether `id` belongs to a reserved boundary-minted reasoning namespace.
-pub(crate) fn is_boundary_minted_reasoning_id(id: &str) -> bool {
-    MINTED_REASONING_ID_NAMESPACES.iter().any(|namespace| {
+/// Whether `id` belongs to a reserved boundary-minted namespace.
+pub(crate) fn is_boundary_minted_id(id: &str) -> bool {
+    MINTED_ID_NAMESPACES.iter().any(|namespace| {
         id.strip_prefix(namespace)
             .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit()))
     })
@@ -406,7 +407,17 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// assembly by it and mints the internal correlation id when the call
     /// opens, so adapters never track per-call state.
     ToolCallDelta {
-        /// Provider-supplied tool call ID, stable across the call's fragments.
+        /// Identity of the tool call this fragment extends, stable across the
+        /// call's fragments.
+        ///
+        /// Required and never empty — the same mandatory-identity contract as
+        /// [`RawStreamingChoice::Reasoning::id`]: parallel calls interleave
+        /// their fragments on real wires, so the accumulator must key
+        /// assembly by identity. Providers propagate the wire's tool-call id,
+        /// or mint one at the boundary from the wire's own index
+        /// (`tool-{index}`, in the reserved `MINTED_ID_NAMESPACES` set) when
+        /// the wire omits it — an empty id would collapse parallel calls into
+        /// one corrupted assembly.
         id: String,
         content: ToolCallDeltaContent,
     },

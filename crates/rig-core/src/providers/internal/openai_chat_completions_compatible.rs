@@ -268,7 +268,9 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 #[derive(Debug, Clone)]
 pub(crate) struct OpenToolCallSlot {
     /// Assembly id: the id under which this call's fragments are emitted.
-    /// Fixed at open (the first-seen provider id, possibly empty).
+    /// Fixed at open: the first-seen provider id, or a `tool-{index}` id
+    /// minted from the chunk index when the wire omits one — never empty, so
+    /// parallel id-less calls can never share an assembly key downstream.
     key: String,
     /// Established provider id: updated when a later chunk carries one.
     pub(crate) id: String,
@@ -281,7 +283,11 @@ pub(crate) struct OpenToolCallSlot {
 impl OpenToolCallSlot {
     fn end_event(&self, on_unparseable: UnparseableToolInput) -> ToolInputEnd {
         let mut end = ToolInputEnd::new(self.key.clone(), on_unparseable);
-        end.tool_id = Some(self.id.clone());
+        // Only an established provider id overrides the assembly key; a call
+        // whose wire never supplied one keeps its minted `tool-{index}` id.
+        if !self.id.is_empty() {
+            end.tool_id = Some(self.id.clone());
+        }
         end.signature = self.signature.clone();
         end.additional_params = self.additional_params.clone();
         end
@@ -415,7 +421,17 @@ where
                         let slot = open_tool_calls
                             .entry(incoming.index)
                             .or_insert_with(|| OpenToolCallSlot {
-                                key: incoming.id.clone().unwrap_or_default(),
+                                key: match incoming.id.as_deref() {
+                                    Some(id) if !id.is_empty() => id.to_owned(),
+                                    // Id-less wires (several llama.cpp/vllm-
+                                    // style gateways) key tool calls by chunk
+                                    // index alone; the grammar id is minted
+                                    // from that index in the reserved
+                                    // namespace so it is never empty and never
+                                    // collides with a wire-genuine id.
+                                    _ => super::adapter::SyntheticIds::tool()
+                                        .for_index(incoming.index),
+                                },
                                 id: String::new(),
                                 name: String::new(),
                                 signature: None,

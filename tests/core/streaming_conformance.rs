@@ -293,6 +293,81 @@ mod grammar_guards {
     exactly_one_text_block_test!(copilot_responses, super::copilot::responses_fixture);
     exactly_one_text_block_test!(copilot_chat, super::copilot::chat_fixture);
 
+    /// The item-0 identity pin (#2258) on the wire: several llama.cpp/vllm-
+    /// style chat-compat gateways stream tool-call deltas with NO ids, keyed
+    /// by chunk index alone. Two such calls interleaving their argument
+    /// fragments must aggregate as two distinct uncorrupted calls under
+    /// boundary-minted `tool-{index}` ids — a shared empty grammar id would
+    /// interleave both calls' fragments into one garbled argument buffer.
+    #[tokio::test]
+    async fn id_less_parallel_tool_calls_assemble_distinct_on_the_chat_wire() {
+        use rig_core::message::AssistantContent;
+        use serde_json::json;
+
+        let chunk = |tool_calls: serde_json::Value| {
+            sse(&json!({
+                "choices": [{"index": 0, "delta": {"tool_calls": tool_calls}, "finish_reason": null}],
+            }))
+        };
+        let frames = vec![
+            chunk(
+                json!([{"index": 0, "type": "function", "function": {"name": "get_weather", "arguments": ""}}]),
+            ),
+            chunk(
+                json!([{"index": 1, "type": "function", "function": {"name": "get_time", "arguments": ""}}]),
+            ),
+            chunk(json!([{"index": 0, "function": {"arguments": "{\"city\":"}}])),
+            chunk(json!([{"index": 1, "function": {"arguments": "{\"zone\":"}}])),
+            chunk(json!([{"index": 0, "function": {"arguments": "\"Tokyo\"}"}}])),
+            chunk(json!([{"index": 1, "function": {"arguments": "\"UTC\"}"}}])),
+            sse(&json!({
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+                "usage": null,
+            })),
+            conformance::WireInput::Bytes(bytes::Bytes::from("data: [DONE]\n\n".to_string())),
+        ];
+
+        let fixture = openai_chat::fixture();
+        let drained = fixture
+            .driver
+            .drive(conformance::ok_chunks(frames))
+            .await
+            .expect("stream should drive");
+        assert_eq!(
+            drained.error_count(),
+            0,
+            "no frame may error: {:?}",
+            drained.items
+        );
+
+        let calls: Vec<_> = drained
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::ToolCall(tool_call) => Some(tool_call),
+                _ => None,
+            })
+            .collect();
+        let shape: Vec<(&str, &str, &serde_json::Value)> = calls
+            .iter()
+            .map(|call| {
+                (
+                    call.id.as_str(),
+                    call.function.name.as_str(),
+                    &call.function.arguments,
+                )
+            })
+            .collect();
+        assert_eq!(
+            shape,
+            vec![
+                ("tool-0", "get_weather", &json!({"city": "Tokyo"})),
+                ("tool-1", "get_time", &json!({"zone": "UTC"})),
+            ],
+            "two id-less indexed calls must assemble distinct and uncorrupted"
+        );
+    }
+
     /// Sibling-reasoning supersede on the wire (the corpus counterpart of the
     /// parts.rs `deltas_then_sibling_full_blocks_keep_each_part_once` unit
     /// test): a summary delta followed by its item's multi-part done block —

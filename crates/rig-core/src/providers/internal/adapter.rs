@@ -161,7 +161,7 @@ where
 ///
 /// Every id-less wire mints ids the same way — a namespace plus a counter or
 /// wire index — and the namespaces are the reserved set the boundary-minted
-/// provenance gate recognizes (`streaming::MINTED_REASONING_ID_NAMESPACES`),
+/// provenance gate recognizes (`streaming::MINTED_ID_NAMESPACES`),
 /// so a minted id can never serialize upstream as a wire-genuine one.
 #[derive(Debug)]
 pub struct SyntheticIds {
@@ -184,6 +184,12 @@ impl SyntheticIds {
     /// Ids in the `output-` namespace (the Responses `output_index` fallback).
     pub fn output() -> Self {
         Self::new("output-")
+    }
+
+    /// Ids in the `tool-` namespace (chat-compat tool-call fragments whose
+    /// wire supplies no tool-call id; identity derives from the chunk index).
+    pub fn tool() -> Self {
+        Self::new("tool-")
     }
 
     fn new(namespace: &'static str) -> Self {
@@ -216,15 +222,16 @@ mod tests {
             SyntheticIds::reasoning(),
             SyntheticIds::block(),
             SyntheticIds::output(),
+            SyntheticIds::tool(),
         ] {
             let counter_id = ids.mint();
             assert!(
-                crate::streaming::is_boundary_minted_reasoning_id(&counter_id),
+                crate::streaming::is_boundary_minted_id(&counter_id),
                 "{counter_id} must be provenance-gated"
             );
             let index_id = ids.for_index(7usize);
             assert!(
-                crate::streaming::is_boundary_minted_reasoning_id(&index_id),
+                crate::streaming::is_boundary_minted_id(&index_id),
                 "{index_id} must be provenance-gated"
             );
         }

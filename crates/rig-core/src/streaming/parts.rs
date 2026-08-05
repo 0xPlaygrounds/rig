@@ -286,6 +286,12 @@ impl PartsAccumulator {
     /// Record a streamed tool name fragment, opening the call if `id` has no
     /// open call. Returns the call's minted internal id.
     ///
+    /// `id` must be non-empty ([`RawStreamingChoice::ToolCallDelta`]'s
+    /// mandatory-identity contract, `crate::streaming`): emitters mint
+    /// `tool-{index}` when the wire omits an id, because a shared empty id
+    /// would interleave parallel calls' fragments into one corrupted
+    /// assembly here.
+    ///
     /// A later non-empty name replaces the recorded one (OpenAI-compatible
     /// wire semantics: the established name is the last non-empty value).
     /// Open-tool state deliberately does not close the active text or
@@ -306,6 +312,8 @@ impl PartsAccumulator {
 
     /// Append a streamed argument fragment to the call's buffer, opening the
     /// call if `id` has no open call. Returns the call's minted internal id.
+    ///
+    /// `id` must be non-empty; see [`PartsAccumulator::tool_name_delta`].
     pub(crate) fn tool_args_delta(&mut self, id: &str, fragment: &str) -> String {
         let index = self.ensure_open_tool_input(id);
         match self.open_tool_inputs.get_mut(index) {
@@ -486,7 +494,7 @@ impl PartsAccumulator {
             .keys()
             .filter(|key| {
                 key.ordinal == self.open_ordinal.get(&key.item_id).copied().unwrap_or(0)
-                    && crate::streaming::is_boundary_minted_reasoning_id(&key.item_id)
+                    && crate::streaming::is_boundary_minted_id(&key.item_id)
             })
             .map(|key| (key.item_id.clone(), key.ordinal))
             .collect();
@@ -1053,6 +1061,39 @@ mod tests {
         assert_eq!(
             call_a.function.arguments,
             serde_json::json!({"location": "Paris"})
+        );
+    }
+
+    /// The item-0 identity pin (#2258): two id-less parallel calls arrive
+    /// under distinct boundary-minted `tool-{index}` ids, so their
+    /// interleaved fragments assemble into two distinct uncorrupted calls —
+    /// a shared empty id would merge them into one garbled argument buffer.
+    #[test]
+    fn minted_tool_index_ids_keep_id_less_parallel_calls_distinct() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("tool-0", "get_weather");
+        accumulator.tool_name_delta("tool-1", "get_time");
+        accumulator.tool_args_delta("tool-0", "{\"city\":");
+        accumulator.tool_args_delta("tool-1", "{\"zone\":");
+        accumulator.tool_args_delta("tool-0", "\"Tokyo\"}");
+        accumulator.tool_args_delta("tool-1", "\"UTC\"}");
+        let (first, _) = accumulator
+            .tool_input_end(end("tool-0", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("finalizes");
+        let (second, _) = accumulator
+            .tool_input_end(end("tool-1", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("finalizes");
+        assert_eq!(first.id, "tool-0");
+        assert_eq!(second.id, "tool-1");
+        assert_eq!(
+            first.function.arguments,
+            serde_json::json!({"city": "Tokyo"})
+        );
+        assert_eq!(
+            second.function.arguments,
+            serde_json::json!({"zone": "UTC"})
         );
     }
 
