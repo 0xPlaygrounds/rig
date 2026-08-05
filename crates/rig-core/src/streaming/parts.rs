@@ -328,7 +328,13 @@ impl PartsAccumulator {
         let index = self.ensure_open_tool_input(id);
         match self.open_tool_inputs.get_mut(index) {
             Some(input) => {
-                name.clone_into(&mut input.name);
+                // Last-*non-empty* semantics (doc above, and `ToolCallBridge`'s
+                // matching filter): an empty fragment must not erase an
+                // established name, or finalization would drop the call as
+                // nameless.
+                if !name.is_empty() {
+                    name.clone_into(&mut input.name);
+                }
                 input.internal_call_id.clone()
             }
             // Unreachable (`ensure` returns a live index); degrade to a fresh
@@ -374,7 +380,10 @@ impl PartsAccumulator {
     /// [`UnparseableToolInput::Drop`]), or an error item under
     /// [`UnparseableToolInput::Error`]. Authoritative fields on the end event
     /// (a wire's completed item) supersede the assembled state. An end with
-    /// no open call opens and completes one from the event alone.
+    /// no open call opens and completes one from the event alone. Out-of-tree
+    /// adapters beware: this means a `Keep`-mode end carrying an authoritative
+    /// name for an id that never opened still finalizes a call with `{}`
+    /// arguments from the end event alone.
     pub(crate) fn tool_input_end(
         &mut self,
         end: ToolInputEnd,
@@ -946,6 +955,23 @@ mod tests {
             accumulator.finish().first(),
             Some(AssistantContent::ToolCall(_))
         ));
+    }
+
+    /// #2258 review probe: an empty name fragment after an established name
+    /// must not erase it (last-*non-empty* semantics) — the call still
+    /// finalizes under the established name instead of dropping as nameless.
+    #[test]
+    fn an_empty_name_fragment_does_not_erase_an_established_name() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_1", "get_weather");
+        accumulator.tool_name_delta("call_1", "");
+        accumulator.tool_args_delta("call_1", "{}");
+
+        let (tool_call, _) = accumulator
+            .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("call must finalize under the established name");
+        assert_eq!(tool_call.function.name, "get_weather");
     }
 
     #[test]

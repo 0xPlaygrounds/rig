@@ -16,13 +16,14 @@ pub enum WireEvent<T> {
     /// decoded fully.
     Known(T),
     /// Valid JSON whose discriminator this client does not model. Policy
-    /// (owned by the stream driver, never per adapter): warn — with the
-    /// payload, so unrecognized events are diagnosable — and skip, for
+    /// (owned by the stream driver, never per adapter): warn — structural
+    /// metadata only, so payloads never leak into logs — and skip, for
     /// forward compatibility.
     Unknown {
         /// The unmodeled discriminator value.
         event_type: String,
-        /// The full frame payload, for the driver's warn log.
+        /// The full frame payload, for the driver's raw passthrough channel
+        /// (never for its warn log).
         value: serde_json::Value,
     },
     /// Not valid JSON, or a modeled discriminator whose payload failed the
@@ -53,7 +54,10 @@ impl<T> WireEvent<T> {
 /// Dispatch on the envelope's `tag` field: a value outside
 /// `is_known_event_type` is `Unknown`; a modeled value — or a missing tag,
 /// which no modeled event omits — must pass the full typed decode, and a
-/// failure there is `Corrupt`, not `Unknown`.
+/// failure there is `Corrupt`, not `Unknown`. A frame carrying the tag key
+/// more than once is `Corrupt` outright: `serde_json::Value` keeps only the
+/// last occurrence, so without the rejection a defective known frame could
+/// masquerade as a skippable unknown one.
 pub fn classify_tagged_frame<T>(
     data: &str,
     tag: &str,
@@ -66,6 +70,9 @@ where
         Ok(value) => value,
         Err(error) => return WireEvent::Corrupt(error),
     };
+    if let Err(error) = reject_duplicate_discriminators(data, &value, &[tag]) {
+        return WireEvent::Corrupt(error);
+    }
 
     match value.get(tag).and_then(serde_json::Value::as_str) {
         Some(event_type) if !is_known_event_type(event_type) => WireEvent::Unknown {
@@ -81,7 +88,9 @@ where
 /// The chat wire has no `type` discriminator, so recognizability substitutes:
 /// a frame saying `"object": "chat.completion.chunk"` or carrying `choices`
 /// is a chunk and must pass the full typed decode (failure is `Corrupt`);
-/// valid JSON that is neither is `Unknown`.
+/// valid JSON that is neither is `Unknown`. A frame carrying `object` or
+/// `choices` more than once is `Corrupt` outright (same duplicate-key policy
+/// as [`classify_tagged_frame`]).
 pub fn classify_chat_completions_frame<T>(data: &str) -> WireEvent<T>
 where
     T: serde::de::DeserializeOwned,
@@ -90,6 +99,9 @@ where
         Ok(value) => value,
         Err(error) => return WireEvent::Corrupt(error),
     };
+    if let Err(error) = reject_duplicate_discriminators(data, &value, &["object", "choices"]) {
+        return WireEvent::Corrupt(error);
+    }
 
     let is_chat_chunk = value
         .get("object")
@@ -231,6 +243,68 @@ pub fn classify_with_repair<T>(
     }
 }
 
+/// Reject a top-level object that carries any discriminator key more than
+/// once.
+///
+/// `serde_json::Value` retains only the last occurrence of a duplicate key,
+/// so a frame like `{"type":"text.delta","type":"future.event",...}` would
+/// otherwise dispatch on the *last* value and demote a defective known frame
+/// to a skippable `Unknown` — violating the classifier invariant that a
+/// data-level defect in a known event is always `Corrupt`. This re-scans the
+/// raw text with a streaming visitor that sees every key occurrence.
+/// `value` (the already-parsed frame) gates the scan to top-level objects.
+fn reject_duplicate_discriminators(
+    data: &str,
+    value: &serde_json::Value,
+    keys: &[&str],
+) -> Result<(), serde_json::Error> {
+    /// Visitor that walks the top-level map and counts occurrences of the
+    /// discriminator keys, ignoring every value.
+    struct DuplicateKeyScan<'a> {
+        keys: &'a [&'a str],
+    }
+
+    impl<'de> serde::de::Visitor<'de> for DuplicateKeyScan<'_> {
+        type Value = ();
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a JSON object without duplicate discriminator keys")
+        }
+
+        fn visit_map<A>(self, mut map: A) -> Result<(), A::Error>
+        where
+            A: serde::de::MapAccess<'de>,
+        {
+            let mut seen = vec![false; self.keys.len()];
+            while let Some(key) = map.next_key::<String>()? {
+                map.next_value::<serde::de::IgnoredAny>()?;
+                if let Some(index) = self.keys.iter().position(|candidate| *candidate == key) {
+                    match seen.get_mut(index) {
+                        Some(entry) if *entry => {
+                            return Err(serde::de::Error::custom(format!(
+                                "duplicate `{key}` discriminator key in stream frame"
+                            )));
+                        }
+                        Some(entry) => *entry = true,
+                        // Unreachable (`seen` mirrors `keys`); nothing to
+                        // record.
+                        None => {}
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    if !value.is_object() {
+        // A non-object frame has no top-level keys to duplicate; the tag
+        // lookup on `value` handles it downstream.
+        return Ok(());
+    }
+    let mut deserializer = serde_json::Deserializer::from_str(data);
+    serde::Deserializer::deserialize_map(&mut deserializer, DuplicateKeyScan { keys })
+}
+
 fn decode_known<T>(data: &str) -> WireEvent<T>
 where
     T: serde::de::DeserializeOwned,
@@ -301,6 +375,49 @@ mod tests {
     fn tagged_typeless_frame_is_corrupt() {
         let event = classify_tagged_frame::<TestEvent>("{}", "type", known);
         assert!(matches!(event, WireEvent::Corrupt(_)));
+    }
+
+    /// #2258 review probe: `serde_json::Value` keeps the last duplicate key,
+    /// so without the duplicate-discriminator rejection this frame would
+    /// dispatch on `future.event` and demote a defective known frame to a
+    /// skippable `Unknown`.
+    #[test]
+    fn tagged_duplicate_discriminator_is_corrupt() {
+        let event = classify_tagged_frame::<TestEvent>(
+            r#"{"type":"text.delta","type":"future.event","delta":"hi"}"#,
+            "type",
+            known,
+        );
+        assert!(matches!(event, WireEvent::Corrupt(_)));
+    }
+
+    /// #2258 review probe (second-pass extension): the chat classifier's
+    /// `object` recognizability key is equally spoofable via duplication.
+    #[test]
+    fn chat_duplicate_object_discriminator_is_corrupt() {
+        let event = classify_chat_completions_frame::<TestChunk>(
+            r#"{"object":"chat.completion.chunk","object":"future.thing","data":1}"#,
+        );
+        assert!(matches!(event, WireEvent::Corrupt(_)));
+    }
+
+    #[test]
+    fn chat_duplicate_choices_key_is_corrupt() {
+        let event = classify_chat_completions_frame::<TestChunk>(r#"{"choices":[],"choices":42}"#);
+        assert!(matches!(event, WireEvent::Corrupt(_)));
+    }
+
+    #[test]
+    fn tagged_duplicate_non_discriminator_key_still_classifies() {
+        // Only discriminator duplication is rejected by the scanner; other
+        // duplicate keys stay with the typed decode's own policy (an ignored
+        // key duplicated is harmless).
+        let event = classify_tagged_frame::<TestEvent>(
+            r#"{"type":"text.delta","ignored":1,"ignored":2,"delta":"hi"}"#,
+            "type",
+            known,
+        );
+        assert!(matches!(event, WireEvent::Known(TestEvent::TextDelta { delta }) if delta == "hi"));
     }
 
     #[test]

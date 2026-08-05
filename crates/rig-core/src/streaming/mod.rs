@@ -791,135 +791,143 @@ impl Stream for StreamingCompletionResponse {
             return Poll::Pending;
         }
 
-        match Pin::new(&mut stream.inner).poll_next(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => {
-                // This is run at the end of the inner stream to collect all tokens into
-                // a single unified `Message`. `finish` is never empty, so the
-                // conversion cannot fail.
-                if let Some(choice) = OneOrMany::from_iter_optional(stream.parts.finish()) {
-                    stream.choice = choice;
-                }
+        // Non-yielding events (`continue` arms: block bookkeeping, dropped
+        // ends, duplicate terminals) loop rather than recurse — a long run of
+        // them must not grow the stack (#2258 review P3).
+        loop {
+            return match Pin::new(&mut stream.inner).poll_next(cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(None) => {
+                    // This is run at the end of the inner stream to collect all tokens into
+                    // a single unified `Message`. `finish` is never empty, so the
+                    // conversion cannot fail.
+                    if let Some(choice) = OneOrMany::from_iter_optional(stream.parts.finish()) {
+                        stream.choice = choice;
+                    }
 
-                Poll::Ready(None)
-            }
-            Poll::Ready(Some(Err(err))) => {
-                if matches!(err, CompletionError::ProviderError(ref e) if e.to_string().contains("aborted"))
-                {
-                    return Poll::Ready(None); // Treat cancellation as stream termination
+                    Poll::Ready(None)
                 }
-                Poll::Ready(Some(Err(err)))
-            }
-            Poll::Ready(Some(Ok(choice))) => match choice {
-                RawStreamingChoice::Message(text) => {
-                    stream.parts.text_delta(&text);
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
+                Poll::Ready(Some(Err(err))) => {
+                    if matches!(err, CompletionError::ProviderError(ref e) if e.to_string().contains("aborted"))
+                    {
+                        return Poll::Ready(None); // Treat cancellation as stream termination
+                    }
+                    Poll::Ready(Some(Err(err)))
                 }
-                RawStreamingChoice::TextStart {
-                    id,
-                    additional_params,
-                } => {
-                    stream.parts.text_start(&id, additional_params);
-                    stream.poll_next_unpin(cx)
-                }
-                RawStreamingChoice::TextAdditionalParams(additional_params) => {
-                    stream.parts.text_additional_params(additional_params);
-                    stream.poll_next_unpin(cx)
-                }
-                RawStreamingChoice::ToolCallDelta { id, content } => {
-                    // The accumulator owns assembly; it mints the internal
-                    // correlation id when the call opens and returns it for
-                    // every fragment, so the public delta stays correlated
-                    // with the eventual completed call.
-                    let internal_call_id = match &content {
-                        ToolCallDeltaContent::Name(name) => stream.parts.tool_name_delta(&id, name),
-                        ToolCallDeltaContent::Delta(fragment) => {
-                            stream.parts.tool_args_delta(&id, fragment)
-                        }
-                    };
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
+                Poll::Ready(Some(Ok(choice))) => match choice {
+                    RawStreamingChoice::Message(text) => {
+                        stream.parts.text_delta(&text);
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
+                    }
+                    RawStreamingChoice::TextStart {
                         id,
-                        internal_call_id,
-                        content,
-                    })))
-                }
-                RawStreamingChoice::ToolInputEnd(end) => match stream.parts.tool_input_end(end) {
-                    Ok(Some((tool_call, internal_call_id))) => {
+                        additional_params,
+                    } => {
+                        stream.parts.text_start(&id, additional_params);
+                        continue;
+                    }
+                    RawStreamingChoice::TextAdditionalParams(additional_params) => {
+                        stream.parts.text_additional_params(additional_params);
+                        continue;
+                    }
+                    RawStreamingChoice::ToolCallDelta { id, content } => {
+                        // The accumulator owns assembly; it mints the internal
+                        // correlation id when the call opens and returns it for
+                        // every fragment, so the public delta stays correlated
+                        // with the eventual completed call.
+                        let internal_call_id = match &content {
+                            ToolCallDeltaContent::Name(name) => {
+                                stream.parts.tool_name_delta(&id, name)
+                            }
+                            ToolCallDeltaContent::Delta(fragment) => {
+                                stream.parts.tool_args_delta(&id, fragment)
+                            }
+                        };
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
+                            id,
+                            internal_call_id,
+                            content,
+                        })))
+                    }
+                    RawStreamingChoice::ToolInputEnd(end) => match stream.parts.tool_input_end(end)
+                    {
+                        Ok(Some((tool_call, internal_call_id))) => {
+                            Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
+                                tool_call,
+                                internal_call_id,
+                            })))
+                        }
+                        // Dropped (nameless or partial input): not content.
+                        Ok(None) => continue,
+                        // Malformed complete input surfaces in-band; the stream
+                        // keeps consuming, matching the malformed-frame contract.
+                        Err(err) => Poll::Ready(Some(Err(err))),
+                    },
+                    RawStreamingChoice::Reasoning { id, content } => {
+                        let reasoning = Reasoning {
+                            id: Some(id),
+                            content: vec![content],
+                        };
+                        stream.parts.reasoning_full(reasoning.clone());
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
+                    }
+                    RawStreamingChoice::ReasoningDelta { id, reasoning } => {
+                        stream.parts.reasoning_delta(&id, &reasoning);
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
+                            id,
+                            reasoning,
+                        })))
+                    }
+                    RawStreamingChoice::ToolCall(raw_tool_call) => {
+                        let internal_call_id = raw_tool_call.internal_call_id.clone();
+                        let tool_call: ToolCall = raw_tool_call.into();
+                        stream.parts.tool_call(tool_call.clone());
                         Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
                             tool_call,
                             internal_call_id,
                         })))
                     }
-                    // Dropped (nameless or partial input): not content.
-                    Ok(None) => stream.poll_next_unpin(cx),
-                    // Malformed complete input surfaces in-band; the stream
-                    // keeps consuming, matching the malformed-frame contract.
-                    Err(err) => Poll::Ready(Some(Err(err))),
-                },
-                RawStreamingChoice::Reasoning { id, content } => {
-                    let reasoning = Reasoning {
-                        id: Some(id),
-                        content: vec![content],
-                    };
-                    stream.parts.reasoning_full(reasoning.clone());
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
-                }
-                RawStreamingChoice::ReasoningDelta { id, reasoning } => {
-                    stream.parts.reasoning_delta(&id, &reasoning);
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
-                        id,
-                        reasoning,
-                    })))
-                }
-                RawStreamingChoice::ToolCall(raw_tool_call) => {
-                    let internal_call_id = raw_tool_call.internal_call_id.clone();
-                    let tool_call: ToolCall = raw_tool_call.into();
-                    stream.parts.tool_call(tool_call.clone());
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
-                        tool_call,
-                        internal_call_id,
-                    })))
-                }
-                RawStreamingChoice::FinalResponse(mut response) => {
-                    // Assembled tool calls never pass `normalize_stream` as
-                    // `RawStreamingChoice::ToolCall`, so the finish-reason
-                    // reconciliation runs here too, against the accumulator's
-                    // authoritative view of completed calls. Idempotent over
-                    // the reconciliation `normalize_stream` already applied.
-                    response.finish_reason = response
-                        .finish_reason
-                        .map(|reason| reason.reconcile_with_output(stream.parts.saw_tool_call()));
-                    if stream
-                        .final_response_yielded
-                        .load(std::sync::atomic::Ordering::SeqCst)
-                    {
-                        stream.poll_next_unpin(cx)
-                    } else {
-                        // Set the final response field and return the next item in the stream.
-                        // An explicit `MessageId` event keeps precedence; the
-                        // terminal record only fills a gap.
-                        if stream.message_id.is_none() {
-                            stream.message_id = response.message_id.clone();
-                        }
-                        stream.response = Some(response.clone());
-                        stream
+                    RawStreamingChoice::FinalResponse(mut response) => {
+                        // Assembled tool calls never pass `normalize_stream` as
+                        // `RawStreamingChoice::ToolCall`, so the finish-reason
+                        // reconciliation runs here too, against the accumulator's
+                        // authoritative view of completed calls. Idempotent over
+                        // the reconciliation `normalize_stream` already applied.
+                        response.finish_reason = response.finish_reason.map(|reason| {
+                            reason.reconcile_with_output(stream.parts.saw_tool_call())
+                        });
+                        if stream
                             .final_response_yielded
-                            .store(true, std::sync::atomic::Ordering::SeqCst);
-                        let final_response = StreamedAssistantContent::final_response(response);
-                        Poll::Ready(Some(Ok(final_response)))
+                            .load(std::sync::atomic::Ordering::SeqCst)
+                        {
+                            continue;
+                        } else {
+                            // Set the final response field and return the next item in the stream.
+                            // An explicit `MessageId` event keeps precedence; the
+                            // terminal record only fills a gap.
+                            if stream.message_id.is_none() {
+                                stream.message_id = response.message_id.clone();
+                            }
+                            stream.response = Some(response.clone());
+                            stream
+                                .final_response_yielded
+                                .store(true, std::sync::atomic::Ordering::SeqCst);
+                            let final_response = StreamedAssistantContent::final_response(response);
+                            Poll::Ready(Some(Ok(final_response)))
+                        }
                     }
-                }
-                RawStreamingChoice::MessageId(id) => {
-                    stream.message_id = Some(id);
-                    stream.poll_next_unpin(cx)
-                }
-                RawStreamingChoice::Unknown(value) => {
-                    // Pass an unmodeled provider item straight through to the
-                    // consumer; it is intentionally not pushed into
-                    // `assistant_items` (no `AssistantContent::Unknown` exists).
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
-                }
-            },
+                    RawStreamingChoice::MessageId(id) => {
+                        stream.message_id = Some(id);
+                        continue;
+                    }
+                    RawStreamingChoice::Unknown(value) => {
+                        // Pass an unmodeled provider item straight through to the
+                        // consumer; it is intentionally not pushed into
+                        // `assistant_items` (no `AssistantContent::Unknown` exists).
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
+                    }
+                },
+            };
         }
     }
 }
@@ -972,6 +980,33 @@ mod tests {
         };
 
         StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream))
+    }
+
+    /// #2258 review P3: non-yielding events (`MessageId` here) drive the
+    /// `poll_next` loop instead of synchronous self-recursion, so a long run
+    /// of them cannot grow the stack. Pre-fix, each of these frames was one
+    /// recursive `poll_next` stack frame and a run this long overflowed in
+    /// debug builds.
+    #[tokio::test]
+    async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
+        let raw = stream! {
+            for n in 0..50_000u32 {
+                yield Ok(RawStreamingChoice::MessageId(format!("msg_{n}")));
+            }
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(1)));
+        };
+        let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(raw));
+
+        let mut texts = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Ok(StreamedAssistantContent::Text(text)) = item {
+                texts.push(text.text);
+            }
+        }
+        assert_eq!(texts, vec!["done".to_string()]);
+        // The last id recorded wins.
+        assert_eq!(stream.message_id.as_deref(), Some("msg_49999"));
     }
 
     fn create_reasoning_stream() -> StreamingCompletionResponse {

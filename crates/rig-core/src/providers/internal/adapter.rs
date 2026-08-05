@@ -9,7 +9,7 @@
 //! | classify                  | driver action                                |
 //! |---------------------------|----------------------------------------------|
 //! | [`WireEvent::Known`]      | `adapter.interpret`, yield its outputs       |
-//! | [`WireEvent::Unknown`]    | `tracing::warn!` (with the payload), skip on |
+//! | [`WireEvent::Unknown`]    | `tracing::warn!` (metadata only), skip on    |
 //! |                           | the semantic path, and yield the raw value   |
 //! |                           | as [`RawStreamingChoice::Unknown`] (the      |
 //! |                           | passthrough channel — never aggregated)      |
@@ -168,8 +168,8 @@ pub enum TriagedFrame<T> {
 }
 
 /// Triage one classified frame under the shared policy table (see the module
-/// docs): `Known` passes through, `Unknown` is warned (with its payload) and
-/// handed back raw for the passthrough channel, `Corrupt` is a
+/// docs): `Known` passes through, `Unknown` is warned (structural metadata
+/// only) and handed back raw for the passthrough channel, `Corrupt` is a
 /// [`CompletionError::JsonError`].
 ///
 /// This is [`run_wire_stream`]'s per-frame policy factored out for the
@@ -180,15 +180,44 @@ pub fn triage_frame<T>(event: WireEvent<T>) -> Result<TriagedFrame<T>, Completio
     match event {
         WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
         WireEvent::Unknown { event_type, value } => {
+            // Structural metadata only: an unknown future event can carry
+            // model output or other sensitive provider data, which must not
+            // leak into production WARN logs. The full payload survives on
+            // the `Unknown` raw passthrough channel — that channel IS the
+            // opt-in for consumers who want the content.
             tracing::warn!(
                 event_type,
-                payload = %value,
+                payload_bytes = unknown_payload_bytes(&value),
                 "skipping unrecognized stream event"
             );
             Ok(TriagedFrame::Unknown(value))
         }
         WireEvent::Corrupt(error) => Err(CompletionError::JsonError(error)),
     }
+}
+
+/// Serialized byte size of an unknown frame's payload, for the structural
+/// warn log (the log never carries the payload itself).
+fn unknown_payload_bytes(value: &serde_json::Value) -> u64 {
+    /// Counter sink: measures how many bytes serialization would write
+    /// without buffering them.
+    struct CountingWriter(u64);
+
+    impl std::io::Write for CountingWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len() as u64;
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut counter = CountingWriter(0);
+    // A `Value` cannot fail to serialize; degrade to 0 rather than panic.
+    let _ = serde_json::to_writer(&mut counter, value);
+    counter.0
 }
 
 /// Drive one transport stream through an adapter under the shared policy.
@@ -292,9 +321,15 @@ where
         match adapter.classify(frame) {
             WireEvent::Known(event) => adapter.interpret(event, &mut out),
             WireEvent::Unknown { event_type, value } => {
+                // Structural metadata only, matching [`triage_frame`]: unknown
+                // payloads can carry sensitive provider data and must not leak
+                // into WARN logs. (The stream driver additionally surfaces the
+                // full payload on the `Unknown` raw channel — the opt-in for
+                // consumers who want the content; a buffered result has no
+                // such channel, so here the payload is simply skipped.)
                 tracing::warn!(
                     event_type,
-                    payload = %value,
+                    payload_bytes = unknown_payload_bytes(&value),
                     "skipping unrecognized stream event"
                 );
             }
