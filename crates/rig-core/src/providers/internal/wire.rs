@@ -66,20 +66,30 @@ pub fn classify_tagged_frame<T>(
 where
     T: serde::de::DeserializeOwned,
 {
-    let value = match serde_json::from_str::<serde_json::Value>(data) {
-        Ok(value) => value,
+    let scanned = match scan_discriminators(data, &[tag], true) {
+        Ok(scanned) => scanned,
         Err(error) => return WireEvent::Corrupt(error),
     };
-    if let Err(error) = reject_duplicate_discriminators(data, &value, &[tag]) {
-        return WireEvent::Corrupt(error);
+    match scanned {
+        DiscriminatorScan::Object(found) => {
+            match found.first().and_then(|key| key.string_value.as_deref()) {
+                Some(event_type) if !is_known_event_type(event_type) => {
+                    unknown_with_value(data, event_type.to_owned())
+                }
+                _ => decode_known(data),
+            }
+        }
+        DiscriminatorScan::NotObject => decode_known(data),
     }
+}
 
-    match value.get(tag).and_then(serde_json::Value::as_str) {
-        Some(event_type) if !is_known_event_type(event_type) => WireEvent::Unknown {
-            event_type: event_type.to_owned(),
-            value,
-        },
-        _ => decode_known(data),
+/// Build the `Unknown` cold path: the raw channel carries the full payload,
+/// parsed lazily here — the hot Known path never pays for it.
+fn unknown_with_value<T>(data: &str, event_type: String) -> WireEvent<T> {
+    match serde_json::from_str::<serde_json::Value>(data) {
+        Ok(value) => WireEvent::Unknown { event_type, value },
+        // Unreachable in practice: the scan already tokenized this text.
+        Err(error) => WireEvent::Corrupt(error),
     }
 }
 
@@ -95,26 +105,20 @@ pub fn classify_chat_completions_frame<T>(data: &str) -> WireEvent<T>
 where
     T: serde::de::DeserializeOwned,
 {
-    let value = match serde_json::from_str::<serde_json::Value>(data) {
-        Ok(value) => value,
+    let scanned = match scan_discriminators(data, &["object", "choices"], true) {
+        Ok(scanned) => scanned,
         Err(error) => return WireEvent::Corrupt(error),
     };
-    if let Err(error) = reject_duplicate_discriminators(data, &value, &["object", "choices"]) {
-        return WireEvent::Corrupt(error);
-    }
-
-    let is_chat_chunk = value
-        .get("object")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|object| object == "chat.completion.chunk")
-        || value.get("choices").is_some();
+    let found = match scanned {
+        DiscriminatorScan::Object(found) => found,
+        DiscriminatorScan::NotObject => return decode_known(data),
+    };
+    let object_value = found.first().and_then(|key| key.string_value.as_deref());
+    let has_choices = found.get(1).is_some_and(|key| key.present);
+    let is_chat_chunk =
+        object_value.is_some_and(|object| object == "chat.completion.chunk") || has_choices;
     if !is_chat_chunk {
-        let event_type = value
-            .get("object")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default()
-            .to_owned();
-        return WireEvent::Unknown { event_type, value };
+        return unknown_with_value(data, object_value.unwrap_or_default().to_owned());
     }
 
     decode_known(data)
@@ -132,15 +136,25 @@ pub fn classify_marker_keyed_frame<T>(data: &str, marker_keys: &[&str]) -> WireE
 where
     T: serde::de::DeserializeOwned,
 {
-    let value = match serde_json::from_str::<serde_json::Value>(data) {
-        Ok(value) => value,
+    // Markers are presence checks, not discriminators — historically
+    // duplicate-tolerant, so the scan does not reject duplicates here.
+    let scanned = match scan_discriminators(data, marker_keys, false) {
+        Ok(scanned) => scanned,
         Err(error) => return WireEvent::Corrupt(error),
     };
-
-    let recognizable = marker_keys.iter().any(|key| value.get(key).is_some());
+    let recognizable = match &scanned {
+        DiscriminatorScan::Object(found) => found.iter().any(|key| key.present),
+        DiscriminatorScan::NotObject => false,
+    };
     if !recognizable {
-        // No tag exists on this wire; name the frame by its top-level keys so
-        // the driver's warn log stays diagnosable.
+        // Cold path: the Unknown channel needs the payload anyway, so parse
+        // it here and name the frame by its top-level keys so the driver's
+        // warn log stays diagnosable.
+        let value = match serde_json::from_str::<serde_json::Value>(data) {
+            Ok(value) => value,
+            // Unreachable in practice: the scan already tokenized this text.
+            Err(error) => return WireEvent::Corrupt(error),
+        };
         let event_type = value
             .as_object()
             .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
@@ -253,56 +267,182 @@ pub fn classify_with_repair<T>(
 /// data-level defect in a known event is always `Corrupt`. This re-scans the
 /// raw text with a streaming visitor that sees every key occurrence.
 /// `value` (the already-parsed frame) gates the scan to top-level objects.
-fn reject_duplicate_discriminators(
+/// What one streaming pass learned about a frame's discriminator keys.
+///
+/// This is the fused form of "parse to `Value` for the discriminator lookup"
+/// and "scan for duplicate discriminator keys": one tokenization pass over
+/// the raw text yields both, so the hot path (Known frames) runs exactly two
+/// passes — this scan plus the typed decode, the irreducible minimum. The
+/// `Unknown` cold path lazily parses the `Value` it must carry anyway.
+enum DiscriminatorScan {
+    /// Top-level object: per requested key, whether it was present and its
+    /// string value when it had one (first occurrence; a duplicate is an
+    /// error before this is returned).
+    Object(Vec<KeyScan>),
+    /// Not a JSON object — no top-level keys exist; classification falls
+    /// through to the typed decode.
+    NotObject,
+}
+
+#[derive(Default, Clone)]
+struct KeyScan {
+    present: bool,
+    string_value: Option<String>,
+}
+
+fn scan_discriminators(
     data: &str,
-    value: &serde_json::Value,
     keys: &[&str],
-) -> Result<(), serde_json::Error> {
-    /// Visitor that walks the top-level map and counts occurrences of the
-    /// discriminator keys, ignoring every value.
-    struct DuplicateKeyScan<'a> {
+    reject_duplicates: bool,
+) -> Result<DiscriminatorScan, serde_json::Error> {
+    struct Scan<'a> {
         keys: &'a [&'a str],
+        reject_duplicates: bool,
     }
 
-    impl<'de> serde::de::Visitor<'de> for DuplicateKeyScan<'_> {
-        type Value = ();
+    impl<'de> serde::de::Visitor<'de> for Scan<'_> {
+        type Value = DiscriminatorScan;
 
         fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("a JSON object without duplicate discriminator keys")
+            formatter.write_str("a JSON value")
         }
 
-        fn visit_map<A>(self, mut map: A) -> Result<(), A::Error>
+        fn visit_map<A>(self, mut map: A) -> Result<DiscriminatorScan, A::Error>
         where
             A: serde::de::MapAccess<'de>,
         {
-            let mut seen = vec![false; self.keys.len()];
+            let mut found = vec![KeyScan::default(); self.keys.len()];
             while let Some(key) = map.next_key::<String>()? {
-                map.next_value::<serde::de::IgnoredAny>()?;
-                if let Some(index) = self.keys.iter().position(|candidate| *candidate == key) {
-                    match seen.get_mut(index) {
-                        Some(entry) if *entry => {
-                            return Err(serde::de::Error::custom(format!(
-                                "duplicate `{key}` discriminator key in stream frame"
-                            )));
+                match self.keys.iter().position(|candidate| *candidate == key) {
+                    Some(index) => {
+                        let entry = found.get_mut(index).ok_or_else(|| {
+                            serde::de::Error::custom("discriminator index out of range")
+                        })?;
+                        if entry.present {
+                            if self.reject_duplicates {
+                                return Err(serde::de::Error::custom(format!(
+                                    "duplicate `{key}` discriminator key in stream frame"
+                                )));
+                            }
+                            // Presence-only keys tolerate duplicates; the
+                            // first occurrence's value stands.
+                            map.next_value::<serde::de::IgnoredAny>()?;
+                            continue;
                         }
-                        Some(entry) => *entry = true,
-                        // Unreachable (`seen` mirrors `keys`); nothing to
-                        // record.
-                        None => {}
+                        entry.present = true;
+                        // Only string discriminators carry a value; anything
+                        // else (e.g. a `choices` array) records presence.
+                        entry.string_value = match map.next_value::<StringOrIgnored>()? {
+                            StringOrIgnored::String(value) => Some(value),
+                            StringOrIgnored::Ignored => None,
+                        };
+                    }
+                    None => {
+                        map.next_value::<serde::de::IgnoredAny>()?;
                     }
                 }
             }
-            Ok(())
+            Ok(DiscriminatorScan::Object(found))
+        }
+
+        // Every non-map shape falls through to the typed decode downstream.
+        fn visit_bool<E>(self, _: bool) -> Result<DiscriminatorScan, E> {
+            Ok(DiscriminatorScan::NotObject)
+        }
+        fn visit_i64<E>(self, _: i64) -> Result<DiscriminatorScan, E> {
+            Ok(DiscriminatorScan::NotObject)
+        }
+        fn visit_u64<E>(self, _: u64) -> Result<DiscriminatorScan, E> {
+            Ok(DiscriminatorScan::NotObject)
+        }
+        fn visit_f64<E>(self, _: f64) -> Result<DiscriminatorScan, E> {
+            Ok(DiscriminatorScan::NotObject)
+        }
+        fn visit_str<E>(self, _: &str) -> Result<DiscriminatorScan, E> {
+            Ok(DiscriminatorScan::NotObject)
+        }
+        fn visit_unit<E>(self) -> Result<DiscriminatorScan, E> {
+            Ok(DiscriminatorScan::NotObject)
+        }
+        fn visit_seq<A>(self, mut seq: A) -> Result<DiscriminatorScan, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>,
+        {
+            while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+            Ok(DiscriminatorScan::NotObject)
         }
     }
 
-    if !value.is_object() {
-        // A non-object frame has no top-level keys to duplicate; the tag
-        // lookup on `value` handles it downstream.
-        return Ok(());
+    /// Captures a string value, consumes-and-ignores every other shape.
+    enum StringOrIgnored {
+        String(String),
+        Ignored,
     }
+
+    impl<'de> serde::Deserialize<'de> for StringOrIgnored {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            struct V;
+            impl<'de> serde::de::Visitor<'de> for V {
+                type Value = StringOrIgnored;
+                fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    formatter.write_str("any JSON value")
+                }
+                fn visit_str<E>(self, value: &str) -> Result<StringOrIgnored, E> {
+                    Ok(StringOrIgnored::String(value.to_owned()))
+                }
+                fn visit_string<E>(self, value: String) -> Result<StringOrIgnored, E> {
+                    Ok(StringOrIgnored::String(value))
+                }
+                fn visit_bool<E>(self, _: bool) -> Result<StringOrIgnored, E> {
+                    Ok(StringOrIgnored::Ignored)
+                }
+                fn visit_i64<E>(self, _: i64) -> Result<StringOrIgnored, E> {
+                    Ok(StringOrIgnored::Ignored)
+                }
+                fn visit_u64<E>(self, _: u64) -> Result<StringOrIgnored, E> {
+                    Ok(StringOrIgnored::Ignored)
+                }
+                fn visit_f64<E>(self, _: f64) -> Result<StringOrIgnored, E> {
+                    Ok(StringOrIgnored::Ignored)
+                }
+                fn visit_unit<E>(self) -> Result<StringOrIgnored, E> {
+                    Ok(StringOrIgnored::Ignored)
+                }
+                fn visit_map<A>(self, mut map: A) -> Result<StringOrIgnored, A::Error>
+                where
+                    A: serde::de::MapAccess<'de>,
+                {
+                    while map
+                        .next_entry::<serde::de::IgnoredAny, serde::de::IgnoredAny>()?
+                        .is_some()
+                    {}
+                    Ok(StringOrIgnored::Ignored)
+                }
+                fn visit_seq<A>(self, mut seq: A) -> Result<StringOrIgnored, A::Error>
+                where
+                    A: serde::de::SeqAccess<'de>,
+                {
+                    while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+                    Ok(StringOrIgnored::Ignored)
+                }
+            }
+            deserializer.deserialize_any(V)
+        }
+    }
+
     let mut deserializer = serde_json::Deserializer::from_str(data);
-    serde::Deserializer::deserialize_map(&mut deserializer, DuplicateKeyScan { keys })
+    let scanned = serde::Deserializer::deserialize_any(
+        &mut deserializer,
+        Scan {
+            keys,
+            reject_duplicates,
+        },
+    )?;
+    deserializer.end()?;
+    Ok(scanned)
 }
 
 fn decode_known<T>(data: &str) -> WireEvent<T>

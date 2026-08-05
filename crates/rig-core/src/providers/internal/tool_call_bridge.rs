@@ -70,9 +70,23 @@ impl ToolCallSlot {
 /// `I` is the wire's own index type (`usize` for chat-compat chunk indices,
 /// `i32` for Bedrock content-block indices); it must display so a minted id
 /// can derive from it, and order so a drain preserves wire ordering.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ToolCallBridge<I> {
     slots: HashMap<I, ToolCallSlot>,
+    /// Reserved namespace for minted slot identities. Defaults to `tool-`
+    /// (chat-compat, bedrock); the Responses adapter uses `output-` so its
+    /// tool mints match its reasoning mints on the same wire and compose
+    /// with that wire's serialization gate.
+    minted: SyntheticIds,
+}
+
+impl<I> Default for ToolCallBridge<I>
+where
+    I: Eq + Hash + Ord + Copy + std::fmt::Display,
+{
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<I> ToolCallBridge<I>
@@ -82,6 +96,15 @@ where
     pub fn new() -> Self {
         Self {
             slots: HashMap::new(),
+            minted: SyntheticIds::tool(),
+        }
+    }
+
+    /// A bridge minting slot identities in the given reserved namespace.
+    pub fn with_minted_namespace(minted: SyntheticIds) -> Self {
+        Self {
+            slots: HashMap::new(),
+            minted,
         }
     }
 
@@ -93,6 +116,7 @@ where
     /// invariant. Later fragments update the established provider id and name
     /// from any non-empty values they carry.
     pub fn open(&mut self, index: I, wire_id: Option<&str>, name: Option<&str>) -> &ToolCallSlot {
+        let minted = &self.minted;
         let slot = self.slots.entry(index).or_insert_with(|| ToolCallSlot {
             key: match wire_id {
                 Some(id) if !id.is_empty() => id.to_owned(),
@@ -100,7 +124,7 @@ where
                 // tool calls by index alone; the grammar id is minted from
                 // that index in the reserved namespace so it is never empty
                 // and never collides with a wire-genuine id.
-                _ => SyntheticIds::tool().for_index(index),
+                _ => minted.for_index(index),
             },
             id: String::new(),
             name: String::new(),

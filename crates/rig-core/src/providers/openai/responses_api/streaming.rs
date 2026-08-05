@@ -388,7 +388,11 @@ pub(crate) struct RawChoiceAccumulator {
     /// forwarding `""` verbatim would let two parallel id-less calls share the
     /// empty key, and an id-less delta whose done restates a real `fc_*` id
     /// would leave the fragments dangling under a different key.
-    minted_tool_ids: std::collections::HashMap<u64, String>,
+    /// Slot-scoped tool identity: one assembly key per output slot, fixed at
+    /// the slot's first event (wire `fc_*` id, else minted `output-{index}`),
+    /// reused by every later event regardless of the id it carries — mixed
+    /// id/id-less events on one slot can no longer split assembly keys.
+    tool_slots: crate::providers::internal::tool_call_bridge::ToolCallBridge<u64>,
     /// The message item whose text block is currently open. A text or
     /// refusal delta carrying a different `item_id` opens a new text block
     /// (`TextStart` keyed by that item id), so two `message` output items
@@ -412,7 +416,10 @@ impl RawChoiceAccumulator {
             tool_calls: Vec::new(),
             saw_terminal: false,
             minted_reasoning_ids: std::collections::HashMap::new(),
-            minted_tool_ids: std::collections::HashMap::new(),
+            tool_slots:
+                crate::providers::internal::tool_call_bridge::ToolCallBridge::with_minted_namespace(
+                    crate::providers::internal::adapter::SyntheticIds::output(),
+                ),
             current_text_item: None,
         }
     }
@@ -468,18 +475,19 @@ impl RawChoiceAccumulator {
                 // open text block; forget it so a later delta for that message
                 // re-emits `TextStart` and reactivates its block downstream.
                 self.current_text_item = None;
-                let id = if func.id.is_empty() {
-                    // Gateways (and ChatGPT's envelope-less replay bodies) can
-                    // omit the `fc_*` id; mint the slot-derived identity so
-                    // parallel id-less calls never share the `""` assembly key.
-                    let minted = format!("output-{output_index}");
-                    self.minted_tool_ids.insert(output_index, minted.clone());
-                    minted
-                } else {
-                    func.id
-                };
+                // Slot identity is established here once (wire `fc_*` id,
+                // else a minted `output-{index}`) and reused for every later
+                // event on this slot — gateways and ChatGPT's envelope-less
+                // replay bodies can omit the id on any subset of a slot's
+                // events, and event-scoped resolution would split the
+                // assembly key.
+                let key = self
+                    .tool_slots
+                    .open(output_index, Some(&func.id), Some(&func.name))
+                    .key()
+                    .to_owned();
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id,
+                    id: key,
                     content: streaming::ToolCallDeltaContent::Name(func.name),
                 });
             }
@@ -533,20 +541,18 @@ impl RawChoiceAccumulator {
             ItemChunkKind::FunctionCallArgsDelta(delta) => {
                 // Tool output interleaving text is a block boundary too.
                 self.current_text_item = None;
-                // An id-less args delta gets the same minted slot identity as
-                // the reasoning fallback — dropping the fragment would make
-                // the call vanish entirely when the stream truncates before
-                // the authoritative `output_item.done` restatement (#2258 P3).
-                let id = match outer_item_id {
-                    Some(item_id) => item_id,
-                    None => {
-                        let minted = format!("output-{output_index}");
-                        self.minted_tool_ids.insert(output_index, minted.clone());
-                        minted
-                    }
-                };
+                // The slot's established identity keys the fragment; an
+                // id-less delta on a never-opened slot mints it here so the
+                // fragments survive truncation before the authoritative
+                // `output_item.done` restatement (#2258 P3). A late wire id
+                // updates the slot's reported id without moving the key.
+                let key = self
+                    .tool_slots
+                    .open(output_index, outer_item_id.as_deref(), None)
+                    .key()
+                    .to_owned();
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id,
+                    id: key,
                     content: streaming::ToolCallDeltaContent::Delta(delta.delta),
                 });
             }
@@ -623,8 +629,12 @@ impl RawChoiceAccumulator {
                 // must find that same key (even when it restates a real id)
                 // or the assembled fragments dangle. A slot with no minted
                 // identity keeps the wire id, minting only when it is empty.
-                let item_id = match self.minted_tool_ids.remove(&output_index) {
-                    Some(minted) => minted,
+                let slot = self.tool_slots.remove(output_index);
+                let item_id = match &slot {
+                    // The slot's established key wins even when the done item
+                    // restates a real `fc_*` id — assembled fragments must
+                    // not dangle under a different key.
+                    Some(slot) => slot.key().to_owned(),
                     None if func.id.is_empty() => format!("output-{output_index}"),
                     None => func.id.clone(),
                 };
@@ -633,6 +643,12 @@ impl RawChoiceAccumulator {
                     streaming::UnparseableToolInput::Drop,
                 );
                 end.name = Some(func.name);
+                // The finalized call reports the authoritative wire id even
+                // when assembly keyed on a minted slot identity (the
+                // accumulator honors the override).
+                if !func.id.is_empty() {
+                    end.tool_id = Some(func.id.clone());
+                }
                 // The restated arguments are authoritative when they parse. A
                 // turn cut by `max_output_tokens` mid-tool-call restates them
                 // truncated mid-JSON (item status `incomplete`); routing the
@@ -2808,6 +2824,92 @@ mod tests {
     /// must not share the `""` assembly key — each slot gets a minted
     /// `output-{index}` identity shared by its added/delta/done events, so two
     /// distinct calls assemble.
+    /// A slot whose `added` event carries a real `fc_*` id but whose later
+    /// args delta arrives id-less must keep ONE assembly key: slot-scoped
+    /// identity (the bridge) makes event-scoped key-splitting
+    /// unrepresentable, and the finalized call reports the wire id.
+    #[tokio::test]
+    async fn mixed_id_and_id_less_events_share_one_slot_key() {
+        let events = [
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_real",
+                    "call_id": "call_a",
+                    "name": "tool_a",
+                    "arguments": "",
+                    "status": "in_progress",
+                },
+            }),
+            // Id-less delta for the same slot: must resolve to the slot's
+            // established key, not mint a second identity.
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "sequence_number": 2,
+                "delta": "{\"x\":1}"
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 3,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_real",
+                    "call_id": "call_a",
+                    "name": "tool_a",
+                    "arguments": "{\"x\":1}",
+                    "status": "completed",
+                },
+            }),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 4,
+                "response": sample_response(ResponseStatus::Completed),
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the mixed-id stream must decode");
+
+        // Every tool event (name delta, args delta, input end) carries the
+        // slot's single key — no fragment dangles under a second identity.
+        let mut keys: Vec<String> = raw_choices
+            .iter()
+            .filter_map(|choice| match choice {
+                RawStreamingChoice::ToolCallDelta { id, .. } => Some(id.clone()),
+                RawStreamingChoice::ToolInputEnd(end) => Some(end.id.clone()),
+                _ => None,
+            })
+            .collect();
+        keys.dedup();
+        assert_eq!(keys, ["fc_real"], "one slot, one assembly key");
+
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a tool-bearing replay is not empty");
+        let call = response
+            .choice
+            .iter()
+            .find_map(|content| match content {
+                crate::completion::AssistantContent::ToolCall(call) => Some(call.clone()),
+                _ => None,
+            })
+            .expect("the call finalizes");
+        assert_eq!(call.function.name, "tool_a");
+        assert_eq!(call.function.arguments, serde_json::json!({"x": 1}));
+    }
+
     #[tokio::test]
     async fn parallel_id_less_function_calls_assemble_distinctly() {
         let call_item = |name: &str, call_id: &str, arguments: &str| {
