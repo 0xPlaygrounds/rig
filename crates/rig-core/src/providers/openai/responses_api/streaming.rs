@@ -1109,10 +1109,11 @@ pub enum ItemChunkKind {
     ReasoningSummaryTextDone(SummaryTextChunk),
     #[serde(rename = "response.reasoning_text.delta")]
     ReasoningTextDelta(DeltaTextChunkWithItemId),
-    /// Catch-all for unknown item chunk types (e.g., `web_search_call` events).
-    /// This prevents unknown streaming events from breaking deserialization.
-    #[serde(other)]
-    Unknown,
+    // No `#[serde(other)]` catch-all: unknown event types are triaged by the
+    // classify layer (`classify_responses_frame` checks the `type` tag against
+    // `is_known_responses_event_type` BEFORE decoding), so a frame that
+    // reaches this decoder with an unmodeled tag is a known-set/enum drift
+    // and must fail loudly (`Corrupt`) rather than be silently absorbed.
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
