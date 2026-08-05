@@ -7,12 +7,15 @@ use crate::{
 };
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
+use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
+use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use rig_core::{
     completion::CompletionError,
     message::ReasoningContent,
     streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
+    wasm_compat::WasmCompatSend,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -295,6 +298,68 @@ fn process_event(
     items
 }
 
+impl WireAdapter for StreamState {
+    type Frame = aws_bedrock::ConverseStreamOutput;
+    type Event = aws_bedrock::ConverseStreamOutput;
+    type Response = BedrockStreamingResponse;
+
+    fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
+        // The AWS SDK already deserialized the event-stream frame, so the
+        // byte-level decode step collapses: an event-stream decode failure
+        // surfaces as a receive error on the transport, and the only triage
+        // left here is the SDK's own unknown-variant signal on its
+        // non-exhaustive union.
+        wire::classify_typed_event(if frame.is_unknown() {
+            TypedEvent::Unrecognized {
+                event_type: "unknown".to_string(),
+                detail: format!("{frame:?}"),
+            }
+        } else {
+            TypedEvent::Modeled(frame)
+        })
+    }
+
+    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput<Self::Response>) {
+        for item in process_event(self, event) {
+            if let Ok(RawStreamingChoice::FinalResponse(final_response)) = &item {
+                tracing::Span::current().record_token_usage(&final_response.into());
+            }
+            out.push(item);
+        }
+    }
+
+    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+        // EOF without Bedrock's `Metadata` terminal is truncation: in-flight
+        // blocks drop and no terminal record may be synthesized.
+    }
+}
+
+/// Drive already-typed Converse stream events through the full shared
+/// pipeline — driver policy, canonical grammar, terminal normalization.
+///
+/// The events-first conformance seam: the adapter is a pure
+/// `(state, event) → events` function, so grammar scenarios feed SDK events
+/// directly with no AWS transport.
+pub fn stream_from_events(
+    events: impl futures::Stream<Item = Result<aws_bedrock::ConverseStreamOutput, CompletionError>>
+    + WasmCompatSend
+    + 'static,
+) -> StreamingCompletionResponse {
+    let raw = run_wire_stream(events, StreamState::default());
+    StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw))
+}
+
+fn normalize_bedrock_stream(
+    raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse>,
+) -> rig_core::streaming::StreamingResult {
+    rig_core::streaming::normalize_stream(raw, |response| {
+        let usage = (&response).into();
+        let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
+        Ok(rig_core::streaming::StreamFinal::new(PROVIDER_NAME, usage)
+            .with_optional_finish_reason(finish_reason))
+    })
+}
+
 impl CompletionModel {
     /// Open a stream whose terminal record stays Bedrock's own response type.
     pub async fn raw_stream(
@@ -343,29 +408,26 @@ impl CompletionModel {
                 Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))
             })?;
 
-        let stream = Box::pin(stream! {
-            let span = tracing::Span::current();
-            let mut state = StreamState::default();
+        // Transport layer: SDK event-stream frames only — an event-stream
+        // decode/receive failure is a transport error; classification and
+        // policy live in the shared driver.
+        let transport = stream! {
             let mut stream = response.stream;
             loop {
-                let output = match stream.recv().await {
-                    Ok(Some(output)) => output,
+                match stream.recv().await {
+                    Ok(Some(output)) => yield Ok(output),
                     Ok(None) => break,
                     Err(err) => {
                         yield Err(converse_stream_output_completion_error(err.into_service_error()));
                         break;
                     }
-                };
-                for item in process_event(&mut state, output) {
-                    if let Ok(RawStreamingChoice::FinalResponse(final_response)) = &item {
-                        span.record_token_usage(&final_response.into());
-                    }
-                    yield item;
                 }
             }
-        }.instrument(span));
+        };
 
-        Ok(stream)
+        Ok(Box::pin(
+            run_wire_stream(transport, StreamState::default()).instrument(span),
+        ))
     }
 
     /// Open a stream normalized to rig's terminal record. Delegates to
@@ -375,16 +437,10 @@ impl CompletionModel {
         completion_request: rig_core::completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         let raw = self.raw_stream(completion_request).await?;
-        let normalized = rig_core::streaming::normalize_stream(raw, |response| {
-            let usage = (&response).into();
-            let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
-            Ok(rig_core::streaming::StreamFinal::new(PROVIDER_NAME, usage)
-                .with_optional_finish_reason(finish_reason))
-        });
 
         Ok(StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            normalized,
+            normalize_bedrock_stream(raw),
         ))
     }
 }

@@ -70,6 +70,8 @@ use rig_core::completion::{
 };
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
+use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
+use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::{RawStreamingChoice, RawStreamingResult, StreamingCompletionResponse};
 #[cfg(test)]
 use tokenizers::Tokenizer;
@@ -406,6 +408,64 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
+/// The in-process generation channel as a [`WireAdapter`].
+///
+/// The producer sends already-typed canonical-grammar events, so
+/// classification is total: **this family never produces `Unknown`** — there
+/// is no foreign wire to be forward-compatible with — and decode errors
+/// cannot occur, since no decoding happens between the generator and the
+/// driver. Routing through the shared driver keeps the terminal and
+/// truncation semantics on the one policy site the conformance corpus pins.
+struct CandleAdapter;
+
+impl WireAdapter for CandleAdapter {
+    type Frame = RawStreamingChoice<CandleCompletionResponse>;
+    type Event = RawStreamingChoice<CandleCompletionResponse>;
+    type Response = CandleCompletionResponse;
+
+    fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
+        wire::classify_typed_event(TypedEvent::Modeled(frame))
+    }
+
+    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput<Self::Response>) {
+        out.push(Ok(event));
+    }
+
+    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+        // Channel EOF without a `FinalResponse` means the generator failed or
+        // was cancelled: truncation, no terminal record.
+    }
+}
+
+/// Drive already-typed generation events through the full shared pipeline —
+/// driver policy, canonical grammar, terminal normalization.
+///
+/// The events-first conformance seam: grammar scenarios feed events directly
+/// with no model load.
+pub fn stream_from_events(
+    events: impl futures::Stream<
+        Item = Result<RawStreamingChoice<CandleCompletionResponse>, CompletionError>,
+    > + rig_core::wasm_compat::WasmCompatSend
+    + 'static,
+) -> StreamingCompletionResponse {
+    let raw = run_wire_stream(events, CandleAdapter);
+    StreamingCompletionResponse::stream(crate::types::PROVIDER_NAME, normalize_candle_stream(raw))
+}
+
+/// Normalize the provider-native terminal record into rig's
+/// [`rig_core::streaming::StreamFinal`].
+fn normalize_candle_stream(
+    raw: RawStreamingResult<CandleCompletionResponse>,
+) -> rig_core::streaming::StreamingResult {
+    rig_core::streaming::normalize_stream(raw, |response| {
+        let usage = (&response).into();
+        Ok(
+            rig_core::streaming::StreamFinal::new(crate::types::PROVIDER_NAME, usage)
+                .with_finish_reason(response.finish_reason.into()),
+        )
+    })
+}
+
 impl CandleModel {
     /// Run one local completion and return this crate's own response record.
     ///
@@ -484,11 +544,17 @@ impl CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            let stream: RawStreamingResult<CandleCompletionResponse> =
-                Box::pin(CandleReceiverStream {
+            // Route the channel through the shared driver so the frame-triage
+            // policy and terminal semantics are the one conformance-pinned
+            // site; dropping the driver stream drops the receiver, which
+            // still signals cancellation.
+            let stream: RawStreamingResult<CandleCompletionResponse> = Box::pin(run_wire_stream(
+                CandleReceiverStream {
                     receiver,
                     cancellation,
-                });
+                },
+                CandleAdapter,
+            ));
             cancel_on_drop.disarm();
             Ok(stream)
         }
@@ -501,8 +567,10 @@ impl CandleModel {
                 Ok(())
             })?;
             events.push(Ok(RawStreamingChoice::FinalResponse(response)));
-            let stream: RawStreamingResult<CandleCompletionResponse> =
-                Box::pin(futures::stream::iter(events));
+            let stream: RawStreamingResult<CandleCompletionResponse> = Box::pin(run_wire_stream(
+                futures::stream::iter(events),
+                CandleAdapter,
+            ));
             Ok(stream)
         }
     }
@@ -521,17 +589,10 @@ impl CompletionModel for CandleModel {
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
         let raw = self.raw_stream(request).await?;
-        let normalized = rig_core::streaming::normalize_stream(raw, |response| {
-            let usage = (&response).into();
-            Ok(
-                rig_core::streaming::StreamFinal::new(crate::types::PROVIDER_NAME, usage)
-                    .with_finish_reason(response.finish_reason.into()),
-            )
-        });
 
         Ok(StreamingCompletionResponse::stream(
             crate::types::PROVIDER_NAME,
-            normalized,
+            normalize_candle_stream(raw),
         ))
     }
 }

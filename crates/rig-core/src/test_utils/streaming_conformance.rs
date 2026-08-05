@@ -69,17 +69,69 @@ pub struct ScenarioReport {
     pub observations: Vec<String>,
 }
 
-/// The wire chunks a driver feeds into the provider's HTTP layer. An `Err`
-/// chunk models a mid-stream transport failure.
-pub type WireChunks = Vec<http_client::Result<Bytes>>;
+/// One scripted wire input frame.
+///
+/// Byte-transport wires (SSE, NDJSON, websocket) script raw bytes fed through
+/// the provider's HTTP layer; typed-event wires (bedrock, candle,
+/// gemini-grpc) script already-typed SDK events fed to the adapter directly —
+/// events-first, no mock transport — which the typed driver downcasts back.
+#[derive(Clone)]
+pub enum WireInput {
+    /// A raw wire byte frame.
+    Bytes(Bytes),
+    /// An already-typed SDK event for a typed-event wire.
+    Event(std::sync::Arc<dyn std::any::Any + Send + Sync>),
+}
 
-/// Build the chunk list for an all-delivered byte sequence.
-pub fn ok_chunks(frames: impl IntoIterator<Item = Bytes>) -> WireChunks {
-    frames.into_iter().map(Ok).collect()
+impl WireInput {
+    /// The frame's raw bytes, when it is a byte frame.
+    pub fn as_bytes(&self) -> Option<&Bytes> {
+        match self {
+            Self::Bytes(bytes) => Some(bytes),
+            Self::Event(_) => None,
+        }
+    }
+
+    /// The frame's typed event, when it is an event frame of type `T`.
+    pub fn downcast_event<T: 'static>(&self) -> Option<&T> {
+        match self {
+            Self::Bytes(_) => None,
+            Self::Event(event) => event.downcast_ref(),
+        }
+    }
+}
+
+impl From<Bytes> for WireInput {
+    fn from(bytes: Bytes) -> Self {
+        Self::Bytes(bytes)
+    }
+}
+
+impl std::fmt::Debug for WireInput {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bytes(bytes) => formatter.debug_tuple("Bytes").field(bytes).finish(),
+            Self::Event(_) => formatter.write_str("Event(..)"),
+        }
+    }
+}
+
+/// Build a typed-event fixture frame.
+pub fn event_frame<T: Send + Sync + 'static>(event: T) -> WireInput {
+    WireInput::Event(std::sync::Arc::new(event))
+}
+
+/// The wire frames a driver feeds into the provider's pipeline. An `Err`
+/// chunk models a mid-stream transport failure.
+pub type WireChunks = Vec<http_client::Result<WireInput>>;
+
+/// Build the chunk list for an all-delivered frame sequence.
+pub fn ok_chunks(frames: impl IntoIterator<Item = impl Into<WireInput>>) -> WireChunks {
+    frames.into_iter().map(|frame| Ok(frame.into())).collect()
 }
 
 /// A scripted mid-stream transport failure chunk.
-pub fn transport_error_chunk() -> http_client::Result<Bytes> {
+pub fn transport_error_chunk() -> http_client::Result<WireInput> {
     Err(http_client::Error::InvalidStatusCodeWithMessage(
         http::StatusCode::BAD_GATEWAY,
         "connection reset".to_string(),
@@ -214,7 +266,7 @@ impl WireDriver {
 /// Refusal frames and the text the pipeline must deliver for them.
 pub struct RefusalFixture {
     /// Frames carrying the refusal content.
-    pub frames: Vec<Bytes>,
+    pub frames: Vec<WireInput>,
     /// Text the consumer must observe.
     pub expected_text: &'static str,
 }
@@ -268,41 +320,43 @@ pub struct ProviderWireFixture {
     /// The provider's full pipeline.
     pub driver: WireDriver,
     /// Frames that deliver exactly the text deltas in `expected_texts`.
-    pub text_frames: Vec<Bytes>,
+    pub text_frames: Vec<WireInput>,
     /// The text deltas `text_frames` delivers, in order.
     pub expected_texts: Vec<&'static str>,
     /// Frames that fully deliver one tool call (including any completion
     /// signal the wire needs, but no stream terminal).
-    pub tool_call_frames: Vec<Bytes>,
+    pub tool_call_frames: Vec<WireInput>,
     /// Name of the tool call `tool_call_frames` delivers.
     pub expected_tool_name: &'static str,
     /// Frames that leave a tool call mid-arguments, where the wire streams
     /// arguments incrementally.
-    pub partial_tool_call_frames: Option<Vec<Bytes>>,
+    pub partial_tool_call_frames: Option<Vec<WireInput>>,
     /// The provider's genuine stream terminal, carrying usage.
-    pub terminal_frames: Vec<Bytes>,
+    pub terminal_frames: Vec<WireInput>,
     /// Total tokens `terminal_frames` reports.
     pub expected_usage_total: u64,
     /// Finish reason `terminal_frames` reports.
     pub expected_finish_reason: Option<FinishReason>,
     /// A genuine terminal that reports no usage metrics at all.
-    pub zero_usage_terminal_frames: Option<Vec<Bytes>>,
+    pub zero_usage_terminal_frames: Option<Vec<WireInput>>,
     /// A terminal signal that carries no data of its own (e.g. a bare
     /// `[DONE]`), for wires that have one.
-    pub bare_terminal_frames: Option<Vec<Bytes>>,
-    /// A frame that fails the wire decode entirely.
-    pub malformed_frame: Bytes,
+    pub bare_terminal_frames: Option<Vec<WireInput>>,
+    /// A frame that fails the wire decode entirely. `None` only for
+    /// typed-event wires, whose SDK surfaces decode failures as transport
+    /// errors — a frame-level corrupt input cannot be spelled there.
+    pub malformed_frame: Option<WireInput>,
     /// An event type this client does not know, for typed-event wires.
-    pub unknown_event_frame: Option<Bytes>,
+    pub unknown_event_frame: Option<WireInput>,
     /// A known event whose payload is schema-defective.
-    pub defective_known_frame: Option<Bytes>,
+    pub defective_known_frame: Option<WireInput>,
     /// A delta-less choice prelude (the Azure `prompt_filter_results` shape).
-    pub delta_less_prelude_frame: Option<Bytes>,
+    pub delta_less_prelude_frame: Option<WireInput>,
     /// Refusal content frames, where the wire has a refusal channel.
     pub refusal: Option<RefusalFixture>,
 }
 
-fn concat_frames(parts: &[&[Bytes]]) -> Vec<Bytes> {
+fn concat_frames(parts: &[&[WireInput]]) -> Vec<WireInput> {
     parts
         .iter()
         .flat_map(|frames| frames.iter().cloned())
@@ -469,10 +523,20 @@ pub async fn malformed_frame_surfaces_err_and_terminal_still_completes(
 ) -> Result<ScenarioReport, ConformanceError> {
     const SCENARIO: &str = "malformed_frame_surfaces_err_and_terminal_still_completes";
     let provider = fixture.driver.provider;
+    let Some(malformed) = &fixture.malformed_frame else {
+        return Ok(ScenarioReport {
+            name: SCENARIO,
+            provider,
+            observations: vec![
+                "typed-event wire: decode failures are transport errors, no frame to spell"
+                    .to_string(),
+            ],
+        });
+    };
 
     let frames = concat_frames(&[
         &fixture.text_frames,
-        std::slice::from_ref(&fixture.malformed_frame),
+        std::slice::from_ref(malformed),
         &fixture.terminal_frames,
     ]);
     let drained = fixture.driver.drive(ok_chunks(frames)).await?;
@@ -772,11 +836,17 @@ pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
             observations: vec!["wire family has no data-less terminal signal".to_string()],
         });
     };
+    let Some(malformed) = &fixture.malformed_frame else {
+        return Ok(ScenarioReport {
+            name: SCENARIO,
+            provider,
+            observations: vec![
+                "typed-event wire: no frame-level malformed input to spell".to_string(),
+            ],
+        });
+    };
 
-    let frames = concat_frames(&[
-        std::slice::from_ref(&fixture.malformed_frame),
-        bare_terminal,
-    ]);
+    let frames = concat_frames(&[std::slice::from_ref(malformed), bare_terminal]);
     let drained = fixture.driver.drive(ok_chunks(frames)).await?;
 
     if drained.error_count() == 0 {
@@ -885,7 +955,7 @@ pub async fn usage_variants_are_reported_or_zero_sentinel(
 /// table appends the full block beside the delta-built item.
 pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
     driver: &WireDriver,
-    frames: Vec<Bytes>,
+    frames: Vec<WireInput>,
     summary_text: &str,
 ) -> Result<ScenarioReport, ConformanceError> {
     const SCENARIO: &str = "reasoning_summary_deltas_are_superseded_without_duplication";
@@ -945,7 +1015,7 @@ pub async fn reasoning_summary_deltas_are_superseded_without_duplication(
 /// fallback replaces the just-appended same-id sibling.
 pub async fn multi_part_same_id_reasoning_keeps_every_part(
     driver: &WireDriver,
-    frames: Vec<Bytes>,
+    frames: Vec<WireInput>,
     expected_parts: &[&str],
 ) -> Result<ScenarioReport, ConformanceError> {
     const SCENARIO: &str = "multi_part_same_id_reasoning_keeps_every_part";
@@ -999,7 +1069,7 @@ pub async fn multi_part_same_id_reasoning_keeps_every_part(
 /// `rig-2257-code-review-findings-34ee8ba5.md`, "Verified sound" section).
 pub async fn interleaved_reasoning_aggregates_to_one_item(
     driver: &WireDriver,
-    frames: Vec<Bytes>,
+    frames: Vec<WireInput>,
     expected_text: &str,
 ) -> Result<ScenarioReport, ConformanceError> {
     const SCENARIO: &str = "interleaved_reasoning_aggregates_to_one_item";
@@ -1057,7 +1127,7 @@ pub async fn interleaved_reasoning_aggregates_to_one_item(
 /// became the per-stream constant).
 pub async fn interleaved_constant_id_reasoning_preserves_order(
     driver: &WireDriver,
-    frames: Vec<Bytes>,
+    frames: Vec<WireInput>,
     first: &str,
     tool_name: &str,
     second: &str,
@@ -1092,7 +1162,7 @@ pub async fn interleaved_constant_id_reasoning_preserves_order(
 /// adapter fix (the signed chunk restates only post-boundary fragments).
 pub async fn interleaved_signed_full_reasoning_does_not_erase_prior_thought(
     driver: &WireDriver,
-    frames: Vec<Bytes>,
+    frames: Vec<WireInput>,
     first: &str,
     tool_name: &str,
     second: &str,
@@ -1198,7 +1268,10 @@ pub mod fixtures {
     use crate::test_utils::SequencedStreamingHttpClient;
     use serde_json::json;
 
-    async fn drain(mut stream: crate::streaming::StreamingCompletionResponse) -> DrainedStream {
+    /// Drain a full normalized stream into everything the consumer observed.
+    /// Public so provider-crate conformance suites (the typed-event wires)
+    /// can reuse it in their drivers.
+    pub async fn drain(mut stream: crate::streaming::StreamingCompletionResponse) -> DrainedStream {
         let mut items = Vec::new();
         while let Some(item) = stream.next().await {
             items.push(item);
@@ -1210,16 +1283,41 @@ pub mod fixtures {
         }
     }
 
-    fn sse(frame: &serde_json::Value) -> Bytes {
-        Bytes::from(format!("data: {frame}\n\n"))
+    /// Lower fixture frames onto the byte transport a `SequencedStreamingHttpClient`
+    /// replays. Only byte frames are valid here — an event frame in a
+    /// byte-driver fixture is a fixture authoring error.
+    fn byte_chunks(chunks: WireChunks) -> Result<Vec<http_client::Result<Bytes>>, CompletionError> {
+        chunks
+            .into_iter()
+            .map(|chunk| match chunk {
+                Ok(WireInput::Bytes(bytes)) => Ok(Ok(bytes)),
+                Ok(WireInput::Event(_)) => Err(CompletionError::ProviderError(
+                    "typed-event frame fed to a byte-transport driver".to_string(),
+                )),
+                Err(error) => Ok(Err(error)),
+            })
+            .collect()
     }
 
-    fn sse_raw(data: &str) -> Bytes {
-        Bytes::from(format!("data: {data}\n\n"))
+    fn sse(frame: &serde_json::Value) -> WireInput {
+        WireInput::Bytes(Bytes::from(format!("data: {frame}\n\n")))
     }
 
-    fn ndjson(frame: &serde_json::Value) -> Bytes {
-        Bytes::from(format!("{frame}\n"))
+    fn sse_raw(data: &str) -> WireInput {
+        WireInput::Bytes(Bytes::from(format!("data: {data}\n\n")))
+    }
+
+    fn ndjson(frame: &serde_json::Value) -> WireInput {
+        WireInput::Bytes(Bytes::from(format!("{frame}\n")))
+    }
+
+    /// The frame's SSE text, for buffered-body pipelines that re-parse a
+    /// whole body string.
+    fn frame_text(frame: &WireInput) -> String {
+        frame
+            .as_bytes()
+            .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+            .unwrap_or_default()
     }
 
     /// OpenAI chat-completions wire (the shared OpenAI-compatible SSE path).
@@ -1230,7 +1328,7 @@ pub mod fixtures {
             WireDriver::new("openai", |chunks| {
                 Box::pin(async move {
                     let client = crate::providers::openai::Client::builder()
-                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .api_key("test-key")
                         .build()?
                         .completions_api();
@@ -1302,7 +1400,7 @@ pub mod fixtures {
                     sse_raw("[DONE]"),
                 ]),
                 bare_terminal_frames: Some(vec![sse_raw("[DONE]")]),
-                malformed_frame: sse_raw("{not json"),
+                malformed_frame: Some(sse_raw("{not json")),
                 unknown_event_frame: None,
                 // A wrongly-typed `content` is tolerated by the lenient delta
                 // decode; a wrongly-typed `choices` is a genuine schema defect
@@ -1327,7 +1425,7 @@ pub mod fixtures {
             WireDriver::new("openai", |chunks| {
                 Box::pin(async move {
                     let client = crate::providers::openai::Client::builder()
-                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .api_key("test-key")
                         .build()?;
                     let model = client.completion_model("gpt-5.4");
@@ -1354,7 +1452,7 @@ pub mod fixtures {
             })
         }
 
-        fn terminal(usage: Option<serde_json::Value>, output: serde_json::Value) -> Bytes {
+        fn terminal(usage: Option<serde_json::Value>, output: serde_json::Value) -> WireInput {
             sse(&json!({
                 "type": "response.completed",
                 "sequence_number": 99,
@@ -1371,7 +1469,7 @@ pub mod fixtures {
             })
         }
 
-        fn text_delta(text: &str) -> Bytes {
+        fn text_delta(text: &str) -> WireInput {
             sse(&json!({
                 "type": "response.output_text.delta",
                 "content_index": 0,
@@ -1382,7 +1480,7 @@ pub mod fixtures {
             }))
         }
 
-        fn tool_call_done() -> Bytes {
+        fn tool_call_done() -> WireInput {
             sse(&json!({
                 "type": "response.output_item.done",
                 "output_index": 0,
@@ -1403,7 +1501,7 @@ pub mod fixtures {
             summary: serde_json::Value,
             content: serde_json::Value,
             encrypted: Option<&str>,
-        ) -> Bytes {
+        ) -> WireInput {
             let mut item = json!({
                 "type": "reasoning",
                 "id": id,
@@ -1457,7 +1555,7 @@ pub mod fixtures {
                 expected_finish_reason: Some(FinishReason::Stop),
                 zero_usage_terminal_frames: Some(vec![terminal(None, json!([]))]),
                 bare_terminal_frames: None,
-                malformed_frame: sse_raw("{not json"),
+                malformed_frame: Some(sse_raw("{not json")),
                 unknown_event_frame: Some(sse(&json!({
                     "type": "response.web_search_call.searching",
                     "output_index": 0,
@@ -1531,8 +1629,7 @@ pub mod fixtures {
 
         /// A terminal whose body carries text never seen as a delta.
         pub fn terminal_body_only_sse_body(text: &str) -> String {
-            String::from_utf8_lossy(&terminal(Some(usage_json()), message_output(text)))
-                .into_owned()
+            frame_text(&terminal(Some(usage_json()), message_output(text)))
         }
 
         /// A streamed delta plus a terminal body restating the same text.
@@ -1541,26 +1638,20 @@ pub mod fixtures {
                 text_delta(text),
                 terminal(Some(usage_json()), message_output(text)),
             ];
-            frames
-                .iter()
-                .map(|frame| String::from_utf8_lossy(frame).into_owned())
-                .collect()
+            frames.iter().map(frame_text).collect()
         }
 
         /// A streamed delta whose terminal body carries no output items — the
         /// gpt-5.x shape the buffered fallback exists for.
         pub fn delta_only_sse_body(text: &str) -> String {
             let frames = [text_delta(text), terminal(Some(usage_json()), json!([]))];
-            frames
-                .iter()
-                .map(|frame| String::from_utf8_lossy(frame).into_owned())
-                .collect()
+            frames.iter().map(frame_text).collect()
         }
 
         /// Summary deltas followed by their item's full `output_item.done`
         /// block, then the terminal. The deltas carry `item_id` on the wire;
         /// the full block restates the summary.
-        pub fn reasoning_summary_supersede_frames() -> (Vec<Bytes>, &'static str) {
+        pub fn reasoning_summary_supersede_frames() -> (Vec<WireInput>, &'static str) {
             let frames = vec![
                 sse(&json!({
                     "type": "response.reasoning_summary_text.delta",
@@ -1583,7 +1674,7 @@ pub mod fixtures {
 
         /// One reasoning item done-block carrying two summary parts, visible
         /// text, and encrypted content under a single item id.
-        pub fn multi_part_reasoning_frames() -> (Vec<Bytes>, Vec<&'static str>) {
+        pub fn multi_part_reasoning_frames() -> (Vec<WireInput>, Vec<&'static str>) {
             let frames = vec![
                 reasoning_done_item(
                     "rs_1",
@@ -1601,7 +1692,7 @@ pub mod fixtures {
 
         /// A reasoning delta, an interleaved tool call, then the reasoning
         /// item's completed block and the terminal.
-        pub fn interleaved_reasoning_frames() -> (Vec<Bytes>, &'static str) {
+        pub fn interleaved_reasoning_frames() -> (Vec<WireInput>, &'static str) {
             let frames = vec![
                 sse(&json!({
                     "type": "response.reasoning_text.delta",
@@ -1633,7 +1724,7 @@ pub mod fixtures {
                 Box::pin(async move {
                     let client = crate::providers::gemini::Client::builder()
                         .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?;
                     let model = client.completion_model(
                         crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
@@ -1689,7 +1780,7 @@ pub mod fixtures {
                     "modelVersion": "gemini-2.5-pro",
                 }))]),
                 bare_terminal_frames: None,
-                malformed_frame: sse_raw("{not json"),
+                malformed_frame: Some(sse_raw("{not json")),
                 // The wire has no event tag; valid JSON carrying neither
                 // `candidates` nor `usageMetadata` is unrecognizable and must
                 // be warn-skipped, not silently decoded as an empty chunk.
@@ -1700,7 +1791,7 @@ pub mod fixtures {
             }
         }
 
-        fn chunk(parts: serde_json::Value) -> Bytes {
+        fn chunk(parts: serde_json::Value) -> WireInput {
             sse(&json!({
                 "candidates": [{"content": {"parts": parts, "role": "model"}}],
                 "responseId": "resp-1",
@@ -1708,7 +1799,7 @@ pub mod fixtures {
             }))
         }
 
-        fn terminal_frame() -> Bytes {
+        fn terminal_frame() -> WireInput {
             sse(&json!({
                 "candidates": [{
                     "content": {"parts": [], "role": "model"},
@@ -1726,8 +1817,8 @@ pub mod fixtures {
 
         /// Thought delta, interleaved tool call, thought delta, terminal —
         /// the constant-id (`reasoning-0`) interleaving shape.
-        pub fn interleaved_thought_frames() -> (Vec<Bytes>, &'static str, &'static str, &'static str)
-        {
+        pub fn interleaved_thought_frames()
+        -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
             let frames = vec![
                 chunk(json!([{"text": "before tool", "thought": true}])),
                 chunk(json!([{
@@ -1742,7 +1833,7 @@ pub mod fixtures {
         /// Thought delta, interleaved tool call, then a signed full thought
         /// chunk carrying non-empty text — the F1 erasure shape.
         pub fn interleaved_signed_thought_frames()
-        -> (Vec<Bytes>, &'static str, &'static str, &'static str) {
+        -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
             let frames = vec![
                 chunk(json!([{"text": "before tool", "thought": true}])),
                 chunk(json!([{
@@ -1768,7 +1859,7 @@ pub mod fixtures {
                 Box::pin(async move {
                     let client = crate::providers::gemini::Client::builder()
                         .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?
                         .interactions_api();
                     let model = client.completion_model("gemini-2.5-pro");
@@ -1779,7 +1870,7 @@ pub mod fixtures {
             })
         }
 
-        fn completed(usage: Option<serde_json::Value>) -> Bytes {
+        fn completed(usage: Option<serde_json::Value>) -> WireInput {
             let mut interaction = json!({
                 "id": "int-1",
                 "model": "gemini-2.5-pro",
@@ -1827,7 +1918,7 @@ pub mod fixtures {
                 expected_finish_reason: Some(FinishReason::Stop),
                 zero_usage_terminal_frames: Some(vec![completed(None)]),
                 bare_terminal_frames: None,
-                malformed_frame: sse_raw("{not json"),
+                malformed_frame: Some(sse_raw("{not json")),
                 unknown_event_frame: Some(sse(&json!({
                     "event_type": "future.event",
                     "index": 0,
@@ -1845,8 +1936,8 @@ pub mod fixtures {
         /// Thought-summary delta, interleaved function call, thought-summary
         /// delta, terminal — the constant-id (`reasoning-0`) interleaving
         /// shape on the Interactions wire.
-        pub fn interleaved_thought_frames() -> (Vec<Bytes>, &'static str, &'static str, &'static str)
-        {
+        pub fn interleaved_thought_frames()
+        -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
             let frames = vec![
                 sse(&json!({
                     "event_type": "step.delta",
@@ -1893,7 +1984,7 @@ pub mod fixtures {
                 Box::pin(async move {
                     let client = crate::providers::anthropic::Client::builder()
                         .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?;
                     let model = client.completion_model(
                         crate::providers::anthropic::completion::CLAUDE_SONNET_4_6,
@@ -1905,7 +1996,7 @@ pub mod fixtures {
             })
         }
 
-        fn message_start() -> Bytes {
+        fn message_start() -> WireInput {
             sse(&json!({
                 "type": "message_start",
                 "message": {
@@ -1990,7 +2081,7 @@ pub mod fixtures {
                 // `message_stop` carries no data of its own and must not
                 // fabricate a terminal record.
                 bare_terminal_frames: Some(vec![sse(&json!({"type": "message_stop"}))]),
-                malformed_frame: sse_raw("{not json"),
+                malformed_frame: Some(sse_raw("{not json")),
                 unknown_event_frame: Some(sse(&json!({
                     "type": "content_block_heartbeat",
                     "index": 0,
@@ -2015,7 +2106,7 @@ pub mod fixtures {
                 Box::pin(async move {
                     let client = crate::providers::cohere::Client::builder()
                         .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?;
                     let model = client.completion_model(crate::providers::cohere::COMMAND_R);
                     let request = model.completion_request("hello").build();
@@ -2072,7 +2163,7 @@ pub mod fixtures {
                 expected_finish_reason: Some(FinishReason::Stop),
                 zero_usage_terminal_frames: Some(vec![sse(&json!({"type": "message-end"}))]),
                 bare_terminal_frames: None,
-                malformed_frame: sse_raw("{not json"),
+                malformed_frame: Some(sse_raw("{not json")),
                 unknown_event_frame: Some(sse(&json!({
                     "type": "citation-start",
                     "delta": {"message": {"citations": {}}},
@@ -2093,7 +2184,7 @@ pub mod fixtures {
                 Box::pin(async move {
                     let client = crate::providers::ollama::Client::builder()
                         .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(chunks))
+                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?;
                     let model = client.completion_model("llama3.2");
                     let request = model.completion_request("hello").build();
@@ -2144,7 +2235,7 @@ pub mod fixtures {
                     "done_reason": "stop",
                 }))]),
                 bare_terminal_frames: None,
-                malformed_frame: Bytes::from_static(b"{not json\n"),
+                malformed_frame: Some(WireInput::Bytes(Bytes::from_static(b"{not json\n"))),
                 unknown_event_frame: None,
                 defective_known_frame: Some(ndjson(&json!({
                     "model": "llama3.2",
@@ -2160,7 +2251,7 @@ pub mod fixtures {
         /// Thinking delta, interleaved tool call, thinking delta, terminal —
         /// the constant-id (`reasoning-0`) interleaving shape on NDJSON.
         pub fn interleaved_thinking_frames()
-        -> (Vec<Bytes>, &'static str, &'static str, &'static str) {
+        -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
             let frames = vec![
                 ndjson(&json!({
                     "model": "llama3.2",

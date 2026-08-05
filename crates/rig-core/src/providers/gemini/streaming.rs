@@ -201,10 +201,11 @@ struct GeminiRestAdapter {
 }
 
 impl WireAdapter for GeminiRestAdapter {
+    type Frame = WireFrame;
     type Event = StreamGenerateContentResponse;
     type Response = StreamingCompletionResponse;
 
-    fn classify(&self, frame: &WireFrame) -> WireEvent<StreamGenerateContentResponse> {
+    fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
     }
 

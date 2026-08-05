@@ -234,10 +234,11 @@ struct AnthropicAdapter {
 }
 
 impl WireAdapter for AnthropicAdapter {
+    type Frame = WireFrame;
     type Event = StreamingEvent;
     type Response = StreamingCompletionResponse;
 
-    fn classify(&self, frame: &WireFrame) -> WireEvent<StreamingEvent> {
+    fn classify(&self, frame: WireFrame) -> WireEvent<StreamingEvent> {
         wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
             KNOWN_EVENT_TYPES.contains(&event_type)
         })
@@ -1900,14 +1901,14 @@ mod tests {
         let frame =
             WireFrame::Text(r#"{"type":"something_new_from_anthropic","field":"x"}"#.into());
         assert!(matches!(
-            adapter.classify(&frame),
+            adapter.classify(frame),
             crate::providers::internal::wire::WireEvent::Unknown { event_type, .. }
                 if event_type == "something_new_from_anthropic"
         ));
 
         let frame = WireFrame::Text(r#"{"type":"ping"}"#.into());
         assert!(matches!(
-            adapter.classify(&frame),
+            adapter.classify(frame),
             crate::providers::internal::wire::WireEvent::Known(StreamingEvent::Ping)
         ));
 
@@ -1916,13 +1917,13 @@ mod tests {
                 .into(),
         );
         assert!(matches!(
-            adapter.classify(&frame),
+            adapter.classify(frame),
             crate::providers::internal::wire::WireEvent::Corrupt(_)
         ));
 
         let frame = WireFrame::Text("{not json".into());
         assert!(matches!(
-            adapter.classify(&frame),
+            adapter.classify(frame),
             crate::providers::internal::wire::WireEvent::Corrupt(_)
         ));
     }
@@ -1933,7 +1934,7 @@ mod tests {
     fn message_start_with_null_message_is_a_known_noop() {
         let adapter = AnthropicAdapter::default();
         let frame = WireFrame::Text(r#"{"type":"message_start","message":null}"#.into());
-        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(&frame)
+        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(frame)
         else {
             panic!("null-message message_start must stay a known event");
         };

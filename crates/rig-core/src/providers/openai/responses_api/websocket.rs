@@ -2488,11 +2488,18 @@ mod tests {
     async fn websocket_conformance_replays_sse_fixture_frames() {
         let fixture =
             crate::test_utils::streaming_conformance::fixtures::openai_responses::fixture();
+        // The shared fixture scripts byte frames; re-wrap them as ws messages.
+        let byte_frame = |frame: &crate::test_utils::streaming_conformance::WireInput| {
+            frame
+                .as_bytes()
+                .cloned()
+                .expect("the Responses fixture scripts byte frames")
+        };
         let mut frames: Vec<bytes::Bytes> = Vec::new();
-        frames.extend(fixture.text_frames.iter().cloned());
-        frames.extend(fixture.tool_call_frames.iter().cloned());
-        frames.extend(fixture.unknown_event_frame.iter().cloned());
-        frames.extend(fixture.terminal_frames.iter().cloned());
+        frames.extend(fixture.text_frames.iter().map(byte_frame));
+        frames.extend(fixture.tool_call_frames.iter().map(byte_frame));
+        frames.extend(fixture.unknown_event_frame.iter().map(byte_frame));
+        frames.extend(fixture.terminal_frames.iter().map(byte_frame));
         let messages = ws_messages_from_sse_frames(frames.iter());
 
         let listener = TcpListener::bind("127.0.0.1:0")

@@ -64,6 +64,11 @@ pub type AdapterOutput<R> = Vec<Result<RawStreamingChoice<R>, CompletionError>>;
 /// handle, no async — pure `(state, event) → events` functions, testable by
 /// feeding events directly with no mock HTTP.
 pub trait WireAdapter {
+    /// The transport frame this adapter classifies: [`WireFrame`] for byte
+    /// wires (SSE, NDJSON, websocket), the SDK's own event type for
+    /// typed-transport wires (bedrock's Converse events, gemini-grpc's
+    /// protobuf responses, candle's in-process generation events).
+    type Frame;
     /// The wire's typed event, produced by the `wire.rs` classifier.
     type Event;
     /// The provider-native terminal record carried by
@@ -72,9 +77,9 @@ pub trait WireAdapter {
 
     /// Decode + classify one transport frame. MUST delegate to a `wire.rs`
     /// classifier (`classify_tagged_frame` / `classify_chat_completions_frame`
-    /// / `classify_untyped_line`) — never raw serde, so the
-    /// decode-then-validate policy cannot be re-derived per adapter.
-    fn classify(&self, frame: &WireFrame) -> WireEvent<Self::Event>;
+    /// / `classify_untyped_line` / `classify_typed_event`) — never raw serde,
+    /// so the decode-then-validate policy cannot be re-derived per adapter.
+    fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event>;
 
     /// Map one `Known` event to canonical grammar events. Stateful: index→id
     /// maps, open-block state, id fabrication, and wire-quirk quarantine live
@@ -100,9 +105,10 @@ pub trait WireAdapter {
 pub fn run_wire_stream<A, S>(transport: S, mut adapter: A) -> RawStreamingResult<A::Response>
 where
     A: WireAdapter + WasmCompatSend + 'static,
+    A::Frame: WasmCompatSend,
     A::Event: WasmCompatSend,
     A::Response: WasmCompatSend + 'static,
-    S: Stream<Item = Result<WireFrame, CompletionError>> + WasmCompatSend + 'static,
+    S: Stream<Item = Result<A::Frame, CompletionError>> + WasmCompatSend + 'static,
 {
     Box::pin(async_stream::stream! {
         let mut transport = Box::pin(transport);
@@ -119,7 +125,7 @@ where
                 }
             };
 
-            match adapter.classify(&frame) {
+            match adapter.classify(frame) {
                 WireEvent::Known(event) => adapter.interpret(event, &mut out),
                 WireEvent::Unknown { event_type, value } => {
                     tracing::warn!(

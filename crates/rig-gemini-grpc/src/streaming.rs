@@ -8,13 +8,133 @@ use futures::StreamExt;
 use serde_json::{Map, Value};
 
 use rig_core::completion::{CompletionError, CompletionRequest};
+use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
+use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming;
+use rig_core::wasm_compat::WasmCompatSend;
 
 use super::Client;
 use super::GenerateContentResponse;
 use super::proto;
 
 pub type StreamingCompletionResponse = GenerateContentResponse;
+
+/// The Gemini gRPC typed wire as a [`WireAdapter`]: stateless — parts map
+/// one-to-one onto grammar events, and the chunk carrying a finish reason is
+/// the terminal.
+struct GrpcAdapter;
+
+impl WireAdapter for GrpcAdapter {
+    type Frame = proto::GenerateContentResponse;
+    type Event = proto::GenerateContentResponse;
+    type Response = StreamingCompletionResponse;
+
+    fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
+        // prost/tonic already deserialized the frame, and a gRPC decode
+        // failure surfaces as a transport `Status` error, so every frame is a
+        // modeled event here. The wire's unknown-variant signal is per-part
+        // (a `part.data` oneof decoding to `None`) — sub-frame granularity,
+        // so `interpret` applies the warn-and-skip policy there.
+        wire::classify_typed_event(TypedEvent::Modeled(frame))
+    }
+
+    fn interpret(&mut self, resp: Self::Event, out: &mut AdapterOutput<Self::Response>) {
+        let mut is_final = false;
+
+        if let Some(candidate) = resp.candidates.first() {
+            // Enum default is 0 = FINISH_REASON_UNSPECIFIED.
+            if candidate.finish_reason != 0 {
+                is_final = true;
+            }
+
+            if let Some(content) = candidate.content.as_ref() {
+                for part in &content.parts {
+                    match &part.data {
+                        Some(proto::part::Data::Text(text)) => {
+                            if part.thought {
+                                out.push(Ok(streaming::RawStreamingChoice::ReasoningDelta {
+                                    // Thought parts carry no wire id or block
+                                    // boundaries; a per-stream constant merges
+                                    // them into one item.
+                                    id: "reasoning-0".to_string(),
+                                    reasoning: text.clone(),
+                                }));
+                            } else {
+                                out.push(Ok(streaming::RawStreamingChoice::Message(text.clone())));
+                            }
+                        }
+                        Some(proto::part::Data::FunctionCall(function_call)) => {
+                            let args_json = function_call
+                                .args
+                                .as_ref()
+                                .map(prost_struct_to_json)
+                                .unwrap_or_else(|| Value::Object(Map::new()));
+
+                            let tool_id = if function_call.id.is_empty() {
+                                function_call.name.clone()
+                            } else {
+                                function_call.id.clone()
+                            };
+
+                            let mut tool_call = streaming::RawStreamingToolCall::new(
+                                tool_id,
+                                function_call.name.clone(),
+                                args_json,
+                            )
+                            .with_signature(encode_signature(&part.thought_signature));
+
+                            if !function_call.id.is_empty() {
+                                tool_call = tool_call.with_call_id(function_call.id.clone());
+                            }
+
+                            out.push(Ok(streaming::RawStreamingChoice::ToolCall(tool_call)));
+                        }
+                        None => {
+                            // A oneof decoding to `None` is prost's
+                            // unknown-variant signal: a part kind this client
+                            // does not model. Warn-and-skip, mirroring the
+                            // driver's `Unknown` policy at part granularity.
+                            tracing::warn!("skipping unrecognized gRPC content part");
+                        }
+                        Some(_) => {}
+                    }
+                }
+            }
+        }
+
+        // Only a chunk carrying a genuine finish reason counts as the provider
+        // completing the turn. A stream that reached EOF without one was
+        // truncated, and synthesizing a terminal record from the last content
+        // chunk (or a default) would report a successful completion for a turn
+        // the provider never finished.
+        if is_final {
+            out.push(Ok(streaming::RawStreamingChoice::FinalResponse(resp)));
+        }
+    }
+
+    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+        // EOF without a finish reason is truncation: no terminal record.
+    }
+}
+
+/// Drive already-typed `GenerateContentResponse` events through the full
+/// shared pipeline — driver policy, canonical grammar, terminal
+/// normalization.
+///
+/// The events-first conformance seam: the adapter is a pure
+/// `(state, event) → events` function, so grammar scenarios feed protobuf
+/// events directly with no gRPC transport.
+pub fn stream_from_events(
+    events: impl futures::Stream<Item = Result<proto::GenerateContentResponse, CompletionError>>
+    + WasmCompatSend
+    + 'static,
+) -> streaming::StreamingCompletionResponse {
+    let raw = run_wire_stream(events, GrpcAdapter);
+    streaming::StreamingCompletionResponse::stream(
+        super::completion::PROVIDER_NAME,
+        normalize_grpc_stream(raw),
+    )
+}
 
 /// Open a stream whose terminal record stays Gemini's own protobuf response.
 pub(crate) async fn raw_stream(
@@ -34,91 +154,21 @@ pub(crate) async fn raw_stream(
         .map_err(super::completion::rpc_error)?
         .into_inner();
 
-    let stream = stream! {
-        let mut final_resp: Option<StreamingCompletionResponse> = None;
-
+    // Transport layer: gRPC messages only — a `Status` error is a transport
+    // error; classification and policy live in the shared driver.
+    let transport = stream! {
         while let Some(item) = response_stream.next().await {
             match item {
-                Ok(resp) => {
-                    let mut is_final = false;
-
-                    if let Some(candidate) = resp.candidates.first() {
-                        // Enum default is 0 = FINISH_REASON_UNSPECIFIED.
-                        if candidate.finish_reason != 0 {
-                            is_final = true;
-                        }
-
-                        if let Some(content) = candidate.content.as_ref() {
-                            for part in &content.parts {
-                                match &part.data {
-                                    Some(proto::part::Data::Text(text)) => {
-                                        if part.thought {
-                                            yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                                // Thought parts carry no wire id or block
-                                                // boundaries; a per-stream constant merges
-                                                // them into one item.
-                                                id: "reasoning-0".to_string(),
-                                                reasoning: text.clone(),
-                                            });
-                                        } else {
-                                            yield Ok(streaming::RawStreamingChoice::Message(text.clone()));
-                                        }
-                                    }
-                                    Some(proto::part::Data::FunctionCall(function_call)) => {
-                                        let args_json = function_call
-                                            .args
-                                            .as_ref()
-                                            .map(prost_struct_to_json)
-                                            .unwrap_or_else(|| Value::Object(Map::new()));
-
-                                        let tool_id = if function_call.id.is_empty() {
-                                            function_call.name.clone()
-                                        } else {
-                                            function_call.id.clone()
-                                        };
-
-                                        let mut tool_call = streaming::RawStreamingToolCall::new(
-                                            tool_id,
-                                            function_call.name.clone(),
-                                            args_json,
-                                        )
-                                        .with_signature(encode_signature(&part.thought_signature));
-
-                                        if !function_call.id.is_empty() {
-                                            tool_call = tool_call.with_call_id(function_call.id.clone());
-                                        }
-
-                                        yield Ok(streaming::RawStreamingChoice::ToolCall(tool_call));
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-
-                    if is_final {
-                        final_resp = Some(resp);
-                        break;
-                    }
-                }
+                Ok(resp) => yield Ok(resp),
                 Err(status) => {
                     yield Err(super::completion::rpc_error(status));
-                    return;
+                    break;
                 }
             }
         }
-
-        // Only a chunk carrying a genuine finish reason counts as the provider
-        // completing the turn. A stream that reached EOF without one was
-        // truncated, and synthesizing a terminal record from the last content
-        // chunk (or a default) would report a successful completion for a turn
-        // the provider never finished.
-        if let Some(resp) = final_resp {
-            yield Ok(streaming::RawStreamingChoice::FinalResponse(resp));
-        }
     };
 
-    Ok(Box::pin(stream))
+    Ok(Box::pin(run_wire_stream(transport, GrpcAdapter)))
 }
 
 /// Open a stream normalized to rig's [`streaming::StreamFinal`] terminal
@@ -129,7 +179,19 @@ pub(crate) async fn stream(
     completion_request: CompletionRequest,
 ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
     let raw = raw_stream(client, model, completion_request).await?;
-    let normalized = streaming::normalize_stream(raw, |response| {
+
+    Ok(streaming::StreamingCompletionResponse::stream(
+        super::completion::PROVIDER_NAME,
+        normalize_grpc_stream(raw),
+    ))
+}
+
+/// Normalize the provider-native terminal record into rig's
+/// [`streaming::StreamFinal`].
+fn normalize_grpc_stream(
+    raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
+) -> streaming::StreamingResult {
+    streaming::normalize_stream(raw, |response| {
         let usage = response
             .usage_metadata
             .as_ref()
@@ -158,12 +220,7 @@ pub(crate) async fn stream(
                     Some(response.model_version.clone()).filter(|model| !model.is_empty()),
                 ),
         )
-    });
-
-    Ok(streaming::StreamingCompletionResponse::stream(
-        super::completion::PROVIDER_NAME,
-        normalized,
-    ))
+    })
 }
 
 fn encode_signature(bytes: &[u8]) -> Option<String> {

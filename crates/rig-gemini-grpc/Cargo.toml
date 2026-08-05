@@ -32,4 +32,7 @@ protoc-bin-vendored = "3.2.0"
 [dev-dependencies]
 anyhow = { workspace = true }
 rig-agent.workspace = true
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false, features = [
+    "test-utils",
+] }
 tracing-subscriber = { workspace = true }

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(streaming)* `wire::classify_typed_event` extends the decode-then-validate policy to typed-transport wires (bedrock, candle, gemini-grpc): modeled variants are `Known`, the SDK's non-exhaustive/unrecognized variants are `Unknown`, SDK decode errors are `Corrupt` — a typed transport earns no policy exemption
+- *(streaming)* `WireAdapter` gains an associated `Frame` type so typed-event wires implement the same contract over their SDK events; `classify` now takes the frame by value
+- *(streaming)* the conformance corpus accepts typed-event input (`WireInput::{Bytes, Event}`), so typed wires run the shared scenarios events-first with no mock transport; frame-level scenarios a typed wire cannot spell report visible skips
 - *(streaming)* wire-sequence conformance corpus (`test_utils::streaming_conformance` + `tests/core`) driving raw bytes through each provider's full pipeline; recorded `streaming_grammar` cassette suites for openai (reasoning summaries, encrypted multi-part reasoning, parallel tool calls, incomplete) and gemini (max-tokens truncation, tool calls, thinking, interactions requires_action)
 
 ### Changed

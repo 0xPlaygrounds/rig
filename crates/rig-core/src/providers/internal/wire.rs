@@ -139,6 +139,48 @@ where
     }
 }
 
+/// Triage of one already-deserialized event from a typed-transport wire
+/// (an aws-sdk event stream, a prost/tonic gRPC stream, an in-process
+/// generation channel), for [`classify_typed_event`].
+#[derive(Debug)]
+pub enum TypedEvent<T> {
+    /// A variant this client models.
+    Modeled(T),
+    /// The SDK's own unknown-variant signal — aws-sdk's non-exhaustive
+    /// `Unknown` union variant, a prost oneof decoding to `None`.
+    Unrecognized {
+        /// Discriminator for the driver's warn log.
+        event_type: String,
+        /// Debug rendering of the frame, for the driver's warn log.
+        detail: String,
+    },
+    /// The SDK reported a decode failure for a modeled event — a data-level
+    /// defect in a known event.
+    Malformed(String),
+}
+
+/// Classify one event of a typed-transport wire (bedrock's Converse event
+/// stream, gemini-grpc, candle's in-process generation).
+///
+/// The transport SDK already deserialized the frame, so the byte-level decode
+/// step collapses and only the triage remains: modeled variants are `Known`;
+/// the SDK's non-exhaustive/unrecognized variants are `Unknown`; an SDK
+/// decode error for a modeled event is `Corrupt` — the same known-tag
+/// strictness as the JSON classifiers, so a typed transport earns no policy
+/// exemption.
+pub fn classify_typed_event<T>(event: TypedEvent<T>) -> WireEvent<T> {
+    match event {
+        TypedEvent::Modeled(event) => WireEvent::Known(event),
+        TypedEvent::Unrecognized { event_type, detail } => WireEvent::Unknown {
+            event_type,
+            value: serde_json::Value::String(detail),
+        },
+        TypedEvent::Malformed(message) => {
+            WireEvent::Corrupt(<serde_json::Error as serde::de::Error>::custom(message))
+        }
+    }
+}
+
 fn decode_known<T>(data: &str) -> WireEvent<T>
 where
     T: serde::de::DeserializeOwned,
@@ -300,6 +342,32 @@ mod tests {
     fn marker_keyed_invalid_json_is_corrupt() {
         let event = super::classify_marker_keyed_frame::<TestChunk>("{not json", &["choices"]);
         assert!(matches!(event, WireEvent::Corrupt(_)));
+    }
+
+    #[test]
+    fn typed_event_triage_maps_onto_the_shared_policy() {
+        // Modeled variants pass through as Known.
+        let event = super::classify_typed_event(super::TypedEvent::Modeled(7u8));
+        assert!(matches!(event, WireEvent::Known(7)));
+
+        // The SDK's unknown-variant signal (aws-sdk `Unknown`, prost oneof
+        // `None`) is Unknown, carrying the debug payload for the warn log.
+        let event = super::classify_typed_event::<u8>(super::TypedEvent::Unrecognized {
+            event_type: "unknown".to_string(),
+            detail: "FutureEvent".to_string(),
+        });
+        assert!(matches!(
+            event,
+            WireEvent::Unknown { event_type, value }
+                if event_type == "unknown" && value == serde_json::Value::String("FutureEvent".into())
+        ));
+
+        // An SDK decode error for a modeled event is Corrupt, never Unknown.
+        let event =
+            super::classify_typed_event::<u8>(super::TypedEvent::Malformed("bad frame".into()));
+        assert!(
+            matches!(event, WireEvent::Corrupt(error) if error.to_string().contains("bad frame"))
+        );
     }
 
     #[test]

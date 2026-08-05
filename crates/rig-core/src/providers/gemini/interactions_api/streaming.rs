@@ -212,10 +212,11 @@ struct InteractionsAdapter {
 }
 
 impl WireAdapter for InteractionsAdapter {
+    type Frame = WireFrame;
     type Event = InteractionSseEvent;
     type Response = StreamingCompletionResponse;
 
-    fn classify(&self, frame: &WireFrame) -> WireEvent<InteractionSseEvent> {
+    fn classify(&self, frame: WireFrame) -> WireEvent<InteractionSseEvent> {
         classify_interaction_frame(&frame.as_str())
     }
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(streaming)* the Converse stream routes through the shared `WireAdapter` driver: frame triage (unknown-variant warn-skip) lives in the one policy site, and `streaming::stream_from_events` is the events-first conformance seam driving already-typed SDK events through the full pipeline
+
 ### Fixed
 
 - *(streaming)* the `MessageStop` straggler flush is gated on a `ToolUse` stop reason: a tool block truncated by `MaxTokens` is dropped with a warning instead of fabricating a `{}`-args call or a spurious error

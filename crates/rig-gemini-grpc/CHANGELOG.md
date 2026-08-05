@@ -3,7 +3,15 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.2.5...rig-gemini-grpc-v0.2.6) - 2026-05-13
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Changed
+
+- *(streaming)* the gRPC stream routes through the shared `WireAdapter` driver; an unrecognized part kind (`part.data` oneof decoding to `None`) is warn-skipped instead of silently dropped; `streaming::stream_from_events` is the events-first conformance seam; the generated `proto` module is public to support it
+
+## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-gemini-grpc-v0.2.5...rig-gemini-grpc-v0.2.6) - 2026-05-13
 
 ### Fixed
 
