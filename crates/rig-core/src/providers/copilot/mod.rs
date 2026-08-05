@@ -2073,6 +2073,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn responses_stream_object_less_failed_still_attaches_the_raw_event() {
+        // #2258 F4 decision: the old Copilot code kept a deliberate two-tier
+        // shape — `response.failed` WITHOUT an error object surfaced as a
+        // `ProviderError` with `provider_response_body() == None`. The shared
+        // Responses interpreter unifies this: the raw event body is ALWAYS
+        // attached, error object or not, so callers can inspect what the
+        // provider actually sent. Documented in MIGRATING.
+        let failed = serde_json::json!({
+            "type": "response.failed",
+            "sequence_number": 1,
+            "response": {
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 1700000000,
+                "status": "failed",
+                "error": null,
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "model": "gpt-5.3-codex",
+                "usage": null,
+                "output": [],
+                "tools": []
+            }
+        });
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[failed]),
+        };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-5.3-codex");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let err = match stream.next().await.expect("stream should yield an item") {
+            Ok(item) => panic!("stream should surface a provider error, got {item:?}"),
+            Err(err) => err,
+        };
+        assert!(matches!(
+            err,
+            crate::completion::CompletionError::ProviderResponse(_)
+        ));
+        assert_eq!(err.provider_response_status(), None);
+        assert!(
+            err.provider_response_body()
+                .is_some_and(|body| body.contains("response.failed")),
+            "an object-less response.failed must still carry the raw event body"
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "responses stream should end after the terminal error"
+        );
+    }
+
+    #[tokio::test]
     async fn responses_stream_incomplete_is_a_terminal_with_partial_content() {
         // The content exists only in the delta; the terminal
         // `response.incomplete` body has an empty `output`.

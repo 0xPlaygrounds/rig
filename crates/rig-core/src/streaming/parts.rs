@@ -219,6 +219,16 @@ impl PartsAccumulator {
     /// already complete is a sibling part of a multi-part item (OpenAI
     /// Responses: summary parts, text, encrypted content under one item id)
     /// and the block appends under the item's next ordinal.
+    ///
+    /// Known limitation (#2258 F5, accepted): siblings append at the END of
+    /// the part list, not adjacent to the part they follow. If a multi-part
+    /// done item arrives after interleaved output (part 1 replaces its
+    /// delta-built slot in place, parts 2..n append after the interleaved
+    /// content), the item's parts fragment around that content. The real
+    /// Responses wire never produces this — a done item's sibling blocks
+    /// arrive consecutively, before any later output — so adjacency insertion
+    /// (which would shift every stored part index) is not worth its
+    /// complexity.
     pub(crate) fn reasoning_full(&mut self, reasoning: Reasoning) {
         self.text_index = None;
 

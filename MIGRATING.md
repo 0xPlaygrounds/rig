@@ -285,9 +285,20 @@ block supersedes only its own deltas, and multi-part reasoning items keep
 every part. Parse policy is uniform across providers: unknown event types are
 skipped with a warning; corrupt or schema-defective known frames surface as
 `Err` items while the stream keeps consuming (the buffered ChatGPT unary path
-fails the completion instead — it has no stream to carry errors). Consumers
+fails the completion instead — it has no stream to carry errors, and the
+request/response OpenAI Responses *websocket* turn likewise fails the whole
+session on a corrupt frame — its conformance suite records both as sanctioned
+`xfail`s). Consumers
 that drain to `None` see identical content to before, plus error items where
 frames were previously dropped silently.
+
+Copilot's `response.failed` handling is unified with the shared Responses
+interpreter: the raw event body is now always attached to the surfaced error
+(`provider_response_body()` is `Some`), including when the event carries no
+error object. Previously Copilot kept a two-tier shape where an object-less
+`response.failed` produced a `ProviderError` with no attached body; code that
+distinguished the failure mode by `provider_response_body().is_none()` should
+inspect the preserved event JSON instead.
 
 ### Streaming reasoning events carry mandatory identity
 
@@ -308,6 +319,17 @@ that id is what lets a full block supersede its deltas.
 Consumers matching on `ReasoningDelta { id, .. }` drop the `Option` unwrap.
 A full `Reasoning` event supersedes prior deltas with the same id — render it
 as a replacement, not an addition.
+
+On the OpenAI Responses wire, a reasoning delta arriving without `item_id`
+(ChatGPT's replayed envelope-less bodies) is keyed by a minted
+`output-{output_index}` identity, and the slot's `response.output_item.done`
+full blocks **adopt that minted identity** instead of the item's real `rs_*`
+id, so the restated content supersedes the delta-built part rather than
+duplicating beside it. Consequence: because minted identities are
+Rig-authored, such a turn's reasoning (including any encrypted content) is
+not replayed to the provider on follow-up requests — the wire itself dropped
+the correlation the provider would need. Streams whose deltas carry `item_id`
+keep the exact `rs_*` collapse and replay behavior.
 
 ### Completion responses are concrete and normalized
 

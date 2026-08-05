@@ -9776,6 +9776,7 @@ dependencies = [
  "aws-smithy-types",
  "axum 0.8.9",
  "base64 0.22.1",
+ "bytes",
  "futures",
  "httpmock",
  "hyper-util",

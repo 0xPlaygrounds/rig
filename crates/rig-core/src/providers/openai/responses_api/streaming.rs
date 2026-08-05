@@ -371,6 +371,13 @@ pub(crate) struct RawChoiceAccumulator {
     /// `response.incomplete`) arrived. Without one the stream was truncated,
     /// and `finish` withholds the terminal record.
     saw_terminal: bool,
+    /// Reasoning identities minted for id-less deltas, keyed by output slot.
+    /// The slot's `output_item.done` full blocks must adopt the minted
+    /// identity — the done item always carries its real `rs_*` id, and keying
+    /// its blocks by that id while the deltas were keyed `output-{index}`
+    /// appends the restated content beside the delta-built part instead of
+    /// superseding it (#2258 F3, the ChatGPT envelope-less replay path).
+    minted_reasoning_ids: std::collections::HashMap<u64, String>,
 }
 
 impl RawChoiceAccumulator {
@@ -386,6 +393,7 @@ impl RawChoiceAccumulator {
             model: None,
             tool_calls: Vec::new(),
             saw_terminal: false,
+            minted_reasoning_ids: std::collections::HashMap::new(),
         }
     }
 
@@ -426,6 +434,7 @@ impl RawChoiceAccumulator {
             ItemChunkKind::OutputItemDone(message) => {
                 self.push_output_item_done(
                     message.item,
+                    output_index,
                     &mut immediate,
                     options.emits_completed_tool_calls_immediately(),
                 );
@@ -434,14 +443,22 @@ impl RawChoiceAccumulator {
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
             ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
+                let id = reasoning_item_id(&outer_item_id);
+                if outer_item_id.is_none() {
+                    self.minted_reasoning_ids.insert(output_index, id.clone());
+                }
                 immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: reasoning_item_id(&outer_item_id),
+                    id,
                     reasoning: delta.delta,
                 });
             }
             ItemChunkKind::ReasoningTextDelta(delta) => {
+                let id = reasoning_item_id(&outer_item_id);
+                if outer_item_id.is_none() {
+                    self.minted_reasoning_ids.insert(output_index, id.clone());
+                }
                 immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: reasoning_item_id(&outer_item_id),
+                    id,
                     reasoning: delta.delta,
                 });
             }
@@ -512,6 +529,7 @@ impl RawChoiceAccumulator {
     fn push_output_item_done(
         &mut self,
         item: Output,
+        output_index: u64,
         immediate: &mut Vec<StreamingRawChoice>,
         emit_completed_tool_calls_immediately: bool,
     ) {
@@ -541,6 +559,18 @@ impl RawChoiceAccumulator {
                 encrypted_content,
                 ..
             } => {
+                // Per-slot correlation for id-less deltas (#2258 F3): when this
+                // slot's deltas carried no `item_id` (ChatGPT's envelope-less
+                // replay, repaired to `output_index: 0`), they were keyed by the
+                // minted `output-{index}` identity. The done item's full blocks
+                // must share that identity to supersede the delta-built part;
+                // keying them by the item's real `rs_*` id would append the
+                // restated content beside it. A slot with no minted identity
+                // keeps the wire id, preserving the exact `rs_*` collapse.
+                let id = self
+                    .minted_reasoning_ids
+                    .remove(&output_index)
+                    .unwrap_or(id);
                 immediate.extend(reasoning_choices_from_done_item(
                     &id,
                     &summary,
@@ -607,6 +637,17 @@ impl RawChoiceAccumulator {
 /// step in front of the ONE event interpreter instead of a second one.
 /// Data-level fields (`delta`, `item`, `response`, …) are never touched, so
 /// a frame that is defective in its content still fails the re-decode.
+///
+/// **Policy decision — buffered-only, deliberately asymmetric with the live
+/// loop (#2258 F8):** a *live* SSE or websocket frame with a known `type` but
+/// a missing envelope field classifies `Corrupt` and surfaces as an in-band
+/// `Err` item; it is never repaired. Only ChatGPT's replayed unary bodies
+/// verifiably omit the envelope bookkeeping (every recorded live Copilot and
+/// OpenAI cassette carries full envelopes), so on a live wire an
+/// envelope-less known frame is evidence of a defective gateway, and
+/// silently repairing it would mask the defect the `Corrupt` classification
+/// exists to surface. The old live behavior (skip) hid the frame entirely;
+/// the `Err` item is the stated uniform policy for defective known frames.
 ///
 /// Returns `None` when the frame is not a JSON object (nothing to repair).
 fn repair_envelope_less_frame(data: &str) -> Option<String> {
@@ -1083,6 +1124,16 @@ pub enum ContentPartChunkPart {
 /// (`rig-2257-code-review-findings-34ee8ba5.md` P2). Here a known part tag
 /// must decode fully or error; only an unmodeled (or absent) tag falls back
 /// to [`ContentPartChunkPart::Unknown`], preserving the value verbatim.
+///
+/// Two documented edges of the hand dispatch (#2258 F8):
+/// - A part with **duplicate `type` keys** dispatches on the **last**
+///   occurrence, because `serde_json::Value` keeps the last duplicate, while
+///   a derived internally-tagged enum takes the first. Duplicate keys are
+///   not something any Responses gateway emits; the divergence is accepted
+///   and pinned by test rather than papered over with a custom map visitor.
+/// - A **non-string `type`** is a data-level defect of the tagged shape, not
+///   an unmodeled part kind: it errors (classifying the frame `Corrupt`)
+///   instead of degrading to an `Unknown` no-op.
 impl<'de> Deserialize<'de> for ContentPartChunkPart {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -1100,14 +1151,20 @@ impl<'de> Deserialize<'de> for ContentPartChunkPart {
                     ))
                 })
         };
-        match value.get("type").and_then(serde_json::Value::as_str) {
-            Some("output_text") => Ok(Self::OutputText {
-                text: text_field("output_text")?,
-            }),
-            Some("summary_text") => Ok(Self::SummaryText {
-                text: text_field("summary_text")?,
-            }),
-            _ => Ok(Self::Unknown(value)),
+        match value.get("type").cloned() {
+            Some(serde_json::Value::String(tag)) => match tag.as_str() {
+                "output_text" => Ok(Self::OutputText {
+                    text: text_field("output_text")?,
+                }),
+                "summary_text" => Ok(Self::SummaryText {
+                    text: text_field("summary_text")?,
+                }),
+                _ => Ok(Self::Unknown(value)),
+            },
+            Some(_) => Err(serde::de::Error::custom(
+                "content part `type` must be a string",
+            )),
+            None => Ok(Self::Unknown(value)),
         }
     }
 }
@@ -1350,6 +1407,28 @@ mod tests {
             json!({"type": "summary_text", "text": 42}),
         );
         assert!(result.is_err());
+    }
+
+    // A non-string `type` is a data-level defect of the tagged shape, never a
+    // skippable unknown part (#2258 F8).
+    #[test]
+    fn content_part_non_string_type_errors() {
+        let result =
+            serde_json::from_value::<ContentPartChunkPart>(json!({"type": 42, "text": "hi"}));
+        assert!(result.is_err());
+        let result =
+            serde_json::from_value::<ContentPartChunkPart>(json!({"type": null, "text": "hi"}));
+        assert!(result.is_err());
+    }
+
+    // Pins the documented duplicate-key edge (#2258 F8): `serde_json::Value`
+    // keeps the last duplicate key, so the hand dispatch resolves on the LAST
+    // `type` — unlike a derived internally-tagged enum, which takes the first.
+    #[test]
+    fn content_part_duplicate_type_key_dispatches_on_the_last_occurrence() {
+        let part: ContentPartChunkPart =
+            serde_json::from_str(r#"{"type":"bogus","type":"output_text","text":"hi"}"#).unwrap();
+        assert!(matches!(part, ContentPartChunkPart::OutputText { text } if text == "hi"));
     }
 
     // `refusal` and `reasoning_text` part tags are not in the modeled set:
@@ -2425,6 +2504,78 @@ mod tests {
             RawStreamingChoice::ReasoningDelta { id, reasoning }
                 if id == "output-0" && reasoning == "think"
         )));
+    }
+
+    /// #2258 F3: an id-less reasoning delta is keyed by the minted
+    /// `output-{index}` identity, and the slot's `output_item.done` full block
+    /// (which always carries the real `rs_*` id) must adopt that minted
+    /// identity — otherwise the restated summary appends beside the
+    /// delta-built part and duplicates it. This is the ChatGPT envelope-less
+    /// replay shape: the repair injects `output_index: 0` into the delta while
+    /// the done item arrives envelope-full.
+    #[tokio::test]
+    async fn envelope_less_reasoning_deltas_are_superseded_by_their_done_item() {
+        let delta = json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" });
+        let done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 2,
+            "item": {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [{"type": "summary_text", "text": "think"}],
+                "content": [],
+                "status": "completed",
+            },
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "response": sample_response(ResponseStatus::Completed),
+        });
+        let body = format!("data: {delta}\ndata: {done}\ndata: {completed}\n");
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the envelope-less reasoning replay must decode");
+        // The done item's full block shares the minted per-slot identity.
+        assert!(raw_choices.iter().any(|choice| matches!(
+            choice,
+            RawStreamingChoice::Reasoning { id, .. } if id == "output-0"
+        )));
+
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("chatgpt", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a reasoning-bearing replay is not empty");
+
+        let reasoning: Vec<_> = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            reasoning.len(),
+            1,
+            "deltas and their full block must collapse to one reasoning item: {reasoning:?}"
+        );
+        let occurrences = reasoning
+            .iter()
+            .flat_map(|item| item.content.iter())
+            .filter(|content| match content {
+                ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
+                    text.contains("think")
+                }
+                _ => false,
+            })
+            .count();
+        assert_eq!(
+            occurrences, 1,
+            "the restated summary must supersede its deltas, not duplicate them"
+        );
     }
 
     #[test]

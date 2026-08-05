@@ -15,116 +15,360 @@ use rig_core::test_utils::streaming_conformance::{
     },
 };
 
-macro_rules! conformance_test {
-    ($name:ident, $fixture:path, $scenario:path) => {
-        #[tokio::test]
-        async fn $name() {
-            let fixture = $fixture();
-            $scenario(&fixture).await.expect("scenario should hold");
-        }
-    };
+/// Lower fixture frames onto the byte transport a
+/// `SequencedStreamingHttpClient` replays (the byte-driver contract the
+/// in-crate fixtures apply; event frames are a fixture authoring error here).
+fn byte_chunks(
+    chunks: conformance::WireChunks,
+) -> Result<Vec<rig_core::http_client::Result<bytes::Bytes>>, rig_core::completion::CompletionError>
+{
+    chunks
+        .into_iter()
+        .map(|chunk| match chunk {
+            Ok(frame) => frame.as_bytes().cloned().map(Ok).ok_or_else(|| {
+                rig_core::completion::CompletionError::ProviderError(
+                    "typed-event frame fed to a byte-transport driver".to_string(),
+                )
+            }),
+            Err(error) => Ok(Err(error)),
+        })
+        .collect()
 }
 
-macro_rules! conformance_suite {
-    ($module:ident, $fixture:path) => {
-        mod $module {
-            use super::*;
-
-            conformance_test!(
-                truncation_preserves_content_without_terminal,
-                $fixture,
-                conformance::truncation_preserves_content_without_terminal
-            );
-            conformance_test!(
-                transport_error_after_tool_call_yields_err_then_end,
-                $fixture,
-                conformance::transport_error_after_tool_call_yields_err_then_end
-            );
-            conformance_test!(
-                malformed_frame_surfaces_err_and_terminal_still_completes,
-                $fixture,
-                conformance::malformed_frame_surfaces_err_and_terminal_still_completes
-            );
-            conformance_test!(
-                unknown_event_is_skipped,
-                $fixture,
-                conformance::unknown_event_is_skipped
-            );
-            conformance_test!(
-                delta_less_choice_prelude_is_a_noop,
-                $fixture,
-                conformance::delta_less_choice_prelude_is_a_noop
-            );
-            conformance_test!(
-                refusal_frames_deliver_text_without_error,
-                $fixture,
-                conformance::refusal_frames_deliver_text_without_error
-            );
-            conformance_test!(
-                bare_terminal_after_only_unparseable_frames_fabricates_nothing,
-                $fixture,
-                conformance::bare_terminal_after_only_unparseable_frames_fabricates_nothing
-            );
-            conformance_test!(
-                usage_variants_are_reported_or_zero_sentinel,
-                $fixture,
-                conformance::usage_variants_are_reported_or_zero_sentinel
-            );
-        }
-    };
+fn sse(frame: &serde_json::Value) -> conformance::WireInput {
+    conformance::WireInput::Bytes(bytes::Bytes::from(format!("data: {frame}\n\n")))
 }
 
-conformance_suite!(openai_chat_suite, openai_chat::fixture);
-conformance_suite!(openai_responses_suite, openai_responses::fixture);
-conformance_suite!(gemini_rest_suite, gemini_rest::fixture);
-conformance_suite!(cohere_suite, cohere::fixture);
-conformance_suite!(ollama_suite, ollama::fixture);
-conformance_suite!(anthropic_suite, anthropic::fixture);
-conformance_suite!(interactions_suite, interactions::fixture);
+/// xAI relays the OpenAI Responses SSE wire through
+/// `ResponsesStreamOptions::strict_with_immediate_tool_calls` (completed tool
+/// calls are emitted the moment their done item arrives instead of buffering
+/// until the terminal). The wire frames are the shared Responses fixture's;
+/// only the pipeline under test differs.
+mod xai {
+    use super::*;
+    use rig_core::client::CompletionClient as _;
+    use rig_core::completion::CompletionModel as _;
+    use rig_core::test_utils::SequencedStreamingHttpClient;
 
-// The defective-known-payload family. For the OpenAI Responses fixture it
-// pins the P2 in `rig-2257-code-review-findings-34ee8ba5.md` ("Round-5
-// known-type strictness silently reverted for content parts"), fixed by the
-// hand-written tag dispatch on `ContentPartChunkPart`: a known part tag with
-// a malformed payload classifies as `Corrupt` and surfaces an `Err` item.
-mod defective_known_event {
+    fn driver() -> conformance::WireDriver {
+        conformance::WireDriver::new("xai", |chunks| {
+            Box::pin(async move {
+                let client = rig_core::providers::xai::Client::builder()
+                    .api_key("test-key")
+                    .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
+                    .build()
+                    .map_err(|error| {
+                        rig_core::completion::CompletionError::ProviderError(error.to_string())
+                    })?;
+                let model = client.completion_model(rig_core::providers::xai::completion::GROK_4);
+                let request = model.completion_request("hello").build();
+                let stream = rig_core::completion::CompletionModel::stream(&model, request).await?;
+                Ok(conformance::fixtures::drain(stream).await)
+            })
+        })
+    }
+
+    pub fn fixture() -> conformance::ProviderWireFixture {
+        conformance::ProviderWireFixture {
+            driver: driver(),
+            ..openai_responses::fixture()
+        }
+    }
+}
+
+/// Copilot's two routes: Codex-class models stream the OpenAI Responses SSE
+/// wire over `/responses`; conversational models stream the chat-completions
+/// wire over `/chat/completions`. Each route reuses its wire family's shared
+/// fixture frames with a Copilot pipeline driver.
+mod copilot {
+    use super::*;
+    use rig_core::client::CompletionClient as _;
+    use rig_core::completion::CompletionModel as _;
+    use rig_core::test_utils::SequencedStreamingHttpClient;
+
+    fn driver(provider: &'static str, model_name: &'static str) -> conformance::WireDriver {
+        conformance::WireDriver::new(provider, move |chunks| {
+            Box::pin(async move {
+                let client = rig_core::providers::copilot::Client::builder()
+                    .api_key("copilot-token")
+                    .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
+                    .build()
+                    .map_err(|error| {
+                        rig_core::completion::CompletionError::ProviderError(error.to_string())
+                    })?;
+                let model = client.completion_model(model_name);
+                let request = model.completion_request("hello").build();
+                let stream = model.stream(request).await?;
+                Ok(conformance::fixtures::drain(stream).await)
+            })
+        })
+    }
+
+    /// The `/responses` route (Codex-class models).
+    pub fn responses_fixture() -> conformance::ProviderWireFixture {
+        conformance::ProviderWireFixture {
+            driver: driver("copilot-responses", "gpt-5.3-codex"),
+            ..openai_responses::fixture()
+        }
+    }
+
+    /// The `/chat/completions` route (conversational models).
+    pub fn chat_fixture() -> conformance::ProviderWireFixture {
+        conformance::ProviderWireFixture {
+            driver: driver("copilot-chat", "gpt-4o"),
+            ..openai_chat::fixture()
+        }
+    }
+}
+
+/// The ChatGPT backend's LIVE SSE route: `ResponsesCompletionModel::stream`
+/// relays the OpenAI Responses SSE wire (the envelope-repairing buffered
+/// replay is a separate pipeline, exercised by
+/// `terminal_body_content_merges_per_kind` below). The wire frames are the
+/// shared Responses fixture's; only the pipeline under test differs.
+mod chatgpt {
+    use super::*;
+    use rig_core::client::CompletionClient as _;
+    use rig_core::completion::CompletionModel as _;
+    use rig_core::test_utils::SequencedStreamingHttpClient;
+
+    fn driver() -> conformance::WireDriver {
+        conformance::WireDriver::new("chatgpt", |chunks| {
+            Box::pin(async move {
+                let client = rig_core::providers::chatgpt::Client::builder()
+                    .api_key(rig_core::providers::chatgpt::ChatGPTAuth::AccessToken {
+                        access_token: "test-token".to_string(),
+                        account_id: Some("account-id".to_string()),
+                    })
+                    .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
+                    .build()
+                    .map_err(|error| {
+                        rig_core::completion::CompletionError::ProviderError(error.to_string())
+                    })?;
+                let model = client.completion_model("gpt-5.4");
+                let request = model.completion_request("hello").build();
+                let stream = model.stream(request).await?;
+                Ok(conformance::fixtures::drain(stream).await)
+            })
+        })
+    }
+
+    pub fn fixture() -> conformance::ProviderWireFixture {
+        conformance::ProviderWireFixture {
+            driver: driver(),
+            ..openai_responses::fixture()
+        }
+    }
+}
+
+// The in-crate wire families (openai_chat, openai_responses, gemini_rest,
+// gemini_interactions, anthropic, cohere, ollama) expand their canonical
+// suites in `streaming_conformance_suites.rs`; the families below reuse those
+// fixtures' frames with their own pipeline drivers, through the same
+// declarative macro (with anti-tamper and capability checks). Capability rows
+// mirror the wire family whose frames each fixture reuses.
+mod xai_suite {
     use super::*;
 
-    conformance_test!(
-        openai_chat,
-        openai_chat::fixture,
-        conformance::defective_known_event_surfaces_err
-    );
-    conformance_test!(
-        openai_responses,
-        openai_responses::fixture,
-        conformance::defective_known_event_surfaces_err
-    );
-    conformance_test!(
-        gemini_rest,
-        gemini_rest::fixture,
-        conformance::defective_known_event_surfaces_err
-    );
-    conformance_test!(
-        cohere,
-        cohere::fixture,
-        conformance::defective_known_event_surfaces_err
-    );
-    conformance_test!(
-        ollama,
-        ollama::fixture,
-        conformance::defective_known_event_surfaces_err
-    );
-    conformance_test!(
-        anthropic,
-        anthropic::fixture,
-        conformance::defective_known_event_surfaces_err
-    );
-    conformance_test!(
-        interactions,
-        interactions::fixture,
-        conformance::defective_known_event_surfaces_err
-    );
+    rig_core::streaming_conformance_suite! {
+        provider: "xai",
+        fixture: xai::fixture(),
+        capabilities: {
+            partial_tool_args: true,
+            zero_usage_terminal: true,
+            bare_terminal: false,
+            malformed_frame: true,
+            unknown_event_frame: true,
+            defective_known_frame: true,
+            delta_less_prelude: false,
+            refusal: true,
+        },
+    }
+}
+
+mod copilot_responses_suite {
+    use super::*;
+
+    rig_core::streaming_conformance_suite! {
+        provider: "copilot",
+        fixture: copilot::responses_fixture(),
+        capabilities: {
+            partial_tool_args: true,
+            zero_usage_terminal: true,
+            bare_terminal: false,
+            malformed_frame: true,
+            unknown_event_frame: true,
+            defective_known_frame: true,
+            delta_less_prelude: false,
+            refusal: true,
+        },
+    }
+}
+
+mod chatgpt_suite {
+    use super::*;
+
+    rig_core::streaming_conformance_suite! {
+        provider: "chatgpt",
+        fixture: chatgpt::fixture(),
+        capabilities: {
+            partial_tool_args: true,
+            zero_usage_terminal: true,
+            bare_terminal: false,
+            malformed_frame: true,
+            unknown_event_frame: true,
+            defective_known_frame: true,
+            delta_less_prelude: false,
+            refusal: true,
+        },
+    }
+}
+
+mod copilot_chat_suite {
+    use super::*;
+
+    rig_core::streaming_conformance_suite! {
+        provider: "copilot",
+        fixture: copilot::chat_fixture(),
+        capabilities: {
+            partial_tool_args: true,
+            zero_usage_terminal: true,
+            bare_terminal: true,
+            malformed_frame: true,
+            unknown_event_frame: false,
+            defective_known_frame: true,
+            delta_less_prelude: true,
+            refusal: false,
+        },
+    }
+}
+
+// Grammar-level guards (#2258 Part III (c) item 5). The other two scenarios
+// that item names — per-wire unknown-frame-warn-and-skip and
+// corrupt-frame-error — are the `unknown_event_is_skipped`,
+// `malformed_frame_surfaces_err_and_terminal_still_completes`, and
+// `defective_known_event_surfaces_err` families every suite above already
+// instantiates; illegal-transition cases live once in parts.rs unit tests.
+mod grammar_guards {
+    use super::*;
+
+    /// langchain's aggregation guard (`integration_tests/chat_models.py:873`):
+    /// a plain streamed answer aggregates to exactly ONE text block, however
+    /// many deltas delivered it — consecutive text deltas must never fragment
+    /// the aggregated choice.
+    async fn exactly_one_text_block(fixture: conformance::ProviderWireFixture) {
+        let mut frames = fixture.text_frames.clone();
+        frames.extend(fixture.terminal_frames.iter().cloned());
+        let drained = fixture
+            .driver
+            .drive(conformance::ok_chunks(frames))
+            .await
+            .expect("stream should drive");
+        let expected = fixture.expected_texts.concat();
+        assert_eq!(
+            drained.choice_texts(),
+            vec![expected.as_str()],
+            "aggregation must yield exactly one text block for {}",
+            fixture.driver.provider
+        );
+    }
+
+    macro_rules! exactly_one_text_block_test {
+        ($name:ident, $fixture:path) => {
+            #[tokio::test]
+            async fn $name() {
+                exactly_one_text_block($fixture()).await;
+            }
+        };
+    }
+
+    exactly_one_text_block_test!(openai_chat, openai_chat::fixture);
+    exactly_one_text_block_test!(openai_responses, openai_responses::fixture);
+    exactly_one_text_block_test!(gemini_rest, gemini_rest::fixture);
+    exactly_one_text_block_test!(cohere, cohere::fixture);
+    exactly_one_text_block_test!(ollama, ollama::fixture);
+    exactly_one_text_block_test!(anthropic, anthropic::fixture);
+    exactly_one_text_block_test!(interactions, interactions::fixture);
+    exactly_one_text_block_test!(xai, super::xai::fixture);
+    exactly_one_text_block_test!(copilot_responses, super::copilot::responses_fixture);
+    exactly_one_text_block_test!(copilot_chat, super::copilot::chat_fixture);
+
+    /// Sibling-reasoning supersede on the wire (the corpus counterpart of the
+    /// parts.rs `deltas_then_sibling_full_blocks_keep_each_part_once` unit
+    /// test): a summary delta followed by its item's multi-part done block —
+    /// the first part supersedes the delta accumulation (no duplicate), the
+    /// remaining sibling parts append once each, in wire order.
+    #[tokio::test]
+    async fn sibling_reasoning_supersede_on_the_responses_wire() {
+        use rig_core::message::ReasoningContent;
+        use serde_json::json;
+
+        let driver = openai_responses::driver();
+        let frames = vec![
+            sse(&json!({
+                "type": "response.reasoning_summary_text.delta",
+                "item_id": "rs_1",
+                "output_index": 0,
+                "summary_index": 0,
+                "sequence_number": 1,
+                "delta": "s1",
+            })),
+            sse(&json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 2,
+                "item": {
+                    "type": "reasoning",
+                    "id": "rs_1",
+                    "summary": [
+                        {"type": "summary_text", "text": "s1"},
+                        {"type": "summary_text", "text": "s2"},
+                    ],
+                    "content": [],
+                    "status": "completed",
+                    "encrypted_content": "enc",
+                },
+            })),
+            sse(&json!({
+                "type": "response.completed",
+                "sequence_number": 3,
+                "response": {
+                    "id": "resp_1",
+                    "object": "response",
+                    "created_at": 0,
+                    "status": "completed",
+                    "model": "gpt-5.4",
+                    "output": [],
+                    "tools": [],
+                    "usage": null,
+                },
+            })),
+        ];
+
+        let drained = driver
+            .drive(conformance::ok_chunks(frames))
+            .await
+            .expect("stream should drive");
+        let reasoning_texts: Vec<String> = drained
+            .choice_reasoning()
+            .iter()
+            .flat_map(|reasoning| reasoning.content.iter())
+            .map(|content| match content {
+                ReasoningContent::Summary(text) => text.clone(),
+                ReasoningContent::Text { text, .. } => text.clone(),
+                ReasoningContent::Encrypted(data) => data.clone(),
+                ReasoningContent::Redacted { data } => data.clone(),
+                // `ReasoningContent` is non-exhaustive; no other variant is
+                // reachable from these frames.
+                _ => String::new(),
+            })
+            .collect();
+        assert_eq!(
+            reasoning_texts,
+            ["s1", "s2", "enc"],
+            "the first sibling supersedes the delta build; the rest append once each"
+        );
+    }
 }
 
 // The terminal-body/delta per-kind merge lives on the buffered-body pipeline
@@ -153,6 +397,48 @@ async fn terminal_body_content_merges_per_kind() {
     )
     .await
     .expect("scenario should hold");
+}
+
+// Pins #2258 F3 on the real buffered pipeline: an envelope-less reasoning
+// delta (ChatGPT replay; repair injects `output_index: 0`, minting the
+// `output-0` identity) followed by the item's envelope-full
+// `output_item.done` must aggregate the restated summary exactly once — the
+// done item's blocks adopt the minted per-slot identity instead of their
+// `rs_*` id, superseding the delta build rather than appending beside it.
+#[tokio::test]
+async fn envelope_less_reasoning_deltas_are_superseded_without_duplication() {
+    use rig_core::message::{AssistantContent, ReasoningContent};
+
+    let driver = openai_responses::buffered_driver();
+    let (body, summary) = openai_responses::envelope_less_reasoning_supersede_sse_body();
+    let choice = driver.drive(body).await.expect("replay should normalize");
+
+    let reasoning: Vec<_> = choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Reasoning(reasoning) => Some(reasoning),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        reasoning.len(),
+        1,
+        "deltas and their done block must collapse to one reasoning item: {reasoning:?}"
+    );
+    let occurrences = reasoning
+        .iter()
+        .flat_map(|item| item.content.iter())
+        .filter(|content| match content {
+            ReasoningContent::Summary(text) | ReasoningContent::Text { text, .. } => {
+                text.contains(summary)
+            }
+            _ => false,
+        })
+        .count();
+    assert_eq!(
+        occurrences, 1,
+        "the restated summary must supersede its deltas, not duplicate them"
+    );
 }
 
 // Reasoning sequence families. Only the OpenAI Responses wire spells

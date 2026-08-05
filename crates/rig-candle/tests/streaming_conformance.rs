@@ -10,7 +10,7 @@ use rig_candle::{CandleCompletionResponse, FinishReason as CandleFinishReason};
 use rig_core::completion::{CompletionError, FinishReason};
 use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall};
 use rig_core::test_utils::streaming_conformance::{
-    self as conformance, ProviderWireFixture, WireDriver, event_frame, fixtures::drain,
+    ProviderWireFixture, WireDriver, event_frame, fixtures::drain,
 };
 
 type CandleEvent = RawStreamingChoice<CandleCompletionResponse>;
@@ -94,49 +94,17 @@ fn fixture() -> ProviderWireFixture {
     }
 }
 
-macro_rules! conformance_test {
-    ($name:ident, $scenario:path) => {
-        #[tokio::test]
-        async fn $name() {
-            let fixture = fixture();
-            $scenario(&fixture).await.expect("scenario should hold");
-        }
-    };
+rig_core::streaming_conformance_suite! {
+    provider: "candle",
+    fixture: fixture(),
+    capabilities: {
+        partial_tool_args: false,
+        zero_usage_terminal: false,
+        bare_terminal: false,
+        malformed_frame: false,
+        unknown_event_frame: false,
+        defective_known_frame: false,
+        delta_less_prelude: false,
+        refusal: false,
+    },
 }
-
-conformance_test!(
-    truncation_preserves_content_without_terminal,
-    conformance::truncation_preserves_content_without_terminal
-);
-conformance_test!(
-    transport_error_after_tool_call_yields_err_then_end,
-    conformance::transport_error_after_tool_call_yields_err_then_end
-);
-conformance_test!(
-    malformed_frame_surfaces_err_and_terminal_still_completes,
-    conformance::malformed_frame_surfaces_err_and_terminal_still_completes
-);
-conformance_test!(
-    unknown_event_is_skipped,
-    conformance::unknown_event_is_skipped
-);
-conformance_test!(
-    defective_known_event_surfaces_err,
-    conformance::defective_known_event_surfaces_err
-);
-conformance_test!(
-    delta_less_choice_prelude_is_a_noop,
-    conformance::delta_less_choice_prelude_is_a_noop
-);
-conformance_test!(
-    refusal_frames_deliver_text_without_error,
-    conformance::refusal_frames_deliver_text_without_error
-);
-conformance_test!(
-    bare_terminal_after_only_unparseable_frames_fabricates_nothing,
-    conformance::bare_terminal_after_only_unparseable_frames_fabricates_nothing
-);
-conformance_test!(
-    usage_variants_are_reported_or_zero_sentinel,
-    conformance::usage_variants_are_reported_or_zero_sentinel
-);

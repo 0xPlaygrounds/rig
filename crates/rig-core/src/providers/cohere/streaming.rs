@@ -62,6 +62,9 @@ const KNOWN_EVENT_TYPES: [&str; 9] = [
 #[derive(Debug, Deserialize)]
 struct MessageContentDelta {
     text: Option<String>,
+    /// Cohere v2 reasoning models stream thought text as `content-delta`
+    /// frames whose content carries `thinking` instead of `text`.
+    thinking: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -235,9 +238,27 @@ where
                             StreamingEvent::ContentDelta { delta: Some(delta) } => {
                                 let Some(message) = &delta.message else { continue; };
                                 let Some(content) = &message.content else { continue; };
-                                let Some(text) = &content.text else { continue; };
 
-                                yield Ok(RawStreamingChoice::Message(text.clone()));
+                                // Thinking deltas carry no wire id and never
+                                // interleave with other output mid-item; the
+                                // per-stream constant lives in the minted
+                                // namespace so the accumulator's boundary
+                                // bump and the upstream-serialization guard
+                                // both apply.
+                                if let Some(thinking) = &content.thinking
+                                    && !thinking.is_empty()
+                                {
+                                    yield Ok(RawStreamingChoice::ReasoningDelta {
+                                        id: "reasoning-0".to_string(),
+                                        reasoning: thinking.clone(),
+                                    });
+                                }
+
+                                if let Some(text) = &content.text
+                                    && !text.is_empty()
+                                {
+                                    yield Ok(RawStreamingChoice::Message(text.clone()));
+                                }
                             },
 
                             StreamingEvent::MessageEnd { delta } => {
@@ -714,6 +735,67 @@ mod tests {
         assert_eq!(terminal.usage, crate::completion::Usage::default());
         assert_eq!(terminal.finish_reason, None);
         assert_eq!(terminal.response_id.as_deref(), Some("msg_1"));
+    }
+
+    #[tokio::test]
+    async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::message::AssistantContent;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        // Cohere v2 reasoning models stream `content-delta` frames carrying
+        // `thinking` before the answer's `text` frames (documented `thinking`
+        // deltas; #2258 F8 — previously these fell through the `text` guard
+        // and the thought text was lost).
+        let sse_bytes = bytes::Bytes::from(
+            [
+                r#"{"type":"message-start","id":"msg_1"}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"thinking":"step one, "}}}}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"thinking":"step two"}}}}"#,
+                r#"{"type":"content-delta","delta":{"message":{"content":{"text":"answer"}}}}"#,
+                r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE","usage":{"tokens":{"input_tokens":10,"output_tokens":4}}}}"#,
+            ]
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+        );
+
+        let client = cohere_client(MockStreamingClient { sse_bytes });
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let request = model.completion_request("hello").build();
+
+        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            .await
+            .expect("stream should open");
+
+        let mut reasoning_deltas = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::ReasoningDelta { reasoning, .. } =
+                item.expect("stream item should be Ok")
+            {
+                reasoning_deltas.push(reasoning);
+            }
+        }
+        assert_eq!(reasoning_deltas, ["step one, ", "step two"]);
+
+        let parts: Vec<_> = stream.choice.iter().cloned().collect();
+        assert_eq!(parts.len(), 2, "one reasoning part, one text part");
+        assert!(matches!(
+            parts.first(),
+            Some(AssistantContent::Reasoning(reasoning))
+                if reasoning.content.iter().any(|content| matches!(
+                    content,
+                    crate::message::ReasoningContent::Text { text, .. }
+                        if text == "step one, step two"
+                ))
+        ));
+        assert!(matches!(
+            parts.get(1),
+            Some(AssistantContent::Text(text)) if text.text == "answer"
+        ));
     }
 
     #[tokio::test]

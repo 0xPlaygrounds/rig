@@ -10,6 +10,8 @@ mod model_listing;
 mod streaming;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 pub mod streaming_conformance;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+mod streaming_conformance_suite;
 mod tracing_isolation;
 
 pub use completion::{MockCompletionModel, MockError, MockTurn};

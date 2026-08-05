@@ -12,6 +12,14 @@
 //! Every sequence family here pins a shipped bug from the #2257 review rounds
 //! (`rig-2257-code-review-findings-*.md`); the per-scenario comments cite the
 //! specific finding.
+//!
+//! Suites are expanded per wire family by
+//! [`streaming_conformance_suite!`](crate::streaming_conformance_suite).
+//! Scenarios a wire cannot spell return an explicit
+//! [`ScenarioOutcome::Skipped`] that the macro cross-checks against the
+//! suite's declared [`SuiteCapabilities`] — a skip is always visible and can
+//! never masquerade as a pass, so the executed count is exactly the declared
+//! grid minus the named skips (#2258 review, F8 corpus honesty).
 
 use bytes::Bytes;
 use futures::StreamExt;
@@ -67,6 +75,236 @@ pub struct ScenarioReport {
     pub provider: &'static str,
     /// Human-readable observations, one per verified sub-case.
     pub observations: Vec<String>,
+}
+
+/// What a capability-gated scenario did: ran its assertions, or skipped
+/// because the wire family cannot spell the sequence shape.
+///
+/// A skip is an explicit, named outcome — never a silent pass. The
+/// [`streaming_conformance_suite!`](crate::streaming_conformance_suite)
+/// macro cross-checks it against the suite's declared capability flags via
+/// [`check_gated_outcome`], so a fixture cannot vacuously pass a scenario its
+/// capabilities claim to cover (#2258 review, F8 corpus-honesty batch).
+#[derive(Debug)]
+pub enum ScenarioOutcome {
+    /// The scenario ran and its assertions held.
+    Ran(ScenarioReport),
+    /// The fixture lacks the sequence shape; nothing was asserted.
+    Skipped {
+        /// Stable scenario name.
+        name: &'static str,
+        /// Provider driver under test.
+        provider: &'static str,
+        /// Why the wire family cannot spell the shape.
+        reason: &'static str,
+    },
+}
+
+/// Streaming-relevant capability flags for one wire family's conformance
+/// suite: which optional sequence shapes the wire can spell.
+///
+/// Each flag mirrors an `Option` field on [`ProviderWireFixture`]; the suite
+/// macro's `capabilities_match_fixture` test asserts they agree (via
+/// [`capability_fixture_mismatches`]), so a flag cannot drift from the wire
+/// fixture that backs it.
+#[derive(Debug, Clone, Copy)]
+pub struct SuiteCapabilities {
+    /// The wire streams tool-call arguments incrementally
+    /// (`partial_tool_call_frames`).
+    pub partial_tool_args: bool,
+    /// The wire has a genuine terminal that can omit usage metrics
+    /// (`zero_usage_terminal_frames`).
+    pub zero_usage_terminal: bool,
+    /// The wire has a data-less terminal signal (`bare_terminal_frames`).
+    pub bare_terminal: bool,
+    /// A frame-level decode failure can be spelled (`malformed_frame`).
+    pub malformed_frame: bool,
+    /// An unknown event type can be spelled (`unknown_event_frame`).
+    pub unknown_event_frame: bool,
+    /// A known event with a schema-defective payload can be spelled
+    /// (`defective_known_frame`).
+    pub defective_known_frame: bool,
+    /// The wire has a delta-less choice prelude shape
+    /// (`delta_less_prelude_frame`).
+    pub delta_less_prelude: bool,
+    /// The wire has a refusal channel (`refusal`).
+    pub refusal: bool,
+}
+
+/// The canonical fixture-driven scenario set every wire-family suite must
+/// expand — one named test each, compared against the macro's emitted list by
+/// its `suite_is_complete` test (langchain's anti-tamper precedent).
+pub const CANONICAL_SCENARIOS: &[&str] = &[
+    "truncation_preserves_content_without_terminal",
+    "transport_error_after_tool_call_yields_err_then_end",
+    "malformed_frame_surfaces_err_and_terminal_still_completes",
+    "unknown_event_is_skipped",
+    "defective_known_event_surfaces_err",
+    "delta_less_choice_prelude_is_a_noop",
+    "refusal_frames_deliver_text_without_error",
+    "bare_terminal_after_only_unparseable_frames_fabricates_nothing",
+    "usage_variants_are_reported_or_zero_sentinel",
+];
+
+/// Every streaming wire family in the workspace. The workspace registry test
+/// (`all_wire_families_have_conformance_suites`) fails CI when any family
+/// lacks a [`streaming_conformance_suite!`](crate::streaming_conformance_suite)
+/// invocation naming it.
+pub const WIRE_FAMILIES: &[&str] = &[
+    "openai_chat",
+    "openai_responses",
+    "openai_responses_websocket",
+    "chatgpt",
+    "anthropic",
+    "gemini_rest",
+    "gemini_interactions",
+    "gemini_grpc",
+    "cohere",
+    "ollama",
+    "xai",
+    "copilot",
+    "bedrock",
+    "candle",
+];
+
+/// The sanctioned reason for an expected-failure scenario, from `xfail`
+/// entries of the form `"scenario_name: reason (finding reference)"`.
+pub fn xfail_reason<'a>(xfail: &[&'a str], scenario: &str) -> Option<&'a str> {
+    xfail.iter().find_map(|entry| {
+        let (name, reason) = entry.split_once(':')?;
+        (name.trim() == scenario).then(|| reason.trim())
+    })
+}
+
+/// `xfail` entries that do not name a canonical scenario or carry no reason.
+pub fn invalid_xfail_entries(xfail: &[&str]) -> Vec<String> {
+    xfail
+        .iter()
+        .filter(|entry| match entry.split_once(':') {
+            Some((name, reason)) => {
+                !CANONICAL_SCENARIOS.contains(&name.trim()) || reason.trim().is_empty()
+            }
+            None => true,
+        })
+        .map(|entry| entry.to_string())
+        .collect()
+}
+
+/// Disagreements between a suite's declared capability flags and the optional
+/// shapes its fixture actually supplies.
+pub fn capability_fixture_mismatches(
+    fixture: &ProviderWireFixture,
+    capabilities: &SuiteCapabilities,
+) -> Vec<String> {
+    let checks = [
+        (
+            "partial_tool_args",
+            capabilities.partial_tool_args,
+            fixture.partial_tool_call_frames.is_some(),
+        ),
+        (
+            "zero_usage_terminal",
+            capabilities.zero_usage_terminal,
+            fixture.zero_usage_terminal_frames.is_some(),
+        ),
+        (
+            "bare_terminal",
+            capabilities.bare_terminal,
+            fixture.bare_terminal_frames.is_some(),
+        ),
+        (
+            "malformed_frame",
+            capabilities.malformed_frame,
+            fixture.malformed_frame.is_some(),
+        ),
+        (
+            "unknown_event_frame",
+            capabilities.unknown_event_frame,
+            fixture.unknown_event_frame.is_some(),
+        ),
+        (
+            "defective_known_frame",
+            capabilities.defective_known_frame,
+            fixture.defective_known_frame.is_some(),
+        ),
+        (
+            "delta_less_prelude",
+            capabilities.delta_less_prelude,
+            fixture.delta_less_prelude_frame.is_some(),
+        ),
+        ("refusal", capabilities.refusal, fixture.refusal.is_some()),
+    ];
+    checks
+        .iter()
+        .filter(|(_, declared, supplied)| declared != supplied)
+        .map(|(flag, declared, supplied)| {
+            format!("{flag}: declared {declared}, fixture supplies the shape: {supplied}")
+        })
+        .collect()
+}
+
+/// Enforce a capability-gated scenario's outcome against the suite's declared
+/// capability flag and its `xfail` list.
+///
+/// A `Skipped` outcome passes only when the capability is disclaimed; a `Ran`
+/// outcome passes only when it is declared — so a vacuous pass (fixture lacks
+/// the shape but the suite claims to cover it) is impossible, and the skip is
+/// visible in the test output.
+pub fn check_gated_outcome(
+    scenario: &'static str,
+    capability: bool,
+    xfail: &[&str],
+    outcome: Result<ScenarioOutcome, ConformanceError>,
+) -> Result<(), String> {
+    match (xfail_reason(xfail, scenario), outcome) {
+        (Some(reason), Err(error)) => {
+            eprintln!("xfail {scenario}: {reason} ({error})");
+            Ok(())
+        }
+        (Some(reason), Ok(_)) => Err(format!(
+            "{scenario} passed but is listed as xfail ({reason}); remove the xfail entry"
+        )),
+        (None, Err(error)) => Err(format!("{scenario} failed: {error}")),
+        (None, Ok(ScenarioOutcome::Ran(_))) => {
+            if capability {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{scenario} ran but the suite disclaims the capability; set the flag to true"
+                ))
+            }
+        }
+        (None, Ok(ScenarioOutcome::Skipped { reason, .. })) => {
+            if capability {
+                Err(format!(
+                    "{scenario} skipped ({reason}) but the suite declares the capability; \
+                     a declared capability's scenario must run"
+                ))
+            } else {
+                eprintln!("skipped {scenario}: {reason}");
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Enforce an always-runnable scenario's result against the `xfail` list.
+pub fn check_ungated_outcome(
+    scenario: &'static str,
+    xfail: &[&str],
+    result: Result<ScenarioReport, ConformanceError>,
+) -> Result<(), String> {
+    match (xfail_reason(xfail, scenario), result) {
+        (Some(reason), Err(error)) => {
+            eprintln!("xfail {scenario}: {reason} ({error})");
+            Ok(())
+        }
+        (Some(reason), Ok(_)) => Err(format!(
+            "{scenario} passed but is listed as xfail ({reason}); remove the xfail entry"
+        )),
+        (None, Err(error)) => Err(format!("{scenario} failed: {error}")),
+        (None, Ok(_)) => Ok(()),
+    }
 }
 
 /// One scripted wire input frame.
@@ -520,17 +758,14 @@ pub async fn transport_error_after_tool_call_yields_err_then_end(
 /// (round four, `rig-2257-code-review-findings-1e5a7ad8.md`).
 pub async fn malformed_frame_surfaces_err_and_terminal_still_completes(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
+) -> Result<ScenarioOutcome, ConformanceError> {
     const SCENARIO: &str = "malformed_frame_surfaces_err_and_terminal_still_completes";
     let provider = fixture.driver.provider;
     let Some(malformed) = &fixture.malformed_frame else {
-        return Ok(ScenarioReport {
+        return Ok(ScenarioOutcome::Skipped {
             name: SCENARIO,
             provider,
-            observations: vec![
-                "typed-event wire: decode failures are transport errors, no frame to spell"
-                    .to_string(),
-            ],
+            reason: "wire family cannot spell a frame-level decode failure",
         });
     };
 
@@ -566,11 +801,11 @@ pub async fn malformed_frame_surfaces_err_and_terminal_still_completes(
         ));
     }
 
-    Ok(ScenarioReport {
+    Ok(ScenarioOutcome::Ran(ScenarioReport {
         name: SCENARIO,
         provider,
         observations: vec!["Err surfaced, terminal still completed".to_string()],
-    })
+    }))
 }
 
 /// An event type the client does not know must be skipped without an error,
@@ -580,14 +815,14 @@ pub async fn malformed_frame_surfaces_err_and_terminal_still_completes(
 /// `rig-2257-code-review-findings-8a2f41c7.md`).
 pub async fn unknown_event_is_skipped(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
+) -> Result<ScenarioOutcome, ConformanceError> {
     const SCENARIO: &str = "unknown_event_is_skipped";
     let provider = fixture.driver.provider;
     let Some(unknown) = &fixture.unknown_event_frame else {
-        return Ok(ScenarioReport {
+        return Ok(ScenarioOutcome::Skipped {
             name: SCENARIO,
             provider,
-            observations: vec!["wire family has no event types; nothing to skip".to_string()],
+            reason: "wire family cannot spell an unknown event type",
         });
     };
 
@@ -613,11 +848,11 @@ pub async fn unknown_event_is_skipped(
         ));
     }
 
-    Ok(ScenarioReport {
+    Ok(ScenarioOutcome::Ran(ScenarioReport {
         name: SCENARIO,
         provider,
         observations: vec!["unknown event skipped, stream completed".to_string()],
-    })
+    }))
 }
 
 /// A *known* event whose payload is schema-defective must surface as an `Err`
@@ -629,14 +864,14 @@ pub async fn unknown_event_is_skipped(
 /// silently reverted for content parts").
 pub async fn defective_known_event_surfaces_err(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
+) -> Result<ScenarioOutcome, ConformanceError> {
     const SCENARIO: &str = "defective_known_event_surfaces_err";
     let provider = fixture.driver.provider;
     let Some(defective) = &fixture.defective_known_frame else {
-        return Ok(ScenarioReport {
+        return Ok(ScenarioOutcome::Skipped {
             name: SCENARIO,
             provider,
-            observations: vec!["fixture supplies no defective known frame".to_string()],
+            reason: "wire family cannot spell a known event with a schema-defective payload",
         });
     };
 
@@ -665,11 +900,11 @@ pub async fn defective_known_event_surfaces_err(
         ));
     }
 
-    Ok(ScenarioReport {
+    Ok(ScenarioOutcome::Ran(ScenarioReport {
         name: SCENARIO,
         provider,
         observations: vec!["defective known event surfaced as Err; stream completed".to_string()],
-    })
+    }))
 }
 
 /// A delta-less choice (the Azure `prompt_filter_results` prelude) must be a
@@ -679,14 +914,14 @@ pub async fn defective_known_event_surfaces_err(
 /// (`rig-2257-code-review-findings-b91d03aa.md`).
 pub async fn delta_less_choice_prelude_is_a_noop(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
+) -> Result<ScenarioOutcome, ConformanceError> {
     const SCENARIO: &str = "delta_less_choice_prelude_is_a_noop";
     let provider = fixture.driver.provider;
     let Some(prelude) = &fixture.delta_less_prelude_frame else {
-        return Ok(ScenarioReport {
+        return Ok(ScenarioOutcome::Skipped {
             name: SCENARIO,
             provider,
-            observations: vec!["wire family has no delta-less prelude shape".to_string()],
+            reason: "wire family has no delta-less prelude shape",
         });
     };
 
@@ -712,11 +947,11 @@ pub async fn delta_less_choice_prelude_is_a_noop(
         ));
     }
 
-    Ok(ScenarioReport {
+    Ok(ScenarioOutcome::Ran(ScenarioReport {
         name: SCENARIO,
         provider,
         observations: vec!["delta-less prelude ignored; stream unaffected".to_string()],
-    })
+    }))
 }
 
 /// Refusal frames must deliver their text to the consumer without an error.
@@ -725,14 +960,14 @@ pub async fn delta_less_choice_prelude_is_a_noop(
 /// (`rig-2257-code-review-findings-8a2f41c7.md`).
 pub async fn refusal_frames_deliver_text_without_error(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
+) -> Result<ScenarioOutcome, ConformanceError> {
     const SCENARIO: &str = "refusal_frames_deliver_text_without_error";
     let provider = fixture.driver.provider;
     let Some(refusal) = &fixture.refusal else {
-        return Ok(ScenarioReport {
+        return Ok(ScenarioOutcome::Skipped {
             name: SCENARIO,
             provider,
-            observations: vec!["wire family has no refusal channel".to_string()],
+            reason: "wire family has no refusal channel",
         });
     };
 
@@ -765,11 +1000,11 @@ pub async fn refusal_frames_deliver_text_without_error(
         ));
     }
 
-    Ok(ScenarioReport {
+    Ok(ScenarioOutcome::Ran(ScenarioReport {
         name: SCENARIO,
         provider,
         observations: vec!["refusal text delivered without error".to_string()],
-    })
+    }))
 }
 
 /// On the buffered-body pipeline (the ChatGPT backend), a terminal whose body
@@ -826,23 +1061,21 @@ pub async fn terminal_body_content_merges_per_kind(
 /// (`rig-2257-code-review-findings-5c73639c.md`, carried into `34ee8ba5`).
 pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
     fixture: &ProviderWireFixture,
-) -> Result<ScenarioReport, ConformanceError> {
+) -> Result<ScenarioOutcome, ConformanceError> {
     const SCENARIO: &str = "bare_terminal_after_only_unparseable_frames_fabricates_nothing";
     let provider = fixture.driver.provider;
     let Some(bare_terminal) = &fixture.bare_terminal_frames else {
-        return Ok(ScenarioReport {
+        return Ok(ScenarioOutcome::Skipped {
             name: SCENARIO,
             provider,
-            observations: vec!["wire family has no data-less terminal signal".to_string()],
+            reason: "wire family has no data-less terminal signal",
         });
     };
     let Some(malformed) = &fixture.malformed_frame else {
-        return Ok(ScenarioReport {
+        return Ok(ScenarioOutcome::Skipped {
             name: SCENARIO,
             provider,
-            observations: vec![
-                "typed-event wire: no frame-level malformed input to spell".to_string(),
-            ],
+            reason: "wire family cannot spell a frame-level decode failure",
         });
     };
 
@@ -864,11 +1097,11 @@ pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
         ));
     }
 
-    Ok(ScenarioReport {
+    Ok(ScenarioOutcome::Ran(ScenarioReport {
         name: SCENARIO,
         provider,
         observations: vec!["no fabricated terminal after only-unparseable frames".to_string()],
-    })
+    }))
 }
 
 /// The genuine terminal must report the provider's usage; a terminal without
@@ -1260,6 +1493,89 @@ fn assert_reasoning_tool_reasoning(
     Ok(())
 }
 
+/// Drain one OpenAI Responses *websocket* turn's server events into
+/// everything a streaming consumer would observe, through the SAME decode
+/// state machine the production session drives
+/// (`RawChoiceAccumulator` + `normalize_responses_stream`).
+///
+/// The websocket pipeline is request/response: `next_event` has no in-band
+/// `Err` channel, so the caller collects events (stopping at the first
+/// terminal or session error) and this helper replays them. One policy the
+/// helper supplies that the buffered session cannot: tool calls the provider
+/// fully delivered flush before a session error, mirroring the SSE loop's
+/// flush-before-terminal-error contract (`RawChoiceAccumulator::take_tool_calls`).
+#[cfg(all(not(target_family = "wasm"), feature = "websocket"))]
+pub async fn drain_openai_responses_websocket_events(
+    provider: &'static str,
+    events: Vec<
+        Result<
+            crate::providers::openai::responses_api::websocket::ResponsesWebSocketEvent,
+            CompletionError,
+        >,
+    >,
+) -> DrainedStream {
+    use crate::providers::openai::responses_api::ResponsesUsage;
+    use crate::providers::openai::responses_api::streaming::{
+        RawChoiceAccumulator, ResponseChunkKind, ResponsesStreamOptions, normalize_responses_stream,
+    };
+    use crate::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
+
+    let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
+    let mut raw = Vec::new();
+    let mut errored = false;
+    for event in events {
+        match event {
+            Ok(ResponsesWebSocketEvent::Item(chunk)) => raw.extend(
+                accumulator
+                    .decode_item_chunk(chunk, ResponsesStreamOptions::strict())
+                    .into_iter()
+                    .map(Ok),
+            ),
+            Ok(ResponsesWebSocketEvent::Response(chunk)) => {
+                let terminal = matches!(
+                    chunk.kind,
+                    ResponseChunkKind::ResponseCompleted
+                        | ResponseChunkKind::ResponseFailed
+                        | ResponseChunkKind::ResponseIncomplete
+                );
+                if let Err(error) =
+                    accumulator.record_response_chunk(chunk.kind, chunk.response, "")
+                {
+                    raw.extend(accumulator.take_tool_calls().into_iter().map(Ok));
+                    raw.push(Err(error));
+                    errored = true;
+                    break;
+                }
+                if terminal {
+                    break;
+                }
+            }
+            // `response.done` / `error` envelopes are websocket-only shapes the
+            // fixtures never script; the production session maps them to a
+            // terminal or a provider error before this replay runs.
+            Ok(ResponsesWebSocketEvent::Done(_)) => {}
+            Ok(ResponsesWebSocketEvent::Error(error)) => {
+                raw.extend(accumulator.take_tool_calls().into_iter().map(Ok));
+                raw.push(Err(CompletionError::ProviderError(error.to_string())));
+                errored = true;
+                break;
+            }
+            Err(error) => {
+                raw.extend(accumulator.take_tool_calls().into_iter().map(Ok));
+                raw.push(Err(error));
+                errored = true;
+                break;
+            }
+        }
+    }
+    if !errored {
+        raw.extend(accumulator.finish().into_iter().map(Ok));
+    }
+
+    let stream = normalize_responses_stream(provider, Box::pin(futures::stream::iter(raw)));
+    fixtures::drain(stream).await
+}
+
 /// Per-provider wire fixtures for the shared scenario set.
 pub mod fixtures {
     use super::*;
@@ -1590,28 +1906,25 @@ pub mod fixtures {
         /// The buffered-body pipeline the ChatGPT backend uses: the SSE body
         /// is re-parsed after the fact and merged with the terminal response
         /// body, per content kind.
+        ///
+        /// Drives the *real* entry — `CompletionModel::completion` on a
+        /// ChatGPT client whose HTTP double answers the `/responses` POST
+        /// with the scripted SSE body — so the scenario exercises
+        /// `normalized_completion` itself rather than a mirrored copy of its
+        /// fallback logic (#2258 review, F8 drift risk).
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
-                    let raw_response =
-                        crate::providers::openai::responses_api::streaming::parse_sse_completion_body(
-                            &body, "ChatGPT",
-                        )?;
-                    // Mirror the ChatGPT backend's `normalized_completion`:
-                    // the terminal body is authoritative when it carries
-                    // output items; an empty `output` falls back to replaying
-                    // the raw event stream and merging per content kind.
-                    use crate::completion::NormalizeCompletionResponse as _;
-                    let response = match raw_response.clone().normalize("chatgpt") {
-                        Ok(response) => response,
-                        Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
-                            crate::providers::openai::responses_api::streaming::completion_response_from_sse_body(
-                                "chatgpt", &body, raw_response,
-                            )
-                            .await?
-                        }
-                        Err(error) => return Err(error),
-                    };
+                    let client = crate::providers::chatgpt::Client::builder()
+                        .api_key(crate::providers::chatgpt::ChatGPTAuth::AccessToken {
+                            access_token: "test-token".to_string(),
+                            account_id: Some("account-id".to_string()),
+                        })
+                        .http_client(crate::test_utils::RecordingHttpClient::new(body))
+                        .build()?;
+                    let model = client.completion_model("gpt-5.4");
+                    let request = model.completion_request("hello").build();
+                    let response = model.completion(request).await?;
                     Ok(response.choice)
                 })
             })
@@ -1646,6 +1959,30 @@ pub mod fixtures {
         pub fn delta_only_sse_body(text: &str) -> String {
             let frames = [text_delta(text), terminal(Some(usage_json()), json!([]))];
             frames.iter().map(frame_text).collect()
+        }
+
+        /// The ChatGPT envelope-less replay shape (#2258 F3): a summary delta
+        /// with NO envelope bookkeeping at all (repair injects
+        /// `output_index: 0`, minting the `output-0` identity), then the
+        /// item's envelope-full `output_item.done` restating the summary
+        /// under its real `rs_*` id, then the terminal. The done item must
+        /// adopt the minted per-slot identity and supersede the delta build.
+        pub fn envelope_less_reasoning_supersede_sse_body() -> (String, &'static str) {
+            let delta = json!({
+                "type": "response.reasoning_summary_text.delta",
+                "delta": "step 1",
+            });
+            let frames = [
+                sse(&delta),
+                reasoning_done_item(
+                    "rs_1",
+                    json!([{"type": "summary_text", "text": "step 1"}]),
+                    json!([]),
+                    None,
+                ),
+                terminal(Some(usage_json()), json!([])),
+            ];
+            (frames.iter().map(frame_text).collect(), "step 1")
         }
 
         /// Summary deltas followed by their item's full `output_item.done`
