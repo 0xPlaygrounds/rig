@@ -381,6 +381,13 @@ pub(crate) struct RawChoiceAccumulator {
     /// appends the restated content beside the delta-built part instead of
     /// superseding it (#2258 F3, the ChatGPT envelope-less replay path).
     minted_reasoning_ids: std::collections::HashMap<u64, String>,
+    /// The message item whose text block is currently open. A text or
+    /// refusal delta carrying a different `item_id` opens a new text block
+    /// (`TextStart` keyed by that item id), so two `message` output items
+    /// aggregate as two distinct text parts instead of concatenating.
+    /// Deltas without an `item_id` (ChatGPT's envelope-less replays) extend
+    /// the open block, or open a boundary-minted one downstream.
+    current_text_item: Option<String>,
 }
 
 impl RawChoiceAccumulator {
@@ -397,6 +404,25 @@ impl RawChoiceAccumulator {
             tool_calls: Vec::new(),
             saw_terminal: false,
             minted_reasoning_ids: std::collections::HashMap::new(),
+            current_text_item: None,
+        }
+    }
+
+    /// Open the text block for the message item a text/refusal delta belongs
+    /// to, when the wire identifies it and it differs from the open one.
+    fn start_text_item(
+        &mut self,
+        item_id: &Option<String>,
+        immediate: &mut Vec<StreamingRawChoice>,
+    ) {
+        if let Some(item_id) = item_id
+            && self.current_text_item.as_deref() != Some(item_id)
+        {
+            self.current_text_item = Some(item_id.clone());
+            immediate.push(streaming::RawStreamingChoice::TextStart {
+                id: item_id.clone(),
+                additional_params: None,
+            });
         }
     }
 
@@ -443,6 +469,7 @@ impl RawChoiceAccumulator {
                 );
             }
             ItemChunkKind::OutputTextDelta(delta) => {
+                self.start_text_item(&outer_item_id, &mut immediate);
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
             ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
@@ -466,6 +493,7 @@ impl RawChoiceAccumulator {
                 });
             }
             ItemChunkKind::RefusalDelta(delta) => {
+                self.start_text_item(&outer_item_id, &mut immediate);
                 immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
             ItemChunkKind::FunctionCallArgsDelta(delta) => {

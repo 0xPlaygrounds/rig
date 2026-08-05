@@ -3253,9 +3253,9 @@ mod migrated_tests {
 
     fn streaming_cited_text_then_final_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::text_start(Some(citation_metadata())),
+            MockStreamEvent::text_start("block-0", Some(citation_metadata())),
             MockStreamEvent::text("cited "),
-            MockStreamEvent::text_start(None),
+            MockStreamEvent::text_start("block-1", None),
             MockStreamEvent::text("answer"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]])
@@ -3264,7 +3264,7 @@ mod migrated_tests {
     fn streaming_cited_text_then_tool_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::text_start(Some(citation_metadata())),
+                MockStreamEvent::text_start("block-0", Some(citation_metadata())),
                 MockStreamEvent::text("I need a tool. "),
                 MockStreamEvent::tool_call(
                     "tool_call_1",

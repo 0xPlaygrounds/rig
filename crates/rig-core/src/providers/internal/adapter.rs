@@ -63,6 +63,34 @@ pub type AdapterOutput<R> = Vec<Result<RawStreamingChoice<R>, CompletionError>>;
 /// `classify` and `interpret` are sans-IO by construction: no transport
 /// handle, no async — pure `(state, event) → events` functions, testable by
 /// feeding events directly with no mock HTTP.
+///
+/// # Contract for implementors (in-tree and out-of-tree)
+///
+/// This trait is public so companion provider crates (rig-bedrock,
+/// rig-gemini-grpc, rig-candle) and out-of-tree providers implement it and
+/// inherit the shared [`run_wire_stream`] / [`run_wire_buffered`] drivers.
+/// An implementation must uphold:
+///
+/// - **Classify delegation**: [`WireAdapter::classify`] delegates to a
+///   `wire.rs` classifier — never raw serde — so decode-then-validate policy
+///   is stated once per wire family.
+/// - **Driver-owns-policy**: unknown/corrupt-frame handling belongs to the
+///   driver (module policy table); adapters contain no `match WireEvent`.
+/// - **Mandatory identity**: every `Reasoning`/`ReasoningDelta`,
+///   `ToolCallDelta`, and `TextStart` event carries a non-empty id — the
+///   wire's own identity when it exists, else an id minted via
+///   [`SyntheticIds`] in the reserved namespaces (`reasoning-{n}`,
+///   `block-{n}`, `output-{n}`, `tool-{index}`, `text-{n}`). Reserved
+///   namespaces are provenance-gated: aggregation treats them as per-stream
+///   constants and they are never serialized upstream as wire-genuine ids,
+///   so wire ids must never use these shapes.
+/// - **Finish/flush obligations**: see [`WireAdapter::finish`] (EOF-only,
+///   never synthesizes a terminal) and
+///   [`WireAdapter::flush_before_terminal_error`] (fully-delivered content
+///   only, no terminal record).
+/// - **[`WireAdapter::is_finished`]**: `true` only after `interpret`
+///   consumed the wire's own in-band terminal failure, having pushed the
+///   flush-then-`Err` sequence itself.
 pub trait WireAdapter {
     /// The transport frame this adapter classifies: [`WireFrame`] for byte
     /// wires (SSE, NDJSON, websocket), the SDK's own event type for
@@ -308,6 +336,13 @@ impl SyntheticIds {
         Self::new("tool-")
     }
 
+    /// Ids in the `text-` namespace (text blocks opened by a bare
+    /// [`crate::streaming::RawStreamingChoice::Message`] on wires that never
+    /// announce text-block boundaries).
+    pub fn text() -> Self {
+        Self::new("text-")
+    }
+
     fn new(namespace: &'static str) -> Self {
         Self { namespace, next: 0 }
     }
@@ -339,6 +374,7 @@ mod tests {
             SyntheticIds::block(),
             SyntheticIds::output(),
             SyntheticIds::tool(),
+            SyntheticIds::text(),
         ] {
             let counter_id = ids.mint();
             assert!(

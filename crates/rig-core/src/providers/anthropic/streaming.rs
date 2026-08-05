@@ -544,7 +544,12 @@ fn handle_event(
                         "citations": citations
                     })
                 });
-                Some(Ok(RawStreamingChoice::TextStart { additional_params }))
+                Some(Ok(RawStreamingChoice::TextStart {
+                    // Anthropic has no text item id; the content-block index
+                    // is stable for the block's lifetime.
+                    id: format!("block-{index}"),
+                    additional_params,
+                }))
             }
             Content::ServerToolUse { id, name, input } => {
                 server_tool_uses.insert(
@@ -560,6 +565,7 @@ fn handle_event(
             }
             raw @ (Content::WebSearchToolResult { .. }
             | Content::CodeExecutionToolResult { .. }) => Some(Ok(RawStreamingChoice::TextStart {
+                id: format!("block-{index}"),
                 additional_params: Some(json!({
                     super::completion::ANTHROPIC_RAW_CONTENT_KEY: raw
                 })),
@@ -619,6 +625,7 @@ fn handle_event(
                 };
 
                 return Some(Ok(RawStreamingChoice::TextStart {
+                    id: format!("block-{index}"),
                     additional_params: Some(json!({
                         super::completion::ANTHROPIC_RAW_CONTENT_KEY: Content::ServerToolUse {
                             id: server_tool_use.id,
@@ -1177,7 +1184,8 @@ mod tests {
         assert!(matches!(
             choice,
             RawStreamingChoice::TextStart {
-                additional_params: None
+                additional_params: None,
+                ..
             }
         ));
     }
@@ -1567,11 +1575,13 @@ mod tests {
         .unwrap();
 
         let RawStreamingChoice::TextStart {
+            id,
             additional_params: Some(additional_params),
         } = choice
         else {
             panic!("expected text-start metadata for code_execution_tool_result");
         };
+        assert_eq!(id, "block-1");
         assert_eq!(
             additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
             "code_execution_tool_result"

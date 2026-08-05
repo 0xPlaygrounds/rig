@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(streaming)* stream parse policy is decode-then-validate, stated once per wire family: known event with a defective payload surfaces an `Err`; unknown event types warn and skip; corrupt frames surface and the stream continues
 - *(providers)* copilot's Responses route and the ChatGPT buffered SSE path delegate to the shared Responses interpreter — seven latent behavioral divergences resolved toward the canonical path
 - *(streaming)* [**breaking**] reasoning stream events carry mandatory identity: `RawStreamingChoice::{Reasoning, ReasoningDelta}` and `StreamedAssistantContent::ReasoningDelta` take `id: String`; providers propagate wire identity or mint a stream-stable id, and aggregation keys by exact id — OpenAI Responses summary-delta streams no longer duplicate reasoning content
+- *(streaming)* [**breaking**] text-block stream events carry mandatory identity: `RawStreamingChoice::TextStart` takes `id: String` and aggregation keys text blocks by it — two OpenAI Responses `message` output items now aggregate as two distinct text parts instead of concatenating; wires that never announce text boundaries need no `TextStart` (a bare `Message` opens a block under a boundary-minted `text-{n}` id, preserving single-block aggregation exactly)
+- *(streaming)* the public wire-adapter surface (`WireAdapter`, `run_wire_stream`, `run_wire_buffered`, `SyntheticIds`, `ToolCallBridge`) is documented as a contract for out-of-tree provider authors: classify delegation, driver-owns-policy, the reserved minted-id namespaces and their provenance gate, and the finish/flush obligations (see MIGRATING)
 
 ### Added
 

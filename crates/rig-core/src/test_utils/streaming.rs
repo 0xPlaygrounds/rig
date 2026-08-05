@@ -28,6 +28,7 @@ pub enum MockStreamEvent {
     Text(String),
     /// Start a new text content block with optional provider metadata.
     TextStart {
+        id: String,
         additional_params: Option<serde_json::Value>,
     },
     /// Provider-specific metadata for the current text content block.
@@ -69,9 +70,12 @@ impl MockStreamEvent {
         Self::Text(text.into())
     }
 
-    /// Start a new text content block.
-    pub fn text_start(additional_params: Option<serde_json::Value>) -> Self {
-        Self::TextStart { additional_params }
+    /// Start a new text content block identified by `id`.
+    pub fn text_start(id: impl Into<String>, additional_params: Option<serde_json::Value>) -> Self {
+        Self::TextStart {
+            id: id.into(),
+            additional_params,
+        }
     }
 
     /// Add provider-specific metadata to the current text content block.
@@ -186,9 +190,13 @@ impl MockStreamEvent {
     pub(crate) fn into_raw_choice(self) -> Result<RawStreamingChoice, CompletionError> {
         match self {
             Self::Text(text) => Ok(RawStreamingChoice::Message(text)),
-            Self::TextStart { additional_params } => {
-                Ok(RawStreamingChoice::TextStart { additional_params })
-            }
+            Self::TextStart {
+                id,
+                additional_params,
+            } => Ok(RawStreamingChoice::TextStart {
+                id,
+                additional_params,
+            }),
             Self::TextAdditionalParams(additional_params) => {
                 Ok(RawStreamingChoice::TextAdditionalParams(additional_params))
             }

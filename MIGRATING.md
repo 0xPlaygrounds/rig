@@ -331,6 +331,65 @@ not replayed to the provider on follow-up requests — the wire itself dropped
 the correlation the provider would need. Streams whose deltas carry `item_id`
 keep the exact `rs_*` collapse and replay behavior.
 
+### Streaming text blocks carry mandatory identity
+
+`RawStreamingChoice::TextStart` now carries `id: String` alongside its
+optional `additional_params`. The contract mirrors [reasoning
+identity](#streaming-reasoning-events-carry-mandatory-identity): distinct wire
+output items must aggregate as distinct text parts, so aggregation keys text
+blocks by identity instead of tracking a single active block. On the OpenAI
+Responses wire, two `message` output items now aggregate as two text parts in
+wire order — previously their deltas concatenated boundary-less into one.
+
+Provider authors: propagate the wire's item identity (the Responses
+`item_id`, Anthropic's content-block index as `block-{index}`) when it
+exists. A wire that never announces text-block boundaries needs no
+`TextStart` at all — a bare `Message` with no open block opens a block under
+a boundary-minted `text-{n}` identity, preserving the previous
+single-text-block aggregation exactly. A `TextStart` whose id was already
+seen on the stream reactivates that block (the keyed collapse reasoning ids
+get); an unseen id closes the active block and opens the new one lazily on
+its first delta, so a content-less `TextStart` leaves no empty part behind.
+
+Minted text ids are internal bookkeeping only: aggregated
+`AssistantContent::Text` parts carry no id, so nothing changes downstream for
+consumers — except that multi-item streams now produce the correct number of
+text parts.
+
+### The streaming wire-adapter surface is public and contractual
+
+`WireAdapter`, `run_wire_stream`, `run_wire_buffered`, `SyntheticIds`
+(`rig_core::providers::internal::adapter`) and `ToolCallBridge`
+(`rig_core::providers::internal::tool_call_bridge`) are `pub`: out-of-tree
+provider crates (rig-bedrock, rig-gemini-grpc, rig-candle are the in-repo
+consumers) implement their streaming pipelines against them. The contract an
+implementation must uphold:
+
+- **`classify` delegates**: frame decoding goes through a `wire.rs`-style
+  classifier (`classify_tagged_frame`, `classify_chat_completions_frame`,
+  `classify_untyped_line`, `classify_typed_event`) — never raw serde — so
+  decode-then-validate policy is stated once per wire family.
+- **The driver owns policy**: `Unknown` frames warn-and-skip, `Corrupt`
+  frames surface as in-band `Err` items (buffered mode: fail the operation),
+  transport errors end the stream with truncation semantics. Adapters contain
+  no `match WireEvent`; `interpret` maps `Known` events only.
+- **Identity is mandatory**: every `Reasoning`/`ReasoningDelta`,
+  `ToolCallDelta`, and `TextStart` event carries a non-empty id — the wire's
+  own identity when it exists, else an id minted via `SyntheticIds` in the
+  reserved namespaces (`reasoning-{n}`, `block-{n}`, `output-{n}`,
+  `tool-{index}`, `text-{n}`). The reserved namespaces are provenance-gated:
+  aggregation treats them as per-stream constants (other output closes the
+  open block) and they are never replayed upstream as wire-genuine ids. Wire
+  ids must never use these shapes.
+- **Finish/flush obligations**: `finish` runs only on EOF without a terminal
+  and closes open blocks — it must never synthesize a terminal record
+  (deferring a terminal the wire already signaled is allowed).
+  `flush_before_terminal_error` yields fully-delivered content (buffered tool
+  calls) before a terminal error item, and must not push a terminal record.
+- **`is_finished`**: return `true` after `interpret` consumed the wire's own
+  in-band terminal failure; the driver then stops without running `finish` —
+  the adapter has already pushed its flush-then-`Err` sequence.
+
 ### Completion responses are concrete and normalized
 
 `CompletionResponse<T>` is now `CompletionResponse`. The provider-native

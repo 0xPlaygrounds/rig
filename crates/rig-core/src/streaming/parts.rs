@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 use crate::completion::CompletionError;
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
+use crate::providers::internal::adapter::SyntheticIds;
 use crate::streaming::{ToolInputEnd, UnparseableToolInput};
 
 /// Identity of a reasoning part: the provider-scoped item id plus a part
@@ -50,10 +51,9 @@ impl ManagedPart {
 /// Accumulates the streamed parts of one assistant choice, in arrival order.
 ///
 /// Owns every aggregation decision `StreamingCompletionResponse` makes:
-/// single-active-block text assembly, keyed reasoning delta/replace/sibling
+/// id-keyed text-block assembly, keyed reasoning delta/replace/sibling
 /// semantics, and tool-call ordering. Consumers feed normalized events and
 /// call [`PartsAccumulator::finish`] once the stream ends.
-#[derive(Default)]
 pub(crate) struct PartsAccumulator {
     parts: Vec<ManagedPart>,
     /// Reasoning part identity → index in `parts`. Invariant: every mapped
@@ -64,6 +64,20 @@ pub(crate) struct PartsAccumulator {
     /// Active text block; text deltas and metadata merge here until the block
     /// is closed by a text start, a reasoning event, or a tool call.
     text_index: Option<usize>,
+    /// Text-block identity → index in `parts` (the reasoning keying applied
+    /// to text): a `TextStart` whose id was already seen reactivates that
+    /// block instead of opening a duplicate, so a wire item's text keeps
+    /// collapsing across interleaved output. Invariant: every mapped index
+    /// holds an `AssistantContent::Text` part.
+    text_ids: HashMap<String, usize>,
+    /// Identity announced by the latest `TextStart` whose block has not yet
+    /// opened; blocks open lazily on the first delta or metadata so a
+    /// content-less `TextStart` never leaves an empty text part behind.
+    pending_text_id: Option<String>,
+    /// Mints `text-{n}` identities for blocks a bare `Message` opens on
+    /// wires that never announce text boundaries. Purely internal
+    /// bookkeeping: text parts carry no id in the aggregated choice.
+    minted_text_ids: SyntheticIds,
     /// Tool calls under delta assembly, keyed by the fragment id, in start
     /// order. A completed call leaves this list, so a reused id after
     /// completion opens a fresh call (the ordinal collapse the reasoning
@@ -93,6 +107,22 @@ struct OpenToolInput {
     buffer: Option<String>,
 }
 
+impl Default for PartsAccumulator {
+    fn default() -> Self {
+        Self {
+            parts: Vec::new(),
+            reasoning_index: HashMap::new(),
+            open_ordinal: HashMap::new(),
+            text_index: None,
+            text_ids: HashMap::new(),
+            pending_text_id: None,
+            minted_text_ids: SyntheticIds::text(),
+            open_tool_inputs: Vec::new(),
+            saw_tool_call: false,
+        }
+    }
+}
+
 impl PartsAccumulator {
     pub(crate) fn new() -> Self {
         Self::default()
@@ -102,26 +132,33 @@ impl PartsAccumulator {
     /// active.
     pub(crate) fn text_delta(&mut self, text: &str) {
         self.close_minted_reasoning();
-        if let Some(index) = self.text_index
-            && let Some(ManagedPart::DeltaBuilt(AssistantContent::Text(existing))) =
-                self.parts.get_mut(index)
+        let index = self.ensure_text_block();
+        if let Some(ManagedPart::DeltaBuilt(AssistantContent::Text(existing))) =
+            self.parts.get_mut(index)
         {
             existing.text.push_str(text);
-            return;
         }
-
-        self.parts
-            .push(ManagedPart::DeltaBuilt(AssistantContent::text(
-                text.to_owned(),
-            )));
-        self.text_index = Some(self.parts.len() - 1);
     }
 
-    /// Close the active text block and, when metadata is provided, open the
-    /// next block carrying it.
-    pub(crate) fn text_start(&mut self, additional_params: Option<serde_json::Value>) {
+    /// Open (or reactivate) the text block identified by `id`.
+    ///
+    /// `id` must be non-empty ([`crate::streaming::RawStreamingChoice::TextStart`]'s
+    /// mandatory-identity contract): a previously seen id reactivates its
+    /// block — a wire item's text keeps collapsing across interleaved output,
+    /// the reasoning keying applied to text. An unseen id closes the active
+    /// block and opens the new one lazily, on its first delta or metadata.
+    pub(crate) fn text_start(&mut self, id: &str, additional_params: Option<serde_json::Value>) {
         self.close_minted_reasoning();
-        self.text_index = None;
+        match self.text_ids.get(id) {
+            Some(&index) => {
+                self.text_index = Some(index);
+                self.pending_text_id = None;
+            }
+            None => {
+                self.text_index = None;
+                self.pending_text_id = Some(id.to_owned());
+            }
+        }
         if let Some(additional_params) = additional_params {
             self.text_additional_params(additional_params);
         }
@@ -134,18 +171,8 @@ impl PartsAccumulator {
             return;
         }
 
-        if self
-            .text_index
-            .and_then(|index| self.parts.get(index))
-            .is_none_or(|part| !matches!(part, ManagedPart::DeltaBuilt(AssistantContent::Text(_))))
-        {
-            self.parts
-                .push(ManagedPart::DeltaBuilt(AssistantContent::text("")));
-            self.text_index = Some(self.parts.len() - 1);
-        }
-
-        let Some(ManagedPart::DeltaBuilt(AssistantContent::Text(text))) =
-            self.text_index.and_then(|index| self.parts.get_mut(index))
+        let index = self.ensure_text_block();
+        let Some(ManagedPart::DeltaBuilt(AssistantContent::Text(text))) = self.parts.get_mut(index)
         else {
             return;
         };
@@ -437,6 +464,33 @@ impl PartsAccumulator {
         Ok(Some((tool_call, internal_call_id)))
     }
 
+    /// Index of the active text block, opening one if none is active.
+    ///
+    /// A newly opened block takes the identity the latest `TextStart`
+    /// announced, or a boundary-minted `text-{n}` id when a bare `Message`
+    /// opens it — every text block is keyed, however it opened.
+    fn ensure_text_block(&mut self) -> usize {
+        if let Some(index) = self.text_index
+            && matches!(
+                self.parts.get(index),
+                Some(ManagedPart::DeltaBuilt(AssistantContent::Text(_)))
+            )
+        {
+            return index;
+        }
+
+        self.parts
+            .push(ManagedPart::DeltaBuilt(AssistantContent::text("")));
+        let index = self.parts.len() - 1;
+        self.text_index = Some(index);
+        let id = self
+            .pending_text_id
+            .take()
+            .unwrap_or_else(|| self.minted_text_ids.mint());
+        self.text_ids.insert(id, index);
+        index
+    }
+
     /// Index of the open call for `id`, opening one if none exists.
     fn ensure_open_tool_input(&mut self, id: &str) -> usize {
         match self
@@ -469,6 +523,9 @@ impl PartsAccumulator {
         self.reasoning_index.clear();
         self.open_ordinal.clear();
         self.text_index = None;
+        self.text_ids.clear();
+        self.pending_text_id = None;
+        self.minted_text_ids = SyntheticIds::text();
         // Calls still open at stream end never fully arrived (no end event,
         // no adapter flush): truncated input drops, per the settled contract.
         self.open_tool_inputs.clear();
@@ -704,6 +761,64 @@ mod tests {
         assert!(matches!(
             parts.get(2),
             Some(AssistantContent::Text(text)) if text.text == "outro"
+        ));
+    }
+
+    /// The item-4 (#2258) shape: two distinct text identities (two OpenAI
+    /// Responses `message` items, two Anthropic text blocks) must aggregate
+    /// as two distinct text parts, in order — never concatenate.
+    #[test]
+    fn distinct_text_start_ids_open_distinct_parts() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.text_start("msg_1", None);
+        accumulator.text_delta("first");
+        accumulator.text_start("msg_2", None);
+        accumulator.text_delta("second");
+
+        let parts = accumulator.finish();
+        let texts: Vec<&str> = parts
+            .iter()
+            .filter_map(|part| match part {
+                AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, vec!["first", "second"]);
+    }
+
+    /// The reasoning keying applied to text: a `TextStart` whose id was
+    /// already seen reactivates that block across interleaved output instead
+    /// of opening a duplicate part.
+    #[test]
+    fn a_seen_text_start_id_reactivates_its_block() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.text_start("msg_1", None);
+        accumulator.text_delta("collapsing ");
+        accumulator.reasoning_full(full("rs_1", summary("thinking")));
+        accumulator.text_start("msg_1", None);
+        accumulator.text_delta("text");
+
+        let parts = accumulator.finish();
+        assert_eq!(parts.len(), 2, "one text part, one reasoning part");
+        assert!(matches!(
+            parts.first(),
+            Some(AssistantContent::Text(text)) if text.text == "collapsing text"
+        ));
+    }
+
+    /// A `TextStart` that never receives content leaves no empty text part
+    /// behind (blocks open lazily on the first delta or metadata).
+    #[test]
+    fn a_content_less_text_start_leaves_no_empty_part() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.text_start("msg_1", None);
+        accumulator.reasoning_full(full("rs_1", summary("thinking")));
+
+        let parts = accumulator.finish();
+        assert_eq!(parts.len(), 1);
+        assert!(matches!(
+            parts.first(),
+            Some(AssistantContent::Reasoning(_))
         ));
     }
 

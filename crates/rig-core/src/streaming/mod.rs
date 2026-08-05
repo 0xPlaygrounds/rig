@@ -11,14 +11,17 @@ mod parts;
 /// rather than read off the wire: `reasoning-{n}` (gemini REST /
 /// interactions / gRPC, ollama, chat-compat `reasoning_content`, candle),
 /// `block-{n}` (anthropic, bedrock), `output-{n}` (the OpenAI Responses
-/// fallback for delta events lacking `item_id`), and `tool-{index}`
-/// (chat-compat tool-call fragments whose wire omits the tool-call id).
+/// fallback for delta events lacking `item_id`), `tool-{index}`
+/// (chat-compat tool-call fragments whose wire omits the tool-call id), and
+/// `text-{n}` (text blocks opened by a bare `Message` on wires that never
+/// announce text-block boundaries).
 /// Wire-supplied ids must never use these shapes; they gate two behaviors:
 /// the [`PartsAccumulator`] interleaving boundary (a minted *reasoning* id is
 /// a per-stream constant, so other output must close the open reasoning item)
 /// and the OpenAI Responses request-serialization guard (a minted id must not
 /// be replayed upstream as if the provider issued it).
-pub(crate) const MINTED_ID_NAMESPACES: [&str; 4] = ["reasoning-", "block-", "output-", "tool-"];
+pub(crate) const MINTED_ID_NAMESPACES: [&str; 5] =
+    ["reasoning-", "block-", "output-", "tool-", "text-"];
 
 /// Whether `id` belongs to a reserved boundary-minted namespace.
 pub(crate) fn is_boundary_minted_id(id: &str) -> bool {
@@ -382,9 +385,23 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// Start a new text content block in the accumulated final choice.
     ///
     /// This is an internal provider-normalization event. It is not yielded to
-    /// public stream consumers, but lets providers preserve metadata boundaries
-    /// for final aggregated assistant text blocks.
+    /// public stream consumers, but lets providers preserve block boundaries
+    /// and metadata for final aggregated assistant text blocks.
     TextStart {
+        /// Identity of the text block being opened.
+        ///
+        /// Required and never empty — the same mandatory-identity contract as
+        /// [`RawStreamingChoice::Reasoning::id`]: distinct wire output items
+        /// must aggregate as distinct text parts (two OpenAI Responses
+        /// `message` items must not concatenate), so the accumulator keys
+        /// text blocks by identity. Providers propagate the wire's item
+        /// identity (the Responses `item_id`, Anthropic's `block-{index}`)
+        /// when it exists, or mint one at the boundary (`text-{n}`, in the
+        /// reserved `MINTED_ID_NAMESPACES` set). A wire that never announces
+        /// text boundaries may skip `TextStart` entirely: a bare
+        /// [`RawStreamingChoice::Message`] with no open block opens a
+        /// boundary-minted block.
+        id: String,
         /// Provider-specific metadata attached to this text block.
         additional_params: Option<serde_json::Value>,
     },
@@ -477,9 +494,13 @@ impl<R> RawStreamingChoice<R> {
     ) -> Result<RawStreamingChoice<S>, CompletionError> {
         Ok(match self {
             Self::Message(text) => RawStreamingChoice::Message(text),
-            Self::TextStart { additional_params } => {
-                RawStreamingChoice::TextStart { additional_params }
-            }
+            Self::TextStart {
+                id,
+                additional_params,
+            } => RawStreamingChoice::TextStart {
+                id,
+                additional_params,
+            },
             Self::TextAdditionalParams(params) => RawStreamingChoice::TextAdditionalParams(params),
             Self::ToolCall(call) => RawStreamingChoice::ToolCall(call),
             Self::ToolCallDelta { id, content } => {
@@ -794,8 +815,11 @@ impl Stream for StreamingCompletionResponse {
                     stream.parts.text_delta(&text);
                     Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                 }
-                RawStreamingChoice::TextStart { additional_params } => {
-                    stream.parts.text_start(additional_params);
+                RawStreamingChoice::TextStart {
+                    id,
+                    additional_params,
+                } => {
+                    stream.parts.text_start(&id, additional_params);
                     stream.poll_next_unpin(cx)
                 }
                 RawStreamingChoice::TextAdditionalParams(additional_params) => {
@@ -1018,6 +1042,7 @@ mod tests {
     fn create_text_metadata_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::TextStart {
+                id: "block-0".to_string(),
                 additional_params: None,
             });
             yield Ok(RawStreamingChoice::Message("first".to_string()));
@@ -1040,6 +1065,7 @@ mod tests {
                 }]
             })));
             yield Ok(RawStreamingChoice::TextStart {
+                id: "block-1".to_string(),
                 additional_params: Some(serde_json::json!({
                     "block": 2
                 })),

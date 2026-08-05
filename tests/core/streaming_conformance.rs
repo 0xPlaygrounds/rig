@@ -293,6 +293,57 @@ mod grammar_guards {
     exactly_one_text_block_test!(copilot_responses, super::copilot::responses_fixture);
     exactly_one_text_block_test!(copilot_chat, super::copilot::chat_fixture);
 
+    /// The item-4 identity pin (#2258): two `message` output items on the
+    /// OpenAI Responses wire carry distinct `item_id`s and must aggregate as
+    /// two distinct text parts, in wire order — before TextStart carried
+    /// identity, their deltas concatenated boundary-less into one block.
+    #[tokio::test]
+    async fn two_message_items_aggregate_as_two_text_parts_on_the_responses_wire() {
+        use serde_json::json;
+
+        let delta = |item_id: &str, text: &str, sequence: u64| {
+            sse(&json!({
+                "type": "response.output_text.delta",
+                "content_index": 0,
+                "delta": text,
+                "item_id": item_id,
+                "output_index": if item_id == "msg_1" { 0 } else { 1 },
+                "sequence_number": sequence,
+            }))
+        };
+        let frames = vec![
+            delta("msg_1", "first ", 1),
+            delta("msg_1", "message", 2),
+            delta("msg_2", "second ", 3),
+            delta("msg_2", "message", 4),
+            sse(&json!({
+                "type": "response.completed",
+                "sequence_number": 5,
+                "response": {
+                    "id": "resp_1",
+                    "object": "response",
+                    "created_at": 0,
+                    "status": "completed",
+                    "model": "gpt-5.4",
+                    "output": [],
+                    "tools": [],
+                    "usage": null,
+                },
+            })),
+        ];
+
+        let driver = openai_responses::driver();
+        let drained = driver
+            .drive(conformance::ok_chunks(frames))
+            .await
+            .expect("stream should drive");
+        assert_eq!(
+            drained.choice_texts(),
+            vec!["first message", "second message"],
+            "two message items must aggregate as two distinct text parts, in order"
+        );
+    }
+
     /// The item-0 identity pin (#2258) on the wire: several llama.cpp/vllm-
     /// style chat-compat gateways stream tool-call deltas with NO ids, keyed
     /// by chunk index alone. Two such calls interleaving their argument
