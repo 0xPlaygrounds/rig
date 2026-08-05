@@ -7,7 +7,8 @@ use crate::providers::cohere::completion::{
 };
 use crate::providers::internal::wire;
 use crate::streaming::{
-    RawStreamingChoice, RawStreamingResult, RawStreamingToolCall, StreamFinal, ToolCallDeltaContent,
+    RawStreamingChoice, RawStreamingResult, StreamFinal, ToolCallDeltaContent, ToolInputEnd,
+    UnparseableToolInput,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{json_utils, streaming};
@@ -178,7 +179,7 @@ where
         let mut event_source = GenericEventSource::new(self.client.clone(), req);
 
         let stream = stream! {
-            let mut current_tool_call: Option<(String, String, String, String)> = None;
+            let mut current_tool_call: Option<String> = None;
             let mut final_usage = None;
             let mut final_finish_reason = None;
             let mut message_id = None;
@@ -267,14 +268,25 @@ where
                                 let Some(name) = function.name.clone() else { continue; };
                                 let Some(arguments) = function.arguments.clone() else { continue; };
 
-                                let internal_call_id = crate::id::generate();
-                                current_tool_call = Some((id.clone(), internal_call_id.clone(), name.clone(), arguments));
+                                // Only the wire identity is tracked here;
+                                // fragment assembly, internal-id minting, and
+                                // finalize policy live in the shared
+                                // accumulator.
+                                current_tool_call = Some(id.clone());
 
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
-                                    id,
-                                    internal_call_id,
+                                    id: id.clone(),
                                     content: ToolCallDeltaContent::Name(name),
                                 });
+                                // `tool-call-start` may carry initial argument
+                                // text; on the wire it is empty, but any
+                                // payload must still enter assembly.
+                                if !arguments.is_empty() {
+                                    yield Ok(RawStreamingChoice::ToolCallDelta {
+                                        id,
+                                        content: ToolCallDeltaContent::Delta(arguments),
+                                    });
+                                }
                             },
 
                             StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
@@ -283,26 +295,25 @@ where
                                 let Some(function) = &tool_calls.function else { continue; };
                                 let Some(arguments) = function.arguments.clone() else { continue; };
 
-                                let Some(tc) = current_tool_call.clone() else { continue; };
-                                current_tool_call = Some((tc.0.clone(), tc.1.clone(), tc.2, format!("{}{}", tc.3, arguments)));
+                                // A delta with no open call has nothing to
+                                // extend; skip it, as the wire never starts a
+                                // call mid-delta.
+                                let Some(id) = current_tool_call.clone() else { continue; };
 
                                 // Emit the delta so UI can show progress
                                 yield Ok(RawStreamingChoice::ToolCallDelta {
-                                    id: tc.0,
-                                    internal_call_id: tc.1,
+                                    id,
                                     content: ToolCallDeltaContent::Delta(arguments),
                                 });
                             },
 
                             StreamingEvent::ToolCallEnd => {
-                                let Some(tc) = current_tool_call.clone() else { continue; };
-                                let Ok(args) = json_utils::parse_tool_arguments(&tc.3) else { continue; };
-
-                                let raw_tool_call = RawStreamingToolCall::new(tc.0, tc.2, args)
-                                    .with_internal_call_id(tc.1);
-                                yield Ok(RawStreamingChoice::ToolCall(raw_tool_call));
-
-                                current_tool_call = None;
+                                let Some(id) = current_tool_call.take() else { continue; };
+                                // Unparseable assembled input drops in the
+                                // accumulator, matching the old skip.
+                                yield Ok(RawStreamingChoice::ToolInputEnd(
+                                    ToolInputEnd::new(id, UnparseableToolInput::Drop),
+                                ));
                             },
 
                             _ => {}

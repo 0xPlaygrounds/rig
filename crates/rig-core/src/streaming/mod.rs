@@ -89,6 +89,88 @@ pub enum ToolCallDeltaContent {
     Delta(String),
 }
 
+/// How the shared assembler treats an argument payload that does not parse as
+/// JSON when a streamed tool call's input ends.
+///
+/// This is genuine wire-family policy, declared by the adapter on the end
+/// event rather than hand-rolled per provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnparseableToolInput {
+    /// Drop the call silently: the input never fully arrived (the
+    /// OpenAI-compatible end-of-stream flush of pending calls).
+    Drop,
+    /// Deliver the call with `{}` arguments: the wire superseded the call
+    /// mid-assembly (the OpenAI-compatible same-slot eviction path).
+    EmptyObject,
+    /// Surface an in-band error item: the wire promised a complete block
+    /// (Anthropic `content_block_stop`, Bedrock `contentBlockStop`).
+    Error,
+    /// Leave the call open and emit nothing: the end was a completion
+    /// *probe* (the OpenAI-compatible single-chunk immediate-emission path),
+    /// and input that does not yet finalize may still be extended by later
+    /// fragments and closed by a genuine flush.
+    Keep,
+}
+
+/// End of a streamed tool call's input: the signal for the shared assembler
+/// ([`RawStreamingChoice::ToolInputEnd`]) to finalize the call.
+///
+/// Optional fields are authoritative wire values that supersede the assembled
+/// state — a wire whose completed item restates the call (OpenAI Responses
+/// `output_item.done`) carries them; delta-only wires leave them `None` and
+/// the assembled fragments are parsed instead.
+#[derive(Debug, Clone)]
+pub struct ToolInputEnd {
+    /// Assembly identity: the id the call's fragments were emitted under.
+    pub id: String,
+    /// Authoritative provider tool-call id, when it differs from the
+    /// assembly id (e.g. an id that arrived after the call opened id-less).
+    pub tool_id: Option<String>,
+    /// Authoritative tool name from the wire's completed item.
+    pub name: Option<String>,
+    /// Authoritative parsed arguments from the wire's completed item.
+    pub arguments: Option<serde_json::Value>,
+    /// Provider call-correlation id (e.g. OpenAI Responses `call_id`).
+    pub call_id: Option<String>,
+    /// Provider signature attached to the completed call.
+    pub signature: Option<String>,
+    /// Provider-specific metadata attached to the completed call.
+    pub additional_params: Option<serde_json::Value>,
+    /// Wire-family policy for assembled arguments that fail to parse.
+    pub on_unparseable: UnparseableToolInput,
+}
+
+/// Decoration a provider attaches to a streamed tool call that is still
+/// assembling, matched by its established provider id (e.g. OpenRouter
+/// encrypted reasoning details). Carried onto the completed call by the
+/// adapter's end event.
+#[derive(Debug, Clone)]
+pub struct ToolCallDecoration {
+    /// Established provider id of the call to decorate.
+    pub tool_id: String,
+    /// Provider signature to attach to the completed call.
+    pub signature: Option<String>,
+    /// Provider-specific metadata to attach to the completed call.
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl ToolInputEnd {
+    /// End the call identified by `id`, finalizing from assembled fragments
+    /// with the given unparseable-input policy.
+    pub fn new(id: impl Into<String>, on_unparseable: UnparseableToolInput) -> Self {
+        Self {
+            id: id.into(),
+            tool_id: None,
+            name: None,
+            arguments: None,
+            call_id: None,
+            signature: None,
+            additional_params: None,
+            on_unparseable,
+        }
+    }
+}
+
 /// Discriminant for [`StreamFinal`].
 ///
 /// [`StreamedAssistantContent`] is `#[serde(untagged)]` and its
@@ -312,16 +394,26 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// into the current aggregated [`Text`] block.
     TextAdditionalParams(serde_json::Value),
 
-    /// A tool call response (in its entirety)
+    /// A tool call response (in its entirety) — wires that never fragment
+    /// tool input emit this directly; fragmenting wires emit
+    /// [`RawStreamingChoice::ToolCallDelta`] fragments closed by
+    /// [`RawStreamingChoice::ToolInputEnd`], and the shared accumulator
+    /// assembles the completed call.
     ToolCall(RawStreamingToolCall),
-    /// A tool call partial/delta
+    /// A tool call partial/delta.
+    ///
+    /// All fragments of one call carry one `id`; the shared accumulator keys
+    /// assembly by it and mints the internal correlation id when the call
+    /// opens, so adapters never track per-call state.
     ToolCallDelta {
-        /// Provider-supplied tool call ID.
+        /// Provider-supplied tool call ID, stable across the call's fragments.
         id: String,
-        /// Rig-generated unique identifier for this tool call.
-        internal_call_id: String,
         content: ToolCallDeltaContent,
     },
+    /// End of a streamed tool call's input: the shared accumulator finalizes
+    /// the assembled fragments (or the event's authoritative payload) into a
+    /// completed tool call.
+    ToolInputEnd(ToolInputEnd),
     /// A reasoning (in its entirety)
     Reasoning {
         /// Identity of the reasoning item this block belongs to.
@@ -379,15 +471,10 @@ impl<R> RawStreamingChoice<R> {
             }
             Self::TextAdditionalParams(params) => RawStreamingChoice::TextAdditionalParams(params),
             Self::ToolCall(call) => RawStreamingChoice::ToolCall(call),
-            Self::ToolCallDelta {
-                id,
-                internal_call_id,
-                content,
-            } => RawStreamingChoice::ToolCallDelta {
-                id,
-                internal_call_id,
-                content,
-            },
+            Self::ToolCallDelta { id, content } => {
+                RawStreamingChoice::ToolCallDelta { id, content }
+            }
+            Self::ToolInputEnd(end) => RawStreamingChoice::ToolInputEnd(end),
             Self::Reasoning { id, content } => RawStreamingChoice::Reasoning { id, content },
             Self::ReasoningDelta { id, reasoning } => {
                 RawStreamingChoice::ReasoningDelta { id, reasoning }
@@ -704,15 +791,36 @@ impl Stream for StreamingCompletionResponse {
                     stream.parts.text_additional_params(additional_params);
                     stream.poll_next_unpin(cx)
                 }
-                RawStreamingChoice::ToolCallDelta {
-                    id,
-                    internal_call_id,
-                    content,
-                } => Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
-                    id,
-                    internal_call_id,
-                    content,
-                }))),
+                RawStreamingChoice::ToolCallDelta { id, content } => {
+                    // The accumulator owns assembly; it mints the internal
+                    // correlation id when the call opens and returns it for
+                    // every fragment, so the public delta stays correlated
+                    // with the eventual completed call.
+                    let internal_call_id = match &content {
+                        ToolCallDeltaContent::Name(name) => stream.parts.tool_name_delta(&id, name),
+                        ToolCallDeltaContent::Delta(fragment) => {
+                            stream.parts.tool_args_delta(&id, fragment)
+                        }
+                    };
+                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
+                        id,
+                        internal_call_id,
+                        content,
+                    })))
+                }
+                RawStreamingChoice::ToolInputEnd(end) => match stream.parts.tool_input_end(end) {
+                    Ok(Some((tool_call, internal_call_id))) => {
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
+                            tool_call,
+                            internal_call_id,
+                        })))
+                    }
+                    // Dropped (nameless or partial input): not content.
+                    Ok(None) => stream.poll_next_unpin(cx),
+                    // Malformed complete input surfaces in-band; the stream
+                    // keeps consuming, matching the malformed-frame contract.
+                    Err(err) => Poll::Ready(Some(Err(err))),
+                },
                 RawStreamingChoice::Reasoning { id, content } => {
                     let reasoning = Reasoning {
                         id: Some(id),
@@ -737,7 +845,15 @@ impl Stream for StreamingCompletionResponse {
                         internal_call_id,
                     })))
                 }
-                RawStreamingChoice::FinalResponse(response) => {
+                RawStreamingChoice::FinalResponse(mut response) => {
+                    // Assembled tool calls never pass `normalize_stream` as
+                    // `RawStreamingChoice::ToolCall`, so the finish-reason
+                    // reconciliation runs here too, against the accumulator's
+                    // authoritative view of completed calls. Idempotent over
+                    // the reconciliation `normalize_stream` already applied.
+                    response.finish_reason = response
+                        .finish_reason
+                        .map(|reason| reason.reconcile_with_output(stream.parts.saw_tool_call()));
                     if stream
                         .final_response_yielded
                         .load(std::sync::atomic::Ordering::SeqCst)

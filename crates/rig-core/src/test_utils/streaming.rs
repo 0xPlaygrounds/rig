@@ -42,7 +42,6 @@ pub enum MockStreamEvent {
     /// Tool call delta event.
     ToolCallDelta {
         id: String,
-        internal_call_id: String,
         content: ToolCallDeltaContent,
     },
     /// Complete reasoning event.
@@ -103,27 +102,17 @@ impl MockStreamEvent {
     }
 
     /// Create a tool call name delta.
-    pub fn tool_call_name_delta(
-        id: impl Into<String>,
-        internal_call_id: impl Into<String>,
-        name: impl Into<String>,
-    ) -> Self {
+    pub fn tool_call_name_delta(id: impl Into<String>, name: impl Into<String>) -> Self {
         Self::ToolCallDelta {
             id: id.into(),
-            internal_call_id: internal_call_id.into(),
             content: ToolCallDeltaContent::Name(name.into()),
         }
     }
 
     /// Create a tool call arguments delta.
-    pub fn tool_call_arguments_delta(
-        id: impl Into<String>,
-        internal_call_id: impl Into<String>,
-        arguments: impl Into<String>,
-    ) -> Self {
+    pub fn tool_call_arguments_delta(id: impl Into<String>, arguments: impl Into<String>) -> Self {
         Self::ToolCallDelta {
             id: id.into(),
-            internal_call_id: internal_call_id.into(),
             content: ToolCallDeltaContent::Delta(arguments.into()),
         }
     }
@@ -215,15 +204,9 @@ impl MockStreamEvent {
                 }
                 Ok(RawStreamingChoice::ToolCall(tool_call))
             }
-            Self::ToolCallDelta {
-                id,
-                internal_call_id,
-                content,
-            } => Ok(RawStreamingChoice::ToolCallDelta {
-                id,
-                internal_call_id,
-                content,
-            }),
+            Self::ToolCallDelta { id, content } => {
+                Ok(RawStreamingChoice::ToolCallDelta { id, content })
+            }
             Self::Reasoning { id, content } => Ok(RawStreamingChoice::Reasoning { id, content }),
             Self::ReasoningDelta { id, reasoning } => {
                 Ok(RawStreamingChoice::ReasoningDelta { id, reasoning })

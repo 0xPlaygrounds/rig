@@ -1514,25 +1514,19 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
     fn decorate_streaming_tool_call(
         &self,
         detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
+    ) -> Option<crate::streaming::ToolCallDecoration> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
             serde_json::from_value::<ReasoningDetails>(detail.clone())
         else {
-            return;
+            return None;
         };
-        let Some(id) = id else {
-            return;
-        };
-        let Some(tool_call) = tool_calls
-            .values_mut()
-            .find(|tool_call| tool_call.id.eq(&id))
-        else {
-            return;
-        };
+        let id = id?;
 
-        tool_call.signature = Some(data);
-        tool_call.additional_params = Some(detail.clone());
+        Some(crate::streaming::ToolCallDecoration {
+            tool_id: id,
+            signature: Some(data),
+            additional_params: Some(detail.clone()),
+        })
     }
 }
 

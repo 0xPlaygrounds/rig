@@ -361,8 +361,12 @@ pub(crate) struct RawChoiceAccumulator {
     message_id: Option<String>,
     response_id: Option<String>,
     model: Option<String>,
+    /// Buffered tool-input end events for calls delivered whole by
+    /// `output_item.done`, flushed at the terminal (or before a terminal
+    /// error). Assembly and internal-id correlation live in the shared
+    /// accumulator, keyed by the function-call item id the added/delta/done
+    /// events share.
     tool_calls: Vec<StreamingRawChoice>,
-    tool_call_internal_ids: std::collections::HashMap<String, String>,
     /// Whether a genuine terminal event (`response.completed` or
     /// `response.incomplete`) arrived. Without one the stream was truncated,
     /// and `finish` withholds the terminal record.
@@ -381,7 +385,6 @@ impl RawChoiceAccumulator {
             response_id: None,
             model: None,
             tool_calls: Vec::new(),
-            tool_call_internal_ids: std::collections::HashMap::new(),
             saw_terminal: false,
         }
     }
@@ -415,14 +418,8 @@ impl RawChoiceAccumulator {
                 item: Output::FunctionCall(func),
                 ..
             }) => {
-                let internal_call_id = self
-                    .tool_call_internal_ids
-                    .entry(func.id.clone())
-                    .or_insert_with(crate::id::generate)
-                    .clone();
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                     id: func.id,
-                    internal_call_id,
                     content: streaming::ToolCallDeltaContent::Name(func.name),
                 });
             }
@@ -453,14 +450,8 @@ impl RawChoiceAccumulator {
             }
             ItemChunkKind::FunctionCallArgsDelta(delta) => {
                 if let Some(item_id) = outer_item_id {
-                    let internal_call_id = self
-                        .tool_call_internal_ids
-                        .entry(item_id.clone())
-                        .or_insert_with(crate::id::generate)
-                        .clone();
                     immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                         id: item_id,
-                        internal_call_id,
                         content: streaming::ToolCallDeltaContent::Delta(delta.delta),
                     });
                 }
@@ -526,21 +517,21 @@ impl RawChoiceAccumulator {
     ) {
         match item {
             Output::FunctionCall(func) => {
-                let internal_call_id = self
-                    .tool_call_internal_ids
-                    .entry(func.id.clone())
-                    .or_insert_with(crate::id::generate)
-                    .clone();
-                let tool_call =
-                    streaming::RawStreamingToolCall::new(func.id, func.name, func.arguments)
-                        .with_internal_call_id(internal_call_id)
-                        .with_call_id(func.call_id);
+                // The done item restates the call whole; its fields are
+                // authoritative over any assembled fragments, and the shared
+                // accumulator correlates by the shared item id (minting the
+                // internal id if no fragments preceded).
+                let mut end =
+                    streaming::ToolInputEnd::new(func.id, streaming::UnparseableToolInput::Drop);
+                end.name = Some(func.name);
+                end.arguments = Some(func.arguments);
+                end.call_id = Some(func.call_id);
+                let end = streaming::RawStreamingChoice::ToolInputEnd(end);
 
                 if emit_completed_tool_calls_immediately {
-                    immediate.push(streaming::RawStreamingChoice::ToolCall(tool_call));
+                    immediate.push(end);
                 } else {
-                    self.tool_calls
-                        .push(streaming::RawStreamingChoice::ToolCall(tool_call));
+                    self.tool_calls.push(end);
                 }
             }
             Output::Reasoning {

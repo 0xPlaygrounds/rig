@@ -1523,8 +1523,8 @@ mod tests {
         let streaming = Results::default();
         let streaming_model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_name_delta("tc1", "ic1", "flaky_tool"),
-                MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{}"),
+                MockStreamEvent::tool_call_name_delta("tc1", "flaky_tool"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{}"),
                 MockStreamEvent::tool_call("tc1", "flaky_tool", json!({})),
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
@@ -2229,7 +2229,7 @@ mod migrated_tests {
             ),
             (
                 "tool-call delta",
-                MockStreamEvent::tool_call_name_delta("late", "internal-late", "add"),
+                MockStreamEvent::tool_call_name_delta("late", "add"),
             ),
             ("unknown", MockStreamEvent::unknown(json!({"type": "late"}))),
         ];
@@ -2362,8 +2362,8 @@ mod migrated_tests {
     fn streaming_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_name_delta("tc1", "ic1", "add"),
-                MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{\"x\":2,\"y\":3}"),
+                MockStreamEvent::tool_call_name_delta("tc1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
                 MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
@@ -2615,8 +2615,8 @@ mod migrated_tests {
         fn stream_model_one_tool_then_text(tool: &str) -> MockCompletionModel {
             MockCompletionModel::from_stream_turns([
                 vec![
-                    MockStreamEvent::tool_call_name_delta("tc1", "ic1", tool),
-                    MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{}"),
+                    MockStreamEvent::tool_call_name_delta("tc1", tool),
+                    MockStreamEvent::tool_call_arguments_delta("tc1", "{}"),
                     MockStreamEvent::tool_call("tc1", tool, json!({})),
                     MockStreamEvent::final_response_with_total_tokens(0),
                 ],
@@ -6155,18 +6155,13 @@ mod migrated_tests {
                 ScriptedTurn::ToolCalls(calls) => {
                     for call in calls {
                         if let StreamShape::Chunked = shape {
-                            // Distinct internal id per call; the canonical args
-                            // still come from the complete event below, so this
-                            // exercises the delta path without changing the turn.
-                            let internal = format!("ic-{}", call.id);
+                            // The canonical args still come from the complete
+                            // event below, so this exercises the delta path
+                            // without changing the turn.
                             let args = serde_json::to_string(&call.args)
                                 .expect("scripted args serialize to json");
-                            events.push(MockStreamEvent::tool_call_name_delta(
-                                call.id, &internal, call.name,
-                            ));
-                            events.push(MockStreamEvent::tool_call_arguments_delta(
-                                call.id, &internal, &args,
-                            ));
+                            events.push(MockStreamEvent::tool_call_name_delta(call.id, call.name));
+                            events.push(MockStreamEvent::tool_call_arguments_delta(call.id, &args));
                         }
                         events.push(MockStreamEvent::tool_call(
                             call.id,
@@ -9948,8 +9943,8 @@ mod migrated_tests {
         let recorder = RecordingHook::default();
         let executions = Arc::new(AtomicU32::new(0));
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tc1", "ic1", "add"),
-            MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", r#"{"x":1,"y":2}"#),
+            MockStreamEvent::tool_call_name_delta("tc1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tc1", r#"{"x":1,"y":2}"#),
             MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
             MockStreamEvent::final_response_with_default_usage(),
         ]]))

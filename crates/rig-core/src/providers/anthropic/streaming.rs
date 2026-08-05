@@ -16,8 +16,8 @@ use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
-    self, RawStreamingChoice, RawStreamingResult, RawStreamingToolCall, StreamFinal,
-    ToolCallDeltaContent,
+    self, RawStreamingChoice, RawStreamingResult, StreamFinal, ToolCallDeltaContent, ToolInputEnd,
+    UnparseableToolInput,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -196,14 +196,10 @@ impl From<PartialUsage> for crate::completion::Usage {
     }
 }
 
-#[derive(Default)]
-struct ToolCallState {
-    name: String,
-    id: String,
-    internal_call_id: String,
-    input_json: String,
-}
-
+// Client tool-call fragment assembly lives in the shared accumulator
+// (`PartsAccumulator::tool_input_*`); the adapter tracks only the open block's
+// wire id. Server tool use keeps local state because its assembled payload
+// becomes text-block metadata (`ANTHROPIC_RAW_CONTENT_KEY`), not a tool call.
 struct ServerToolUseState {
     name: String,
     id: String,
@@ -225,7 +221,8 @@ struct ThinkingState {
 /// not here.
 #[derive(Default)]
 struct AnthropicAdapter {
-    current_tool_call: Option<ToolCallState>,
+    /// Wire id of the open client tool-use block, when one is streaming.
+    current_tool_call: Option<String>,
     server_tool_uses: HashMap<usize, ServerToolUseState>,
     current_thinking: Option<ThinkingState>,
     input_tokens: u64,
@@ -458,7 +455,7 @@ where
 
 fn handle_event(
     event: &StreamingEvent,
-    current_tool_call: &mut Option<ToolCallState>,
+    current_tool_call: &mut Option<String>,
     server_tool_uses: &mut HashMap<usize, ServerToolUseState>,
     current_thinking: &mut Option<ThinkingState>,
 ) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
@@ -476,12 +473,11 @@ fn handle_event(
                     return None;
                 }
 
-                if let Some(tool_call) = current_tool_call {
-                    tool_call.input_json.push_str(partial_json);
-                    // Emit the delta so UI can show progress
+                if let Some(id) = current_tool_call {
+                    // Emit the delta so UI can show progress; the shared
+                    // accumulator assembles the fragments.
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: tool_call.id.clone(),
-                        internal_call_id: tool_call.internal_call_id.clone(),
+                        id: id.clone(),
                         content: ToolCallDeltaContent::Delta(partial_json.clone()),
                     }));
                 }
@@ -548,16 +544,9 @@ fn handle_event(
                 })),
             })),
             Content::ToolUse { id, name, .. } => {
-                let internal_call_id = crate::id::generate();
-                *current_tool_call = Some(ToolCallState {
-                    name: name.clone(),
-                    id: id.clone(),
-                    internal_call_id: internal_call_id.clone(),
-                    input_json: String::new(),
-                });
+                *current_tool_call = Some(id.clone());
                 Some(Ok(RawStreamingChoice::ToolCallDelta {
                     id: id.clone(),
-                    internal_call_id,
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }))
             }
@@ -619,24 +608,15 @@ fn handle_event(
                 }));
             }
 
-            if let Some(tool_call) = Option::take(current_tool_call) {
-                let json_str = if tool_call.input_json.is_empty() {
-                    "{}"
-                } else {
-                    &tool_call.input_json
-                };
-                match serde_json::from_str(json_str) {
-                    Ok(json_value) => {
-                        let raw_tool_call =
-                            RawStreamingToolCall::new(tool_call.id, tool_call.name, json_value)
-                                .with_internal_call_id(tool_call.internal_call_id);
-                        Some(Ok(RawStreamingChoice::ToolCall(raw_tool_call)))
-                    }
-                    Err(e) => Some(Err(CompletionError::from(e))),
-                }
-            } else {
-                None
-            }
+            // `content_block_stop` promises a complete block: empty input
+            // finalizes to `{}`, malformed input surfaces as an error item
+            // (`UnparseableToolInput::Error`) in the accumulator.
+            Option::take(current_tool_call).map(|id| {
+                Ok(RawStreamingChoice::ToolInputEnd(ToolInputEnd::new(
+                    id,
+                    UnparseableToolInput::Error,
+                )))
+            })
         }
         // Interpreted by the adapter (`message_start`/`message_delta`) or
         // Known no-ops (`message_stop`, `ping`).
@@ -657,6 +637,7 @@ mod tests {
     use crate::OneOrMany;
     use crate::completion::Message as RigMessage;
     use crate::completion::request::Document as RigDocument;
+    use crate::streaming::RawStreamingToolCall;
     use async_stream::stream;
     use futures::StreamExt;
 
@@ -964,7 +945,7 @@ mod tests {
 
     fn handle_event(
         event: &StreamingEvent,
-        current_tool_call: &mut Option<ToolCallState>,
+        current_tool_call: &mut Option<String>,
         current_thinking: &mut Option<ThinkingState>,
     ) -> Option<Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>> {
         let mut server_tool_uses = HashMap::new();
@@ -1189,12 +1170,7 @@ mod tests {
             },
         };
 
-        let mut tool_call_state = Some(ToolCallState {
-            name: "test_tool".to_string(),
-            id: "tool_123".to_string(),
-            internal_call_id: crate::id::generate(),
-            input_json: String::new(),
-        });
+        let mut tool_call_state = Some("tool_123".to_string());
         let mut thinking_state = None;
 
         let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
@@ -1222,12 +1198,7 @@ mod tests {
             },
         };
 
-        let mut tool_call_state = Some(ToolCallState {
-            name: "test_tool".to_string(),
-            id: "tool_123".to_string(),
-            internal_call_id: crate::id::generate(),
-            input_json: String::new(),
-        });
+        let mut tool_call_state = Some("tool_123".to_string());
         let mut thinking_state = None;
 
         let result = handle_event(&event, &mut tool_call_state, &mut thinking_state);
@@ -1237,11 +1208,7 @@ mod tests {
         let choice = result.unwrap().unwrap();
 
         match choice {
-            RawStreamingChoice::ToolCallDelta {
-                id,
-                internal_call_id: _,
-                content,
-            } => {
+            RawStreamingChoice::ToolCallDelta { id, content } => {
                 assert_eq!(id, "tool_123");
                 match content {
                     ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
@@ -1251,20 +1218,14 @@ mod tests {
             _ => panic!("Expected ToolCallDelta choice, got {:?}", choice),
         }
 
-        // Verify the input_json was accumulated
+        // The open block stays open; assembly of the fragment happens in the
+        // shared accumulator.
         assert!(tool_call_state.is_some());
-        let state = tool_call_state.unwrap();
-        assert_eq!(state.input_json, "{\"arg\":\"value");
     }
 
     #[test]
     fn test_tool_call_accumulation_with_multiple_deltas() {
-        let mut tool_call_state = Some(ToolCallState {
-            name: "test_tool".to_string(),
-            id: "tool_123".to_string(),
-            internal_call_id: crate::id::generate(),
-            input_json: String::new(),
-        });
+        let mut tool_call_state = Some("tool_123".to_string());
         let mut thinking_state = None;
 
         // First delta
@@ -1297,35 +1258,25 @@ mod tests {
         let result3 = handle_event(&event3, &mut tool_call_state, &mut thinking_state);
         assert!(result3.is_some());
 
-        // Verify accumulated JSON
         assert!(tool_call_state.is_some());
-        let state = tool_call_state.as_ref().unwrap();
-        assert_eq!(
-            state.input_json,
-            "{\"location\":\"Paris\",\"temp\":\"20C\"}"
-        );
 
-        // Final ContentBlockStop should emit complete tool call
+        // Final ContentBlockStop hands the block to the shared accumulator,
+        // which finalizes the assembled fragments (`Error` policy: a stopped
+        // block promised complete input). End-to-end assembly of exactly this
+        // fragment sequence is pinned in `streaming::parts` unit tests.
         let stop_event = StreamingEvent::ContentBlockStop { index: 0 };
         let final_result = handle_event(&stop_event, &mut tool_call_state, &mut thinking_state);
         assert!(final_result.is_some());
 
         match final_result.unwrap().unwrap() {
-            RawStreamingChoice::ToolCall(RawStreamingToolCall {
-                id,
-                name,
-                arguments,
-                ..
-            }) => {
-                assert_eq!(id, "tool_123");
-                assert_eq!(name, "test_tool");
-                assert_eq!(
-                    arguments.get("location").unwrap().as_str().unwrap(),
-                    "Paris"
-                );
-                assert_eq!(arguments.get("temp").unwrap().as_str().unwrap(), "20C");
+            RawStreamingChoice::ToolInputEnd(end) => {
+                assert_eq!(end.id, "tool_123");
+                assert!(matches!(
+                    end.on_unparseable,
+                    crate::streaming::UnparseableToolInput::Error
+                ));
             }
-            other => panic!("Expected ToolCall, got {:?}", other),
+            other => panic!("Expected ToolInputEnd, got {:?}", other),
         }
 
         // Tool call state should be taken

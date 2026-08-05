@@ -16,8 +16,10 @@ use tracing_futures::Instrument;
 use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
-use crate::json_utils;
-use crate::streaming::{self, RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent};
+use crate::streaming::{
+    self, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent, ToolInputEnd,
+    UnparseableToolInput,
+};
 use crate::wasm_compat::WasmCompatSend;
 
 fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
@@ -231,18 +233,20 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 
     fn should_evict(
         &self,
-        existing: &RawStreamingToolCall,
+        existing: &OpenToolCallSlot,
         incoming: &CompatibleToolCallChunk,
     ) -> bool {
         self.uses_distinct_tool_call_eviction()
             && should_evict_distinct_named_tool_call(existing, incoming)
     }
 
-    fn decorate_tool_call(
-        &self,
-        _detail: &Self::Detail,
-        _tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
-    ) {
+    /// Map a provider-specific per-chunk detail onto a decoration for an
+    /// in-flight tool call (matched by its established provider id). This is
+    /// the adapter-level event rewrite that replaced the old hook mutating
+    /// the assembler state directly — assembly lives in the shared
+    /// accumulator now.
+    fn decorate_tool_call(&self, _detail: &Self::Detail) -> Option<ToolCallDecoration> {
+        None
     }
 
     fn emits_complete_single_chunk_tool_calls(&self) -> bool {
@@ -251,15 +255,41 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
 
     fn should_emit_completed_tool_call_immediately(
         &self,
-        _tool_call: &RawStreamingToolCall,
         incoming: &CompatibleToolCallChunk,
     ) -> bool {
         self.emits_complete_single_chunk_tool_calls() && incoming.is_complete_single_chunk()
     }
 }
 
+/// Wire identity of a tool call whose input is streaming, as tracked by the
+/// adapter. Argument assembly, internal-id minting, and finalize policy live
+/// in the shared accumulator; the adapter keeps only what the *wire* keys
+/// by — the chunk index — mapped to the identity it established.
+#[derive(Debug, Clone)]
+pub(crate) struct OpenToolCallSlot {
+    /// Assembly id: the id under which this call's fragments are emitted.
+    /// Fixed at open (the first-seen provider id, possibly empty).
+    key: String,
+    /// Established provider id: updated when a later chunk carries one.
+    pub(crate) id: String,
+    /// Established tool name: the last non-empty value seen.
+    pub(crate) name: String,
+    signature: Option<String>,
+    additional_params: Option<serde_json::Value>,
+}
+
+impl OpenToolCallSlot {
+    fn end_event(&self, on_unparseable: UnparseableToolInput) -> ToolInputEnd {
+        let mut end = ToolInputEnd::new(self.key.clone(), on_unparseable);
+        end.tool_id = Some(self.id.clone());
+        end.signature = self.signature.clone();
+        end.additional_params = self.additional_params.clone();
+        end
+    }
+}
+
 pub(crate) fn should_evict_distinct_named_tool_call(
-    existing: &RawStreamingToolCall,
+    existing: &OpenToolCallSlot,
     incoming: &CompatibleToolCallChunk,
 ) -> bool {
     if let Some(new_id) = &incoming.id
@@ -290,7 +320,10 @@ where
     let mut event_source = GenericEventSource::new(http_client, req);
 
     let stream = stream! {
-        let mut tool_calls: HashMap<usize, RawStreamingToolCall> = HashMap::new();
+        // Index-to-identity map only: the Chat Completions wire keys tool
+        // call fragments by chunk index, so the adapter must correlate.
+        // Fragment assembly itself lives in the shared accumulator.
+        let mut open_tool_calls: HashMap<usize, OpenToolCallSlot> = HashMap::new();
         let mut final_usage = None;
         let mut final_finish_reason = None;
         let mut response_id = None;
@@ -367,32 +400,40 @@ where
                     }
 
                     for incoming in choice.tool_calls {
-                        if let Some(existing) = tool_calls.get(&incoming.index)
+                        if let Some(existing) = open_tool_calls.get(&incoming.index)
                             && profile.should_evict(existing, &incoming)
-                            && let Some(evicted) = tool_calls.remove(&incoming.index)
+                            && let Some(evicted) = open_tool_calls.remove(&incoming.index)
                         {
-                            yield Ok(RawStreamingChoice::ToolCall(
-                                finalize_completed_streaming_tool_call(evicted),
+                            // The wire reused this call's slot: the evicted
+                            // call is delivered even when its arguments never
+                            // parse (empty-object fallback).
+                            yield Ok(RawStreamingChoice::ToolInputEnd(
+                                evicted.end_event(UnparseableToolInput::EmptyObject),
                             ));
                         }
 
-                        let existing_tool_call = tool_calls
+                        let slot = open_tool_calls
                             .entry(incoming.index)
-                            .or_insert_with(RawStreamingToolCall::empty);
+                            .or_insert_with(|| OpenToolCallSlot {
+                                key: incoming.id.clone().unwrap_or_default(),
+                                id: String::new(),
+                                name: String::new(),
+                                signature: None,
+                                additional_params: None,
+                            });
 
                         if let Some(id) = incoming.id.as_ref()
                             && !id.is_empty()
                         {
-                            existing_tool_call.id = id.clone();
+                            slot.id = id.clone();
                         }
 
                         if let Some(name) = incoming.name.as_ref()
                             && !name.is_empty()
                         {
-                            existing_tool_call.name = name.clone();
+                            slot.name = name.clone();
                             yield Ok(RawStreamingChoice::ToolCallDelta {
-                                id: existing_tool_call.id.clone(),
-                                internal_call_id: existing_tool_call.internal_call_id.clone(),
+                                id: slot.key.clone(),
                                 content: ToolCallDeltaContent::Name(name.clone()),
                             });
                         }
@@ -400,32 +441,33 @@ where
                         if let Some(arguments) = incoming.arguments.as_ref()
                             && !arguments.is_empty()
                         {
-                            append_tool_call_arguments(existing_tool_call, arguments);
                             yield Ok(RawStreamingChoice::ToolCallDelta {
-                                id: existing_tool_call.id.clone(),
-                                internal_call_id: existing_tool_call.internal_call_id.clone(),
+                                id: slot.key.clone(),
                                 content: ToolCallDeltaContent::Delta(arguments.clone()),
                             });
                         }
 
-                        let emit_completed_tool_call_immediately = profile
-                            .should_emit_completed_tool_call_immediately(
-                                existing_tool_call,
-                                &incoming,
-                            );
-                        let finalized_tool_call = emit_completed_tool_call_immediately
-                            .then(|| tool_calls.get(&incoming.index).cloned())
-                            .flatten()
-                            .and_then(finalize_pending_tool_call);
-
-                        if let Some(tool_call) = finalized_tool_call {
-                            tool_calls.remove(&incoming.index);
-                            yield Ok(RawStreamingChoice::ToolCall(tool_call));
+                        if profile.should_emit_completed_tool_call_immediately(&incoming) {
+                            // Completion probe: the accumulator finalizes the
+                            // call only if its input parses, and keeps it
+                            // open otherwise (`Keep`). The slot stays in the
+                            // map either way — a later flush of an already
+                            // finalized key is a no-op downstream.
+                            yield Ok(RawStreamingChoice::ToolInputEnd(
+                                slot.end_event(UnparseableToolInput::Keep),
+                            ));
                         }
                     }
 
                     for detail in &choice.details {
-                        profile.decorate_tool_call(detail, &mut tool_calls);
+                        if let Some(decoration) = profile.decorate_tool_call(detail)
+                            && let Some(slot) = open_tool_calls
+                                .values_mut()
+                                .find(|slot| slot.id == decoration.tool_id)
+                        {
+                            slot.signature = decoration.signature;
+                            slot.additional_params = decoration.additional_params;
+                        }
                     }
 
                     if let Some(reasoning) = choice.reasoning
@@ -446,11 +488,8 @@ where
                     }
 
                     if choice.finish_reason.is_tool_calls() {
-                        for tool_call in take_finalized_tool_calls(
-                            &mut tool_calls,
-                            DroppedToolCallContext::ToolCallsFinishReason,
-                        ) {
-                            yield Ok(RawStreamingChoice::ToolCall(tool_call));
+                        for end in drain_open_tool_calls(&mut open_tool_calls) {
+                            yield Ok(RawStreamingChoice::ToolInputEnd(end));
                         }
                     }
                 }
@@ -470,10 +509,9 @@ where
         // Tool calls the provider fully delivered are content, so a truncated
         // or errored stream still flushes them to the consumer — before any
         // terminal error, so a first-`Err`-stop consumer sees them too.
-        for tool_call in
-            take_finalized_tool_calls(&mut tool_calls, DroppedToolCallContext::EndOfStream)
-        {
-            yield Ok(RawStreamingChoice::ToolCall(tool_call));
+        // Partial calls (arguments that never parse) drop in the accumulator.
+        for end in drain_open_tool_calls(&mut open_tool_calls) {
+            yield Ok(RawStreamingChoice::ToolInputEnd(end));
         }
 
         // A terminal failure ends the stream after the flush, with no
@@ -551,136 +589,18 @@ fn record_response_metadata(
     }
 }
 
-fn append_tool_call_arguments(tool_call: &mut RawStreamingToolCall, chunk: &str) {
-    let current_args = match &tool_call.arguments {
-        serde_json::Value::Null => String::new(),
-        serde_json::Value::String(existing) => {
-            // Some OpenAI-compatible gateways emit a literal `null` placeholder
-            // before streaming the real JSON argument fragments. Once a later
-            // fragment arrives, treat that placeholder as empty so it doesn't
-            // poison the accumulated payload.
-            if existing.trim() == "null" && !chunk.trim().is_empty() {
-                String::new()
-            } else {
-                existing.clone()
-            }
-        }
-        value => value.to_string(),
-    };
-
-    let combined = format!("{current_args}{chunk}");
-
-    if combined.trim_start().starts_with('{') && combined.trim_end().ends_with('}') {
-        match serde_json::from_str(&combined) {
-            Ok(parsed) => tool_call.arguments = parsed,
-            Err(_) => tool_call.arguments = serde_json::Value::String(combined),
-        }
-    } else {
-        tool_call.arguments = serde_json::Value::String(combined);
-    }
-}
-
-pub(crate) fn finalize_completed_streaming_tool_call(
-    mut tool_call: RawStreamingToolCall,
-) -> RawStreamingToolCall {
-    // The eviction path (distinct-named tool calls within one assistant turn)
-    // previously only normalized a `null` arguments value to `{}` and otherwise
-    // passed the value through verbatim. Streamed OpenAI-compatible tool-call
-    // arguments accumulate as a JSON *string* (`Value::String`), so an evicted
-    // tool call leaked a bare string into `ToolCall.function.arguments`. A
-    // downstream serializer that expects an object (e.g. the Anthropic protocol's
-    // `tool_use.input`) then emitted a string, which strict providers reject with
-    // `tool_use.input: Input should be a valid dictionary`. Mirror
-    // `finalize_pending_tool_call`: parse a string payload into the underlying
-    // JSON value (empty string -> `{}`, unparseable -> `{}` rather than a bare
-    // string). Valid scalar and array arguments are canonical JSON too and must
-    // not be changed only because this call was evicted before end-of-stream.
-    match &tool_call.arguments {
-        serde_json::Value::Null => {
-            tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
-        }
-        serde_json::Value::String(arguments) => {
-            tool_call.arguments = json_utils::parse_tool_arguments(arguments)
-                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
-        }
-        _ => {}
-    }
-
-    tool_call
-}
-
-fn finalize_pending_tool_call(mut tool_call: RawStreamingToolCall) -> Option<RawStreamingToolCall> {
-    // Canonical cleanup for OpenAI Chat Completions-compatible providers:
-    // a pending tool call with an established name but no streamed arguments is
-    // treated as a valid parameterless invocation and normalized to `{}`.
-    // Only nameless entries or syntactically partial argument payloads are dropped.
-    if tool_call.name.is_empty() {
-        return None;
-    }
-
-    match &tool_call.arguments {
-        serde_json::Value::Null => Some(finalize_completed_streaming_tool_call(tool_call)),
-        serde_json::Value::String(arguments) => {
-            if arguments.trim().is_empty() {
-                tool_call.arguments = serde_json::Value::Object(serde_json::Map::new());
-                return Some(tool_call);
-            }
-
-            let parsed = json_utils::parse_tool_arguments(arguments).ok()?;
-            tool_call.arguments = parsed;
-            Some(tool_call)
-        }
-        _ => Some(tool_call),
-    }
-}
-
-#[derive(Clone, Copy)]
-enum DroppedToolCallContext {
-    ToolCallsFinishReason,
-    EndOfStream,
-}
-
-fn drain_finalized_tool_calls(
-    tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
-) -> (Vec<RawStreamingToolCall>, usize) {
-    let mut completed_tool_calls = Vec::new();
-    let mut dropped_tool_calls = 0;
-    let mut pending_tool_calls = tool_calls.drain().collect::<Vec<_>>();
-    pending_tool_calls.sort_by_key(|(index, _)| *index);
-
-    for (_, tool_call) in pending_tool_calls {
-        if let Some(tool_call) = finalize_pending_tool_call(tool_call) {
-            completed_tool_calls.push(tool_call);
-        } else {
-            dropped_tool_calls += 1;
-        }
-    }
-
-    (completed_tool_calls, dropped_tool_calls)
-}
-
-fn take_finalized_tool_calls(
-    tool_calls: &mut HashMap<usize, RawStreamingToolCall>,
-    context: DroppedToolCallContext,
-) -> Vec<RawStreamingToolCall> {
-    let (completed_tool_calls, dropped_tool_calls) = drain_finalized_tool_calls(tool_calls);
-
-    if dropped_tool_calls > 0 {
-        match context {
-            DroppedToolCallContext::ToolCallsFinishReason => tracing::debug!(
-                dropped_tool_calls,
-                "Dropping incomplete tool calls on tool_calls finish reason"
-            ),
-            DroppedToolCallContext::EndOfStream => {
-                tracing::debug!(
-                    dropped_tool_calls,
-                    "Dropping incomplete tool calls at stream end"
-                )
-            }
-        }
-    }
-
-    completed_tool_calls
+fn drain_open_tool_calls(
+    open_tool_calls: &mut HashMap<usize, OpenToolCallSlot>,
+) -> Vec<ToolInputEnd> {
+    // The wire keys tool calls by chunk index; flush in index order so a
+    // multi-call turn keeps its wire ordering. Nameless or partial calls
+    // drop in the accumulator (`UnparseableToolInput::Drop`).
+    let mut slots: Vec<(usize, OpenToolCallSlot)> = open_tool_calls.drain().collect();
+    slots.sort_by_key(|(index, _)| *index);
+    slots
+        .into_iter()
+        .map(|(_, slot)| slot.end_event(UnparseableToolInput::Drop))
+        .collect()
 }
 
 #[cfg(test)]
@@ -757,13 +677,9 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::test_support::sse_bytes_from_data_lines;
-    use super::{
-        CompatibleStreamProfile, finalize_completed_streaming_tool_call,
-        finalize_pending_tool_call, send_compatible_raw_streaming_request,
-    };
+    use super::{CompatibleStreamProfile, send_compatible_raw_streaming_request};
     use crate::completion::CompletionError;
     use crate::http_client;
-    use crate::streaming::RawStreamingToolCall;
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
     use crate::test_utils::internal_streaming_profiles::{
@@ -821,117 +737,6 @@ mod tests {
         assert_eq!(error.provider_response_body(), Some(body));
         // It arrives mid-stream with no HTTP status attached.
         assert_eq!(error.provider_response_status(), None);
-    }
-
-    #[test]
-    fn eof_cleanup_preserves_parameterless_tool_calls() {
-        let tool_call = RawStreamingToolCall::new(
-            "call_123".to_owned(),
-            "ping".to_owned(),
-            serde_json::Value::Null,
-        );
-
-        let finalized =
-            finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
-
-        assert_eq!(finalized.id, "call_123");
-        assert_eq!(finalized.name, "ping");
-        assert_eq!(finalized.arguments, serde_json::json!({}));
-    }
-
-    #[test]
-    fn eof_cleanup_preserves_empty_argument_chunks_as_empty_object() {
-        let tool_call = RawStreamingToolCall::new(
-            "call_123".to_owned(),
-            "ping".to_owned(),
-            serde_json::Value::String(String::new()),
-        );
-
-        let finalized =
-            finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
-
-        assert_eq!(finalized.arguments, serde_json::json!({}));
-    }
-
-    // Regression guard: the eviction finalizer must parse a JSON-string
-    // arguments payload into the underlying object, exactly like
-    // `finalize_pending_tool_call`. Before the fix it only normalized `null` and
-    // passed a `Value::String` through verbatim, so an evicted tool call leaked a
-    // string into `function.arguments`. A downstream serializer expecting an
-    // object (e.g. Anthropic's `tool_use.input`) then emitted a bare string,
-    // which strict providers reject with
-    // `tool_use.input: Input should be a valid dictionary`.
-    #[test]
-    fn eviction_finalizer_parses_string_arguments_into_object() {
-        let tool_call = RawStreamingToolCall::new(
-            "call_evicted".to_owned(),
-            "memory_search".to_owned(),
-            // The accumulated state when eviction fires before the args were
-            // recognized as a complete `{...}` object (e.g. whitespace/fragment).
-            serde_json::Value::String("{\"query\":\"one\"}".to_owned()),
-        );
-
-        let finalized = finalize_completed_streaming_tool_call(tool_call);
-
-        assert!(
-            finalized.arguments.is_object(),
-            "evicted tool_use input must be a JSON object, got: {:?}",
-            finalized.arguments
-        );
-        assert_eq!(finalized.arguments, serde_json::json!({"query": "one"}));
-    }
-
-    #[test]
-    fn eviction_finalizer_normalizes_empty_and_unparseable_strings_to_object() {
-        // Empty string -> {}.
-        let empty = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
-            "c1".to_owned(),
-            "ping".to_owned(),
-            serde_json::Value::String(String::new()),
-        ));
-        assert_eq!(empty.arguments, serde_json::json!({}));
-
-        // Null -> {} (pre-existing behavior, kept).
-        let null = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
-            "c2".to_owned(),
-            "ping".to_owned(),
-            serde_json::Value::Null,
-        ));
-        assert_eq!(null.arguments, serde_json::json!({}));
-
-        // Unparseable JSON -> {} rather than leaking a partial wire fragment.
-        let malformed = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
-            "c3".to_owned(),
-            "ping".to_owned(),
-            serde_json::Value::String("[1,".to_owned()),
-        ));
-        assert!(malformed.arguments.is_object());
-        assert_eq!(malformed.arguments, serde_json::json!({}));
-    }
-
-    #[test]
-    fn eviction_and_eof_preserve_the_same_valid_scalar_and_array_json() {
-        for (encoded, expected) in [
-            ("5", serde_json::json!(5)),
-            (r#""value""#, serde_json::json!("value")),
-            ("[1,2]", serde_json::json!([1, 2])),
-        ] {
-            let evicted = finalize_completed_streaming_tool_call(RawStreamingToolCall::new(
-                "evicted".to_owned(),
-                "tool".to_owned(),
-                serde_json::Value::String(encoded.to_owned()),
-            ));
-            let eof = finalize_pending_tool_call(RawStreamingToolCall::new(
-                "eof".to_owned(),
-                "tool".to_owned(),
-                serde_json::Value::String(encoded.to_owned()),
-            ))
-            .expect("valid JSON must survive EOF finalization");
-
-            assert_eq!(evicted.arguments, expected, "eviction changed {encoded}");
-            assert_eq!(eof.arguments, expected, "EOF changed {encoded}");
-            assert_eq!(evicted.arguments, eof.arguments);
-        }
     }
 
     #[tokio::test]
@@ -997,44 +802,6 @@ mod tests {
         let evicted = &collected_tool_calls[0];
         assert_eq!(evicted.id, "call_aaa");
         assert_eq!(evicted.function.arguments, serde_json::json!({}));
-    }
-
-    #[test]
-    fn eof_cleanup_drops_nameless_pending_entries() {
-        let tool_call = RawStreamingToolCall::empty();
-
-        assert!(finalize_pending_tool_call(tool_call).is_none());
-    }
-
-    #[test]
-    fn eof_cleanup_drops_partial_argument_payloads() {
-        let tool_call = RawStreamingToolCall::new(
-            "call_123".to_owned(),
-            "ping".to_owned(),
-            serde_json::Value::String("{\"x\":".to_owned()),
-        );
-
-        assert!(finalize_pending_tool_call(tool_call).is_none());
-    }
-
-    #[test]
-    fn null_placeholder_is_replaced_by_following_json_fragments() {
-        let mut tool_call = RawStreamingToolCall::new(
-            "call_123".to_owned(),
-            "web_search".to_owned(),
-            serde_json::Value::String("null".to_owned()),
-        );
-
-        super::append_tool_call_arguments(&mut tool_call, "{\"query\": \"META");
-        super::append_tool_call_arguments(&mut tool_call, " Platforms news\"}");
-
-        let finalized =
-            finalize_pending_tool_call(tool_call).expect("tool call should be preserved");
-
-        assert_eq!(
-            finalized.arguments,
-            serde_json::json!({"query": "META Platforms news"})
-        );
     }
 
     #[tokio::test]

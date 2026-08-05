@@ -385,8 +385,8 @@ mod tests {
             MockStreamEvent::message_id("msg_stream"),
             MockStreamEvent::text("hel"),
             MockStreamEvent::text("lo"),
-            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "calculator"),
-            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "calculator"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
             MockStreamEvent::tool_call("tool_1", "calculator", serde_json::json!({"x": 1}))
                 .with_call_id("call_1"),
             MockStreamEvent::final_response_with_total_tokens(7),

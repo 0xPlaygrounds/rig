@@ -14,7 +14,9 @@
 
 use std::collections::HashMap;
 
-use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall};
+use crate::completion::CompletionError;
+use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
+use crate::streaming::{ToolInputEnd, UnparseableToolInput};
 
 /// Identity of a reasoning part: the provider-scoped item id plus a part
 /// ordinal distinguishing sibling parts of one multi-part item.
@@ -62,6 +64,33 @@ pub(crate) struct PartsAccumulator {
     /// Active text block; text deltas and metadata merge here until the block
     /// is closed by a text start, a reasoning event, or a tool call.
     text_index: Option<usize>,
+    /// Tool calls under delta assembly, keyed by the fragment id, in start
+    /// order. A completed call leaves this list, so a reused id after
+    /// completion opens a fresh call (the ordinal collapse the reasoning
+    /// keying does explicitly).
+    open_tool_inputs: Vec<OpenToolInput>,
+    /// Whether any completed tool call was recorded; the streaming
+    /// counterpart of the unary path's finish-reason reconciliation input.
+    saw_tool_call: bool,
+}
+
+/// A tool call whose input is still being assembled from streamed fragments.
+///
+/// Reference designs: pydantic-ai `handle_tool_call_delta`
+/// (`_parts_manager.py:358`) and vercel's shared
+/// `streaming-tool-call-tracker` — fragment buffering, keying, and the
+/// delta-to-part transition live in the one shared component, never in a
+/// provider.
+struct OpenToolInput {
+    /// Assembly identity: every fragment of one call carries this id.
+    id: String,
+    /// Rig-minted correlation id, created when the call opens.
+    internal_call_id: String,
+    /// Tool name; a later non-empty name fragment replaces it.
+    name: String,
+    /// Concatenated raw argument fragments. `None` until a fragment arrives —
+    /// a call that streamed no arguments is a parameterless invocation.
+    buffer: Option<String>,
 }
 
 impl PartsAccumulator {
@@ -234,8 +263,180 @@ impl PartsAccumulator {
     pub(crate) fn tool_call(&mut self, tool_call: ToolCall) {
         self.close_minted_reasoning();
         self.text_index = None;
+        self.saw_tool_call = true;
         self.parts
             .push(ManagedPart::Complete(AssistantContent::ToolCall(tool_call)));
+    }
+
+    /// Whether any completed tool call was recorded on this stream.
+    pub(crate) fn saw_tool_call(&self) -> bool {
+        self.saw_tool_call
+    }
+
+    /// Record a streamed tool name fragment, opening the call if `id` has no
+    /// open call. Returns the call's minted internal id.
+    ///
+    /// A later non-empty name replaces the recorded one (OpenAI-compatible
+    /// wire semantics: the established name is the last non-empty value).
+    /// Open-tool state deliberately does not close the active text or
+    /// reasoning block — only the *completed* call is a part boundary,
+    /// matching the pre-assembly behavior where deltas bypassed accumulation.
+    pub(crate) fn tool_name_delta(&mut self, id: &str, name: &str) -> String {
+        let index = self.ensure_open_tool_input(id);
+        match self.open_tool_inputs.get_mut(index) {
+            Some(input) => {
+                name.clone_into(&mut input.name);
+                input.internal_call_id.clone()
+            }
+            // Unreachable (`ensure` returns a live index); degrade to a fresh
+            // id rather than panic.
+            None => crate::id::generate(),
+        }
+    }
+
+    /// Append a streamed argument fragment to the call's buffer, opening the
+    /// call if `id` has no open call. Returns the call's minted internal id.
+    pub(crate) fn tool_args_delta(&mut self, id: &str, fragment: &str) -> String {
+        let index = self.ensure_open_tool_input(id);
+        match self.open_tool_inputs.get_mut(index) {
+            Some(input) => {
+                match input.buffer.as_mut() {
+                    Some(buffer) => {
+                        // Some OpenAI-compatible gateways emit a literal
+                        // `null` placeholder before streaming the real JSON
+                        // argument fragments; a later non-empty fragment
+                        // supersedes it.
+                        if buffer.trim() == "null" && !fragment.trim().is_empty() {
+                            buffer.clear();
+                        }
+                        buffer.push_str(fragment);
+                    }
+                    None => input.buffer = Some(fragment.to_owned()),
+                }
+                input.internal_call_id.clone()
+            }
+            // Unreachable (`ensure` returns a live index); degrade to a fresh
+            // id rather than panic.
+            None => crate::id::generate(),
+        }
+    }
+
+    /// Close a streamed tool call's input and finalize it into a completed
+    /// call.
+    ///
+    /// Returns the completed call and its internal id, `None` when the call
+    /// is dropped (nameless, or unparseable under
+    /// [`UnparseableToolInput::Drop`]), or an error item under
+    /// [`UnparseableToolInput::Error`]. Authoritative fields on the end event
+    /// (a wire's completed item) supersede the assembled state. An end with
+    /// no open call opens and completes one from the event alone.
+    pub(crate) fn tool_input_end(
+        &mut self,
+        end: ToolInputEnd,
+    ) -> Result<Option<(ToolCall, String)>, CompletionError> {
+        let position = self
+            .open_tool_inputs
+            .iter()
+            .position(|input| input.id == end.id);
+        let open = position.map(|index| self.open_tool_inputs.remove(index));
+        // Restores an open call that a `Keep`-mode probe could not finalize,
+        // preserving its start-order slot.
+        let keep_open = |accumulator: &mut Self, input: Option<OpenToolInput>| {
+            if let (Some(index), Some(input)) = (position, input) {
+                accumulator.open_tool_inputs.insert(index, input);
+            }
+        };
+
+        let (internal_call_id, opened_id, mut name, buffer) = match open.as_ref() {
+            Some(input) => (
+                input.internal_call_id.clone(),
+                input.id.clone(),
+                input.name.clone(),
+                input.buffer.clone(),
+            ),
+            None => (crate::id::generate(), end.id.clone(), String::new(), None),
+        };
+        if let Some(final_name) = end.name.clone() {
+            name = final_name;
+        }
+        // A call whose name never arrived is not a call the model made
+        // (OpenAI-compatible flush semantics: nameless entries drop).
+        if name.is_empty() {
+            if matches!(end.on_unparseable, UnparseableToolInput::Keep) {
+                keep_open(self, open);
+            }
+            return Ok(None);
+        }
+
+        let arguments = match end.arguments {
+            // The wire's completed item is authoritative over assembly.
+            Some(arguments) => arguments,
+            None => match buffer {
+                // No streamed arguments: a parameterless invocation.
+                None => serde_json::Value::Object(serde_json::Map::new()),
+                Some(buffer) => match crate::json_utils::parse_tool_arguments(&buffer) {
+                    Ok(arguments) => arguments,
+                    Err(err) => match end.on_unparseable {
+                        // Partial input (truncation): the call never fully
+                        // arrived, so it must not reach the consumer.
+                        UnparseableToolInput::Drop => {
+                            tracing::debug!(
+                                tool = %name,
+                                "dropping streamed tool call whose arguments never fully arrived"
+                            );
+                            return Ok(None);
+                        }
+                        // The wire superseded this call mid-assembly; deliver
+                        // it with empty arguments rather than losing it.
+                        UnparseableToolInput::EmptyObject => {
+                            serde_json::Value::Object(serde_json::Map::new())
+                        }
+                        // The wire promised a complete block; malformed input
+                        // is a response defect, never a silent drop.
+                        UnparseableToolInput::Error => {
+                            return Err(CompletionError::ResponseError(format!(
+                                "tool call `{name}` arrived with malformed JSON input: {err}"
+                            )));
+                        }
+                        // A completion probe: the input may still be extended.
+                        UnparseableToolInput::Keep => {
+                            keep_open(self, open);
+                            return Ok(None);
+                        }
+                    },
+                },
+            },
+        };
+
+        let tool_call = ToolCall {
+            id: end.tool_id.unwrap_or(opened_id),
+            call_id: end.call_id,
+            function: ToolFunction { name, arguments },
+            signature: end.signature,
+            additional_params: end.additional_params,
+        };
+        self.tool_call(tool_call.clone());
+        Ok(Some((tool_call, internal_call_id)))
+    }
+
+    /// Index of the open call for `id`, opening one if none exists.
+    fn ensure_open_tool_input(&mut self, id: &str) -> usize {
+        match self
+            .open_tool_inputs
+            .iter()
+            .position(|input| input.id == id)
+        {
+            Some(index) => index,
+            None => {
+                self.open_tool_inputs.push(OpenToolInput {
+                    id: id.to_owned(),
+                    internal_call_id: crate::id::generate(),
+                    name: String::new(),
+                    buffer: None,
+                });
+                self.open_tool_inputs.len() - 1
+            }
+        }
     }
 
     /// Consume the accumulated state into the ordered choice parts.
@@ -250,6 +451,10 @@ impl PartsAccumulator {
         self.reasoning_index.clear();
         self.open_ordinal.clear();
         self.text_index = None;
+        // Calls still open at stream end never fully arrived (no end event,
+        // no adapter flush): truncated input drops, per the settled contract.
+        self.open_tool_inputs.clear();
+        self.saw_tool_call = false;
         if parts.is_empty() {
             parts.push(AssistantContent::text(""));
         }
@@ -573,5 +778,298 @@ mod tests {
         let mut accumulator = PartsAccumulator::new();
         let parts = accumulator.finish();
         assert_eq!(parts, vec![AssistantContent::text("")]);
+    }
+
+    // --- Tool-input assembly: the settled semantics the four provider
+    // trackers (compat, Responses, Anthropic, Bedrock) used to hand-roll. ---
+
+    fn end(id: &str, mode: UnparseableToolInput) -> ToolInputEnd {
+        ToolInputEnd::new(id, mode)
+    }
+
+    #[test]
+    fn fragments_assemble_into_a_completed_tool_call_with_a_stable_internal_id() {
+        let mut accumulator = PartsAccumulator::new();
+        let first = accumulator.tool_name_delta("call_1", "get_weather");
+        let second = accumulator.tool_args_delta("call_1", "{\"location\":");
+        let third = accumulator.tool_args_delta("call_1", "\"Paris\",");
+        accumulator.tool_args_delta("call_1", "\"temp\":\"20C\"}");
+        assert_eq!(first, second);
+        assert_eq!(second, third);
+
+        let (tool_call, internal_call_id) = accumulator
+            .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("call must finalize");
+        assert_eq!(internal_call_id, first, "internal id is minted at start");
+        assert_eq!(tool_call.id, "call_1");
+        assert_eq!(tool_call.function.name, "get_weather");
+        assert_eq!(
+            tool_call.function.arguments,
+            serde_json::json!({"location": "Paris", "temp": "20C"})
+        );
+        assert!(accumulator.saw_tool_call());
+        assert!(matches!(
+            accumulator.finish().first(),
+            Some(AssistantContent::ToolCall(_))
+        ));
+    }
+
+    #[test]
+    fn a_call_with_no_streamed_arguments_is_a_parameterless_invocation() {
+        for fragments in [Vec::new(), vec![""]] {
+            let mut accumulator = PartsAccumulator::new();
+            accumulator.tool_name_delta("call_1", "ping");
+            for fragment in fragments {
+                accumulator.tool_args_delta("call_1", fragment);
+            }
+            let (tool_call, _) = accumulator
+                .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+                .expect("no error")
+                .expect("parameterless calls are preserved");
+            assert_eq!(tool_call.function.arguments, serde_json::json!({}));
+        }
+    }
+
+    /// Truncation contract: a partial argument payload (or a nameless entry)
+    /// never reaches the consumer under the `Drop` flush.
+    #[test]
+    fn drop_mode_drops_partial_arguments_and_nameless_calls() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_1", "ping");
+        accumulator.tool_args_delta("call_1", "{\"x\":");
+        assert!(
+            accumulator
+                .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none()
+        );
+
+        accumulator.tool_args_delta("call_2", "{\"y\":1}");
+        assert!(
+            accumulator
+                .tool_input_end(end("call_2", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none(),
+            "a call whose name never arrived is dropped"
+        );
+        assert!(!accumulator.saw_tool_call());
+    }
+
+    /// Eviction contract: a superseded call is delivered even when its
+    /// arguments never parsed — normalized to `{}`, never a bare string.
+    #[test]
+    fn empty_object_mode_delivers_unparseable_input_as_an_empty_object() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_1", "memory_search");
+        accumulator.tool_args_delta("call_1", "{\"query\":");
+        let (tool_call, _) = accumulator
+            .tool_input_end(end("call_1", UnparseableToolInput::EmptyObject))
+            .expect("no error")
+            .expect("evicted calls are preserved");
+        assert_eq!(tool_call.function.arguments, serde_json::json!({}));
+    }
+
+    /// Complete-block wires (Anthropic/Bedrock stop events): malformed input
+    /// surfaces as an error item rather than a silent drop.
+    #[test]
+    fn error_mode_surfaces_malformed_input_as_an_error() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_1", "get_weather");
+        accumulator.tool_args_delta("call_1", "{\"location\": not-json");
+        let err = accumulator
+            .tool_input_end(end("call_1", UnparseableToolInput::Error))
+            .expect_err("malformed complete input must error");
+        assert!(err.to_string().contains("get_weather"));
+    }
+
+    /// Completion-probe contract (single-chunk immediate emission): a probe
+    /// that cannot finalize leaves the call open, later fragments extend it,
+    /// and the internal id survives.
+    #[test]
+    fn keep_mode_leaves_the_call_open_for_later_fragments() {
+        let mut accumulator = PartsAccumulator::new();
+        let internal = accumulator.tool_name_delta("call_1", "search");
+        accumulator.tool_args_delta("call_1", "{\"q\":\"ru");
+        assert!(
+            accumulator
+                .tool_input_end(end("call_1", UnparseableToolInput::Keep))
+                .expect("no error")
+                .is_none()
+        );
+
+        accumulator.tool_args_delta("call_1", "st\"}");
+        let (tool_call, internal_after) = accumulator
+            .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("extended call finalizes");
+        assert_eq!(internal_after, internal);
+        assert_eq!(
+            tool_call.function.arguments,
+            serde_json::json!({"q": "rust"})
+        );
+    }
+
+    /// Responses contract: the done item's fields are authoritative over the
+    /// assembled fragments, and correlation with the fragment-minted internal
+    /// id comes from the shared item id.
+    #[test]
+    fn authoritative_end_fields_supersede_assembly() {
+        let mut accumulator = PartsAccumulator::new();
+        let internal = accumulator.tool_name_delta("fc_1", "provisional");
+        accumulator.tool_args_delta("fc_1", "{\"partial\":");
+
+        let mut done = end("fc_1", UnparseableToolInput::Drop);
+        done.name = Some("final_name".to_owned());
+        done.arguments = Some(serde_json::json!({"x": 1}));
+        done.call_id = Some("call_abc".to_owned());
+        let (tool_call, internal_after) = accumulator
+            .tool_input_end(done)
+            .expect("no error")
+            .expect("authoritative payload finalizes");
+        assert_eq!(internal_after, internal);
+        assert_eq!(tool_call.id, "fc_1");
+        assert_eq!(tool_call.call_id.as_deref(), Some("call_abc"));
+        assert_eq!(tool_call.function.name, "final_name");
+        assert_eq!(tool_call.function.arguments, serde_json::json!({"x": 1}));
+    }
+
+    /// Responses replay path: a done item with no preceding fragments opens
+    /// and completes the call from the event alone.
+    #[test]
+    fn an_end_with_no_open_call_creates_the_call_from_its_payload() {
+        let mut accumulator = PartsAccumulator::new();
+        let mut done = end("fc_1", UnparseableToolInput::Drop);
+        done.name = Some("add".to_owned());
+        done.arguments = Some(serde_json::json!({"x": 2}));
+        let (tool_call, _) = accumulator
+            .tool_input_end(done)
+            .expect("no error")
+            .expect("whole done items finalize");
+        assert_eq!(tool_call.function.name, "add");
+    }
+
+    /// An end with neither an open call nor an authoritative name is a stale
+    /// flush of an already-finalized key: silently ignored.
+    #[test]
+    fn a_stale_end_for_a_finalized_key_is_a_no_op() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_1", "ping");
+        accumulator
+            .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("finalizes");
+        assert!(
+            accumulator
+                .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none()
+        );
+        assert_eq!(
+            accumulator
+                .finish()
+                .iter()
+                .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+                .count(),
+            1
+        );
+    }
+
+    /// Gateway quirk: a literal `null` placeholder fragment is superseded by
+    /// the real JSON fragments that follow.
+    #[test]
+    fn null_placeholder_is_replaced_by_following_json_fragments() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_123", "web_search");
+        accumulator.tool_args_delta("call_123", "null");
+        accumulator.tool_args_delta("call_123", "{\"query\": \"META");
+        accumulator.tool_args_delta("call_123", " Platforms news\"}");
+        let (tool_call, _) = accumulator
+            .tool_input_end(end("call_123", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("call must finalize");
+        assert_eq!(
+            tool_call.function.arguments,
+            serde_json::json!({"query": "META Platforms news"})
+        );
+    }
+
+    /// Valid scalar and array argument payloads are canonical JSON and
+    /// survive every delivery-mode finalization unchanged.
+    #[test]
+    fn scalar_and_array_arguments_survive_finalization_in_every_delivery_mode() {
+        for (encoded, expected) in [
+            ("5", serde_json::json!(5)),
+            (r#""value""#, serde_json::json!("value")),
+            ("[1,2]", serde_json::json!([1, 2])),
+        ] {
+            for mode in [
+                UnparseableToolInput::Drop,
+                UnparseableToolInput::EmptyObject,
+            ] {
+                let mut accumulator = PartsAccumulator::new();
+                accumulator.tool_name_delta("call_1", "tool");
+                accumulator.tool_args_delta("call_1", encoded);
+                let (tool_call, _) = accumulator
+                    .tool_input_end(end("call_1", mode))
+                    .expect("no error")
+                    .expect("valid JSON must survive finalization");
+                assert_eq!(tool_call.function.arguments, expected, "changed {encoded}");
+            }
+        }
+    }
+
+    /// Parallel assembly: fragments interleaved across two ids stay separate,
+    /// and finalization order follows the end events, not the starts.
+    #[test]
+    fn parallel_calls_assemble_independently() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_a", "get_weather");
+        accumulator.tool_name_delta("call_b", "get_time");
+        accumulator.tool_args_delta("call_a", "{\"location\":\"Paris\"}");
+        accumulator.tool_args_delta("call_b", "{\"zone\":\"UTC\"}");
+        let (call_b, _) = accumulator
+            .tool_input_end(end("call_b", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("finalizes");
+        let (call_a, _) = accumulator
+            .tool_input_end(end("call_a", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("finalizes");
+        assert_eq!(
+            call_b.function.arguments,
+            serde_json::json!({"zone": "UTC"})
+        );
+        assert_eq!(
+            call_a.function.arguments,
+            serde_json::json!({"location": "Paris"})
+        );
+    }
+
+    /// Truncation contract at stream end: calls still open when the stream
+    /// finishes never became content and are discarded.
+    #[test]
+    fn finish_discards_calls_still_open_at_stream_end() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("call_1", "ping");
+        accumulator.tool_args_delta("call_1", "{\"x\":");
+        let parts = accumulator.finish();
+        assert_eq!(parts, vec![AssistantContent::text("")]);
+        assert!(!accumulator.saw_tool_call());
+    }
+
+    /// The tool-id override: a call opened under an id-less key still reports
+    /// the provider id its wire established later.
+    #[test]
+    fn the_tool_id_override_supersedes_the_assembly_key() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("", "ping");
+        let mut done = end("", UnparseableToolInput::Drop);
+        done.tool_id = Some("call_late".to_owned());
+        let (tool_call, _) = accumulator
+            .tool_input_end(done)
+            .expect("no error")
+            .expect("finalizes");
+        assert_eq!(tool_call.id, "call_late");
     }
 }

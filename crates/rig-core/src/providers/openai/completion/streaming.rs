@@ -436,10 +436,8 @@ where
     fn decorate_tool_call(
         &self,
         detail: &Self::Detail,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        self.provider
-            .decorate_streaming_tool_call(detail, tool_calls);
+    ) -> Option<crate::streaming::ToolCallDecoration> {
+        self.provider.decorate_streaming_tool_call(detail)
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {

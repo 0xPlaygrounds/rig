@@ -1538,14 +1538,19 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         self.finalize_request_body(body)
     }
 
-    /// Decorate streamed tool calls from provider-specific streaming detail
-    /// payloads. Most OpenAI-compatible providers do not emit such details.
+    /// Decorate a streamed tool call from a provider-specific streaming
+    /// detail payload, matched by its established provider id. Most
+    /// OpenAI-compatible providers do not emit such details.
+    ///
+    /// The decoration is an adapter-level event rewrite: it rides the
+    /// adapter's tool-input end event onto the completed call; fragment
+    /// assembly itself lives in the shared accumulator.
     fn decorate_streaming_tool_call(
         &self,
         detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        let _ = (detail, tool_calls);
+    ) -> Option<crate::streaming::ToolCallDecoration> {
+        let _ = detail;
+        None
     }
 }
 

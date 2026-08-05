@@ -14,7 +14,7 @@ use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombin
 use rig_core::{
     completion::CompletionError,
     message::ReasoningContent,
-    streaming::{RawStreamingChoice, RawStreamingToolCall, ToolCallDeltaContent},
+    streaming::{RawStreamingChoice, ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput},
     wasm_compat::WasmCompatSend,
 };
 use serde::{Deserialize, Serialize};
@@ -59,12 +59,15 @@ impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
     }
 }
 
-#[derive(Default)]
-struct ToolCallState {
+/// Wire identity of an open tool-use block. Fragment assembly, internal-id
+/// minting, and finalize policy live in the shared accumulator
+/// (`PartsAccumulator::tool_input_*`); the adapter keeps only what the wire
+/// keys by — `contentBlockIndex` — mapped to the block's tool-use id (and the
+/// name, for the dropped-block warning).
+#[derive(Default, Clone)]
+struct OpenToolUseBlock {
     name: String,
     id: String,
-    internal_call_id: String,
-    input_json: String,
 }
 
 #[derive(Default)]
@@ -109,33 +112,18 @@ fn finalize_reasoning(
 /// later block silently overwrite an earlier one.
 #[derive(Default)]
 struct StreamState {
-    tool_calls: HashMap<i32, ToolCallState>,
+    tool_calls: HashMap<i32, OpenToolUseBlock>,
     current_reasoning: Option<ReasoningState>,
     final_stop_reason: Option<StopReason>,
 }
 
-/// Convert an accumulated [`ToolCallState`] into the tool-call item to yield.
-///
-/// An empty accumulated input means a tool with no parameters; malformed JSON
-/// is surfaced as an error item rather than silently dropped, so the terminal
+/// End a closed tool-use block: the shared accumulator finalizes the
+/// assembled input. An empty accumulated input means a tool with no
+/// parameters; malformed JSON surfaces as an error item
+/// (`UnparseableToolInput::Error`) rather than a silent drop, so the terminal
 /// can never report tool use whose calls the consumer never saw.
-fn finalize_tool_call(
-    tool_call: ToolCallState,
-) -> Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError> {
-    let tool_input = if tool_call.input_json.is_empty() {
-        serde_json::json!({})
-    } else {
-        serde_json::from_str(tool_call.input_json.as_str()).map_err(|err| {
-            CompletionError::ResponseError(format!(
-                "tool call `{}` arrived with malformed JSON input: {err}",
-                tool_call.name
-            ))
-        })?
-    };
-    Ok(RawStreamingChoice::ToolCall(
-        RawStreamingToolCall::new(tool_call.id, tool_call.name, tool_input)
-            .with_internal_call_id(tool_call.internal_call_id),
-    ))
+fn finalize_tool_call(tool_call: OpenToolUseBlock) -> RawStreamingChoice<BedrockStreamingResponse> {
+    RawStreamingChoice::ToolInputEnd(ToolInputEnd::new(tool_call.id, UnparseableToolInput::Error))
 }
 
 /// Handle one Converse stream event, returning the items to yield in order.
@@ -158,15 +146,12 @@ fn process_event(
                     items.push(Ok(RawStreamingChoice::Message(text)));
                 }
                 aws_bedrock::ContentBlockDelta::ToolUse(tool) => {
-                    if let Some(tool_call) = state.tool_calls.get_mut(&event.content_block_index) {
-                        let delta = tool.input().to_string();
-                        tool_call.input_json.push_str(&delta);
-
-                        // Emit the delta so UI can show progress
+                    if let Some(tool_call) = state.tool_calls.get(&event.content_block_index) {
+                        // Emit the delta so UI can show progress; the shared
+                        // accumulator assembles the fragments.
                         items.push(Ok(RawStreamingChoice::ToolCallDelta {
                             id: tool_call.id.clone(),
-                            internal_call_id: tool_call.internal_call_id.clone(),
-                            content: ToolCallDeltaContent::Delta(delta),
+                            content: ToolCallDeltaContent::Delta(tool.input().to_string()),
                         }));
                     }
                 }
@@ -205,19 +190,15 @@ fn process_event(
             };
             match start {
                 aws_bedrock::ContentBlockStart::ToolUse(tool_use) => {
-                    let internal_call_id = rig_core::id::generate();
                     state.tool_calls.insert(
                         event.content_block_index,
-                        ToolCallState {
+                        OpenToolUseBlock {
                             name: tool_use.name.clone(),
                             id: tool_use.tool_use_id.clone(),
-                            internal_call_id: internal_call_id.clone(),
-                            input_json: String::new(),
                         },
                     );
                     items.push(Ok(RawStreamingChoice::ToolCallDelta {
                         id: tool_use.tool_use_id,
-                        internal_call_id,
                         content: ToolCallDeltaContent::Name(tool_use.name),
                     }));
                 }
@@ -236,7 +217,7 @@ fn process_event(
             // mirroring the reasoning finalize above, so every call in a
             // multi-tool-call message reaches the consumer.
             if let Some(tool_call) = state.tool_calls.remove(&event.content_block_index) {
-                items.push(finalize_tool_call(tool_call));
+                items.push(Ok(finalize_tool_call(tool_call)));
             }
         }
         aws_bedrock::ConverseStreamOutput::MessageStop(message_stop_event) => {
@@ -260,10 +241,11 @@ fn process_event(
             // consumer by the mapped finish reason on the terminal record,
             // which the Metadata path emits via `final_stop_reason`.
             if matches!(state.final_stop_reason, Some(StopReason::ToolUse)) {
-                let mut remaining: Vec<(i32, ToolCallState)> = state.tool_calls.drain().collect();
+                let mut remaining: Vec<(i32, OpenToolUseBlock)> =
+                    state.tool_calls.drain().collect();
                 remaining.sort_by_key(|(index, _)| *index);
                 for (_, tool_call) in remaining {
-                    items.push(finalize_tool_call(tool_call));
+                    items.push(Ok(finalize_tool_call(tool_call)));
                 }
             } else if !state.tool_calls.is_empty() {
                 let dropped: Vec<String> = state
@@ -639,109 +621,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_call_state_default() {
-        // Test that ToolCallState defaults are correct
-        let state = ToolCallState::default();
-        assert_eq!(state.name, "");
-        assert_eq!(state.id, "");
-        assert_eq!(state.input_json, "");
-    }
-
-    #[test]
-    fn test_tool_call_state_accumulate_json() {
-        // Test accumulating JSON input in ToolCallState
-        let mut state = ToolCallState {
-            name: "my_tool".to_string(),
-            id: "tool_123".to_string(),
-            internal_call_id: rig_core::id::generate(),
-            input_json: String::new(),
-        };
-
-        state.input_json.push_str("{\"arg1\":");
-        state.input_json.push_str("\"value1\"");
-        state.input_json.push('}');
-
-        assert_eq!(state.name, "my_tool");
-        assert_eq!(state.id, "tool_123");
-        assert_eq!(state.input_json, "{\"arg1\":\"value1\"}");
-    }
-
-    #[test]
-    fn test_tool_call_state_empty_accumulation() {
-        let state = ToolCallState {
-            name: "test_tool".to_string(),
-            id: "tool_abc".to_string(),
-            internal_call_id: rig_core::id::generate(),
-            input_json: String::new(),
-        };
-
-        assert_eq!(state.name, "test_tool");
-        assert_eq!(state.id, "tool_abc");
-        assert!(state.input_json.is_empty());
-    }
-
-    #[test]
-    fn test_tool_call_state_single_chunk() {
-        let mut state = ToolCallState {
-            name: "get_weather".to_string(),
-            id: "call_123".to_string(),
-            internal_call_id: rig_core::id::generate(),
-            input_json: String::new(),
-        };
-
-        state.input_json.push_str("{\"location\":\"Paris\"}");
-
-        assert_eq!(state.input_json, "{\"location\":\"Paris\"}");
-    }
-
-    #[test]
-    fn test_tool_call_state_multiple_small_chunks() {
-        let mut state = ToolCallState {
-            name: "search".to_string(),
-            id: "call_xyz".to_string(),
-            internal_call_id: rig_core::id::generate(),
-            input_json: String::new(),
-        };
-
-        // Simulate multiple small chunks arriving
-        let chunks = vec!["{", "\"q", "uery", "\":", "\"R", "ust", "\"}"];
-
-        for chunk in chunks {
-            state.input_json.push_str(chunk);
-        }
-
-        assert_eq!(state.input_json, "{\"query\":\"Rust\"}");
-    }
-
-    #[test]
-    fn test_tool_call_state_complex_json_accumulation() {
-        let mut state = ToolCallState {
-            name: "analyze_data".to_string(),
-            id: "call_456".to_string(),
-            internal_call_id: rig_core::id::generate(),
-            input_json: String::new(),
-        };
-
-        // Simulate accumulating a complex nested JSON
-        state.input_json.push_str("{\"data\":{");
-        state.input_json.push_str("\"values\":[1,2,3],");
-        state
-            .input_json
-            .push_str("\"metadata\":{\"source\":\"api\"}");
-        state.input_json.push_str("}}");
-
-        assert_eq!(
-            state.input_json,
-            "{\"data\":{\"values\":[1,2,3],\"metadata\":{\"source\":\"api\"}}}"
-        );
-
-        // Verify it's valid JSON
-        let parsed: serde_json::Value =
-            serde_json::from_str(&state.input_json).expect("Should parse as valid JSON");
-        assert!(parsed.is_object());
-    }
-
-    #[test]
     fn test_reasoning_state_accumulation() {
         let mut state = ReasoningState::default();
 
@@ -918,20 +797,35 @@ mod tests {
         (items, state)
     }
 
-    fn emitted_tool_calls(
-        items: &[Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError>],
-    ) -> Vec<&RawStreamingToolCall> {
-        items
-            .iter()
-            .filter_map(|item| match item {
-                Ok(RawStreamingChoice::ToolCall(call)) => Some(call),
-                _ => None,
-            })
-            .collect()
+    /// Drive the raw items through the same normalized pipeline the public
+    /// stream uses (terminal mapping plus the shared accumulator), returning
+    /// the completed tool calls and the in-band errors a consumer would see.
+    /// Tool-call finalization happens in the accumulator, so assertions about
+    /// completed calls and malformed-input errors belong at this level.
+    async fn assembled(
+        items: Vec<Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError>>,
+    ) -> (Vec<rig_core::message::ToolCall>, Vec<CompletionError>) {
+        use futures::StreamExt;
+        let raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse> =
+            Box::pin(futures::stream::iter(items));
+        let mut stream =
+            StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw));
+        let mut calls = Vec::new();
+        let mut errors = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(rig_core::streaming::StreamedAssistantContent::ToolCall {
+                    tool_call, ..
+                }) => calls.push(tool_call),
+                Err(err) => errors.push(err),
+                Ok(_) => {}
+            }
+        }
+        (calls, errors)
     }
 
-    #[test]
-    fn parallel_tool_calls_all_emitted_with_tool_use_terminal() {
+    #[tokio::test]
+    async fn parallel_tool_calls_all_emitted_with_tool_use_terminal() {
         // Two tool-use blocks in one message: both must survive, and the
         // latched stop reason must map to a tool-use terminal.
         let (items, state) = run_events(vec![
@@ -945,28 +839,35 @@ mod tests {
             message_stop_event(aws_bedrock::StopReason::ToolUse),
         ]);
 
-        let calls = emitted_tool_calls(&items);
-        assert_eq!(calls.len(), 2, "both parallel tool calls must be emitted");
-        let first = calls.first().expect("first call");
-        assert_eq!(first.id, "call_a");
-        assert_eq!(first.name, "get_weather");
-        assert_eq!(first.arguments, serde_json::json!({"location": "Paris"}));
-        let second = calls.get(1).expect("second call");
-        assert_eq!(second.id, "call_b");
-        assert_eq!(second.name, "get_time");
-        assert_eq!(second.arguments, serde_json::json!({"zone": "UTC"}));
-
+        assert!(items.iter().all(|item| item.is_ok()));
         // The terminal reports tool use with the calls actually delivered.
         assert_eq!(state.final_stop_reason, Some(StopReason::ToolUse));
         assert_eq!(
             map_stop_reason(&StopReason::ToolUse),
             rig_core::completion::FinishReason::ToolCalls
         );
-        assert!(items.iter().all(|item| item.is_ok()));
+
+        let (calls, errors) = assembled(items).await;
+        assert!(errors.is_empty());
+        assert_eq!(calls.len(), 2, "both parallel tool calls must be emitted");
+        let first = calls.first().expect("first call");
+        assert_eq!(first.id, "call_a");
+        assert_eq!(first.function.name, "get_weather");
+        assert_eq!(
+            first.function.arguments,
+            serde_json::json!({"location": "Paris"})
+        );
+        let second = calls.get(1).expect("second call");
+        assert_eq!(second.id, "call_b");
+        assert_eq!(second.function.name, "get_time");
+        assert_eq!(
+            second.function.arguments,
+            serde_json::json!({"zone": "UTC"})
+        );
     }
 
-    #[test]
-    fn tool_call_flushes_at_content_block_stop() {
+    #[tokio::test]
+    async fn tool_call_flushes_at_content_block_stop() {
         // The call must not wait for MessageStop: closing the block emits it.
         let (items, state) = run_events(vec![
             tool_start_event(0, "call_a", "get_weather"),
@@ -974,12 +875,14 @@ mod tests {
             block_stop_event(0),
         ]);
 
-        assert_eq!(emitted_tool_calls(&items).len(), 1);
         assert!(state.tool_calls.is_empty(), "state must be cleared at stop");
+        let (calls, errors) = assembled(items).await;
+        assert!(errors.is_empty());
+        assert_eq!(calls.len(), 1);
     }
 
-    #[test]
-    fn message_stop_flushes_stragglers_missing_a_block_stop() {
+    #[tokio::test]
+    async fn message_stop_flushes_stragglers_missing_a_block_stop() {
         // Defensive path: a stream that omits ContentBlockStop still delivers
         // every accumulated call at MessageStop, in block order.
         let (items, _state) = run_events(vec![
@@ -990,14 +893,15 @@ mod tests {
             message_stop_event(aws_bedrock::StopReason::ToolUse),
         ]);
 
-        let calls = emitted_tool_calls(&items);
+        let (calls, errors) = assembled(items).await;
+        assert!(errors.is_empty());
         assert_eq!(calls.len(), 2);
         assert_eq!(calls.first().expect("first call").id, "call_a");
         assert_eq!(calls.get(1).expect("second call").id, "call_b");
     }
 
-    #[test]
-    fn text_after_closed_tool_block_is_delivered() {
+    #[tokio::test]
+    async fn text_after_closed_tool_block_is_delivered() {
         // A text block following a closed tool-use block used to be discarded
         // because the single tool slot was never cleared.
         let (items, _state) = run_events(vec![
@@ -1017,11 +921,13 @@ mod tests {
             })
             .collect();
         assert_eq!(texts, vec!["Checking the weather now."]);
-        assert_eq!(emitted_tool_calls(&items).len(), 1);
+        let (calls, errors) = assembled(items).await;
+        assert!(errors.is_empty());
+        assert_eq!(calls.len(), 1);
     }
 
-    #[test]
-    fn malformed_tool_json_surfaces_an_error_item() {
+    #[tokio::test]
+    async fn malformed_tool_json_surfaces_an_error_item() {
         // Malformed accumulated input must not be silently dropped while the
         // terminal still claims tool use: the consumer gets an error item.
         let (items, _state) = run_events(vec![
@@ -1031,18 +937,19 @@ mod tests {
             message_stop_event(aws_bedrock::StopReason::ToolUse),
         ]);
 
-        assert!(emitted_tool_calls(&items).is_empty());
+        let (calls, errors) = assembled(items).await;
+        assert!(calls.is_empty());
         assert!(
-            items.iter().any(|item| matches!(
-                item,
-                Err(CompletionError::ResponseError(msg)) if msg.contains("get_weather")
+            errors.iter().any(|err| matches!(
+                err,
+                CompletionError::ResponseError(msg) if msg.contains("get_weather")
             )),
             "malformed tool JSON must yield an error item"
         );
     }
 
-    #[test]
-    fn max_tokens_stop_drops_in_flight_tool_block_without_deltas() {
+    #[tokio::test]
+    async fn max_tokens_stop_drops_in_flight_tool_block_without_deltas() {
         // A tool-use block cut off by MaxTokens before any input arrived must
         // produce neither a fabricated `{}`-args call nor an error item; the
         // truncation is signaled by the Length-mapping stop reason on the
@@ -1052,7 +959,6 @@ mod tests {
             message_stop_event(aws_bedrock::StopReason::MaxTokens),
         ]);
 
-        assert!(emitted_tool_calls(&items).is_empty());
         assert!(
             items.iter().all(|item| item.is_ok()),
             "truncation must not surface as an error item"
@@ -1063,10 +969,13 @@ mod tests {
             rig_core::completion::FinishReason::Length
         );
         assert!(state.tool_calls.is_empty(), "state must be cleared at stop");
+        let (calls, errors) = assembled(items).await;
+        assert!(calls.is_empty());
+        assert!(errors.is_empty(), "truncation must not surface as an error");
     }
 
-    #[test]
-    fn max_tokens_stop_drops_in_flight_tool_block_with_partial_json() {
+    #[tokio::test]
+    async fn max_tokens_stop_drops_in_flight_tool_block_with_partial_json() {
         // Same, but with partial JSON accumulated: the malformed input must
         // not be parsed into a spurious Err at MessageStop.
         let (items, state) = run_events(vec![
@@ -1075,17 +984,19 @@ mod tests {
             message_stop_event(aws_bedrock::StopReason::MaxTokens),
         ]);
 
-        assert!(emitted_tool_calls(&items).is_empty());
         assert!(
             items.iter().all(|item| item.is_ok()),
             "a truncated partial-JSON block must not yield an error item"
         );
         assert_eq!(state.final_stop_reason, Some(StopReason::MaxTokens));
         assert!(state.tool_calls.is_empty(), "state must be cleared at stop");
+        let (calls, errors) = assembled(items).await;
+        assert!(calls.is_empty());
+        assert!(errors.is_empty(), "no spurious Err from the partial block");
     }
 
-    #[test]
-    fn empty_tool_input_becomes_empty_object() {
+    #[tokio::test]
+    async fn empty_tool_input_becomes_empty_object() {
         // A tool with no parameters streams no input deltas at all.
         let (items, _state) = run_events(vec![
             tool_start_event(0, "call_a", "ping"),
@@ -1093,10 +1004,11 @@ mod tests {
             message_stop_event(aws_bedrock::StopReason::ToolUse),
         ]);
 
-        let calls = emitted_tool_calls(&items);
+        let (calls, errors) = assembled(items).await;
+        assert!(errors.is_empty());
         assert_eq!(calls.len(), 1);
         assert_eq!(
-            calls.first().expect("call").arguments,
+            calls.first().expect("call").function.arguments,
             serde_json::json!({})
         );
     }
