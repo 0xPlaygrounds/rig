@@ -604,23 +604,34 @@ impl RawChoiceAccumulator {
     }
 }
 
-/// Reasoning identity for a buffered event: the wire `item_id` when
-/// present, else derived from the required `output_index` — matching the
-/// live path's derivation so replayed and live streams agree.
-fn buffered_reasoning_item_id(value: &serde_json::Value) -> String {
-    value
-        .get("item_id")
-        .and_then(serde_json::Value::as_str)
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| {
-            format!(
-                "output-{}",
-                value
-                    .get("output_index")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(0)
-            )
-        })
+/// Repair an envelope-less Responses frame so the shared typed decode can
+/// interpret it.
+///
+/// ChatGPT's replayed (unary) SSE bodies omit envelope bookkeeping fields
+/// (`sequence_number`, `output_index`, `content_index`, `summary_index`)
+/// that the typed frame decode requires. Those fields are bookkeeping only —
+/// no semantic decision reads them beyond the reasoning-identity fallback,
+/// which treats a missing `output_index` as `0` anyway — so injecting
+/// neutral zeros where they are absent turns salvage into a preprocessing
+/// step in front of the ONE event interpreter instead of a second one.
+/// Data-level fields (`delta`, `item`, `response`, …) are never touched, so
+/// a frame that is defective in its content still fails the re-decode.
+///
+/// Returns `None` when the frame is not a JSON object (nothing to repair).
+fn repair_envelope_less_frame(data: &str) -> Option<String> {
+    let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?;
+    let object = value.as_object_mut()?;
+    for field in [
+        "sequence_number",
+        "output_index",
+        "content_index",
+        "summary_index",
+    ] {
+        object
+            .entry(field)
+            .or_insert_with(|| serde_json::Value::from(0));
+    }
+    serde_json::to_string(&value).ok()
 }
 
 pub(crate) fn raw_choices_from_sse_body(
@@ -646,9 +657,10 @@ pub(crate) fn raw_choices_from_sse_body(
             return Err(error);
         }
 
-        // Frame policy for the buffered (unary) Responses SSE body — shares
-        // `classify_responses_frame` with the live loop, but there is no
-        // stream to carry `Err` items, so defects fail the whole operation:
+        // Frame policy for the buffered (unary) Responses SSE body — the SAME
+        // interpreter as the live loop (`classify_responses_frame` feeding
+        // `RawChoiceAccumulator`), but there is no stream to carry `Err`
+        // items, so defects fail the whole operation:
         //
         // | classify  | action                                              |
         // |-----------|-----------------------------------------------------|
@@ -656,143 +668,58 @@ pub(crate) fn raw_choices_from_sse_body(
         // | `Unknown` | skip (forward compatibility)                        |
         // | `Corrupt`, invalid JSON | fail the operation — the alternative  |
         // |           | is a successful-but-incomplete completion           |
-        // | `Corrupt`, valid JSON   | field-level salvage below: replayed   |
-        // |           | bodies (ChatGPT) omit envelope fields the full      |
-        // |           | typed decode requires, so the known kinds are       |
-        // |           | re-read by field; a known kind that still lacks its |
-        // |           | content is a data-level defect and fails            |
-        let corrupt = match classify_responses_frame(data) {
-            WireEvent::Known(chunk) => {
-                match chunk {
-                    StreamingCompletionChunk::Delta(chunk) => {
-                        raw_choices.extend(accumulator.decode_item_chunk(chunk, options));
-                    }
-                    StreamingCompletionChunk::Response(chunk) => {
-                        let ResponseChunk { kind, response, .. } = *chunk;
-                        accumulator.record_response_chunk(kind, response, data)?;
-                    }
-                }
-                continue;
-            }
+        // | `Corrupt`, valid JSON   | envelope repair, then reclassify      |
+        // |           | through the same interpreter                        |
+        //
+        // The repair step exists because replayed bodies (ChatGPT) omit
+        // envelope bookkeeping fields the typed decode requires; see
+        // [`repair_envelope_less_frame`]. A frame that is still corrupt after
+        // repair is defective in its data, not its envelope, and fails.
+        let chunk = match classify_responses_frame(data) {
+            WireEvent::Known(chunk) => Some(chunk),
             WireEvent::Unknown { event_type, .. } => {
                 tracing::warn!(event_type, "skipping unrecognized Responses SSE event");
-                continue;
+                None
             }
-            WireEvent::Corrupt(error) => error,
-        };
-
-        let value = match serde_json::from_str::<serde_json::Value>(data) {
-            Ok(value) => value,
-            Err(_) => {
-                return Err(CompletionError::ResponseError(format!(
-                    "invalid JSON frame in buffered Responses SSE body: {corrupt}"
-                )));
-            }
-        };
-
-        let kind = value.get("type").and_then(serde_json::Value::as_str);
-        let malformed = |kind: &str| {
-            CompletionError::ResponseError(format!(
-                "malformed `{kind}` event in buffered Responses SSE body"
-            ))
-        };
-
-        match kind {
-            Some(kind @ ("response.output_text.delta" | "response.refusal.delta")) => {
-                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
-                    return Err(malformed(kind));
-                };
-                raw_choices.push(streaming::RawStreamingChoice::Message(delta.to_owned()));
-            }
-            Some(kind @ "response.reasoning_summary_text.delta") => {
-                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
-                    return Err(malformed(kind));
-                };
-                raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: buffered_reasoning_item_id(&value),
-                    reasoning: delta.to_owned(),
-                });
-            }
-            Some(kind @ "response.reasoning_text.delta") => {
-                let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) else {
-                    return Err(malformed(kind));
-                };
-                raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: buffered_reasoning_item_id(&value),
-                    reasoning: delta.to_owned(),
-                });
-            }
-            Some(kind @ "response.output_item.added") => {
-                let Some(item) = value
-                    .get("item")
-                    .cloned()
-                    .and_then(|item| serde_json::from_value::<Output>(item).ok())
-                else {
-                    return Err(malformed(kind));
-                };
-                if let Output::FunctionCall(func) = item {
-                    let internal_call_id = accumulator
-                        .tool_call_internal_ids
-                        .entry(func.id.clone())
-                        .or_insert_with(crate::id::generate)
-                        .clone();
-                    raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
-                        id: func.id,
-                        internal_call_id,
-                        content: streaming::ToolCallDeltaContent::Name(func.name),
-                    });
+            WireEvent::Corrupt(corrupt) => {
+                let repaired = repair_envelope_less_frame(data).ok_or_else(|| {
+                    CompletionError::ResponseError(format!(
+                        "invalid JSON frame in buffered Responses SSE body: {corrupt}"
+                    ))
+                })?;
+                match classify_responses_frame(&repaired) {
+                    WireEvent::Known(chunk) => Some(chunk),
+                    // `Unknown` is unreachable here (an unknown `type` never
+                    // classified as `Corrupt` above); treat it as the defect
+                    // it would be.
+                    WireEvent::Unknown { .. } | WireEvent::Corrupt(_) => {
+                        let kind = serde_json::from_str::<serde_json::Value>(data)
+                            .ok()
+                            .and_then(|value| {
+                                value
+                                    .get("type")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(ToOwned::to_owned)
+                            })
+                            .unwrap_or_default();
+                        return Err(CompletionError::ResponseError(format!(
+                            "malformed `{kind}` event in buffered Responses SSE body"
+                        )));
+                    }
                 }
             }
-            Some(kind @ "response.output_item.done") => {
-                let Some(item) = value
-                    .get("item")
-                    .cloned()
-                    .and_then(|item| serde_json::from_value::<Output>(item).ok())
-                else {
-                    return Err(malformed(kind));
-                };
-                accumulator.push_output_item_done(item, &mut raw_choices, false);
+        };
+
+        if let Some(chunk) = chunk {
+            match chunk {
+                StreamingCompletionChunk::Delta(chunk) => {
+                    raw_choices.extend(accumulator.decode_item_chunk(chunk, options));
+                }
+                StreamingCompletionChunk::Response(chunk) => {
+                    let ResponseChunk { kind, response, .. } = *chunk;
+                    accumulator.record_response_chunk(kind, response, data)?;
+                }
             }
-            Some(kind @ "response.function_call_arguments.delta") => {
-                let (Some(item_id), Some(delta)) = (
-                    value.get("item_id").and_then(serde_json::Value::as_str),
-                    value.get("delta").and_then(serde_json::Value::as_str),
-                ) else {
-                    return Err(malformed(kind));
-                };
-                let internal_call_id = accumulator
-                    .tool_call_internal_ids
-                    .entry(item_id.to_owned())
-                    .or_insert_with(crate::id::generate)
-                    .clone();
-                raw_choices.push(streaming::RawStreamingChoice::ToolCallDelta {
-                    id: item_id.to_owned(),
-                    internal_call_id,
-                    content: streaming::ToolCallDeltaContent::Delta(delta.to_owned()),
-                });
-            }
-            Some(kind @ ("response.completed" | "response.failed" | "response.incomplete")) => {
-                let Some(response) = value.get("response").cloned() else {
-                    return Err(malformed(kind));
-                };
-                let response = serde_json::from_value::<CompletionResponse>(response)?;
-                let chunk_kind = match kind {
-                    "response.completed" => ResponseChunkKind::ResponseCompleted,
-                    "response.failed" => ResponseChunkKind::ResponseFailed,
-                    _ => ResponseChunkKind::ResponseIncomplete,
-                };
-                accumulator.record_response_chunk(chunk_kind, response, data)?;
-            }
-            Some("error") => {
-                return Err(provider_response_from_responses_error_value(&value, data));
-            }
-            // A known event type that failed the typed decode above and
-            // carries none of the content handled here is a data-level defect.
-            Some(kind) if is_known_responses_event_type(kind) => {
-                return Err(malformed(kind));
-            }
-            // Unknown event types stay skippable for forward compatibility.
-            _ => {}
         }
     }
 
@@ -2439,6 +2366,74 @@ mod tests {
                 .any(|choice| matches!(choice, RawStreamingChoice::FinalResponse(_))),
             "the genuine terminal must still be recorded"
         );
+    }
+
+    /// Envelope-less frames (ChatGPT's replayed bodies) are repaired and fed
+    /// through the same typed interpreter as the live loop, so the buffered
+    /// path agrees with the live path's semantics.
+    #[test]
+    fn envelope_less_frames_repair_onto_the_shared_interpreter() {
+        let completed = json!({
+            "type": "response.completed",
+            "response": sample_response(ResponseStatus::Completed),
+        });
+
+        // A ChatGPT-style text delta with no envelope bookkeeping fields.
+        let body = format!(
+            "data: {}\ndata: {completed}\n",
+            json!({ "type": "response.output_text.delta", "delta": "hi" })
+        );
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("an envelope-less delta must repair and decode");
+        assert!(
+            choices
+                .iter()
+                .any(|choice| matches!(choice, RawStreamingChoice::Message(text) if text == "hi"))
+        );
+
+        // Live-path parity, pinned: a function-call-arguments delta with no
+        // `item_id` is dropped (the live loop cannot attribute it), not an
+        // error as the old field-level salvage made it.
+        let body = format!(
+            "data: {}\ndata: {completed}\n",
+            json!({ "type": "response.function_call_arguments.delta", "delta": "{}" })
+        );
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("an unattributable args delta is dropped, matching the live loop");
+        assert!(
+            choices
+                .iter()
+                .all(|choice| !matches!(choice, RawStreamingChoice::ToolCallDelta { .. }))
+        );
+
+        // Live-path parity, pinned: an envelope-less bookkeeping event whose
+        // data is intact (`.done` events) is a no-op, not an error as the old
+        // salvage made it.
+        let body = format!(
+            "data: {}\ndata: {completed}\n",
+            json!({ "type": "response.output_text.done", "text": "hi" })
+        );
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("an envelope-less done event must repair to the live no-op");
+        assert!(
+            choices
+                .iter()
+                .any(|choice| matches!(choice, RawStreamingChoice::FinalResponse(_)))
+        );
+
+        // An envelope-less reasoning summary delta keys by the repaired
+        // `output_index`, matching the live derivation.
+        let body = format!(
+            "data: {}\ndata: {completed}\n",
+            json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" })
+        );
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("an envelope-less summary delta must repair and decode");
+        assert!(choices.iter().any(|choice| matches!(
+            choice,
+            RawStreamingChoice::ReasoningDelta { id, reasoning }
+                if id == "output-0" && reasoning == "think"
+        )));
     }
 
     #[test]

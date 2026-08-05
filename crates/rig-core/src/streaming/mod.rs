@@ -468,6 +468,14 @@ impl From<RawStreamingToolCall> for ToolCall {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// Provider stream whose terminal record is the provider-native `R`, on native
 /// targets.
+///
+/// This is the raw channel of rig's two-channel contract: every provider's
+/// inherent `raw_stream`/`raw_completion` returns provider-native types
+/// directly from the wire decode, never routed through the normalized
+/// accumulation ([`normalize_stream`] / the parts accumulator) — the
+/// semantic channel maps this stream's terminal record exactly once. There
+/// is deliberately no `raw_response` field on the normalized types; the
+/// typed channels are the contract.
 pub type RawStreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
