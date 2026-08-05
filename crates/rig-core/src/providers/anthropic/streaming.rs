@@ -465,7 +465,9 @@ fn handle_event(
                     .push_str(thinking);
 
                 Some(Ok(RawStreamingChoice::ReasoningDelta {
-                    id: None,
+                    // Anthropic has no reasoning item id; the content-block
+                    // index is stable across a block's deltas and its stop.
+                    id: format!("block-{index}"),
                     reasoning: thinking.clone(),
                 }))
             }
@@ -534,7 +536,8 @@ fn handle_event(
                 None
             }
             Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
-                id: None,
+                // Derive identity from the content-block index (no wire id).
+                id: format!("block-{index}"),
                 content: ReasoningContent::Redacted { data: data.clone() },
             })),
             // Handle other content types - they don't need special handling
@@ -551,7 +554,9 @@ fn handle_event(
                 };
 
                 return Some(Ok(RawStreamingChoice::Reasoning {
-                    id: None,
+                    // Same block index as this block's ThinkingDeltas, so the
+                    // full block supersedes the accumulated deltas.
+                    id: format!("block-{index}"),
                     content: ReasoningContent::Text {
                         text: thinking_state.thinking,
                         signature,
@@ -1039,7 +1044,7 @@ mod tests {
 
         match choice {
             RawStreamingChoice::ReasoningDelta { id, reasoning, .. } => {
-                assert_eq!(id, None);
+                assert_eq!(id, "block-0");
                 assert_eq!(reasoning, "Analyzing the request...");
             }
             _ => panic!("Expected ReasoningDelta choice"),

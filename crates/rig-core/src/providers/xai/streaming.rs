@@ -124,21 +124,21 @@ mod tests {
         assert!(matches!(
             choices.first(),
             Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+                id,
                 content: ReasoningContent::Summary(text),
             }) if id == "xr_1" && text == "s1"
         ));
         assert!(matches!(
             choices.get(1),
             Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+                id,
                 content: ReasoningContent::Summary(text),
             }) if id == "xr_1" && text == "s2"
         ));
         assert!(matches!(
             choices.get(2),
             Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+                id,
                 content: ReasoningContent::Encrypted(data),
             }) if id == "xr_1" && data == "enc"
         ));

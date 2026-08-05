@@ -432,7 +432,9 @@ where
                         && !reasoning.is_empty()
                     {
                         yield Ok(RawStreamingChoice::ReasoningDelta {
-                            id: None,
+                            // `reasoning_content` deltas carry no wire id and
+                            // never interleave; per-stream constant.
+                            id: "reasoning-0".to_string(),
                             reasoning,
                         });
                     }

@@ -2221,7 +2221,7 @@ mod migrated_tests {
             ("reasoning", MockStreamEvent::reasoning("late reasoning")),
             (
                 "reasoning delta",
-                MockStreamEvent::reasoning_delta(None::<String>, "late reasoning"),
+                MockStreamEvent::reasoning_delta("late reasoning"),
             ),
             (
                 "tool call",

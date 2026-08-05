@@ -297,11 +297,11 @@ fn stream_from_script(
         }
         Turn::Rich { text, .. } => {
             events.push(Ok(RawStreamingChoice::Reasoning {
-                id: Some("reasoning-1".to_owned()),
+                id: "reasoning-1".to_owned(),
                 content: ReasoningContent::Summary("summary".to_owned()),
             }));
             events.push(Ok(RawStreamingChoice::ReasoningDelta {
-                id: Some("reasoning-2".to_owned()),
+                id: "reasoning-2".to_owned(),
                 reasoning: "reasoning delta".to_owned(),
             }));
             events.push(Ok(RawStreamingChoice::Unknown(serde_json::json!({

@@ -81,12 +81,16 @@ struct ReasoningState {
 /// still skipped.
 fn finalize_reasoning(
     state: ReasoningState,
+    content_block_index: i32,
 ) -> Option<RawStreamingChoice<BedrockStreamingResponse>> {
     if state.content.is_empty() && state.signature.is_none() {
         return None;
     }
     Some(RawStreamingChoice::Reasoning {
-        id: None,
+        // Bedrock has no reasoning item id; the block's `contentBlockIndex`
+        // is stable across its deltas and stop, so the full block supersedes
+        // the accumulated deltas.
+        id: format!("block-{content_block_index}"),
         content: ReasoningContent::Text {
             text: state.content,
             signature: state.signature,
@@ -174,7 +178,9 @@ fn process_event(
                         if !text.is_empty() {
                             items.push(Ok(RawStreamingChoice::ReasoningDelta {
                                 reasoning: text.clone(),
-                                id: None,
+                                // Derive identity from `contentBlockIndex`
+                                // (no wire id on Converse reasoning blocks).
+                                id: format!("block-{}", event.content_block_index),
                             }));
                         }
                     }
@@ -219,7 +225,7 @@ fn process_event(
         }
         aws_bedrock::ConverseStreamOutput::ContentBlockStop(event) => {
             if let Some(reasoning_state) = state.current_reasoning.take()
-                && let Some(choice) = finalize_reasoning(reasoning_state)
+                && let Some(choice) = finalize_reasoning(reasoning_state, event.content_block_index)
             {
                 items.push(Ok(choice));
             }
@@ -714,10 +720,10 @@ mod tests {
             signature: Some("sig-abc".to_string()),
         };
 
-        let choice = finalize_reasoning(state).expect("should emit reasoning");
+        let choice = finalize_reasoning(state, 0).expect("should emit reasoning");
         match choice {
             RawStreamingChoice::Reasoning { id, content } => {
-                assert!(id.is_none());
+                assert_eq!(id, "block-0");
                 match content {
                     ReasoningContent::Text { text, signature } => {
                         assert_eq!(text, "I am thinking");
@@ -741,7 +747,7 @@ mod tests {
         };
 
         let choice =
-            finalize_reasoning(state).expect("should emit reasoning for signature-only state");
+            finalize_reasoning(state, 0).expect("should emit reasoning for signature-only state");
         match choice {
             RawStreamingChoice::Reasoning { content, .. } => match content {
                 ReasoningContent::Text { text, signature } => {
@@ -762,7 +768,7 @@ mod tests {
         };
 
         let choice =
-            finalize_reasoning(state).expect("should emit reasoning for content-only state");
+            finalize_reasoning(state, 0).expect("should emit reasoning for content-only state");
         match choice {
             RawStreamingChoice::Reasoning { content, .. } => match content {
                 ReasoningContent::Text { text, signature } => {
@@ -778,7 +784,7 @@ mod tests {
     #[test]
     fn finalize_reasoning_both_empty_emits_nothing() {
         let state = ReasoningState::default();
-        assert!(finalize_reasoning(state).is_none());
+        assert!(finalize_reasoning(state, 0).is_none());
     }
 
     fn tool_start_event(index: i32, id: &str, name: &str) -> aws_bedrock::ConverseStreamOutput {

@@ -54,7 +54,10 @@ pub(crate) async fn raw_stream(
                                     Some(proto::part::Data::Text(text)) => {
                                         if part.thought {
                                             yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                                id: None,
+                                                // Thought parts carry no wire id or block
+                                                // boundaries; a per-stream constant merges
+                                                // them into one item.
+                                                id: "reasoning-0".to_string(),
                                                 reasoning: text.clone(),
                                             });
                                         } else {

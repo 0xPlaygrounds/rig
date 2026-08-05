@@ -853,7 +853,9 @@ where
                     if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
                         if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
                             yield Ok(RawStreamingChoice::ReasoningDelta {
-                                id: None,
+                                // `thinking` deltas carry no wire id and never
+                                // interleave; per-stream constant.
+                                id: "reasoning-0".to_string(),
                                 reasoning: thinking_content,
                             });
                         }

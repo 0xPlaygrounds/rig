@@ -344,7 +344,9 @@ fn content_delta_to_choice(
                 _ => return None,
             };
             Some(streaming::RawStreamingChoice::ReasoningDelta {
-                id: None,
+                // Thought summaries carry no wire id or block boundaries;
+                // a per-stream constant merges them into one item.
+                id: "reasoning-0".to_string(),
                 reasoning: text,
             })
         }

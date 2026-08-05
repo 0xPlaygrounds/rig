@@ -1115,7 +1115,14 @@ where
                                         yield Ok(RawStreamingChoice::Message(delta.delta.clone()))
                                     }
                                     ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
-                                        yield Ok(RawStreamingChoice::ReasoningDelta { id: None, reasoning: delta.delta.clone() })
+                                        // Copilot relays Responses-style chunks: propagate the
+                                        // wire item id so the delta matches its completed item;
+                                        // fall back to a per-stream constant if it is missing.
+                                        let id = chunk
+                                            .item_id
+                                            .clone()
+                                            .unwrap_or_else(|| "reasoning-0".to_string());
+                                        yield Ok(RawStreamingChoice::ReasoningDelta { id, reasoning: delta.delta.clone() })
                                     }
                                     ItemChunkKind::RefusalDelta(delta) => {
                                         yield Ok(RawStreamingChoice::Message(delta.delta.clone()))

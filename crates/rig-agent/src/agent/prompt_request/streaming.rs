@@ -4359,7 +4359,7 @@ mod migrated_tests {
     async fn invalid_name_delta_retry_preserves_streaming_reasoning_history() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::reasoning_delta(Some("rs_1"), "delta reason"),
+                MockStreamEvent::reasoning_delta_with_id("rs_1", "delta reason"),
                 MockStreamEvent::tool_call_arguments_delta(
                     "tool_call_1",
                     "internal_1",
@@ -4455,7 +4455,7 @@ mod migrated_tests {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::text("checking "),
-                MockStreamEvent::reasoning_delta(Some("rs_1"), "diagnostic reason"),
+                MockStreamEvent::reasoning_delta_with_id("rs_1", "diagnostic reason"),
                 MockStreamEvent::tool_call(
                     "tool_call_0",
                     "add",
@@ -4588,7 +4588,7 @@ mod migrated_tests {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::text("checking "),
-                MockStreamEvent::reasoning_delta(Some("rs_1"), "diagnostic reason"),
+                MockStreamEvent::reasoning_delta_with_id("rs_1", "diagnostic reason"),
                 MockStreamEvent::tool_call(
                     "tool_call_0",
                     "add",

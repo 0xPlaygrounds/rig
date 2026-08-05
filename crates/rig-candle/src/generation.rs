@@ -638,7 +638,12 @@ pub(crate) fn stream_generate(
             AssistantContent::Reasoning(reasoning) => {
                 for content in reasoning.content {
                     emit(RawStreamingChoice::Reasoning {
-                        id: reasoning.id.clone(),
+                        // Local generation has no wire id; fall back to a
+                        // per-stream constant.
+                        id: reasoning
+                            .id
+                            .clone()
+                            .unwrap_or_else(|| "reasoning-0".to_string()),
                         content,
                     })?;
                 }

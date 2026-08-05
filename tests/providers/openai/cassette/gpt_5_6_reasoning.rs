@@ -368,8 +368,10 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     }) {
                         RawStreamingChoice::Message(delta) => text.push_str(&delta),
                         RawStreamingChoice::Reasoning { id, content } => {
-                            reasoning_blocks
-                                .push(AssistantContent::Reasoning(reasoning_block(id, content)));
+                            reasoning_blocks.push(AssistantContent::Reasoning(reasoning_block(
+                                Some(id),
+                                content,
+                            )));
                         }
                         RawStreamingChoice::ReasoningDelta { reasoning, .. } => {
                             reasoning_delta.push_str(&reasoning);

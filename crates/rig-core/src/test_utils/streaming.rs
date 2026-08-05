@@ -47,14 +47,11 @@ pub enum MockStreamEvent {
     },
     /// Complete reasoning event.
     Reasoning {
-        id: Option<String>,
+        id: String,
         content: ReasoningContent,
     },
     /// Reasoning delta event.
-    ReasoningDelta {
-        id: Option<String>,
-        reasoning: String,
-    },
+    ReasoningDelta { id: String, reasoning: String },
     /// Provider-assigned message ID.
     MessageId(String),
     /// Provider-native output item that Rig does not model.
@@ -131,10 +128,12 @@ impl MockStreamEvent {
         }
     }
 
-    /// Create a complete reasoning event.
+    /// Create a complete reasoning event with the default mock id
+    /// (`"reasoning-0"`). Use [`Self::with_reasoning_id`] for tests that
+    /// need distinct reasoning items.
     pub fn reasoning(reasoning: impl Into<String>) -> Self {
         Self::Reasoning {
-            id: None,
+            id: "reasoning-0".to_string(),
             content: ReasoningContent::Text {
                 text: reasoning.into(),
                 signature: None,
@@ -145,15 +144,22 @@ impl MockStreamEvent {
     /// Attach a provider-specific reasoning ID to a complete reasoning event.
     pub fn with_reasoning_id(mut self, reasoning_id: impl Into<String>) -> Self {
         if let Self::Reasoning { id, .. } = &mut self {
-            *id = Some(reasoning_id.into());
+            *id = reasoning_id.into();
         }
         self
     }
 
-    /// Create a reasoning delta event.
-    pub fn reasoning_delta(id: Option<impl Into<String>>, reasoning: impl Into<String>) -> Self {
+    /// Create a reasoning delta event with the default mock id
+    /// (`"reasoning-0"`). Use [`Self::reasoning_delta_with_id`] for tests
+    /// that need distinct reasoning items.
+    pub fn reasoning_delta(reasoning: impl Into<String>) -> Self {
+        Self::reasoning_delta_with_id("reasoning-0", reasoning)
+    }
+
+    /// Create a reasoning delta event with an explicit reasoning item id.
+    pub fn reasoning_delta_with_id(id: impl Into<String>, reasoning: impl Into<String>) -> Self {
         Self::ReasoningDelta {
-            id: id.map(Into::into),
+            id: id.into(),
             reasoning: reasoning.into(),
         }
     }

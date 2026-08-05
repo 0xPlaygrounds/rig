@@ -301,15 +301,26 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     },
     /// A reasoning (in its entirety)
     Reasoning {
-        /// Provider-supplied reasoning block ID, when present.
-        id: Option<String>,
+        /// Identity of the reasoning item this block belongs to.
+        ///
+        /// Required: reasoning interleaves with other output on real wires
+        /// (OpenAI Responses emits the completed item after tool calls), so
+        /// the accumulator must key by identity rather than guess by
+        /// adjacency. Providers propagate the wire's item id (`item_id` on
+        /// Responses events, the content-block index on Anthropic/Bedrock)
+        /// or mint a stream-stable id at the boundary when the wire has
+        /// none — core never invents identity. Deltas and the full block
+        /// for the same item MUST carry the same id.
+        id: String,
         /// Complete reasoning content block.
         content: ReasoningContent,
     },
     /// A reasoning partial/delta
     ReasoningDelta {
-        /// Provider-supplied reasoning block ID, when present.
-        id: Option<String>,
+        /// Identity of the reasoning item this delta extends. Same contract
+        /// as [`RawStreamingChoice::Reasoning::id`]; all deltas of one block
+        /// share one id.
+        id: String,
         /// Partial reasoning text.
         reasoning: String,
     },
@@ -642,9 +653,13 @@ impl StreamingCompletionResponse {
     /// Accumulate streaming reasoning delta text into assistant_items.
     /// Providers that only emit ReasoningDelta (not full Reasoning blocks)
     /// need this so the aggregated response includes reasoning content.
-    fn append_reasoning_chunk(&mut self, id: &Option<String>, text: &str) {
+    fn append_reasoning_chunk(&mut self, id: &str, text: &str) {
+        // Deltas key strictly by item id: a delta for a different item never
+        // merges into the active block (ids are mandatory on the raw grammar,
+        // so this is exact, not heuristic).
         if let Some(index) = self.reasoning_item_index
             && let Some(AssistantContent::Reasoning(existing)) = self.assistant_items.get_mut(index)
+            && existing.id.as_deref() == Some(id)
             && let Some(ReasoningContent::Text {
                 text: existing_text,
                 ..
@@ -656,7 +671,7 @@ impl StreamingCompletionResponse {
 
         self.assistant_items
             .push(AssistantContent::Reasoning(Reasoning {
-                id: id.clone(),
+                id: Some(id.to_string()),
                 content: vec![ReasoningContent::Text {
                     text: text.to_string(),
                     signature: None,
@@ -779,7 +794,7 @@ impl Stream for StreamingCompletionResponse {
                 }))),
                 RawStreamingChoice::Reasoning { id, content } => {
                     let reasoning = Reasoning {
-                        id,
+                        id: Some(id),
                         content: vec![content],
                     };
                     stream.text_item_index = None;
@@ -795,11 +810,11 @@ impl Stream for StreamingCompletionResponse {
                     // completed block after other output cleared the index
                     // (reasoning → tool call → completed block), so a miss
                     // falls back to a by-ID scan of the aggregated items.
-                    let same_item = |existing: &Reasoning| match (&existing.id, &reasoning.id) {
-                        (Some(existing_id), Some(id)) => existing_id == id,
-                        (None, None) => true,
-                        _ => false,
-                    };
+                    // Ids are mandatory on the raw grammar, so identity is
+                    // exact equality — no heuristics. The active-index slot is
+                    // only a fast path; a miss (other output interleaved since
+                    // the deltas) falls back to a by-id scan.
+                    let same_item = |existing: &Reasoning| existing.id == reasoning.id;
                     let replace_index = stream
                         .reasoning_item_index
                         .filter(|&index| {
@@ -809,7 +824,6 @@ impl Stream for StreamingCompletionResponse {
                             )
                         })
                         .or_else(|| {
-                            reasoning.id.as_ref()?;
                             stream.assistant_items.iter().rposition(|item| {
                                 matches!(item, AssistantContent::Reasoning(existing) if same_item(existing))
                             })
@@ -932,8 +946,7 @@ mod tests {
 
     fn create_reasoning_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {
-                id: Some("rs_1".to_string()),
+            yield Ok(RawStreamingChoice::Reasoning {                id: "rs_1".to_string(),
                 content: ReasoningContent::Text {
                     text: "step one".to_string(),
                     signature: Some("sig_1".to_string()),
@@ -948,8 +961,7 @@ mod tests {
 
     fn create_reasoning_only_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {
-                id: Some("rs_only".to_string()),
+            yield Ok(RawStreamingChoice::Reasoning {                id: "rs_only".to_string(),
                 content: ReasoningContent::Summary("hidden summary".to_string()),
             });
             yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
@@ -960,8 +972,7 @@ mod tests {
 
     fn create_interleaved_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {
-                id: Some("rs_interleaved".to_string()),
+            yield Ok(RawStreamingChoice::Reasoning {                id: "rs_interleaved".to_string(),
                 content: ReasoningContent::Text {
                     text: "chain-of-thought".to_string(),
                     signature: None,
@@ -1375,11 +1386,10 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: Some("rs_1".to_string()),
+                    id: "rs_1".to_string(),
                     reasoning: "partial ".to_string(),
                 });
-                yield Ok(RawStreamingChoice::Reasoning {
-                    id: Some("rs_1".to_string()),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: "rs_1".to_string(),
                     content: ReasoningContent::Text {
                         text: "the complete chain".to_string(),
                         signature: Some("sig_1".to_string()),
@@ -1417,11 +1427,10 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: Some("rs_1".to_string()),
+                    id: "rs_1".to_string(),
                     reasoning: "first item deltas".to_string(),
                 });
-                yield Ok(RawStreamingChoice::Reasoning {
-                    id: Some("rs_2".to_string()),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: "rs_2".to_string(),
                     content: ReasoningContent::Text {
                         text: "a different item".to_string(),
                         signature: None,
@@ -1454,7 +1463,7 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: Some("rs_1".to_string()),
+                    id: "rs_1".to_string(),
                     reasoning: "partial ".to_string(),
                 });
                 yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
@@ -1462,8 +1471,7 @@ mod tests {
                     "probe".to_string(),
                     serde_json::json!({}),
                 )));
-                yield Ok(RawStreamingChoice::Reasoning {
-                    id: Some("rs_1".to_string()),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: "rs_1".to_string(),
                     content: ReasoningContent::Text {
                         text: "the full block".to_string(),
                         signature: None,
@@ -1500,18 +1508,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn id_less_full_reasoning_block_does_not_clobber_an_id_carrying_item() {
-        // An ID on only one side means the identity is unknown: the block is
-        // appended rather than overwriting an unrelated item's deltas.
+    async fn minted_id_full_reasoning_block_does_not_clobber_a_wire_id_item() {
+        // Ids are mandatory on the grammar; a provider-minted id (the
+        // "reasoning-0"-style boundary fallback) is a distinct identity from
+        // a wire-supplied one, so the block appends rather than overwriting
+        // an unrelated item's deltas.
         let mut stream = StreamingCompletionResponse::stream(
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: Some("rs_1".to_string()),
+                    id: "rs_1".to_string(),
                     reasoning: "identified deltas".to_string(),
                 });
                 yield Ok(RawStreamingChoice::Reasoning {
-                    id: None,
+                    id: "reasoning-0".to_string(),
                     content: ReasoningContent::Text {
                         text: "anonymous block".to_string(),
                         signature: None,
@@ -1531,7 +1541,7 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(reasoning_ids, vec![Some("rs_1"), None]);
+        assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("reasoning-0")]);
     }
 
     #[tokio::test]
@@ -1689,15 +1699,19 @@ pub enum StreamedAssistantContent {
     /// Complete reasoning block emitted by the assistant.
     ///
     /// Supersedes any prior [`StreamedAssistantContent::ReasoningDelta`]s
-    /// carrying the same reasoning `id` (or with no `id` on either side):
-    /// render it as a *replacement* for the accumulated delta text, not an
-    /// addition. The aggregated [`StreamingCompletionResponse::choice`]
-    /// already applies this replacement.
+    /// carrying the same reasoning `id`: render it as a *replacement* for
+    /// the accumulated delta text, not an addition. The aggregated
+    /// [`StreamingCompletionResponse::choice`] already applies this
+    /// replacement.
     Reasoning(Reasoning),
     /// Partial reasoning text emitted by the assistant.
     ReasoningDelta {
-        /// Provider-supplied reasoning block ID, when present.
-        id: Option<String>,
+        /// Identity of the reasoning item this delta extends. Always
+        /// populated: providers propagate the wire's item identity or mint a
+        /// stream-stable id at the boundary, so consumers can correlate
+        /// deltas with the full [`StreamedAssistantContent::Reasoning`]
+        /// block that supersedes them.
+        id: String,
         /// Partial reasoning text.
         reasoning: String,
     },

@@ -144,14 +144,14 @@ pub(crate) fn reasoning_choices_from_done_item(
         .iter()
         .map(|reasoning_summary| match reasoning_summary {
             ReasoningSummary::SummaryText { text } => RawStreamingChoice::Reasoning {
-                id: Some(id.to_owned()),
+                id: id.to_owned(),
                 content: ReasoningContent::Summary(text.to_owned()),
             },
         })
         .collect::<Vec<_>>();
 
     choices.extend(content.iter().map(|text| RawStreamingChoice::Reasoning {
-        id: Some(id.to_owned()),
+        id: id.to_owned(),
         content: ReasoningContent::Text {
             text: text.to_owned(),
             signature: None,
@@ -160,7 +160,7 @@ pub(crate) fn reasoning_choices_from_done_item(
 
     if let Some(encrypted_content) = encrypted_content.filter(|s| !s.is_empty()) {
         choices.push(RawStreamingChoice::Reasoning {
-            id: Some(id.to_owned()),
+            id: id.to_owned(),
             content: ReasoningContent::Encrypted(encrypted_content.to_owned()),
         });
     }
@@ -382,9 +382,20 @@ impl RawChoiceAccumulator {
 
         let ItemChunk {
             item_id: outer_item_id,
+            output_index,
             data: item,
-            ..
         } = chunk;
+        // Reasoning identity for this item: the wire's `item_id` when present,
+        // else derived from the required `output_index` — stream-stable either
+        // way, and shared by the item's deltas and its completed blocks so the
+        // accumulator's exact keying works. This is the fix for the
+        // summary-delta duplication (34ee8ba5 P1-1): summary deltas previously
+        // carried no identity at all.
+        let reasoning_item_id = |outer: &Option<String>| -> String {
+            outer
+                .clone()
+                .unwrap_or_else(|| format!("output-{output_index}"))
+        };
 
         match item {
             ItemChunkKind::OutputItemAdded(StreamingItemDoneOutput {
@@ -414,13 +425,13 @@ impl RawChoiceAccumulator {
             }
             ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
                 immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: None,
+                    id: reasoning_item_id(&outer_item_id),
                     reasoning: delta.delta,
                 });
             }
             ItemChunkKind::ReasoningTextDelta(delta) => {
                 immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: outer_item_id,
+                    id: reasoning_item_id(&outer_item_id),
                     reasoning: delta.delta,
                 });
             }
@@ -580,6 +591,25 @@ impl RawChoiceAccumulator {
     }
 }
 
+/// Reasoning identity for a buffered event: the wire `item_id` when
+/// present, else derived from the required `output_index` — matching the
+/// live path's derivation so replayed and live streams agree.
+fn buffered_reasoning_item_id(value: &serde_json::Value) -> String {
+    value
+        .get("item_id")
+        .and_then(serde_json::Value::as_str)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            format!(
+                "output-{}",
+                value
+                    .get("output_index")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0)
+            )
+        })
+}
+
 pub(crate) fn raw_choices_from_sse_body(
     body: &str,
     initial_usage: ResponsesUsage,
@@ -642,7 +672,7 @@ pub(crate) fn raw_choices_from_sse_body(
                     return Err(malformed(kind));
                 };
                 raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: None,
+                    id: buffered_reasoning_item_id(&value),
                     reasoning: delta.to_owned(),
                 });
             }
@@ -651,10 +681,7 @@ pub(crate) fn raw_choices_from_sse_body(
                     return Err(malformed(kind));
                 };
                 raw_choices.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id: value
-                        .get("item_id")
-                        .and_then(serde_json::Value::as_str)
-                        .map(ToOwned::to_owned),
+                    id: buffered_reasoning_item_id(&value),
                     reasoning: delta.to_owned(),
                 });
             }
@@ -1397,29 +1424,25 @@ mod tests {
         assert_eq!(choices.len(), 4);
         assert!(matches!(
             choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+            Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Summary(text),
             }) if id == "rs_1" && text == "step 1"
         ));
         assert!(matches!(
             choices.get(1),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+            Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Summary(text),
             }) if id == "rs_1" && text == "step 2"
         ));
         assert!(matches!(
             choices.get(2),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+            Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Text { text, signature: None },
             }) if id == "rs_1" && text == "private reasoning"
         ));
         assert!(matches!(
             choices.get(3),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+            Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Encrypted(data),
             }) if id == "rs_1" && data == "enc_blob"
         ));
@@ -1448,8 +1471,7 @@ mod tests {
 
         assert!(matches!(
             choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+            Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Text { text, signature: None },
             }) if id == "rs_text_1" && text == "visible reasoning"
         ));
@@ -1474,7 +1496,7 @@ mod tests {
 
         assert!(matches!(
             choices.first(),
-            Some(RawStreamingChoice::ReasoningDelta { id: Some(id), reasoning })
+            Some(RawStreamingChoice::ReasoningDelta { id, reasoning })
                 if id == "rs_delta_1" && reasoning == "thinking"
         ));
     }
@@ -1525,8 +1547,7 @@ mod tests {
         assert_eq!(choices.len(), 1);
         assert!(matches!(
             choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+            Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Summary(text),
             }) if id == "rs_2" && text == "only summary"
         ));
@@ -1541,8 +1562,7 @@ mod tests {
         assert_eq!(choices.len(), 1);
         assert!(matches!(
             choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                content: ReasoningContent::Text { text, .. },
+            Some(RawStreamingChoice::Reasoning {                content: ReasoningContent::Text { text, .. },
                 ..
             }) if text == "visible reasoning"
         ));
@@ -2299,7 +2319,7 @@ data: {completed}
         use crate::providers::openai::responses_api::Output;
 
         let raw_choices = vec![RawStreamingChoice::ReasoningDelta {
-            id: Some("rs_1".to_string()),
+            id: "rs_1".to_string(),
             reasoning: "thinking".to_string(),
         }];
 

@@ -268,7 +268,10 @@ where
                                             // core accumulator captures the signature for
                                             // Gemini 3+ roundtrip.
                                             yield Ok(streaming::RawStreamingChoice::Reasoning {
-                                                id: None,
+                                                // Gemini thought parts carry no id or block
+                                                // boundaries; a per-stream constant keeps all
+                                                // thought deltas merging into one item.
+                                                id: "reasoning-0".to_string(),
                                                 content: ReasoningContent::Text {
                                                     text,
                                                     signature: thought_signature,
@@ -276,7 +279,9 @@ where
                                             });
                                         } else {
                                             yield Ok(streaming::RawStreamingChoice::ReasoningDelta {
-                                                id: None,
+                                                // Same per-stream constant as the full
+                                                // Reasoning above.
+                                                id: "reasoning-0".to_string(),
                                                 reasoning: text,
                                             });
                                         }

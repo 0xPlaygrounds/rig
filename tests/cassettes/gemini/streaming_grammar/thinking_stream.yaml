@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one short sentence, why does ice float on water? Think it through first.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"temperature":1.0,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"medium"}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Considering Buoyancy Dynamics**\\n\\nI'm currently focused on the fundamental reason for ice's flotation. My line of reasoning centers on the structural changes of water molecules during freezing, specifically the formation of a hexagonal lattice. This crystallization is key. I'm exploring how this impacts the overall density relative to liquid water.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":18,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":18}],\"serviceTier\":\"standard\",\"totalTokenCount\":18}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Analyzing Molecular Arrangement**\\n\\nI've homed in on the core principle: hydrogen bonds dictate the molecular arrangement. The key is how this influences the distance between water molecules during freezing. It's becoming clearer that the shift to an open lattice, driven by these bonds, is the critical factor impacting density. The ice expands as it freezes, which causes the density change and therefore buoyancy.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":18,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":18}],\"serviceTier\":\"standard\",\"totalTokenCount\":18}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Ice floats because its molecules expand into a crystalline\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":9,\"promptTokenCount\":18,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":18}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":508,\"totalTokenCount\":535}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" lattice as it freezes, making it less dense than liquid water.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":22,\"promptTokenCount\":18,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":18}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":508,\"totalTokenCount\":548}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":22,\"promptTokenCount\":18,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":18}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":508,\"totalTokenCount\":548}}\r\n\r\n"
