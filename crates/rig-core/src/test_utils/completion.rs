@@ -6,7 +6,6 @@ use std::{
 };
 
 use crate::{
-    OneOrMany,
     completion::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
         Usage,
@@ -53,7 +52,7 @@ pub struct MockTurn {
 
 #[derive(Clone, Debug)]
 struct MockTurnResponse {
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
     response_id: Option<String>,
@@ -95,7 +94,7 @@ impl MockTurn {
     pub fn from_content(content: AssistantContent) -> Self {
         Self {
             response: Ok(MockTurnResponse {
-                choice: OneOrMany::one(content),
+                choice: vec![content],
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
@@ -109,7 +108,7 @@ impl MockTurn {
     ) -> Result<Self, crate::one_or_many::EmptyListError> {
         Ok(Self {
             response: Ok(MockTurnResponse {
-                choice: OneOrMany::many(content)?,
+                choice: content.into_iter().collect(),
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
@@ -318,7 +317,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::user(prompt)),
+            chat_history: vec![Message::user(prompt)],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -344,17 +343,15 @@ mod tests {
             .expect("first scripted turn should succeed");
         assert_eq!(first.message_id.as_deref(), Some("msg_1"));
         assert!(matches!(
-            first.choice.first_owned(),
-            AssistantContent::Text(text) if text.text == "first"
-        ));
+            first.choice.first(), Some(AssistantContent::Text(text)) if text.text == "first"));
 
         let second = model
             .completion(request("use a tool"))
             .await
             .expect("second scripted turn should succeed");
         assert!(matches!(
-            second.choice.first_owned(),
-            AssistantContent::ToolCall(tool_call)
+            second.choice.first(),
+            Some(AssistantContent::ToolCall(tool_call))
                 if tool_call.id == "tool_1"
                     && tool_call
                         .provider

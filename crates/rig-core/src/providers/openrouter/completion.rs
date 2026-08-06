@@ -2,7 +2,6 @@ use super::client::{OpenRouterExt, Usage};
 use crate::message::{self, DocumentMediaType, DocumentSourceKind, MimeType};
 use crate::telemetry::ProviderResponseExt;
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
     providers::internal::openai_chat_completions_compatible::map_openai_finish_reason,
@@ -753,7 +752,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             )),
         }?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
+        let choice = crate::message::require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )
@@ -1050,7 +1049,7 @@ fn document_filename(media_type: Option<&DocumentMediaType>) -> Option<String> {
 }
 
 fn user_contents_to_messages(
-    value: OneOrMany<message::UserContent>,
+    value: Vec<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
     fn flush_user_content(
         messages: &mut Vec<Message>,
@@ -1060,11 +1059,7 @@ fn user_contents_to_messages(
             return Ok(());
         }
 
-        let content = OneOrMany::many(std::mem::take(pending)).map_err(|_| {
-            message::MessageError::ConversionError(
-                "OpenRouter user message did not contain any non-tool content".into(),
-            )
-        })?;
+        let content = std::mem::take(pending);
         messages.push(Message::User {
             content,
             name: None,
@@ -1141,7 +1136,7 @@ enum ToolCallAdditionalParams {
 /// stored on tool calls (signature / `additional_params`) so providers that
 /// require reasoning to be echoed back on tool-call turns keep working.
 fn assistant_contents_to_messages(
-    value: OneOrMany<message::AssistantContent>,
+    value: Vec<message::AssistantContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
     let mut text_content = Vec::new();
     let mut tool_calls = Vec::new();
@@ -1618,17 +1613,16 @@ mod tests {
 
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {
-        let content = OneOrMany::many(vec![
+        let content = vec![
             message::UserContent::text("before"),
             message::UserContent::tool_result_with_call_id(
                 "result-id",
                 "call-id".to_string(),
                 "tool",
-                OneOrMany::one(message::ToolResultContent::text("tool output")),
+                vec![message::ToolResultContent::text("tool output")],
             ),
             message::UserContent::text("after"),
-        ])
-        .expect("mixed content should be non-empty");
+        ];
 
         let messages = user_contents_to_messages(content).expect("message conversion");
 
@@ -1638,9 +1632,9 @@ mod tests {
                 Message::User { content: before, .. },
                 Message::ToolResult { tool_call_id, .. },
                 Message::User { content: after, .. },
-            ] if matches!(before.first_owned(), UserContent::Text { text } if text == "before")
+            ] if matches!(before.first(), Some(UserContent::Text { text }) if text == "before")
                 && tool_call_id == "call-id"
-                && matches!(after.first_owned(), UserContent::Text { text } if text == "after")
+                && matches!(after.first(), Some(UserContent::Text { text }) if text == "after")
         ));
     }
 
@@ -1649,7 +1643,7 @@ mod tests {
         let request = CompletionRequest {
             model: Some("google/gemini-2.5-flash".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1674,9 +1668,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one(crate::message::Message::user(
-                "What is glarb-glarb?",
-            )),
+            chat_history: vec![crate::message::Message::user("What is glarb-glarb?")],
             documents: vec![crate::completion::request::Document {
                 id: "doc_1".to_string(),
                 text: "Definition of glarb-glarb: an ancient tool.".to_string(),
@@ -1710,7 +1702,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1781,7 +1773,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1833,7 +1825,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2044,9 +2036,7 @@ mod tests {
         );
         assert_eq!(converted.provider, "openrouter");
         assert!(matches!(
-            converted.choice.first_owned(),
-            completion::AssistantContent::Text(text) if text.text == "CONTENT"
-        ));
+            converted.choice.first(), Some(completion::AssistantContent::Text(text)) if text.text == "CONTENT"));
     }
 
     #[test]
@@ -2773,9 +2763,9 @@ mod tests {
     #[test]
     fn test_message_user_with_text_serialization() {
         let message = Message::User {
-            content: OneOrMany::one(UserContent::Text {
+            content: vec![UserContent::Text {
                 text: "Hello".to_string(),
-            }),
+            }],
             name: None,
         };
         let json = serde_json::to_value(&message).unwrap();
@@ -2788,7 +2778,7 @@ mod tests {
     #[test]
     fn test_message_user_with_mixed_content_serialization() {
         let message = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "Check this image:".to_string(),
                 },
@@ -2798,8 +2788,7 @@ mod tests {
                         detail: None,
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
         let json = serde_json::to_value(&message).unwrap();
@@ -2814,7 +2803,7 @@ mod tests {
     #[test]
     fn test_message_user_with_file_serialization() {
         let message = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "Analyze this PDF:".to_string(),
                 },
@@ -2825,8 +2814,7 @@ mod tests {
                         filename: Some("document.pdf".to_string()),
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
         let json = serde_json::to_value(&message).unwrap();
@@ -3221,12 +3209,12 @@ mod tests {
             message::ReasoningContent::Encrypted(ref data) if data == "enc_blob"
         ));
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::Reasoning(message::Reasoning {
+        let messages = assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(
+            message::Reasoning {
                 id: provider_id.map(|id| id.into_string()),
                 content: vec![content],
-            }),
-        ))
+            },
+        )])
         .unwrap();
         let Message::Assistant {
             reasoning_details, ..
@@ -3254,10 +3242,9 @@ mod tests {
             ],
         };
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::Reasoning(reasoning),
-        ))
-        .unwrap();
+        let messages =
+            assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(reasoning)])
+                .unwrap();
         let Message::Assistant {
             reasoning,
             reasoning_details,
@@ -3291,10 +3278,9 @@ mod tests {
         )
         .with_signature(Some("sig-data".to_string()));
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::ToolCall(tool_call),
-        ))
-        .unwrap();
+        let messages =
+            assistant_contents_to_messages(vec![message::AssistantContent::ToolCall(tool_call)])
+                .unwrap();
 
         let Message::Assistant {
             reasoning_details, ..
@@ -3327,10 +3313,9 @@ mod tests {
         // still correlate with the wire tool-call id.
         .with_additional_params(Some(json!({"format": "anthropic"})));
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::ToolCall(tool_call),
-        ))
-        .unwrap();
+        let messages =
+            assistant_contents_to_messages(vec![message::AssistantContent::ToolCall(tool_call)])
+                .unwrap();
 
         let Message::Assistant {
             reasoning_details, ..
@@ -3359,10 +3344,9 @@ mod tests {
             }],
         };
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(
-            message::AssistantContent::Reasoning(reasoning),
-        ))
-        .unwrap();
+        let messages =
+            assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(reasoning)])
+                .unwrap();
 
         let Message::Assistant {
             reasoning_details,
@@ -3662,7 +3646,7 @@ mod tests {
     #[test]
     fn test_message_conversion_with_pdf() {
         let rig_message = message::Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::UserContent::Text(message::Text::new(
                     "Summarize this document".to_string(),
                 )),
@@ -3671,8 +3655,7 @@ mod tests {
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: None,
                 }),
-            ])
-            .unwrap(),
+            ],
         };
 
         let openrouter_messages: Vec<Message> = messages_from_rig_message(rig_message).unwrap();
@@ -3683,8 +3666,10 @@ mod tests {
                 assert_eq!(content.len(), 2);
 
                 // First should be text
-                match content.first_ref() {
-                    UserContent::Text { text, .. } => assert_eq!(text, "Summarize this document"),
+                match content.first() {
+                    Some(UserContent::Text { text, .. }) => {
+                        assert_eq!(text, "Summarize this document")
+                    }
                     _ => panic!("Expected Text"),
                 }
             }
@@ -3799,7 +3784,7 @@ mod tests {
     #[test]
     fn test_message_user_with_audio_serialization() {
         let msg = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "Transcribe this audio:".to_string(),
                 },
@@ -3809,8 +3794,7 @@ mod tests {
                         format: AudioMediaType::MP3,
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
         let json = serde_json::to_value(&msg).unwrap();
@@ -3874,7 +3858,7 @@ mod tests {
     #[test]
     fn test_message_user_with_video_serialization() {
         let msg = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "Describe this video:".to_string(),
                 },
@@ -3883,8 +3867,7 @@ mod tests {
                         url: "https://example.com/video.mp4".to_string(),
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
         let json = serde_json::to_value(&msg).unwrap();
@@ -3921,7 +3904,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: crate::OneOrMany::one(crate::message::Message::user("Hello")),
+            chat_history: vec![crate::message::Message::user("Hello")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -4175,11 +4158,10 @@ mod tests {
             },
         });
 
-        let content = OneOrMany::many(vec![
+        let content = vec![
             completion::AssistantContent::text("Here is your image."),
             generated_image,
-        ])
-        .unwrap();
+        ];
         let messages = assistant_contents_to_messages(content).unwrap();
 
         assert_eq!(messages.len(), 1);
@@ -4201,7 +4183,7 @@ mod tests {
             },
         });
 
-        let messages = assistant_contents_to_messages(OneOrMany::one(generated_image)).unwrap();
+        let messages = assistant_contents_to_messages(vec![generated_image]).unwrap();
 
         assert!(
             messages.is_empty(),
@@ -4217,7 +4199,7 @@ mod tests {
             None,
         );
 
-        let err = assistant_contents_to_messages(OneOrMany::one(image)).unwrap_err();
+        let err = assistant_contents_to_messages(vec![image]).unwrap_err();
 
         match err {
             message::MessageError::ConversionError(message) => assert!(
@@ -4236,13 +4218,10 @@ mod tests {
             },
         });
 
-        let messages = assistant_contents_to_messages(
-            OneOrMany::many(vec![
-                completion::AssistantContent::text("Keep this text."),
-                generated_image,
-            ])
-            .unwrap(),
-        )
+        let messages = assistant_contents_to_messages(vec![
+            completion::AssistantContent::text("Keep this text."),
+            generated_image,
+        ])
         .unwrap();
 
         let serialized = serde_json::to_value(&messages).unwrap();

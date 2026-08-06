@@ -10,7 +10,6 @@ use tracing::{Instrument, Level, enabled};
 
 use super::api::{ApiResponse, Message, ToolDefinition};
 use super::client::Client;
-use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::ToolChoice;
@@ -194,9 +193,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             .flat_map(<Vec<completion::AssistantContent>>::from)
             .collect();
 
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError("Response contained no output".to_owned())
-        })?;
+        let choice = content;
 
         let usage = response
             .usage
@@ -356,7 +353,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::XAICompletionRequest;
-    use crate::OneOrMany;
+
     use crate::completion::request::Document;
     use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message, ToolDefinition};
     use crate::message::ToolChoice;
@@ -394,13 +391,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),
                 Message::system("Mid-conversation instruction"),
                 Message::user("What is glarb-glarb?"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![Document {
                 id: "doc_1".to_string(),
                 text: "Definition of glarb-glarb: an ancient tool.".to_string(),

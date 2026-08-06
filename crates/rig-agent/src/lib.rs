@@ -49,7 +49,7 @@ extern crate self as rig;
 /// ```
 /// // Reachable through the explicit `core` namespace.
 /// use rig_agent::core::OneOrMany;
-/// let _reachable: Option<OneOrMany<u8>> = None;
+/// let _reachable: Option<Vec<u8>> = None;
 /// ```
 ///
 /// ```compile_fail

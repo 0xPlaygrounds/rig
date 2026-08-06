@@ -1,7 +1,6 @@
 //! Cassette-backed OpenRouter coverage for PDF `file_data` document messages.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::OneOrMany;
 use rig::completion::{Chat, Prompt};
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
@@ -40,13 +39,12 @@ fn verifier_document() -> Document {
 
 fn document_question(page_number: u8) -> RigMessage {
     RigMessage::User {
-        content: OneOrMany::many(vec![
+        content: vec![
             RigUserContent::Document(verifier_document()),
             RigUserContent::Text(Text::new(format!(
                 "What verifier token is printed on page {page_number}? Reply with only the exact token."
             ))),
-        ])
-        .expect("content should be non-empty"),
+        ],
     }
 }
 

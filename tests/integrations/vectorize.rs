@@ -23,11 +23,11 @@
 //! cargo test --package rig-vectorize --test integration_tests
 //! ```
 
+use rig::Embed;
 use rig::embeddings::{EmbedError, Embedding, EmbeddingModel, TextEmbedder};
 use rig::vector_store::request::{SearchFilter, VectorSearchRequest};
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::vectorize::{VectorizeClient, VectorizeFilter, VectorizeVectorStore};
-use rig::{Embed, OneOrMany};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -63,10 +63,10 @@ async fn test_insert_documents() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -97,10 +97,8 @@ async fn test_insert_and_query() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings = vec![(
-        doc.clone(),
-        OneOrMany::one(embeddings.into_iter().next().unwrap()),
-    )];
+    let documents_with_embeddings =
+        vec![(doc.clone(), vec![embeddings.into_iter().next().unwrap()])];
 
     vector_store
         .insert_documents(documents_with_embeddings)
@@ -147,7 +145,7 @@ async fn test_top_n_returns_full_documents() {
     vector_store
         .insert_documents(vec![(
             doc.clone(),
-            OneOrMany::one(embeddings.into_iter().next().unwrap()),
+            vec![embeddings.into_iter().next().unwrap()],
         )])
         .await
         .expect("Failed to insert document");
@@ -205,10 +203,10 @@ async fn test_top_n_with_multiple_documents() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -264,10 +262,10 @@ async fn test_query_with_eq_filter() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -340,10 +338,10 @@ async fn test_query_with_combined_filters() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store
@@ -419,10 +417,10 @@ async fn test_query_with_in_filter() {
         .await
         .expect("Failed to generate embeddings");
 
-    let documents_with_embeddings: Vec<(TestDocument, OneOrMany<Embedding>)> = docs
+    let documents_with_embeddings: Vec<(TestDocument, Vec<Embedding>)> = docs
         .into_iter()
         .zip(embeddings.into_iter())
-        .map(|(doc, emb)| (doc, OneOrMany::one(emb)))
+        .map(|(doc, emb)| (doc, vec![emb]))
         .collect();
 
     vector_store

@@ -345,7 +345,7 @@ pub(crate) fn assert_nonempty_response(response: &str) {
     );
 }
 
-pub(crate) fn assistant_text_response(choice: &rig::OneOrMany<AssistantContent>) -> Option<String> {
+pub(crate) fn assistant_text_response(choice: &[AssistantContent]) -> Option<String> {
     let response = choice
         .iter()
         .filter_map(|content| match content {

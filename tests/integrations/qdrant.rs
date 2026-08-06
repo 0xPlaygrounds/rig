@@ -228,7 +228,8 @@ async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
         .into_iter()
         .map(|(d, embeddings)| {
             let vec: Vec<f32> = embeddings
-                .first_owned()
+                .first()
+                .expect("document has an embedding")
                 .vec
                 .iter()
                 .map(|&x| x as f32)

@@ -2108,10 +2108,7 @@ mod tests {
         completion::Usage,
         test_utils::{MockCompletionModel, MockStreamEvent, MockTurn, mock_final},
     };
-    use rig_core::{
-        OneOrMany,
-        message::{ToolCall, ToolFunction},
-    };
+    use rig_core::message::{ToolCall, ToolFunction};
 
     fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
         AssistantContent::ToolCall(ToolCall::from_wire(
@@ -2295,7 +2292,7 @@ mod tests {
 
         let messages = vec![Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::text("visible <tool_call>")),
+            content: vec![AssistantContent::text("visible <tool_call>")],
         }];
         let hygiene = validate_protocol_hygiene(
             "protocol_hygiene",
@@ -2310,11 +2307,11 @@ mod tests {
     fn invalid_tool_diagnostics_require_rejected_call_history() {
         let history = vec![Message::Assistant {
             id: None,
-            content: OneOrMany::one(tool_call(
+            content: vec![tool_call(
                 "bad_call",
                 "missing",
                 serde_json::json!({"value": 1}),
-            )),
+            )],
         }];
         let error = PromptError::UnknownToolCall {
             tool_name: "missing".to_string(),

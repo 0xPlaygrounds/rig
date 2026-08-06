@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{Chat, CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
@@ -792,11 +791,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(AssistantContent::tool_call(
+                    content: vec![AssistantContent::tool_call(
                         tool_call_id,
                         AlphaSignal::NAME,
                         json!({}),
-                    )),
+                    )],
                 })
                 .message(Message::tool_result(
                     tool_call_id,

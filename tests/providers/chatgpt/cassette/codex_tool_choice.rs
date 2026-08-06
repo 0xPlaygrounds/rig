@@ -17,7 +17,7 @@ use rig::tool::Tool;
 use super::super::support::with_chatgpt_cassette;
 use crate::support::{Adder, AlphaSignal, Subtract, TOOLS_PREAMBLE};
 
-fn tool_call_names(choice: &rig::OneOrMany<AssistantContent>) -> Vec<String> {
+fn tool_call_names(choice: &[AssistantContent]) -> Vec<String> {
     choice
         .iter()
         .filter_map(|content| match content {

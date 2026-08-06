@@ -821,7 +821,7 @@ mod tests {
         apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control,
     };
     use super::*;
-    use crate::OneOrMany;
+
     use crate::completion::Message as RigMessage;
     use crate::completion::request::Document as RigDocument;
     use crate::streaming::RawStreamingToolCall;
@@ -888,13 +888,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 RigMessage::system("System prompt"),
                 RigMessage::assistant("Earlier assistant turn"),
                 RigMessage::system("Mid-conversation instruction"),
                 RigMessage::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![RigDocument {
                 id: "doc1".to_string(),
                 text: "Document text.".to_string(),
@@ -954,7 +953,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: Some("You are helpful".to_string()),
-            chat_history: OneOrMany::one(RigMessage::user("What's the weather?")),
+            chat_history: vec![RigMessage::user("What's the weather?")],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),
@@ -1015,7 +1014,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(RigMessage::user("Add 2 and 3")),
+            chat_history: vec![RigMessage::user("Add 2 and 3")],
             documents: vec![],
             tools: vec![crate::completion::ToolDefinition {
                 name: "add".to_string(),
@@ -1059,7 +1058,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(RigMessage::user("Hi")),
+            chat_history: vec![RigMessage::user("Hi")],
             documents: vec![],
             tools: vec![],
             temperature: None,

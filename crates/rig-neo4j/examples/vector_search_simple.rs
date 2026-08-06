@@ -56,28 +56,32 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
-    futures::stream::iter(embeddings)
-        .map(|(doc, embeddings)| {
-            neo4j_client.graph.run(
-                neo4rs::query(
-                    "
+    futures::stream::iter(
+        embeddings
+            .into_iter()
+            .filter_map(|(doc, embeddings)| Some((doc, embeddings.into_iter().next()?))),
+    )
+    .map(|(doc, embedding)| {
+        neo4j_client.graph.run(
+            neo4rs::query(
+                "
                         CREATE
                             (document:DocumentEmbeddings {
                                 id: $id,
                                 document: $document,
                                 embedding: $embedding})
                         RETURN document",
-                )
-                .param("id", doc.id)
-                // Here we use the first embedding but we could use any of them.
-                // Neo4j only takes primitive types or arrays as properties.
-                .param("embedding", embeddings.first_owned().vec.clone())
-                .param("document", doc.definition.to_bolt_type()),
             )
-        })
-        .buffer_unordered(3)
-        .try_collect::<Vec<_>>()
-        .await?;
+            .param("id", doc.id)
+            // Here we use the first embedding but we could use any of them.
+            // Neo4j only takes primitive types or arrays as properties.
+            .param("embedding", embedding.vec.clone())
+            .param("document", doc.definition.to_bolt_type()),
+        )
+    })
+    .buffer_unordered(3)
+    .try_collect::<Vec<_>>()
+    .await?;
 
     // Create a vector index on our vector store
     println!("Creating vector index...");

@@ -1,6 +1,5 @@
 //! xAI streaming tools smoke test.
 
-use rig::OneOrMany;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
@@ -139,15 +138,15 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 .expect("raw xAI responses stream should yield get_status_word");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result_message = Message::User {
-                content: OneOrMany::one(UserContent::tool_result_for(
+                content: vec![UserContent::tool_result_for(
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
                     tool_call.function.name.clone(),
-                    OneOrMany::one(ToolResultContent::text(XAI_STATUS_TOOL_OUTPUT)),
-                )),
+                    vec![ToolResultContent::text(XAI_STATUS_TOOL_OUTPUT)],
+                )],
             };
             let followup_request = model
                 .completion_request(

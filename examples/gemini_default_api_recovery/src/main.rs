@@ -272,16 +272,19 @@ async fn consume_workspace_like_stream(
                 ..
             }) => {
                 observation.events.push("tool_result");
-                let value = match tool_result.content.first_owned() {
-                    ToolResultContent::Json { value } => value.clone(),
-                    ToolResultContent::Text(_) => {
+                let value = match tool_result.content.first() {
+                    Some(ToolResultContent::Json { value }) => value.clone(),
+                    Some(ToolResultContent::Text(_)) => {
                         return Err(
                             "JS Runtime returned literal text instead of structured JSON"
                                 .to_string(),
                         );
                     }
-                    ToolResultContent::Image(_) => {
+                    Some(ToolResultContent::Image(_)) => {
                         return Err("JS Runtime returned an unexpected image".to_string());
+                    }
+                    None => {
+                        return Err("JS Runtime returned an empty tool result".to_string());
                     }
                 };
                 observation.tool_results.push(value.to_string());

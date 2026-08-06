@@ -1,6 +1,5 @@
 use std::{convert::Infallible, str::FromStr};
 
-use crate::OneOrMany;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -24,14 +23,34 @@ pub enum Message {
     System { content: String },
 
     /// User message containing one or more content types defined by `UserContent`.
-    User { content: OneOrMany<UserContent> },
+    User { content: Vec<UserContent> },
 
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
         /// Provider-assigned assistant message ID, when available.
         id: Option<String>,
-        content: OneOrMany<AssistantContent>,
+        content: Vec<AssistantContent>,
     },
+}
+
+/// Reject an empty content list, with the error the call site chose.
+///
+/// Message content is a `Vec`, so "no content" is representable in the type.
+/// Most wires nevertheless reject it — a completion that carried no message and
+/// no tool call is a provider defect, and a history message with no blocks has
+/// nothing to send — and several call sites depend on that rejection as control
+/// flow, not merely as a diagnostic (`chatgpt::normalized_completion` matches on
+/// it to rebuild from the raw event stream).
+///
+/// Those guards used to be a side effect of the non-empty container's
+/// constructor. With the container gone they are stated explicitly here, which
+/// is where they belonged: the check is domain validation, not a type
+/// invariant, and each site keeps its own message.
+pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Result<Vec<T>, E> {
+    if items.is_empty() {
+        return Err(error());
+    }
+    Ok(items)
 }
 
 /// Describes the content of a message, which can be text, a tool result, an image, audio, or
@@ -227,7 +246,7 @@ pub struct ToolResult {
     /// replays (review 84a43e9e #5).
     pub name: String,
     /// One or more content items produced by the tool.
-    pub content: OneOrMany<ToolResultContent>,
+    pub content: Vec<ToolResultContent>,
 }
 
 impl ToolResult {
@@ -983,7 +1002,7 @@ impl Message {
     /// Helper constructor to make creating user messages easier.
     pub fn user(text: impl Into<String>) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::text(text)),
+            content: vec![UserContent::text(text)],
         }
     }
 
@@ -991,7 +1010,7 @@ impl Message {
     pub fn assistant(text: impl Into<String>) -> Self {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::text(text)),
+            content: vec![AssistantContent::text(text)],
         }
     }
 
@@ -999,7 +1018,7 @@ impl Message {
     pub fn assistant_with_id(id: String, text: impl Into<String>) -> Self {
         Message::Assistant {
             id: Some(id),
-            content: OneOrMany::one(AssistantContent::text(text)),
+            content: vec![AssistantContent::text(text)],
         }
     }
 
@@ -1014,11 +1033,11 @@ impl Message {
         content: impl Into<String>,
     ) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::tool_result(
+            content: vec![UserContent::tool_result(
                 call,
                 name,
-                OneOrMany::one(ToolResultContent::text(content)),
-            )),
+                vec![ToolResultContent::text(content)],
+            )],
         }
     }
 }
@@ -1169,7 +1188,7 @@ impl UserContent {
     pub fn tool_result(
         call: impl Into<String>,
         name: impl Into<String>,
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
     ) -> Self {
         UserContent::ToolResult(ToolResult {
             call: ToolCallId::new_or_mint(call),
@@ -1187,7 +1206,7 @@ impl UserContent {
     pub fn tool_result_from_wire(
         wire_id: impl Into<String>,
         name: impl Into<String>,
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(wire_id);
         let call = ToolCallId::for_provider(provider.as_ref());
@@ -1207,7 +1226,7 @@ impl UserContent {
         call: ToolCallId,
         provider: Option<ProviderCallId>,
         name: impl Into<String>,
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
     ) -> Self {
         UserContent::ToolResult(ToolResult {
             call,
@@ -1224,7 +1243,7 @@ impl UserContent {
         item_id: impl Into<String>,
         call_id: impl Into<String>,
         name: impl Into<String>,
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
         let call = ToolCallId::for_provider(provider.as_ref());
@@ -1559,7 +1578,7 @@ impl From<&Message> for Message {
 impl From<String> for Message {
     fn from(text: String) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
+            content: vec![UserContent::Text(text.into())],
         }
     }
 }
@@ -1567,7 +1586,7 @@ impl From<String> for Message {
 impl From<&str> for Message {
     fn from(text: &str) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
+            content: vec![UserContent::Text(text.into())],
         }
     }
 }
@@ -1575,7 +1594,7 @@ impl From<&str> for Message {
 impl From<&String> for Message {
     fn from(text: &String) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
+            content: vec![UserContent::Text(text.into())],
         }
     }
 }
@@ -1583,7 +1602,7 @@ impl From<&String> for Message {
 impl From<Text> for Message {
     fn from(text: Text) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text(text)),
+            content: vec![UserContent::Text(text)],
         }
     }
 }
@@ -1591,7 +1610,7 @@ impl From<Text> for Message {
 impl From<Image> for Message {
     fn from(image: Image) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Image(image)),
+            content: vec![UserContent::Image(image)],
         }
     }
 }
@@ -1599,7 +1618,7 @@ impl From<Image> for Message {
 impl From<Audio> for Message {
     fn from(audio: Audio) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Audio(audio)),
+            content: vec![UserContent::Audio(audio)],
         }
     }
 }
@@ -1607,7 +1626,7 @@ impl From<Audio> for Message {
 impl From<Document> for Message {
     fn from(document: Document) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Document(document)),
+            content: vec![UserContent::Document(document)],
         }
     }
 }
@@ -1634,7 +1653,7 @@ impl From<AssistantContent> for Message {
     fn from(content: AssistantContent) -> Self {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(content),
+            content: vec![content],
         }
     }
 }
@@ -1642,19 +1661,19 @@ impl From<AssistantContent> for Message {
 impl From<UserContent> for Message {
     fn from(content: UserContent) -> Self {
         Message::User {
-            content: OneOrMany::one(content),
+            content: vec![content],
         }
     }
 }
 
-impl From<OneOrMany<AssistantContent>> for Message {
-    fn from(content: OneOrMany<AssistantContent>) -> Self {
+impl From<Vec<AssistantContent>> for Message {
+    fn from(content: Vec<AssistantContent>) -> Self {
         Message::Assistant { id: None, content }
     }
 }
 
-impl From<OneOrMany<UserContent>> for Message {
-    fn from(content: OneOrMany<UserContent>) -> Self {
+impl From<Vec<UserContent>> for Message {
+    fn from(content: Vec<UserContent>) -> Self {
         Message::User { content }
     }
 }
@@ -1663,7 +1682,7 @@ impl From<ToolCall> for Message {
     fn from(tool_call: ToolCall) -> Self {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+            content: vec![AssistantContent::ToolCall(tool_call)],
         }
     }
 }
@@ -1671,7 +1690,7 @@ impl From<ToolCall> for Message {
 impl From<ToolResult> for Message {
     fn from(tool_result: ToolResult) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(tool_result)),
+            content: vec![UserContent::ToolResult(tool_result)],
         }
     }
 }
@@ -1679,12 +1698,12 @@ impl From<ToolResult> for Message {
 impl From<ToolResultContent> for Message {
     fn from(tool_result_content: ToolResultContent) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+            content: vec![UserContent::ToolResult(ToolResult {
                 call: ToolCallId::mint(),
                 provider: None,
                 name: String::new(),
-                content: OneOrMany::one(tool_result_content),
-            })),
+                content: vec![tool_result_content],
+            })],
         }
     }
 }

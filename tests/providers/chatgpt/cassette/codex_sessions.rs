@@ -351,18 +351,18 @@ async fn long_history_replay_nonstreaming() {
                 .message(Message::user("Now look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: rig::OneOrMany::one(AssistantContent::tool_call_with_call_id(
+                    content: vec![AssistantContent::tool_call_with_call_id(
                         "history_tool_1",
                         call_id.clone(),
                         AlphaSignal::NAME,
                         serde_json::json!({}),
-                    )),
+                    )],
                 })
                 .message(Message::from(UserContent::tool_result_with_call_id(
                     "history_tool_1",
                     call_id,
                     AlphaSignal::NAME,
-                    rig::OneOrMany::one(rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                    vec![rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
                 )))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))

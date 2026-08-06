@@ -232,7 +232,6 @@ use candle_transformers::models::llama::{Cache, Llama};
 use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama;
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::utils::apply_repeat_penalty;
-use rig_core::OneOrMany;
 use rig_core::completion::{AssistantContent, CompletionResponse};
 use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall};
 use tokenizers::tokenizer::DecodeStream;
@@ -567,7 +566,7 @@ pub(crate) fn infer(
         loaded.profile.definition.protocol,
     )?;
     raw_response.text = parsed.visible_text;
-    let choice = OneOrMany::many(parsed.items).map_err(|_| {
+    let choice = rig_core::message::require_non_empty(parsed.items, || {
         CandleError::Inference("output protocol produced no assistant content".to_string())
     })?;
 
@@ -588,7 +587,7 @@ pub(crate) struct InferredCompletion {
     /// The local model's own response record.
     pub(crate) response: CandleCompletionResponse,
     /// Assistant content parsed out of the generated text.
-    pub(crate) choice: OneOrMany<AssistantContent>,
+    pub(crate) choice: Vec<AssistantContent>,
 }
 
 impl InferredCompletion {

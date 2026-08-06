@@ -201,7 +201,7 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
                 &call.tool_call.function.name,
                 &call.tool_call.function.arguments,
             );
-            let content = rig::OneOrMany::one(ToolResultContent::json(serde_json::json!(output)));
+            let content = vec![ToolResultContent::json(serde_json::json!(output))];
             UserContent::tool_result_for(
                 call.tool_call.id.clone(),
                 call.tool_call.provider.clone(),

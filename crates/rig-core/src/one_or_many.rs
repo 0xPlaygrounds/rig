@@ -1,10 +1,7 @@
-use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde::ser::{SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
-use std::convert::Infallible;
 use std::fmt;
-use std::marker::PhantomData;
-use std::str::FromStr;
 
 /// Struct containing either a single item or a list of items of type T.
 /// If a single item is present, `first` will contain it and `rest` will be empty.
@@ -125,18 +122,6 @@ impl<T: Clone> OneOrMany<T> {
         })
     }
 
-    /// Specialized map function for OneOrMany objects.
-    ///
-    /// Since OneOrMany objects have *atleast* 1 item, using `.collect::<Vec<_>>()` and
-    /// `OneOrMany::many()` is fallible resulting in unergonomic uses of `.expect` or `.unwrap`.
-    /// This function bypasses those hurdles by directly constructing the `OneOrMany` struct.
-    pub(crate) fn map<U, F: FnMut(T) -> U>(self, mut op: F) -> OneOrMany<U> {
-        OneOrMany {
-            first: op(self.first),
-            rest: self.rest.into_iter().map(op).collect(),
-        }
-    }
-
     /// Build a `OneOrMany` from an iterator when the caller can naturally handle an empty input.
     pub fn from_iter_optional<I>(items: I) -> Option<Self>
     where
@@ -147,23 +132,6 @@ impl<T: Clone> OneOrMany<T> {
         Some(OneOrMany {
             first,
             rest: iter.collect(),
-        })
-    }
-
-    /// Specialized try map function for OneOrMany objects.
-    ///
-    /// Same as `OneOrMany::map` but fallible.
-    pub(crate) fn try_map<U, E, F>(self, mut op: F) -> Result<OneOrMany<U>, E>
-    where
-        F: FnMut(T) -> Result<U, E>,
-    {
-        Ok(OneOrMany {
-            first: op(self.first)?,
-            rest: self
-                .rest
-                .into_iter()
-                .map(op)
-                .collect::<Result<Vec<_>, E>>()?,
         })
     }
 
@@ -370,61 +338,9 @@ where
     }
 }
 
-// A special deserialize_with function for fields with `OneOrMany<T: FromStr>`
-//
-// Usage:
-// #[derive(Deserialize)]
-// struct MyStruct {
-//     #[serde(deserialize_with = "string_or_one_or_many")]
-//     field: OneOrMany<String>,
-// }
-pub fn string_or_one_or_many<'de, T, D>(deserializer: D) -> Result<OneOrMany<T>, D::Error>
-where
-    T: Deserialize<'de> + FromStr<Err = Infallible> + Clone,
-    D: Deserializer<'de>,
-{
-    struct StringOrOneOrMany<T>(PhantomData<fn() -> T>);
-
-    impl<'de, T> Visitor<'de> for StringOrOneOrMany<T>
-    where
-        T: Deserialize<'de> + FromStr<Err = Infallible> + Clone,
-    {
-        type Value = OneOrMany<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string or sequence")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<OneOrMany<T>, E>
-        where
-            E: de::Error,
-        {
-            let item = FromStr::from_str(value).map_err(de::Error::custom)?;
-            Ok(OneOrMany::one(item))
-        }
-
-        fn visit_seq<A>(self, seq: A) -> Result<OneOrMany<T>, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
-        }
-
-        fn visit_map<M>(self, map: M) -> Result<OneOrMany<T>, M::Error>
-        where
-            M: MapAccess<'de>,
-        {
-            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
-            Ok(OneOrMany::one(item))
-        }
-    }
-
-    deserializer.deserialize_any(StringOrOneOrMany(PhantomData))
-}
-
 #[cfg(test)]
 mod test {
-    use serde::{self, Deserialize};
+
     use serde_json::json;
 
     use super::*;
@@ -575,38 +491,5 @@ mod test {
         assert_eq!(one_or_many.len(), 2);
         assert_eq!(one_or_many.first_owned(), json!({"key": "value1"}));
         assert_eq!(one_or_many.rest(), vec![json!({"key": "value2"})]);
-    }
-
-    #[derive(Debug, Deserialize, PartialEq)]
-    struct DummyStruct {
-        #[serde(deserialize_with = "string_or_one_or_many")]
-        field: OneOrMany<DummyString>,
-    }
-
-    #[derive(Debug, Clone, Deserialize, PartialEq)]
-    struct DummyString {
-        pub string: String,
-    }
-
-    impl FromStr for DummyString {
-        type Err = Infallible;
-
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            Ok(DummyString {
-                string: s.to_string(),
-            })
-        }
-    }
-
-    #[test]
-    fn test_deserialize_string() {
-        let json_data = json!({"field": "hello"});
-        let dummy: DummyStruct = serde_json::from_value(json_data).unwrap();
-
-        assert_eq!(dummy.field.len(), 1);
-        assert_eq!(
-            dummy.field.first_owned(),
-            DummyString::from_str("hello").unwrap()
-        );
     }
 }

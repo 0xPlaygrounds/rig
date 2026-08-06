@@ -126,6 +126,15 @@ pub mod stringified_json {
     }
 }
 
+/// Deserialize a wire field that may arrive as a bare scalar, a single object,
+/// a sequence, or null, into `Vec<T>`.
+///
+/// This is the single lenient list decoder. It absorbed
+/// `one_or_many::string_or_one_or_many`, which differed only in returning a
+/// non-empty type: that helper rejected `null` (it had no empty representation)
+/// and accepted a bare object via `visit_map`. Both shapes are wanted, so the
+/// `visit_map` arm moved here and `null` now yields an empty `Vec` — the case
+/// the non-empty type could not express and therefore had to fail on.
 pub fn string_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     T: Deserialize<'de> + FromStr<Err = Infallible>,
@@ -140,7 +149,18 @@ where
         type Value = Vec<T>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string, sequence, or null")
+            formatter.write_str("a string, object, sequence, or null")
+        }
+
+        /// A single content object where the canonical shape is a list; several
+        /// provider schemas allow it (anthropic `content`, the OpenAI chat and
+        /// Responses message bodies).
+        fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
+        where
+            M: de::MapAccess<'de>,
+        {
+            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+            Ok(vec![item])
         }
 
         fn visit_str<E>(self, value: &str) -> Result<Vec<T>, E>
@@ -384,5 +404,85 @@ mod tests {
     fn test_parse_tool_arguments_valid_json() {
         let parsed = parse_tool_arguments(r#"{"key":"value"}"#).unwrap();
         assert_eq!(parsed, serde_json::json!({"key": "value"}));
+    }
+
+    /// `string_or_vec` absorbed `one_or_many::string_or_one_or_many`; these pin
+    /// every shape both helpers together accepted, including the two that only
+    /// one of them handled (`visit_map`, and `null` as empty).
+    mod string_or_vec {
+        use super::super::string_or_vec;
+        use serde::Deserialize;
+        use std::convert::Infallible;
+        use std::str::FromStr;
+
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct Wrapper {
+            #[serde(deserialize_with = "string_or_vec")]
+            field: Vec<Item>,
+        }
+
+        #[derive(Debug, Clone, Deserialize, PartialEq)]
+        struct Item {
+            string: String,
+        }
+
+        impl FromStr for Item {
+            type Err = Infallible;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                Ok(Item {
+                    string: value.to_string(),
+                })
+            }
+        }
+
+        fn parse(value: serde_json::Value) -> Vec<Item> {
+            serde_json::from_value::<Wrapper>(value)
+                .expect("wrapper should deserialize")
+                .field
+        }
+
+        #[test]
+        fn bare_string_becomes_one_item() {
+            assert_eq!(
+                parse(serde_json::json!({"field": "hello"})),
+                vec![Item {
+                    string: "hello".to_string()
+                }]
+            );
+        }
+
+        /// The arm inherited from `string_or_one_or_many`: a single content
+        /// object where the canonical shape is a list.
+        #[test]
+        fn bare_object_becomes_one_item() {
+            assert_eq!(
+                parse(serde_json::json!({"field": {"string": "hello"}})),
+                vec![Item {
+                    string: "hello".to_string()
+                }]
+            );
+        }
+
+        #[test]
+        fn sequence_round_trips_in_order() {
+            assert_eq!(
+                parse(serde_json::json!({"field": [{"string": "a"}, {"string": "b"}]})),
+                vec![
+                    Item {
+                        string: "a".to_string()
+                    },
+                    Item {
+                        string: "b".to_string()
+                    }
+                ]
+            );
+        }
+
+        /// The non-empty type had to reject this; `Vec` can represent it.
+        #[test]
+        fn null_is_an_empty_list() {
+            assert_eq!(parse(serde_json::json!({"field": null})), vec![]);
+        }
     }
 }

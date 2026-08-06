@@ -14,7 +14,6 @@ use crate::client::{
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError},
     message::{self, AssistantContent, Message, UserContent},
 };
@@ -164,11 +163,11 @@ impl TryFrom<RawMessage> for message::Message {
                 content: raw.content,
             }),
             "user" => Ok(message::Message::User {
-                content: OneOrMany::one(UserContent::Text(message::Text::new(raw.content))),
+                content: vec![UserContent::Text(message::Text::new(raw.content))],
             }),
             "assistant" => Ok(message::Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::Text(message::Text::new(raw.content))),
+                content: vec![AssistantContent::Text(message::Text::new(raw.content))],
             }),
             _ => Err(CompletionError::ResponseError(format!(
                 "Unsupported message role: {}",
@@ -372,7 +371,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
                 let content = match message {
                     Message::Assistant { content, .. } => {
-                        if content.is_empty_always_false() {
+                        if content.is_empty() {
                             return Err(CompletionError::ResponseError(
                                 "Response contained empty content".to_owned(),
                             ));
@@ -423,7 +422,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             ),
         };
 
-        let choice = OneOrMany::many(content).map_err(|_| {
+        let choice = crate::message::require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )
@@ -491,8 +490,8 @@ mod tests {
         let completion_response = normalized(mira_response);
 
         assert_eq!(
-            completion_response.choice.first_owned(),
-            completion::AssistantContent::text("Test response")
+            completion_response.choice.first(),
+            Some(&completion::AssistantContent::text("Test response"))
         );
         assert_eq!(completion_response.provider, "mira");
         assert_eq!(completion_response.response_id.as_deref(), Some("resp_123"));

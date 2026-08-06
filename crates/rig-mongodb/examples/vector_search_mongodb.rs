@@ -89,12 +89,15 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mongo_documents = embeddings
         .iter()
-        .map(|(Word { id, definition, .. }, embedding)| {
-            doc! {
+        .filter_map(|(Word { id, definition, .. }, embeddings)| {
+            // A document the embedder produced nothing for is skipped rather
+            // than panicked on: "no embedding" is representable now.
+            let embedding = embeddings.first()?;
+            Some(doc! {
                 "id": id.clone(),
                 "definition": definition.clone(),
-                "embedding": embedding.first_owned().vec.clone(),
-            }
+                "embedding": embedding.vec.clone(),
+            })
         })
         .collect::<Vec<_>>();
 

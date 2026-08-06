@@ -392,7 +392,7 @@ impl ApiError {
 #[cfg(test)]
 mod tests {
     use super::{Content, Message, Role};
-    use crate::OneOrMany;
+
     use crate::message::{
         AssistantContent, Message as RigMessage, Reasoning, ReasoningContent, ToolResultContent,
         UserContent,
@@ -402,17 +402,16 @@ mod tests {
     #[test]
     fn mixed_user_content_preserves_order_without_duplicate_text() {
         let message = RigMessage::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::text("before"),
                 UserContent::tool_result_with_call_id(
                     "result-id",
                     "call-id".to_string(),
                     "tool",
-                    OneOrMany::one(ToolResultContent::json(serde_json::json!({ "ok": true }))),
+                    vec![ToolResultContent::json(serde_json::json!({ "ok": true }))],
                 ),
                 UserContent::text("after"),
-            ])
-            .expect("mixed content is non-empty"),
+            ],
         };
 
         let messages = Vec::<Message>::try_from(message).expect("mixed content should convert");
@@ -448,7 +447,7 @@ mod tests {
         };
         let message = RigMessage::Assistant {
             id: Some("assistant_1".to_string()),
-            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+            content: vec![AssistantContent::Reasoning(reasoning)],
         };
 
         let items = Vec::<Message>::try_from(message).expect("convert assistant message");
@@ -479,7 +478,7 @@ mod tests {
         };
         let message = RigMessage::Assistant {
             id: Some("assistant_2".to_string()),
-            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+            content: vec![AssistantContent::Reasoning(reasoning)],
         };
 
         let items = Vec::<Message>::try_from(message).expect("convert assistant message");
@@ -509,7 +508,7 @@ mod tests {
         };
         let message = RigMessage::Assistant {
             id: Some("assistant_2b".to_string()),
-            content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+            content: vec![AssistantContent::Reasoning(reasoning)],
         };
 
         let items = Vec::<Message>::try_from(message).expect("convert assistant message");
@@ -533,7 +532,7 @@ mod tests {
         // worse, fabricating an identifier xAI never issued (#2258 A1).
         let message = RigMessage::Assistant {
             id: Some("assistant_no_reasoning_id".to_string()),
-            content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thinking"))),
+            content: vec![AssistantContent::Reasoning(Reasoning::new("thinking"))],
         };
 
         let converted = Vec::<Message>::try_from(message).expect("conversion must not fail");
@@ -592,11 +591,11 @@ mod tests {
         // handle; the minted handle (never an empty string) goes on the wire.
         let message = RigMessage::Assistant {
             id: Some("assistant_3".to_string()),
-            content: OneOrMany::one(AssistantContent::tool_call(
+            content: vec![AssistantContent::tool_call(
                 "",
                 "my_tool",
                 serde_json::json!({"arg":"value"}),
-            )),
+            )],
         };
 
         let converted = Vec::<Message>::try_from(message).expect("id-less tool calls convert");
