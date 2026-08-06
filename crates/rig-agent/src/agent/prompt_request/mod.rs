@@ -670,9 +670,15 @@ pub(crate) fn invalid_tool_retry_user_message(
 }
 
 pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
-    choice.len() == 1
-        && matches!(
-            choice.first(), Some(AssistantContent::Text(text)) if text.text.is_empty() && text.additional_params.is_none())
+    // Genuinely empty is the shape rig produces now. The single empty-text part
+    // is the sentinel the non-empty container forced providers to fabricate;
+    // persisted histories still carry it, so it stays recognised.
+    choice.is_empty()
+        || (choice.len() == 1
+            && matches!(
+                choice.first(),
+                Some(AssistantContent::Text(text))
+                    if text.text.is_empty() && text.additional_params.is_none()))
 }
 
 pub(crate) fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {

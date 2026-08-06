@@ -533,13 +533,14 @@ impl AgentRun {
         match request {
             RetryRequest::Repeat => {}
             RetryRequest::Feedback(feedback) => {
+                // No emptiness guard here: a rejected turn that carried
+                // nothing is exactly what a hook rejecting empty responses
+                // acts on, and the fabricated empty-text part used to make
+                // that case unreachable. `is_empty_assistant_turn` below is
+                // what handles it — by declining to record a content-less
+                // message — which is what this function's contract already
+                // promises for canonical empty turns.
                 let content = turn.items;
-                if content.is_empty() {
-                    return Err(PromptError::prompt_cancelled(
-                        self.full_history(),
-                        "model-turn retry lost the rejected assistant content",
-                    ));
-                };
                 if !is_empty_assistant_turn(&content) {
                     self.new_messages.push(Message::Assistant {
                         id: turn.message_id,
@@ -660,13 +661,15 @@ impl AgentRun {
                     skipped,
                     mut internal_call_ids,
                 } = *turn_state;
+                // An empty assistant turn is a real provider outcome, not lost
+                // state: Anthropic ends a turn with no content after a
+                // tool-result round trip, and a textless tool-call turn streams
+                // no text part. This guard could never fire while every provider
+                // fabricated an empty-text sentinel to satisfy the non-empty
+                // container; with the sentinel gone it fired on exactly those
+                // legitimate turns. `is_empty_assistant_turn` below is what
+                // handles them — by not pushing a content-less message.
                 let choice = items.clone();
-                if choice.is_empty() {
-                    return Err(PromptError::prompt_cancelled(
-                        self.full_history(),
-                        "model turn lost its assistant content",
-                    ));
-                };
 
                 // Tool output mode (#1928): a call to the synthetic output tool
                 // finalizes the run with the call's arguments as the response,
@@ -1098,9 +1101,6 @@ impl AgentRun {
             .items
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
-        if resolving.items.is_empty() {
-            resolving.items.push(AssistantContent::text(""));
-        }
         self.state = RunState::ResolvingToolCalls(resolving);
         self.advance_resolution()
     }

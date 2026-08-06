@@ -137,7 +137,7 @@ fn history_has_empty_assistant_text(messages: &[Message]) -> bool {
 }
 
 #[tokio::test]
-async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
+async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice",
         |client| async move {
@@ -180,21 +180,14 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 .await
                 .expect("follow-up Anthropic turn should not error on empty end_turn");
 
-            assert_eq!(
-                followup.choice.len(),
-                1,
-                "expected normalized empty follow-up choice, got {:?}",
+            // An empty `end_turn` follow-up now normalizes to an empty choice
+            // rather than to a single empty-text sentinel: the sentinel existed
+            // only to satisfy the non-empty container.
+            assert!(
+                followup.choice.is_empty(),
+                "expected an empty follow-up choice, got {:?}",
                 followup.choice
             );
-
-            match followup.choice.first() {
-                Some(AssistantContent::Text(text)) => assert!(
-                    text.text.is_empty(),
-                    "expected empty follow-up text sentinel, got {:?}",
-                    text.text
-                ),
-                other => panic!("expected empty text sentinel, got {other:?}"),
-            }
         },
     )
     .await;

@@ -762,14 +762,15 @@ impl PartsAccumulator {
 
     /// Consume the accumulated state into the ordered choice parts.
     ///
-    /// Never empty: a stream that produced no content yields the single
-    /// empty text part the aggregated choice has always defaulted to. Empty
-    /// text parts that never received content are dropped. Calls still open
-    /// at stream end never fully arrived and drop, per the settled
+    /// May be empty: a stream that produced no content yields no parts. The
+    /// aggregated choice used to default to a single empty text part because
+    /// it could not represent "no content"; it can now, so callers see the
+    /// truth. Empty text parts that never received content are dropped. Calls
+    /// still open at stream end never fully arrived and drop, per the settled
     /// truncation contract; reasoning still open is kept as-is (its deltas
     /// are real content).
     pub(crate) fn finish(&mut self) -> Vec<AssistantContent> {
-        let mut parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
+        let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
             .into_iter()
             .filter(|part| match part {
                 // A lazily opened block that got content survives; the
@@ -789,9 +790,6 @@ impl PartsAccumulator {
         self.open_tool_inputs.clear();
         self.finished_tools.clear();
         self.saw_tool_call = false;
-        if parts.is_empty() {
-            parts.push(AssistantContent::text(""));
-        }
         parts
     }
 }
@@ -1338,11 +1336,15 @@ mod tests {
         assert_eq!(texts, vec!["first", "second"]);
     }
 
+    /// A stream that produced nothing aggregates to nothing. The old contract
+    /// returned one empty text part, because the aggregated choice could not
+    /// represent "no content"; it can now, so the sentinel is gone and callers
+    /// see the truth.
     #[test]
-    fn finish_on_an_empty_stream_yields_one_empty_text_part() {
+    fn finish_on_an_empty_stream_yields_no_parts() {
         let mut accumulator = PartsAccumulator::new();
         let parts = accumulator.finish();
-        assert_eq!(parts, vec![AssistantContent::text("")]);
+        assert!(parts.is_empty(), "expected no parts, got {parts:?}");
     }
 
     // --- tool-call lifecycle (the settled semantics) ---
@@ -1688,7 +1690,10 @@ mod tests {
         accumulator.tool_name_delta(&pid("call_1"), "ping");
         accumulator.tool_args_delta(&pid("call_1"), "{\"x\":");
         let parts = accumulator.finish();
-        assert_eq!(parts, vec![AssistantContent::text("")]);
+        assert!(
+            parts.is_empty(),
+            "a call that never finished contributes nothing, got {parts:?}"
+        );
         assert!(!accumulator.saw_tool_call());
     }
 

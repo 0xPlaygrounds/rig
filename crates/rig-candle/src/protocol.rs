@@ -826,9 +826,6 @@ fn parse_qwen3_assistant(
             "the model returned no tool call for a required/specific choice".to_string(),
         ));
     }
-    if items.is_empty() {
-        items.push(AssistantContent::text(""));
-    }
     let visible_text = canonicalize_visible_text(&mut items);
     Ok(ParsedAssistant {
         items,

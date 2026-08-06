@@ -9461,9 +9461,19 @@ mod migrated_tests {
             ctx: &HookContext,
             event: ModelTurnFinished<'_>,
         ) -> ModelTurnAction {
-            let rejected = event.content.iter().any(
-                |content| matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text),
-            );
+            // An empty `rejected_text` means "this turn said nothing". That
+            // used to be a text part holding `""`, because the choice could
+            // not be empty; a genuinely empty choice is the same condition
+            // now, and the streaming path produces exactly that.
+            let says_nothing = self.rejected_text.is_empty()
+                && !event
+                    .content
+                    .iter()
+                    .any(|content| matches!(content, AssistantContent::Text(text) if !text.text.is_empty()));
+            let rejected = says_nothing
+                || event.content.iter().any(
+                    |content| matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text),
+                );
             if !rejected {
                 return ModelTurnAction::continue_run();
             }

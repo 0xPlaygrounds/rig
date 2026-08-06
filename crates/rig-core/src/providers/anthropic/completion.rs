@@ -259,7 +259,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             // The generic completion response still requires at least one assistant item, so
             // normalize that terminal no-op into the same empty-text sentinel used by streaming.
             if response.stop_reason.as_deref() == Some("end_turn") {
-                vec![completion::AssistantContent::text("")]
+                Vec::new()
             } else {
                 return Err(CompletionError::ResponseError(
                     EMPTY_RESPONSE_ERROR.to_owned(),
@@ -5049,7 +5049,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_end_turn_response_normalizes_to_empty_text_choice() {
+    fn empty_end_turn_response_normalizes_to_an_empty_choice() {
         let response = CompletionResponse {
             content: vec![],
             id: "msg_123".to_string(),
@@ -5069,9 +5069,14 @@ mod tests {
             .normalize("anthropic")
             .expect("empty end_turn should not error");
 
-        assert_eq!(parsed.choice.len(), 1);
-        assert!(matches!(
-            parsed.choice.first(), Some(completion::AssistantContent::Text(text)) if text.text.is_empty()));
+        // The turn carried no content and now says so. This used to normalize
+        // to a single empty-text part, which existed only because the choice
+        // could not be empty; the rest of the terminal metadata is unchanged.
+        assert!(
+            parsed.choice.is_empty(),
+            "expected an empty choice, got {:?}",
+            parsed.choice
+        );
         assert_eq!(parsed.provider, "anthropic");
         assert_eq!(parsed.message_id.as_deref(), Some("msg_123"));
         assert_eq!(parsed.model.as_deref(), Some(CLAUDE_SONNET_4_6));
