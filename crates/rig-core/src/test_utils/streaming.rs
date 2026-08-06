@@ -247,7 +247,9 @@ impl MockStreamEvent {
                 // durable handle; a legacy minted rendering is a key only.
                 let key = fixture_part_id(id.clone());
                 let provider_id = match &key {
-                    crate::streaming::StreamPartId::Wire(_) => crate::streaming::WireId::new(id),
+                    key_is_wire if key_is_wire.wire_str().is_some() => {
+                        crate::streaming::WireId::new(id)
+                    }
                     _ => None,
                 };
                 Ok(RawStreamingChoice::Reasoning {
@@ -259,7 +261,9 @@ impl MockStreamEvent {
             Self::ReasoningDelta { id, reasoning } => {
                 let key = fixture_part_id(id.clone());
                 let provider_id = match &key {
-                    crate::streaming::StreamPartId::Wire(_) => crate::streaming::WireId::new(id),
+                    key_is_wire if key_is_wire.wire_str().is_some() => {
+                        crate::streaming::WireId::new(id)
+                    }
                     _ => None,
                 };
                 Ok(RawStreamingChoice::ReasoningDelta {

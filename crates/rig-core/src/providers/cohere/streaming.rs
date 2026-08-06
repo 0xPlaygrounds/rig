@@ -15,10 +15,7 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 
 /// Cohere thinking deltas carry no id; a per-stream constant minted identity
 /// keys their accumulation and can never reach a request.
-const REASONING_ID: StreamPartId = StreamPartId::Minted {
-    kind: MintKind::Reasoning,
-    index: 0,
-};
+const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;

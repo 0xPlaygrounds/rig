@@ -32,10 +32,7 @@ pub(crate) mod shared_parts {
     /// constant minted identity keeps all thought deltas merging into one
     /// item, and the core accumulator's minted-id boundary splits items
     /// around other output. Minted, so it can never reach a request.
-    pub(crate) const REASONING_ID: StreamPartId = StreamPartId::Minted {
-        kind: MintKind::Reasoning,
-        index: 0,
-    };
+    pub(crate) const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
 
     /// A thought fragment as a canonical reasoning delta.
     pub(crate) fn reasoning_delta<R>(text: String) -> RawStreamingChoice<R> {
@@ -84,10 +81,7 @@ pub(crate) mod shared_parts {
         let id = tool_id
             .as_ref()
             .map(|id| StreamPartId::wire(id.as_str()))
-            .unwrap_or(StreamPartId::Minted {
-                kind: MintKind::Tool,
-                index: 0,
-            });
+            .unwrap_or(StreamPartId::minted(MintKind::Tool, 0));
         let tool_call = RawStreamingToolCall {
             id,
             tool_id,

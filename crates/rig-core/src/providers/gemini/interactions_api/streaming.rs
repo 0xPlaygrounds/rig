@@ -309,10 +309,10 @@ impl WireAdapter for InteractionsAdapter {
                     let key = wire_id
                         .as_ref()
                         .map(|id| streaming::StreamPartId::wire(id.as_str()))
-                        .unwrap_or(streaming::StreamPartId::Minted {
-                            kind: streaming::MintKind::Tool,
-                            index: index.max(0) as u64,
-                        });
+                        .unwrap_or(streaming::StreamPartId::minted(
+                            streaming::MintKind::Tool,
+                            index.max(0) as u64,
+                        ));
                     out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
                         id: key.clone(),
                         content: streaming::ToolCallDeltaContent::Name(name),

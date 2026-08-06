@@ -435,10 +435,7 @@ where
         if !choice.tool_calls.is_empty() && self.reasoning_open {
             self.reasoning_open = false;
             out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                id: StreamPartId::Minted {
-                    kind: MintKind::Reasoning,
-                    index: 0,
-                },
+                id: StreamPartId::minted(MintKind::Reasoning, 0),
                 reasoning: None,
                 signature: None,
                 wire_sent: false,
@@ -515,10 +512,7 @@ where
             out.push(Ok(RawStreamingChoice::ReasoningDelta {
                 // `reasoning_content` deltas carry no wire id; per-stream
                 // constant minted key.
-                id: StreamPartId::Minted {
-                    kind: MintKind::Reasoning,
-                    index: 0,
-                },
+                id: StreamPartId::minted(MintKind::Reasoning, 0),
                 provider_id: None,
                 reasoning,
             }));
@@ -532,10 +526,7 @@ where
             if self.reasoning_open {
                 self.reasoning_open = false;
                 out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                    id: StreamPartId::Minted {
-                        kind: MintKind::Reasoning,
-                        index: 0,
-                    },
+                    id: StreamPartId::minted(MintKind::Reasoning, 0),
                     reasoning: None,
                     signature: None,
                     wire_sent: false,

@@ -563,10 +563,7 @@ impl PartsAccumulator {
         // legacy durable fallback when the end event carries no
         // authoritative tool id. Minted keys yield the absent (empty)
         // sentinel serializers omit.
-        let opened_id = match opened_id {
-            StreamPartId::Wire(wire) => wire,
-            _ => String::new(),
-        };
+        let opened_id = opened_id.wire_str().map(str::to_owned).unwrap_or_default();
         // An authoritative end-event name supersedes assembly, but an
         // *empty* one is filtered like the fragment path: it must not erase
         // an established name and turn a real call into a nameless drop.
@@ -792,10 +789,7 @@ mod tests {
     /// Provider handle matching the key syntax: wire-shaped ids carry
     /// themselves; minted renderings carry none.
     fn wid(id: &str) -> Option<WireId> {
-        match pid(id) {
-            StreamPartId::Wire(_) => WireId::new(id),
-            _ => None,
-        }
+        pid(id).wire_str().and_then(|_| WireId::new(id))
     }
 
     fn full(id: &str, content: ReasoningContent) -> Reasoning {

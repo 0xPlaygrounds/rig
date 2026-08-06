@@ -62,7 +62,7 @@ impl MintKind {
     /// converted at the adapter boundary, so a negative index is a decode
     /// error there rather than a divergent identity here.
     pub fn for_wire_index(self, index: u64) -> StreamPartId {
-        StreamPartId::Minted { kind: self, index }
+        StreamPartId::minted(self, index)
     }
 }
 
@@ -76,8 +76,17 @@ impl MintKind {
 /// interleaving-boundary lifecycle still asks
 /// [`StreamPartId::is_minted`]; that discriminant is stream-internal
 /// bookkeeping, not provenance a serializer may consult.
+/// The representation is **private**: pattern-matching cannot extract the
+/// wire string (or any other payload), so "no accessor into the durable id
+/// space" is a property of the type, not a convention — the `identity_leak`
+/// compile-fail suite pins it. Construction goes through [`StreamPartId::wire`],
+/// [`StreamPartId::minted`] / [`MintKind::for_wire_index`], and
+/// [`StreamPartId::composed`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum StreamPartId {
+pub struct StreamPartId(Repr);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Repr {
     /// A key derived from an identifier the provider put on the wire.
     ///
     /// This is a *key*, not the durable handle: the handle travels
@@ -111,39 +120,55 @@ pub enum StreamPartId {
 /// construction is separate and rejects emptiness.
 impl From<String> for StreamPartId {
     fn from(id: String) -> Self {
-        Self::Wire(id)
+        Self(Repr::Wire(id))
     }
 }
 
 impl From<&str> for StreamPartId {
     fn from(id: &str) -> Self {
-        Self::Wire(id.to_owned())
+        Self(Repr::Wire(id.to_owned()))
     }
 }
 
 impl StreamPartId {
     /// A key derived from a wire-supplied identifier.
     pub fn wire(id: impl Into<String>) -> Self {
-        Self::Wire(id.into())
+        Self(Repr::Wire(id.into()))
+    }
+
+    /// A key minted at a stream boundary because the wire supplied none.
+    /// `const` so per-stream constant keys can live in `const` items.
+    pub const fn minted(kind: MintKind, index: u64) -> Self {
+        Self(Repr::Minted { kind, index })
     }
 
     /// A key composed under `self` at `ordinal` (the Responses sibling
     /// shape).
     pub fn composed(&self, ordinal: u32) -> Self {
-        Self::Composite {
+        Self(Repr::Composite {
             parent: Box::new(self.clone()),
             ordinal,
-        }
+        })
     }
 
     /// Whether this key was minted at a stream boundary (stream-internal
     /// lifecycle bookkeeping: minted-key reasoning items close on
     /// interleaving output). A composite key inherits its parent's answer.
     pub fn is_minted(&self) -> bool {
-        match self {
-            Self::Wire(_) => false,
-            Self::Minted { .. } => true,
-            Self::Composite { parent, .. } => parent.is_minted(),
+        match &self.0 {
+            Repr::Wire(_) => false,
+            Repr::Minted { .. } => true,
+            Repr::Composite { parent, .. } => parent.is_minted(),
+        }
+    }
+
+    /// The wire-supplied identifier this key was derived from, when it was
+    /// — crate-internal: the legacy durable-fallback sites read it, the
+    /// public surface never does (the `identity_leak` suite pins that).
+    pub(crate) fn wire_str(&self) -> Option<&str> {
+        match &self.0 {
+            Repr::Wire(wire) => Some(wire),
+            _ => None,
         }
     }
 }
@@ -253,20 +278,8 @@ mod tests {
     #[test]
     fn mint_counts_up_per_stream() {
         let mut ids = SyntheticIds::reasoning();
-        assert_eq!(
-            ids.mint(),
-            StreamPartId::Minted {
-                kind: MintKind::Reasoning,
-                index: 0
-            }
-        );
-        assert_eq!(
-            ids.mint(),
-            StreamPartId::Minted {
-                kind: MintKind::Reasoning,
-                index: 1
-            }
-        );
+        assert_eq!(ids.mint(), StreamPartId::minted(MintKind::Reasoning, 0));
+        assert_eq!(ids.mint(), StreamPartId::minted(MintKind::Reasoning, 1));
     }
 
     /// Distinctness within one stream is what the accumulator needs; the
@@ -301,7 +314,7 @@ mod tests {
         for kind in kinds {
             for index in [0u64, 1, 7, u64::MAX] {
                 assert!(
-                    seen.insert(StreamPartId::Minted { kind, index }),
+                    seen.insert(StreamPartId::minted(kind, index)),
                     "collision at {kind:?}:{index}"
                 );
             }

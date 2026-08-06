@@ -85,10 +85,10 @@ impl WireAdapter for GrpcAdapter {
                     match &part.data {
                         Some(proto::part::Data::Text(text)) => {
                             const REASONING_ID: rig_core::streaming::StreamPartId =
-                                rig_core::streaming::StreamPartId::Minted {
-                                    kind: rig_core::streaming::MintKind::Reasoning,
-                                    index: 0,
-                                };
+                                rig_core::streaming::StreamPartId::minted(
+                                    rig_core::streaming::MintKind::Reasoning,
+                                    0,
+                                );
                             if part.thought {
                                 if !text.is_empty() {
                                     self.reasoning_open = true;
@@ -153,10 +153,10 @@ impl WireAdapter for GrpcAdapter {
                             if self.reasoning_open {
                                 self.reasoning_open = false;
                                 out.push(Ok(streaming::RawStreamingChoice::ReasoningEnd {
-                                    id: rig_core::streaming::StreamPartId::Minted {
-                                        kind: rig_core::streaming::MintKind::Reasoning,
-                                        index: 0,
-                                    },
+                                    id: rig_core::streaming::StreamPartId::minted(
+                                        rig_core::streaming::MintKind::Reasoning,
+                                        0,
+                                    ),
                                     reasoning: None,
                                     signature: None,
                                     wire_sent: false,

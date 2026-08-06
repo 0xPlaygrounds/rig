@@ -635,10 +635,7 @@ impl RawStreamingToolCall {
             // A parser-accumulator placeholder key; providers overwrite it
             // with the wire's key before emitting. Deliberately minted: an
             // unset key must never read as wire-derived.
-            id: StreamPartId::Minted {
-                kind: MintKind::Tool,
-                index: u64::MAX,
-            },
+            id: StreamPartId::minted(MintKind::Tool, u64::MAX),
             tool_id: None,
             internal_call_id: crate::id::generate(),
             call_id: None,
@@ -654,10 +651,7 @@ impl RawStreamingToolCall {
         let id = id.into();
         // A wire-derived key doubles as the durable id (the common case:
         // providers key by the id the wire issued); minted keys carry none.
-        let tool_id = match &id {
-            StreamPartId::Wire(wire) => WireId::new(wire.clone()),
-            _ => None,
-        };
+        let tool_id = id.wire_str().and_then(WireId::new);
         Self {
             id,
             tool_id,
@@ -1996,18 +1990,12 @@ mod tests {
                 TEST_PROVIDER,
                 to_stream_result(stream! {
                     yield Ok(RawStreamingChoice::ReasoningDelta {
-                        id: StreamPartId::Minted {
-                            kind: MintKind::Block,
-                            index: 0,
-                        },
+                        id: StreamPartId::minted(MintKind::Block, 0),
                         provider_id: None,
                         reasoning: "unsigned thoughts".to_string(),
                     });
                     yield Ok(RawStreamingChoice::ReasoningEnd {
-                        id: StreamPartId::Minted {
-                            kind: MintKind::Block,
-                            index: 0,
-                        },
+                        id: StreamPartId::minted(MintKind::Block, 0),
                         reasoning: None,
                         signature: None,
                         wire_sent,
@@ -2044,10 +2032,7 @@ mod tests {
     /// correlator.
     #[tokio::test]
     async fn reused_key_after_end_mints_a_fresh_delta_correlator() {
-        let key = || StreamPartId::Minted {
-            kind: MintKind::Reasoning,
-            index: 0,
-        };
+        let key = || StreamPartId::minted(MintKind::Reasoning, 0);
         let mut stream = StreamingCompletionResponse::stream(
             TEST_PROVIDER,
             to_stream_result(stream! {

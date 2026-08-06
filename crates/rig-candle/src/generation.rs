@@ -648,10 +648,10 @@ pub(crate) fn stream_generate(
                             .id
                             .clone()
                             .map(rig_core::streaming::StreamPartId::wire)
-                            .unwrap_or(rig_core::streaming::StreamPartId::Minted {
-                                kind: rig_core::streaming::MintKind::Reasoning,
-                                index: 0,
-                            }),
+                            .unwrap_or(rig_core::streaming::StreamPartId::minted(
+                                rig_core::streaming::MintKind::Reasoning,
+                                0,
+                            )),
                         provider_id: reasoning
                             .id
                             .clone()

@@ -326,8 +326,11 @@ cause A; vercel's stream-part triples and pydantic-ai's
 The raw-event identity type is now `rig_core::streaming::StreamPartId` — an
 **opaque accumulation key**: `Eq + Hash + Clone + Debug` and nothing else. It
 has no serialization, no rendering, and no accessor into the durable id
-space (the `identity_leak` compile-fail suite pins all three), plus a
-`Composite` variant for adapter-composed keys. The durable provider handle
+space — and its representation is private, so pattern-matching cannot
+extract the wire string either (the `identity_leak` compile-fail suite pins
+all four). Construction goes through `StreamPartId::wire` /
+`StreamPartId::minted` / `MintKind::for_wire_index`, plus
+`StreamPartId::composed` for adapter-composed keys. The durable provider handle
 travels separately as `WireId` (`Reasoning`/`ReasoningDelta` gain
 `provider_id: Option<WireId>`; `RawStreamingToolCall` gains
 `tool_id: Option<WireId>`; `ToolInputEnd::tool_id` is `Option<WireId>`).

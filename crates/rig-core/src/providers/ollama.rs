@@ -913,10 +913,10 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                 out.push(Ok(RawStreamingChoice::ReasoningDelta {
                     // `thinking` deltas carry no wire id; per-stream
                     // constant minted key.
-                    id: crate::streaming::StreamPartId::Minted {
-                        kind: crate::streaming::MintKind::Reasoning,
-                        index: 0,
-                    },
+                    id: crate::streaming::StreamPartId::minted(
+                        crate::streaming::MintKind::Reasoning,
+                        0,
+                    ),
                     provider_id: None,
                     reasoning: thinking_content,
                 }));
@@ -928,10 +928,10 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                 if self.reasoning_open {
                     self.reasoning_open = false;
                     out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                        id: crate::streaming::StreamPartId::Minted {
-                            kind: crate::streaming::MintKind::Reasoning,
-                            index: 0,
-                        },
+                        id: crate::streaming::StreamPartId::minted(
+                            crate::streaming::MintKind::Reasoning,
+                            0,
+                        ),
                         reasoning: None,
                         signature: None,
                         wire_sent: false,

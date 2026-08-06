@@ -1549,10 +1549,10 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
         let key = provider_id
             .as_ref()
             .map(|id| crate::streaming::StreamPartId::wire(id.as_str()))
-            .unwrap_or(crate::streaming::StreamPartId::Minted {
-                kind: crate::streaming::MintKind::EncryptedReasoning,
-                index: 0,
-            });
+            .unwrap_or(crate::streaming::StreamPartId::minted(
+                crate::streaming::MintKind::EncryptedReasoning,
+                0,
+            ));
         Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
     }
 }

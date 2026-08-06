@@ -1,4 +1,4 @@
-error[E0599]: no method named `render` found for enum `StreamPartId` in the current scope
+error[E0599]: no method named `render` found for struct `StreamPartId` in the current scope
  --> tests/identity_leak/render_stream_key.rs:8:16
   |
 8 |     let _ = id.render();
