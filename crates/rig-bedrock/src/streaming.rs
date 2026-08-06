@@ -128,6 +128,21 @@ struct StreamState {
 ///
 /// Kept as a plain function over [`StreamState`] so the event bookkeeping can
 /// be unit-tested without an AWS event receiver.
+/// A static, log-safe label for a stop reason: known variants map to their
+/// wire spelling, `Unknown` collapses to `"other"` so its carried wire
+/// string (potentially model output) never reaches a log line.
+fn stop_reason_label(stop_reason: &StopReason) -> &'static str {
+    match stop_reason {
+        StopReason::ContentFiltered => "content_filtered",
+        StopReason::EndTurn => "end_turn",
+        StopReason::GuardrailIntervened => "guardrail_intervened",
+        StopReason::MaxTokens => "max_tokens",
+        StopReason::StopSequence => "stop_sequence",
+        StopReason::ToolUse => "tool_use",
+        StopReason::Unknown(_) => "other",
+    }
+}
+
 fn process_event(
     state: &mut StreamState,
     output: aws_bedrock::ConverseStreamOutput,
@@ -301,13 +316,17 @@ fn process_event(
                 }
             } else if !state.tool_calls.is_empty() {
                 // Structural metadata only: tool names can be model-chosen
-                // (a hallucinated call's name is model output) and the AWS
-                // enum's `Unknown` variant Debug-prints a wire string, so
-                // neither may reach the WARN log.
+                // (a hallucinated call's name is model output) and the
+                // `Unknown` variant carries a wire string, so neither may
+                // reach the WARN log. Known variants log a static label —
+                // unknown ones collapse to "other", never the wire value.
                 let dropped = state.tool_calls.drain_ordered().len();
                 tracing::warn!(
                     dropped_tool_calls = dropped,
-                    stop_reason = ?state.final_stop_reason.as_ref().map(std::mem::discriminant),
+                    stop_reason = state
+                        .final_stop_reason
+                        .as_ref()
+                        .map_or("none", stop_reason_label),
                     "dropping unfinished tool-use blocks left in flight at MessageStop"
                 );
             }
