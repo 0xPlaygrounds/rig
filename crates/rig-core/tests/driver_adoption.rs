@@ -540,10 +540,101 @@ fn scan_streaming_source(
     violations
 }
 
+/// The whole `warn!(...)` invocation starting at `start` (the index of the
+/// macro name), through its matching close paren — rustfmt-wrapped
+/// multi-line bodies included. Falls back to the rest of the file when the
+/// parens never balance (fail closed: an unparseable body is scanned whole).
+fn macro_body(source: &str, start: usize) -> &str {
+    let Some(open) = source[start..].find('(') else {
+        return &source[start..];
+    };
+    let mut depth = 0usize;
+    let mut in_str = false;
+    let mut escaped = false;
+    for (offset, ch) in source[start + open..].char_indices() {
+        if in_str {
+            match ch {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => in_str = false,
+                _ => {}
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_str = true,
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &source[start..start + open + offset + 1];
+                }
+            }
+            _ => {}
+        }
+    }
+    &source[start..]
+}
+
+/// Whether a warn-macro body Debug-captures a value: a `?ident` field
+/// capture (positional `warn!(?frame)`, named `warn!(payload = ?frame)`) or
+/// a `{:?}`/`{:#?}` Debug placeholder in the format string. A capture whose
+/// expression goes through `std::mem::discriminant` is structural by
+/// construction (the variant tag Debug-prints as a kind, never the payload)
+/// and is not a violation.
+fn body_debug_captures(body: &str) -> bool {
+    if body.contains("{:?}") || body.contains("{:#?}") {
+        return true;
+    }
+    let bytes = body.as_bytes();
+    for (index, _) in body.match_indices('?') {
+        // A capture sigil is `?` directly before an identifier...
+        if !bytes
+            .get(index + 1)
+            .is_some_and(|next| next.is_ascii_alphabetic() || *next == b'_')
+        {
+            continue;
+        }
+        // ...introduced by `(`, `,` or `=` (skipping whitespace backwards) —
+        // never a question mark inside prose.
+        let preceding = body[..index].chars().rev().find(|ch| !ch.is_whitespace());
+        if !matches!(preceding, Some('(' | ',' | '=')) {
+            continue;
+        }
+        // The capture expression runs to the next top-level `,` or the
+        // closing `)` — nested call parens (`.as_ref().map(...)`) included.
+        let mut depth = 0usize;
+        let mut end = body.len();
+        for (offset, ch) in body[index..].char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' if depth == 0 => {
+                    end = index + offset;
+                    break;
+                }
+                ')' => depth -= 1,
+                ',' if depth == 0 => {
+                    end = index + offset;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        if body[index..end].contains("std::mem::discriminant") {
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
 /// Shipped streaming code never Debug-prints a wire payload into a WARN log:
 /// unmodeled frames and parts can carry model output, and the one redaction
-/// policy (kind + byte size only) lives in `adapter::warn_unmodeled`. A
-/// direct `warn!(?...)` capture in a streaming module bypasses it.
+/// policy (kind + byte size only) lives in `adapter::warn_unmodeled`. The
+/// scan covers the whole macro invocation — multi-line bodies, positional
+/// (`warn!(?frame)`) and named (`warn!(payload = ?frame)`) captures, and
+/// `{:?}` format-string Debug prints — so no spelling of a direct payload
+/// capture bypasses the helper without failing CI.
 #[test]
 fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
     let mut violations = Vec::new();
@@ -555,14 +646,31 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
             return;
         }
         scanned_targets += 1;
-        for (index, line) in shipped.lines().enumerate() {
+        for (start, _) in shipped.match_indices("warn!") {
+            // `warn!` mid-identifier (e.g. a `it_would_warn!` test helper)
+            // is not the tracing macro.
+            if shipped[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
+                continue;
+            }
+            let line_number = shipped[..start].lines().count();
+            let line = shipped[..start]
+                .rfind('\n')
+                .map_or(&shipped[..start], |at| &shipped[at + 1..start]);
             if line.trim_start().starts_with("//") {
                 continue;
             }
-            if (line.contains("warn!(?") || line.contains("warn!(\n"))
-                || (line.contains("warn!") && line.contains("(?"))
-            {
-                violations.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
+            let body = macro_body(shipped, start);
+            if body_debug_captures(body) {
+                violations.push(format!(
+                    "{}:{}: {}",
+                    path.display(),
+                    line_number,
+                    body.lines().next().unwrap_or(body).trim()
+                ));
             }
         }
     });
@@ -577,6 +685,37 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
          `adapter::warn_unmodeled` (kind + byte size only):\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn the_warn_scan_catches_every_capture_spelling() {
+    // Positional, named, format-string, and rustfmt-wrapped multi-line
+    // captures are all flagged...
+    for leaking in [
+        "tracing::warn!(?frame, \"skipping\");",
+        "tracing::warn!(payload = ?frame, \"skipping\");",
+        "tracing::warn!(\"bad frame: {:?}\", frame);",
+        "tracing::warn!(\n    ?frame,\n    \"skipping\"\n);",
+        "tracing::warn!(\n    payload =\n        ?frame,\n    \"skipping\"\n);",
+    ] {
+        assert!(
+            body_debug_captures(macro_body(leaking, leaking.find("warn!").unwrap())),
+            "must flag: {leaking}"
+        );
+    }
+    // ...while structural logging, discriminant captures, and prose
+    // question marks are not.
+    for clean in [
+        "tracing::warn!(kind, payload_bytes = size, \"skipping unmodeled wire payload\");",
+        "tracing::warn!(step_index, \"arguments_delta for an unopened step?\");",
+        "tracing::warn!(\n    kind,\n    payload_bytes = bytes,\n    \"skipping\"\n);",
+        "tracing::warn!(\n    delta = ?std::mem::discriminant(&unknown),\n    \"skipping\"\n);",
+    ] {
+        assert!(
+            !body_debug_captures(macro_body(clean, clean.find("warn!").unwrap())),
+            "must not flag: {clean}"
+        );
+    }
 }
 
 /// Shipped provider streaming code never raw-parses the wire: decoding goes

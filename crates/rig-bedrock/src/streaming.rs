@@ -300,15 +300,14 @@ fn process_event(
                     )));
                 }
             } else if !state.tool_calls.is_empty() {
-                let dropped: Vec<String> = state
-                    .tool_calls
-                    .drain_ordered()
-                    .into_iter()
-                    .map(|tool_call| tool_call.name)
-                    .collect();
+                // Structural metadata only: tool names can be model-chosen
+                // (a hallucinated call's name is model output) and the AWS
+                // enum's `Unknown` variant Debug-prints a wire string, so
+                // neither may reach the WARN log.
+                let dropped = state.tool_calls.drain_ordered().len();
                 tracing::warn!(
-                    tools = ?dropped,
-                    stop_reason = ?state.final_stop_reason,
+                    dropped_tool_calls = dropped,
+                    stop_reason = ?state.final_stop_reason.as_ref().map(std::mem::discriminant),
                     "dropping unfinished tool-use blocks left in flight at MessageStop"
                 );
             }
