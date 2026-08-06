@@ -548,42 +548,85 @@ fn macro_body(source: &str, start: usize) -> &str {
     let Some(open) = source[start..].find('(') else {
         return &source[start..];
     };
+    let body = &source[start + open..];
+    let bytes = body.as_bytes();
     let mut depth = 0usize;
-    let mut in_str = false;
-    let mut escaped = false;
-    for (offset, ch) in source[start + open..].char_indices() {
-        if in_str {
-            match ch {
-                _ if escaped => escaped = false,
-                '\\' => escaped = true,
-                '"' => in_str = false,
-                _ => {}
+    let mut index = 0usize;
+    while index < bytes.len() {
+        match bytes[index] {
+            // Ordinary string literal: skip to its closing quote, honoring
+            // escapes. A stray `"` inside would otherwise desync the paren
+            // tracking and truncate the body (fail OPEN), so string forms
+            // are handled explicitly.
+            b'"' => {
+                index += 1;
+                while index < bytes.len() {
+                    match bytes[index] {
+                        b'\\' => index += 1,
+                        b'"' => break,
+                        _ => {}
+                    }
+                    index += 1;
+                }
             }
-            continue;
-        }
-        match ch {
-            '"' => in_str = true,
-            '(' => depth += 1,
-            ')' => {
+            // Raw string literal `r"…"` / `r#"…"#`: no escapes; runs to a
+            // `"` followed by the same number of `#`s.
+            b'r' if matches!(bytes.get(index + 1), Some(b'"' | b'#')) => {
+                let mut hashes = 0usize;
+                let mut probe = index + 1;
+                while bytes.get(probe) == Some(&b'#') {
+                    hashes += 1;
+                    probe += 1;
+                }
+                if bytes.get(probe) == Some(&b'"') {
+                    index = probe + 1;
+                    while index < bytes.len() {
+                        if bytes[index] == b'"'
+                            && bytes[index + 1..].len() >= hashes
+                            && bytes[index + 1..index + 1 + hashes].iter().all(|b| *b == b'#')
+                        {
+                            index += hashes;
+                            break;
+                        }
+                        index += 1;
+                    }
+                }
+            }
+            // Char literal (`'"'`, `'('`, `'\''`): a quote or paren inside
+            // would desync the tracking. Lifetimes (`'a`) have no closing
+            // quote in the next two bytes and fall through untouched.
+            b'\'' => {
+                if bytes.get(index + 1) == Some(&b'\\') && bytes.get(index + 3) == Some(&b'\'') {
+                    index += 3;
+                } else if bytes.get(index + 2) == Some(&b'\'') {
+                    index += 2;
+                }
+            }
+            b'(' => depth += 1,
+            b')' => {
                 depth -= 1;
                 if depth == 0 {
-                    return &source[start..start + open + offset + 1];
+                    return &source[start..start + open + index + 1];
                 }
             }
             _ => {}
         }
+        index += 1;
     }
     &source[start..]
 }
 
 /// Whether a warn-macro body Debug-captures a value: a `?ident` field
-/// capture (positional `warn!(?frame)`, named `warn!(payload = ?frame)`) or
-/// a `{:?}`/`{:#?}` Debug placeholder in the format string. A capture whose
+/// capture (positional `warn!(?frame)`, named `warn!(payload = ?frame)`),
+/// a `{:?}`/`{:#?}` Debug placeholder, or a Rust-2021 inline format capture
+/// (`{frame:?}` / `{frame:#?}`) in the format string. A capture whose
 /// expression goes through `std::mem::discriminant` is structural by
 /// construction (the variant tag Debug-prints as a kind, never the payload)
 /// and is not a violation.
 fn body_debug_captures(body: &str) -> bool {
-    if body.contains("{:?}") || body.contains("{:#?}") {
+    // `:?}` / `:#?}` covers both the positional placeholders (`{:?}`) and
+    // inline captures (`{frame:?}`); anything Debug-formatted ends this way.
+    if body.contains(":?}") || body.contains(":#?}") {
         return true;
     }
     let bytes = body.as_bytes();
@@ -646,9 +689,23 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
             return;
         }
         scanned_targets += 1;
-        for (start, _) in shipped.match_indices("warn!") {
-            // `warn!` mid-identifier (e.g. a `it_would_warn!` test helper)
-            // is not the tracing macro.
+        // Renaming the macro would move its call sites out of the scan's
+        // sight; the alias itself is the violation.
+        for aliased in ["tracing::warn as", "tracing::event as"] {
+            if let Some(at) = shipped.find(aliased) {
+                let line_number = shipped[..at].matches('\n').count() + 1;
+                violations.push(format!(
+                    "{}:{}: `use {aliased} …` hides WARN call sites from this scan",
+                    path.display(),
+                    line_number,
+                ));
+            }
+        }
+        let warn_sites = shipped.match_indices("warn!").map(|(start, _)| (start, false));
+        let event_sites = shipped.match_indices("event!").map(|(start, _)| (start, true));
+        for (start, is_event) in warn_sites.chain(event_sites) {
+            // Mid-identifier matches (e.g. a `it_would_warn!` test helper)
+            // are not the tracing macros.
             if shipped[..start]
                 .chars()
                 .next_back()
@@ -656,7 +713,7 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
             {
                 continue;
             }
-            let line_number = shipped[..start].lines().count();
+            let line_number = shipped[..start].matches('\n').count() + 1;
             let line = shipped[..start]
                 .rfind('\n')
                 .map_or(&shipped[..start], |at| &shipped[at + 1..start]);
@@ -664,6 +721,12 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
                 continue;
             }
             let body = macro_body(shipped, start);
+            // `event!` is level-parameterized; only its WARN spelling is in
+            // scope (lower levels are compiled out of release telemetry and
+            // ERROR sites are the panic path, reviewed by hand).
+            if is_event && !body.contains("Level::WARN") {
+                continue;
+            }
             if body_debug_captures(body) {
                 violations.push(format!(
                     "{}:{}: {}",
@@ -697,12 +760,18 @@ fn the_warn_scan_catches_every_capture_spelling() {
         "tracing::warn!(\"bad frame: {:?}\", frame);",
         "tracing::warn!(\n    ?frame,\n    \"skipping\"\n);",
         "tracing::warn!(\n    payload =\n        ?frame,\n    \"skipping\"\n);",
+        // Rust-2021 inline format captures Debug-print just as loudly.
+        "tracing::warn!(\"bad frame: {frame:?}\");",
+        "tracing::warn!(\"bad frame: {frame:#?}\");",
+        // `event!` at WARN level is the same macro in a longer coat.
+        "tracing::event!(tracing::Level::WARN, ?frame, \"skipping\");",
     ] {
+        let start = leaking
+            .find("warn!")
+            .or_else(|| leaking.find("event!"))
+            .expect("fixture contains a warn-level macro");
         assert!(
-            body_debug_captures(macro_body(
-                leaking,
-                leaking.find("warn!").expect("fixture contains warn!")
-            )),
+            body_debug_captures(macro_body(leaking, start)),
             "must flag: {leaking}"
         );
     }
@@ -713,6 +782,10 @@ fn the_warn_scan_catches_every_capture_spelling() {
         "tracing::warn!(step_index, \"arguments_delta for an unopened step?\");",
         "tracing::warn!(\n    kind,\n    payload_bytes = bytes,\n    \"skipping\"\n);",
         "tracing::warn!(\n    delta = ?std::mem::discriminant(&unknown),\n    \"skipping\"\n);",
+        // Display-formatted inline captures and string forms that could
+        // desync a naive parser stay clean.
+        "tracing::warn!(\"dropped {count} frames\");",
+        "tracing::warn!(r#\"marker \"quoted\" text\"#, count);",
     ] {
         assert!(
             !body_debug_captures(macro_body(
