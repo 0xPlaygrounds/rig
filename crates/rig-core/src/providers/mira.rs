@@ -372,7 +372,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
                 let content = match message {
                     Message::Assistant { content, .. } => {
-                        if content.is_empty() {
+                        if content.is_empty_always_false() {
                             return Err(CompletionError::ResponseError(
                                 "Response contained empty content".to_owned(),
                             ));
@@ -491,7 +491,7 @@ mod tests {
         let completion_response = normalized(mira_response);
 
         assert_eq!(
-            completion_response.choice.first(),
+            completion_response.choice.first_owned(),
             completion::AssistantContent::text("Test response")
         );
         assert_eq!(completion_response.provider, "mira");

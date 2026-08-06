@@ -510,7 +510,7 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
             doc! {
                 "_id": id.clone(),
                 "definition": definition.clone(),
-                "embedding": embedding.first().vec.clone(),
+                "embedding": embedding.first_owned().vec.clone(),
             }
         })
         .collect()

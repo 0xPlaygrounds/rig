@@ -1214,7 +1214,7 @@ mod tests {
         assert_eq!(normalized.usage.output_tokens, 2);
         assert_eq!(normalized.usage.total_tokens, 3);
         assert!(matches!(
-            normalized.choice.first(),
+            normalized.choice.first_owned(),
             crate::completion::AssistantContent::Text(text) if text.text == "partial"
         ));
 
@@ -1396,7 +1396,7 @@ mod tests {
             .expect("completed turn should normalize");
 
         assert!(matches!(
-            normalized.choice.first(),
+            normalized.choice.first_owned(),
             crate::completion::AssistantContent::Text(text) if text.text == "hello there"
         ));
         assert_eq!(normalized.message_id.as_deref(), Some("msg_terminal_1"));
@@ -1478,7 +1478,7 @@ mod tests {
             .expect("incomplete turn with body output should normalize");
 
         assert!(matches!(
-            normalized.choice.first(),
+            normalized.choice.first_owned(),
             crate::completion::AssistantContent::Text(text) if text.text == "partial from body"
         ));
         assert_eq!(

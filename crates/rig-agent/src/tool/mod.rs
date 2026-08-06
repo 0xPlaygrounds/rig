@@ -1837,7 +1837,7 @@ mod migrated_tests {
         let content = result.output().clone().into_content();
 
         assert_eq!(content.len(), 1);
-        match content.first() {
+        match content.first_owned() {
             ToolResultContent::Image(image) => {
                 assert!(matches!(image.data, DocumentSourceKind::Base64(_)));
                 assert_eq!(

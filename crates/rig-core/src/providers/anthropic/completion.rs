@@ -2770,7 +2770,7 @@ mod tests {
         let Message { role, content } = assistant_message;
         assert_eq!(role, Role::Assistant);
         assert_eq!(
-            content.first(),
+            content.first_owned(),
             Content::Text {
                 text: "\n\nHello there, how may I assist you today?".to_owned(),
                 citations: Vec::new(),
@@ -2840,7 +2840,7 @@ mod tests {
                 } => {
                     assert_eq!(tool_use_id, "toolu_01A09q90qw90lq917835lq9");
                     assert_eq!(
-                        content.first(),
+                        content.first_owned(),
                         ToolResultContent::Text {
                             text: "15 degrees".to_owned()
                         }
@@ -2961,7 +2961,7 @@ mod tests {
                     name,
                     content,
                     ..
-                } = match content.first() {
+                } = match content.first_owned() {
                     message::UserContent::ToolResult(tool_result) => tool_result,
                     _ => panic!("Expected tool result content"),
                 };
@@ -2969,7 +2969,7 @@ mod tests {
                 // The Anthropic wire carries no tool name on `tool_result`
                 // blocks, so the inbound conversion is lossy by design.
                 assert_eq!(name, "");
-                match content.first() {
+                match content.first_owned() {
                     message::ToolResultContent::Text(message::Text { text, .. }) => {
                         assert_eq!(text, "15 degrees");
                     }
@@ -2983,7 +2983,7 @@ mod tests {
             message::Message::Assistant { content, .. } => {
                 assert_eq!(content.len(), 1);
 
-                match content.first() {
+                match content.first_owned() {
                     message::AssistantContent::ToolCall(message::ToolCall {
                         id, function, ..
                     }) => {
@@ -4811,7 +4811,7 @@ mod tests {
                 msg::Message::User {
                     content: back_content,
                 },
-            ) => match (orig_content.first(), back_content.first()) {
+            ) => match (orig_content.first_owned(), back_content.first_owned()) {
                 (
                     msg::UserContent::Document(msg::Document {
                         media_type: orig_mt,
@@ -5053,7 +5053,7 @@ mod tests {
 
         assert_eq!(parsed.choice.len(), 1);
         assert!(matches!(
-            parsed.choice.first(),
+            parsed.choice.first_owned(),
             completion::AssistantContent::Text(text) if text.text.is_empty()
         ));
         assert_eq!(parsed.provider, "anthropic");
@@ -5504,7 +5504,8 @@ mod tests {
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
         let converted = response.normalize("anthropic").unwrap();
-        let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
+        let message::AssistantContent::Text(web_search_result) = converted.choice.first_owned()
+        else {
             panic!("expected raw web_search_tool_result metadata");
         };
 
@@ -5525,7 +5526,7 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            round_trip.content.first(),
+            round_trip.content.first_owned(),
             Content::WebSearchToolResult {
                 tool_use_id,
                 content
@@ -5609,7 +5610,7 @@ mod tests {
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
         let converted = response.normalize("anthropic").unwrap();
-        let message::AssistantContent::Text(code_execution_result) = converted.choice.first()
+        let message::AssistantContent::Text(code_execution_result) = converted.choice.first_owned()
         else {
             panic!("expected raw code_execution_tool_result metadata");
         };
@@ -5625,7 +5626,7 @@ mod tests {
         .try_into()
         .unwrap();
         assert!(matches!(
-            round_trip.content.first(),
+            round_trip.content.first_owned(),
             Content::CodeExecutionToolResult {
                 tool_use_id,
                 content
@@ -5796,7 +5797,7 @@ mod tests {
         let converted: Message = assistant.try_into().unwrap();
         let Content::Text {
             citations, text, ..
-        } = converted.content.first()
+        } = converted.content.first_owned()
         else {
             panic!("expected assistant text content");
         };
@@ -5849,7 +5850,7 @@ mod tests {
             content: OneOrMany::one(doc),
         };
         let converted: Message = msg.try_into().unwrap();
-        let block = converted.content.first();
+        let block = converted.content.first_owned();
         let Content::Document {
             title,
             context,
@@ -5884,7 +5885,7 @@ mod tests {
         let message::Message::User { content } = &generic else {
             panic!("expected generic user message");
         };
-        let message::UserContent::Document(document) = content.first() else {
+        let message::UserContent::Document(document) = content.first_owned() else {
             panic!("expected generic document");
         };
 
@@ -5955,7 +5956,7 @@ mod tests {
         let message::Message::User { content } = &generic else {
             panic!("expected generic user message");
         };
-        let message::UserContent::Document(document) = content.first() else {
+        let message::UserContent::Document(document) = content.first_owned() else {
             panic!("expected generic document");
         };
         let additional_params = document
@@ -5972,7 +5973,7 @@ mod tests {
             context,
             citations,
             ..
-        } = round_trip.content.first()
+        } = round_trip.content.first_owned()
         else {
             panic!("expected Anthropic document");
         };
@@ -6001,7 +6002,7 @@ mod tests {
         let message::Message::User { content } = &generic else {
             panic!("expected generic user message");
         };
-        let message::UserContent::Document(document) = content.first() else {
+        let message::UserContent::Document(document) = content.first_owned() else {
             panic!("expected generic document");
         };
 

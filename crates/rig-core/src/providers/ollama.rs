@@ -1589,7 +1589,7 @@ mod tests {
             serde_json::from_str(&sample_text).expect("Invalid JSON structure");
         let conv: completion::CompletionResponse = chat_resp.try_into().unwrap();
         assert!(
-            !conv.choice.is_empty(),
+            !conv.choice.is_empty_always_false(),
             "Expected non-empty choice in chat response"
         );
     }
@@ -1704,7 +1704,7 @@ mod tests {
         match comp_msg {
             crate::completion::Message::User { content } => {
                 // Assume OneOrMany<T> has a method first() to access the first element.
-                let first_content = content.first();
+                let first_content = content.first_owned();
                 // The expected type is crate::completion::message::UserContent::Text wrapping a Text struct.
                 match first_content {
                     crate::completion::message::UserContent::Text(text_struct) => {

@@ -1888,7 +1888,7 @@ mod migrated_tests {
             history.first(),
             Some(Message::User { content })
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     UserContent::Text(text) if text.text == "do tool work"
                 )
         ) {
@@ -1904,7 +1904,7 @@ mod migrated_tests {
             history.get(1),
             Some(Message::Assistant { content, .. })
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "call_1"
                             && tool_call.provider.as_ref().is_some_and(|provider| {
@@ -1922,7 +1922,7 @@ mod migrated_tests {
             history.get(2),
             Some(Message::User { content })
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     UserContent::ToolResult(tool_result)
                         if tool_result.call == "call_1"
                             && tool_result.provider.as_ref().is_some_and(|provider| {
@@ -6611,7 +6611,7 @@ mod migrated_tests {
             final_history.first(),
             Some(Message::User { content })
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     UserContent::Text(text) if text.text == "think before answering"
                 )
         ));

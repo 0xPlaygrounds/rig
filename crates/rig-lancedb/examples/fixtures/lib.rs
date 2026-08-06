@@ -54,7 +54,7 @@ pub fn as_record_batch(
             .map(|(_, embeddings)| {
                 Some(
                     embeddings
-                        .first()
+                        .first_owned()
                         .vec
                         .into_iter()
                         .map(Some)

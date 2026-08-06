@@ -187,7 +187,7 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 followup.choice
             );
 
-            match followup.choice.first() {
+            match followup.choice.first_owned() {
                 AssistantContent::Text(text) => assert!(
                     text.text.is_empty(),
                     "expected empty follow-up text sentinel, got {:?}",

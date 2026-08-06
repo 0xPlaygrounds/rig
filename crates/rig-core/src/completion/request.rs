@@ -1387,12 +1387,12 @@ mod tests {
         assert!(matches!(
             &messages[2],
             Message::User { content }
-                if matches!(content.first(), UserContent::Text(text) if text.text == "history")
+                if matches!(content.first_owned(), UserContent::Text(text) if text.text == "history")
         ));
         assert!(matches!(
             &messages[3],
             Message::User { content }
-                if matches!(content.first(), UserContent::Text(text) if text.text == "prompt")
+                if matches!(content.first_owned(), UserContent::Text(text) if text.text == "prompt")
         ));
 
         let request = builder.build();

@@ -2255,9 +2255,9 @@ mod tests {
                 Message::User { content: before, .. },
                 Message::ToolResult { tool_call_id, .. },
                 Message::User { content: after, .. },
-            ] if matches!(before.first(), UserContent::Text { text } if text == "before")
+            ] if matches!(before.first_owned(), UserContent::Text { text } if text == "before")
                 && tool_call_id == "call-id"
-                && matches!(after.first(), UserContent::Text { text } if text == "after")
+                && matches!(after.first_owned(), UserContent::Text { text } if text == "after")
         ));
     }
 
@@ -3150,7 +3150,8 @@ mod tests {
 
         assert_eq!(response.choice.len(), 1);
 
-        let completion::message::AssistantContent::Reasoning(reasoning) = response.choice.first()
+        let completion::message::AssistantContent::Reasoning(reasoning) =
+            response.choice.first_owned()
         else {
             panic!("expected assistant content to be reasoning");
         };

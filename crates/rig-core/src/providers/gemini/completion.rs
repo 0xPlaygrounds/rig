@@ -2669,7 +2669,7 @@ mod tests {
 
         let converted: crate::completion::CompletionResponse =
             response.try_into().expect("convert response");
-        let first = converted.choice.first();
+        let first = converted.choice.first_owned();
         assert!(matches!(
             first,
             message::AssistantContent::Reasoning(message::Reasoning { content, .. })
@@ -2946,7 +2946,7 @@ mod tests {
             response.try_into().expect("convert response");
 
         assert!(matches!(
-            converted.choice.first(),
+            converted.choice.first_owned(),
             message::AssistantContent::Text(text) if text.text == "hi"
         ));
         assert_eq!(converted.usage.total_tokens, 5);
@@ -3118,7 +3118,7 @@ mod tests {
 
         let converted: crate::completion::CompletionResponse =
             response.try_into().expect("response should convert");
-        let message::AssistantContent::ToolCall(tool_call) = converted.choice.first() else {
+        let message::AssistantContent::ToolCall(tool_call) = converted.choice.first_owned() else {
             panic!("expected a tool call");
         };
         assert_eq!(tool_call.id, "call-123");

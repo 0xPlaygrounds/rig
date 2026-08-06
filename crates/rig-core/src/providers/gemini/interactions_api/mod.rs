@@ -3079,7 +3079,7 @@ mod tests {
         let response: completion::CompletionResponse =
             interaction.try_into().expect("conversion should succeed");
 
-        let choice = response.choice.first();
+        let choice = response.choice.first_owned();
         match choice {
             completion::AssistantContent::ToolCall(tool_call) => {
                 assert_eq!(tool_call.function.name, "get_weather");

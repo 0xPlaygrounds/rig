@@ -522,7 +522,7 @@ mod tests {
         match converted_user_message[0].clone() {
             Message::User { content, .. } => {
                 assert_eq!(
-                    content.first(),
+                    content.first_owned(),
                     UserContent::Text {
                         text: "Hello".to_string()
                     }
@@ -580,7 +580,7 @@ mod tests {
 
         match converted_user_message.clone() {
             message::Message::User { content } => {
-                assert_eq!(content.first(), message::UserContent::text("Hello"));
+                assert_eq!(content.first_owned(), message::UserContent::text("Hello"));
             }
             _ => panic!("Expected user message"),
         }
@@ -588,7 +588,7 @@ mod tests {
         match converted_assistant_message.clone() {
             message::Message::Assistant { content, .. } => {
                 assert_eq!(
-                    content.first(),
+                    content.first_owned(),
                     message::AssistantContent::text("Hi there!")
                 );
             }

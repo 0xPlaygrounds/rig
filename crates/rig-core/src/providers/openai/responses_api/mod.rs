@@ -3023,9 +3023,9 @@ mod tests {
                 Message::User { content: before, .. },
                 Message::ToolResult { tool_call_id, .. },
                 Message::User { content: after, .. },
-            ] if matches!(before.first(), UserContent::InputText { text } if text == "before")
+            ] if matches!(before.first_owned(), UserContent::InputText { text } if text == "before")
                 && tool_call_id == "call-id"
-                && matches!(after.first(), UserContent::InputText { text } if text == "after")
+                && matches!(after.first_owned(), UserContent::InputText { text } if text == "after")
         ));
     }
 

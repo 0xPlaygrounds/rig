@@ -1584,7 +1584,7 @@ mod tests {
 
         // ...but the content delivered before the error is preserved.
         assert_eq!(
-            stream.choice.first(),
+            stream.choice.first_owned(),
             AssistantContent::text("partial".to_string()),
         );
     }
@@ -1947,7 +1947,7 @@ mod tests {
 
         // The content streamed before the failure is still aggregated.
         assert_eq!(
-            stream.choice.first(),
+            stream.choice.first_owned(),
             AssistantContent::text("partial".to_string())
         );
         assert!(stream.response.is_none());

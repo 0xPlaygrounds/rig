@@ -274,7 +274,7 @@ mod tests {
         let response: CompletionResponse = create_signed_tool_call_response("add", raw)
             .try_into()
             .unwrap();
-        match response.choice.first() {
+        match response.choice.first_owned() {
             AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, Some(BASE64.encode(raw))),
             _ => panic!("Expected ToolCall"),
         }
@@ -286,7 +286,7 @@ mod tests {
             create_tool_call_response("add", serde_json::json!({"x": 1}))
                 .try_into()
                 .unwrap();
-        match response.choice.first() {
+        match response.choice.first_owned() {
             AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, None),
             _ => panic!("Expected ToolCall"),
         }
@@ -308,7 +308,7 @@ mod tests {
         let response: CompletionResponse =
             VertexGenerateContentOutput(response).try_into().unwrap();
 
-        match response.choice.first() {
+        match response.choice.first_owned() {
             AssistantContent::Reasoning(reasoning) => {
                 assert_eq!(reasoning.display_text(), "thinking text");
                 assert_eq!(
@@ -347,7 +347,7 @@ mod tests {
         assert!(completion_response.is_ok());
         let response = completion_response.unwrap();
 
-        match response.choice.first() {
+        match response.choice.first_owned() {
             AssistantContent::ToolCall(ToolCall {
                 id,
                 provider,
@@ -375,7 +375,7 @@ mod tests {
                 .try_into()
                 .expect("image response should convert");
 
-        match response.choice.first() {
+        match response.choice.first_owned() {
             AssistantContent::Image(image) => {
                 assert_eq!(image.data, DocumentSourceKind::Base64(BASE64.encode(raw)));
                 assert_eq!(image.media_type, Some(ImageMediaType::PNG));

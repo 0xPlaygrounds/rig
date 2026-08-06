@@ -1638,7 +1638,7 @@ mod tests {
 
         assert_eq!(out.len(), 2);
         assert!(matches!(out.first(), Some(Message::User { content })
-            if matches!(content.first(), UserContent::Text(_))));
+            if matches!(content.first_owned(), UserContent::Text(_))));
     }
 
     #[test]
@@ -1670,7 +1670,7 @@ mod tests {
             .unwrap();
         assert_eq!(out.len(), 1);
         assert!(matches!(out.first(), Some(Message::User { content })
-            if matches!(content.first(), UserContent::Text(_))));
+            if matches!(content.first_owned(), UserContent::Text(_))));
     }
 
     #[test]
@@ -1888,7 +1888,7 @@ mod tests {
             .unwrap();
         assert_eq!(kept.len(), 2);
         assert!(matches!(kept.first(), Some(Message::User { content })
-            if matches!(content.first(), UserContent::Text(_))));
+            if matches!(content.first_owned(), UserContent::Text(_))));
         assert_eq!(demoted.len(), 2);
     }
 

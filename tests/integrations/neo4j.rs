@@ -173,7 +173,7 @@ async fn vector_search_test() {
                 .param("id", doc.id)
                 // Here we use the first embedding but we could use any of them.
                 // Neo4j only takes primitive types or arrays as properties.
-                .param("embedding", embeddings.first().vec.clone())
+                .param("embedding", embeddings.first_owned().vec.clone())
                 .param("document", doc.definition.to_bolt_type()),
             )
         })

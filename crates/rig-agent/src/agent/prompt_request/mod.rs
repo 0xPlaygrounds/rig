@@ -675,7 +675,7 @@ pub(crate) fn invalid_tool_retry_user_message(
 pub(crate) fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
     choice.len() == 1
         && matches!(
-            choice.first(),
+            choice.first_owned(),
             AssistantContent::Text(text) if text.text.is_empty() && text.additional_params.is_none()
         )
 }
@@ -1263,7 +1263,10 @@ mod tests {
 
         assert_eq!(response.output(), "hello");
         assert_eq!(response.content().iter().count(), 1);
-        assert_eq!(response.content().first(), AssistantContent::text("hello"));
+        assert_eq!(
+            response.content().first_owned(),
+            AssistantContent::text("hello")
+        );
     }
 
     #[test]
@@ -1279,7 +1282,7 @@ mod tests {
             .expect("legacy empty response without content should deserialize");
 
         assert_eq!(response.output(), "");
-        assert_eq!(response.content().first(), AssistantContent::text(""));
+        assert_eq!(response.content().first_owned(), AssistantContent::text(""));
     }
 
     #[test]
@@ -1304,8 +1307,11 @@ mod tests {
         // output-derived fallback only fills a genuinely absent `content`. (Compare
         // the text directly to sidestep the unrelated `Text::additional_params`
         // serde round-trip asymmetry.)
-        let AssistantContent::Text(text) = round.content().first() else {
-            panic!("expected text content, got {:?}", round.content().first());
+        let AssistantContent::Text(text) = round.content().first_owned() else {
+            panic!(
+                "expected text content, got {:?}",
+                round.content().first_owned()
+            );
         };
         assert_eq!(text.text, "structured");
     }
@@ -1407,7 +1413,7 @@ mod tests {
             history.first(),
             Some(Message::User { content })
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     UserContent::Text(text) if text.text == "do tool work"
                 )
         ));
@@ -1419,7 +1425,7 @@ mod tests {
             history.get(1),
             Some(Message::Assistant { content, .. })
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "tool_call_1"
                             && tool_call.provider.as_ref().is_some_and(
@@ -1432,7 +1438,7 @@ mod tests {
             history.get(2),
             Some(Message::User { content })
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     UserContent::ToolResult(tool_result)
                         if tool_result.call == "tool_call_1"
                             && tool_result.provider.as_ref().is_some_and(
@@ -2416,7 +2422,7 @@ mod tests {
             history.first(),
             Some(Message::User { content })
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     UserContent::Text(text) if text.text == "do tool work"
                 )
         ));
@@ -2424,7 +2430,7 @@ mod tests {
             message,
             Message::Assistant { content, .. }
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "tool_call_1"
                             && tool_call.provider.as_ref().is_some_and(
@@ -2436,7 +2442,7 @@ mod tests {
             message,
             Message::User { content }
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     UserContent::ToolResult(tool_result)
                         if tool_result.call == "tool_call_1"
                             && tool_result.provider.as_ref().is_some_and(
@@ -2510,7 +2516,7 @@ mod tests {
             message,
             Message::Assistant { content, .. }
                 if matches!(
-                    content.first(),
+                    content.first_owned(),
                     AssistantContent::Text(text)
                         if text.text.is_empty()
                             && text.additional_params.as_ref() == Some(&metadata)
@@ -2604,7 +2610,7 @@ mod tests {
         assert!(matches!(
             received.first(),
             Some(Message::User { content })
-                if matches!(content.first(), UserContent::Text(t) if t.text == "from-caller")
+                if matches!(content.first_owned(), UserContent::Text(t) if t.text == "from-caller")
         ));
     }
 
@@ -2708,7 +2714,7 @@ mod tests {
             matches!(
                 stored.first(),
                 Some(Message::User { content })
-                    if matches!(content.first(), UserContent::Text(t) if t.text == "old-q")
+                    if matches!(content.first_owned(), UserContent::Text(t) if t.text == "old-q")
             ),
             "loaded history is preserved once at the front: {stored:?}"
         );

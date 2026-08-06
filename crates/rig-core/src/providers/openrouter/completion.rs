@@ -1638,9 +1638,9 @@ mod tests {
                 Message::User { content: before, .. },
                 Message::ToolResult { tool_call_id, .. },
                 Message::User { content: after, .. },
-            ] if matches!(before.first(), UserContent::Text { text } if text == "before")
+            ] if matches!(before.first_owned(), UserContent::Text { text } if text == "before")
                 && tool_call_id == "call-id"
-                && matches!(after.first(), UserContent::Text { text } if text == "after")
+                && matches!(after.first_owned(), UserContent::Text { text } if text == "after")
         ));
     }
 
@@ -2044,7 +2044,7 @@ mod tests {
         );
         assert_eq!(converted.provider, "openrouter");
         assert!(matches!(
-            converted.choice.first(),
+            converted.choice.first_owned(),
             completion::AssistantContent::Text(text) if text.text == "CONTENT"
         ));
     }

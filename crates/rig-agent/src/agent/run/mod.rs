@@ -1970,7 +1970,7 @@ mod tests {
         assert!(matches!(
             prompt,
             Message::User { ref content }
-                if matches!(content.first(), UserContent::ToolResult(_))
+                if matches!(content.first_owned(), UserContent::ToolResult(_))
         ));
 
         // Budget of one: a second retry fails with UnknownToolCall.

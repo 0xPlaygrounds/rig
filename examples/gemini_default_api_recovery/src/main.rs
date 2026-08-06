@@ -272,7 +272,7 @@ async fn consume_workspace_like_stream(
                 ..
             }) => {
                 observation.events.push("tool_result");
-                let value = match tool_result.content.first() {
+                let value = match tool_result.content.first_owned() {
                     ToolResultContent::Json { value } => value.clone(),
                     ToolResultContent::Text(_) => {
                         return Err(

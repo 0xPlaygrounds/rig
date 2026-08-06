@@ -24,9 +24,21 @@ pub struct OneOrMany<T> {
 #[error("Cannot create OneOrMany with an empty vector.")]
 pub struct EmptyListError;
 
+// `len_without_is_empty` fires because `is_empty` was renamed to
+// `is_empty_always_false`. That is the point: the method is a constant, not a
+// check, and the rename exists so no call site migrates to `Vec::is_empty` —
+// which answers a real question — without someone deciding what the site meant.
+// The lint's premise (a collection should offer `is_empty`) is satisfied by the
+// replacement type, not by this one.
+#[allow(clippy::len_without_is_empty)]
 impl<T: Clone> OneOrMany<T> {
     /// Get the first item in the list.
-    pub fn first(&self) -> T {
+    ///
+    /// Named `_owned` so it cannot be confused with `[T]::first`, which returns
+    /// `Option<&T>`: the two differ in both ownership and totality, and this
+    /// type is being replaced by `Vec<T>`. Every call site of this method is a
+    /// site the replacement must revisit.
+    pub fn first_owned(&self) -> T {
         self.first.clone()
     }
 
@@ -35,8 +47,9 @@ impl<T: Clone> OneOrMany<T> {
         &self.first
     }
 
-    /// Get the last item in the list.
-    pub fn last(&self) -> T {
+    /// Get the last item in the list. See [`OneOrMany::first_owned`] for the
+    /// naming.
+    pub fn last_owned(&self) -> T {
         self.rest
             .last()
             .cloned()
@@ -78,9 +91,14 @@ impl<T: Clone> OneOrMany<T> {
         1 + self.rest.len()
     }
 
-    /// If `OneOrMany<T>` is empty. This will always be false because you cannot create an empty `OneOrMany<T>`.
-    /// This method is required when the method `len` exists.
-    pub fn is_empty(&self) -> bool {
+    /// Always `false`: a `OneOrMany<T>` cannot be constructed empty.
+    ///
+    /// Named `_always_false` deliberately. `[T]::is_empty` answers a real
+    /// question; this one is a constant, so a call site that reads as a check
+    /// is in fact dead. Under the `Vec<T>` replacement the same expression
+    /// starts returning a real answer — a silent behavior change the compiler
+    /// would not catch — so the name is made impossible to migrate by accident.
+    pub fn is_empty_always_false(&self) -> bool {
         false
     }
 
@@ -544,7 +562,7 @@ mod test {
             serde_json::from_value(json_data["field"].clone()).unwrap();
 
         assert_eq!(one_or_many.len(), 3);
-        assert_eq!(one_or_many.first(), 1);
+        assert_eq!(one_or_many.first_owned(), 1);
         assert_eq!(one_or_many.rest(), vec![2, 3]);
     }
 
@@ -555,7 +573,7 @@ mod test {
             serde_json::from_value(json_data["field"].clone()).unwrap();
 
         assert_eq!(one_or_many.len(), 2);
-        assert_eq!(one_or_many.first(), json!({"key": "value1"}));
+        assert_eq!(one_or_many.first_owned(), json!({"key": "value1"}));
         assert_eq!(one_or_many.rest(), vec![json!({"key": "value2"})]);
     }
 
@@ -586,6 +604,9 @@ mod test {
         let dummy: DummyStruct = serde_json::from_value(json_data).unwrap();
 
         assert_eq!(dummy.field.len(), 1);
-        assert_eq!(dummy.field.first(), DummyString::from_str("hello").unwrap());
+        assert_eq!(
+            dummy.field.first_owned(),
+            DummyString::from_str("hello").unwrap()
+        );
     }
 }

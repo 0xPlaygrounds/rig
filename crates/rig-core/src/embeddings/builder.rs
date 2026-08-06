@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(first_definition.0.id, "doc0");
         assert_eq!(first_definition.1.len(), 2);
         assert_eq!(
-            first_definition.1.first().document,
+            first_definition.1.first_owned().document,
             "A green alien that lives on cold planets.".to_string()
         );
 
@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(first_definition.0.id, "doc0");
         assert_eq!(first_definition.1.len(), 1);
         assert_eq!(
-            first_definition.1.first().document,
+            first_definition.1.first_owned().document,
             "A green alien that lives on cold planets.".to_string()
         );
 
@@ -286,7 +286,7 @@ mod tests {
         assert_eq!(second_definition.0.id, "doc1");
         assert_eq!(second_definition.1.len(), 1);
         assert_eq!(
-            second_definition.1.first().document, "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+            second_definition.1.first_owned().document, "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
         )
     }
 
@@ -315,14 +315,14 @@ mod tests {
         assert_eq!(second_definition.0.id, "doc1");
         assert_eq!(second_definition.1.len(), 2);
         assert_eq!(
-            second_definition.1.first().document, "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+            second_definition.1.first_owned().document, "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
         );
 
         let third_definition = &result[2];
         assert_eq!(third_definition.0.id, "doc2");
         assert_eq!(third_definition.1.len(), 1);
         assert_eq!(
-            third_definition.1.first().document,
+            third_definition.1.first_owned().document,
             "Another fake definitions".to_string()
         )
     }
@@ -349,7 +349,7 @@ mod tests {
         let first_definition = &result[0];
         assert_eq!(first_definition.1.len(), 2);
         assert_eq!(
-            first_definition.1.first().document,
+            first_definition.1.first_owned().document,
             "A green alien that lives on cold planets.".to_string()
         );
 

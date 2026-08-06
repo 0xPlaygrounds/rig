@@ -344,7 +344,7 @@ mod tests {
             .expect("first scripted turn should succeed");
         assert_eq!(first.message_id.as_deref(), Some("msg_1"));
         assert!(matches!(
-            first.choice.first(),
+            first.choice.first_owned(),
             AssistantContent::Text(text) if text.text == "first"
         ));
 
@@ -353,7 +353,7 @@ mod tests {
             .await
             .expect("second scripted turn should succeed");
         assert!(matches!(
-            second.choice.first(),
+            second.choice.first_owned(),
             AssistantContent::ToolCall(tool_call)
                 if tool_call.id == "tool_1"
                     && tool_call

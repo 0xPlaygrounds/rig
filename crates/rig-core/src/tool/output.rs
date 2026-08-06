@@ -247,7 +247,9 @@ mod tests {
 
         assert_eq!(output, ToolOutput::text(text.clone()));
         let content = output.into_content();
-        assert!(matches!(content.first(), ToolResultContent::Text(value) if value.text == text));
+        assert!(
+            matches!(content.first_owned(), ToolResultContent::Text(value) if value.text == text)
+        );
     }
 
     #[test]
@@ -259,7 +261,7 @@ mod tests {
         assert_eq!(output.render(), value.to_string());
         let content = output.into_content();
         assert!(matches!(
-            content.first(),
+            content.first_owned(),
             ToolResultContent::Json { value: content_value } if content_value == value
         ));
     }
@@ -286,7 +288,7 @@ mod tests {
 
         let content = output.into_content();
         assert!(matches!(
-            content.first(),
+            content.first_owned(),
             ToolResultContent::Image(image)
                 if image.media_type == Some(ImageMediaType::JPEG)
                     && matches!(&image.data, DocumentSourceKind::Base64(data) if data == "base64data==")
