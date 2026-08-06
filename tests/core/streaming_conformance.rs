@@ -167,7 +167,7 @@ mod chatgpt {
 // fixtures' frames with their own pipeline drivers, through the same
 // declarative macro (with anti-tamper and capability checks). Capability rows
 // mirror the wire family whose frames each fixture reuses.
-mod xai_suite {
+pub mod xai_suite {
     use super::*;
 
     rig_core::streaming_conformance_suite! {
@@ -177,7 +177,7 @@ mod xai_suite {
     }
 }
 
-mod copilot_responses_suite {
+pub mod copilot_responses_suite {
     use super::*;
 
     rig_core::streaming_conformance_suite! {
@@ -187,7 +187,7 @@ mod copilot_responses_suite {
     }
 }
 
-mod chatgpt_suite {
+pub mod chatgpt_suite {
     use super::*;
 
     rig_core::streaming_conformance_suite! {
@@ -197,7 +197,7 @@ mod chatgpt_suite {
     }
 }
 
-mod copilot_chat_suite {
+pub mod copilot_chat_suite {
     use super::*;
 
     rig_core::streaming_conformance_suite! {
@@ -206,6 +206,18 @@ mod copilot_chat_suite {
         manifest: [partial_tool_args, zero_usage_terminal, bare_terminal, malformed_frame, defective_known_frame, delta_less_prelude],
     }
 }
+
+/// Compile-linked manifest of the wire families this file's suites cover; see
+/// [`streaming_conformance_suites::SUITE_FAMILIES`](super::streaming_conformance_suites::SUITE_FAMILIES)
+/// for why the registry reads compiled consts instead of file text. `copilot`
+/// appears twice on purpose — the provider ships two wires (Responses and Chat
+/// Completions) and both are instantiated.
+pub const SUITE_FAMILIES: &[&str] = &[
+    xai_suite::WIRE_FAMILY,
+    copilot_responses_suite::WIRE_FAMILY,
+    chatgpt_suite::WIRE_FAMILY,
+    copilot_chat_suite::WIRE_FAMILY,
+];
 
 // Grammar-level guards (#2258 Part III (c) item 5). The other two scenarios
 // that item names — per-wire unknown-frame-warn-and-skip and

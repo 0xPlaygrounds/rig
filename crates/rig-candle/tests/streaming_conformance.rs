@@ -101,3 +101,23 @@ rig_core::streaming_conformance_suite! {
     // so the derived set is genuinely empty.
     manifest: [],
 }
+
+/// Compile-linked manifest of the wire families this binary covers.
+///
+/// This suite lives outside the `rig` facade's `core` test binary, so the
+/// workspace registry cannot link it: it lists `candle` in
+/// `OUT_OF_BINARY_FAMILIES` and relies on the "Test out-of-facade streaming
+/// conformance and structural guards" CI step to execute this binary. The test
+/// below keeps the family name honest at the definition site, which is the
+/// direction the registry loses for out-of-binary suites (#2258 F3).
+const SUITE_FAMILIES: &[&str] = &[WIRE_FAMILY];
+
+#[test]
+fn suite_families_are_registered_wire_families() {
+    for family in SUITE_FAMILIES {
+        assert!(
+            rig_core::test_utils::streaming_conformance::WIRE_FAMILIES.contains(family),
+            "suite names wire family {family:?}, absent from WIRE_FAMILIES"
+        );
+    }
+}

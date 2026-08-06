@@ -160,3 +160,23 @@ rig_core::streaming_conformance_suite! {
     fixture: fixture(),
     manifest: [partial_tool_args, zero_usage_terminal],
 }
+
+/// Compile-linked manifest of the wire families this binary covers.
+///
+/// This suite is feature-gated into the `bedrock` test binary, not the `core`
+/// one that hosts the workspace registry, so the registry cannot link it: it
+/// lists `bedrock` in `OUT_OF_BINARY_FAMILIES` (executed by the workspace-wide
+/// `--all-features` nextest run). The test below keeps the family name honest
+/// at the definition site, which is the direction the registry loses for
+/// out-of-binary suites (#2258 F3).
+const SUITE_FAMILIES: &[&str] = &[WIRE_FAMILY];
+
+#[test]
+fn suite_families_are_registered_wire_families() {
+    for family in SUITE_FAMILIES {
+        assert!(
+            rig_core::test_utils::streaming_conformance::WIRE_FAMILIES.contains(family),
+            "suite names wire family {family:?}, absent from WIRE_FAMILIES"
+        );
+    }
+}

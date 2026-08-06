@@ -250,6 +250,7 @@ fn is_known_responses_event_type(kind: &str) -> bool {
             | "response.reasoning_summary_text.delta"
             | "response.reasoning_summary_text.done"
             | "response.reasoning_text.delta"
+            | "response.reasoning_text.done"
     )
 }
 
@@ -774,6 +775,28 @@ impl RawChoiceAccumulator {
 /// exists to surface. The old live behavior (skip) hid the frame entirely;
 /// the `Err` item is the stated uniform policy for defective known frames.
 ///
+/// **Known limit — identity collapse, and why the obvious fix is worse
+/// (#2258 G2):** the injected `output_index: 0` is the reasoning-identity
+/// fallback's key when `item_id` is also absent (see `reasoning_item_id` in
+/// [`RawChoiceAccumulator::decode_item_chunk`]). A body that omits BOTH
+/// `item_id` *and* `output_index` across two or more items therefore collapses
+/// them onto the single minted identity `output-0`, merging what the provider
+/// sent as separate reasoning parts. A sweep of every recorded cassette found
+/// **zero** bodies of that shape: ChatGPT's replayed bodies drop the
+/// bookkeeping fields but keep `item_id`, and every body that drops `item_id`
+/// carries `output_index`. So the collapse is reachable in principle and
+/// unobserved in practice.
+///
+/// It is deliberately NOT fixed with a per-frame counter (mint `0, 1, 2, …` as
+/// frames arrive). Envelope-less bodies are exactly the ones where consecutive
+/// frames belong to the SAME item: a counter would hand every delta of one
+/// reasoning block a different index, shattering one item into N single-delta
+/// parts. That is a real regression against a real recorded shape — it breaks
+/// `envelope_less_reasoning_deltas_are_superseded_by_their_done_item`, whose
+/// whole point is that the deltas and their `output_item.done` share one
+/// identity. Any future fix must key on something the body actually carries
+/// (item boundaries), not on arrival order.
+///
 /// Returns `None` when the frame is not a JSON object (nothing to repair).
 fn repair_envelope_less_frame(data: &str) -> Option<String> {
     let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?;
@@ -1231,6 +1254,22 @@ pub enum ItemChunkKind {
     ReasoningSummaryTextDone(SummaryTextChunk),
     #[serde(rename = "response.reasoning_text.delta")]
     ReasoningTextDelta(DeltaTextChunkWithItemId),
+    /// Terminator for a raw-reasoning block, restating the text the
+    /// `response.reasoning_text.delta` events already streamed.
+    ///
+    /// Modeled but not acted on — it falls into `decode_item_chunk`'s no-op
+    /// arm exactly like [`Self::ReasoningSummaryTextDone`], because the
+    /// accumulated deltas are already the authoritative content and replaying
+    /// the restatement would double the reasoning text.
+    ///
+    /// The variant is what makes naming the tag in
+    /// [`is_known_responses_event_type`] safe: the classify layer sends every
+    /// KNOWN tag straight to `decode_known`, so listing the tag without a
+    /// variant to decode into would turn today's benign warn-and-skip into an
+    /// in-band `Corrupt`/`Err` on every raw-reasoning block (#2258 G4). The
+    /// two edits only make sense together.
+    #[serde(rename = "response.reasoning_text.done")]
+    ReasoningTextDone(OutputTextChunk),
     // No `#[serde(other)]` catch-all: unknown event types are triaged by the
     // classify layer (`classify_responses_frame` checks the `type` tag against
     // `is_known_responses_event_type` BEFORE decoding), so a frame that
@@ -1449,7 +1488,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        ContentPartChunkPart, ItemChunkKind, StreamingCompletionChunk, classify_responses_frame,
+        ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator,
+        ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame,
         raw_choices_from_sse_body, reasoning_choices_from_done_item,
     };
     use crate::completion::CompletionModel;
@@ -1497,6 +1537,69 @@ mod tests {
             classify_responses_frame(&frame),
             WireEvent::Unknown { event_type, .. } if event_type == "response.web_search_call.searching"
         ));
+    }
+
+    /// #2258 G4: `response.reasoning_text.done` terminates every raw-reasoning
+    /// block on all three Responses surfaces. It used to be absent from the
+    /// known-event set, so each block logged a spurious "unknown event" warn
+    /// and passed through as `Unknown`.
+    ///
+    /// Both halves of the fix are asserted here, because either alone is a
+    /// regression: the tag must be KNOWN (no `Unknown`), and `ItemChunkKind`
+    /// must carry a variant for it (no `Corrupt`, which is what naming the tag
+    /// without the variant would have produced — strictly worse than the warn).
+    ///
+    /// No recorded cassette contains this event; the wire shape is the
+    /// Responses spec's, so this unit test is the pin.
+    #[test]
+    fn classify_reasoning_text_done_is_known_and_decodes() {
+        let frame = json!({
+            "type": "response.reasoning_text.done",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 7,
+            "text": "the model's raw chain of thought",
+        })
+        .to_string();
+
+        let event = classify_responses_frame(&frame);
+        assert!(
+            !matches!(event, WireEvent::Unknown { .. }),
+            "the tag must be in the known-event set: {event:?}"
+        );
+        assert!(
+            !matches!(event, WireEvent::Corrupt(_)),
+            "a known tag with no matching ItemChunkKind variant decodes to Corrupt, which the \
+             driver surfaces as an in-band Err — worse than the warn it replaced: {event:?}"
+        );
+        assert!(matches!(
+            event,
+            WireEvent::Known(StreamingCompletionChunk::Delta(chunk))
+                if matches!(chunk.data, ItemChunkKind::ReasoningTextDone(_))
+        ));
+    }
+
+    /// The done event restates text the deltas already streamed, so it must be
+    /// a no-op: replaying it would double every raw-reasoning block.
+    #[test]
+    fn reasoning_text_done_emits_nothing() {
+        let mut accumulator = RawChoiceAccumulator::new(ResponsesUsage::new());
+        let chunk: ItemChunk = serde_json::from_value(json!({
+            "type": "response.reasoning_text.done",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 7,
+            "text": "the model's raw chain of thought",
+        }))
+        .expect("reasoning text done event should deserialize");
+
+        let emitted = accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict());
+        assert!(
+            emitted.is_empty(),
+            "the done restatement must not re-emit the reasoning text: {emitted:?}"
+        );
     }
 
     #[test]

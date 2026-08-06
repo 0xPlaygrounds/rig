@@ -520,6 +520,28 @@ where
     /// Drives the shared [`RawChoiceAccumulator`] over the websocket events —
     /// the same decode state machine the SSE path uses, fed by a different
     /// transport — so streamed deltas survive alongside the terminal body.
+    ///
+    /// **A failed turn discards the choices collected so far, deliberately
+    /// (#2258 G3).** Every error exit below — the `?` on `next_event()`, the
+    /// `response.done`-without-a-body branch, and the provider `error` event —
+    /// returns `Err` and drops `accumulator`/`raw_choices` with whatever text,
+    /// reasoning and tool calls had already arrived.
+    ///
+    /// That is not a divergence from the SSE side: the right comparison is the
+    /// *buffered* SSE path, `run_wire_buffered`, which likewise fails the whole
+    /// operation on the first `Err` rather than returning partial content plus
+    /// an error. Only the *live* SSE surface can do better, and only because it
+    /// is a `Stream`: it yields the partial items first and the `Err` as a
+    /// later element. This session exposes a unary surface —
+    /// [`completion()`](Self::wait_for_completed_response) /
+    /// `raw_completion()` return one `Result<CompletionResponse, _>` — and a
+    /// unary return type cannot express partial-content-plus-error without
+    /// inventing a second channel. Keeping the failed turn's fragments would
+    /// mean returning a `CompletionResponse` that never completed, which is the
+    /// exact fabrication the terminal-record rules exist to prevent.
+    ///
+    /// If a caller needs the partial content of a failed websocket turn, the
+    /// fix is a streaming websocket surface, not a partial unary response.
     async fn wait_for_terminal_response(
         &mut self,
     ) -> Result<(CompletionResponse, Vec<WebSocketRawChoice>), CompletionError> {

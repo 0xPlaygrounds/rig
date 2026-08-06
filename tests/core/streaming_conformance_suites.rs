@@ -14,7 +14,25 @@ use rig_core::test_utils::streaming_conformance::fixtures::{
     anthropic, cohere, gemini_rest, interactions, ollama, openai_chat, openai_responses,
 };
 
-mod openai_chat_suite {
+/// Compile-linked manifest of the wire families this file's suites cover.
+///
+/// Each entry is the `WIRE_FAMILY` const the macro emits inside the suite
+/// module, so the registry
+/// (`streaming_conformance_registry::all_wire_families_have_conformance_suites`)
+/// reads the families that actually *compiled* rather than text it scraped
+/// off disk. Commenting a suite out, or `#[cfg]`-disabling it, is therefore a
+/// COMPILE error here instead of a silently shrinking test count (#2258 F3).
+pub const SUITE_FAMILIES: &[&str] = &[
+    openai_chat_suite::WIRE_FAMILY,
+    openai_responses_suite::WIRE_FAMILY,
+    gemini_rest_suite::WIRE_FAMILY,
+    gemini_interactions_suite::WIRE_FAMILY,
+    anthropic_suite::WIRE_FAMILY,
+    cohere_suite::WIRE_FAMILY,
+    ollama_suite::WIRE_FAMILY,
+];
+
+pub mod openai_chat_suite {
     use super::*;
 
     streaming_conformance_suite! {
@@ -24,7 +42,7 @@ mod openai_chat_suite {
     }
 }
 
-mod openai_responses_suite {
+pub mod openai_responses_suite {
     use super::*;
 
     streaming_conformance_suite! {
@@ -34,7 +52,7 @@ mod openai_responses_suite {
     }
 }
 
-mod gemini_rest_suite {
+pub mod gemini_rest_suite {
     use super::*;
 
     streaming_conformance_suite! {
@@ -44,7 +62,7 @@ mod gemini_rest_suite {
     }
 }
 
-mod gemini_interactions_suite {
+pub mod gemini_interactions_suite {
     use super::*;
 
     streaming_conformance_suite! {
@@ -54,7 +72,7 @@ mod gemini_interactions_suite {
     }
 }
 
-mod anthropic_suite {
+pub mod anthropic_suite {
     use super::*;
 
     streaming_conformance_suite! {
@@ -64,7 +82,7 @@ mod anthropic_suite {
     }
 }
 
-mod cohere_suite {
+pub mod cohere_suite {
     use super::*;
 
     streaming_conformance_suite! {
@@ -74,7 +92,7 @@ mod cohere_suite {
     }
 }
 
-mod ollama_suite {
+pub mod ollama_suite {
     use super::*;
 
     streaming_conformance_suite! {

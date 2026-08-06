@@ -144,7 +144,7 @@ fn fixture() -> conformance::ProviderWireFixture {
     }
 }
 
-mod openai_responses_websocket_suite {
+pub mod openai_responses_websocket_suite {
     use super::*;
 
     rig_core::streaming_conformance_suite! {
@@ -155,5 +155,25 @@ mod openai_responses_websocket_suite {
             "malformed_frame_surfaces_err_and_terminal_still_completes: the websocket turn is request/response — a corrupt frame fails the whole session, there is no in-band Err channel beside a completing terminal (#2258 unification review)",
             "defective_known_event_surfaces_err: the websocket turn is request/response — a schema-defective known frame fails the whole session instead of surfacing an in-band Err (#2258 unification review)",
         ],
+    }
+}
+
+/// Compile-linked manifest of the wire families this binary covers.
+///
+/// This suite lives outside the `rig` facade's `core` test binary, so the
+/// workspace registry cannot link it: it lists `openai_responses_websocket` in
+/// `OUT_OF_BINARY_FAMILIES` and relies on the "Test out-of-facade streaming
+/// conformance and structural guards" CI step to execute this binary. The test
+/// below keeps the family name honest at the definition site, which is the
+/// direction the registry loses for out-of-binary suites (#2258 F3).
+const SUITE_FAMILIES: &[&str] = &[openai_responses_websocket_suite::WIRE_FAMILY];
+
+#[test]
+fn suite_families_are_registered_wire_families() {
+    for family in SUITE_FAMILIES {
+        assert!(
+            rig_core::test_utils::streaming_conformance::WIRE_FAMILIES.contains(family),
+            "suite names wire family {family:?}, absent from WIRE_FAMILIES"
+        );
     }
 }

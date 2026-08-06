@@ -9,7 +9,12 @@
 //!
 //! - `suite_is_complete`: the expanded scenario list equals
 //!   [`CANONICAL_SCENARIOS`](crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS),
-//!   and every `xfail` entry names a canonical scenario with a reason.
+//!   and every `xfail` entry names a canonical scenario with a reason. The
+//!   list it checks (`EMITTED_SCENARIOS`) is *generated from the same entries
+//!   as the test functions* by
+//!   [`__streaming_conformance_scenarios`](crate::__streaming_conformance_scenarios),
+//!   so it cannot be a hand-written twin that agrees with itself: deleting a
+//!   scenario deletes it from both sides and the check fails (#2258 G6).
 //!
 //! Capability flags are not written in the invocation at all: each gated test
 //! derives them from the fixture itself
@@ -57,6 +62,85 @@
 /// suite actually drives; `manifest:` is a required snapshot of that derived
 /// set, so losing a fixture sample (and its scenario) is a loud diff rather
 /// than a silent skip.
+/// One scenario entry of [`__streaming_conformance_scenarios`].
+///
+/// `ungated <name>` drives the scenario unconditionally; `gated <name> =>
+/// <field> && <field>…` reads the gate off the fixture-derived
+/// [`SuiteCapabilities`](crate::test_utils::streaming_conformance::SuiteCapabilities)
+/// fields it names, so the gate is written as data instead of hand-copied test
+/// bodies.
+///
+/// `$name` is used *both* as the emitted `fn` name and (via `stringify!`) as
+/// the scenario label passed to the outcome checkers, so the label cannot drift
+/// from the function or from the shared scenario fn in
+/// `crate::test_utils::streaming_conformance` that it calls.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __streaming_conformance_scenario {
+    (ungated $name:ident) => {
+        #[tokio::test]
+        async fn $name() {
+            let result = $crate::test_utils::streaming_conformance::$name(&suite_fixture()).await;
+            let verdict = $crate::test_utils::streaming_conformance::check_ungated_outcome(
+                stringify!($name),
+                SUITE_XFAIL,
+                result,
+            );
+            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
+        }
+    };
+    (gated $name:ident => $($field:ident)&&+) => {
+        #[tokio::test]
+        async fn $name() {
+            let fixture = suite_fixture();
+            let capabilities = fixture.capabilities();
+            // Naming two fields means the scenario needs BOTH shapes to be
+            // spellable on this wire; either gap is a visible named skip.
+            let capability = $(capabilities.$field)&&+;
+            let outcome =
+                $crate::test_utils::streaming_conformance::$name(&fixture).await;
+            let verdict = $crate::test_utils::streaming_conformance::check_gated_outcome(
+                stringify!($name),
+                capability,
+                SUITE_XFAIL,
+                outcome,
+            );
+            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
+        }
+    };
+}
+
+/// Expand a scenario list into the suite's test functions AND the
+/// `EMITTED_SCENARIOS` const that `suite_is_complete` checks.
+///
+/// This exists to make `suite_is_complete` structural (#2258 G6). It used to
+/// compare two hand-written lists — the nine `#[tokio::test] fn`s and a
+/// literal `EMITTED_SCENARIOS` array — neither derived from the other, so
+/// deleting a scenario meant deleting its name from both and the "anti-tamper"
+/// test passed. Now each name is written ONCE and expands into both, so a
+/// removed scenario disappears from `EMITTED_SCENARIOS` too and the comparison
+/// against
+/// [`CANONICAL_SCENARIOS`](crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS)
+/// fails.
+///
+/// The list is order-sensitive: `suite_is_complete` compares it to
+/// `CANONICAL_SCENARIOS` with `assert_eq!`, so entries stay in canonical order
+/// and gated/ungated entries interleave.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __streaming_conformance_scenarios {
+    ( $( $kind:ident $name:ident $(=> $($field:ident)&&+)? ; )+ ) => {
+        $(
+            $crate::__streaming_conformance_scenario!($kind $name $(=> $($field)&&+)?);
+        )+
+
+        /// The scenarios this suite actually expanded, generated from the same
+        /// entries as the test functions above — not a parallel hand-written
+        /// list.
+        const EMITTED_SCENARIOS: &[&str] = &[ $( stringify!($name) ),+ ];
+    };
+}
+
 #[macro_export]
 macro_rules! streaming_conformance_suite {
     (
@@ -99,141 +183,29 @@ macro_rules! streaming_conformance_suite {
             );
         }
 
-        #[tokio::test]
-        async fn truncation_preserves_content_without_terminal() {
-            let result = $crate::test_utils::streaming_conformance::truncation_preserves_content_without_terminal(&suite_fixture()).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_ungated_outcome(
-                "truncation_preserves_content_without_terminal",
-                SUITE_XFAIL,
-                result,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
-        }
-
-        #[tokio::test]
-        async fn transport_error_after_tool_call_yields_err_then_end() {
-            let result = $crate::test_utils::streaming_conformance::transport_error_after_tool_call_yields_err_then_end(&suite_fixture()).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_ungated_outcome(
-                "transport_error_after_tool_call_yields_err_then_end",
-                SUITE_XFAIL,
-                result,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
-        }
-
-        #[tokio::test]
-        async fn malformed_frame_surfaces_err_and_terminal_still_completes() {
-            let fixture = suite_fixture();
-            let capability = fixture.capabilities().malformed_frame;
-            let outcome = $crate::test_utils::streaming_conformance::malformed_frame_surfaces_err_and_terminal_still_completes(&fixture).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_gated_outcome(
-                "malformed_frame_surfaces_err_and_terminal_still_completes",
-                capability,
-                SUITE_XFAIL,
-                outcome,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
-        }
-
-        #[tokio::test]
-        async fn unknown_event_is_skipped() {
-            let fixture = suite_fixture();
-            let capability = fixture.capabilities().unknown_event_frame;
-            let outcome = $crate::test_utils::streaming_conformance::unknown_event_is_skipped(&fixture).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_gated_outcome(
-                "unknown_event_is_skipped",
-                capability,
-                SUITE_XFAIL,
-                outcome,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
-        }
-
-        #[tokio::test]
-        async fn defective_known_event_surfaces_err() {
-            let fixture = suite_fixture();
-            let capability = fixture.capabilities().defective_known_frame;
-            let outcome = $crate::test_utils::streaming_conformance::defective_known_event_surfaces_err(&fixture).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_gated_outcome(
-                "defective_known_event_surfaces_err",
-                capability,
-                SUITE_XFAIL,
-                outcome,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
-        }
-
-        #[tokio::test]
-        async fn delta_less_choice_prelude_is_a_noop() {
-            let fixture = suite_fixture();
-            let capability = fixture.capabilities().delta_less_prelude;
-            let outcome = $crate::test_utils::streaming_conformance::delta_less_choice_prelude_is_a_noop(&fixture).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_gated_outcome(
-                "delta_less_choice_prelude_is_a_noop",
-                capability,
-                SUITE_XFAIL,
-                outcome,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
-        }
-
-        #[tokio::test]
-        async fn refusal_frames_deliver_text_without_error() {
-            let fixture = suite_fixture();
-            let capability = fixture.capabilities().refusal;
-            let outcome = $crate::test_utils::streaming_conformance::refusal_frames_deliver_text_without_error(&fixture).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_gated_outcome(
-                "refusal_frames_deliver_text_without_error",
-                capability,
-                SUITE_XFAIL,
-                outcome,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
-        }
-
-        #[tokio::test]
-        async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing() {
-            let fixture = suite_fixture();
-            // Runnable only when the wire spells both a bare terminal and a
-            // malformed frame; either gap is a visible skip.
-            let capabilities = fixture.capabilities();
-            let capability = capabilities.bare_terminal && capabilities.malformed_frame;
-            let outcome = $crate::test_utils::streaming_conformance::bare_terminal_after_only_unparseable_frames_fabricates_nothing(&fixture).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_gated_outcome(
-                "bare_terminal_after_only_unparseable_frames_fabricates_nothing",
-                capability,
-                SUITE_XFAIL,
-                outcome,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
-        }
-
-        #[tokio::test]
-        async fn usage_variants_are_reported_or_zero_sentinel() {
-            let result = $crate::test_utils::streaming_conformance::usage_variants_are_reported_or_zero_sentinel(&suite_fixture()).await;
-            let verdict = $crate::test_utils::streaming_conformance::check_ungated_outcome(
-                "usage_variants_are_reported_or_zero_sentinel",
-                SUITE_XFAIL,
-                result,
-            );
-            assert!(verdict.is_ok(), "{}", verdict.err().unwrap_or_default());
+        // The canonical scenario set, in canonical order. Each entry expands
+        // ONCE into both its `#[tokio::test] fn` and the `EMITTED_SCENARIOS`
+        // const that `suite_is_complete` below compares against
+        // `CANONICAL_SCENARIOS` — deleting a scenario here deletes it from the
+        // completeness list too, so the check fails instead of agreeing with
+        // itself (#2258 G6).
+        $crate::__streaming_conformance_scenarios! {
+            ungated truncation_preserves_content_without_terminal;
+            ungated transport_error_after_tool_call_yields_err_then_end;
+            gated malformed_frame_surfaces_err_and_terminal_still_completes => malformed_frame;
+            gated unknown_event_is_skipped => unknown_event_frame;
+            gated defective_known_event_surfaces_err => defective_known_frame;
+            gated delta_less_choice_prelude_is_a_noop => delta_less_prelude;
+            gated refusal_frames_deliver_text_without_error => refusal;
+            gated bare_terminal_after_only_unparseable_frames_fabricates_nothing
+                => bare_terminal && malformed_frame;
+            ungated usage_variants_are_reported_or_zero_sentinel;
         }
 
         /// Anti-tamper: the expanded suite covers exactly the canonical
         /// scenario list, and every `xfail` entry is well-formed.
         #[test]
         fn suite_is_complete() {
-            const EMITTED_SCENARIOS: &[&str] = &[
-                "truncation_preserves_content_without_terminal",
-                "transport_error_after_tool_call_yields_err_then_end",
-                "malformed_frame_surfaces_err_and_terminal_still_completes",
-                "unknown_event_is_skipped",
-                "defective_known_event_surfaces_err",
-                "delta_less_choice_prelude_is_a_noop",
-                "refusal_frames_deliver_text_without_error",
-                "bare_terminal_after_only_unparseable_frames_fabricates_nothing",
-                "usage_variants_are_reported_or_zero_sentinel",
-            ];
             assert_eq!(
                 EMITTED_SCENARIOS,
                 $crate::test_utils::streaming_conformance::CANONICAL_SCENARIOS,

@@ -39,29 +39,250 @@ fn is_policy_home(path: &std::path::Path) -> bool {
 /// Directories that hold test harness code rather than shipped policy.
 const SKIPPED_DIRS: &[&str] = &["tests", "test_utils", "fixtures", "target"];
 
-/// Returns the shipped portion of a source file: everything before the first
-/// line whose (trimmed) content *starts with* `#[cfg(test)]` — i.e. an actual
-/// attribute in attribute position. Inline unit-test modules may exercise wire
-/// shapes freely; only the code before the test module ships. Line-anchoring
-/// matters: a doc comment or trailing comment merely *mentioning*
-/// `#[cfg(test)]` must not exempt the shipped code below it (see the
-/// `shipped_portion_ignores_cfg_test_mentions_in_comments` self-test).
-fn shipped_portion(source: &str) -> &str {
-    let mut offset = 0usize;
-    for line in source.split_inclusive('\n') {
-        if line.trim_start().starts_with("#[cfg(test)]") {
-            break;
-        }
-        offset += line.len();
+/// Blanks the *contents* of comments and string/char literals, replacing every
+/// masked character with a space and preserving newlines (so line numbering and
+/// line count are unchanged).
+///
+/// Structural decisions — "is this line an attribute?", "where does this item
+/// end?" — run on the mask, never on the raw text, so a `{` inside a JSON
+/// fixture string, or a `#[cfg(test)]` quoted inside a `/* … */` block, cannot
+/// steer the scan. Raw strings (`r#"…"#`) are handled because inline test
+/// modules are full of them. Marker matching still runs on the ORIGINAL text,
+/// so violation messages quote real source.
+fn mask_literals_and_comments(source: &str) -> String {
+    /// What the scanner is currently inside.
+    enum State {
+        Code,
+        LineComment,
+        /// Block comments nest in Rust; the payload is the open depth.
+        BlockComment(usize),
+        Str,
+        /// `r##"…"##` — the payload is the hash count that closes it.
+        RawStr(usize),
+        Char,
     }
-    source
-        .get(..offset)
-        .expect("offset lies on a line boundary")
+
+    let mut masked = String::with_capacity(source.len());
+    let mut state = State::Code;
+    let mut chars = source.chars().peekable();
+    // Set while consuming a `\`-escaped pair inside a string/char literal.
+    let mut escaped = false;
+
+    // Pushes `ch` verbatim, or a space if it is masked; newlines always pass
+    // through so the mask stays line-aligned with the source.
+    let emit = |masked: &mut String, ch: char, keep: bool| {
+        if ch == '\n' || keep {
+            masked.push(ch);
+        } else {
+            masked.push(' ');
+        }
+    };
+
+    while let Some(ch) = chars.next() {
+        match state {
+            State::Code => match ch {
+                '/' if chars.peek() == Some(&'/') => {
+                    state = State::LineComment;
+                    emit(&mut masked, ch, false);
+                }
+                '/' if chars.peek() == Some(&'*') => {
+                    state = State::BlockComment(1);
+                    emit(&mut masked, ch, false);
+                }
+                '"' => {
+                    state = State::Str;
+                    emit(&mut masked, ch, false);
+                }
+                'r' if matches!(chars.peek(), Some('"') | Some('#')) => {
+                    // `r"…"` / `r#"…"#`, but also plain identifiers starting
+                    // with `r` followed by `#` are impossible, so counting the
+                    // hashes and requiring a `"` is unambiguous.
+                    let mut hashes = 0usize;
+                    let mut lookahead = chars.clone();
+                    while lookahead.peek() == Some(&'#') {
+                        let _ = lookahead.next();
+                        hashes += 1;
+                    }
+                    if lookahead.peek() == Some(&'"') {
+                        for _ in 0..=hashes {
+                            if let Some(consumed) = chars.next() {
+                                emit(&mut masked, consumed, false);
+                            }
+                        }
+                        state = State::RawStr(hashes);
+                        emit(&mut masked, ch, false);
+                    } else {
+                        emit(&mut masked, ch, true);
+                    }
+                }
+                '\'' => {
+                    // A lifetime (`'a`) is code; a char literal (`'x'`, `'\n'`)
+                    // is masked. Only the literal forms have a closing quote
+                    // within the next two characters.
+                    let mut lookahead = chars.clone();
+                    let first = lookahead.next();
+                    let second = lookahead.next();
+                    let is_char_literal = first == Some('\\')
+                        || (first.is_some() && second == Some('\''))
+                        || first == Some('\'');
+                    if is_char_literal {
+                        state = State::Char;
+                        emit(&mut masked, ch, false);
+                    } else {
+                        emit(&mut masked, ch, true);
+                    }
+                }
+                _ => emit(&mut masked, ch, true),
+            },
+            State::LineComment => {
+                if ch == '\n' {
+                    state = State::Code;
+                }
+                emit(&mut masked, ch, false);
+            }
+            State::BlockComment(depth) => {
+                if ch == '/' && chars.peek() == Some(&'*') {
+                    state = State::BlockComment(depth.saturating_add(1));
+                } else if ch == '*' && chars.peek() == Some(&'/') {
+                    if depth <= 1 {
+                        // Consume the `/` so the comment cannot re-open.
+                        if let Some(slash) = chars.next() {
+                            emit(&mut masked, ch, false);
+                            emit(&mut masked, slash, false);
+                            state = State::Code;
+                            continue;
+                        }
+                    }
+                    state = State::BlockComment(depth.saturating_sub(1));
+                }
+                emit(&mut masked, ch, false);
+            }
+            State::Str | State::Char => {
+                let closing = if matches!(state, State::Str) {
+                    '"'
+                } else {
+                    '\''
+                };
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == closing {
+                    state = State::Code;
+                }
+                emit(&mut masked, ch, false);
+            }
+            State::RawStr(hashes) => {
+                if ch == '"' {
+                    let mut lookahead = chars.clone();
+                    let mut seen = 0usize;
+                    while seen < hashes && lookahead.peek() == Some(&'#') {
+                        let _ = lookahead.next();
+                        seen += 1;
+                    }
+                    if seen == hashes {
+                        for _ in 0..hashes {
+                            if let Some(consumed) = chars.next() {
+                                emit(&mut masked, consumed, false);
+                            }
+                        }
+                        state = State::Code;
+                    }
+                }
+                emit(&mut masked, ch, false);
+            }
+        }
+    }
+
+    masked
+}
+
+/// Index one past the last line of the `#[cfg(test)]`-gated item starting at
+/// `start`, given the masked lines of a file.
+///
+/// The item ends when its brace depth returns to zero (`mod tests { … }`,
+/// `impl`, `fn`), or — for a brace-less item (`#[cfg(test)] use foo;`) — at the
+/// first top-level `;`. Extra attributes between the `#[cfg(test)]` and the
+/// item itself are consumed on the way, since neither carries braces or a
+/// top-level semicolon.
+fn end_of_gated_item(masked_lines: &[&str], start: usize) -> usize {
+    let mut depth: isize = 0;
+    let mut seen_brace = false;
+    let mut index = start;
+    while let Some(line) = masked_lines.get(index) {
+        for ch in line.chars() {
+            match ch {
+                '{' => {
+                    depth += 1;
+                    seen_brace = true;
+                }
+                '}' => depth -= 1,
+                ';' if !seen_brace && depth == 0 => return index + 1,
+                _ => {}
+            }
+        }
+        index += 1;
+        if seen_brace && depth <= 0 {
+            return index;
+        }
+    }
+    masked_lines.len()
+}
+
+/// Returns the shipped portion of a source file: the whole file with each
+/// `#[cfg(test)]`-gated ITEM blanked out (its lines replaced by empty lines, so
+/// reported line numbers still match the file on disk).
+///
+/// Item-scoped, not truncate-at-first-marker, for two reasons found by review
+/// (#2258):
+///
+/// 1. **Shipped code after an inline test module is scanned.** A `#[cfg(test)]`
+///    *helper* midway through a file (live example:
+///    `providers/openrouter/completion.rs`, a gated `final_request_body` at
+///    ~line 1370 followed by 2600 more lines of shipped code) used to hide
+///    everything below it from both guards.
+/// 2. **Content scoping sees the whole file.** [`is_serde_wall_target`] opts a
+///    file in when its shipped text names the wire machinery; under truncation,
+///    machinery named only *after* a gated item could not opt its file in.
+///
+/// Attribute position and item extent are decided on
+/// [`mask_literals_and_comments`]'s output, so a doc comment or trailing
+/// comment merely *mentioning* `#[cfg(test)]`, an attribute quoted inside a
+/// `/* … */` block, and a stray brace inside a JSON fixture string are all
+/// inert (self-tests `shipped_portion_ignores_cfg_test_mentions_in_comments`
+/// and `shipped_portion_is_item_scoped`).
+fn shipped_portion(source: &str) -> String {
+    let masked = mask_literals_and_comments(source);
+    let lines: Vec<&str> = source.split_inclusive('\n').collect();
+    let masked_lines: Vec<&str> = masked.split_inclusive('\n').collect();
+    debug_assert_eq!(lines.len(), masked_lines.len());
+
+    let mut shipped = String::with_capacity(source.len());
+    let mut index = 0usize;
+    while let Some(line) = lines.get(index) {
+        let is_gate = masked_lines
+            .get(index)
+            .is_some_and(|masked| masked.trim_start().starts_with("#[cfg(test)]"));
+        if is_gate {
+            let end = end_of_gated_item(&masked_lines, index);
+            for blanked in index..end {
+                if lines.get(blanked).is_some_and(|l| l.ends_with('\n')) {
+                    shipped.push('\n');
+                }
+            }
+            index = end;
+            continue;
+        }
+        shipped.push_str(line);
+        index += 1;
+    }
+    shipped
 }
 
 /// Walks every `.rs` file under the workspace `crates/` directory (skipping
 /// [`SKIPPED_DIRS`]) and calls `visit(path, shipped_source)`, where
-/// `shipped_source` is the file content truncated by [`shipped_portion`].
+/// `shipped_source` is the file content with `#[cfg(test)]`-gated items blanked
+/// by [`shipped_portion`].
 fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
     // rig-core/tests -> workspace crates/ directory, so the guards also cover
     // the out-of-core adapter crates (bedrock, candle, gemini-grpc).
@@ -88,7 +309,7 @@ fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
             }
 
             let source = std::fs::read_to_string(&path).expect("source file should be readable");
-            visit(&path, shipped_portion(&source));
+            visit(&path, &shipped_portion(&source));
         }
     }
 }
@@ -417,9 +638,9 @@ fn foreign_adapter_files_are_not_exempt() {
     )));
 }
 
-/// Truncation at `#[cfg(test)]` is line-anchored: only an attribute in
-/// attribute position ends the shipped portion. A doc-comment (or trailing
-/// comment) merely mentioning the attribute must not exempt subsequent code.
+/// Gating at `#[cfg(test)]` is line-anchored: only an attribute in attribute
+/// position removes an item. A doc-comment (or trailing comment) merely
+/// mentioning the attribute must not exempt subsequent code.
 #[test]
 fn shipped_portion_ignores_cfg_test_mentions_in_comments() {
     let source = "\
@@ -437,14 +658,88 @@ mod tests {
     );
     assert!(
         !shipped.contains("WireEvent::Corrupt"),
-        "the real attribute-position marker still truncates"
+        "the real attribute-position marker still removes its item"
     );
 
-    // Indented attribute position (inside an impl block) also truncates.
+    // Indented attribute position (inside an impl block) removes its item.
     let indented = "fn a() {}\n    #[cfg(test)]\n    fn b() {}\n";
-    assert_eq!(shipped_portion(indented), "fn a() {}\n");
+    assert_eq!(shipped_portion(indented), "fn a() {}\n\n\n");
 
     // No marker at all: the whole file ships.
     let plain = "fn a() {}\n";
     assert_eq!(shipped_portion(plain), plain);
+
+    // A block comment quoting the attribute at column 0 is inert — the
+    // residue that a truncating scanner could not see past.
+    let block_commented = "\
+/*
+#[cfg(test)]
+*/
+fn shipped_code() { let _ = WireEvent::Unknown; }
+";
+    assert!(
+        shipped_portion(block_commented).contains("WireEvent::Unknown"),
+        "an attribute inside a block comment must not gate the code below it"
+    );
+}
+
+/// Gating is ITEM-scoped: a `#[cfg(test)]` helper mid-file removes only that
+/// helper, and everything after it is scanned again. This is the
+/// `providers/openrouter/completion.rs` shape (a gated `final_request_body`
+/// followed by thousands of shipped lines) that a truncating scanner hid.
+#[test]
+fn shipped_portion_is_item_scoped() {
+    let source = "\
+fn before() { let _ = WireEvent::Unknown; }
+
+#[cfg(test)]
+pub(super) fn gated_helper() -> u8 {
+    let braces_in_a_string = \"unbalanced { brace\";
+    let raw = r#\"also unbalanced } here\"#;
+    let _ = (braces_in_a_string, raw);
+    7
+}
+
+fn after() { let _ = run_wire_stream(); }
+
+#[cfg(test)]
+mod tests {
+    fn test_only() { let _ = WireEvent::Corrupt; }
+}
+
+fn last() { let _ = triage_frame(); }
+";
+    let shipped = shipped_portion(source);
+    assert!(shipped.contains("WireEvent::Unknown"), "{shipped}");
+    assert!(
+        shipped.contains("run_wire_stream"),
+        "shipped code AFTER a gated helper must stay visible: {shipped}"
+    );
+    assert!(
+        shipped.contains("triage_frame"),
+        "shipped code after a gated `mod tests` must stay visible too: {shipped}"
+    );
+    assert!(
+        !shipped.contains("gated_helper") && !shipped.contains("WireEvent::Corrupt"),
+        "gated items themselves must be blanked: {shipped}"
+    );
+    assert_eq!(
+        shipped.lines().count(),
+        source.lines().count(),
+        "blanking must preserve line numbering so violations cite real lines"
+    );
+
+    // Content scoping now sees machinery named only after a gated item — the
+    // truncation-ordering half of the residue.
+    assert!(
+        is_serde_wall_target(
+            std::path::Path::new("crates/rig-core/src/providers/somegateway/compat.rs"),
+            &shipped,
+        ),
+        "a file whose only machinery reference sits after a gated helper must still be scanned"
+    );
+
+    // A brace-less gated item ends at its semicolon, not at end of file.
+    let brace_less = "#[cfg(test)]\nuse std::fmt;\nfn after() { let _ = WireEvent::Unknown; }\n";
+    assert!(shipped_portion(brace_less).contains("WireEvent::Unknown"));
 }
