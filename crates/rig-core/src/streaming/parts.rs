@@ -12,7 +12,7 @@
 //! a single item id. A full block therefore supersedes only the delta
 //! accumulation for its own part — never a completed sibling.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::completion::CompletionError;
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
@@ -61,6 +61,12 @@ pub(crate) struct PartsAccumulator {
     reasoning_index: HashMap<PartKey, usize>,
     /// Item id → ordinal of that item's currently open (latest) part.
     open_ordinal: HashMap<String, u32>,
+    /// Boundary-minted reasoning ids with a part at their currently open
+    /// ordinal — exactly the ids [`PartsAccumulator::close_minted_reasoning`]
+    /// would bump. Every text token and completed tool call is a boundary, so
+    /// the common case (no open minted item) must not pay for a scan of every
+    /// reasoning key (#2258 G5).
+    open_minted_reasoning: Vec<String>,
     /// Active text block; text deltas and metadata merge here until the block
     /// is closed by a text start, a reasoning event, or a tool call.
     text_index: Option<usize>,
@@ -83,6 +89,13 @@ pub(crate) struct PartsAccumulator {
     /// completion opens a fresh call (the ordinal collapse the reasoning
     /// keying does explicitly).
     open_tool_inputs: Vec<OpenToolInput>,
+    /// Assembly ids closed by a full [`PartsAccumulator::tool_call`] rather
+    /// than by their own end event: a wire that restates a fragmented call as
+    /// one complete block already finalized it, so a trailing
+    /// [`PartsAccumulator::tool_input_end`] for that id must not finalize a
+    /// duplicate part (#2258 F1). Cleared for an id when fragments reopen it,
+    /// so a reused id still assembles a fresh call.
+    closed_by_full_call: HashSet<String>,
     /// Whether any completed tool call was recorded; the streaming
     /// counterpart of the unary path's finish-reason reconciliation input.
     saw_tool_call: bool,
@@ -113,11 +126,13 @@ impl Default for PartsAccumulator {
             parts: Vec::new(),
             reasoning_index: HashMap::new(),
             open_ordinal: HashMap::new(),
+            open_minted_reasoning: Vec::new(),
             text_index: None,
             text_ids: HashMap::new(),
             pending_text_id: None,
             minted_text_ids: SyntheticIds::text(),
             open_tool_inputs: Vec::new(),
+            closed_by_full_call: HashSet::new(),
             saw_tool_call: false,
         }
     }
@@ -301,8 +316,45 @@ impl PartsAccumulator {
         );
     }
 
-    /// Append a completed tool call.
-    pub(crate) fn tool_call(&mut self, tool_call: ToolCall) {
+    /// Append a tool call the wire delivered whole, reconciling it with an
+    /// open delta assembly of the same id. Returns the internal correlation id
+    /// the completed call must be published under.
+    ///
+    /// A wire may fragment a call's input *and* restate it as one complete
+    /// block (an out-of-tree adapter emitting `ToolCallDelta`s followed by a
+    /// full `ToolCall`). The fragments already published a minted
+    /// `internal_call_id` to the consumer, and
+    /// [`StreamedAssistantContent::ToolCall`](crate::streaming::StreamedAssistantContent::ToolCall)
+    /// promises that id correlates the completed call with its deltas — so the
+    /// assembly's id is **adopted**, never replaced, and `minted_internal_call_id`
+    /// (freshly generated for a call that arrived with no assembly) is returned
+    /// only when there was nothing to adopt.
+    ///
+    /// Adoption also closes the assembly: its slot is removed and its id is
+    /// marked closed, so a trailing [`PartsAccumulator::tool_input_end`] for
+    /// that id finalizes nothing instead of appending a duplicate part
+    /// (#2258 F1).
+    pub(crate) fn tool_call(
+        &mut self,
+        tool_call: ToolCall,
+        minted_internal_call_id: String,
+    ) -> String {
+        let adopted = self
+            .open_tool_inputs
+            .iter()
+            .position(|input| input.id == tool_call.id)
+            .map(|index| {
+                let input = self.open_tool_inputs.remove(index);
+                self.closed_by_full_call.insert(input.id);
+                input.internal_call_id
+            });
+        self.push_tool_call(tool_call);
+        adopted.unwrap_or(minted_internal_call_id)
+    }
+
+    /// Append a completed tool call as the next part, closing the active text
+    /// and minted-reasoning blocks (a completed call is a part boundary).
+    fn push_tool_call(&mut self, tool_call: ToolCall) {
         self.close_minted_reasoning();
         self.text_index = None;
         self.saw_tool_call = true;
@@ -388,7 +440,10 @@ impl PartsAccumulator {
     /// no open call opens and completes one from the event alone. Out-of-tree
     /// adapters beware: this means a `Keep`-mode end carrying an authoritative
     /// name for an id that never opened still finalizes a call with `{}`
-    /// arguments from the end event alone.
+    /// arguments from the end event alone — *unless* a full
+    /// [`PartsAccumulator::tool_call`] already closed that id, in which case
+    /// the end is the wire restating a call that is already a part and
+    /// finalizes nothing.
     pub(crate) fn tool_input_end(
         &mut self,
         end: ToolInputEnd,
@@ -397,6 +452,12 @@ impl PartsAccumulator {
             .open_tool_inputs
             .iter()
             .position(|input| input.id == end.id);
+        // A full block already finalized this id and consumed its assembly
+        // (#2258 F1); ending it again would append a duplicate part from the
+        // event's authoritative payload.
+        if position.is_none() && self.closed_by_full_call.contains(&end.id) {
+            return Ok(None);
+        }
         let open = position.map(|index| self.open_tool_inputs.remove(index));
         // Restores an open call that a `Keep`-mode probe could not finalize,
         // preserving its start-order slot.
@@ -478,7 +539,7 @@ impl PartsAccumulator {
             signature: end.signature,
             additional_params: end.additional_params,
         };
-        self.tool_call(tool_call.clone());
+        self.push_tool_call(tool_call.clone());
         Ok(Some((tool_call, internal_call_id)))
     }
 
@@ -518,6 +579,10 @@ impl PartsAccumulator {
         {
             Some(index) => index,
             None => {
+                // Fragments for an id a full block closed are a *new* call
+                // reusing the id, not a continuation of the finalized one:
+                // drop the mark so its end event finalizes normally.
+                self.closed_by_full_call.remove(id);
                 self.open_tool_inputs.push(OpenToolInput {
                     id: id.to_owned(),
                     internal_call_id: crate::id::generate(),
@@ -540,6 +605,7 @@ impl PartsAccumulator {
             .collect();
         self.reasoning_index.clear();
         self.open_ordinal.clear();
+        self.open_minted_reasoning.clear();
         self.text_index = None;
         self.text_ids.clear();
         self.pending_text_id = None;
@@ -547,6 +613,7 @@ impl PartsAccumulator {
         // Calls still open at stream end never fully arrived (no end event,
         // no adapter flush): truncated input drops, per the settled contract.
         self.open_tool_inputs.clear();
+        self.closed_by_full_call.clear();
         self.saw_tool_call = false;
         if parts.is_empty() {
             parts.push(AssistantContent::text(""));
@@ -563,7 +630,16 @@ impl PartsAccumulator {
     /// extending — or replacing — the one from before the boundary. Real wire
     /// ids (OpenAI Responses `rs_*`) are exact item identities and must keep
     /// collapsing across interleaved output, so they are never bumped.
+    ///
+    /// Every boundary event calls this, so the no-open-minted-item case — the
+    /// overwhelmingly common one, including *every* text token after the first
+    /// boundary — must not scan the reasoning keys (#2258 G5). The
+    /// `open_minted_reasoning` list holds exactly the ids the scan would find,
+    /// so an empty list is a proof that the scan is vacuous.
     fn close_minted_reasoning(&mut self) {
+        if self.open_minted_reasoning.is_empty() {
+            return;
+        }
         let open_minted: Vec<(String, u32)> = self
             .reasoning_index
             .keys()
@@ -576,9 +652,19 @@ impl PartsAccumulator {
         for (item_id, ordinal) in open_minted {
             self.open_ordinal.insert(item_id, ordinal + 1);
         }
+        // Each bumped id now has no part at its open ordinal, so nothing is
+        // left for a later boundary to close.
+        self.open_minted_reasoning.clear();
     }
 
     fn push_reasoning(&mut self, key: PartKey, part: ManagedPart) {
+        // The pushed part is always the item's open ordinal, so a minted id
+        // becomes closeable here and nowhere else.
+        if crate::streaming::is_boundary_minted_id(&key.item_id)
+            && !self.open_minted_reasoning.contains(&key.item_id)
+        {
+            self.open_minted_reasoning.push(key.item_id.clone());
+        }
         self.parts.push(part);
         self.reasoning_index.insert(key, self.parts.len() - 1);
     }
@@ -678,16 +764,19 @@ mod tests {
     fn replacement_is_keyed_across_interleaved_output() {
         let mut accumulator = PartsAccumulator::new();
         accumulator.reasoning_delta("rs_1", "partial");
-        accumulator.tool_call(ToolCall {
-            id: "call_1".to_owned(),
-            call_id: None,
-            function: crate::message::ToolFunction {
-                name: "probe".to_owned(),
-                arguments: serde_json::json!({}),
+        accumulator.tool_call(
+            ToolCall {
+                id: "call_1".to_owned(),
+                call_id: None,
+                function: crate::message::ToolFunction {
+                    name: "probe".to_owned(),
+                    arguments: serde_json::json!({}),
+                },
+                signature: None,
+                additional_params: None,
             },
-            signature: None,
-            additional_params: None,
-        });
+            "internal-probe".to_owned(),
+        );
         accumulator.reasoning_full(full("rs_1", reasoning_text("full block")));
 
         let parts = accumulator.finish();
@@ -860,7 +949,7 @@ mod tests {
     fn other_output_closes_a_minted_id_reasoning_item() {
         let mut accumulator = PartsAccumulator::new();
         accumulator.reasoning_delta("reasoning-0", "A");
-        accumulator.tool_call(probe_tool_call());
+        accumulator.tool_call(probe_tool_call(), "internal-probe".to_owned());
         accumulator.reasoning_delta("reasoning-0", "B");
 
         let parts = accumulator.finish();
@@ -884,7 +973,7 @@ mod tests {
     fn a_full_block_after_the_boundary_does_not_erase_prior_minted_id_deltas() {
         let mut accumulator = PartsAccumulator::new();
         accumulator.reasoning_delta("reasoning-0", "A");
-        accumulator.tool_call(probe_tool_call());
+        accumulator.tool_call(probe_tool_call(), "internal-probe".to_owned());
         accumulator.reasoning_full(full("reasoning-0", reasoning_text("B")));
 
         let parts = accumulator.finish();
@@ -928,6 +1017,54 @@ mod tests {
         ));
     }
 
+    /// #2258 G5: once a minted reasoning item is closed, every following text
+    /// token must be a no-op for the boundary machinery — the pre-fix code
+    /// rescanned every reasoning key per token and found nothing, and the
+    /// guard must not change what the tokens produce.
+    ///
+    /// Not inducible from a recorded provider turn: the defect is the *cost*
+    /// of a scan whose result is already fixed, so no wire shape distinguishes
+    /// the two implementations. Pinned here on the accumulator state instead.
+    #[test]
+    fn repeated_text_deltas_after_a_closed_minted_block_are_a_no_op() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta("reasoning-0", "A");
+        assert_eq!(accumulator.open_minted_reasoning, vec!["reasoning-0"]);
+
+        accumulator.text_delta("one");
+        assert!(
+            accumulator.open_minted_reasoning.is_empty(),
+            "the first text token closes the minted item, emptying the guard"
+        );
+        accumulator.text_delta(" two");
+        accumulator.text_delta(" three");
+        assert!(
+            accumulator.open_minted_reasoning.is_empty(),
+            "later tokens have nothing left to close"
+        );
+
+        // Behavior is unchanged by the guard: one boundary, one text block,
+        // and a later delta still opens a fresh reasoning part.
+        accumulator.reasoning_delta("reasoning-0", "B");
+        let parts = accumulator.finish();
+        assert_eq!(reasoning_texts(&parts), vec!["A", "B"]);
+        assert_eq!(parts.len(), 3);
+        assert!(matches!(
+            parts.get(1),
+            Some(AssistantContent::Text(text)) if text.text == "one two three"
+        ));
+    }
+
+    /// A wire-supplied reasoning id never enters the boundary guard: it is an
+    /// exact item identity that must keep collapsing across interleaved
+    /// output, so the guard stays empty and the scan stays skipped.
+    #[test]
+    fn wire_reasoning_ids_never_enter_the_minted_boundary_guard() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta("rs_1", "thinking");
+        assert!(accumulator.open_minted_reasoning.is_empty());
+    }
+
     /// Wire-supplied ids are exact item identities: the Responses replay case
     /// must keep collapsing a done block onto its deltas across interleaved
     /// output (the boundary bump applies to minted namespaces only).
@@ -935,7 +1072,7 @@ mod tests {
     fn wire_id_full_blocks_still_collapse_across_interleaved_output() {
         let mut accumulator = PartsAccumulator::new();
         accumulator.reasoning_delta("rs_1", "thinking");
-        accumulator.tool_call(probe_tool_call());
+        accumulator.tool_call(probe_tool_call(), "internal-probe".to_owned());
         accumulator.reasoning_full(full("rs_1", reasoning_text("full reasoning")));
 
         let parts = accumulator.finish();
@@ -1309,5 +1446,133 @@ mod tests {
             .expect("no error")
             .expect("finalizes");
         assert_eq!(tool_call.id, "call_late");
+    }
+
+    // --- #2258 F1: a full `ToolCall` reconciling with an open delta
+    // assembly of the same id.
+    //
+    // Not inducible from a recorded provider turn: no in-tree wire mixes
+    // fragments with a full restatement of the same call (each family emits
+    // one shape or the other), so these are pinned as unit probes of the
+    // shape an out-of-tree adapter can produce. ---
+
+    fn call_named(id: &str, name: &str) -> ToolCall {
+        ToolCall {
+            id: id.to_owned(),
+            call_id: None,
+            function: crate::message::ToolFunction {
+                name: name.to_owned(),
+                arguments: serde_json::json!({}),
+            },
+            signature: None,
+            additional_params: None,
+        }
+    }
+
+    /// The correlation contract: the deltas already published their minted
+    /// internal id, so the full call adopts it instead of publishing a fresh
+    /// one the consumer cannot match to anything it saw.
+    #[test]
+    fn a_full_call_adopts_the_internal_id_its_deltas_published() {
+        let mut accumulator = PartsAccumulator::new();
+        let published = accumulator.tool_name_delta("tc1", "add");
+        accumulator.tool_args_delta("tc1", "{\"x\":1}");
+
+        let adopted = accumulator.tool_call(call_named("tc1", "add"), "freshly-minted".to_owned());
+        assert_eq!(
+            adopted, published,
+            "the completed call must correlate with its own deltas"
+        );
+
+        let parts = accumulator.finish();
+        assert_eq!(
+            parts
+                .iter()
+                .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+                .count(),
+            1
+        );
+    }
+
+    /// Adoption consumes the assembly, so the wire's trailing end event for
+    /// the same id finalizes nothing — pre-fix it appended a duplicate part
+    /// from its own authoritative payload.
+    #[test]
+    fn an_end_after_a_full_call_for_the_same_id_is_a_no_op() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta("tc1", "add");
+        accumulator.tool_args_delta("tc1", "{\"x\":1}");
+        accumulator.tool_call(call_named("tc1", "add"), "freshly-minted".to_owned());
+
+        let mut done = end("tc1", UnparseableToolInput::Drop);
+        done.name = Some("add".to_owned());
+        done.arguments = Some(serde_json::json!({"x": 1}));
+        assert!(
+            accumulator
+                .tool_input_end(done)
+                .expect("no error")
+                .is_none(),
+            "the call is already a part; ending it again must not duplicate it"
+        );
+
+        let parts = accumulator.finish();
+        assert_eq!(
+            parts
+                .iter()
+                .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+                .count(),
+            1
+        );
+    }
+
+    /// The mark is per-assembly, not permanent: fragments reusing a closed id
+    /// open a genuinely new call with its own internal id, and its end event
+    /// finalizes normally.
+    #[test]
+    fn fragments_reusing_a_closed_id_open_a_fresh_call() {
+        let mut accumulator = PartsAccumulator::new();
+        let first = accumulator.tool_name_delta("tc1", "add");
+        let adopted = accumulator.tool_call(call_named("tc1", "add"), "freshly-minted".to_owned());
+        assert_eq!(adopted, first);
+
+        let second = accumulator.tool_name_delta("tc1", "subtract");
+        assert_ne!(second, first, "the reused id opens a distinct call");
+        accumulator.tool_args_delta("tc1", "{\"y\":2}");
+        let (tool_call, internal) = accumulator
+            .tool_input_end(end("tc1", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("the reused id's call finalizes");
+        assert_eq!(internal, second);
+        assert_eq!(tool_call.function.name, "subtract");
+
+        let parts = accumulator.finish();
+        assert_eq!(
+            parts
+                .iter()
+                .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+                .count(),
+            2
+        );
+    }
+
+    /// The single-shape wires (every in-tree provider that emits a whole
+    /// call): with nothing to adopt, the emitter's minted id is published
+    /// unchanged.
+    #[test]
+    fn a_full_call_with_no_open_assembly_keeps_its_minted_id() {
+        let mut accumulator = PartsAccumulator::new();
+        let published = accumulator.tool_call(call_named("tc1", "add"), "minted-1".to_owned());
+        assert_eq!(published, "minted-1");
+
+        // A different id's assembly is untouched by an unrelated full call.
+        let other = accumulator.tool_name_delta("tc2", "subtract");
+        let published = accumulator.tool_call(call_named("tc3", "add"), "minted-2".to_owned());
+        assert_eq!(published, "minted-2");
+        assert_ne!(other, published);
+        let (_, internal) = accumulator
+            .tool_input_end(end("tc2", UnparseableToolInput::Drop))
+            .expect("no error")
+            .expect("the untouched assembly still finalizes");
+        assert_eq!(internal, other);
     }
 }

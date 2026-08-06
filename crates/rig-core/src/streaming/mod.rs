@@ -50,6 +50,7 @@ use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
 use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
@@ -673,6 +674,16 @@ where
     }))
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+/// Future a paused [`StreamingCompletionResponse`] parks on until resumed, on
+/// native targets.
+type ResumeWait = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+/// Future a paused [`StreamingCompletionResponse`] parks on until resumed, on
+/// wasm targets.
+type ResumeWait = Pin<Box<dyn Future<Output = ()>>>;
+
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
 /// `inner` stream.
@@ -691,6 +702,16 @@ pub struct StreamingCompletionResponse {
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
     pub choice: OneOrMany<AssistantContent>,
+    /// Whether the stream already reached its end and aggregated `choice`.
+    ///
+    /// [`PartsAccumulator::finish`] is destructive (it takes the accumulated
+    /// parts and falls back to one empty text part), so re-polling a drained
+    /// stream — which `Stream` permits and combinators do — would otherwise
+    /// replace a fully aggregated `choice` with empty text (#2258 H6).
+    finished: bool,
+    /// Parked wait on the pause channel while [`PauseControl`] holds the
+    /// stream paused; `None` whenever the stream is running (#2258 H7).
+    resume_wait: Option<ResumeWait>,
     /// The provider's normalized terminal record, may be `None`
     /// if the provider didn't yield it during the stream
     pub response: Option<StreamFinal>,
@@ -716,6 +737,8 @@ impl StreamingCompletionResponse {
             parts: PartsAccumulator::new(),
             provider: provider.into(),
             choice: OneOrMany::one(AssistantContent::text("")),
+            finished: false,
+            resume_wait: None,
             response: None,
             final_response_yielded: AtomicBool::new(false),
             message_id: None,
@@ -795,13 +818,33 @@ impl Stream for StreamingCompletionResponse {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
 
+        // A drained stream stays drained: `finish()` consumes the accumulated
+        // parts, so re-polling must not run it again and clobber `choice`
+        // with the empty-text fallback (#2258 H6).
+        if stream.finished {
+            return Poll::Ready(None);
+        }
+
         if stream.is_paused() {
-            // TODO(pre-existing): wake-immediately turns a pause into a busy
-            // poll loop; parking the waker on the `watch` channel and waking
-            // on resume would idle properly. Out of scope for the grammar
-            // refactor.
-            cx.waker().wake_by_ref();
-            return Poll::Pending;
+            // Park on the pause channel rather than re-waking immediately: a
+            // self-wake turns a pause into a busy poll loop that burns the
+            // executor for as long as the consumer stays paused (#2258 H7).
+            // `wait_for` evaluates the *current* value when it is first
+            // polled, so a resume racing this branch resolves it at once
+            // instead of parking forever on a notification already sent.
+            let wait = match stream.resume_wait.as_mut() {
+                Some(wait) => wait,
+                None => {
+                    let mut paused_rx = stream.pause_control.paused_rx.clone();
+                    stream.resume_wait.insert(Box::pin(async move {
+                        let _ = paused_rx.wait_for(|paused| !*paused).await;
+                    }))
+                }
+            };
+            if wait.as_mut().poll(cx).is_pending() {
+                return Poll::Pending;
+            }
+            stream.resume_wait = None;
         }
 
         // Non-yielding events (`continue` arms: block bookkeeping, dropped
@@ -817,16 +860,18 @@ impl Stream for StreamingCompletionResponse {
                     if let Some(choice) = OneOrMany::from_iter_optional(stream.parts.finish()) {
                         stream.choice = choice;
                     }
+                    stream.finished = true;
 
                     Poll::Ready(None)
                 }
-                Poll::Ready(Some(Err(err))) => {
-                    if matches!(err, CompletionError::ProviderError(ref e) if e.to_string().contains("aborted"))
-                    {
-                        return Poll::Ready(None); // Treat cancellation as stream termination
-                    }
-                    Poll::Ready(Some(Err(err)))
-                }
+                // Every error reaches the consumer. Cancellation is *not* an
+                // error here: `cancel()` aborts through `Abortable`, which
+                // terminates the inner stream with `Ready(None)` above, so
+                // the aggregated choice is finished normally. (Until #2258 H8
+                // this arm swallowed any `ProviderError` whose text merely
+                // contained "aborted", reporting clean EOF while silently
+                // discarding both the error and the streamed content.)
+                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
                 Poll::Ready(Some(Ok(choice))) => match choice {
                     RawStreamingChoice::Message(text) => {
                         stream.parts.text_delta(&text);
@@ -892,9 +937,17 @@ impl Stream for StreamingCompletionResponse {
                         })))
                     }
                     RawStreamingChoice::ToolCall(raw_tool_call) => {
-                        let internal_call_id = raw_tool_call.internal_call_id.clone();
+                        let minted_internal_call_id = raw_tool_call.internal_call_id.clone();
                         let tool_call: ToolCall = raw_tool_call.into();
-                        stream.parts.tool_call(tool_call.clone());
+                        // A wire that fragmented this call's input already
+                        // published an internal id on its deltas; the
+                        // accumulator adopts it so the completed call stays
+                        // correlated with them (the contract on
+                        // `StreamedAssistantContent::ToolCall`). With no open
+                        // assembly the emitter's minted id is kept.
+                        let internal_call_id = stream
+                            .parts
+                            .tool_call(tool_call.clone(), minted_internal_call_id);
                         Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
                             tool_call,
                             internal_call_id,
@@ -1432,6 +1485,182 @@ mod tests {
         // Test resume
         stream.resume();
         assert!(!stream.is_paused());
+    }
+
+    /// #2258 H7: a paused stream parks on the pause channel instead of
+    /// re-waking itself, which turned a pause into a busy poll loop. The
+    /// `is_woken` assertion is the pin: pre-fix the paused poll woke the task
+    /// immediately, so it failed.
+    ///
+    /// Not inducible from a recorded provider turn — pause/resume is
+    /// consumer-side control flow with no wire representation.
+    #[tokio::test]
+    async fn a_paused_stream_parks_until_resume_instead_of_busy_waking() {
+        let stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("hello".to_string()));
+            }),
+        );
+        let resume = stream.pause_control.paused_tx.clone();
+        stream.pause();
+
+        let mut task = tokio_test::task::spawn(stream);
+        assert!(
+            task.poll_next().is_pending(),
+            "a paused stream yields nothing"
+        );
+        assert!(
+            !task.is_woken(),
+            "a paused stream must idle, not re-wake itself"
+        );
+
+        resume.send(false).expect("resume");
+        assert!(task.is_woken(), "resuming must wake the parked stream");
+        assert!(matches!(
+            task.poll_next(),
+            Poll::Ready(Some(Ok(StreamedAssistantContent::Text(text)))) if text.text == "hello"
+        ));
+    }
+
+    /// #2258 H6: `finish()` is destructive, so a second poll of a drained
+    /// stream must not run it again — pre-fix the re-poll replaced a fully
+    /// aggregated `choice` with the empty-text fallback.
+    ///
+    /// Not inducible from a recorded provider turn: re-polling a terminated
+    /// stream is consumer behavior (`Stream` permits it, and combinators do
+    /// it), independent of any wire.
+    #[tokio::test]
+    async fn re_polling_a_drained_stream_preserves_the_aggregated_choice() {
+        let mut stream = create_mock_stream();
+        while stream.next().await.is_some() {}
+
+        let drained: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(
+            drained,
+            vec![AssistantContent::text("hello 1hello 2hello 3")]
+        );
+
+        for _ in 0..3 {
+            assert!(
+                stream.next().await.is_none(),
+                "a drained stream stays drained"
+            );
+        }
+        assert_eq!(
+            stream.choice.clone().into_iter().collect::<Vec<_>>(),
+            drained,
+            "re-polling must not re-run the destructive finish()"
+        );
+
+        // The conversion into a unary response still carries the content.
+        let response: CompletionResponse = stream.into();
+        assert_eq!(response.choice.into_iter().collect::<Vec<_>>(), drained);
+    }
+
+    /// #2258 H8: a `ProviderError` whose text happens to contain "aborted"
+    /// is an error like any other. It used to be swallowed as clean EOF,
+    /// discarding both the failure and the content streamed before it.
+    ///
+    /// Not inducible from a recorded provider turn: no in-tree provider emits
+    /// this sentinel, and real cancellation arrives as `Ready(None)` through
+    /// `Abortable` rather than as an error item.
+    #[tokio::test]
+    async fn a_provider_error_mentioning_aborted_reaches_the_consumer() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("partial".to_string()));
+                yield Err(CompletionError::ProviderError(
+                    "upstream aborted the request".to_string(),
+                ));
+            }),
+        );
+
+        let mut errors = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                errors.push(err.to_string());
+            }
+        }
+        assert_eq!(errors.len(), 1, "the error must not be swallowed");
+        assert!(errors[0].contains("upstream aborted the request"));
+
+        // The content streamed before the failure is still aggregated.
+        assert_eq!(
+            stream.choice.first(),
+            AssistantContent::text("partial".to_string())
+        );
+        assert!(stream.response.is_none());
+    }
+
+    /// #2258 F1, at the stream boundary: a wire that fragments a call's input
+    /// and then restates it as one complete block must publish the completed
+    /// call under the id its deltas already published — the correlation
+    /// contract on [`StreamedAssistantContent::ToolCall`]. Pre-fix the
+    /// completed call carried a fresh id no delta ever mentioned.
+    ///
+    /// Not inducible from a recorded provider turn: no in-tree wire mixes the
+    /// two shapes for one call, though out-of-tree adapters can.
+    #[tokio::test]
+    async fn a_full_tool_call_correlates_with_the_deltas_of_the_same_id() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ToolCallDelta {
+                    id: "tc1".to_string(),
+                    content: ToolCallDeltaContent::Name("add".to_string()),
+                });
+                yield Ok(RawStreamingChoice::ToolCallDelta {
+                    id: "tc1".to_string(),
+                    content: ToolCallDeltaContent::Delta("{\"x\":1}".to_string()),
+                });
+                yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
+                    "tc1".to_string(),
+                    "add".to_string(),
+                    serde_json::json!({"x": 1}),
+                )));
+                yield Ok(RawStreamingChoice::ToolInputEnd(ToolInputEnd::new(
+                    "tc1",
+                    UnparseableToolInput::Drop,
+                )));
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(1)));
+            }),
+        );
+
+        let mut delta_ids = Vec::new();
+        let mut completed_ids = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::ToolCallDelta {
+                    internal_call_id, ..
+                } => delta_ids.push(internal_call_id),
+                StreamedAssistantContent::ToolCall {
+                    internal_call_id, ..
+                } => completed_ids.push(internal_call_id),
+                _ => {}
+            }
+        }
+
+        assert_eq!(delta_ids.len(), 2);
+        assert_eq!(delta_ids[0], delta_ids[1], "one call, one internal id");
+        assert_eq!(
+            completed_ids,
+            vec![delta_ids[0].clone()],
+            "the completed call must carry the id its deltas published"
+        );
+
+        // The trailing end event for a call a full block already delivered
+        // finalizes nothing: exactly one tool call reaches the choice.
+        let tool_calls: Vec<&ToolCall> = stream
+            .choice
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::ToolCall(tool_call) => Some(tool_call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tool_calls.len(), 1, "got {:?}", stream.choice);
     }
 
     #[tokio::test]
