@@ -33,7 +33,18 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
     let error = value
         .get("error")
         .filter(|error| error.is_object() || error.as_str().is_some_and(|s| !s.is_empty()))?;
-    if value.get("choices").is_some() {
+    // Only a chunk actually carrying choices is a content chunk that happens
+    // to mention an error field. Mere *presence* of `choices` — including
+    // `[]` and `null`, which error bodies like
+    // `{"error":{"message":"rate limited"},"choices":[]}` carry — must not
+    // mask the error: a masked one classifies as a normal chunk and a
+    // following `[DONE]` commits a failed turn to history as a successful
+    // zero-usage completion (introduced in #1944; #2258 B6).
+    if value
+        .get("choices")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|choices| !choices.is_empty())
+    {
         return None;
     }
 
@@ -772,6 +783,19 @@ mod tests {
         assert_eq!(error.provider_response_body(), Some(body));
         // It arrives mid-stream with no HTTP status attached.
         assert_eq!(error.provider_response_status(), None);
+
+        // The choices guard is narrowed to a NON-EMPTY array: an error body
+        // that also carries `"choices":[]` (or `null`) is still an error —
+        // pre-#2258-B6 it classified as a normal chunk, and a following
+        // `[DONE]` committed the failed turn as a successful zero-usage
+        // completion.
+        let masked = r#"{"error":{"message":"rate limited"},"choices":[]}"#;
+        let error = detect(masked).expect("an empty choices array must not mask the error");
+        assert_eq!(error.provider_response_body(), Some(masked));
+        assert!(
+            detect(r#"{"error":{"message":"rate limited"},"choices":null}"#).is_some(),
+            "a null choices value must not mask the error"
+        );
     }
 
     #[tokio::test]

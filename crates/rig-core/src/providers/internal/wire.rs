@@ -79,7 +79,11 @@ where
                 _ => decode_known(data),
             }
         }
-        DiscriminatorScan::NotObject => decode_known(data),
+        // Valid JSON that is not an object (a gateway keep-alive `null`, a
+        // bare array or scalar) cannot be a modeled event: it is Unknown
+        // (warn-and-skip), never routed into the typed decode where its
+        // guaranteed failure would read as Corrupt and error the stream.
+        DiscriminatorScan::NotObject => unknown_with_value(data, String::new()),
     }
 }
 
@@ -111,7 +115,10 @@ where
     };
     let found = match scanned {
         DiscriminatorScan::Object(found) => found,
-        DiscriminatorScan::NotObject => return decode_known(data),
+        // Same policy as `classify_tagged_frame`: non-object valid JSON is
+        // unrecognizable, so it is Unknown (warn-and-skip) — a keep-alive
+        // `null` must not become a fatal Corrupt via a doomed typed decode.
+        DiscriminatorScan::NotObject => return unknown_with_value(data, String::new()),
     };
     let object_value = found.first().and_then(|key| key.string_value.as_deref());
     let has_choices = found.get(1).is_some_and(|key| key.present);
@@ -585,6 +592,26 @@ mod tests {
     fn chat_invalid_json_is_corrupt() {
         let event = classify_chat_completions_frame::<TestChunk>("{not json");
         assert!(matches!(event, WireEvent::Corrupt(_)));
+    }
+
+    /// Valid JSON that is not an object — a gateway keep-alive `null`, a
+    /// bare array or scalar — is Unknown (warn-and-skip) on every
+    /// classifier, never routed into a typed decode whose guaranteed
+    /// failure would fatal the stream as Corrupt (#2258 B5).
+    #[test]
+    fn non_object_json_is_unknown_never_corrupt() {
+        for frame in ["null", "[]", "42", r#""ping""#] {
+            let event = classify_chat_completions_frame::<TestChunk>(frame);
+            assert!(
+                matches!(event, WireEvent::Unknown { .. }),
+                "chat classifier must skip {frame}, got {event:?}"
+            );
+            let event = classify_tagged_frame::<TestEvent>(frame, "type", known);
+            assert!(
+                matches!(event, WireEvent::Unknown { .. }),
+                "tagged classifier must skip {frame}, got {event:?}"
+            );
+        }
     }
 
     #[test]

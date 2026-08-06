@@ -237,7 +237,13 @@ impl<'de> Deserialize<'de> for ContentDelta {
             Some(_) => Err(serde::de::Error::custom(
                 "content delta `type` must be a string",
             )),
-            None => Ok(Self::Unknown(value)),
+            // A content delta without a `type` is malformed, not novel: an
+            // untagged text delta from a compat gateway silently skipping
+            // here would yield a successful *empty* completion. Corrupt
+            // surfaces in-band and the stream keeps consuming.
+            None => Err(serde::de::Error::custom(
+                "content delta is missing a `type` field",
+            )),
         }
     }
 }
@@ -2243,6 +2249,23 @@ mod tests {
         let mut out = Vec::new();
         adapter.interpret(event, &mut out);
         assert!(out.is_empty(), "an unmodeled nested delta is a no-op");
+    }
+
+    /// A `content_block_delta` whose `delta` omits `type` is malformed, not
+    /// novel: silently skipping it would turn a compat gateway's untagged
+    /// text delta into a successful *empty* completion. It classifies
+    /// `Corrupt`, surfacing in-band while the stream keeps consuming
+    /// (#2258 B5).
+    #[test]
+    fn delta_missing_its_type_is_corrupt_not_skipped() {
+        let adapter = AnthropicAdapter::default();
+        let frame = WireFrame::Text(
+            r#"{"type":"content_block_delta","index":0,"delta":{"text":"hello"}}"#.into(),
+        );
+        assert!(matches!(
+            adapter.classify(frame),
+            crate::providers::internal::wire::WireEvent::Corrupt(_)
+        ));
     }
 
     /// Policy preserved: a *known* nested delta tag with a defective payload
