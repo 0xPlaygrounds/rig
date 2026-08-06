@@ -266,7 +266,7 @@ impl StreamFinal {
     /// Attach the provider-assigned message ID.
     ///
     /// An empty string is treated as absent, matching the unary
-    /// [`CompletionResponse`](crate::completion::CompletionResponse) setters:
+    /// [`CompletionResponse`] setters:
     /// the invariant lives in the setters so no provider call site can
     /// diverge.
     pub fn with_message_id(self, message_id: impl Into<String>) -> Self {

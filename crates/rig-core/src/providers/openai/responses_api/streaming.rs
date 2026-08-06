@@ -1266,7 +1266,7 @@ pub enum ItemChunkKind {
     /// the restatement would double the reasoning text.
     ///
     /// The variant is what makes naming the tag in
-    /// [`is_known_responses_event_type`] safe: the classify layer sends every
+    /// `is_known_responses_event_type` safe: the classify layer sends every
     /// KNOWN tag straight to `decode_known`, so listing the tag without a
     /// variant to decode into would turn today's benign warn-and-skip into an
     /// in-band `Corrupt`/`Err` on every raw-reasoning block (#2258 G4). The

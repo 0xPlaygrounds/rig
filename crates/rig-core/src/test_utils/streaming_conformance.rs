@@ -4,7 +4,7 @@
 //! drives raw wire bytes (SSE or NDJSON) through a provider's *complete*
 //! streaming path — bytes → decode → normalize → aggregated
 //! [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse)
-//! — and asserts the [`StreamFinal`](crate::streaming::StreamFinal) contract
+//! — and asserts the [`StreamFinal`] contract
 //! table documented on that type. Scenarios state the contract; a per-provider
 //! [`ProviderWireFixture`] supplies the frames, since each wire format spells
 //! the same event differently.
