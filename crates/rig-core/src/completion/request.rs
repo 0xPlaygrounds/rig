@@ -716,6 +716,42 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
+    /// Reject request messages that carry no content.
+    ///
+    /// Message content is a `Vec`, so "no content" is representable. Providers
+    /// are not so permissive — an empty `content` array is a 400 on most wires —
+    /// and until this type stopped enforcing non-emptiness in its constructor,
+    /// such a message could not be built at all.
+    ///
+    /// This is the enforcement point that replaces the constructor's, and it is
+    /// strictly better placed: it names the offending message instead of
+    /// failing with a context-free "cannot create with an empty vector", and it
+    /// fails before the network round-trip. Per-wire conversions keep their own
+    /// guards for the shapes only they can judge; this one covers the providers
+    /// that never had one.
+    ///
+    /// An *assistant* turn that carried nothing is a real provider outcome and
+    /// is dropped from history rather than sent, so it never reaches here.
+    pub fn validate_message_content(&self) -> Result<(), CompletionError> {
+        for (index, message) in self.chat_history.iter().enumerate() {
+            let (role, empty) = match message {
+                Message::User { content } => ("user", content.is_empty()),
+                Message::Assistant { content, .. } => ("assistant", content.is_empty()),
+                Message::System { content } => ("system", content.is_empty()),
+            };
+            if empty {
+                return Err(CompletionError::RequestError(
+                    format!(
+                        "{role} message at index {index} has no content; \
+                         providers reject empty content blocks"
+                    )
+                    .into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
     /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
     pub fn output_schema_name(&self) -> Option<String> {
@@ -1150,12 +1186,14 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();
+        request.validate_message_content()?;
         model.completion(request).await
     }
 
     /// Stream the completion request
     pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();
+        request.validate_message_content()?;
         model.stream(request).await
     }
 }
@@ -1201,6 +1239,61 @@ mod tests {
             serde_json::to_value(decoded).expect("re-serialize"),
             encoded
         );
+    }
+
+    /// The enforcement point that replaced the non-empty container's
+    /// constructor. It must name the offending message — a context-free
+    /// "cannot create with an empty vector" was the thing worth losing.
+    #[test]
+    fn empty_message_content_is_rejected_with_the_offending_index() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec![
+                Message::user("fine"),
+                Message::User {
+                    content: Vec::new(),
+                },
+            ],
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let error = request
+            .validate_message_content()
+            .expect_err("an empty user message must not reach a provider");
+        let message = error.to_string();
+        assert!(message.contains("index 1"), "got {message}");
+        assert!(message.contains("user"), "got {message}");
+    }
+
+    /// A well-formed history passes; the check is not a blanket rejection of
+    /// anything the container used to forbid.
+    #[test]
+    fn non_empty_message_content_passes_validation() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec![Message::user("hello")],
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        request
+            .validate_message_content()
+            .expect("a normal history is valid");
     }
 
     /// Serde must not be a back door around `reconcile_with_output`: a

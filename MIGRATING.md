@@ -354,6 +354,60 @@ association.
 
 ## 0.41 → next
 
+### `OneOrMany<T>` is gone; message content is `Vec<T>`
+
+`rig_core::OneOrMany` and `rig_core::EmptyListError` are removed, along with the
+`one_or_many` module and the `rig-core`/`rig-agent` prelude re-exports. Every
+place that used them now uses `Vec<T>`: `Message::{User,Assistant}` content,
+`ToolResult::content`, `ToolOutput`, `CompletionResponse::choice`,
+`CompletionRequest::chat_history`, `StreamingCompletionResponse::choice`, and
+`Vec<Embedding>` through `VectorStoreIndex::insert_documents` and its
+implementations.
+
+**The serialized format is unchanged.** `OneOrMany` already serialized as a
+plain sequence and its `Deserialize` implemented only `visit_seq`, so its JSON
+was byte-identical to `Vec`'s apart from rejecting `[]`. Persisted histories,
+stored embeddings, and provider request/response bodies need no migration — this
+is a source-only break.
+
+Mechanical replacements:
+
+| before | after |
+| --- | --- |
+| `OneOrMany::one(x)` | `vec![x]` |
+| `OneOrMany::many(v)?` / `.unwrap()` | `v` |
+| `OneOrMany::from_iter_optional(i)` | `i.into_iter().collect()`, then handle empty explicitly |
+| `content.first()` → `T` | `content.first()` → `Option<&T>` |
+| `content.first_ref()` / `.last_ref()` | `.first()` / `.last()` |
+| `content.rest()` | `content.get(1..).unwrap_or_default()` |
+| `content.map(f)` / `.try_map(f)` | `.into_iter().map(f).collect()` |
+| `OneOrMany::merge`, `string_or_one_or_many`, `string_or_option_one_or_many` | removed (see below) |
+
+`OneOrMany::merge`, `string_or_option_one_or_many` and `first_mut` had no callers
+and are simply gone. `string_or_one_or_many` is superseded by
+`rig_core::json_utils::string_or_vec`, which accepts every shape it did — bare
+scalar, single object, sequence — and additionally maps `null` to an empty list,
+which the non-empty type could not represent and therefore had to reject.
+
+`test_utils::MockTurn::from_contents` returns `Self` rather than
+`Result<Self, EmptyListError>`; drop the `?` / `.expect(..)` at its call sites.
+
+**Silent behavior change — an empty assistant turn is now empty.** Providers
+used to fabricate a single empty-text part (`AssistantContent::text("")`) when a
+turn carried no content, purely because the choice could not be empty. That
+sentinel is gone: an Anthropic turn ending with no content after a tool-result
+round trip, a textless tool-call turn, and a stream that produced nothing all
+aggregate to an **empty** choice. If you match on the single empty-text part to
+detect an empty turn, check `is_empty()` instead. Histories persisted by earlier
+versions still contain the sentinel, and rig still recognises it.
+
+**Empty content is rejected at the request boundary, not by a constructor.**
+Building a message with no content is now expressible, so it is checked before it
+reaches a provider: `CompletionRequest::validate_message_content` runs on the
+builder's `send`/`stream` and on every agent model call, and fails with the
+offending message's role and index instead of the old context-free "cannot
+create with an empty vector". Per-wire conversions keep their own guards.
+
 ### The raw grammar is a part lifecycle: Start / Delta / End per content kind
 
 Every streamed part is now an **entity with a lifecycle** — open, mutate in

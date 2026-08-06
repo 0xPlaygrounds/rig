@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- *(vector-store)* [**breaking**] `VectorStoreIndex::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` — `OneOrMany<Embedding>` is removed from rig-core. Serialized embeddings are unchanged; this is a source-only break
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-s3vectors-v0.40.0...rig-s3vectors-v0.41.0) - 2026-07-28
 
 ### Fixed
