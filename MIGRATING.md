@@ -331,6 +331,33 @@ not replayed to the provider on follow-up requests — the wire itself dropped
 the correlation the provider would need. Streams whose deltas carry `item_id`
 keep the exact `rs_*` collapse and replay behavior.
 
+### Stream errors mentioning "aborted" are no longer swallowed
+
+The stream error path had a special case: a `CompletionError::ProviderError` whose
+message *contained* the substring `"aborted"` terminated the stream as a clean
+end-of-stream. That discarded the error **and** every item streamed before it,
+so a gateway reporting "request aborted" surfaced as a successful empty turn.
+The case is gone; such errors are delivered like any other.
+
+Cancellation is unaffected and needs no changes: `StreamingCompletionResponse::cancel()`
+aborts through `Abortable`, which ends the stream normally. If you relied on the
+substring to signal cancellation from a custom provider, switch to `cancel()`.
+
+Two related streaming fixes need no action but are worth knowing: re-polling an
+already-drained stream no longer replaces the aggregated choice with an empty
+text part, and a wire that restates a fragmented tool call as a complete
+`ToolCall` now reuses the `internal_call_id` its deltas published (a trailing
+`ToolInputEnd` for that id is a no-op rather than a duplicate call).
+
+### Gemini gRPC surfaces tool-protocol failures
+
+The gRPC surface now returns an error and stops the stream when Gemini reports
+`MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL` or `TOO_MANY_TOOL_CALLS`,
+matching the REST surface; the provider's `finish_message` is included. Code
+that treated those turns as complete (they previously arrived as a normal
+finish with no content) will now see the failure. This affects both the
+streaming and unary gRPC paths.
+
 ### Streaming text blocks carry mandatory identity
 
 `RawStreamingChoice::TextStart` now carries `id: String` alongside its

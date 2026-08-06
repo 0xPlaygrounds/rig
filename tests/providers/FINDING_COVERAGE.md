@@ -272,3 +272,33 @@ Per-finding filtered runs (`cargo test -p rig-core --features test-utils,websock
 - **C4**: the only production emitter of `RawStreamingChoice::TextAdditionalParams` is `crates/rig-core/src/providers/anthropic/streaming.rs:625`.
 - **C5**: the only production caller of `ToolCallBridge::decorate` is `crates/rig-core/src/providers/internal/openai_chat_completions_compatible.rs:438`.
 - **B2**: `git show 02f25094` touches no test in `wire.rs`; the module's 20 tests are unchanged and pass.
+
+---
+
+## Second fix round (findings verified at `da2fc11c`, fixed `1808195f..HEAD`)
+
+Coverage for the review batch documented in `many_rigs/rig-2258-findings-verified-da2fc11c.md`.
+
+| Finding | Fix | Live cassette | Other pins |
+|---|---|---|---|
+| **N2** openrouter encrypted reasoning dropped every streaming turn | `1808195f` | **`openrouter/streaming_tools/stream_encrypted_reasoning_survives_into_the_next_turn`** (recorded live; turn-2 request carries the blob and the API accepted it) + `stream_encrypted_reasoning_reaches_the_choice` (pre-fix recording, now strict) + **two cassettes re-recorded** (`reasoning_roundtrip/streaming`, `reasoning_tool_roundtrip/streaming`) whose old turn-2 bodies had pinned the loss | compat unit tests |
+| **H3** anthropic signature-only thinking dropped | `241793c9` | **`anthropic/opus_4_7/messages_adaptive_thinking_streaming_smoke` re-recorded live**; asserts the signed block reaches the choice *and* rides the turn-2 request | 4 unit tests |
+| **F2** bedrock redacted reasoning (3 legs) | `241793c9` | — AWS credentials are dead in this environment (STS `InvalidClientTokenId`; profile session expired), and the shape needs the safety classifier to redact | 3 `stream_from_events` + 7 types round-trip tests incl. byte-for-byte inbound→outbound |
+| **H5** bedrock non-ToolUse `ContentBlockStart` hard-errors | `241793c9` | — same credential wall | `stream_from_events` synthetic frame |
+| **H4** gRPC tool-protocol failures reported as success | `241793c9` | — gRPC has no cassette harness | 5 `stream_from_events` tests incl. unary/streaming message parity |
+| **F1** full `ToolCall` after deltas doesn't reconcile | `86fe2d28` | — no in-tree wire mixes the two shapes | 4 accumulator + 1 stream-level + 1 rig-agent end-to-end id-correlation test |
+| **H6/H8** re-poll clobbers choice; `"aborted"` sentinel discards content | `86fe2d28` | — consumer-side; no provider emits the sentinel | 2 unit tests |
+| **G5** per-token reasoning-key scan | `86fe2d28` | — perf | 2 unit tests |
+| **H7** pause busy-waits | `86fe2d28` | — consumer-side | `tokio_test` wake assertion (fails pre-fix) |
+| **N1** CI ran neither structural guard; 3 families never executed | `4ce2cc74` | n/a (CI config) | new CI step (43 tests) + `out_of_binary_families_name_a_live_ci_step` parses `ci.yaml` so the filter cannot drift back |
+| **F3** registry matched raw file text | `4ce2cc74` | n/a | compile-linked `SUITE_FAMILIES` (a disabled suite is now a **compile error**) + provider-enumeration test over 46 classified providers |
+| **G4** `response.reasoning_text.done` unmodeled | `4ce2cc74` | — probed live 3 ways (`gpt-5` effort/summary, `o4-mini` encrypted): OpenAI exposes summaries, never raw CoT, so the event is unreachable from the public API | 2 unit tests |
+| **G6** `suite_is_complete` self-fulfilling | `4ce2cc74` | n/a | scenario names now expand once into both the test fn and the list; deleting one fails the test |
+| **G2/G3** envelope-repair collapse; WS-vs-SSE failed turns | `4ce2cc74` | n/a — documented deliberately; the proposed "fixes" would regress working behavior | doc comments at both sites |
+| **Scrubber invents data** (found while fixing H3) | this commit | — harness defect | `scrubbing_an_empty_value_invents_nothing`; all five cassette suites replay unchanged |
+
+### Notes carried forward
+
+- The corrected CI filter uses `binary(...)`, not `test(...)`: nextest's `test()` predicate matches a test's own name, so the originally-proposed `test(streaming_conformance)` selected **zero** tests and exited 0 — a green no-op. `binary()` also defaults to equality, so `streaming_conformance_websocket` is named separately.
+- Anthropic's `content_block_start.signature` is empty on the wire; the whole signature arrives via `signature_delta`. The start value is kept only as a fallback, never as a prefix.
+- Follow-up not covered here: streaming `reasoning.text` details that carry a signature still lose it (only `reasoning.encrypted` is mapped).

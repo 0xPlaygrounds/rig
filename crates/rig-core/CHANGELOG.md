@@ -13,8 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(streaming)* `WireAdapter` gains an associated `Frame` type so typed-event wires implement the same contract over their SDK events; `classify` now takes the frame by value
 - *(streaming)* the conformance corpus accepts typed-event input (`WireInput::{Bytes, Event}`), so typed wires run the shared scenarios events-first with no mock transport; frame-level scenarios a typed wire cannot spell report visible skips
 - *(streaming)* wire-sequence conformance corpus (`test_utils::streaming_conformance` + `tests/core`) driving raw bytes through each provider's full pipeline; recorded `streaming_grammar` cassette suites for openai (reasoning summaries, encrypted multi-part reasoning, parallel tool calls, incomplete) and gemini (max-tokens truncation, tool calls, thinking, interactions requires_action)
+- *(streaming)* `OpenAICompatibleProvider::streaming_detail_reasoning` — a defaulted hook letting an OpenAI-compatible provider map a per-chunk streaming detail onto a complete reasoning block instead of a tool-call decoration
 - *(completion)* add typed `raw_completion`/`raw_stream` escape hatches on every provider model
 - *(completion)* add public `ProviderCapabilities`, replacing `CompletionModel::composes_native_output_with_tools`
+
+### Fixed
+
+- *(openrouter)* [**data loss**] encrypted reasoning (`reasoning_details` of type `reasoning.encrypted`) was dropped on every streaming turn and could not be replayed on the next request — the decoration key never matched (reasoning ids are `rs_*`, tool ids `call_*`) and the detail arrived before any tool slot existed. It now reaches the aggregated choice as `ReasoningContent::Encrypted`, matching the non-streaming path. Two committed cassettes had recorded the loss into their turn-2 request bodies; both were re-recorded live and the provider accepts the replayed blob
+- *(anthropic)* signature-only thinking blocks are no longer dropped: a block whose text is empty but which carries a signature survives into chat history and replays, matching the non-streaming path (Anthropic rejects a replayed adaptive-thinking turn missing it)
+- *(bedrock)* redacted reasoning survives all three legs — streaming no longer drops `RedactedContent`, the non-streaming path no longer fails the whole response, and it is replayed as `redactedContent` instead of being flattened into unsigned plaintext
+- *(bedrock)* an unmodeled `ContentBlockStart` variant warns and skips instead of failing the stream with "Stream is empty", matching its sibling arms and the classify layer's Unknown policy
+- *(gemini)* [**behavior**] the gRPC surface now reports `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL` and `TOO_MANY_TOOL_CALLS` as errors and stops the stream, matching REST — previously an aborted turn was reported as a completed one, and the wire's `finish_message` was never read
+- *(openai)* `response.reasoning_text.done` is a modeled Responses event; it previously logged an "unknown event type" warning and passed through as `Unknown` on every raw-reasoning block, across the SSE, buffered and websocket surfaces
+- *(streaming)* a wire that streams a tool call's input as fragments and then restates it as a complete `ToolCall` now publishes the completed call under the `internal_call_id` its deltas already used, and a trailing `ToolInputEnd` for that id no longer produces a duplicate call in the aggregated choice
+- *(streaming)* re-polling a drained `StreamingCompletionResponse` no longer re-runs the destructive aggregation, which replaced the aggregated choice with an empty text part
+- *(streaming)* a paused stream parks on the pause channel instead of busy-polling its executor task
+- *(streaming)* `close_minted_reasoning` no longer scans every reasoning key on every text token
+
+### Removed
+
+- *(streaming)* [**breaking**] the `"aborted"`-substring special case in the stream error path. A `CompletionError::ProviderError` whose message merely *contained* `"aborted"` used to terminate the stream as a clean end-of-stream — silently discarding both the error and every item streamed before it. Such errors now reach the consumer like any other. Real cancellation is unaffected: `StreamingCompletionResponse::cancel()` goes through `Abortable` and still ends the stream normally. Nothing in-tree produced the sentinel
 
 ### Changed
 
