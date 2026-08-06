@@ -190,7 +190,11 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
-    let (history_system, chat_history) = split_system_messages_from_history(chat_history);
+    let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
+    // `FunctionResponse.name` is a *function name* wire: resolve legacy
+    // name-less tool results by pairing them with their calls, exactly as
+    // the REST-Gemini and Ollama serializers do.
+    rig_core::providers::internal::resolve_tool_result_names(&mut chat_history);
     let mut contents = Vec::new();
 
     // Convert chat history to gRPC Content messages
@@ -353,10 +357,17 @@ fn rig_user_content_to_grpc_part(
             let response_struct =
                 json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
 
+            // `FunctionResponse.name` is the executed function's name —
+            // data the result carries in `name`; `id` is a fallback for
+            // legacy shapes the resolver could not pair.
+            let function_name = result
+                .name
+                .filter(|name| !name.is_empty())
+                .unwrap_or(result.id);
             Ok(proto::Part {
                 data: Some(proto::part::Data::FunctionResponse(
                     proto::FunctionResponse {
-                        name: result.id,
+                        name: function_name,
                         response: Some(response_struct),
                         id: result.call_id.unwrap_or_default(),
                     },
@@ -1047,6 +1058,76 @@ mod tests {
             schema.items.expect("items").r#type,
             proto::Type::String as i32
         );
+    }
+
+    /// `FunctionResponse.name` is the executed function's name: read from
+    /// `ToolResult::name` when the driver carried it, resolved by pairing
+    /// for legacy name-less histories — never an identifier.
+    #[test]
+    fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
+        use rig_core::message::{
+            AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent,
+        };
+
+        let call = |id: &str, call_id: Option<&str>, name: &str| message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
+                id: id.to_owned(),
+                call_id: call_id.map(str::to_owned),
+                function: ToolFunction {
+                    name: name.to_owned(),
+                    arguments: serde_json::json!({}),
+                },
+                signature: None,
+                additional_params: None,
+            })),
+        };
+        let result = |id: &str, call_id: Option<&str>, name: Option<&str>| message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                id: id.to_owned(),
+                call_id: call_id.map(str::to_owned),
+                name: name.map(str::to_owned),
+                content: OneOrMany::one(ToolResultContent::text("out")),
+            })),
+        };
+
+        let req = create_grpc_request(
+            "gemini-2.5-flash".to_string(),
+            CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: OneOrMany::many(vec![
+                    // Driver-built: the executed name travels as data.
+                    call("add", Some("call_1"), "sum"),
+                    result("add", Some("call_1"), Some("sum")),
+                    // Legacy cross-provider: name-less, OpenAI-shaped id —
+                    // resolved by pairing, never sent as the name.
+                    call("call_abc", Some("call_abc"), "get_weather"),
+                    result("call_abc", Some("call_abc"), None),
+                ])
+                .expect("non-empty history"),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            },
+        )
+        .expect("request build");
+
+        let response_names: Vec<&str> = req
+            .contents
+            .iter()
+            .flat_map(|content| content.parts.iter())
+            .filter_map(|part| match &part.data {
+                Some(proto::part::Data::FunctionResponse(fr)) => Some(fr.name.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(response_names, vec!["sum", "get_weather"]);
     }
 
     #[test]

@@ -73,8 +73,17 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             let mut response_struct = serde_json::Map::new();
                             response_struct.insert("output".to_string(), output_value);
 
+                            // `functionResponse.name` is the executed
+                            // function's name — data the result carries in
+                            // `name`; `id` is a fallback for legacy shapes
+                            // the resolver could not pair.
+                            let function_name = tool_result
+                                .name
+                                .clone()
+                                .filter(|name| !name.is_empty())
+                                .unwrap_or_else(|| tool_result.id.clone());
                             let function_response = vertexai::model::FunctionResponse::new()
-                                .set_name(tool_result.id.clone())
+                                .set_name(function_name)
                                 .set_response(response_struct)
                                 .set_parts(response_parts);
 

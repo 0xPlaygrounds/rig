@@ -44,7 +44,11 @@ pub(crate) fn completion_usage(
 /// does, and treat a non-empty id that matches no call as the name itself
 /// (the legacy name-in-id encoding). The resolved name is written into
 /// `ToolResult::name`; serializers read `name` first and fall back to `id`.
-pub(crate) fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
+///
+/// `pub` (not `pub(crate)`) because sibling serializer crates that speak a
+/// name-keyed tool-result wire (rig-vertexai's `functionResponse.name`)
+/// carry the same contract; it is not part of rig-core's stable public API.
+pub fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
     let mut pending: std::collections::VecDeque<(String, String)> =
         std::collections::VecDeque::new();
     for msg in history {

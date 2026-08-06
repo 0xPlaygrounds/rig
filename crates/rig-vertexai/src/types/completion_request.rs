@@ -12,13 +12,22 @@ pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
 impl VertexCompletionRequest {
     pub fn contents(&self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
-        let mut contents = Vec::new();
+        // Vertex's `functionResponse.name` is the *function name*, not a
+        // call identifier. Results constructed by current drivers carry it
+        // as `ToolResult::name`; the shared shim resolves legacy name-less
+        // histories (persisted pre-field turns, cross-provider replays) by
+        // pairing them with their calls, exactly as the REST-Gemini and
+        // Ollama serializers do.
+        let mut history: Vec<rig_core::completion::Message> =
+            self.0.chat_history.iter().cloned().collect();
+        rig_core::providers::internal::resolve_tool_result_names(&mut history);
 
-        for message in self.0.chat_history.iter() {
+        let mut contents = Vec::new();
+        for message in history {
             if matches!(message, rig_core::completion::Message::System { .. }) {
                 continue;
             }
-            let content = RigMessage(message.clone()).try_into()?;
+            let content = RigMessage(message).try_into()?;
             contents.push(content);
         }
 
@@ -331,6 +340,68 @@ mod tests {
             output_schema: None,
             record_telemetry_content: false,
         }
+    }
+
+    /// `functionResponse.name` is the executed function's name: read from
+    /// `ToolResult::name` when the driver carried it, resolved by pairing
+    /// for legacy name-less histories — never an identifier.
+    #[test]
+    fn tool_result_serializes_the_executed_name_not_an_identifier() {
+        use rig_core::message::{
+            AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent,
+        };
+
+        let call = |id: &str, call_id: Option<&str>, name: &str| Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
+                id: id.to_owned(),
+                call_id: call_id.map(str::to_owned),
+                function: ToolFunction {
+                    name: name.to_owned(),
+                    arguments: serde_json::json!({}),
+                },
+                signature: None,
+                additional_params: None,
+            })),
+        };
+        let result = |id: &str, call_id: Option<&str>, name: Option<&str>| Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+                id: id.to_owned(),
+                call_id: call_id.map(str::to_owned),
+                name: name.map(str::to_owned),
+                content: OneOrMany::one(ToolResultContent::text("out")),
+            })),
+        };
+
+        let request = CompletionRequest {
+            chat_history: OneOrMany::many(vec![
+                // A driver-built result carries the executed name (a repair
+                // hook renamed the call: `sum` ran, not `add`).
+                call("add", Some("call_1"), "sum"),
+                result("add", Some("call_1"), Some("sum")),
+                // A legacy cross-provider result is name-less with an
+                // OpenAI-shaped identifier: the resolver pairs it with its
+                // call — `call_abc` must never reach the wire as a name.
+                call("call_abc", Some("call_abc"), "get_weather"),
+                result("call_abc", Some("call_abc"), None),
+            ])
+            .expect("non-empty history"),
+            ..minimal_request()
+        };
+
+        let contents = VertexCompletionRequest(request)
+            .contents()
+            .expect("conversion should succeed");
+        let response_names: Vec<String> = contents
+            .iter()
+            .flat_map(|content| content.parts.iter())
+            .filter_map(|part| part.function_response().map(|fr| fr.name.clone()))
+            .collect();
+
+        assert_eq!(
+            response_names,
+            vec!["sum".to_owned(), "get_weather".to_owned()]
+        );
     }
 
     #[test]
