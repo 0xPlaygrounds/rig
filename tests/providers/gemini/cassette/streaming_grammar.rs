@@ -53,8 +53,11 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         response: None,
     };
 
+    let mut raw_items = Vec::new();
     while let Some(item) = stream.next().await {
-        match item.expect("stream item should be ok") {
+        let item = item.expect("stream item should be ok");
+        raw_items.push(Ok(item.clone()));
+        match item {
             StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
             StreamedAssistantContent::Reasoning(reasoning) => run.reasoning_blocks.push(reasoning),
             StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
@@ -67,6 +70,9 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     }
 
     run.choice = stream.choice.clone();
+    // The shared lifecycle validator runs over every recorded turn this
+    // suite drains (#2258 C1).
+    rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = stream.response.clone();
     run
 }
@@ -309,6 +315,39 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                 "the recorded thought_signature must survive onto the aggregated reasoning, got {:?}",
                 run.choice
             );
+            // And it must sign the block that HOLDS the chain-of-thought —
+            // an empty signature-only sibling appended after the answer
+            // satisfies the assertion above while the real thinking replays
+            // unsigned (#2258 B4). Every reasoning part must carry text, and
+            // the part carrying the streamed thinking must be the signed one.
+            for content in run.choice.iter() {
+                if let AssistantContent::Reasoning(reasoning) = content {
+                    let text: String = reasoning
+                        .content
+                        .iter()
+                        .filter_map(|part| match part {
+                            ReasoningContent::Text { text, .. } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect();
+                    assert!(
+                        !text.trim().is_empty(),
+                        "no empty (signature-only) reasoning sibling may exist: {:?}",
+                        run.choice
+                    );
+                    if text.contains(run.reasoning_delta.trim()) {
+                        assert!(
+                            reasoning.content.iter().any(|part| matches!(
+                                part,
+                                ReasoningContent::Text { signature: Some(signature), .. }
+                                    if !signature.is_empty()
+                            )),
+                            "the signature must land on the block carrying the thinking text: {:?}",
+                            run.choice
+                        );
+                    }
+                }
+            }
         },
     )
     .await;
@@ -597,6 +636,39 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                 "the recorded thought_signature must survive onto the aggregated reasoning, got {:?}",
                 run.choice
             );
+            // And it must sign the block that HOLDS the chain-of-thought —
+            // an empty signature-only sibling appended after the answer
+            // satisfies the assertion above while the real thinking replays
+            // unsigned (#2258 B4). Every reasoning part must carry text, and
+            // the part carrying the streamed thinking must be the signed one.
+            for content in run.choice.iter() {
+                if let AssistantContent::Reasoning(reasoning) = content {
+                    let text: String = reasoning
+                        .content
+                        .iter()
+                        .filter_map(|part| match part {
+                            ReasoningContent::Text { text, .. } => Some(text.as_str()),
+                            _ => None,
+                        })
+                        .collect();
+                    assert!(
+                        !text.trim().is_empty(),
+                        "no empty (signature-only) reasoning sibling may exist: {:?}",
+                        run.choice
+                    );
+                    if text.contains(run.reasoning_delta.trim()) {
+                        assert!(
+                            reasoning.content.iter().any(|part| matches!(
+                                part,
+                                ReasoningContent::Text { signature: Some(signature), .. }
+                                    if !signature.is_empty()
+                            )),
+                            "the signature must land on the block carrying the thinking text: {:?}",
+                            run.choice
+                        );
+                    }
+                }
+            }
             // Supersede contract: the signed restatement replaced the deltas
             // it restates, so the delta text survives exactly once.
             assert!(

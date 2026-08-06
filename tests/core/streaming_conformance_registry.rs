@@ -40,6 +40,9 @@ struct OutOfBinaryFamily {
     /// The nextest predicate inside that step which selects the binary, when
     /// the step uses one.
     ci_selector: Option<&'static str>,
+    /// `-p` package the step must compile for this suite to exist at all,
+    /// when the suite lives outside the facade package.
+    ci_package: Option<&'static str>,
     /// Why it cannot live in the `core` binary.
     reason: &'static str,
 }
@@ -59,6 +62,7 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         suite_file: "crates/rig-core/tests/streaming_conformance_websocket.rs",
         ci_step: GUARD_CI_STEP,
         ci_selector: Some("binary(streaming_conformance_websocket)"),
+        ci_package: Some("rig-core"),
         reason: "drives a real `ResponsesWebSocketSession` against a local ws server, so it \
                  needs rig-core's `websocket` + `test-utils` features rather than the facade's",
     },
@@ -67,6 +71,7 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         suite_file: "crates/rig-candle/tests/streaming_conformance.rs",
         ci_step: GUARD_CI_STEP,
         ci_selector: Some("binary(streaming_conformance)"),
+        ci_package: Some("rig-candle"),
         reason: "rig-candle is a separate package; the facade does not depend on it",
     },
     OutOfBinaryFamily {
@@ -74,6 +79,7 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         suite_file: "crates/rig-gemini-grpc/tests/streaming_conformance.rs",
         ci_step: GUARD_CI_STEP,
         ci_selector: Some("binary(streaming_conformance)"),
+        ci_package: Some("rig-gemini-grpc"),
         reason: "rig-gemini-grpc is a separate package; the facade does not depend on it",
     },
     OutOfBinaryFamily {
@@ -81,6 +87,7 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         suite_file: "tests/providers/bedrock/streaming_conformance.rs",
         ci_step: FACADE_CI_STEP,
         ci_selector: None,
+        ci_package: None,
         reason: "lives in the `rig` facade but behind the `bedrock` feature, so it compiles into \
                  the `bedrock` test binary rather than `core`; the workspace `--all-features` run \
                  executes it",
@@ -160,21 +167,60 @@ fn out_of_binary_families_name_a_live_ci_step() {
     let workflow = Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/ci.yaml");
     let text = std::fs::read_to_string(&workflow).expect("ci.yaml should be readable");
 
+    // Structural, not substring: step names are matched only on
+    // non-comment lines whose content (after the `- ` list marker) begins
+    // with `name:` — a `# - name: …` comment cannot satisfy the check — and
+    // each step's selector/`-p` package list is looked for INSIDE that
+    // step's own block (up to the next step), not anywhere in the file.
+    let step_block = |step: &str| -> Option<String> {
+        let lines: Vec<&str> = text.lines().collect();
+        let is_step_line = |line: &str| {
+            let trimmed = line.trim_start();
+            !trimmed.starts_with('#')
+                && trimmed
+                    .strip_prefix("- ")
+                    .is_some_and(|rest| rest.trim_start().starts_with("name:"))
+        };
+        let start = lines.iter().position(|line| {
+            is_step_line(line)
+                && line
+                    .split_once("name:")
+                    .is_some_and(|(_, value)| value.trim() == step)
+        })?;
+        let block: Vec<&str> = lines[start + 1..]
+            .iter()
+            .take_while(|line| !is_step_line(line))
+            .copied()
+            .collect();
+        Some(block.join("\n"))
+    };
+
     for entry in OUT_OF_BINARY_FAMILIES {
-        assert!(
-            text.contains(&format!("- name: {}", entry.ci_step)),
-            "{} is annotated with CI step {:?}, which no longer exists in {}",
-            entry.family,
-            entry.ci_step,
-            workflow.display(),
-        );
+        let block = step_block(entry.ci_step).unwrap_or_else(|| {
+            panic!(
+                "{} is annotated with CI step {:?}, which no longer exists in {} \
+                 (comments do not count)",
+                entry.family,
+                entry.ci_step,
+                workflow.display(),
+            )
+        });
         if let Some(selector) = entry.ci_selector {
             assert!(
-                text.contains(selector),
-                "{}'s CI step no longer carries the {:?} predicate, so its binary is selected by \
-                 nothing — note that a nextest filter matching zero tests still exits 0",
+                block.contains(selector),
+                "{}'s CI step no longer carries the {:?} predicate INSIDE its own block, so its \
+                 binary is selected by nothing — a nextest filter matching zero tests still \
+                 exits 0",
                 entry.family,
                 selector,
+            );
+        }
+        if let Some(package) = entry.ci_package {
+            assert!(
+                block.contains(&format!("-p {package}")),
+                "{}'s CI step no longer compiles `-p {package}`, so its suite binary does not \
+                 build there at all",
+                entry.family,
             );
         }
     }

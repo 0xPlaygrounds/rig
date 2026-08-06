@@ -351,6 +351,160 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
     ))
 }
 
+/// Executable stream-lifecycle validator (#2258 C1).
+///
+/// The invariants every normalized stream must satisfy, stated once and run
+/// over every recorded cassette and corpus fixture that drains through
+/// [`fixtures::drain`] — the langchain `assert_valid_event_stream` move:
+/// prose contracts scattered across N adapters become one executable
+/// artifact. Panics with the violated law.
+///
+/// Laws (universal — they hold for truncated and errored streams too):
+///
+/// 1. **Terminal latch.** At most one [`StreamedAssistantContent::Final`],
+///    and no content item (text, reasoning, tool call or delta) follows it —
+///    only in-band errors and `Unknown` passthrough may.
+/// 2. **Text conservation.** The aggregated text is exactly the
+///    concatenation of the yielded text deltas: accumulated delta content
+///    equals the payload the aggregate delivers.
+/// 3. **Completed-call conservation.** Every completed tool call yielded on
+///    the stream appears in the aggregated choice exactly once, and vice
+///    versa (counts match; aggregation neither drops nor duplicates).
+/// 4. **Delta-before-completion.** A completed call correlated with
+///    fragments (same `internal_call_id`) never precedes its own deltas.
+/// 5. **Reasoning provenance.** The aggregate contains a reasoning part only
+///    if the stream yielded reasoning items; and when only deltas were
+///    yielded (no full block), the aggregated reasoning text is exactly
+///    their concatenation.
+pub fn assert_valid_event_stream(
+    items: &[Result<crate::streaming::StreamedAssistantContent, CompletionError>],
+    choice: &OneOrMany<AssistantContent>,
+) {
+    use crate::message::AssistantContent;
+    use crate::streaming::StreamedAssistantContent as Item;
+
+    let ok_items: Vec<&Item> = items.iter().filter_map(|item| item.as_ref().ok()).collect();
+
+    // Law 1: terminal latch.
+    let final_count = ok_items
+        .iter()
+        .filter(|item| matches!(item, Item::Final(_)))
+        .count();
+    assert!(
+        final_count <= 1,
+        "law 1 (terminal latch): {final_count} terminal records yielded"
+    );
+    if let Some(final_index) = ok_items
+        .iter()
+        .position(|item| matches!(item, Item::Final(_)))
+    {
+        for item in ok_items.get(final_index + 1..).unwrap_or_default() {
+            assert!(
+                matches!(item, Item::Unknown(_)),
+                "law 1 (terminal latch): content item after the terminal record: {item:?}"
+            );
+        }
+    }
+
+    // Law 2: text conservation.
+    let streamed_text: String = ok_items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    let aggregated_text: String = choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        aggregated_text, streamed_text,
+        "law 2 (text conservation): aggregated text differs from the streamed deltas"
+    );
+
+    // Law 3: completed-call conservation.
+    let yielded_calls = ok_items
+        .iter()
+        .filter(|item| matches!(item, Item::ToolCall { .. }))
+        .count();
+    let aggregated_calls = choice
+        .iter()
+        .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
+        .count();
+    assert_eq!(
+        aggregated_calls, yielded_calls,
+        "law 3 (completed-call conservation): {yielded_calls} calls yielded, \
+         {aggregated_calls} aggregated"
+    );
+
+    // Law 4: delta-before-completion.
+    let mut seen_delta_ids: Vec<&str> = Vec::new();
+    let mut completed_ids: Vec<&str> = Vec::new();
+    for item in &ok_items {
+        match item {
+            Item::ToolCallDelta {
+                internal_call_id, ..
+            } => {
+                assert!(
+                    !completed_ids.contains(&internal_call_id.as_str()),
+                    "law 4: a delta for internal id {internal_call_id} arrived after its \
+                     completed call"
+                );
+                seen_delta_ids.push(internal_call_id);
+            }
+            Item::ToolCall {
+                internal_call_id, ..
+            } => completed_ids.push(internal_call_id),
+            _ => {}
+        }
+    }
+
+    // Law 5: reasoning provenance.
+    let yielded_reasoning = ok_items
+        .iter()
+        .any(|item| matches!(item, Item::Reasoning(_) | Item::ReasoningDelta { .. }));
+    let aggregated_reasoning = choice
+        .iter()
+        .any(|content| matches!(content, AssistantContent::Reasoning(_)));
+    assert!(
+        yielded_reasoning || !aggregated_reasoning,
+        "law 5 (reasoning provenance): aggregated reasoning with no reasoning yielded"
+    );
+    let yielded_full_block = ok_items
+        .iter()
+        .any(|item| matches!(item, Item::Reasoning(_)));
+    if yielded_reasoning && !yielded_full_block {
+        let streamed_reasoning: String = ok_items
+            .iter()
+            .filter_map(|item| match item {
+                Item::ReasoningDelta { reasoning, .. } => Some(reasoning.as_str()),
+                _ => None,
+            })
+            .collect();
+        let aggregated_reasoning_text: String = choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.content.iter()),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|part| match part {
+                crate::message::ReasoningContent::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            aggregated_reasoning_text, streamed_reasoning,
+            "law 5 (reasoning conservation): with no full block, the aggregated reasoning \
+             must be exactly the concatenated deltas"
+        );
+    }
+}
+
 /// Everything the consumer observed from one full pipeline run: the yielded
 /// items in order, plus the aggregated choice and terminal record.
 #[derive(Debug)]
@@ -1635,11 +1789,16 @@ pub mod fixtures {
         while let Some(item) = stream.next().await {
             items.push(item);
         }
-        DrainedStream {
+        let drained = DrainedStream {
             items,
             choice: stream.choice.clone(),
             response: stream.response.clone(),
-        }
+        };
+        // Every fixture and cassette that drains through this helper runs
+        // the lifecycle validator — the prose invariants as one executable
+        // artifact (#2258 C1).
+        super::assert_valid_event_stream(&drained.items, &drained.choice);
+        drained
     }
 
     /// Lower fixture frames onto the byte transport a `SequencedStreamingHttpClient`

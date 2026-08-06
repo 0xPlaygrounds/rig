@@ -681,6 +681,152 @@ mod interleaved_constant_id_reasoning {
         .expect("scenario should hold");
     }
 
+    /// Two calls to the SAME tool in one turn on the id-less Ollama wire
+    /// (#2258 A2): rig fabricates no identifier — not from an index and not
+    /// from the tool name — so both calls survive as distinct parts with
+    /// their own arguments and distinct internal correlation ids, and both
+    /// replay with the durable id absent. The name-as-id scheme collapsed
+    /// exactly this shape.
+    #[tokio::test]
+    async fn ollama_two_calls_to_the_same_tool_stay_distinct() {
+        use rig_core::message::AssistantContent;
+        use rig_core::streaming::StreamedAssistantContent;
+        use serde_json::json;
+
+        let ndjson = |frame: &serde_json::Value| {
+            conformance::WireInput::Bytes(bytes::Bytes::from(format!("{frame}\n")))
+        };
+        let frames = vec![
+            ndjson(&json!({
+                "model": "llama3.2",
+                "created_at": "2023-08-04T19:22:45.499127Z",
+                "message": {"role": "assistant", "content": "", "tool_calls": [
+                    {"function": {"name": "get_weather", "arguments": {"city": "Tokyo"}}},
+                    {"function": {"name": "get_weather", "arguments": {"city": "Paris"}}},
+                ]},
+                "done": false,
+            })),
+            ndjson(&json!({
+                "model": "llama3.2",
+                "created_at": "2023-08-04T19:22:47.499127Z",
+                "message": {"role": "assistant", "content": ""},
+                "done": true,
+                "done_reason": "stop",
+            })),
+        ];
+
+        let drained = ollama::fixture()
+            .driver
+            .drive(conformance::ok_chunks(frames))
+            .await
+            .expect("stream should drive");
+        assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
+
+        let mut internal_ids = Vec::new();
+        let mut cities = Vec::new();
+        for item in drained.items.iter().flatten() {
+            if let StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id,
+            } = item
+            {
+                assert_eq!(tool_call.function.name, "get_weather");
+                assert_eq!(tool_call.id, "", "no fabricated durable id");
+                internal_ids.push(internal_call_id.clone());
+                cities.push(tool_call.function.arguments["city"].clone());
+            }
+        }
+        assert_eq!(cities, vec![json!("Tokyo"), json!("Paris")]);
+        internal_ids.dedup();
+        assert_eq!(
+            internal_ids.len(),
+            2,
+            "same-name calls must stay correlatable via distinct internal ids"
+        );
+        assert_eq!(
+            drained
+                .choice
+                .iter()
+                .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
+                .count(),
+            2,
+            "both same-name calls must survive as distinct aggregated parts"
+        );
+    }
+
+    /// The gemini-interactions twin of the same-name pin above: two id-less
+    /// calls to one tool in a single turn stay distinct — no name-as-id
+    /// collapse, no fabricated durable id.
+    #[tokio::test]
+    async fn interactions_two_id_less_calls_to_the_same_tool_stay_distinct() {
+        use rig_core::message::AssistantContent;
+        use rig_core::streaming::StreamedAssistantContent;
+        use serde_json::json;
+
+        let sse = |frame: &serde_json::Value| {
+            conformance::WireInput::Bytes(bytes::Bytes::from(format!("data: {frame}\n\n")))
+        };
+        let call = |index: u64, city: &str| {
+            sse(&json!({
+                "event_type": "step.delta",
+                "index": index,
+                "delta": {
+                    "type": "function_call",
+                    "name": "get_weather",
+                    "arguments": {"city": city},
+                    // No wire id: the wire genuinely omits it here.
+                },
+            }))
+        };
+        let frames = vec![
+            call(0, "Tokyo"),
+            call(1, "Paris"),
+            sse(&json!({
+                "event_type": "interaction.completed",
+                "interaction": {
+                    "id": "int-1",
+                    "model": "gemini-2.5-pro",
+                    "status": "completed",
+                },
+            })),
+        ];
+
+        let drained = interactions::fixture()
+            .driver
+            .drive(conformance::ok_chunks(frames))
+            .await
+            .expect("stream should drive");
+        assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
+
+        let mut internal_ids = Vec::new();
+        let mut cities = Vec::new();
+        for item in drained.items.iter().flatten() {
+            if let StreamedAssistantContent::ToolCall {
+                tool_call,
+                internal_call_id,
+            } = item
+            {
+                assert_eq!(tool_call.function.name, "get_weather");
+                assert_eq!(tool_call.id, "", "no fabricated durable id");
+                assert_eq!(tool_call.call_id, None, "no name-as-id call_id fallback");
+                internal_ids.push(internal_call_id.clone());
+                cities.push(tool_call.function.arguments["city"].clone());
+            }
+        }
+        assert_eq!(cities, vec![json!("Tokyo"), json!("Paris")]);
+        internal_ids.dedup();
+        assert_eq!(internal_ids.len(), 2, "distinct internal correlation ids");
+        assert_eq!(
+            drained
+                .choice
+                .iter()
+                .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
+                .count(),
+            2,
+            "both same-name calls must survive as distinct aggregated parts"
+        );
+    }
+
     #[tokio::test]
     async fn ollama_preserves_order_around_a_tool_call() {
         let driver = ollama::fixture().driver;

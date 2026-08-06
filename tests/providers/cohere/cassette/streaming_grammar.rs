@@ -41,8 +41,11 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         response: None,
     };
 
+    let mut raw_items = Vec::new();
     while let Some(item) = stream.next().await {
-        match item.expect("stream item should be ok") {
+        let item = item.expect("stream item should be ok");
+        raw_items.push(Ok(item.clone()));
+        match item {
             StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
             StreamedAssistantContent::Reasoning(reasoning) => run.reasoning_blocks.push(reasoning),
             StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
@@ -54,6 +57,9 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     }
 
     run.choice = stream.choice.clone();
+    // The shared lifecycle validator runs over every recorded turn this
+    // suite drains (#2258 C1).
+    rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = stream.response.clone();
     run
 }

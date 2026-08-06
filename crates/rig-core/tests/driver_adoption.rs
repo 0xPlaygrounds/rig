@@ -314,13 +314,50 @@ fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
     }
 }
 
+/// Files the source walk must find, or it has collapsed (a moved crate, a
+/// renamed directory) and every scan built on it passes vacuously. The floor
+/// is asserted by both guards below — pydantic-ai's
+/// `test_public_interface_contracts` rule: a walk that finds nothing to
+/// check must fail loudly, never pass green.
+const WALK_FLOOR_FILES: &[&str] = &[
+    "rig-core/src/providers/internal/adapter.rs",
+    "rig-core/src/providers/internal/wire.rs",
+    "rig-core/src/providers/anthropic/streaming.rs",
+    "rig-core/src/providers/openai/responses_api/streaming.rs",
+    "rig-bedrock/src/streaming.rs",
+    "rig-gemini-grpc/src/streaming.rs",
+];
+
+/// Assert the walk saw every floor file; `walked` holds normalized paths.
+fn assert_walk_floor(walked: &[String]) {
+    let missing: Vec<&&str> = WALK_FLOOR_FILES
+        .iter()
+        .filter(|suffix| !walked.iter().any(|path| path.ends_with(*suffix)))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "the source walk found nothing at {missing:?} — a collapsed walk \
+         (moved crate, renamed directory) must fail loudly rather than let \
+         every scan pass vacuously; walked {} files",
+        walked.len()
+    );
+}
+
 /// No provider restates the driver's Unknown/Corrupt policy table.
 #[test]
 fn every_triage_site_runs_on_the_single_policy_driver() {
     let mut violations = Vec::new();
+    let mut walked = Vec::new();
+    let mut policy_home_mentions = 0usize;
 
     for_each_shipped_source(|path, shipped| {
+        walked.push(path.to_string_lossy().replace('\\', "/"));
         if is_policy_home(path) {
+            // The floor for the scan itself: the driver and classifier DO
+            // name the variants, so finding zero mentions there means the
+            // marker (or the mask) broke and the provider scan below is
+            // checking for a string that can no longer occur.
+            policy_home_mentions += shipped.matches("WireEvent::").count();
             return;
         }
 
@@ -331,6 +368,12 @@ fn every_triage_site_runs_on_the_single_policy_driver() {
         }
     });
 
+    assert_walk_floor(&walked);
+    assert!(
+        policy_home_mentions > 0,
+        "the policy homes no longer mention `WireEvent::` — the marker this \
+         scan greps for cannot occur, so the scan is vacuous"
+    );
     assert!(
         violations.is_empty(),
         "Unknown/Corrupt triage restated outside the driver (adapter.rs) and \
@@ -359,6 +402,11 @@ const RAW_SERDE_MARKERS: &[&str] = &[
     "serde_json::from_slice",
     "serde_json::from_value",
     "#[serde(other)]",
+    // An untagged fallback variant is the same policy hazard as
+    // `#[serde(other)]`: it decides what happens to frames the classifier
+    // never saw (and on an internally-tagged enum it also swallows a known
+    // tag with a defective payload). Legitimate uses are allowlisted.
+    "#[serde(untagged)]",
 ];
 
 /// A file is in scope for the serde policy wall when ANY of:
@@ -508,13 +556,35 @@ fn provider_streaming_modules_never_raw_parse_the_wire() {
     let mut allowlist = parse_allowlist(&raw);
 
     let mut violations = Vec::new();
+    let mut walked = Vec::new();
+    let mut scanned_targets = Vec::new();
     for_each_shipped_source(|path, shipped| {
+        walked.push(path.to_string_lossy().replace('\\', "/"));
         if !is_serde_wall_target(path, shipped) {
             return;
         }
         let label = path.to_string_lossy().replace('\\', "/");
+        scanned_targets.push(label.clone());
         violations.extend(scan_streaming_source(&label, shipped, &mut allowlist));
     });
+
+    assert_walk_floor(&walked);
+    // Scope floor: the wall must actually cover the streaming modules it
+    // exists for — an in-scope set that collapses to nothing (a renamed
+    // basename pattern, broken content scoping) is a vacuous pass.
+    for suffix in [
+        "rig-core/src/providers/anthropic/streaming.rs",
+        "rig-core/src/providers/ollama.rs",
+        "rig-core/src/providers/openai/responses_api/streaming.rs",
+        "rig-bedrock/src/streaming.rs",
+    ] {
+        assert!(
+            scanned_targets.iter().any(|label| label.ends_with(suffix)),
+            "the serde wall no longer scans {suffix} — its scoping collapsed; \
+             scanned {} targets",
+            scanned_targets.len()
+        );
+    }
 
     assert!(
         violations.is_empty(),
