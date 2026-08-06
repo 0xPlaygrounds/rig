@@ -248,6 +248,38 @@ jobs:
       - name: Test telemetry macro hygiene
         run: cargo test -p rig-core --test macro_hygiene
 
+      # Same default-members problem as the telemetry step above, with two
+      # distinct casualties:
+      #
+      #   * `crates/rig-core/tests/driver_adoption.rs` is a rig-core *package*
+      #     target, so the single-policy-driver guard and the serde policy wall
+      #     never built in the `-p rig` run below. The mechanism that keeps
+      #     "one triage policy site" true over time was itself unrun.
+      #   * three wire-conformance families live in test binaries outside the
+      #     `rig` facade — `openai_responses_websocket`
+      #     (`rig-core/tests/streaming_conformance_websocket.rs`), `candle`
+      #     (`rig-candle`) and `gemini_grpc` (`rig-gemini-grpc`) — so the
+      #     registry reported them covered while nothing executed them.
+      #     (`bedrock`'s suite is feature-gated inside `rig`, so the run below
+      #     already covers it.)
+      #
+      # `binary(...)`, not `test(...)`: nextest's `test()` predicate matches the
+      # test's own name (`suite_is_complete`, …), never the binary it lives in,
+      # so `test(streaming_conformance)` selects ZERO tests here — a filter that
+      # matches nothing still exits 0, which is how this gap would silently
+      # reopen. `binary()` also defaults to an EQUALITY match, so
+      # `streaming_conformance_websocket` must be named separately from
+      # `streaming_conformance`. `tests/core/streaming_conformance_registry.rs`
+      # asserts this step's name and each binary predicate still appear here.
+      #
+      # No `--retries`, deliberately, for the same reason as the telemetry step:
+      # these are static structural assertions (workspace source scans, compiled
+      # suite manifests, fixture-driven replays with no network), so a pass on
+      # the second attempt would conceal nondeterminism rather than tolerate a
+      # flaky network.
+      - name: Test out-of-facade streaming conformance and structural guards
+        run: cargo nextest run -p rig-core -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
+
       - name: Test with latest nextest release
         uses: actions-rs/cargo@v1
         with:

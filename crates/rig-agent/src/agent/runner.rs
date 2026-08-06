@@ -1523,8 +1523,8 @@ mod tests {
         let streaming = Results::default();
         let streaming_model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_name_delta("tc1", "ic1", "flaky_tool"),
-                MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{}"),
+                MockStreamEvent::tool_call_name_delta("tc1", "flaky_tool"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{}"),
                 MockStreamEvent::tool_call("tc1", "flaky_tool", json!({})),
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
@@ -2221,7 +2221,7 @@ mod migrated_tests {
             ("reasoning", MockStreamEvent::reasoning("late reasoning")),
             (
                 "reasoning delta",
-                MockStreamEvent::reasoning_delta(None::<String>, "late reasoning"),
+                MockStreamEvent::reasoning_delta("late reasoning"),
             ),
             (
                 "tool call",
@@ -2229,7 +2229,7 @@ mod migrated_tests {
             ),
             (
                 "tool-call delta",
-                MockStreamEvent::tool_call_name_delta("late", "internal-late", "add"),
+                MockStreamEvent::tool_call_name_delta("late", "add"),
             ),
             ("unknown", MockStreamEvent::unknown(json!({"type": "late"}))),
         ];
@@ -2359,11 +2359,15 @@ mod migrated_tests {
         ])
     }
 
+    /// Note the shape of turn one: the call's input streams as fragments
+    /// (`tc1`) *and* the wire restates it as one complete `ToolCall`. See
+    /// [`streamed_tool_call_items_share_one_internal_call_id`] for the
+    /// correlation contract this pins.
     fn streaming_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_name_delta("tc1", "ic1", "add"),
-                MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{\"x\":2,\"y\":3}"),
+                MockStreamEvent::tool_call_name_delta("tc1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
                 MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
@@ -2372,6 +2376,63 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ])
+    }
+
+    /// #2258 F1, end to end: every stream item for one tool call carries the
+    /// same `internal_call_id` — the deltas, the completed call, the
+    /// execution confirmation, and the tool result. This mock has always
+    /// emitted deltas followed by a full `ToolCall` for `tc1`; before the
+    /// accumulator adopted the assembly's id, the completed call (and
+    /// therefore the execution and result items) carried a fresh id no delta
+    /// ever mentioned, and the mismatch passed silently here.
+    ///
+    /// Not inducible from a recorded provider turn: no in-tree wire mixes
+    /// fragments with a full restatement of the same call.
+    #[tokio::test]
+    async fn streamed_tool_call_items_share_one_internal_call_id() {
+        let mut stream = AgentBuilder::new(streaming_model())
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(2)
+            .stream()
+            .await;
+
+        let mut delta_ids = Vec::new();
+        let mut completed_ids = Vec::new();
+        let mut executed_ids = Vec::new();
+        let mut result_ids = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item") {
+                MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta {
+                        internal_call_id, ..
+                    },
+                ) => delta_ids.push(internal_call_id),
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
+                    internal_call_id,
+                    ..
+                }) => completed_ids.push(internal_call_id),
+                MultiTurnStreamItem::ToolExecutionCommitted {
+                    internal_call_id, ..
+                } => executed_ids.push(internal_call_id),
+                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    internal_call_id,
+                    ..
+                }) => result_ids.push(internal_call_id),
+                _ => {}
+            }
+        }
+
+        assert_eq!(delta_ids.len(), 2, "one name delta and one argument delta");
+        let correlated = delta_ids.first().expect("a delta id").clone();
+        assert!(
+            delta_ids.iter().all(|id| *id == correlated),
+            "the fragments of one call share one id: {delta_ids:?}"
+        );
+        assert_eq!(completed_ids, vec![correlated.clone()]);
+        assert_eq!(executed_ids, vec![correlated.clone()]);
+        assert_eq!(result_ids, vec![correlated]);
     }
 
     /// `AgentRunner::from_agent` preserves the distinction between an absent
@@ -2615,8 +2676,8 @@ mod migrated_tests {
         fn stream_model_one_tool_then_text(tool: &str) -> MockCompletionModel {
             MockCompletionModel::from_stream_turns([
                 vec![
-                    MockStreamEvent::tool_call_name_delta("tc1", "ic1", tool),
-                    MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{}"),
+                    MockStreamEvent::tool_call_name_delta("tc1", tool),
+                    MockStreamEvent::tool_call_arguments_delta("tc1", "{}"),
                     MockStreamEvent::tool_call("tc1", tool, json!({})),
                     MockStreamEvent::final_response_with_total_tokens(0),
                 ],
@@ -6155,18 +6216,13 @@ mod migrated_tests {
                 ScriptedTurn::ToolCalls(calls) => {
                     for call in calls {
                         if let StreamShape::Chunked = shape {
-                            // Distinct internal id per call; the canonical args
-                            // still come from the complete event below, so this
-                            // exercises the delta path without changing the turn.
-                            let internal = format!("ic-{}", call.id);
+                            // The canonical args still come from the complete
+                            // event below, so this exercises the delta path
+                            // without changing the turn.
                             let args = serde_json::to_string(&call.args)
                                 .expect("scripted args serialize to json");
-                            events.push(MockStreamEvent::tool_call_name_delta(
-                                call.id, &internal, call.name,
-                            ));
-                            events.push(MockStreamEvent::tool_call_arguments_delta(
-                                call.id, &internal, &args,
-                            ));
+                            events.push(MockStreamEvent::tool_call_name_delta(call.id, call.name));
+                            events.push(MockStreamEvent::tool_call_arguments_delta(call.id, &args));
                         }
                         events.push(MockStreamEvent::tool_call(
                             call.id,
@@ -9948,8 +10004,8 @@ mod migrated_tests {
         let recorder = RecordingHook::default();
         let executions = Arc::new(AtomicU32::new(0));
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tc1", "ic1", "add"),
-            MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", r#"{"x":1,"y":2}"#),
+            MockStreamEvent::tool_call_name_delta("tc1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tc1", r#"{"x":1,"y":2}"#),
             MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
             MockStreamEvent::final_response_with_default_usage(),
         ]]))

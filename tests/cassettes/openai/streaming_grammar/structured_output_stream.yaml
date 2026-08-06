@@ -1,0 +1,133 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Return a concise event object for a local Rust meetup in Seattle.","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-5.6","reasoning":{"effort":"low"},"stream":true,"text":{"format":{"name":"smoke_event","schema":{"additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"},"strict":true,"type":"json_schema"}}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.6-sol","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"description":null,"name":"smoke_event","schema":{"additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"},"strict":true,"type":"json_schema"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.6-sol","moderation":null,"object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","status":"in_progress","store":true,"temperature":1.0,"text":{"format":{"description":null,"name":"smoke_event","schema":{"additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"},"strict":true,"type":"json_schema"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"in_progress","type":"message"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":3,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"{\"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_1","output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"title","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_2","output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\":\"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_3","output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Seattle","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_4","output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Rust","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_5","output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Meetup","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_6","output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\",\"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_7","output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"category","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_8","output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\":\"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_9","output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Technology","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_10","output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\",\"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_11","output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"summary","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_12","output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\":\"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_13","output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"A","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_14","output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" local","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_15","output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" meetup","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_16","output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" for","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_17","output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Seattle","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_18","output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-area","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_19","output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" Rust","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_20","output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" developers","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_21","output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" to","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_22","output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" share","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_23","output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" projects","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_24","output_index":0,"sequence_number":27,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_25","output_index":0,"sequence_number":28,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" learn","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_26","output_index":0,"sequence_number":29,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_27","output_index":0,"sequence_number":30,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" and","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_28","output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" connect","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_29","output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".\"","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_30","output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"}","item_id":"msg_REDACTED_1","logprobs":[],"obfuscation":"obfuscation_REDACTED_31","output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":0,"sequence_number":35,"text":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local meetup for Seattle-area Rust developers to share projects, learn, and connect.\"}","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":0,"part":{"annotations":[],"logprobs":[],"text":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local meetup for Seattle-area Rust developers to share projects, learn, and connect.\"}","type":"output_text"},"sequence_number":36,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local meetup for Seattle-area Rust developers to share projects, learn, and connect.\"}","type":"output_text"}],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"completed","type":"message"},"output_index":0,"sequence_number":37,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"gpt-5.6-sol","moderation":null,"object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology\",\"summary\":\"A local meetup for Seattle-area Rust developers to share projects, learn, and connect.\"}","type":"output_text"}],"id":"msg_REDACTED_1","phase":"final_answer","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"24h","reasoning":{"context":"all_turns","effort":"low","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":1.0,"text":{"format":{"description":null,"name":"smoke_event","schema":{"additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"type":"object"},"strict":true,"type":"json_schema"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[],"top_logprobs":0,"top_p":0.98,"truncation":"disabled","usage":{"input_tokens":55,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":40,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":95},"user":null},"sequence_number":38,"type":"response.completed"}
+

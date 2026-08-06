@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(streaming)* [**behavior**] mirrored from rig-core's provenance-typed part identity: `MultiTurnStreamItem` delta ids render minted stream identities namespaced (`rig:reasoning:0`) and unique within one stream only — they restart every turn of a run, so correlate across a run by `internal_call_id`, never by delta id; aggregated reasoning from minted-identity streams carries `id: None`, and id-less tool calls (gemini, ollama) carry the absent (empty) durable id
+
 ### Added
 
 - *(agent)* add opaque, cloneable `ModelHandle` values with by-value `ProviderCapabilities` snapshots, plus default replacement, per-run default override (`using_model`), and hook-driven per-call selection via `AgentHook::on_model_select`

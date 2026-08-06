@@ -5,6 +5,11 @@
 //! Provider implementations use these types to expose raw streamed completion
 //! events without depending on a runtime.
 
+mod identity;
+mod parts;
+
+pub use identity::{MintKind, PartId, SyntheticIds, WireId};
+
 use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionResponse, Usage};
 use crate::message::{
@@ -13,7 +18,9 @@ use crate::message::{
 use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
+use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
 use std::task::{Context, Poll};
@@ -64,6 +71,88 @@ pub enum ToolCallDeltaContent {
     Name(String),
     /// Partial JSON argument data emitted by the provider.
     Delta(String),
+}
+
+/// How the shared assembler treats an argument payload that does not parse as
+/// JSON when a streamed tool call's input ends.
+///
+/// This is genuine wire-family policy, declared by the adapter on the end
+/// event rather than hand-rolled per provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnparseableToolInput {
+    /// Drop the call silently: the input never fully arrived (the
+    /// OpenAI-compatible end-of-stream flush of pending calls).
+    Drop,
+    /// Deliver the call with `{}` arguments: the wire superseded the call
+    /// mid-assembly (the OpenAI-compatible same-slot eviction path).
+    EmptyObject,
+    /// Surface an in-band error item: the wire promised a complete block
+    /// (Anthropic `content_block_stop`, Bedrock `contentBlockStop`).
+    Error,
+    /// Leave the call open and emit nothing: the end was a completion
+    /// *probe* (the OpenAI-compatible single-chunk immediate-emission path),
+    /// and input that does not yet finalize may still be extended by later
+    /// fragments and closed by a genuine flush.
+    Keep,
+}
+
+/// End of a streamed tool call's input: the signal for the shared assembler
+/// ([`RawStreamingChoice::ToolInputEnd`]) to finalize the call.
+///
+/// Optional fields are authoritative wire values that supersede the assembled
+/// state — a wire whose completed item restates the call (OpenAI Responses
+/// `output_item.done`) carries them; delta-only wires leave them `None` and
+/// the assembled fragments are parsed instead.
+#[derive(Debug, Clone)]
+pub struct ToolInputEnd {
+    /// Assembly identity: the id the call's fragments were emitted under.
+    pub id: PartId,
+    /// Authoritative provider tool-call id, when it differs from the
+    /// assembly id (e.g. an id that arrived after the call opened id-less).
+    pub tool_id: Option<String>,
+    /// Authoritative tool name from the wire's completed item.
+    pub name: Option<String>,
+    /// Authoritative parsed arguments from the wire's completed item.
+    pub arguments: Option<serde_json::Value>,
+    /// Provider call-correlation id (e.g. OpenAI Responses `call_id`).
+    pub call_id: Option<String>,
+    /// Provider signature attached to the completed call.
+    pub signature: Option<String>,
+    /// Provider-specific metadata attached to the completed call.
+    pub additional_params: Option<serde_json::Value>,
+    /// Wire-family policy for assembled arguments that fail to parse.
+    pub on_unparseable: UnparseableToolInput,
+}
+
+/// Decoration a provider attaches to a streamed tool call that is still
+/// assembling, matched by its established provider id (e.g. OpenRouter
+/// encrypted reasoning details). Carried onto the completed call by the
+/// adapter's end event.
+#[derive(Debug, Clone)]
+pub struct ToolCallDecoration {
+    /// Established provider id of the call to decorate.
+    pub tool_id: String,
+    /// Provider signature to attach to the completed call.
+    pub signature: Option<String>,
+    /// Provider-specific metadata to attach to the completed call.
+    pub additional_params: Option<serde_json::Value>,
+}
+
+impl ToolInputEnd {
+    /// End the call identified by `id`, finalizing from assembled fragments
+    /// with the given unparseable-input policy.
+    pub fn new(id: impl Into<PartId>, on_unparseable: UnparseableToolInput) -> Self {
+        Self {
+            id: id.into(),
+            tool_id: None,
+            name: None,
+            arguments: None,
+            call_id: None,
+            signature: None,
+            additional_params: None,
+            on_unparseable,
+        }
+    }
 }
 
 /// Discriminant for [`StreamFinal`].
@@ -177,7 +266,7 @@ impl StreamFinal {
     /// Attach the provider-assigned message ID.
     ///
     /// An empty string is treated as absent, matching the unary
-    /// [`CompletionResponse`](crate::completion::CompletionResponse) setters:
+    /// [`CompletionResponse`] setters:
     /// the invariant lives in the setters so no provider call site can
     /// diverge.
     pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
@@ -276,9 +365,23 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// Start a new text content block in the accumulated final choice.
     ///
     /// This is an internal provider-normalization event. It is not yielded to
-    /// public stream consumers, but lets providers preserve metadata boundaries
-    /// for final aggregated assistant text blocks.
+    /// public stream consumers, but lets providers preserve block boundaries
+    /// and metadata for final aggregated assistant text blocks.
     TextStart {
+        /// Identity of the text block being opened.
+        ///
+        /// The same mandatory-identity contract as
+        /// [`RawStreamingChoice::Reasoning::id`]: distinct wire output items
+        /// must aggregate as distinct text parts (two OpenAI Responses
+        /// `message` items must not concatenate), so the accumulator keys
+        /// text blocks by identity. Providers propagate the wire's item
+        /// identity ([`PartId::Wire`]: the Responses `item_id`, Anthropic's
+        /// block index) when it exists, or mint one at the boundary
+        /// ([`PartId::Minted`], via [`SyntheticIds`]). A wire that never
+        /// announces text boundaries may skip `TextStart` entirely: a bare
+        /// [`RawStreamingChoice::Message`] with no open block opens a
+        /// boundary-minted block.
+        id: PartId,
         /// Provider-specific metadata attached to this text block.
         additional_params: Option<serde_json::Value>,
     },
@@ -289,27 +392,79 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// into the current aggregated [`Text`] block.
     TextAdditionalParams(serde_json::Value),
 
-    /// A tool call response (in its entirety)
+    /// A tool call response (in its entirety) — wires that never fragment
+    /// tool input emit this directly; fragmenting wires emit
+    /// [`RawStreamingChoice::ToolCallDelta`] fragments closed by
+    /// [`RawStreamingChoice::ToolInputEnd`], and the shared accumulator
+    /// assembles the completed call.
     ToolCall(RawStreamingToolCall),
-    /// A tool call partial/delta
+    /// A tool call partial/delta.
+    ///
+    /// All fragments of one call carry one `id`; the shared accumulator keys
+    /// assembly by it and mints the internal correlation id when the call
+    /// opens, so adapters never track per-call state.
     ToolCallDelta {
-        /// Provider-supplied tool call ID.
-        id: String,
-        /// Rig-generated unique identifier for this tool call.
-        internal_call_id: String,
+        /// Identity of the tool call this fragment extends, stable across the
+        /// call's fragments.
+        ///
+        /// The same mandatory-identity contract as
+        /// [`RawStreamingChoice::Reasoning::id`]: parallel calls interleave
+        /// their fragments on real wires, so the accumulator must key
+        /// assembly by identity. Providers propagate the wire's tool-call id
+        /// ([`PartId::Wire`]), or mint one at the boundary from the wire's
+        /// own index ([`PartId::Minted`], via [`SyntheticIds`]) when the wire
+        /// omits it — a shared identity would collapse parallel calls into
+        /// one corrupted assembly. A minted identity keys assembly only; it
+        /// never becomes the completed call's durable
+        /// [`ToolCall::id`](crate::message::ToolCall::id).
+        id: PartId,
         content: ToolCallDeltaContent,
     },
+    /// End of a streamed tool call's input: the shared accumulator finalizes
+    /// the assembled fragments (or the event's authoritative payload) into a
+    /// completed tool call.
+    ToolInputEnd(ToolInputEnd),
     /// A reasoning (in its entirety)
     Reasoning {
-        /// Provider-supplied reasoning block ID, when present.
-        id: Option<String>,
+        /// Identity of the reasoning item this block belongs to.
+        ///
+        /// Required: reasoning interleaves with other output on real wires
+        /// (OpenAI Responses emits the completed item after tool calls), so
+        /// the accumulator must key by identity rather than guess by
+        /// adjacency. Providers propagate the wire's item id
+        /// ([`PartId::Wire`]: `item_id` on Responses events) or mint a
+        /// stream-scoped id at the boundary ([`PartId::Minted`], via
+        /// [`SyntheticIds`]) when the wire has none. Deltas and the full
+        /// block for the same item MUST carry the same id. Only a wire
+        /// identity becomes the durable
+        /// [`Reasoning::id`](crate::message::Reasoning::id); a minted one
+        /// keys accumulation and dies with the stream.
+        id: PartId,
         /// Complete reasoning content block.
         content: ReasoningContent,
     },
+    /// A provider signature for an already-streamed reasoning item.
+    ///
+    /// Some wires deliver the signature *after* the block it signs closed —
+    /// Gemini attaches `thoughtSignature` to a trailing part that follows
+    /// the answer text. This is lifecycle metadata for the existing block,
+    /// not new reasoning: the accumulator attaches it to the item's latest
+    /// part instead of opening an empty sibling that would leave the real
+    /// chain-of-thought replaying unsigned. Not yielded to public stream
+    /// consumers; the signature reaches them on the aggregated choice.
+    ReasoningSignature {
+        /// Identity of the reasoning item the signature belongs to.
+        id: PartId,
+        /// The provider signature, verbatim.
+        signature: String,
+    },
+
     /// A reasoning partial/delta
     ReasoningDelta {
-        /// Provider-supplied reasoning block ID, when present.
-        id: Option<String>,
+        /// Identity of the reasoning item this delta extends. Same contract
+        /// as [`RawStreamingChoice::Reasoning::id`]; all deltas of one block
+        /// share one id.
+        id: PartId,
         /// Partial reasoning text.
         reasoning: String,
     },
@@ -340,23 +495,25 @@ impl<R> RawStreamingChoice<R> {
     ) -> Result<RawStreamingChoice<S>, CompletionError> {
         Ok(match self {
             Self::Message(text) => RawStreamingChoice::Message(text),
-            Self::TextStart { additional_params } => {
-                RawStreamingChoice::TextStart { additional_params }
-            }
+            Self::TextStart {
+                id,
+                additional_params,
+            } => RawStreamingChoice::TextStart {
+                id,
+                additional_params,
+            },
             Self::TextAdditionalParams(params) => RawStreamingChoice::TextAdditionalParams(params),
             Self::ToolCall(call) => RawStreamingChoice::ToolCall(call),
-            Self::ToolCallDelta {
-                id,
-                internal_call_id,
-                content,
-            } => RawStreamingChoice::ToolCallDelta {
-                id,
-                internal_call_id,
-                content,
-            },
+            Self::ToolCallDelta { id, content } => {
+                RawStreamingChoice::ToolCallDelta { id, content }
+            }
+            Self::ToolInputEnd(end) => RawStreamingChoice::ToolInputEnd(end),
             Self::Reasoning { id, content } => RawStreamingChoice::Reasoning { id, content },
             Self::ReasoningDelta { id, reasoning } => {
                 RawStreamingChoice::ReasoningDelta { id, reasoning }
+            }
+            Self::ReasoningSignature { id, signature } => {
+                RawStreamingChoice::ReasoningSignature { id, signature }
             }
             Self::FinalResponse(response) => RawStreamingChoice::FinalResponse(map(response)?),
             Self::MessageId(id) => RawStreamingChoice::MessageId(id),
@@ -368,8 +525,11 @@ impl<R> RawStreamingChoice<R> {
 /// Describes a streaming tool call response (in its entirety)
 #[derive(Debug, Clone)]
 pub struct RawStreamingToolCall {
-    /// Provider-supplied tool call ID.
-    pub id: String,
+    /// Identity of the tool call. [`PartId::Wire`] when the provider
+    /// supplied an id; [`PartId::Minted`] when the wire omitted one — a
+    /// minted identity keys stream-side correlation only and yields an
+    /// id-less durable [`ToolCall`].
+    pub id: PartId,
     /// Rig-generated unique identifier for this tool call.
     pub internal_call_id: String,
     /// Provider-specific call ID used by some APIs for tool result correlation.
@@ -388,7 +548,7 @@ impl RawStreamingToolCall {
     /// Create an empty tool call accumulator for provider streaming parsers.
     pub fn empty() -> Self {
         Self {
-            id: String::new(),
+            id: PartId::Wire(String::new()),
             internal_call_id: crate::id::generate(),
             call_id: None,
             name: String::new(),
@@ -399,9 +559,9 @@ impl RawStreamingToolCall {
     }
 
     /// Create a complete tool call with a generated internal call ID.
-    pub fn new(id: String, name: String, arguments: serde_json::Value) -> Self {
+    pub fn new(id: impl Into<PartId>, name: String, arguments: serde_json::Value) -> Self {
         Self {
-            id,
+            id: id.into(),
             internal_call_id: crate::id::generate(),
             call_id: None,
             name,
@@ -439,7 +599,14 @@ impl RawStreamingToolCall {
 impl From<RawStreamingToolCall> for ToolCall {
     fn from(tool_call: RawStreamingToolCall) -> Self {
         ToolCall {
-            id: tool_call.id,
+            // Only a wire identity becomes the durable id; a minted one
+            // yields the empty string, which every serializer treats as
+            // absent — rig never replays a fabricated tool-call id upstream.
+            id: tool_call
+                .id
+                .into_wire_id()
+                .map(WireId::into_string)
+                .unwrap_or_default(),
             call_id: tool_call.call_id,
             function: ToolFunction {
                 name: tool_call.name,
@@ -454,6 +621,27 @@ impl From<RawStreamingToolCall> for ToolCall {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 /// Provider stream whose terminal record is the provider-native `R`, on native
 /// targets.
+///
+/// This is the raw channel of rig's two-channel contract: every provider's
+/// inherent `raw_stream`/`raw_completion` returns provider-native types
+/// directly from the wire decode, never routed through the normalized
+/// accumulation ([`normalize_stream`] / the parts accumulator) — the
+/// semantic channel maps this stream's terminal record exactly once. There
+/// is deliberately no `raw_response` field on the normalized types; the
+/// typed channels are the contract.
+///
+/// Precedent, read carefully: openai-agents also splits raw from semantic,
+/// but the load-bearing part of its design is elsewhere — its semantic
+/// layer never reads a delta at all (it acts only on whole done items and
+/// the completed response), and delta aggregation is confined to the
+/// per-provider adapter, which *synthesizes* a canonical terminal event so
+/// the shared layer sees one grammar. rig cannot fully adopt that shape
+/// (openai-agents' canonical grammar is one vendor's schema; rig normalizes
+/// 14 wire families through one accumulator), and centralizing the
+/// accumulator is what forces cross-provider identity — hence the
+/// provenance-typed [`PartId`]. What rig does copy from that precedent is
+/// the raw channel itself and provenance-as-data rather than naming
+/// convention.
 pub type RawStreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
@@ -503,6 +691,16 @@ where
     }))
 }
 
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+/// Future a paused [`StreamingCompletionResponse`] parks on until resumed, on
+/// native targets.
+type ResumeWait = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+/// Future a paused [`StreamingCompletionResponse`] parks on until resumed, on
+/// wasm targets.
+type ResumeWait = Pin<Box<dyn Future<Output = ()>>>;
+
 /// The response from a streaming completion request;
 /// message and response are populated at the end of the
 /// `inner` stream.
@@ -510,9 +708,8 @@ pub struct StreamingCompletionResponse {
     pub(crate) inner: Abortable<StreamingResult>,
     pub(crate) abort_handle: AbortHandle,
     pub(crate) pause_control: PauseControl,
-    assistant_items: Vec<AssistantContent>,
-    text_item_index: Option<usize>,
-    reasoning_item_index: Option<usize>,
+    /// Accumulates the streamed parts of the final aggregated choice.
+    parts: PartsAccumulator,
     /// Stable descriptor name of the provider producing this stream.
     ///
     /// Known when the stream is opened rather than when it terminates, so a
@@ -522,6 +719,16 @@ pub struct StreamingCompletionResponse {
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
     pub choice: OneOrMany<AssistantContent>,
+    /// Whether the stream already reached its end and aggregated `choice`.
+    ///
+    /// [`PartsAccumulator::finish`] is destructive (it takes the accumulated
+    /// parts and falls back to one empty text part), so re-polling a drained
+    /// stream — which `Stream` permits and combinators do — would otherwise
+    /// replace a fully aggregated `choice` with empty text (#2258 H6).
+    finished: bool,
+    /// Parked wait on the pause channel while [`PauseControl`] holds the
+    /// stream paused; `None` whenever the stream is running (#2258 H7).
+    resume_wait: Option<ResumeWait>,
     /// The provider's normalized terminal record, may be `None`
     /// if the provider didn't yield it during the stream
     pub response: Option<StreamFinal>,
@@ -544,11 +751,11 @@ impl StreamingCompletionResponse {
             inner: abortable_stream,
             abort_handle,
             pause_control,
-            assistant_items: vec![],
-            text_item_index: None,
-            reasoning_item_index: None,
+            parts: PartsAccumulator::new(),
             provider: provider.into(),
             choice: OneOrMany::one(AssistantContent::text("")),
+            finished: false,
+            resume_wait: None,
             response: None,
             final_response_yielded: AtomicBool::new(false),
             message_id: None,
@@ -562,12 +769,17 @@ impl StreamingCompletionResponse {
 
     /// Cancel the stream and immediately drop the provider's inner stream.
     /// Cancellation is surfaced as normal stream termination.
+    ///
+    /// Cancelling also resumes a paused stream: a consumer parked on the
+    /// pause channel must observe the termination instead of waiting forever
+    /// for a resume that will never affect a stream that no longer exists.
     pub fn cancel(&mut self) {
         self.abort_handle.abort();
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let empty: StreamingResult = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
         self.inner = Abortable::new(empty, abort_registration);
         self.abort_handle = abort_handle;
+        self.pause_control.resume();
     }
 
     /// Pause stream polling.
@@ -596,99 +808,6 @@ impl StreamingCompletionResponse {
             .as_ref()
             .map(|response| response.usage)
             .unwrap_or_default()
-    }
-
-    fn append_text_chunk(&mut self, text: &str) {
-        if let Some(index) = self.text_item_index
-            && let Some(AssistantContent::Text(existing_text)) = self.assistant_items.get_mut(index)
-        {
-            existing_text.text.push_str(text);
-            return;
-        }
-
-        self.assistant_items
-            .push(AssistantContent::text(text.to_owned()));
-        self.text_item_index = Some(self.assistant_items.len() - 1);
-    }
-
-    fn append_text_additional_params(&mut self, additional_params: serde_json::Value) {
-        if additional_params.is_null() {
-            return;
-        }
-
-        let index = if let Some(index) = self.text_item_index
-            && matches!(
-                self.assistant_items.get(index),
-                Some(AssistantContent::Text(_))
-            ) {
-            index
-        } else {
-            self.assistant_items.push(AssistantContent::text(""));
-            let index = self.assistant_items.len() - 1;
-            self.text_item_index = Some(index);
-            index
-        };
-
-        let Some(AssistantContent::Text(text)) = self.assistant_items.get_mut(index) else {
-            return;
-        };
-
-        match text.additional_params.as_mut() {
-            Some(existing) => merge_text_additional_params(existing, additional_params),
-            None => text.additional_params = Some(additional_params),
-        }
-    }
-
-    /// Accumulate streaming reasoning delta text into assistant_items.
-    /// Providers that only emit ReasoningDelta (not full Reasoning blocks)
-    /// need this so the aggregated response includes reasoning content.
-    fn append_reasoning_chunk(&mut self, id: &Option<String>, text: &str) {
-        if let Some(index) = self.reasoning_item_index
-            && let Some(AssistantContent::Reasoning(existing)) = self.assistant_items.get_mut(index)
-            && let Some(ReasoningContent::Text {
-                text: existing_text,
-                ..
-            }) = existing.content.last_mut()
-        {
-            existing_text.push_str(text);
-            return;
-        }
-
-        self.assistant_items
-            .push(AssistantContent::Reasoning(Reasoning {
-                id: id.clone(),
-                content: vec![ReasoningContent::Text {
-                    text: text.to_string(),
-                    signature: None,
-                }],
-            }));
-        self.reasoning_item_index = Some(self.assistant_items.len() - 1);
-    }
-}
-
-fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serde_json::Value) {
-    match (existing, incoming) {
-        (serde_json::Value::Object(existing_map), serde_json::Value::Object(incoming_map)) => {
-            for (key, incoming_value) in incoming_map {
-                match existing_map.get_mut(&key) {
-                    Some(existing_value) => match (existing_value, incoming_value) {
-                        (
-                            serde_json::Value::Array(existing_array),
-                            serde_json::Value::Array(mut incoming_array),
-                        ) => existing_array.append(&mut incoming_array),
-                        (existing_value, incoming_value) => {
-                            merge_text_additional_params(existing_value, incoming_value);
-                        }
-                    },
-                    None => {
-                        existing_map.insert(key, incoming_value);
-                    }
-                }
-            }
-        }
-        (existing, incoming) => {
-            *existing = incoming;
-        }
     }
 }
 
@@ -721,161 +840,194 @@ impl Stream for StreamingCompletionResponse {
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let stream = self.get_mut();
 
-        if stream.is_paused() {
-            cx.waker().wake_by_ref();
-            return Poll::Pending;
+        // A drained stream stays drained: `finish()` consumes the accumulated
+        // parts, so re-polling must not run it again and clobber `choice`
+        // with the empty-text fallback (#2258 H6).
+        if stream.finished {
+            return Poll::Ready(None);
         }
 
-        match Pin::new(&mut stream.inner).poll_next(cx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => {
-                // This is run at the end of the inner stream to collect all tokens into
-                // a single unified `Message`.
-                if stream.assistant_items.is_empty() {
-                    stream.assistant_items.push(AssistantContent::text(""));
+        if stream.is_paused() {
+            // Park on the pause channel rather than re-waking immediately: a
+            // self-wake turns a pause into a busy poll loop that burns the
+            // executor for as long as the consumer stays paused (#2258 H7).
+            // `wait_for` evaluates the *current* value when it is first
+            // polled, so a resume racing this branch resolves it at once
+            // instead of parking forever on a notification already sent.
+            let wait = match stream.resume_wait.as_mut() {
+                Some(wait) => wait,
+                None => {
+                    let mut paused_rx = stream.pause_control.paused_rx.clone();
+                    stream.resume_wait.insert(Box::pin(async move {
+                        let _ = paused_rx.wait_for(|paused| !*paused).await;
+                    }))
                 }
-
-                if let Some(choice) =
-                    OneOrMany::from_iter_optional(std::mem::take(&mut stream.assistant_items))
-                {
-                    stream.choice = choice;
-                }
-
-                Poll::Ready(None)
+            };
+            if wait.as_mut().poll(cx).is_pending() {
+                return Poll::Pending;
             }
-            Poll::Ready(Some(Err(err))) => {
-                if matches!(err, CompletionError::ProviderError(ref e) if e.to_string().contains("aborted"))
-                {
-                    return Poll::Ready(None); // Treat cancellation as stream termination
-                }
-                Poll::Ready(Some(Err(err)))
-            }
-            Poll::Ready(Some(Ok(choice))) => match choice {
-                RawStreamingChoice::Message(text) => {
-                    stream.reasoning_item_index = None;
-                    stream.append_text_chunk(&text);
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
-                }
-                RawStreamingChoice::TextStart { additional_params } => {
-                    stream.reasoning_item_index = None;
-                    stream.text_item_index = None;
-                    if let Some(additional_params) = additional_params {
-                        stream.append_text_additional_params(additional_params);
+            stream.resume_wait = None;
+        }
+
+        // Non-yielding events (`continue` arms: block bookkeeping, dropped
+        // ends, duplicate terminals) loop rather than recurse — a long run of
+        // them must not grow the stack (#2258 review P3).
+        loop {
+            return match Pin::new(&mut stream.inner).poll_next(cx) {
+                Poll::Pending => Poll::Pending,
+                Poll::Ready(None) => {
+                    // This is run at the end of the inner stream to collect all tokens into
+                    // a single unified `Message`. `finish` is never empty, so the
+                    // conversion cannot fail.
+                    if let Some(choice) = OneOrMany::from_iter_optional(stream.parts.finish()) {
+                        stream.choice = choice;
                     }
-                    stream.poll_next_unpin(cx)
+                    stream.finished = true;
+
+                    Poll::Ready(None)
                 }
-                RawStreamingChoice::TextAdditionalParams(additional_params) => {
-                    stream.append_text_additional_params(additional_params);
-                    stream.poll_next_unpin(cx)
-                }
-                RawStreamingChoice::ToolCallDelta {
-                    id,
-                    internal_call_id,
-                    content,
-                } => Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
-                    id,
-                    internal_call_id,
-                    content,
-                }))),
-                RawStreamingChoice::Reasoning { id, content } => {
-                    let reasoning = Reasoning {
-                        id,
-                        content: vec![content],
-                    };
-                    stream.text_item_index = None;
-                    // A full reasoning block supersedes its own delta
-                    // accumulation: the deltas are only a fallback for
-                    // providers that never send the completed block, so the
-                    // delta-built item is *replaced*, not kept alongside a
-                    // duplicate. Identity is decided by ID: matching IDs (or
-                    // neither side carrying one) replace; mismatched IDs —
-                    // including an ID on only one side — belong to a
-                    // different reasoning item and append. The active-index
-                    // slot is only a fast path: providers may emit the
-                    // completed block after other output cleared the index
-                    // (reasoning → tool call → completed block), so a miss
-                    // falls back to a by-ID scan of the aggregated items.
-                    let same_item = |existing: &Reasoning| match (&existing.id, &reasoning.id) {
-                        (Some(existing_id), Some(id)) => existing_id == id,
-                        (None, None) => true,
-                        _ => false,
-                    };
-                    let replace_index = stream
-                        .reasoning_item_index
-                        .filter(|&index| {
-                            matches!(
-                                stream.assistant_items.get(index),
-                                Some(AssistantContent::Reasoning(existing)) if same_item(existing)
-                            )
-                        })
-                        .or_else(|| {
-                            reasoning.id.as_ref()?;
-                            stream.assistant_items.iter().rposition(|item| {
-                                matches!(item, AssistantContent::Reasoning(existing) if same_item(existing))
-                            })
-                        });
-                    match replace_index.and_then(|index| stream.assistant_items.get_mut(index)) {
-                        Some(item) => *item = AssistantContent::Reasoning(reasoning.clone()),
-                        None => stream
-                            .assistant_items
-                            .push(AssistantContent::Reasoning(reasoning.clone())),
+                // Every error reaches the consumer. Cancellation is *not* an
+                // error here: `cancel()` aborts through `Abortable`, which
+                // terminates the inner stream with `Ready(None)` above, so
+                // the aggregated choice is finished normally. (Until #2258 H8
+                // this arm swallowed any `ProviderError` whose text merely
+                // contained "aborted", reporting clean EOF while silently
+                // discarding both the error and the streamed content.)
+                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
+                Poll::Ready(Some(Ok(choice))) => match choice {
+                    RawStreamingChoice::Message(text) => {
+                        stream.parts.text_delta(&text);
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::text(&text))))
                     }
-                    stream.reasoning_item_index = None;
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
-                }
-                RawStreamingChoice::ReasoningDelta { id, reasoning } => {
-                    stream.text_item_index = None;
-                    stream.append_reasoning_chunk(&id, &reasoning);
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
+                    RawStreamingChoice::TextStart {
                         id,
-                        reasoning,
-                    })))
-                }
-                RawStreamingChoice::ToolCall(raw_tool_call) => {
-                    let internal_call_id = raw_tool_call.internal_call_id.clone();
-                    let tool_call: ToolCall = raw_tool_call.into();
-                    stream.text_item_index = None;
-                    stream.reasoning_item_index = None;
-                    stream
-                        .assistant_items
-                        .push(AssistantContent::ToolCall(tool_call.clone()));
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
-                        tool_call,
-                        internal_call_id,
-                    })))
-                }
-                RawStreamingChoice::FinalResponse(response) => {
-                    if stream
-                        .final_response_yielded
-                        .load(std::sync::atomic::Ordering::SeqCst)
+                        additional_params,
+                    } => {
+                        stream.parts.text_start(&id, additional_params);
+                        continue;
+                    }
+                    RawStreamingChoice::TextAdditionalParams(additional_params) => {
+                        stream.parts.text_additional_params(additional_params);
+                        continue;
+                    }
+                    RawStreamingChoice::ToolCallDelta { id, content } => {
+                        // The accumulator owns assembly; it mints the internal
+                        // correlation id when the call opens and returns it for
+                        // every fragment, so the public delta stays correlated
+                        // with the eventual completed call.
+                        let internal_call_id = match &content {
+                            ToolCallDeltaContent::Name(name) => {
+                                stream.parts.tool_name_delta(&id, name)
+                            }
+                            ToolCallDeltaContent::Delta(fragment) => {
+                                stream.parts.tool_args_delta(&id, fragment)
+                            }
+                        };
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
+                            id: id.render(),
+                            internal_call_id,
+                            content,
+                        })))
+                    }
+                    RawStreamingChoice::ToolInputEnd(end) => match stream.parts.tool_input_end(end)
                     {
-                        stream.poll_next_unpin(cx)
-                    } else {
-                        // Set the final response field and return the next item in the stream.
-                        // An explicit `MessageId` event keeps precedence; the
-                        // terminal record only fills a gap.
-                        if stream.message_id.is_none() {
-                            stream.message_id = response.message_id.clone();
+                        Ok(Some((tool_call, internal_call_id))) => {
+                            Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
+                                tool_call,
+                                internal_call_id,
+                            })))
                         }
-                        stream.response = Some(response.clone());
-                        stream
-                            .final_response_yielded
-                            .store(true, std::sync::atomic::Ordering::SeqCst);
-                        let final_response = StreamedAssistantContent::final_response(response);
-                        Poll::Ready(Some(Ok(final_response)))
+                        // Dropped (nameless or partial input): not content.
+                        Ok(None) => continue,
+                        // Malformed complete input surfaces in-band; the stream
+                        // keeps consuming, matching the malformed-frame contract.
+                        Err(err) => Poll::Ready(Some(Err(err))),
+                    },
+                    RawStreamingChoice::Reasoning { id, content } => {
+                        // The provenance funnel: only a wire identity becomes
+                        // the durable `Reasoning::id`. A minted identity keys
+                        // accumulation and is rendered on the public stream
+                        // for correlation, but the replayable message carries
+                        // no fabricated provider handle.
+                        let reasoning = Reasoning {
+                            id: id.as_wire().map(str::to_owned),
+                            content: vec![content],
+                        };
+                        stream.parts.reasoning_full(&id, reasoning.clone());
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
                     }
-                }
-                RawStreamingChoice::MessageId(id) => {
-                    stream.message_id = Some(id);
-                    stream.poll_next_unpin(cx)
-                }
-                RawStreamingChoice::Unknown(value) => {
-                    // Pass an unmodeled provider item straight through to the
-                    // consumer; it is intentionally not pushed into
-                    // `assistant_items` (no `AssistantContent::Unknown` exists).
-                    Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
-                }
-            },
+                    RawStreamingChoice::ReasoningSignature { id, signature } => {
+                        stream.parts.reasoning_signature(&id, signature);
+                        continue;
+                    }
+                    RawStreamingChoice::ReasoningDelta { id, reasoning } => {
+                        stream.parts.reasoning_delta(&id, &reasoning);
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
+                            id: id.render(),
+                            reasoning,
+                        })))
+                    }
+                    RawStreamingChoice::ToolCall(raw_tool_call) => {
+                        let minted_internal_call_id = raw_tool_call.internal_call_id.clone();
+                        let part_id = raw_tool_call.id.clone();
+                        let tool_call: ToolCall = raw_tool_call.into();
+                        // A wire that fragmented this call's input already
+                        // published an internal id on its deltas; the
+                        // accumulator adopts it so the completed call stays
+                        // correlated with them (the contract on
+                        // `StreamedAssistantContent::ToolCall`). With no open
+                        // assembly the emitter's minted id is kept.
+                        let internal_call_id = stream.parts.tool_call(
+                            &part_id,
+                            tool_call.clone(),
+                            minted_internal_call_id,
+                        );
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
+                            tool_call,
+                            internal_call_id,
+                        })))
+                    }
+                    RawStreamingChoice::FinalResponse(mut response) => {
+                        // Assembled tool calls never pass `normalize_stream` as
+                        // `RawStreamingChoice::ToolCall`, so the finish-reason
+                        // reconciliation runs here too, against the accumulator's
+                        // authoritative view of completed calls. Idempotent over
+                        // the reconciliation `normalize_stream` already applied.
+                        response.finish_reason = response.finish_reason.map(|reason| {
+                            reason.reconcile_with_output(stream.parts.saw_tool_call())
+                        });
+                        if stream
+                            .final_response_yielded
+                            .load(std::sync::atomic::Ordering::SeqCst)
+                        {
+                            continue;
+                        } else {
+                            // Set the final response field and return the next item in the stream.
+                            // An explicit `MessageId` event keeps precedence; the
+                            // terminal record only fills a gap.
+                            if stream.message_id.is_none() {
+                                stream.message_id = response.message_id.clone();
+                            }
+                            stream.response = Some(response.clone());
+                            stream
+                                .final_response_yielded
+                                .store(true, std::sync::atomic::Ordering::SeqCst);
+                            let final_response = StreamedAssistantContent::final_response(response);
+                            Poll::Ready(Some(Ok(final_response)))
+                        }
+                    }
+                    RawStreamingChoice::MessageId(id) => {
+                        stream.message_id = Some(id);
+                        continue;
+                    }
+                    RawStreamingChoice::Unknown(value) => {
+                        // Pass an unmodeled provider item straight through to the
+                        // consumer; it is intentionally not pushed into
+                        // `assistant_items` (no `AssistantContent::Unknown` exists).
+                        Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
+                    }
+                },
+            };
         }
     }
 }
@@ -930,10 +1082,36 @@ mod tests {
         StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(stream))
     }
 
+    /// #2258 review P3: non-yielding events (`MessageId` here) drive the
+    /// `poll_next` loop instead of synchronous self-recursion, so a long run
+    /// of them cannot grow the stack. Pre-fix, each of these frames was one
+    /// recursive `poll_next` stack frame and a run this long overflowed in
+    /// debug builds.
+    #[tokio::test]
+    async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
+        let raw = stream! {
+            for n in 0..50_000u32 {
+                yield Ok(RawStreamingChoice::MessageId(format!("msg_{n}")));
+            }
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(1)));
+        };
+        let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(raw));
+
+        let mut texts = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Ok(StreamedAssistantContent::Text(text)) = item {
+                texts.push(text.text);
+            }
+        }
+        assert_eq!(texts, vec!["done".to_string()]);
+        // The last id recorded wins.
+        assert_eq!(stream.message_id.as_deref(), Some("msg_49999"));
+    }
+
     fn create_reasoning_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {
-                id: Some("rs_1".to_string()),
+            yield Ok(RawStreamingChoice::Reasoning {                id: PartId::wire("rs_1"),
                 content: ReasoningContent::Text {
                     text: "step one".to_string(),
                     signature: Some("sig_1".to_string()),
@@ -948,8 +1126,7 @@ mod tests {
 
     fn create_reasoning_only_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {
-                id: Some("rs_only".to_string()),
+            yield Ok(RawStreamingChoice::Reasoning {                id: PartId::wire("rs_only"),
                 content: ReasoningContent::Summary("hidden summary".to_string()),
             });
             yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
@@ -960,8 +1137,7 @@ mod tests {
 
     fn create_interleaved_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {
-                id: Some("rs_interleaved".to_string()),
+            yield Ok(RawStreamingChoice::Reasoning {                id: PartId::wire("rs_interleaved"),
                 content: ReasoningContent::Text {
                     text: "chain-of-thought".to_string(),
                     signature: None,
@@ -1001,6 +1177,7 @@ mod tests {
     fn create_text_metadata_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::TextStart {
+                id: PartId::wire("block-0"),
                 additional_params: None,
             });
             yield Ok(RawStreamingChoice::Message("first".to_string()));
@@ -1023,6 +1200,7 @@ mod tests {
                 }]
             })));
             yield Ok(RawStreamingChoice::TextStart {
+                id: PartId::wire("block-1"),
                 additional_params: Some(serde_json::json!({
                     "block": 2
                 })),
@@ -1113,7 +1291,7 @@ mod tests {
         // streaming path must reconcile it exactly as the unary path does.
         let raw: RawStreamingResult<Usage> = Box::pin(stream! {
             yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall {
-                id: "call_1".to_string(),
+                id: PartId::wire("call_1"),
                 call_id: None,
                 internal_call_id: "internal_1".to_string(),
                 name: "lookup".to_string(),
@@ -1343,6 +1521,200 @@ mod tests {
         assert!(!stream.is_paused());
     }
 
+    /// #2258 H7: a paused stream parks on the pause channel instead of
+    /// re-waking itself, which turned a pause into a busy poll loop. The
+    /// `is_woken` assertion is the pin: pre-fix the paused poll woke the task
+    /// immediately, so it failed.
+    ///
+    /// Not inducible from a recorded provider turn — pause/resume is
+    /// consumer-side control flow with no wire representation.
+    #[tokio::test]
+    async fn a_paused_stream_parks_until_resume_instead_of_busy_waking() {
+        let stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("hello".to_string()));
+            }),
+        );
+        let resume = stream.pause_control.paused_tx.clone();
+        stream.pause();
+
+        let mut task = tokio_test::task::spawn(stream);
+        assert!(
+            task.poll_next().is_pending(),
+            "a paused stream yields nothing"
+        );
+        assert!(
+            !task.is_woken(),
+            "a paused stream must idle, not re-wake itself"
+        );
+
+        resume.send(false).expect("resume");
+        assert!(task.is_woken(), "resuming must wake the parked stream");
+        assert!(matches!(
+            task.poll_next(),
+            Poll::Ready(Some(Ok(StreamedAssistantContent::Text(text)))) if text.text == "hello"
+        ));
+    }
+
+    /// #2258 B7: cancelling a paused stream must not deadlock — the consumer
+    /// parked on the pause channel observes the termination because
+    /// `cancel()` also resumes.
+    #[tokio::test]
+    async fn cancelling_a_paused_stream_terminates_instead_of_deadlocking() {
+        let mut stream = create_mock_stream();
+        stream.pause();
+        stream.cancel();
+        assert!(
+            !stream.is_paused(),
+            "cancel must lift the pause so the termination is observable"
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "a cancelled stream terminates"
+        );
+    }
+
+    /// #2258 H6: `finish()` is destructive, so a second poll of a drained
+    /// stream must not run it again — pre-fix the re-poll replaced a fully
+    /// aggregated `choice` with the empty-text fallback.
+    ///
+    /// Not inducible from a recorded provider turn: re-polling a terminated
+    /// stream is consumer behavior (`Stream` permits it, and combinators do
+    /// it), independent of any wire.
+    #[tokio::test]
+    async fn re_polling_a_drained_stream_preserves_the_aggregated_choice() {
+        let mut stream = create_mock_stream();
+        while stream.next().await.is_some() {}
+
+        let drained: Vec<AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert_eq!(
+            drained,
+            vec![AssistantContent::text("hello 1hello 2hello 3")]
+        );
+
+        for _ in 0..3 {
+            assert!(
+                stream.next().await.is_none(),
+                "a drained stream stays drained"
+            );
+        }
+        assert_eq!(
+            stream.choice.clone().into_iter().collect::<Vec<_>>(),
+            drained,
+            "re-polling must not re-run the destructive finish()"
+        );
+
+        // The conversion into a unary response still carries the content.
+        let response: CompletionResponse = stream.into();
+        assert_eq!(response.choice.into_iter().collect::<Vec<_>>(), drained);
+    }
+
+    /// #2258 H8: a `ProviderError` whose text happens to contain "aborted"
+    /// is an error like any other. It used to be swallowed as clean EOF,
+    /// discarding both the failure and the content streamed before it.
+    ///
+    /// Not inducible from a recorded provider turn: no in-tree provider emits
+    /// this sentinel, and real cancellation arrives as `Ready(None)` through
+    /// `Abortable` rather than as an error item.
+    #[tokio::test]
+    async fn a_provider_error_mentioning_aborted_reaches_the_consumer() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("partial".to_string()));
+                yield Err(CompletionError::ProviderError(
+                    "upstream aborted the request".to_string(),
+                ));
+            }),
+        );
+
+        let mut errors = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Err(err) = item {
+                errors.push(err.to_string());
+            }
+        }
+        assert_eq!(errors.len(), 1, "the error must not be swallowed");
+        assert!(errors[0].contains("upstream aborted the request"));
+
+        // The content streamed before the failure is still aggregated.
+        assert_eq!(
+            stream.choice.first(),
+            AssistantContent::text("partial".to_string())
+        );
+        assert!(stream.response.is_none());
+    }
+
+    /// #2258 F1, at the stream boundary: a wire that fragments a call's input
+    /// and then restates it as one complete block must publish the completed
+    /// call under the id its deltas already published — the correlation
+    /// contract on [`StreamedAssistantContent::ToolCall`]. Pre-fix the
+    /// completed call carried a fresh id no delta ever mentioned.
+    ///
+    /// Not inducible from a recorded provider turn: no in-tree wire mixes the
+    /// two shapes for one call, though out-of-tree adapters can.
+    #[tokio::test]
+    async fn a_full_tool_call_correlates_with_the_deltas_of_the_same_id() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ToolCallDelta {
+                    id: PartId::wire("tc1"),
+                    content: ToolCallDeltaContent::Name("add".to_string()),
+                });
+                yield Ok(RawStreamingChoice::ToolCallDelta {
+                    id: PartId::wire("tc1"),
+                    content: ToolCallDeltaContent::Delta("{\"x\":1}".to_string()),
+                });
+                yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
+                    "tc1".to_string(),
+                    "add".to_string(),
+                    serde_json::json!({"x": 1}),
+                )));
+                yield Ok(RawStreamingChoice::ToolInputEnd(ToolInputEnd::new(
+                    "tc1",
+                    UnparseableToolInput::Drop,
+                )));
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(1)));
+            }),
+        );
+
+        let mut delta_ids = Vec::new();
+        let mut completed_ids = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::ToolCallDelta {
+                    internal_call_id, ..
+                } => delta_ids.push(internal_call_id),
+                StreamedAssistantContent::ToolCall {
+                    internal_call_id, ..
+                } => completed_ids.push(internal_call_id),
+                _ => {}
+            }
+        }
+
+        assert_eq!(delta_ids.len(), 2);
+        assert_eq!(delta_ids[0], delta_ids[1], "one call, one internal id");
+        assert_eq!(
+            completed_ids,
+            vec![delta_ids[0].clone()],
+            "the completed call must carry the id its deltas published"
+        );
+
+        // The trailing end event for a call a full block already delivered
+        // finalizes nothing: exactly one tool call reaches the choice.
+        let tool_calls: Vec<&ToolCall> = stream
+            .choice
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::ToolCall(tool_call) => Some(tool_call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tool_calls.len(), 1, "got {:?}", stream.choice);
+    }
+
     #[tokio::test]
     async fn test_stream_aggregates_reasoning_content() {
         let mut stream = create_reasoning_stream();
@@ -1375,11 +1747,10 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: Some("rs_1".to_string()),
+                    id: PartId::wire("rs_1"),
                     reasoning: "partial ".to_string(),
                 });
-                yield Ok(RawStreamingChoice::Reasoning {
-                    id: Some("rs_1".to_string()),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: PartId::wire("rs_1"),
                     content: ReasoningContent::Text {
                         text: "the complete chain".to_string(),
                         signature: Some("sig_1".to_string()),
@@ -1417,11 +1788,10 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: Some("rs_1".to_string()),
+                    id: PartId::wire("rs_1"),
                     reasoning: "first item deltas".to_string(),
                 });
-                yield Ok(RawStreamingChoice::Reasoning {
-                    id: Some("rs_2".to_string()),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: PartId::wire("rs_2"),
                     content: ReasoningContent::Text {
                         text: "a different item".to_string(),
                         signature: None,
@@ -1454,7 +1824,7 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: Some("rs_1".to_string()),
+                    id: PartId::wire("rs_1"),
                     reasoning: "partial ".to_string(),
                 });
                 yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
@@ -1462,8 +1832,7 @@ mod tests {
                     "probe".to_string(),
                     serde_json::json!({}),
                 )));
-                yield Ok(RawStreamingChoice::Reasoning {
-                    id: Some("rs_1".to_string()),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: PartId::wire("rs_1"),
                     content: ReasoningContent::Text {
                         text: "the full block".to_string(),
                         signature: None,
@@ -1500,18 +1869,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn id_less_full_reasoning_block_does_not_clobber_an_id_carrying_item() {
-        // An ID on only one side means the identity is unknown: the block is
-        // appended rather than overwriting an unrelated item's deltas.
+    async fn minted_id_full_reasoning_block_does_not_clobber_a_wire_id_item() {
+        // Ids are mandatory on the grammar; a provider-minted id (the
+        // "reasoning-0"-style boundary fallback) is a distinct identity from
+        // a wire-supplied one, so the block appends rather than overwriting
+        // an unrelated item's deltas.
         let mut stream = StreamingCompletionResponse::stream(
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: Some("rs_1".to_string()),
+                    id: PartId::wire("rs_1"),
                     reasoning: "identified deltas".to_string(),
                 });
                 yield Ok(RawStreamingChoice::Reasoning {
-                    id: None,
+                    id: PartId::wire("reasoning-0"),
                     content: ReasoningContent::Text {
                         text: "anonymous block".to_string(),
                         signature: None,
@@ -1531,7 +1902,7 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(reasoning_ids, vec![Some("rs_1"), None]);
+        assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("reasoning-0")]);
     }
 
     #[tokio::test]
@@ -1680,7 +2051,12 @@ pub enum StreamedAssistantContent {
     },
     /// Partial tool call data emitted by the assistant.
     ToolCallDelta {
-        /// Provider-supplied tool call ID.
+        /// Rendered part identity: the provider's tool-call id verbatim, or
+        /// — when the wire supplied none — the namespaced rendering of a
+        /// rig-minted identity (`rig:tool:0`). **Uniqueness scope: one
+        /// stream.** Minted renderings restart on every turn of a multi-turn
+        /// run, so never key across streams by this field; correlate with
+        /// `internal_call_id`, which is unique per call across the run.
         id: String,
         /// Rig-generated unique identifier for this tool call.
         internal_call_id: String,
@@ -1689,15 +2065,24 @@ pub enum StreamedAssistantContent {
     /// Complete reasoning block emitted by the assistant.
     ///
     /// Supersedes any prior [`StreamedAssistantContent::ReasoningDelta`]s
-    /// carrying the same reasoning `id` (or with no `id` on either side):
-    /// render it as a *replacement* for the accumulated delta text, not an
-    /// addition. The aggregated [`StreamingCompletionResponse::choice`]
-    /// already applies this replacement.
+    /// carrying the same reasoning `id`: render it as a *replacement* for
+    /// the accumulated delta text, not an addition. The aggregated
+    /// [`StreamingCompletionResponse::choice`] already applies this
+    /// replacement.
     Reasoning(Reasoning),
     /// Partial reasoning text emitted by the assistant.
     ReasoningDelta {
-        /// Provider-supplied reasoning block ID, when present.
-        id: Option<String>,
+        /// Rendered part identity: the wire's reasoning item id verbatim, or
+        /// — when the wire supplied none — the namespaced rendering of a
+        /// rig-minted identity (`rig:reasoning:0`). Always populated, so
+        /// consumers can correlate deltas with the full
+        /// [`StreamedAssistantContent::Reasoning`] block that supersedes
+        /// them. **Uniqueness scope: one stream.** Minted renderings restart
+        /// on every turn of a multi-turn run — a consumer keying by this id
+        /// across a run would merge distinct turns; the aggregated
+        /// [`Reasoning::id`] carries only wire-genuine identities (`None`
+        /// for minted streams).
+        id: String,
         /// Partial reasoning text.
         reasoning: String,
     },

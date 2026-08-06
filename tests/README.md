@@ -10,6 +10,36 @@ Rig's root crate uses integration test targets under `tests/`.
 
 Most provider tests are ignored live tests unless they have been migrated to cassettes.
 
+## Testing Doctrine
+
+**Recorded provider traffic is the default evidence; provider APIs are the
+ultimate judge of whether the code is correct.** Every genuine pre-existing
+streaming bug found during the #2258 refactor was found by live recording,
+not by the synthetic corpus — a corpus written alongside an abstraction
+encodes the team's model of the wire and structurally cannot falsify it.
+
+- **Cassette-first.** New provider behavior gets a cassette-backed test.
+  A unit test still earns its place — for internal behavior that is
+  definitory rather than observed — but each unit test of provider-facing
+  behavior should say (in its doc comment) why it isn't, or can't be, a
+  cassette test. Recording needs API keys and isn't trivial; writing the
+  cassette test a contributor couldn't is core maintainer work.
+- **Record first, derive the assertion, review the derivation.** Prefer
+  assertions generated from a replay of real traffic and then reviewed over
+  assertions hand-authored from documentation — hand-authored expectations
+  encode the same model of the wire the code under test does.
+- **Assert on the request boundary too.** A frozen cassette replays the
+  provider's *responses*; it cannot by itself catch outbound drift in the
+  requests the live code builds. The cassette harness matches each request
+  body against the recorded one, so a request-shape regression fails as a
+  404 mock miss — treat that as a first-class assertion, and when a change
+  intentionally alters a request, update the recorded body deliberately and
+  say so. (This is exactly what caught fabricated ids reaching request
+  serializers in #2258.)
+- **Never weaken a cassette to make it pass.** Update assertions and
+  recordings to the new intended behavior, or re-record; a scrubbed value
+  must redact real data, never invent data that was not recorded.
+
 ## Core Tests
 
 Run provider-agnostic core tests with:

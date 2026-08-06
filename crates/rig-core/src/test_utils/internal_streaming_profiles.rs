@@ -1,11 +1,12 @@
 //! Crate-internal streaming profile helpers for compatible provider tests.
 
 use crate::{
-    completion::{CompletionError, Usage},
+    completion::Usage,
     providers::internal::openai_chat_completions_compatible::{
         CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
         CompatibleTerminal, CompatibleToolCallChunk,
     },
+    providers::internal::wire::WireEvent,
     streaming::StreamFinal,
 };
 
@@ -17,6 +18,15 @@ fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
         response_model: None,
         choice: Some(choice),
         usage: None,
+    }
+}
+
+/// Classify an unmatched mock frame as `Unknown`, mirroring how the real
+/// classifier treats unrecognizable JSON (driver policy: warn + skip).
+fn unknown_frame<U, D>(data: &str) -> WireEvent<CompatibleChunk<U, D>> {
+    WireEvent::Unknown {
+        event_type: data.to_owned(),
+        value: serde_json::Value::String(data.to_owned()),
     }
 }
 
@@ -47,7 +57,7 @@ fn tool_call_chunk(
     }
 }
 
-/// Streaming profile that yields a pending tool call and then errors.
+/// Streaming profile that yields a pending tool call and then a corrupt frame.
 #[derive(Clone, Copy)]
 pub(crate) struct ErrorAfterPendingToolCallProfile;
 
@@ -56,19 +66,16 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
     type Detail = ();
     type FinalResponse = StreamFinal;
 
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         match data {
-            "start" => Ok(Some(test_chunk(tool_call_choice(
+            "start" => WireEvent::Known(test_chunk(tool_call_choice(
                 CompatibleFinishReason::Absent,
                 vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
-            )))),
-            "bad" => Err(CompletionError::ProviderError(
-                "normalize failed".to_owned(),
+            ))),
+            "bad" => WireEvent::Corrupt(<serde_json::Error as serde::de::Error>::custom(
+                "normalize failed",
             )),
-            _ => Ok(None),
+            _ => unknown_frame(data),
         }
     }
 
@@ -90,10 +97,7 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
     type Detail = ();
     type FinalResponse = StreamFinal;
 
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         let choice = match data {
             "first_start" => Some(tool_call_choice(
                 CompatibleFinishReason::Absent,
@@ -136,7 +140,10 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
             _ => None,
         };
 
-        Ok(choice.map(test_chunk))
+        match choice {
+            Some(choice) => WireEvent::Known(test_chunk(choice)),
+            None => unknown_frame(data),
+        }
     }
 
     fn build_final_response(
@@ -161,10 +168,7 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
     type Detail = ();
     type FinalResponse = StreamFinal;
 
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         let choice = match data {
             "start" => Some(tool_call_choice(
                 CompatibleFinishReason::Absent,
@@ -182,7 +186,10 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
             _ => None,
         };
 
-        Ok(choice.map(test_chunk))
+        match choice {
+            Some(choice) => WireEvent::Known(test_chunk(choice)),
+            None => unknown_frame(data),
+        }
     }
 
     fn build_final_response(

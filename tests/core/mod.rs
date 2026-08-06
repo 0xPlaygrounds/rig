@@ -4,5 +4,8 @@ mod loaders;
 mod prompt_response_messages;
 mod provider_layout;
 mod reasoning_stream_stats;
+mod streaming_conformance;
+mod streaming_conformance_registry;
+mod streaming_conformance_suites;
 #[cfg(feature = "derive")]
 mod tool_macro;

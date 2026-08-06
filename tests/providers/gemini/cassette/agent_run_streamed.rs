@@ -433,7 +433,11 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                                 assert!(expect_abandon, "only the first turn should abandon");
                                 let tool_result = skipped_tool_result
                                     .expect("a skipped call surfaces its synthetic tool result");
-                                assert!(!tool_result.id.is_empty());
+                                // Gemini's wire supplies no tool-call id, and
+                                // rig no longer fabricates one from the tool
+                                // name — the synthetic result carries the
+                                // absent (empty) id, like the call it answers.
+                                assert!(tool_result.id.is_empty());
                                 abandoned = true;
                             }
                             TurnEnd::Finished => {

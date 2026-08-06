@@ -3253,9 +3253,9 @@ mod migrated_tests {
 
     fn streaming_cited_text_then_final_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::text_start(Some(citation_metadata())),
+            MockStreamEvent::text_start("block-0", Some(citation_metadata())),
             MockStreamEvent::text("cited "),
-            MockStreamEvent::text_start(None),
+            MockStreamEvent::text_start("block-1", None),
             MockStreamEvent::text("answer"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]])
@@ -3264,7 +3264,7 @@ mod migrated_tests {
     fn streaming_cited_text_then_tool_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::text_start(Some(citation_metadata())),
+                MockStreamEvent::text_start("block-0", Some(citation_metadata())),
                 MockStreamEvent::text("I need a tool. "),
                 MockStreamEvent::tool_call(
                     "tool_call_1",
@@ -4359,13 +4359,9 @@ mod migrated_tests {
     async fn invalid_name_delta_retry_preserves_streaming_reasoning_history() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::reasoning_delta(Some("rs_1"), "delta reason"),
-                MockStreamEvent::tool_call_arguments_delta(
-                    "tool_call_1",
-                    "internal_1",
-                    r#"{"x":2,"y":3}"#,
-                ),
-                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::reasoning_delta_with_id("rs_1", "delta reason"),
+                MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -4455,19 +4451,15 @@ mod migrated_tests {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::text("checking "),
-                MockStreamEvent::reasoning_delta(Some("rs_1"), "diagnostic reason"),
+                MockStreamEvent::reasoning_delta_with_id("rs_1", "diagnostic reason"),
                 MockStreamEvent::tool_call(
                     "tool_call_0",
                     "add",
                     serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_0"),
-                MockStreamEvent::tool_call_arguments_delta(
-                    "tool_call_1",
-                    "internal_1",
-                    r#"{"x":2,"y":3}"#,
-                ),
-                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -4588,19 +4580,15 @@ mod migrated_tests {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::text("checking "),
-                MockStreamEvent::reasoning_delta(Some("rs_1"), "diagnostic reason"),
+                MockStreamEvent::reasoning_delta_with_id("rs_1", "diagnostic reason"),
                 MockStreamEvent::tool_call(
                     "tool_call_0",
                     "add",
                     serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_0"),
-                MockStreamEvent::tool_call_arguments_delta(
-                    "tool_call_1",
-                    "internal_1",
-                    r#"{"x":2,"y":3}"#,
-                ),
-                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -4632,7 +4620,13 @@ mod migrated_tests {
         let context = &contexts[0];
         assert_eq!(context.tool_name, "default_api");
         assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
-        assert_eq!(context.internal_call_id.as_deref(), Some("internal_1"));
+        assert!(
+            context
+                .internal_call_id
+                .as_deref()
+                .is_some_and(|id| !id.is_empty()),
+            "internal call id is minted by the shared accumulator"
+        );
         assert!(context.is_streaming);
         assert!(history_contains_text(&context.chat_history, "checking "));
         assert!(
@@ -4657,12 +4651,8 @@ mod migrated_tests {
         let model = MockCompletionModel::from_stream_turns([
             vec![
                 MockStreamEvent::text("stale "),
-                MockStreamEvent::tool_call_arguments_delta(
-                    "tool_call_1",
-                    "internal_1",
-                    r#"{"x":2,"y":3}"#,
-                ),
-                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -4712,12 +4702,8 @@ mod migrated_tests {
                     serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_0"),
-                MockStreamEvent::tool_call_arguments_delta(
-                    "tool_call_1",
-                    "internal_1",
-                    r#"{"x":2,"y":3}"#,
-                ),
-                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -4752,7 +4738,10 @@ mod migrated_tests {
                     tool_result,
                     internal_call_id,
                 })) => {
-                    assert_eq!(internal_call_id, "internal_1");
+                    assert!(
+                        !internal_call_id.is_empty(),
+                        "internal call id is minted by the shared accumulator"
+                    );
                     skipped_tool_result = Some(tool_result);
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -4891,12 +4880,8 @@ mod migrated_tests {
                     serde_json::json!({"x": 1, "y": 2}),
                 )
                 .with_call_id("call_0"),
-                MockStreamEvent::tool_call_arguments_delta(
-                    "tool_call_1",
-                    "internal_1",
-                    r#"{"x":2,"y":3}"#,
-                ),
-                MockStreamEvent::tool_call_name_delta("tool_call_1", "internal_1", "default_api"),
+                MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
+                MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -5435,8 +5420,8 @@ mod migrated_tests {
     async fn tool_choice_none_rejects_streaming_tool_call_name_delta_before_hook_or_emit() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
-                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
+                MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -5499,8 +5484,8 @@ mod migrated_tests {
     async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "default_api"),
-                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
+                MockStreamEvent::tool_call_name_delta("tool_1", "default_api"),
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -5560,8 +5545,8 @@ mod migrated_tests {
     async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
-                MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "default_api"),
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
+                MockStreamEvent::tool_call_name_delta("tool_1", "default_api"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -5620,9 +5605,9 @@ mod migrated_tests {
     #[tokio::test]
     async fn tool_call_args_delta_before_valid_name_buffers_then_emits_in_safe_order() {
         let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
-            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
-            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "1}"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
         let hook = RecordingToolCallDeltaHook::default();
@@ -5651,24 +5636,32 @@ mod migrated_tests {
             }
         }
 
+        // The internal call id is minted by the shared accumulator when the
+        // call opens; assert correlation (one stable id across every delta)
+        // rather than a scripted literal.
+        let internal = stream_deltas
+            .first()
+            .map(|delta| delta.1.clone())
+            .expect("at least one delta");
+        assert!(!internal.is_empty());
         assert_eq!(
             hook.observed(),
             vec![
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     Some("add".to_string()),
                     String::new()
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     None,
                     "{\"x\":".to_string()
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     None,
                     "1}".to_string()
                 ),
@@ -5679,17 +5672,17 @@ mod migrated_tests {
             vec![
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Name("add".to_string())
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Delta("1}".to_string())
                 ),
             ]
@@ -5700,7 +5693,7 @@ mod migrated_tests {
     async fn tool_call_args_delta_without_name_errors_at_stream_end() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -5753,7 +5746,6 @@ mod migrated_tests {
                     "{message}"
                 );
                 assert!(message.contains("tool_1"), "{message}");
-                assert!(message.contains("internal_1"), "{message}");
             }
             other => panic!("expected completion response error, got {other:?}"),
         }
@@ -5764,8 +5756,8 @@ mod migrated_tests {
     async fn tool_choice_none_buffers_args_then_rejects_name_without_emit() {
         let model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":1}"),
-                MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
+                MockStreamEvent::tool_call_name_delta("tool_1", "add"),
                 MockStreamEvent::final_response_with_total_tokens(4),
             ],
             vec![
@@ -5827,9 +5819,9 @@ mod migrated_tests {
     #[tokio::test]
     async fn stream_prompt_emits_tool_call_deltas_without_hook() {
         let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
-            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
-            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "1}"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
         let agent = AgentBuilder::new(model).tool(MockAddTool).build();
@@ -5854,22 +5846,30 @@ mod migrated_tests {
             }
         }
 
+        // The internal call id is minted by the shared accumulator when the
+        // call opens; assert correlation (one stable id across every delta)
+        // rather than a scripted literal.
+        let internal = deltas
+            .first()
+            .map(|delta| delta.1.clone())
+            .expect("at least one delta");
+        assert!(!internal.is_empty());
         assert_eq!(
             deltas,
             vec![
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Name("add".to_string())
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Delta("1}".to_string())
                 ),
             ]
@@ -5879,9 +5879,9 @@ mod migrated_tests {
     #[tokio::test]
     async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
         let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
-            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
-            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "1}"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "1}"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
         let hook = RecordingToolCallDeltaHook::default();
@@ -5910,24 +5910,32 @@ mod migrated_tests {
             }
         }
 
+        // The internal call id is minted by the shared accumulator when the
+        // call opens; assert correlation (one stable id across every delta)
+        // rather than a scripted literal.
+        let internal = stream_deltas
+            .first()
+            .map(|delta| delta.1.clone())
+            .expect("at least one delta");
+        assert!(!internal.is_empty());
         assert_eq!(
             hook.observed(),
             vec![
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     Some("add".to_string()),
                     String::new()
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     None,
                     "{\"x\":".to_string()
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     None,
                     "1}".to_string()
                 ),
@@ -5938,17 +5946,17 @@ mod migrated_tests {
             vec![
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Name("add".to_string())
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
                 (
                     "tool_1".to_string(),
-                    "internal_1".to_string(),
+                    internal.clone(),
                     ToolCallDeltaContent::Delta("1}".to_string())
                 ),
             ]
@@ -5958,8 +5966,8 @@ mod migrated_tests {
     #[tokio::test]
     async fn stream_prompt_tool_call_deltas_hook_termination_prevents_delta_emit() {
         let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tool_1", "internal_1", "add"),
-            MockStreamEvent::tool_call_arguments_delta("tool_1", "internal_1", "{\"x\":"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":"),
             MockStreamEvent::final_response_with_total_tokens(3),
         ]]);
         let hook = TerminatingToolCallDeltaHook::default();
@@ -5991,15 +5999,15 @@ mod migrated_tests {
             }
         }
 
-        assert_eq!(
-            hook.observed(),
-            vec![(
-                "tool_1".to_string(),
-                "internal_1".to_string(),
-                Some("add".to_string()),
-                String::new()
-            )]
-        );
+        // Internal ids are minted by the shared accumulator; assert presence,
+        // not a scripted literal.
+        let observed = hook.observed();
+        assert_eq!(observed.len(), 1);
+        let first = observed.first().expect("one observed delta");
+        assert_eq!(first.0, "tool_1");
+        assert!(!first.1.is_empty());
+        assert_eq!(first.2, Some("add".to_string()));
+        assert_eq!(first.3, String::new());
         assert!(!saw_delta);
         assert!(!saw_final_response);
         assert!(

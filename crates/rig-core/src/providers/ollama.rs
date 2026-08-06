@@ -46,6 +46,7 @@ use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::providers::internal;
 use crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::{
@@ -396,9 +397,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         }
         // Process tool_calls following Ollama's chat response definition.
         // Each ToolCall has an id, a type, and a function field.
+        // Ollama's wire carries no tool-call id; the durable id stays absent
+        // (empty) rather than fabricating one from the tool name — a
+        // name-as-id would collide two same-tool calls in one turn. Replay
+        // drops the id anyway (Ollama tool messages carry no id).
         for tc in tool_calls.iter() {
             assistant_contents.push(completion::AssistantContent::tool_call(
-                tc.function.name.clone(),
+                "",
                 tc.function.name.clone(),
                 tc.function.arguments.clone(),
             ));
@@ -470,6 +475,10 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         // Build up the order of messages.
         let mut partial_history = vec![];
         partial_history.extend(chat_history);
+        // Ollama's tool messages carry the *function name*; resolve it from
+        // each result's paired assistant call (rig no longer smuggles the
+        // name through the tool-call id).
+        crate::providers::internal::resolve_tool_result_names(&mut partial_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -819,11 +828,12 @@ where
             ));
         }
 
-        let stream = stream! {
-            let span = tracing::Span::current();
+        // Transport layer: HTTP byte chunks → NDJSON-line `WireFrame`s. Byte
+        // splitting and framing only — classification and policy live
+        // downstream.
+        let transport = stream! {
             let mut line_buf = NdjsonBuffer::new();
-
-            'outer: while let Some(chunk) = byte_stream.next().await {
+            while let Some(chunk) = byte_stream.next().await {
                 let bytes = match chunk {
                     Ok(bytes) => bytes,
                     Err(e) => {
@@ -834,63 +844,116 @@ where
 
                 for line in line_buf.decode(&bytes) {
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
-
-                    let response: CompletionResponse = match serde_json::from_slice(&line) {
-                        Ok(response) => response,
-                        Err(err) => {
-                            // Surface the malformed line but keep consuming:
-                            // a later genuine `done: true` record can still
-                            // complete the stream with its terminal record.
-                            yield Err(CompletionError::JsonError(err));
-                            continue;
-                        }
-                    };
-
-                    if response.done {
-                        span.record("gen_ai.response.model", &response.model);
-                    }
-
-                    if let Message::Assistant { content, thinking, tool_calls, .. } = response.message {
-                        if let Some(thinking_content) = thinking && !thinking_content.is_empty() {
-                            yield Ok(RawStreamingChoice::ReasoningDelta {
-                                id: None,
-                                reasoning: thinking_content,
-                            });
-                        }
-
-                        if !content.is_empty() {
-                            yield Ok(RawStreamingChoice::Message(content));
-                        }
-
-                        for tool_call in tool_calls {
-                            yield Ok(RawStreamingChoice::ToolCall(
-                                crate::streaming::RawStreamingToolCall::new(tool_call.function.name.clone(), tool_call.function.name, tool_call.function.arguments)
-                            ));
-                        }
-                    }
-
-                    if response.done {
-                        span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
-                        span.record("gen_ai.usage.output_tokens", response.eval_count);
-                        yield Ok(RawStreamingChoice::FinalResponse(
-                            StreamingCompletionResponse {
-                                model: response.model,
-                                total_duration: response.total_duration,
-                                load_duration: response.load_duration,
-                                prompt_eval_count: response.prompt_eval_count,
-                                prompt_eval_duration: response.prompt_eval_duration,
-                                eval_count: response.eval_count,
-                                eval_duration: response.eval_duration,
-                                done_reason: response.done_reason,
-                            }
-                        ));
-                        break 'outer;
-                    }
+                    yield Ok(internal::adapter::WireFrame::Bytes(line));
                 }
             }
-        }.instrument(span);
+        };
 
-        Ok(Box::pin(stream))
+        let stream: RawStreamingResult<StreamingCompletionResponse> =
+            Box::pin(internal::adapter::run_wire_stream(transport, OllamaAdapter).instrument(span));
+
+        Ok(stream)
+    }
+}
+
+/// The Ollama NDJSON wire as a
+/// [`WireAdapter`](internal::adapter::WireAdapter).
+///
+/// Stateless: every line is a whole response record. Frame-triage policy
+/// (warn-skip `Unknown` — unpopulated on this undiscriminated wire — and
+/// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
+/// still complete the stream) lives in
+/// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
+struct OllamaAdapter;
+
+impl internal::adapter::WireAdapter for OllamaAdapter {
+    type Frame = internal::adapter::WireFrame;
+    type Event = CompletionResponse;
+    type Response = StreamingCompletionResponse;
+
+    fn classify(&self, frame: Self::Frame) -> internal::wire::WireEvent<CompletionResponse> {
+        match frame {
+            internal::adapter::WireFrame::Bytes(line) => {
+                internal::wire::classify_untyped_line(&line)
+            }
+            internal::adapter::WireFrame::Text(line) => {
+                internal::wire::classify_untyped_line(line.as_bytes())
+            }
+        }
+    }
+
+    fn interpret(
+        &mut self,
+        response: CompletionResponse,
+        out: &mut internal::adapter::AdapterOutput<Self::Response>,
+    ) {
+        let span = tracing::Span::current();
+        if response.done {
+            span.record("gen_ai.response.model", &response.model);
+        }
+
+        if let Message::Assistant {
+            content,
+            thinking,
+            tool_calls,
+            ..
+        } = response.message
+        {
+            if let Some(thinking_content) = thinking
+                && !thinking_content.is_empty()
+            {
+                out.push(Ok(RawStreamingChoice::ReasoningDelta {
+                    // `thinking` deltas carry no wire id and never
+                    // interleave; per-stream constant minted identity.
+                    id: crate::streaming::PartId::Minted {
+                        kind: crate::streaming::MintKind::Reasoning,
+                        index: 0,
+                    },
+                    reasoning: thinking_content,
+                }));
+            }
+
+            if !content.is_empty() {
+                out.push(Ok(RawStreamingChoice::Message(content)));
+            }
+
+            // No wire id: each call keys the stream by a distinct minted
+            // identity and its durable id stays absent — never the tool
+            // name, which would collide two same-tool calls in one turn.
+            for (index, tool_call) in tool_calls.into_iter().enumerate() {
+                out.push(Ok(RawStreamingChoice::ToolCall(
+                    crate::streaming::RawStreamingToolCall::new(
+                        crate::streaming::MintKind::Tool.for_wire_index(index as u64),
+                        tool_call.function.name,
+                        tool_call.function.arguments,
+                    ),
+                )));
+            }
+        }
+
+        // Only a `done: true` record counts as the provider completing the
+        // turn; the driver stops consuming after the terminal record.
+        if response.done {
+            span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
+            span.record("gen_ai.usage.output_tokens", response.eval_count);
+            out.push(Ok(RawStreamingChoice::FinalResponse(
+                StreamingCompletionResponse {
+                    model: response.model,
+                    total_duration: response.total_duration,
+                    load_duration: response.load_duration,
+                    prompt_eval_count: response.prompt_eval_count,
+                    prompt_eval_duration: response.prompt_eval_duration,
+                    eval_count: response.eval_count,
+                    eval_duration: response.eval_duration,
+                    done_reason: response.done_reason,
+                },
+            )));
+        }
+    }
+
+    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput<Self::Response>) {
+        // EOF without a `done: true` record is truncation: no terminal record
+        // may be synthesized.
     }
 }
 
@@ -1244,10 +1307,11 @@ impl From<Message> for crate::completion::Message {
                 assistant_contents.push(crate::completion::message::AssistantContent::Text(
                     Text::new(content),
                 ));
+                // Same absent-id policy as the unary decode above.
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
-                            tc.function.name.clone(),
+                            "",
                             tc.function.name,
                             tc.function.arguments,
                         ),
@@ -1378,6 +1442,31 @@ pub struct ImageUrl {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    // The NDJSON wire has no discriminator, so its classify has exactly two
+    // outcomes: the response shape or corrupt.
+    #[test]
+    fn classify_ndjson_line_is_known_or_corrupt() {
+        let line = json!({
+            "model": "llama3.2",
+            "created_at": "2024-01-01T00:00:00Z",
+            "message": {"role": "assistant", "content": "hi"},
+            "done": false,
+        })
+        .to_string();
+        assert!(matches!(
+            internal::wire::classify_untyped_line::<CompletionResponse>(line.as_bytes()),
+            internal::wire::WireEvent::Known(_)
+        ));
+        assert!(matches!(
+            internal::wire::classify_untyped_line::<CompletionResponse>(b"{not json"),
+            internal::wire::WireEvent::Corrupt(_)
+        ));
+        assert!(matches!(
+            internal::wire::classify_untyped_line::<CompletionResponse>(br#"{"done": 42}"#),
+            internal::wire::WireEvent::Corrupt(_)
+        ));
+    }
 
     #[test]
     fn splits_legacy_reasoning_with_or_without_opening_marker() {

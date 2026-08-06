@@ -235,7 +235,8 @@ pub(crate) fn create_request_body(
 
     let mut full_history = Vec::new();
     full_history.extend(chat_history);
-    let (history_system, full_history) = split_system_messages_from_history(full_history);
+    let (history_system, mut full_history) = split_system_messages_from_history(full_history);
+    crate::providers::internal::resolve_tool_result_names(&mut full_history);
 
     let mut additional_params_payload = additional_params
         .take()

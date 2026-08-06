@@ -7,9 +7,10 @@
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
+use crate::providers::internal::adapter::{TriagedFrame, triage_frame};
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, RawChoiceAccumulator, ResponseChunk, ResponseChunkKind, ResponsesStreamOptions,
-    StreamingCompletionChunk, completion_response_from_raw_choices,
+    StreamingCompletionChunk, classify_responses_frame, completion_response_from_raw_choices,
 };
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::{SinkExt, StreamExt};
@@ -163,6 +164,10 @@ pub enum ResponsesWebSocketEvent {
     Error(ResponsesWebSocketErrorEvent),
     /// An optional `response.done` event emitted by OpenAI over WebSockets.
     Done(ResponsesWebSocketDoneEvent),
+    /// An unrecognized event's raw payload — warned and skipped on the
+    /// semantic path, forwarded verbatim so the streaming surface can carry
+    /// it on the `RawStreamingChoice::Unknown` passthrough channel.
+    Unknown(serde_json::Value),
 }
 
 impl ResponsesWebSocketEvent {
@@ -172,7 +177,7 @@ impl ResponsesWebSocketEvent {
         match self {
             Self::Response(chunk) => Some(&chunk.response.id),
             Self::Done(done) => done.response_id(),
-            Self::Item(_) | Self::Error(_) => None,
+            Self::Item(_) | Self::Error(_) | Self::Unknown(_) => None,
         }
     }
 
@@ -187,7 +192,7 @@ impl ResponsesWebSocketEvent {
                     | ResponseChunkKind::ResponseIncomplete
             ),
             Self::Error(_) | Self::Done(_) => true,
-            Self::Item(_) => false,
+            Self::Item(_) | Self::Unknown(_) => false,
         }
     }
 }
@@ -515,6 +520,28 @@ where
     /// Drives the shared [`RawChoiceAccumulator`] over the websocket events —
     /// the same decode state machine the SSE path uses, fed by a different
     /// transport — so streamed deltas survive alongside the terminal body.
+    ///
+    /// **A failed turn discards the choices collected so far, deliberately
+    /// (#2258 G3).** Every error exit below — the `?` on `next_event()`, the
+    /// `response.done`-without-a-body branch, and the provider `error` event —
+    /// returns `Err` and drops `accumulator`/`raw_choices` with whatever text,
+    /// reasoning and tool calls had already arrived.
+    ///
+    /// That is not a divergence from the SSE side: the right comparison is the
+    /// *buffered* SSE path, `run_wire_buffered`, which likewise fails the whole
+    /// operation on the first `Err` rather than returning partial content plus
+    /// an error. Only the *live* SSE surface can do better, and only because it
+    /// is a `Stream`: it yields the partial items first and the `Err` as a
+    /// later element. This session exposes a unary surface —
+    /// [`completion()`](Self::wait_for_completed_response) /
+    /// `raw_completion()` return one `Result<CompletionResponse, _>` — and a
+    /// unary return type cannot express partial-content-plus-error without
+    /// inventing a second channel. Keeping the failed turn's fragments would
+    /// mean returning a `CompletionResponse` that never completed, which is the
+    /// exact fabrication the terminal-record rules exist to prevent.
+    ///
+    /// If a caller needs the partial content of a failed websocket turn, the
+    /// fix is a streaming websocket surface, not a partial unary response.
     async fn wait_for_terminal_response(
         &mut self,
     ) -> Result<(CompletionResponse, Vec<WebSocketRawChoice>), CompletionError> {
@@ -560,6 +587,12 @@ where
                         accumulator.decode_item_chunk(chunk, ResponsesStreamOptions::strict()),
                     );
                 }
+                ResponsesWebSocketEvent::Unknown(value) => {
+                    // Semantic skip, raw passthrough: the accumulator never
+                    // sees the frame, but the streaming surface still yields
+                    // it verbatim.
+                    raw_choices.push(crate::streaming::RawStreamingChoice::Unknown(value));
+                }
             }
         }
     }
@@ -603,7 +636,8 @@ where
                 self.pending_done_response_id = None;
                 self.in_flight = false;
             }
-            ResponsesWebSocketEvent::Item(_) => {}
+            // An unknown frame carries no turn-lifecycle signal.
+            ResponsesWebSocketEvent::Item(_) | ResponsesWebSocketEvent::Unknown(_) => {}
         }
     }
 
@@ -736,31 +770,13 @@ fn provider_error_from_event(error: ResponsesWebSocketErrorEvent) -> CompletionE
     )
 }
 
-fn is_known_streaming_event(kind: &str) -> bool {
-    matches!(
-        kind,
-        "response.created"
-            | "response.in_progress"
-            | "response.completed"
-            | "response.failed"
-            | "response.incomplete"
-            | "response.output_item.added"
-            | "response.output_item.done"
-            | "response.content_part.added"
-            | "response.content_part.done"
-            | "response.output_text.delta"
-            | "response.output_text.done"
-            | "response.refusal.delta"
-            | "response.refusal.done"
-            | "response.function_call_arguments.delta"
-            | "response.function_call_arguments.done"
-            | "response.reasoning_summary_part.added"
-            | "response.reasoning_summary_part.done"
-            | "response.reasoning_summary_text.delta"
-            | "response.reasoning_summary_text.done"
-    )
-}
-
+/// Parses one websocket JSON payload into a server event.
+///
+/// Only the websocket-only envelope types (`error`, `response.done`) are
+/// dispatched here; every other frame classifies through the same
+/// [`classify_responses_frame`] interpreter the SSE paths use, so the modeled
+/// Responses event set — and its strict decode policy — is stated once for the
+/// wire family rather than duplicated per transport.
 fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, CompletionError> {
     #[derive(Deserialize)]
     struct EventType {
@@ -776,20 +792,20 @@ fn parse_server_event(payload: &str) -> Result<Option<ResponsesWebSocketEvent>, 
         "response.done" => serde_json::from_str(payload)
             .map(|d| Some(ResponsesWebSocketEvent::Done(d)))
             .map_err(CompletionError::from),
-        kind if is_known_streaming_event(kind) => match serde_json::from_str(payload)? {
-            StreamingCompletionChunk::Response(response) => {
-                Ok(Some(ResponsesWebSocketEvent::Response(response)))
-            }
-            StreamingCompletionChunk::Delta(item) => Ok(Some(ResponsesWebSocketEvent::Item(item))),
-        },
-        _ => {
-            tracing::debug!(
-                target: "rig::completions",
-                event_type = event_type.kind.as_str(),
-                "Skipping unrecognised OpenAI websocket event"
-            );
-            Ok(None)
-        }
+        // Shared per-frame triage (`Unknown` is warned and forwarded raw for
+        // the passthrough channel, `Corrupt` fails the turn — this surface
+        // has no stream to carry `Err` items).
+        _ => Ok(Some(
+            match triage_frame(classify_responses_frame(payload))? {
+                TriagedFrame::Event(StreamingCompletionChunk::Response(response)) => {
+                    ResponsesWebSocketEvent::Response(response)
+                }
+                TriagedFrame::Event(StreamingCompletionChunk::Delta(item)) => {
+                    ResponsesWebSocketEvent::Item(item)
+                }
+                TriagedFrame::Unknown(value) => ResponsesWebSocketEvent::Unknown(value),
+            },
+        )),
     }
 }
 
@@ -1201,6 +1217,111 @@ mod tests {
             normalized.choice.first(),
             crate::completion::AssistantContent::Text(text) if text.text == "partial"
         ));
+
+        server.await.expect("server task should finish");
+    }
+
+    /// #2258 P2: the websocket session shares `decode_item_chunk`, so text for
+    /// one message item interleaved with reasoning must aggregate as one text
+    /// part here too.
+    #[tokio::test]
+    async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let address = listener.local_addr().expect("listener should have address");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("server should accept");
+            let mut socket = accept_async(stream)
+                .await
+                .expect("server should upgrade websocket");
+
+            socket
+                .next()
+                .await
+                .expect("request should exist")
+                .expect("request should be valid");
+
+            let events = [
+                json!({
+                    "type": "response.output_text.delta",
+                    "content_index": 0,
+                    "delta": "hello ",
+                    "item_id": "msg_1",
+                    "logprobs": [],
+                    "output_index": 0,
+                    "sequence_number": 1
+                }),
+                json!({
+                    "type": "response.reasoning_summary_text.delta",
+                    "delta": "because",
+                    "item_id": "rs_2",
+                    "output_index": 1,
+                    "summary_index": 0,
+                    "sequence_number": 2
+                }),
+                json!({
+                    "type": "response.output_text.delta",
+                    "content_index": 0,
+                    "delta": "world",
+                    "item_id": "msg_1",
+                    "logprobs": [],
+                    "output_index": 0,
+                    "sequence_number": 3
+                }),
+                json!({
+                    "type": "response.completed",
+                    "sequence_number": 4,
+                    "response": serde_json::to_value(sample_response(ResponseStatus::Completed))
+                        .expect("response should serialize"),
+                }),
+            ];
+            for event in events {
+                socket
+                    .send(Message::text(event.to_string()))
+                    .await
+                    .expect("event should send");
+            }
+        });
+
+        let base_url = format!("http://{address}/v1");
+        let client = crate::providers::openai::Client::builder()
+            .api_key("test-key")
+            .base_url(&base_url)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-4o");
+        let mut session = client
+            .responses_websocket("gpt-4o")
+            .await
+            .expect("session should connect");
+
+        let normalized = session
+            .completion(model.completion_request("hello").build())
+            .await
+            .expect("interleaved turn should normalize");
+
+        let texts: Vec<_> = normalized
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            ["hello world"],
+            "same-item text must aggregate as one part around the reasoning"
+        );
+        assert!(
+            normalized.choice.iter().any(|content| matches!(
+                content,
+                crate::completion::AssistantContent::Reasoning(_)
+            )),
+            "the interleaved reasoning must survive"
+        );
 
         server.await.expect("server task should finish");
     }
@@ -2143,7 +2264,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_event_type_is_skipped() {
+    fn unknown_event_type_is_forwarded_raw() {
         let payload = json!({
             "type": "response.some_future_event",
             "data": "hello"
@@ -2151,7 +2272,12 @@ mod tests {
 
         let result =
             parse_server_event(&payload.to_string()).expect("unknown event should not error");
-        assert!(result.is_none(), "unknown event should be skipped");
+        // Semantically skipped, but carried verbatim so the streaming surface
+        // can yield it on the `RawStreamingChoice::Unknown` passthrough.
+        match result {
+            Some(ResponsesWebSocketEvent::Unknown(value)) => assert_eq!(value, payload),
+            other => panic!("expected the raw Unknown passthrough event, got {other:?}"),
+        }
     }
 
     #[test]
@@ -2440,5 +2566,235 @@ mod tests {
         );
 
         server.await.expect("server task should finish");
+    }
+
+    /// Re-wraps SSE conformance fixture frames as websocket text payloads: the
+    /// wire events are identical across the two transports, only the framing
+    /// (`data:` lines vs. one JSON message per ws frame) differs.
+    fn ws_messages_from_sse_frames<'a>(
+        frames: impl IntoIterator<Item = &'a bytes::Bytes>,
+    ) -> Vec<String> {
+        frames
+            .into_iter()
+            .flat_map(|frame| {
+                std::str::from_utf8(frame)
+                    .expect("SSE fixture frames should be UTF-8")
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("data:").map(str::trim))
+                    .filter(|data| !data.is_empty() && *data != "[DONE]")
+                    .map(ToOwned::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    fn spawn_ws_server_with_messages(
+        listener: TcpListener,
+        messages: Vec<String>,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("server should accept");
+            let mut socket = accept_async(stream)
+                .await
+                .expect("server should upgrade websocket");
+
+            let request = socket
+                .next()
+                .await
+                .expect("request should exist")
+                .expect("request should be valid");
+            let payload = request.into_text().expect("request should be text");
+            assert!(
+                payload.contains("\"type\":\"response.create\""),
+                "expected response.create payload, got {payload}"
+            );
+
+            for message in messages {
+                socket
+                    .send(Message::text(message))
+                    .await
+                    .expect("event should send");
+            }
+        })
+    }
+
+    /// Websocket conformance invocation over the shared Responses fixture:
+    /// the SAME frames the SSE conformance suite streams, re-wrapped as ws
+    /// messages, must yield the same content through the shared
+    /// `classify_responses_frame` + accumulator interpretation — text and
+    /// tool-call deltas delivered, the unknown event skipped, usage and finish
+    /// reason taken from the terminal.
+    #[tokio::test]
+    async fn websocket_conformance_replays_sse_fixture_frames() {
+        let fixture =
+            crate::test_utils::streaming_conformance::fixtures::openai_responses::fixture();
+        // The shared fixture scripts byte frames; re-wrap them as ws messages.
+        let byte_frame = |frame: &crate::test_utils::streaming_conformance::WireInput| {
+            frame
+                .as_bytes()
+                .cloned()
+                .expect("the Responses fixture scripts byte frames")
+        };
+        let mut frames: Vec<bytes::Bytes> = Vec::new();
+        frames.extend(fixture.text_frames.iter().map(byte_frame));
+        frames.extend(fixture.tool_call_frames.iter().map(byte_frame));
+        frames.extend(fixture.unknown_event_frame.iter().map(byte_frame));
+        frames.extend(fixture.terminal_frames.iter().map(byte_frame));
+        let messages = ws_messages_from_sse_frames(frames.iter());
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let address = listener.local_addr().expect("listener should have address");
+        let server = spawn_ws_server_with_messages(listener, messages);
+
+        let base_url = format!("http://{address}/v1");
+        let client = crate::providers::openai::Client::builder()
+            .api_key("test-key")
+            .base_url(&base_url)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-4o");
+        let mut session = client
+            .responses_websocket("gpt-4o")
+            .await
+            .expect("session should connect");
+
+        let normalized = session
+            .completion(model.completion_request("hello").build())
+            .await
+            .expect("fixture turn should normalize");
+
+        let texts: Vec<&str> = normalized
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, fixture.expected_texts);
+        let tool_names: Vec<&str> = normalized
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::ToolCall(call) => {
+                    Some(call.function.name.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tool_names, vec![fixture.expected_tool_name]);
+        assert_eq!(normalized.usage.total_tokens, fixture.expected_usage_total);
+        // The fixture's expected finish reason applies to its text-only
+        // sequences; this combined replay carries a tool call, which the
+        // shared normalization maps to `ToolCalls` on every transport.
+        assert_eq!(
+            normalized.finish_reason(),
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+
+        server.await.expect("server task should finish");
+    }
+
+    /// Regression for the diverged websocket dispatch: `response.reasoning_text.delta`
+    /// was absent from the ws-private known-event list and silently dropped,
+    /// while the SSE path delivered it. Routed through the shared classifier,
+    /// the reasoning delta must survive to the normalized response.
+    #[tokio::test]
+    async fn reasoning_text_delta_arrives_over_websocket() {
+        let messages = vec![
+            json!({
+                "type": "response.reasoning_text.delta",
+                "item_id": "rs_1",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "thinking hard",
+            })
+            .to_string(),
+            json!({
+                "type": "response.output_text.delta",
+                "content_index": 0,
+                "delta": "answer",
+                "item_id": "msg_1",
+                "output_index": 0,
+                "sequence_number": 2,
+            })
+            .to_string(),
+            json!({
+                "type": "response.completed",
+                "sequence_number": 3,
+                "response": serde_json::to_value(sample_response(ResponseStatus::Completed))
+                    .expect("response should serialize"),
+            })
+            .to_string(),
+        ];
+
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("listener should bind");
+        let address = listener.local_addr().expect("listener should have address");
+        let server = spawn_ws_server_with_messages(listener, messages);
+
+        let base_url = format!("http://{address}/v1");
+        let client = crate::providers::openai::Client::builder()
+            .api_key("test-key")
+            .base_url(&base_url)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-4o");
+        let mut session = client
+            .responses_websocket("gpt-4o")
+            .await
+            .expect("session should connect");
+
+        let normalized = session
+            .completion(model.completion_request("hello").build())
+            .await
+            .expect("turn with reasoning deltas should normalize");
+
+        assert!(
+            normalized.choice.iter().any(|content| matches!(
+                content,
+                crate::completion::AssistantContent::Reasoning(reasoning)
+                    if reasoning.content.iter().any(|block| matches!(
+                        block,
+                        crate::message::ReasoningContent::Text { text, .. }
+                            if text.contains("thinking hard")
+                    ))
+            )),
+            "reasoning delta should survive over websocket, got {:?}",
+            normalized.choice
+        );
+        assert!(
+            normalized.choice.iter().any(|content| matches!(
+                content,
+                crate::completion::AssistantContent::Text(text) if text.text == "answer"
+            )),
+            "text delta should survive alongside reasoning, got {:?}",
+            normalized.choice
+        );
+
+        server.await.expect("server task should finish");
+    }
+
+    #[test]
+    fn parse_reasoning_text_delta_event_is_item() {
+        let payload = json!({
+            "type": "response.reasoning_text.delta",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": "thinking",
+        });
+
+        let event = parse_server_event(&payload.to_string())
+            .expect("reasoning delta should parse")
+            .expect("reasoning delta should not be skipped");
+
+        assert!(matches!(event, ResponsesWebSocketEvent::Item(_)));
+        assert!(!event.is_terminal());
     }
 }

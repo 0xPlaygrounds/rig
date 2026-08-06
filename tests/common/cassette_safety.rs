@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use syn::visit::{self, Visit};
-use syn::{Expr, ExprCall, ExprLit, Lit};
+use syn::{Expr, ExprCall, ExprLit, ItemFn, Lit};
 
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cassettes");
 
@@ -313,6 +313,17 @@ struct CassetteScenarioVisitor<'a> {
 }
 
 impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
+    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
+        // A `#[ignore]`d test documents that its cassette isn't recorded yet
+        // (e.g. no provider API key available to record with); don't require
+        // a file for scenarios it references.
+        if node.attrs.iter().any(|attr| attr.path().is_ident("ignore")) {
+            return;
+        }
+
+        visit::visit_item_fn(self, node);
+    }
+
     fn visit_expr_call(&mut self, node: &'ast ExprCall) {
         if let Some(wrapper_name) = cassette_wrapper_name(node)
             && self.wrapper_names.contains(&wrapper_name.as_str())

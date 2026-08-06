@@ -12,6 +12,7 @@ mod cassette {
     mod embeddings;
     mod errors;
     mod streaming;
+    mod streaming_grammar;
     mod streaming_tools;
     mod tools;
 }

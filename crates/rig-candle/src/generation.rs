@@ -636,9 +636,22 @@ pub(crate) fn stream_generate(
                 emit(RawStreamingChoice::ToolCall(raw))?;
             }
             AssistantContent::Reasoning(reasoning) => {
+                // Same constant-id full-block shape as the gemini adapter's
+                // signed-thinking chunk (#2258 F1), but benign here: candle
+                // never emits `ReasoningDelta`, so a full block under the
+                // shared id has no delta buffer to replace-and-discard.
                 for content in reasoning.content {
                     emit(RawStreamingChoice::Reasoning {
-                        id: reasoning.id.clone(),
+                        // Local generation has no wire id; fall back to a
+                        // per-stream constant minted identity.
+                        id: reasoning
+                            .id
+                            .clone()
+                            .map(rig_core::streaming::PartId::wire)
+                            .unwrap_or(rig_core::streaming::PartId::Minted {
+                                kind: rig_core::streaming::MintKind::Reasoning,
+                                index: 0,
+                            }),
                         content,
                     })?;
                 }

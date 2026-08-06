@@ -1,0 +1,227 @@
+//! Workspace registry for the wire-conformance corpus: every streaming wire
+//! family in
+//! [`WIRE_FAMILIES`](rig_core::test_utils::streaming_conformance::WIRE_FAMILIES)
+//! must carry a `streaming_conformance_suite!` invocation, or CI fails (#2258,
+//! Part III (c) — permanently closes the fixtures-covered-a-subset gap).
+//!
+//! **Compile-linked, not text-scanned (#2258 F3).** The first version of this
+//! registry read the workspace's `.rs` files and matched the `provider: "…"`
+//! literal of each `streaming_conformance_suite!` invocation. That made the
+//! guard a paper claim: commenting a suite out, or wrapping it in a
+//! `#[cfg(any())]`, removed its 11 tests and still matched the text, so the
+//! registry reported the family covered. It now reads `SUITE_FAMILIES` consts
+//! built out of the `WIRE_FAMILY` const the macro emits *inside each expanded
+//! suite*, so a disabled suite is a compile error in the file that hosts it.
+//!
+//! The remaining seam is binary boundaries: four suites compile into test
+//! binaries other than this one and therefore cannot be linked here. They are
+//! enumerated in [`OUT_OF_BINARY_FAMILIES`], each naming the CI step that
+//! actually executes it — and
+//! [`out_of_binary_families_name_a_live_ci_step`] checks those annotations
+//! against `.github/workflows/ci.yaml` so they cannot decay into the same kind
+//! of paper claim.
+
+use std::collections::BTreeSet;
+use std::path::Path;
+
+use rig_core::test_utils::streaming_conformance::WIRE_FAMILIES;
+
+use super::{streaming_conformance, streaming_conformance_suites};
+
+/// A wire family whose suite compiles into a different test binary than this
+/// registry, so it cannot be compile-linked here.
+struct OutOfBinaryFamily {
+    /// The `WIRE_FAMILIES` entry.
+    family: &'static str,
+    /// Where the suite is invoked (workspace-relative).
+    suite_file: &'static str,
+    /// `name:` of the `.github/workflows/ci.yaml` step that runs it.
+    ci_step: &'static str,
+    /// The nextest predicate inside that step which selects the binary, when
+    /// the step uses one.
+    ci_selector: Option<&'static str>,
+    /// `-p` package the step must compile for this suite to exist at all,
+    /// when the suite lives outside the facade package.
+    ci_package: Option<&'static str>,
+    /// Why it cannot live in the `core` binary.
+    reason: &'static str,
+}
+
+/// `name:` of the CI step added for the out-of-facade suites and the structural
+/// guards (#2258 N1). Before it existed, `cargo nextest run --all-features`
+/// resolved the workspace's *default members* — just the `rig` facade — so
+/// every binary below was compiled by nobody and ran nowhere.
+const GUARD_CI_STEP: &str = "Test out-of-facade streaming conformance and structural guards";
+
+/// `name:` of the workspace-wide run, which does cover targets inside `rig`.
+const FACADE_CI_STEP: &str = "Test with latest nextest release";
+
+const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
+    OutOfBinaryFamily {
+        family: "openai_responses_websocket",
+        suite_file: "crates/rig-core/tests/streaming_conformance_websocket.rs",
+        ci_step: GUARD_CI_STEP,
+        ci_selector: Some("binary(streaming_conformance_websocket)"),
+        ci_package: Some("rig-core"),
+        reason: "drives a real `ResponsesWebSocketSession` against a local ws server, so it \
+                 needs rig-core's `websocket` + `test-utils` features rather than the facade's",
+    },
+    OutOfBinaryFamily {
+        family: "candle",
+        suite_file: "crates/rig-candle/tests/streaming_conformance.rs",
+        ci_step: GUARD_CI_STEP,
+        ci_selector: Some("binary(streaming_conformance)"),
+        ci_package: Some("rig-candle"),
+        reason: "rig-candle is a separate package; the facade does not depend on it",
+    },
+    OutOfBinaryFamily {
+        family: "gemini_grpc",
+        suite_file: "crates/rig-gemini-grpc/tests/streaming_conformance.rs",
+        ci_step: GUARD_CI_STEP,
+        ci_selector: Some("binary(streaming_conformance)"),
+        ci_package: Some("rig-gemini-grpc"),
+        reason: "rig-gemini-grpc is a separate package; the facade does not depend on it",
+    },
+    OutOfBinaryFamily {
+        family: "bedrock",
+        suite_file: "tests/providers/bedrock/streaming_conformance.rs",
+        ci_step: FACADE_CI_STEP,
+        ci_selector: None,
+        ci_package: None,
+        reason: "lives in the `rig` facade but behind the `bedrock` feature, so it compiles into \
+                 the `bedrock` test binary rather than `core`; the workspace `--all-features` run \
+                 executes it",
+    },
+];
+
+/// Union of the suite families compiled into THIS binary.
+fn linked_families() -> BTreeSet<&'static str> {
+    streaming_conformance_suites::SUITE_FAMILIES
+        .iter()
+        .chain(streaming_conformance::SUITE_FAMILIES)
+        .copied()
+        .collect()
+}
+
+#[test]
+fn all_wire_families_have_conformance_suites() {
+    let mut covered = linked_families();
+    covered.extend(OUT_OF_BINARY_FAMILIES.iter().map(|entry| entry.family));
+
+    let missing: Vec<&&str> = WIRE_FAMILIES
+        .iter()
+        .filter(|family| !covered.contains(**family))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "wire families without a streaming_conformance_suite! invocation: {missing:?} \
+         (covered: {covered:?})",
+    );
+
+    // A family name outside the canonical list is a typo or an unregistered
+    // family; both must be fixed at the WIRE_FAMILIES source of truth.
+    let unknown: Vec<&&str> = covered
+        .iter()
+        .filter(|family| !WIRE_FAMILIES.contains(*family))
+        .collect();
+    assert!(
+        unknown.is_empty(),
+        "suite invocations name families missing from WIRE_FAMILIES: {unknown:?}",
+    );
+}
+
+/// An `OUT_OF_BINARY_FAMILIES` entry is an admission that this binary cannot
+/// prove the suite exists, so each one must be a genuine gap: a family that IS
+/// linkable here belongs in a `SUITE_FAMILIES` const instead, where the
+/// compiler enforces it.
+#[test]
+fn out_of_binary_families_are_genuinely_out_of_binary() {
+    let linked = linked_families();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for entry in OUT_OF_BINARY_FAMILIES {
+        assert!(
+            !linked.contains(entry.family),
+            "{} is compile-linked into this binary — drop it from OUT_OF_BINARY_FAMILIES",
+            entry.family,
+        );
+        assert!(
+            root.join(entry.suite_file).is_file(),
+            "OUT_OF_BINARY_FAMILIES points {} at {}, which does not exist",
+            entry.family,
+            entry.suite_file,
+        );
+        assert!(
+            !entry.reason.is_empty(),
+            "{} needs a reason it cannot live in the core binary",
+            entry.family,
+        );
+    }
+}
+
+/// The "which CI step runs it" annotations above are the only thing standing
+/// between an out-of-binary suite and never executing again (#2258 N1: three of
+/// these four families were compiled by no CI step at all while this registry
+/// reported them covered). Check them against the workflow.
+#[test]
+fn out_of_binary_families_name_a_live_ci_step() {
+    let workflow = Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/ci.yaml");
+    let text = std::fs::read_to_string(&workflow).expect("ci.yaml should be readable");
+
+    // Structural, not substring: step names are matched only on
+    // non-comment lines whose content (after the `- ` list marker) begins
+    // with `name:` — a `# - name: …` comment cannot satisfy the check — and
+    // each step's selector/`-p` package list is looked for INSIDE that
+    // step's own block (up to the next step), not anywhere in the file.
+    let step_block = |step: &str| -> Option<String> {
+        let lines: Vec<&str> = text.lines().collect();
+        let is_step_line = |line: &str| {
+            let trimmed = line.trim_start();
+            !trimmed.starts_with('#')
+                && trimmed
+                    .strip_prefix("- ")
+                    .is_some_and(|rest| rest.trim_start().starts_with("name:"))
+        };
+        let start = lines.iter().position(|line| {
+            is_step_line(line)
+                && line
+                    .split_once("name:")
+                    .is_some_and(|(_, value)| value.trim() == step)
+        })?;
+        let block: Vec<&str> = lines[start + 1..]
+            .iter()
+            .take_while(|line| !is_step_line(line))
+            .copied()
+            .collect();
+        Some(block.join("\n"))
+    };
+
+    for entry in OUT_OF_BINARY_FAMILIES {
+        let block = step_block(entry.ci_step).unwrap_or_else(|| {
+            panic!(
+                "{} is annotated with CI step {:?}, which no longer exists in {} \
+                 (comments do not count)",
+                entry.family,
+                entry.ci_step,
+                workflow.display(),
+            )
+        });
+        if let Some(selector) = entry.ci_selector {
+            assert!(
+                block.contains(selector),
+                "{}'s CI step no longer carries the {:?} predicate INSIDE its own block, so its \
+                 binary is selected by nothing — a nextest filter matching zero tests still \
+                 exits 0",
+                entry.family,
+                selector,
+            );
+        }
+        if let Some(package) = entry.ci_package {
+            assert!(
+                block.contains(&format!("-p {package}")),
+                "{}'s CI step no longer compiles `-p {package}`, so its suite binary does not \
+                 build there at all",
+                entry.family,
+            );
+        }
+    }
+}

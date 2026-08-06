@@ -415,7 +415,7 @@ impl StreamedTurnAssembler {
                 // so they are kept aside until the turn ends.
                 self.pending_reasoning_delta_text.push_str(reasoning);
                 if self.pending_reasoning_delta_id.is_none() {
-                    self.pending_reasoning_delta_id = id.clone();
+                    self.pending_reasoning_delta_id = Some(id.clone());
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
@@ -814,7 +814,7 @@ mod tests {
     fn finish_orders_reasoning_text_then_tool_calls() {
         let mut asm = assembler();
         asm.ingest(&StreamedAssistantContent::ReasoningDelta {
-            id: Some("rs_1".to_string()),
+            id: "rs_1".to_string(),
             reasoning: "think".to_string(),
         })
         .expect("ingest should succeed");

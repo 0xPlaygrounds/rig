@@ -28,6 +28,7 @@ pub enum MockStreamEvent {
     Text(String),
     /// Start a new text content block with optional provider metadata.
     TextStart {
+        id: String,
         additional_params: Option<serde_json::Value>,
     },
     /// Provider-specific metadata for the current text content block.
@@ -42,19 +43,15 @@ pub enum MockStreamEvent {
     /// Tool call delta event.
     ToolCallDelta {
         id: String,
-        internal_call_id: String,
         content: ToolCallDeltaContent,
     },
     /// Complete reasoning event.
     Reasoning {
-        id: Option<String>,
+        id: String,
         content: ReasoningContent,
     },
     /// Reasoning delta event.
-    ReasoningDelta {
-        id: Option<String>,
-        reasoning: String,
-    },
+    ReasoningDelta { id: String, reasoning: String },
     /// Provider-assigned message ID.
     MessageId(String),
     /// Provider-native output item that Rig does not model.
@@ -67,15 +64,44 @@ pub enum MockStreamEvent {
 
 use super::completion::MockError;
 
+/// Fixture-syntax decoding of a part identity.
+///
+/// Corpus fixtures are plain data and spell identities as strings; the
+/// legacy minted renderings (`reasoning-0`, `block-3`, `output-1`, `tool-2`,
+/// `text-0`) are the fixture syntax for a [`PartId::Minted`] of that kind
+/// and index, and anything else is a wire id. This is *fixture encoding*,
+/// not provenance recovery: production code never parses an id string —
+/// provenance travels in [`PartId`] itself.
+fn fixture_part_id(id: String) -> crate::streaming::PartId {
+    use crate::streaming::MintKind;
+    for (namespace, kind) in [
+        ("reasoning-", MintKind::Reasoning),
+        ("block-", MintKind::Block),
+        ("output-", MintKind::Output),
+        ("tool-", MintKind::Tool),
+        ("text-", MintKind::Text),
+    ] {
+        if let Some(rest) = id.strip_prefix(namespace)
+            && let Ok(index) = rest.parse::<u64>()
+        {
+            return kind.for_wire_index(index);
+        }
+    }
+    crate::streaming::PartId::wire(id)
+}
+
 impl MockStreamEvent {
     /// Create a text chunk.
     pub fn text(text: impl Into<String>) -> Self {
         Self::Text(text.into())
     }
 
-    /// Start a new text content block.
-    pub fn text_start(additional_params: Option<serde_json::Value>) -> Self {
-        Self::TextStart { additional_params }
+    /// Start a new text content block identified by `id`.
+    pub fn text_start(id: impl Into<String>, additional_params: Option<serde_json::Value>) -> Self {
+        Self::TextStart {
+            id: id.into(),
+            additional_params,
+        }
     }
 
     /// Add provider-specific metadata to the current text content block.
@@ -106,35 +132,27 @@ impl MockStreamEvent {
     }
 
     /// Create a tool call name delta.
-    pub fn tool_call_name_delta(
-        id: impl Into<String>,
-        internal_call_id: impl Into<String>,
-        name: impl Into<String>,
-    ) -> Self {
+    pub fn tool_call_name_delta(id: impl Into<String>, name: impl Into<String>) -> Self {
         Self::ToolCallDelta {
             id: id.into(),
-            internal_call_id: internal_call_id.into(),
             content: ToolCallDeltaContent::Name(name.into()),
         }
     }
 
     /// Create a tool call arguments delta.
-    pub fn tool_call_arguments_delta(
-        id: impl Into<String>,
-        internal_call_id: impl Into<String>,
-        arguments: impl Into<String>,
-    ) -> Self {
+    pub fn tool_call_arguments_delta(id: impl Into<String>, arguments: impl Into<String>) -> Self {
         Self::ToolCallDelta {
             id: id.into(),
-            internal_call_id: internal_call_id.into(),
             content: ToolCallDeltaContent::Delta(arguments.into()),
         }
     }
 
-    /// Create a complete reasoning event.
+    /// Create a complete reasoning event with the default mock id
+    /// (`"reasoning-0"`). Use [`Self::with_reasoning_id`] for tests that
+    /// need distinct reasoning items.
     pub fn reasoning(reasoning: impl Into<String>) -> Self {
         Self::Reasoning {
-            id: None,
+            id: "reasoning-0".to_string(),
             content: ReasoningContent::Text {
                 text: reasoning.into(),
                 signature: None,
@@ -145,15 +163,22 @@ impl MockStreamEvent {
     /// Attach a provider-specific reasoning ID to a complete reasoning event.
     pub fn with_reasoning_id(mut self, reasoning_id: impl Into<String>) -> Self {
         if let Self::Reasoning { id, .. } = &mut self {
-            *id = Some(reasoning_id.into());
+            *id = reasoning_id.into();
         }
         self
     }
 
-    /// Create a reasoning delta event.
-    pub fn reasoning_delta(id: Option<impl Into<String>>, reasoning: impl Into<String>) -> Self {
+    /// Create a reasoning delta event with the default mock id
+    /// (`"reasoning-0"`). Use [`Self::reasoning_delta_with_id`] for tests
+    /// that need distinct reasoning items.
+    pub fn reasoning_delta(reasoning: impl Into<String>) -> Self {
+        Self::reasoning_delta_with_id("reasoning-0", reasoning)
+    }
+
+    /// Create a reasoning delta event with an explicit reasoning item id.
+    pub fn reasoning_delta_with_id(id: impl Into<String>, reasoning: impl Into<String>) -> Self {
         Self::ReasoningDelta {
-            id: id.map(Into::into),
+            id: id.into(),
             reasoning: reasoning.into(),
         }
     }
@@ -191,9 +216,13 @@ impl MockStreamEvent {
     pub(crate) fn into_raw_choice(self) -> Result<RawStreamingChoice, CompletionError> {
         match self {
             Self::Text(text) => Ok(RawStreamingChoice::Message(text)),
-            Self::TextStart { additional_params } => {
-                Ok(RawStreamingChoice::TextStart { additional_params })
-            }
+            Self::TextStart {
+                id,
+                additional_params,
+            } => Ok(RawStreamingChoice::TextStart {
+                id: fixture_part_id(id),
+                additional_params,
+            }),
             Self::TextAdditionalParams(additional_params) => {
                 Ok(RawStreamingChoice::TextAdditionalParams(additional_params))
             }
@@ -203,25 +232,24 @@ impl MockStreamEvent {
                 arguments,
                 call_id,
             } => {
-                let mut tool_call = RawStreamingToolCall::new(id, name, arguments);
+                let mut tool_call = RawStreamingToolCall::new(fixture_part_id(id), name, arguments);
                 if let Some(call_id) = call_id {
                     tool_call = tool_call.with_call_id(call_id);
                 }
                 Ok(RawStreamingChoice::ToolCall(tool_call))
             }
-            Self::ToolCallDelta {
-                id,
-                internal_call_id,
-                content,
-            } => Ok(RawStreamingChoice::ToolCallDelta {
-                id,
-                internal_call_id,
+            Self::ToolCallDelta { id, content } => Ok(RawStreamingChoice::ToolCallDelta {
+                id: fixture_part_id(id),
                 content,
             }),
-            Self::Reasoning { id, content } => Ok(RawStreamingChoice::Reasoning { id, content }),
-            Self::ReasoningDelta { id, reasoning } => {
-                Ok(RawStreamingChoice::ReasoningDelta { id, reasoning })
-            }
+            Self::Reasoning { id, content } => Ok(RawStreamingChoice::Reasoning {
+                id: fixture_part_id(id),
+                content,
+            }),
+            Self::ReasoningDelta { id, reasoning } => Ok(RawStreamingChoice::ReasoningDelta {
+                id: fixture_part_id(id),
+                reasoning,
+            }),
             Self::MessageId(id) => Ok(RawStreamingChoice::MessageId(id)),
             Self::Unknown(value) => Ok(RawStreamingChoice::Unknown(value)),
             Self::FinalResponse(response) => Ok(RawStreamingChoice::FinalResponse(response)),
