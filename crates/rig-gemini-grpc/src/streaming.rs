@@ -123,11 +123,31 @@ impl WireAdapter for GrpcAdapter {
                                     }));
                                 }
                             } else {
+                                // A trailing non-thought part can carry the
+                                // signature of the already-closed thought
+                                // block; it is lifecycle metadata, not new
+                                // reasoning, and must not be dropped
+                                // (#2258 B4).
+                                if let Some(signature) = encode_signature(&part.thought_signature) {
+                                    out.push(Ok(
+                                        streaming::RawStreamingChoice::ReasoningSignature {
+                                            id: rig_core::streaming::PartId::Minted {
+                                                kind: rig_core::streaming::MintKind::Reasoning,
+                                                index: 0,
+                                            },
+                                            signature,
+                                        },
+                                    ));
+                                }
                                 // Non-thought output closes the open
                                 // reasoning item (accumulator minted-id
                                 // boundary).
                                 self.thought_buffer.clear();
-                                out.push(Ok(streaming::RawStreamingChoice::Message(text.clone())));
+                                if !text.is_empty() {
+                                    out.push(Ok(streaming::RawStreamingChoice::Message(
+                                        text.clone(),
+                                    )));
+                                }
                             }
                         }
                         Some(proto::part::Data::FunctionCall(function_call)) => {
@@ -140,10 +160,15 @@ impl WireAdapter for GrpcAdapter {
                                 .map(prost_struct_to_json)
                                 .unwrap_or_else(|| Value::Object(Map::new()));
 
+                            // The wire's id when present; never the tool
+                            // name — a name-as-id would collide two calls to
+                            // the same tool in one turn. An id-less call
+                            // keys the stream by a minted identity and its
+                            // durable id stays absent.
                             let tool_id = if function_call.id.is_empty() {
-                                function_call.name.clone()
+                                rig_core::streaming::MintKind::Tool.for_wire_index(0)
                             } else {
-                                function_call.id.clone()
+                                rig_core::streaming::PartId::wire(function_call.id.clone())
                             };
 
                             let mut tool_call = streaming::RawStreamingToolCall::new(

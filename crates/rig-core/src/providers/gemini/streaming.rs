@@ -376,10 +376,23 @@ impl GeminiRestAdapter {
                 // for the signature. Dropping it costs the replay-required
                 // provider state Gemini validates (`MISSING_THOUGHT_SIGNATURE`).
                 if let Some(signature) = thought_signature {
-                    out.push(Ok(shared_parts::signed_reasoning(
-                        std::mem::take(&mut self.thought_buffer),
-                        signature,
-                    )));
+                    if self.thought_buffer.is_empty() {
+                        // The thought block already closed (interleaved
+                        // answer text cleared the buffer): the signature is
+                        // lifecycle metadata for that block. Attaching it as
+                        // a full block here would sign an *empty* sibling
+                        // appended after the answer and leave the real
+                        // chain-of-thought replaying unsigned (#2258 B4).
+                        out.push(Ok(streaming::RawStreamingChoice::ReasoningSignature {
+                            id: shared_parts::REASONING_ID,
+                            signature,
+                        }));
+                    } else {
+                        out.push(Ok(shared_parts::signed_reasoning(
+                            std::mem::take(&mut self.thought_buffer),
+                            signature,
+                        )));
+                    }
                 }
                 if !text.is_empty() {
                     // Non-thought output closes the open reasoning item

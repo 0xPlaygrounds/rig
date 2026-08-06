@@ -443,6 +443,22 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// Complete reasoning content block.
         content: ReasoningContent,
     },
+    /// A provider signature for an already-streamed reasoning item.
+    ///
+    /// Some wires deliver the signature *after* the block it signs closed —
+    /// Gemini attaches `thoughtSignature` to a trailing part that follows
+    /// the answer text. This is lifecycle metadata for the existing block,
+    /// not new reasoning: the accumulator attaches it to the item's latest
+    /// part instead of opening an empty sibling that would leave the real
+    /// chain-of-thought replaying unsigned. Not yielded to public stream
+    /// consumers; the signature reaches them on the aggregated choice.
+    ReasoningSignature {
+        /// Identity of the reasoning item the signature belongs to.
+        id: PartId,
+        /// The provider signature, verbatim.
+        signature: String,
+    },
+
     /// A reasoning partial/delta
     ReasoningDelta {
         /// Identity of the reasoning item this delta extends. Same contract
@@ -495,6 +511,9 @@ impl<R> RawStreamingChoice<R> {
             Self::Reasoning { id, content } => RawStreamingChoice::Reasoning { id, content },
             Self::ReasoningDelta { id, reasoning } => {
                 RawStreamingChoice::ReasoningDelta { id, reasoning }
+            }
+            Self::ReasoningSignature { id, signature } => {
+                RawStreamingChoice::ReasoningSignature { id, signature }
             }
             Self::FinalResponse(response) => RawStreamingChoice::FinalResponse(map(response)?),
             Self::MessageId(id) => RawStreamingChoice::MessageId(id),
@@ -610,6 +629,19 @@ impl From<RawStreamingToolCall> for ToolCall {
 /// semantic channel maps this stream's terminal record exactly once. There
 /// is deliberately no `raw_response` field on the normalized types; the
 /// typed channels are the contract.
+///
+/// Precedent, read carefully: openai-agents also splits raw from semantic,
+/// but the load-bearing part of its design is elsewhere — its semantic
+/// layer never reads a delta at all (it acts only on whole done items and
+/// the completed response), and delta aggregation is confined to the
+/// per-provider adapter, which *synthesizes* a canonical terminal event so
+/// the shared layer sees one grammar. rig cannot fully adopt that shape
+/// (openai-agents' canonical grammar is one vendor's schema; rig normalizes
+/// 14 wire families through one accumulator), and centralizing the
+/// accumulator is what forces cross-provider identity — hence the
+/// provenance-typed [`PartId`]. What rig does copy from that precedent is
+/// the raw channel itself and provenance-as-data rather than naming
+/// convention.
 pub type RawStreamingResult<R> =
     Pin<Box<dyn Stream<Item = Result<RawStreamingChoice<R>, CompletionError>> + Send>>;
 
@@ -737,12 +769,17 @@ impl StreamingCompletionResponse {
 
     /// Cancel the stream and immediately drop the provider's inner stream.
     /// Cancellation is surfaced as normal stream termination.
+    ///
+    /// Cancelling also resumes a paused stream: a consumer parked on the
+    /// pause channel must observe the termination instead of waiting forever
+    /// for a resume that will never affect a stream that no longer exists.
     pub fn cancel(&mut self) {
         self.abort_handle.abort();
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         let empty: StreamingResult = Box::pin(futures::stream::poll_fn(|_| Poll::Ready(None)));
         self.inner = Abortable::new(empty, abort_registration);
         self.abort_handle = abort_handle;
+        self.pause_control.resume();
     }
 
     /// Pause stream polling.
@@ -918,6 +955,10 @@ impl Stream for StreamingCompletionResponse {
                         };
                         stream.parts.reasoning_full(&id, reasoning.clone());
                         Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
+                    }
+                    RawStreamingChoice::ReasoningSignature { id, signature } => {
+                        stream.parts.reasoning_signature(&id, signature);
+                        continue;
                     }
                     RawStreamingChoice::ReasoningDelta { id, reasoning } => {
                         stream.parts.reasoning_delta(&id, &reasoning);
@@ -1516,6 +1557,24 @@ mod tests {
         ));
     }
 
+    /// #2258 B7: cancelling a paused stream must not deadlock — the consumer
+    /// parked on the pause channel observes the termination because
+    /// `cancel()` also resumes.
+    #[tokio::test]
+    async fn cancelling_a_paused_stream_terminates_instead_of_deadlocking() {
+        let mut stream = create_mock_stream();
+        stream.pause();
+        stream.cancel();
+        assert!(
+            !stream.is_paused(),
+            "cancel must lift the pause so the termination is observable"
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "a cancelled stream terminates"
+        );
+    }
+
     /// #2258 H6: `finish()` is destructive, so a second poll of a drained
     /// stream must not run it again — pre-fix the re-poll replaced a fully
     /// aggregated `choice` with the empty-text fallback.
@@ -1992,7 +2051,12 @@ pub enum StreamedAssistantContent {
     },
     /// Partial tool call data emitted by the assistant.
     ToolCallDelta {
-        /// Provider-supplied tool call ID.
+        /// Rendered part identity: the provider's tool-call id verbatim, or
+        /// — when the wire supplied none — the namespaced rendering of a
+        /// rig-minted identity (`rig:tool:0`). **Uniqueness scope: one
+        /// stream.** Minted renderings restart on every turn of a multi-turn
+        /// run, so never key across streams by this field; correlate with
+        /// `internal_call_id`, which is unique per call across the run.
         id: String,
         /// Rig-generated unique identifier for this tool call.
         internal_call_id: String,
@@ -2008,11 +2072,16 @@ pub enum StreamedAssistantContent {
     Reasoning(Reasoning),
     /// Partial reasoning text emitted by the assistant.
     ReasoningDelta {
-        /// Identity of the reasoning item this delta extends. Always
-        /// populated: providers propagate the wire's item identity or mint a
-        /// stream-stable id at the boundary, so consumers can correlate
-        /// deltas with the full [`StreamedAssistantContent::Reasoning`]
-        /// block that supersedes them.
+        /// Rendered part identity: the wire's reasoning item id verbatim, or
+        /// — when the wire supplied none — the namespaced rendering of a
+        /// rig-minted identity (`rig:reasoning:0`). Always populated, so
+        /// consumers can correlate deltas with the full
+        /// [`StreamedAssistantContent::Reasoning`] block that supersedes
+        /// them. **Uniqueness scope: one stream.** Minted renderings restart
+        /// on every turn of a multi-turn run — a consumer keying by this id
+        /// across a run would merge distinct turns; the aggregated
+        /// [`Reasoning::id`] carries only wire-genuine identities (`None`
+        /// for minted streams).
         id: String,
         /// Partial reasoning text.
         reasoning: String,

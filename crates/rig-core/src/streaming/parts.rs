@@ -119,7 +119,19 @@ struct OpenToolInput {
     /// Concatenated raw argument fragments. `None` until a fragment arrives —
     /// a call that streamed no arguments is a parameterless invocation.
     buffer: Option<String>,
+    /// Whether the buffer hit [`MAX_TOOL_INPUT_BYTES`] and stopped
+    /// accumulating. The truncated JSON then fails to parse at finalization
+    /// and flows through the wire's `UnparseableToolInput` policy — no
+    /// runaway wire can grow a fragment buffer without bound.
+    overflowed: bool,
 }
+
+/// Upper bound on one streamed tool call's accumulated argument bytes.
+///
+/// Far beyond any real tool input; a wire that exceeds it is defective, and
+/// its call finalizes through the unparseable-input policy instead of
+/// growing memory without bound.
+const MAX_TOOL_INPUT_BYTES: usize = 32 * 1024 * 1024;
 
 impl Default for PartsAccumulator {
     fn default() -> Self {
@@ -338,15 +350,35 @@ impl PartsAccumulator {
         tool_call: ToolCall,
         minted_internal_call_id: String,
     ) -> String {
-        let adopted = self
+        let position = self
             .open_tool_inputs
             .iter()
             .position(|input| input.id == *id)
-            .map(|index| {
-                let input = self.open_tool_inputs.remove(index);
-                self.closed_by_full_call.insert(input.id);
-                input.internal_call_id
+            .or_else(|| {
+                // A wire that fragmented under a minted identity and then
+                // restates the call under its late-arriving wire id: two
+                // wire ids disagreeing is a veto, but minted-vs-wire is not
+                // — when exactly one minted assembly is open, the
+                // restatement is that assembly completed. More than one
+                // open minted assembly is ambiguous; don't guess.
+                if id.is_minted() {
+                    return None;
+                }
+                let mut minted = self
+                    .open_tool_inputs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, input)| input.id.is_minted());
+                match (minted.next(), minted.next()) {
+                    (Some((index, _)), None) => Some(index),
+                    _ => None,
+                }
             });
+        let adopted = position.map(|index| {
+            let input = self.open_tool_inputs.remove(index);
+            self.closed_by_full_call.insert(input.id);
+            input.internal_call_id
+        });
         self.push_tool_call(tool_call);
         adopted.unwrap_or(minted_internal_call_id)
     }
@@ -416,7 +448,19 @@ impl PartsAccumulator {
                         if buffer.trim() == "null" && !fragment.trim().is_empty() {
                             buffer.clear();
                         }
-                        buffer.push_str(fragment);
+                        if buffer.len().saturating_add(fragment.len()) > MAX_TOOL_INPUT_BYTES {
+                            if !input.overflowed {
+                                input.overflowed = true;
+                                tracing::warn!(
+                                    tool = %input.name,
+                                    "streamed tool-call input exceeded the accumulation bound; \
+                                     truncating — the call will finalize through the wire's \
+                                     unparseable-input policy"
+                                );
+                            }
+                        } else {
+                            buffer.push_str(fragment);
+                        }
                     }
                     None => input.buffer = Some(fragment.to_owned()),
                 }
@@ -475,6 +519,7 @@ impl PartsAccumulator {
             ),
             None => (crate::id::generate(), end.id.clone(), String::new(), None),
         };
+        let overflowed = open.as_ref().is_some_and(|input| input.overflowed);
         // Only a wire identity becomes the durable tool-call id; an assembly
         // opened under a minted key yields the empty string, which every
         // serializer treats as absent.
@@ -504,37 +549,51 @@ impl PartsAccumulator {
             None => match buffer {
                 // No streamed arguments: a parameterless invocation.
                 None => serde_json::Value::Object(serde_json::Map::new()),
-                Some(buffer) => match crate::json_utils::parse_tool_arguments(&buffer) {
-                    Ok(arguments) => arguments,
-                    Err(err) => match end.on_unparseable {
-                        // Partial input (truncation): the call never fully
-                        // arrived, so it must not reach the consumer.
-                        UnparseableToolInput::Drop => {
-                            tracing::debug!(
-                                tool = %name,
-                                "dropping streamed tool call whose arguments never fully arrived"
-                            );
-                            return Ok(None);
+                // A capped (overflowed) buffer is truncated by definition —
+                // the lenient partial-JSON parse could still "succeed" on it
+                // and fabricate a silently corrupted call, so overflow forces
+                // the unparseable path.
+                Some(buffer) => {
+                    match crate::json_utils::parse_tool_arguments(&buffer).and_then(|arguments| {
+                        if overflowed {
+                            Err(serde::de::Error::custom(
+                                "tool-call input exceeded the accumulation bound",
+                            ))
+                        } else {
+                            Ok(arguments)
                         }
-                        // The wire superseded this call mid-assembly; deliver
-                        // it with empty arguments rather than losing it.
-                        UnparseableToolInput::EmptyObject => {
-                            serde_json::Value::Object(serde_json::Map::new())
-                        }
-                        // The wire promised a complete block; malformed input
-                        // is a response defect, never a silent drop.
-                        UnparseableToolInput::Error => {
-                            return Err(CompletionError::ResponseError(format!(
-                                "tool call `{name}` arrived with malformed JSON input: {err}"
-                            )));
-                        }
-                        // A completion probe: the input may still be extended.
-                        UnparseableToolInput::Keep => {
-                            keep_open(self, open);
-                            return Ok(None);
-                        }
-                    },
-                },
+                    }) {
+                        Ok(arguments) => arguments,
+                        Err(err) => match end.on_unparseable {
+                            // Partial input (truncation): the call never fully
+                            // arrived, so it must not reach the consumer.
+                            UnparseableToolInput::Drop => {
+                                tracing::debug!(
+                                    tool = %name,
+                                    "dropping streamed tool call whose arguments never fully arrived"
+                                );
+                                return Ok(None);
+                            }
+                            // The wire superseded this call mid-assembly; deliver
+                            // it with empty arguments rather than losing it.
+                            UnparseableToolInput::EmptyObject => {
+                                serde_json::Value::Object(serde_json::Map::new())
+                            }
+                            // The wire promised a complete block; malformed input
+                            // is a response defect, never a silent drop.
+                            UnparseableToolInput::Error => {
+                                return Err(CompletionError::ResponseError(format!(
+                                    "tool call `{name}` arrived with malformed JSON input: {err}"
+                                )));
+                            }
+                            // A completion probe: the input may still be extended.
+                            UnparseableToolInput::Keep => {
+                                keep_open(self, open);
+                                return Ok(None);
+                            }
+                        },
+                    }
+                }
             },
         };
 
@@ -594,10 +653,63 @@ impl PartsAccumulator {
                     internal_call_id: crate::id::generate(),
                     name: String::new(),
                     buffer: None,
+                    overflowed: false,
                 });
                 self.open_tool_inputs.len() - 1
             }
         }
+    }
+
+    /// Attach a provider signature to the item's latest reasoning part.
+    ///
+    /// The wire shape this serves: Gemini delivers `thoughtSignature` on a
+    /// trailing part *after* other output already closed the thought block
+    /// (and, under the minted-id boundary, bumped its ordinal). The
+    /// signature is lifecycle metadata for the block that was streamed, so
+    /// it lands on the item's most recent part — wherever its ordinal ended
+    /// up — never on a fresh empty sibling. With no part to sign (a
+    /// signature-only stream), a signature-only part is recorded so the
+    /// replay-required provider state still reaches history.
+    pub(crate) fn reasoning_signature(&mut self, id: &PartId, signature: String) {
+        let latest = self
+            .reasoning_index
+            .iter()
+            .filter(|(key, _)| key.item_id == *id)
+            .max_by_key(|(key, _)| key.ordinal)
+            .map(|(_, &index)| index);
+        if let Some(index) = latest
+            && let Some(
+                ManagedPart::DeltaBuilt(AssistantContent::Reasoning(reasoning))
+                | ManagedPart::Complete(AssistantContent::Reasoning(reasoning)),
+            ) = self.parts.get_mut(index)
+        {
+            match reasoning
+                .content
+                .iter_mut()
+                .rev()
+                .find_map(|content| match content {
+                    ReasoningContent::Text { signature, .. } => Some(signature),
+                    _ => None,
+                }) {
+                Some(slot) => *slot = Some(signature),
+                None => reasoning.content.push(ReasoningContent::Text {
+                    text: String::new(),
+                    signature: Some(signature),
+                }),
+            }
+            return;
+        }
+        // Nothing streamed for this item: record the signature alone.
+        self.reasoning_full(
+            id,
+            Reasoning {
+                id: id.as_wire().map(str::to_owned),
+                content: vec![ReasoningContent::Text {
+                    text: String::new(),
+                    signature: Some(signature),
+                }],
+            },
+        );
     }
 
     /// Consume the accumulated state into the ordered choice parts.
@@ -643,24 +755,15 @@ impl PartsAccumulator {
     /// `open_minted_reasoning` list holds exactly the ids the scan would find,
     /// so an empty list is a proof that the scan is vacuous.
     fn close_minted_reasoning(&mut self) {
-        if self.open_minted_reasoning.is_empty() {
-            return;
-        }
-        let open_minted: Vec<(PartId, u32)> = self
-            .reasoning_index
-            .keys()
-            .filter(|key| {
-                key.ordinal == self.open_ordinal.get(&key.item_id).copied().unwrap_or(0)
-                    && key.item_id.is_minted()
-            })
-            .map(|key| (key.item_id.clone(), key.ordinal))
-            .collect();
-        for (item_id, ordinal) in open_minted {
+        // The list *is* the lifecycle state: it holds exactly the minted ids
+        // with a part at their open ordinal (`push_reasoning` maintains it),
+        // so closing consumes the list directly — no scan over the reasoning
+        // keys, and no property recovered from an id's shape. O(open minted
+        // items), which is O(0) for every boundary after the first.
+        for item_id in std::mem::take(&mut self.open_minted_reasoning) {
+            let ordinal = self.open_ordinal.get(&item_id).copied().unwrap_or(0);
             self.open_ordinal.insert(item_id, ordinal + 1);
         }
-        // Each bumped id now has no part at its open ordinal, so nothing is
-        // left for a later boundary to close.
-        self.open_minted_reasoning.clear();
     }
 
     fn push_reasoning(&mut self, key: PartKey, part: ManagedPart) {
@@ -1623,6 +1726,80 @@ mod tests {
         );
     }
 
+    /// The mint-then-restate wire: fragments keyed under a minted identity,
+    /// then the call restated whole under its late-arriving wire id. With
+    /// exactly one minted assembly open, the restatement adopts it — the
+    /// published internal id correlates, and no duplicate part appears.
+    #[test]
+    fn a_wire_restatement_adopts_the_single_open_minted_assembly() {
+        let mut accumulator = PartsAccumulator::new();
+        let published = accumulator.tool_name_delta(&pid("tool-0"), "add");
+        accumulator.tool_args_delta(&pid("tool-0"), "{\"x\":1}");
+
+        let adopted = accumulator.tool_call(
+            &pid("call_late"),
+            call_named("call_late", "add"),
+            "freshly-minted".to_owned(),
+        );
+        assert_eq!(adopted, published, "the restatement must correlate");
+
+        // The stale end for the minted key finalizes nothing.
+        assert!(
+            accumulator
+                .tool_input_end(end("tool-0", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none()
+        );
+        let parts = accumulator.finish();
+        assert_eq!(
+            parts
+                .iter()
+                .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+                .count(),
+            1
+        );
+    }
+
+    /// Two open minted assemblies make adoption ambiguous: the restatement
+    /// must not guess, and both assemblies stay open for their own ends.
+    #[test]
+    fn a_wire_restatement_never_guesses_between_two_minted_assemblies() {
+        let mut accumulator = PartsAccumulator::new();
+        let first = accumulator.tool_name_delta(&pid("tool-0"), "add");
+        let second = accumulator.tool_name_delta(&pid("tool-1"), "subtract");
+
+        let published = accumulator.tool_call(
+            &pid("call_late"),
+            call_named("call_late", "add"),
+            "freshly-minted".to_owned(),
+        );
+        assert_eq!(published, "freshly-minted");
+        assert_ne!(published, first);
+        assert_ne!(published, second);
+    }
+
+    /// A runaway wire cannot grow a fragment buffer without bound: past the
+    /// accumulation cap the input truncates and the call finalizes through
+    /// the wire's unparseable-input policy (dropped under `Drop`).
+    #[test]
+    fn oversized_tool_input_truncates_and_finalizes_through_policy() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta(&pid("call_1"), "bulk");
+        let chunk = "x".repeat(1024 * 1024);
+        accumulator.tool_args_delta(&pid("call_1"), "{\"data\":\"");
+        for _ in 0..33 {
+            accumulator.tool_args_delta(&pid("call_1"), &chunk);
+        }
+        accumulator.tool_args_delta(&pid("call_1"), "\"}");
+        assert!(
+            accumulator
+                .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none(),
+            "the truncated input must not fabricate a call"
+        );
+    }
+
     /// The single-shape wires (every in-tree provider that emits a whole
     /// call): with nothing to adopt, the emitter's minted id is published
     /// unchanged.
@@ -1644,5 +1821,173 @@ mod tests {
             .expect("no error")
             .expect("the untouched assembly still finalizes");
         assert_eq!(internal, other);
+    }
+}
+
+/// The aggregation laws, as properties (#2258 A5).
+///
+/// The aggregate is a pure function of the fragment sequence: the parts list
+/// is the single accumulated state and [`PartsAccumulator::finish`] derives
+/// the choice from it — there is no separate projection to desync. These
+/// properties pin the algebra that purity rests on:
+///
+/// - **fragment associativity/identity**: how a payload is split into
+///   deltas (including empty fragments) cannot change the aggregate;
+/// - **stale-end idempotence**: finalizing an already-finalized call again
+///   is a no-op, never a duplicate part;
+/// - **boundary idempotence**: repeated boundaries with nothing open change
+///   nothing.
+///
+/// The reference precedents don't have these laws (langchain's merge is not
+/// a monoid — `"stop" + "length"` concatenates; semantic-kernel raises on
+/// conflicting scalars but has no property tests); Rust makes stating them
+/// cheap, so rig does.
+#[cfg(test)]
+mod property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn wire(id: &str) -> PartId {
+        PartId::wire(id)
+    }
+
+    /// Split `payload` at the given fractional points into consecutive
+    /// fragments (possibly empty at the edges), on char boundaries.
+    fn split_fragments(payload: &str, points: &[usize]) -> Vec<String> {
+        let chars: Vec<char> = payload.chars().collect();
+        let mut cuts: Vec<usize> = points
+            .iter()
+            .map(|point| point % (chars.len() + 1))
+            .collect();
+        cuts.sort_unstable();
+        let mut fragments = Vec::new();
+        let mut start = 0usize;
+        for cut in cuts {
+            fragments.push(chars[start..cut.max(start)].iter().collect());
+            start = cut.max(start);
+        }
+        fragments.push(chars[start..].iter().collect());
+        fragments
+    }
+
+    proptest! {
+        /// Text aggregation is invariant under fragmentation: any split of
+        /// the payload into deltas produces the same single text part.
+        #[test]
+        fn text_aggregate_is_fragmentation_invariant(
+            payload in ".{0,60}",
+            points in proptest::collection::vec(0usize..1000, 0..6),
+        ) {
+            let mut whole = PartsAccumulator::new();
+            whole.text_delta(&payload);
+            let mut split = PartsAccumulator::new();
+            for fragment in split_fragments(&payload, &points) {
+                split.text_delta(&fragment);
+            }
+            prop_assert_eq!(whole.finish(), split.finish());
+        }
+
+        /// Reasoning-delta aggregation is invariant under fragmentation for
+        /// a fixed item id.
+        #[test]
+        fn reasoning_aggregate_is_fragmentation_invariant(
+            payload in ".{1,60}",
+            points in proptest::collection::vec(0usize..1000, 0..6),
+        ) {
+            let id = wire("rs_1");
+            let mut whole = PartsAccumulator::new();
+            whole.reasoning_delta(&id, &payload);
+            let mut split = PartsAccumulator::new();
+            let mut pushed = false;
+            for fragment in split_fragments(&payload, &points) {
+                if !fragment.is_empty() {
+                    split.reasoning_delta(&id, &fragment);
+                    pushed = true;
+                }
+            }
+            prop_assume!(pushed);
+            prop_assert_eq!(whole.finish(), split.finish());
+        }
+
+        /// Tool-argument assembly is invariant under fragmentation: the
+        /// finalized call's arguments do not depend on how the JSON was cut.
+        #[test]
+        fn tool_arguments_are_fragmentation_invariant(
+            value in "[a-z]{0,20}",
+            points in proptest::collection::vec(0usize..1000, 0..6),
+        ) {
+            let payload = format!("{{\"q\":\"{value}\"}}");
+            let finalize = |fragments: &[String]| {
+                let mut accumulator = PartsAccumulator::new();
+                let id = wire("call_1");
+                accumulator.tool_name_delta(&id, "probe");
+                for fragment in fragments {
+                    accumulator.tool_args_delta(&id, fragment);
+                }
+                accumulator
+                    .tool_input_end(ToolInputEnd::new(id, UnparseableToolInput::Drop))
+                    .expect("no error")
+                    .map(|(call, _)| call.function.arguments)
+            };
+            let whole = finalize(std::slice::from_ref(&payload));
+            let split = finalize(&split_fragments(&payload, &points));
+            prop_assert_eq!(whole, split);
+        }
+
+        /// Stale-end idempotence: ending an already-finalized id any number
+        /// of extra times adds nothing.
+        #[test]
+        fn stale_tool_input_ends_are_idempotent(extra_ends in 1usize..5) {
+            let mut accumulator = PartsAccumulator::new();
+            let id = wire("call_1");
+            accumulator.tool_name_delta(&id, "probe");
+            accumulator.tool_args_delta(&id, "{}");
+            accumulator
+                .tool_input_end(ToolInputEnd::new(id.clone(), UnparseableToolInput::Drop))
+                .expect("no error")
+                .expect("finalizes");
+            for _ in 0..extra_ends {
+                prop_assert!(
+                    accumulator
+                        .tool_input_end(ToolInputEnd::new(
+                            id.clone(),
+                            UnparseableToolInput::Drop
+                        ))
+                        .expect("no error")
+                        .is_none()
+                );
+            }
+            let calls = accumulator
+                .finish()
+                .into_iter()
+                .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+                .count();
+            prop_assert_eq!(calls, 1);
+        }
+
+        /// Boundary idempotence: any number of boundary events with no open
+        /// minted reasoning leaves the aggregate untouched.
+        #[test]
+        fn boundaries_with_nothing_open_are_idempotent(boundaries in 0usize..5) {
+            let minted = PartId::Minted {
+                kind: crate::streaming::MintKind::Reasoning,
+                index: 0,
+            };
+            let mut accumulator = PartsAccumulator::new();
+            accumulator.reasoning_delta(&minted, "thought");
+            accumulator.text_delta("answer");
+            for _ in 0..boundaries {
+                accumulator.text_delta("");
+            }
+            accumulator.reasoning_delta(&minted, "more");
+            let parts = accumulator.finish();
+            prop_assert_eq!(
+                parts
+                    .iter()
+                    .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
+                    .count(),
+                2
+            );
+        }
     }
 }
