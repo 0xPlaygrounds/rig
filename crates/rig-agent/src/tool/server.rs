@@ -194,15 +194,34 @@ impl ToolServer {
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     pub fn rmcp_tool_with_timeout(
-        mut self,
+        self,
         tool: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> Self {
+        use crate::tool::rmcp::RmcpToolRegistration;
+
+        let model_name = tool.name.to_string();
+        self.rmcp_tool_registration(
+            RmcpToolRegistration::new(model_name, tool, client).with_timeout(timeout),
+        )
+    }
+
+    /// Add an MCP tool with a separate model-visible name.
+    ///
+    /// The registration's `model_name` is used for provider-facing tool
+    /// definitions and tool lookup. The original `definition.name` is kept for
+    /// MCP `tools/call` requests.
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+    pub fn rmcp_tool_registration(
+        mut self,
+        registration: crate::tool::rmcp::RmcpToolRegistration,
+    ) -> Self {
         use crate::tool::rmcp::McpTool;
-        self.toolset.add_erased(Arc::new(
-            McpTool::from_mcp_server(tool, client).with_timeout(timeout),
-        ));
+
+        self.toolset
+            .add_erased(Arc::new(McpTool::from_registration(registration)));
         self
     }
 

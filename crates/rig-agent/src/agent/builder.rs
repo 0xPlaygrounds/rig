@@ -21,7 +21,7 @@ use crate::{
 
 #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-use crate::tool::rmcp::McpTool as RmcpTool;
+use crate::tool::rmcp::{McpTool as RmcpTool, RmcpToolRegistration};
 
 use super::{Agent, ModelHandle, OutputMode};
 
@@ -79,12 +79,22 @@ fn build_rmcp_tools(
     client: rmcp::service::ServerSink,
     timeout: Option<std::time::Duration>,
 ) -> Vec<(String, RmcpTool)> {
-    tools
+    build_rmcp_tools_from_registrations(tools.into_iter().map(|tool| {
+        let model_name = tool.name.to_string();
+        RmcpToolRegistration::new(model_name, tool, client.clone()).with_timeout(timeout)
+    }))
+}
+
+#[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+fn build_rmcp_tools_from_registrations(
+    registrations: impl IntoIterator<Item = RmcpToolRegistration>,
+) -> Vec<(String, RmcpTool)> {
+    registrations
         .into_iter()
-        .map(|tool| {
-            let name = tool.name.to_string();
-            let rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout);
-            (name, rmcp_tool)
+        .map(|registration| {
+            let model_name = registration.model_name.clone();
+            let rmcp_tool = RmcpTool::from_registration(registration);
+            (model_name, rmcp_tool)
         })
         .collect()
 }
@@ -562,6 +572,33 @@ impl AgentBuilder<NoToolConfig> {
         self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
     }
 
+    /// Add one MCP registration with a separate model-visible name.
+    ///
+    /// `registration.model_name` is used for provider-facing definitions and
+    /// tool lookup, while `registration.definition.name` is used for MCP
+    /// `tools/call` requests.
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tool_registration(
+        self,
+        registration: RmcpToolRegistration,
+    ) -> AgentBuilder<WithBuilderTools> {
+        self.rmcp_tool_registrations([registration])
+    }
+
+    /// Add MCP registrations with independent model-visible and wire names.
+    ///
+    /// The registrations retain their configured timeout and preserve the
+    /// server-advertised name in each MCP `tools/call` request.
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tool_registrations(
+        self,
+        registrations: impl IntoIterator<Item = RmcpToolRegistration>,
+    ) -> AgentBuilder<WithBuilderTools> {
+        self.with_rmcp_toolset(build_rmcp_tools_from_registrations(registrations))
+    }
+
     /// Transition into the `WithBuilderTools` state carrying the given built
     /// MCP tools.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
@@ -742,6 +779,30 @@ impl AgentBuilder<WithBuilderTools> {
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> Self {
         self.add_rmcp_tools(build_rmcp_tools(tools, client, timeout.into()))
+    }
+
+    /// Add one MCP registration with a separate model-visible name.
+    ///
+    /// `registration.model_name` is used for provider-facing definitions and
+    /// tool lookup, while `registration.definition.name` is used for MCP
+    /// `tools/call` requests.
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tool_registration(self, registration: RmcpToolRegistration) -> Self {
+        self.add_rmcp_tools(build_rmcp_tools_from_registrations([registration]))
+    }
+
+    /// Add MCP registrations with independent model-visible and wire names.
+    ///
+    /// The registrations retain their configured timeout and preserve the
+    /// server-advertised name in each MCP `tools/call` request.
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    pub fn rmcp_tool_registrations(
+        self,
+        registrations: impl IntoIterator<Item = RmcpToolRegistration>,
+    ) -> Self {
+        self.add_rmcp_tools(build_rmcp_tools_from_registrations(registrations))
     }
 
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
@@ -1014,6 +1075,29 @@ mod tests {
         let result = timed.expect("built tool hung past the safety timeout");
         assert!(result.is_error_kind(ToolErrorKind::Timeout));
         assert!(result.output().render().contains("timed out"));
+
+        // Both builder typestates expose the alias-aware registration path.
+        let no_tool_config_agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+            .rmcp_tool_registration(
+                RmcpToolRegistration::new("model_alias", tool("wire_name"), client.peer().clone())
+                    .with_timeout(Some(Duration::from_secs(1))),
+            )
+            .build();
+        let builder_tools_agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+            .tool(MockAddTool)
+            .rmcp_tool_registration(
+                RmcpToolRegistration::new("model_alias", tool("wire_name"), client.peer().clone())
+                    .with_timeout(Some(Duration::from_secs(1))),
+            )
+            .build();
+        for agent in [no_tool_config_agent, builder_tools_agent] {
+            let definitions = agent.tool_server_handle.get_tool_defs(None).await.unwrap();
+            assert!(
+                definitions
+                    .iter()
+                    .any(|definition| definition.name == "model_alias")
+            );
+        }
 
         drop(client);
         server_task.abort();
