@@ -295,7 +295,30 @@ struct ServerToolUseState {
 #[derive(Default)]
 struct ThinkingState {
     thinking: String,
+    /// Signature assembled from this block's `signature_delta`s.
     signature: String,
+    /// The `signature` `content_block_start` opened the block with.
+    ///
+    /// Recorded traffic always carries the empty string here and delivers the
+    /// whole signature by delta, so this is kept as a FALLBACK for a block
+    /// that never sends a delta — not as a prefix the deltas extend. A wire
+    /// that ever delivered the signature up front still round-trips; a
+    /// delta-bearing block never double-counts the opening value.
+    initial_signature: String,
+}
+
+impl ThinkingState {
+    /// The block's completed content as `(text, signature)`: deltas win over
+    /// the opening value, and an absent signature is `None`.
+    fn into_parts(self) -> (String, Option<String>) {
+        let signature = if self.signature.is_empty() {
+            self.initial_signature
+        } else {
+            self.signature
+        };
+
+        (self.thinking, (!signature.is_empty()).then_some(signature))
+    }
 }
 
 /// The Anthropic Messages SSE wire as a [`WireAdapter`].
@@ -680,8 +703,21 @@ fn handle_event(
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }))
             }
-            Content::Thinking { .. } => {
-                *current_thinking = Some(ThinkingState::default());
+            Content::Thinking {
+                thinking,
+                signature,
+            } => {
+                // `content_block_start` opens the block with its initial
+                // payload; the old `..` discarded both fields. Adaptive
+                // thinking opens with an empty `thinking`, emits no
+                // `thinking_delta` at all, and delivers the whole signature
+                // by `signature_delta` — so the block's only content is a
+                // signature, which `content_block_stop` must still restate.
+                *current_thinking = Some(ThinkingState {
+                    thinking: thinking.clone(),
+                    signature: String::new(),
+                    initial_signature: signature.clone().unwrap_or_default(),
+                });
                 None
             }
             Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
@@ -693,24 +729,25 @@ fn handle_event(
             _ => None,
         },
         StreamingEvent::ContentBlockStop { index } => {
-            if let Some(thinking_state) = Option::take(current_thinking)
-                && !thinking_state.thinking.is_empty()
-            {
-                let signature = if thinking_state.signature.is_empty() {
-                    None
-                } else {
-                    Some(thinking_state.signature)
-                };
+            // Drop only a wholly empty block. A signature-only thinking block
+            // (empty text, complete signature) is the adaptive-thinking wire
+            // shape, and its signature is replay-required provider state that
+            // Anthropic accepts back verbatim (the paired non-streaming
+            // cassette replays that exact empty-text signed block). The
+            // non-streaming path has never gated on text, so gating here was
+            // a unary/streaming divergence that silently dropped the
+            // signature.
+            if let Some(thinking_state) = Option::take(current_thinking) {
+                let (text, signature) = thinking_state.into_parts();
 
-                return Some(Ok(RawStreamingChoice::Reasoning {
-                    // Same block index as this block's ThinkingDeltas, so the
-                    // full block supersedes the accumulated deltas.
-                    id: format!("block-{index}"),
-                    content: ReasoningContent::Text {
-                        text: thinking_state.thinking,
-                        signature,
-                    },
-                }));
+                if !(text.is_empty() && signature.is_none()) {
+                    return Some(Ok(RawStreamingChoice::Reasoning {
+                        // Same block index as this block's ThinkingDeltas, so
+                        // the full block supersedes the accumulated deltas.
+                        id: format!("block-{index}"),
+                        content: ReasoningContent::Text { text, signature },
+                    }));
+                }
             }
 
             if let Some(server_tool_use) = server_tool_uses.remove(index) {
@@ -1241,6 +1278,184 @@ mod tests {
             }
             _ => panic!("Expected Redacted reasoning chunk"),
         }
+    }
+
+    /// The adaptive-thinking wire shape, exactly as recorded in
+    /// `tests/cassettes/anthropic/opus_4_7/messages_adaptive_thinking_streaming_smoke.yaml`:
+    /// `content_block_start` opens the block with an EMPTY `thinking` and an
+    /// EMPTY `signature`, a `signature_delta` carries the whole signature, and
+    /// no `thinking_delta` ever arrives. The block's only content is its
+    /// signature, and it must survive `content_block_stop`.
+    #[test]
+    fn signature_only_thinking_block_survives_content_block_stop() {
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+
+        let start = StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::Thinking {
+                thinking: String::new(),
+                signature: Some(String::new()),
+            },
+        };
+        assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+
+        let signature = StreamingEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::SignatureDelta {
+                signature: "the_whole_signature".to_string(),
+            },
+        };
+        assert!(handle_event(&signature, &mut tool_call_state, &mut thinking_state).is_none());
+
+        let stop = StreamingEvent::ContentBlockStop { index: 0 };
+        let result = handle_event(&stop, &mut tool_call_state, &mut thinking_state)
+            .expect("signature-only thinking block must not be dropped")
+            .expect("thinking block should not be an error");
+
+        match result {
+            RawStreamingChoice::Reasoning {
+                id,
+                content: ReasoningContent::Text { text, signature },
+            } => {
+                assert_eq!(id, "block-0");
+                assert_eq!(text, "");
+                assert_eq!(signature.as_deref(), Some("the_whole_signature"));
+            }
+            other => panic!("Expected signed Reasoning chunk, got {other:?}"),
+        }
+    }
+
+    /// Forward compat: a block that delivers its whole signature on
+    /// `content_block_start` and sends no `signature_delta` keeps it.
+    #[test]
+    fn signature_delivered_only_on_content_block_start_is_kept() {
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+
+        let start = StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::Thinking {
+                thinking: String::new(),
+                signature: Some("up_front_signature".to_string()),
+            },
+        };
+        assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+
+        let stop = StreamingEvent::ContentBlockStop { index: 0 };
+        match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
+            .expect("an up-front signature must not be dropped")
+            .expect("thinking block should not be an error")
+        {
+            RawStreamingChoice::Reasoning {
+                content: ReasoningContent::Text { text, signature },
+                ..
+            } => {
+                assert_eq!(text, "");
+                assert_eq!(signature.as_deref(), Some("up_front_signature"));
+            }
+            other => panic!("Expected signed Reasoning chunk, got {other:?}"),
+        }
+    }
+
+    /// The opening `signature` is a fallback, never a prefix the deltas
+    /// extend: a delta-bearing block must publish exactly what the deltas
+    /// assembled, or the value replayed to Anthropic is corrupt.
+    #[test]
+    fn signature_deltas_supersede_the_opening_signature() {
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+
+        let start = StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::Thinking {
+                thinking: String::new(),
+                signature: Some("opening".to_string()),
+            },
+        };
+        assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+
+        for fragment in ["delta_", "assembled"] {
+            let signature = StreamingEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentDelta::SignatureDelta {
+                    signature: fragment.to_string(),
+                },
+            };
+            assert!(handle_event(&signature, &mut tool_call_state, &mut thinking_state).is_none());
+        }
+
+        let stop = StreamingEvent::ContentBlockStop { index: 0 };
+        match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
+            .expect("thinking block should be restated")
+            .expect("thinking block should not be an error")
+        {
+            RawStreamingChoice::Reasoning {
+                content: ReasoningContent::Text { signature, .. },
+                ..
+            } => assert_eq!(signature.as_deref(), Some("delta_assembled")),
+            other => panic!("Expected signed Reasoning chunk, got {other:?}"),
+        }
+    }
+
+    /// `content_block_start` can carry the block's opening text; discarding it
+    /// would truncate the restatement the accumulator supersedes deltas with.
+    #[test]
+    fn thinking_block_start_text_seeds_the_restatement() {
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+
+        let start = StreamingEvent::ContentBlockStart {
+            index: 2,
+            content_block: Content::Thinking {
+                thinking: "opening ".to_string(),
+                signature: None,
+            },
+        };
+        assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+
+        let delta = StreamingEvent::ContentBlockDelta {
+            index: 2,
+            delta: ContentDelta::ThinkingDelta {
+                thinking: "rest".to_string(),
+            },
+        };
+        assert!(handle_event(&delta, &mut tool_call_state, &mut thinking_state).is_some());
+
+        let stop = StreamingEvent::ContentBlockStop { index: 2 };
+        match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
+            .expect("thinking block should be restated")
+            .expect("thinking block should not be an error")
+        {
+            RawStreamingChoice::Reasoning {
+                id,
+                content: ReasoningContent::Text { text, signature },
+            } => {
+                assert_eq!(id, "block-2");
+                assert_eq!(text, "opening rest");
+                assert_eq!(signature, None);
+            }
+            other => panic!("Expected Reasoning chunk, got {other:?}"),
+        }
+    }
+
+    /// A block with neither text nor signature carries nothing to replay.
+    #[test]
+    fn wholly_empty_thinking_block_is_dropped() {
+        let mut tool_call_state = None;
+        let mut thinking_state = None;
+
+        let start = StreamingEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::Thinking {
+                thinking: String::new(),
+                signature: None,
+            },
+        };
+        assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+
+        let stop = StreamingEvent::ContentBlockStop { index: 0 };
+        assert!(handle_event(&stop, &mut tool_call_state, &mut thinking_state).is_none());
     }
 
     #[test]

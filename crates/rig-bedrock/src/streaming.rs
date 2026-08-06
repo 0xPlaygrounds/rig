@@ -7,6 +7,7 @@ use crate::{
 };
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
+use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
@@ -162,9 +163,47 @@ fn process_event(
                             .get_or_insert_with(ReasoningState::default)
                             .signature = Some(signature.clone());
                     }
-                    _ => {}
+                    aws_bedrock::ReasoningContentBlockDelta::RedactedContent(blob) => {
+                        // Opaque provider state the safety classifier
+                        // encrypted. It is not part of any plaintext thinking
+                        // block, so close an open one first: sharing the
+                        // block index would otherwise make the redacted block
+                        // *replace* the delta-built thinking part instead of
+                        // landing beside it as a sibling.
+                        if let Some(open) = state.current_reasoning.take()
+                            && let Some(choice) =
+                                finalize_reasoning(open, event.content_block_index)
+                        {
+                            items.push(Ok(choice));
+                        }
+
+                        items.push(Ok(RawStreamingChoice::Reasoning {
+                            // Same `block-{index}` shape as the sibling
+                            // reasoning paths, all-digit suffix so the core
+                            // still recognizes it as a boundary-minted id.
+                            id: format!("block-{}", event.content_block_index),
+                            content: ReasoningContent::Redacted {
+                                // The wire carries raw bytes; rig's canonical
+                                // reasoning content is a string, so the blob
+                                // travels base64-encoded and decodes back on
+                                // the way out.
+                                data: BASE64_STANDARD.encode(blob.as_ref()),
+                            },
+                        }));
+                    }
+                    unknown => {
+                        tracing::warn!(
+                            delta = ?std::mem::discriminant(&unknown),
+                            "skipping unrecognized Bedrock reasoning content delta variant"
+                        );
+                    }
                 },
-                _ => {}
+                unknown => {
+                    tracing::warn!(
+                        delta = ?std::mem::discriminant(&unknown),
+                        "skipping unrecognized Bedrock content block delta variant"
+                    );
+                }
             }
         }
         aws_bedrock::ConverseStreamOutput::ContentBlockStart(event) => {
@@ -187,9 +226,16 @@ fn process_event(
                         content: ToolCallDeltaContent::Name(tool_use.name),
                     }));
                 }
-                _ => items.push(Err(CompletionError::ProviderError(
-                    "Stream is empty".into(),
-                ))),
+                // `ContentBlockStart` is a union: `toolUse` is the only
+                // variant modeled today, and a future one is not a stream
+                // failure. Failing the turn here contradicted every sibling
+                // arm (which warn and skip) and the classify layer's
+                // Unknown-frame policy, and the message ("Stream is empty")
+                // described neither the frame nor the cause.
+                unknown => tracing::warn!(
+                    start = ?std::mem::discriminant(&unknown),
+                    "skipping unrecognized Bedrock ContentBlockStart variant"
+                ),
             }
         }
         aws_bedrock::ConverseStreamOutput::ContentBlockStop(event) => {
@@ -420,8 +466,199 @@ impl CompletionModel {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
+    use rig_core::message::Reasoning;
+    use rig_core::streaming::StreamedAssistantContent;
+
+    // ---- Event-seam helpers: no AWS transport, `stream_from_events` only ----
+
+    fn reasoning_text_delta(index: i32, text: &str) -> aws_bedrock::ConverseStreamOutput {
+        aws_bedrock::ConverseStreamOutput::ContentBlockDelta(
+            aws_bedrock::ContentBlockDeltaEvent::builder()
+                .content_block_index(index)
+                .delta(aws_bedrock::ContentBlockDelta::ReasoningContent(
+                    aws_bedrock::ReasoningContentBlockDelta::Text(text.to_string()),
+                ))
+                .build()
+                .expect("reasoning text delta should build"),
+        )
+    }
+
+    fn reasoning_signature_delta(index: i32, signature: &str) -> aws_bedrock::ConverseStreamOutput {
+        aws_bedrock::ConverseStreamOutput::ContentBlockDelta(
+            aws_bedrock::ContentBlockDeltaEvent::builder()
+                .content_block_index(index)
+                .delta(aws_bedrock::ContentBlockDelta::ReasoningContent(
+                    aws_bedrock::ReasoningContentBlockDelta::Signature(signature.to_string()),
+                ))
+                .build()
+                .expect("reasoning signature delta should build"),
+        )
+    }
+
+    fn reasoning_redacted_delta(index: i32, blob: &[u8]) -> aws_bedrock::ConverseStreamOutput {
+        aws_bedrock::ConverseStreamOutput::ContentBlockDelta(
+            aws_bedrock::ContentBlockDeltaEvent::builder()
+                .content_block_index(index)
+                .delta(aws_bedrock::ContentBlockDelta::ReasoningContent(
+                    aws_bedrock::ReasoningContentBlockDelta::RedactedContent(
+                        aws_smithy_types::Blob::new(blob.to_vec()),
+                    ),
+                ))
+                .build()
+                .expect("redacted reasoning delta should build"),
+        )
+    }
+
+    fn block_stop(index: i32) -> aws_bedrock::ConverseStreamOutput {
+        aws_bedrock::ConverseStreamOutput::ContentBlockStop(
+            aws_bedrock::ContentBlockStopEvent::builder()
+                .content_block_index(index)
+                .build()
+                .expect("content block stop should build"),
+        )
+    }
+
+    fn terminal() -> Vec<aws_bedrock::ConverseStreamOutput> {
+        vec![
+            aws_bedrock::ConverseStreamOutput::MessageStop(
+                aws_bedrock::MessageStopEvent::builder()
+                    .stop_reason(aws_bedrock::StopReason::EndTurn)
+                    .build()
+                    .expect("message stop should build"),
+            ),
+            aws_bedrock::ConverseStreamOutput::Metadata(
+                aws_bedrock::ConverseStreamMetadataEvent::builder().build(),
+            ),
+        ]
+    }
+
+    struct Drained {
+        reasoning: Vec<Reasoning>,
+        errors: Vec<String>,
+        reached_terminal: bool,
+    }
+
+    async fn drain(events: Vec<aws_bedrock::ConverseStreamOutput>) -> Drained {
+        let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
+        let mut drained = Drained {
+            reasoning: Vec::new(),
+            errors: Vec::new(),
+            reached_terminal: false,
+        };
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+                    drained.reasoning.push(reasoning);
+                }
+                Ok(StreamedAssistantContent::Final(_)) => drained.reached_terminal = true,
+                Ok(_) => {}
+                Err(error) => drained.errors.push(error.to_string()),
+            }
+        }
+
+        drained
+    }
+
+    const REDACTED_BLOB: &[u8] = b"\x00opaque-stream-ciphertext\xff";
+
+    /// #2258 F2(a): the redacted delta used to hit `_ => {}` and vanish.
+    #[tokio::test]
+    async fn redacted_reasoning_delta_reaches_the_consumer() {
+        let mut events = vec![reasoning_redacted_delta(0, REDACTED_BLOB), block_stop(0)];
+        events.extend(terminal());
+
+        let drained = drain(events).await;
+
+        assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
+        assert_eq!(
+            drained
+                .reasoning
+                .iter()
+                .flat_map(|reasoning| reasoning.content.iter())
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![ReasoningContent::Redacted {
+                data: BASE64_STANDARD.encode(REDACTED_BLOB),
+            }]
+        );
+        assert!(drained.reached_terminal);
+    }
+
+    /// The redacted block must land BESIDE an open thinking block, not replace
+    /// it: both share `block-{index}`, so without draining the open state
+    /// first the accumulator would supersede the delta-built thinking part.
+    #[tokio::test]
+    async fn redacted_reasoning_is_a_sibling_of_the_open_thinking_block() {
+        let mut events = vec![
+            reasoning_text_delta(0, "visible thinking"),
+            reasoning_signature_delta(0, "sig_1"),
+            reasoning_redacted_delta(0, REDACTED_BLOB),
+            block_stop(0),
+        ];
+        events.extend(terminal());
+
+        let drained = drain(events).await;
+
+        assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
+        let content: Vec<ReasoningContent> = drained
+            .reasoning
+            .iter()
+            .flat_map(|reasoning| reasoning.content.iter())
+            .cloned()
+            .collect();
+        assert_eq!(
+            content,
+            vec![
+                ReasoningContent::Text {
+                    text: "visible thinking".to_string(),
+                    signature: Some("sig_1".to_string()),
+                },
+                ReasoningContent::Redacted {
+                    data: BASE64_STANDARD.encode(REDACTED_BLOB),
+                },
+            ]
+        );
+        assert!(drained.reached_terminal);
+    }
+
+    /// #2258 H5: a non-`ToolUse` `ContentBlockStart` used to fail the whole
+    /// stream with `ProviderError("Stream is empty")`.
+    #[tokio::test]
+    async fn non_tool_use_content_block_start_is_skipped_not_failed() {
+        let mut events = vec![
+            aws_bedrock::ConverseStreamOutput::ContentBlockStart(
+                aws_bedrock::ContentBlockStartEvent::builder()
+                    .content_block_index(0)
+                    .start(aws_bedrock::ContentBlockStart::ToolResult(
+                        aws_bedrock::ToolResultBlockStart::builder()
+                            .tool_use_id("tool_1")
+                            .build()
+                            .expect("tool result start should build"),
+                    ))
+                    .build()
+                    .expect("content block start should build"),
+            ),
+            block_stop(0),
+        ];
+        events.extend(terminal());
+
+        let drained = drain(events).await;
+
+        assert!(
+            drained.errors.is_empty(),
+            "an unmodeled ContentBlockStart must not fail the stream: {:?}",
+            drained.errors
+        );
+        assert!(
+            drained.reached_terminal,
+            "the stream must still reach its terminal record"
+        );
+    }
 
     #[test]
     fn test_bedrock_usage_creation() {

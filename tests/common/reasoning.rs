@@ -35,6 +35,13 @@ pub(crate) struct ReasoningRoundtripAgent<M: CompletionModel> {
     pub(crate) model: M,
     pub(crate) preamble: String,
     pub(crate) additional_params: Option<serde_json::Value>,
+    /// Opt-in capability flag. Most providers stream reasoning as unsigned
+    /// deltas (or emit none at all), so the shared roundtrip only records
+    /// reasoning for diagnostics. A provider whose wire is known to carry a
+    /// replay-required signature opts in here, and the streaming roundtrip
+    /// then asserts that a complete `Reasoning` block with a signature
+    /// reached the caller and was round-tripped into turn 2.
+    pub(crate) expects_signed_reasoning_block: bool,
 }
 
 impl<M> ReasoningRoundtripAgent<M>
@@ -46,7 +53,14 @@ where
             model,
             preamble: ROUNDTRIP_PREAMBLE.to_owned(),
             additional_params,
+            expects_signed_reasoning_block: false,
         }
+    }
+
+    /// See [`ReasoningRoundtripAgent::expects_signed_reasoning_block`].
+    pub(crate) fn expecting_signed_reasoning_block(mut self) -> Self {
+        self.expects_signed_reasoning_block = true;
+        self
     }
 }
 
@@ -105,6 +119,28 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
             Ok(_) => {}
             Err(error) => panic!("Turn 1 stream error: {error}"),
         }
+    }
+
+    if agent.expects_signed_reasoning_block {
+        assert!(
+            saw_reasoning_block,
+            "Provider opted into signed reasoning but streamed no complete Reasoning block \
+             (reasoning deltas seen: {} chars). A signature-only block must not be dropped.",
+            reasoning_delta_text.len()
+        );
+
+        let signed = assistant_content.iter().any(|content| match content {
+            AssistantContent::Reasoning(reasoning) => reasoning
+                .content
+                .iter()
+                .any(|block| matches!(block, ReasoningContent::Text { signature, .. } if signature.is_some())),
+            _ => false,
+        });
+        assert!(
+            signed,
+            "Provider opted into signed reasoning but no streamed Reasoning block carried a \
+             signature: {assistant_content:#?}"
+        );
     }
 
     // Providers like Gemini 2.5 emit thinking as deltas without signatures,

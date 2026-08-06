@@ -222,19 +222,69 @@ async fn messages_adaptive_thinking_nonstreaming_smoke() {
     .await;
 }
 
+/// Adaptive thinking opens its thinking block with an empty `thinking` and a
+/// complete `signature`, then never sends a `thinking_delta` — a
+/// signature-only block. The streaming path used to gate the block's
+/// restatement on non-empty text, so the signature was dropped and turn 2
+/// replayed without it, diverging from the non-streaming path (whose paired
+/// cassette shows Anthropic accepting the empty-text signed block on replay).
+///
+/// Re-record with:
+/// ```text
+/// RIG_PROVIDER_TEST_MODE=record ANTHROPIC_API_KEY=... \
+///   cargo test -p rig --all-features --test anthropic \
+///   messages_adaptive_thinking_streaming_smoke -- --nocapture --test-threads=1
+/// ```
 #[tokio::test]
 async fn messages_adaptive_thinking_streaming_smoke() {
     super::super::support::with_anthropic_cassette(
         "opus_4_7/messages_adaptive_thinking_streaming_smoke",
         |client| async move {
-            reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-                client.completion_model(CLAUDE_OPUS_4_7),
-                Some(opus_4_7_thinking_params()),
-            ))
+            reasoning::run_reasoning_roundtrip_streaming(
+                ReasoningRoundtripAgent::new(
+                    client.completion_model(CLAUDE_OPUS_4_7),
+                    Some(opus_4_7_thinking_params()),
+                )
+                .expecting_signed_reasoning_block(),
+            )
             .await;
         },
     )
     .await;
+
+    assert_turn_two_request_carries_a_signed_thinking_block(
+        "opus_4_7/messages_adaptive_thinking_streaming_smoke",
+    );
+}
+
+/// The recorded turn-2 REQUEST is what proves the signature survived the whole
+/// round trip: streamed out of the wire, into chat history, and back onto the
+/// wire. Replay already fails on a body mismatch, but assert the shape
+/// explicitly so a regression names itself instead of surfacing as a replay
+/// miss.
+fn assert_turn_two_request_carries_a_signed_thinking_block(scenario: &str) {
+    let path = crate::cassettes::cassette_path("anthropic", scenario);
+    let cassette = std::fs::read_to_string(&path).expect("cassette should be readable");
+
+    let turn_two = cassette
+        .split("\n---\n")
+        .nth(1)
+        .unwrap_or_else(|| panic!("{} should record two interactions", path.display()));
+    let request = turn_two
+        .split("\nthen:")
+        .next()
+        .expect("interaction should have a request section");
+
+    assert!(
+        request.contains(r#""type":"thinking""#),
+        "turn-2 request in {} dropped the thinking block:\n{request}",
+        path.display()
+    );
+    assert!(
+        request.contains(r#""signature":"signature_REDACTED"#),
+        "turn-2 request in {} carries a thinking block with no signature:\n{request}",
+        path.display()
+    );
 }
 
 #[tokio::test]

@@ -32,6 +32,11 @@ struct GrpcAdapter {
     /// handling. Reset on non-thought output to mirror the accumulator's
     /// minted-id boundary.
     thought_buffer: String,
+    /// A tool-protocol finish reason ended the turn; later frames are dead —
+    /// the provider aborted, and interpreting more output (or a terminal)
+    /// would dress the failure up as a completed turn. Mirrors the REST
+    /// adapter's identically named latch.
+    failed: bool,
 }
 
 impl WireAdapter for GrpcAdapter {
@@ -49,12 +54,28 @@ impl WireAdapter for GrpcAdapter {
     }
 
     fn interpret(&mut self, resp: Self::Event, out: &mut AdapterOutput<Self::Response>) {
+        if self.failed {
+            return;
+        }
+
         let mut is_final = false;
 
         if let Some(candidate) = resp.candidates.first() {
             // Enum default is 0 = FINISH_REASON_UNSPECIFIED.
             if candidate.finish_reason != 0 {
                 is_final = true;
+            }
+
+            // A tool-protocol abort is a failed turn, not a finished one:
+            // push the error and stop, exactly as the REST adapter does, so
+            // no terminal record follows to report the turn as complete.
+            if let Some(err) = super::completion::tool_protocol_finish_reason_error(
+                candidate.finish_reason,
+                candidate.finish_message.as_deref(),
+            ) {
+                self.failed = true;
+                out.push(Err(err));
+                return;
             }
 
             if let Some(content) = candidate.content.as_ref() {
@@ -155,6 +176,14 @@ impl WireAdapter for GrpcAdapter {
 
     fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
         // EOF without a finish reason is truncation: no terminal record.
+    }
+
+    fn is_finished(&self) -> bool {
+        // A tool-protocol terminal failure is the wire's own in-band
+        // terminal: `interpret` already pushed the `Err` and gates itself on
+        // `failed`, so the driver must stop reading rather than drain the
+        // rest of the transport.
+        self.failed
     }
 }
 
@@ -418,6 +447,154 @@ mod tests {
                 signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
             }]
         );
+    }
+
+    // ---- #2258 H4: tool-protocol finish reasons must fail the turn ----
+
+    fn failed_response(
+        reason: proto::candidate::FinishReason,
+        finish_message: Option<&str>,
+    ) -> proto::GenerateContentResponse {
+        proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![],
+                    role: "model".to_string(),
+                }),
+                finish_reason: reason as i32,
+                finish_message: finish_message.map(str::to_owned),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    struct Drained {
+        errors: Vec<String>,
+        reached_terminal: bool,
+        text: String,
+    }
+
+    async fn drain(events: Vec<proto::GenerateContentResponse>) -> Drained {
+        let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
+        let mut drained = Drained {
+            errors: Vec::new(),
+            reached_terminal: false,
+            text: String::new(),
+        };
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::Final(_)) => drained.reached_terminal = true,
+                Ok(StreamedAssistantContent::Text(text)) => drained.text.push_str(&text.text),
+                Ok(_) => {}
+                Err(error) => drained.errors.push(error.to_string()),
+            }
+        }
+
+        drained
+    }
+
+    // The gRPC surface only set `is_final` on a nonzero finish reason, so an
+    // aborted tool protocol read as a completed turn. It must now fail, as
+    // the REST surface always has.
+    #[tokio::test]
+    async fn malformed_function_call_fails_the_stream_with_no_terminal() {
+        let drained = drain(vec![failed_response(
+            proto::candidate::FinishReason::MalformedFunctionCall,
+            Some("could not parse the function call"),
+        )])
+        .await;
+
+        assert_eq!(drained.errors.len(), 1, "errors: {:?}", drained.errors);
+        let error = drained.errors.first().expect("one error");
+        assert!(
+            error.contains("MALFORMED_FUNCTION_CALL")
+                && error.contains("could not parse the function call"),
+            "error should name the reason and carry finish_message: {error}"
+        );
+        assert!(
+            !drained.reached_terminal,
+            "a failed turn must not synthesize a terminal record"
+        );
+    }
+
+    #[tokio::test]
+    async fn unexpected_and_too_many_tool_calls_also_fail_the_stream() {
+        for reason in [
+            proto::candidate::FinishReason::UnexpectedToolCall,
+            proto::candidate::FinishReason::TooManyToolCalls,
+        ] {
+            let drained = drain(vec![failed_response(reason, None)]).await;
+            assert_eq!(
+                drained.errors.len(),
+                1,
+                "{} should fail the stream",
+                reason.as_str_name()
+            );
+            assert!(!drained.reached_terminal);
+        }
+    }
+
+    // Everything after the in-band failure is dead: the adapter latches
+    // `failed` and reports `is_finished`, so a later genuine terminal cannot
+    // dress the aborted turn up as complete.
+    #[tokio::test]
+    async fn frames_after_a_tool_protocol_failure_are_not_interpreted() {
+        let drained = drain(vec![
+            failed_response(proto::candidate::FinishReason::MalformedFunctionCall, None),
+            response(
+                vec![proto::Part {
+                    data: Some(proto::part::Data::Text("recovered?".to_string())),
+                    ..Default::default()
+                }],
+                proto::candidate::FinishReason::Stop as i32,
+            ),
+        ])
+        .await;
+
+        assert_eq!(drained.errors.len(), 1, "errors: {:?}", drained.errors);
+        assert!(drained.text.is_empty(), "text: {:?}", drained.text);
+        assert!(!drained.reached_terminal);
+    }
+
+    // Ordinary terminals are untouched by the new gate.
+    #[tokio::test]
+    async fn non_tool_protocol_finish_reasons_still_complete_the_turn() {
+        let drained = drain(vec![response(
+            vec![proto::Part {
+                data: Some(proto::part::Data::Text("done".to_string())),
+                ..Default::default()
+            }],
+            proto::candidate::FinishReason::Stop as i32,
+        )])
+        .await;
+
+        assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
+        assert_eq!(drained.text, "done");
+        assert!(drained.reached_terminal);
+    }
+
+    // The unary path routes through the same helper, so the two surfaces
+    // report an aborted tool protocol with the same message.
+    #[test]
+    fn unary_and_streaming_report_the_same_tool_protocol_error() {
+        let response = failed_response(
+            proto::candidate::FinishReason::TooManyToolCalls,
+            Some("budget exhausted"),
+        );
+
+        let expected = super::super::completion::tool_protocol_finish_reason_error(
+            proto::candidate::FinishReason::TooManyToolCalls as i32,
+            Some("budget exhausted"),
+        )
+        .expect("the helper must produce an error")
+        .to_string();
+
+        match rig_core::completion::CompletionResponse::try_from(response) {
+            Err(err) => assert_eq!(err.to_string(), expected),
+            Ok(_) => panic!("the unary path must fail on a tool-protocol finish reason"),
+        }
     }
 
     // The streaming path maps both the initial `stream_generate_content` RPC

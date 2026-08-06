@@ -1,4 +1,5 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
+use base64::{Engine, prelude::BASE64_STANDARD};
 
 use rig_core::{
     completion::CompletionError,
@@ -160,6 +161,19 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigAssistantContent {
                         ),
                     )))
                 }
+                // Content the safety classifier encrypted. It is normal model
+                // output, not a protocol violation: erroring here failed the
+                // whole response over a block the streaming path and the
+                // direct-Anthropic adapter both carry. The blob is bytes and
+                // rig's canonical reasoning content is a string, so it travels
+                // base64-encoded and decodes on the way back out.
+                aws_bedrock::ReasoningContentBlock::RedactedContent(blob) => {
+                    Ok(RigAssistantContent(AssistantContent::Reasoning(
+                        rig_core::message::Reasoning::redacted(
+                            BASE64_STANDARD.encode(blob.as_ref()),
+                        ),
+                    )))
+                }
                 _ => Err(CompletionError::ProviderError(
                     "AWS Bedrock returned unsupported ReasoningContentBlock variant".into(),
                 )),
@@ -189,6 +203,56 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                 ))
             }
             AssistantContent::Reasoning(reasoning) => {
+                // Opaque payloads (safety-redacted or provider-encrypted) are
+                // ciphertext, not prose. `display_text()` folds `Redacted`
+                // into the flattened text, so without this short-circuit the
+                // blob would be replayed to Bedrock as an unsigned
+                // `reasoningText` — worse than dropping it, because the
+                // provider is handed a body the model never wrote.
+                let opaque: Vec<&str> = reasoning
+                    .content
+                    .iter()
+                    .filter_map(|content| match content {
+                        rig_core::message::ReasoningContent::Redacted { data }
+                        | rig_core::message::ReasoningContent::Encrypted(data) => {
+                            Some(data.as_str())
+                        }
+                        _ => None,
+                    })
+                    .collect();
+
+                if !opaque.is_empty() {
+                    if opaque.len() != reasoning.content.len() {
+                        return Err(CompletionError::ProviderError(
+                            "AWS Bedrock cannot represent a reasoning block mixing opaque \
+                             (redacted/encrypted) content with reasoning text in one content block"
+                                .to_owned(),
+                        ));
+                    }
+                    if opaque.len() > 1 {
+                        return Err(CompletionError::ProviderError(
+                            "AWS Bedrock does not support multiple opaque reasoning payloads in \
+                             one content block"
+                                .to_owned(),
+                        ));
+                    }
+
+                    // Round-trips the encoding the inbound legs apply: the
+                    // wire carries bytes, rig's canonical content is a string.
+                    let data = opaque.first().copied().unwrap_or_default();
+                    let bytes = BASE64_STANDARD.decode(data).map_err(|error| {
+                        CompletionError::ProviderError(format!(
+                            "AWS Bedrock redacted reasoning content is not valid base64: {error}"
+                        ))
+                    })?;
+
+                    return Ok(aws_bedrock::ContentBlock::ReasoningContent(
+                        aws_bedrock::ReasoningContentBlock::RedactedContent(
+                            aws_smithy_types::Blob::new(bytes),
+                        ),
+                    ));
+                }
+
                 let signed_text_count = reasoning
                     .content
                     .iter()
@@ -263,6 +327,7 @@ mod tests {
 
     use super::AwsConverseOutput;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
+    use base64::{Engine as _, prelude::BASE64_STANDARD};
     use rig_core::{
         OneOrMany, completion,
         message::{AssistantContent, ReasoningContent},
@@ -632,6 +697,145 @@ mod tests {
             aws_content_block,
             Err(completion::CompletionError::ProviderError(message))
                 if message.contains("multiple signed reasoning text blocks")
+        ));
+    }
+
+    // ---- Redacted (safety-encrypted) reasoning: #2258 F2 ----
+
+    const REDACTED_BLOB: &[u8] = b"\x00\x01opaque-ciphertext\xff";
+
+    #[test]
+    fn aws_redacted_reasoning_content_becomes_redacted_reasoning_not_an_error() {
+        // Previously this failed the WHOLE response with "unsupported
+        // ReasoningContentBlock variant".
+        let content_block = aws_bedrock::ContentBlock::ReasoningContent(
+            aws_bedrock::ReasoningContentBlock::RedactedContent(aws_smithy_types::Blob::new(
+                REDACTED_BLOB.to_vec(),
+            )),
+        );
+
+        let rig_content: RigAssistantContent = content_block
+            .try_into()
+            .expect("redacted reasoning must convert, not error");
+
+        match rig_content.0 {
+            AssistantContent::Reasoning(reasoning) => assert_eq!(
+                reasoning.content,
+                vec![ReasoningContent::Redacted {
+                    data: BASE64_STANDARD.encode(REDACTED_BLOB),
+                }]
+            ),
+            other => panic!("Expected redacted reasoning, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rig_redacted_reasoning_replays_as_redacted_content_never_as_plaintext() {
+        // The bug this pins: `display_text()` folds `Redacted` into the
+        // flattened text, so the blob used to be replayed as an unsigned
+        // `reasoningText` body.
+        let reasoning =
+            rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(REDACTED_BLOB));
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: aws_bedrock::ContentBlock = rig_content
+            .try_into()
+            .expect("redacted reasoning should convert outbound");
+
+        match aws_content_block {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::RedactedContent(blob),
+            ) => assert_eq!(blob.as_ref(), REDACTED_BLOB),
+            other => panic!("Expected RedactedContent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn redacted_reasoning_round_trips_byte_for_byte() {
+        let inbound = aws_bedrock::ContentBlock::ReasoningContent(
+            aws_bedrock::ReasoningContentBlock::RedactedContent(aws_smithy_types::Blob::new(
+                REDACTED_BLOB.to_vec(),
+            )),
+        );
+
+        let rig_content: RigAssistantContent =
+            inbound.try_into().expect("inbound conversion should work");
+        let outbound: aws_bedrock::ContentBlock = rig_content
+            .try_into()
+            .expect("outbound conversion should work");
+
+        match outbound {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::RedactedContent(blob),
+            ) => assert_eq!(blob.as_ref(), REDACTED_BLOB),
+            other => panic!("Expected RedactedContent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rig_encrypted_reasoning_also_replays_as_redacted_content() {
+        // `Encrypted` is the same opaque shape under a different provider's
+        // name; `display_text()` skips it, so it used to convert to an EMPTY
+        // reasoning text block instead of surviving.
+        let reasoning =
+            rig_core::message::Reasoning::encrypted(BASE64_STANDARD.encode(REDACTED_BLOB));
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: aws_bedrock::ContentBlock = rig_content
+            .try_into()
+            .expect("encrypted reasoning should convert outbound");
+
+        match aws_content_block {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::RedactedContent(blob),
+            ) => assert_eq!(blob.as_ref(), REDACTED_BLOB),
+            other => panic!("Expected RedactedContent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn opaque_reasoning_mixed_with_text_is_rejected_not_flattened() {
+        let mut reasoning = rig_core::message::Reasoning::new("visible thinking");
+        reasoning.content.push(ReasoningContent::Redacted {
+            data: BASE64_STANDARD.encode(REDACTED_BLOB),
+        });
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(matches!(
+            aws_content_block,
+            Err(completion::CompletionError::ProviderError(message))
+                if message.contains("mixing opaque")
+        ));
+    }
+
+    #[test]
+    fn multiple_opaque_reasoning_payloads_are_rejected() {
+        let mut reasoning =
+            rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(REDACTED_BLOB));
+        reasoning.content.push(ReasoningContent::Redacted {
+            data: BASE64_STANDARD.encode(b"second"),
+        });
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(matches!(
+            aws_content_block,
+            Err(completion::CompletionError::ProviderError(message))
+                if message.contains("multiple opaque reasoning payloads")
+        ));
+    }
+
+    #[test]
+    fn non_base64_opaque_reasoning_is_rejected_rather_than_sent_corrupt() {
+        let reasoning = rig_core::message::Reasoning::redacted("not*valid*base64");
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        assert!(matches!(
+            aws_content_block,
+            Err(completion::CompletionError::ProviderError(message))
+                if message.contains("not valid base64")
         ));
     }
 }
