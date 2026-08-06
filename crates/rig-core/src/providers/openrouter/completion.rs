@@ -3176,9 +3176,9 @@ mod tests {
         );
     }
 
-    /// An encrypted detail the wire sends without an id degrades to the
-    /// accumulator's shared "" identity; it must still replay, and with a null
-    /// wire id rather than an empty string.
+    /// An encrypted detail the wire sends without an id streams under its
+    /// own minted `EncryptedReasoning` key; it must still replay, and with
+    /// a null wire id rather than an empty string.
     #[test]
     fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
         use crate::providers::openai::completion::OpenAICompatibleProvider as _;
