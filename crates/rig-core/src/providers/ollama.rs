@@ -1201,9 +1201,14 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                     match content {
                         crate::message::UserContent::ToolResult(crate::message::ToolResult {
                             id,
+                            name,
                             content,
                             ..
                         }) => {
+                            // The executed tool's name travels as data; the
+                            // id is a legacy fallback for pre-field
+                            // histories the shim could not pair.
+                            let function_name = name.filter(|name| !name.is_empty()).unwrap_or(id);
                             if !pending_user_content.is_empty() {
                                 messages.push(user_message_from_content(std::mem::take(
                                     &mut pending_user_content,
@@ -1225,7 +1230,10 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?
                                 .join("\n");
-                            messages.push(Message::ToolResult { name: id, content });
+                            messages.push(Message::ToolResult {
+                                name: function_name,
+                                content,
+                            });
                         }
                         content => pending_user_content.push(content),
                     }

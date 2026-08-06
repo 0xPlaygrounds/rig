@@ -516,6 +516,7 @@ mod tests {
         let tool_result = ToolResult {
             id: "add".to_string(),
             call_id: None,
+            name: None,
             content: OneOrMany::one(ToolResultContent::Text(Text::new("8".to_string()))),
         };
 
@@ -551,6 +552,7 @@ mod tests {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
                 id: "lookup".to_string(),
                 call_id: None,
+                name: None,
                 content: OneOrMany::one(ToolResultContent::json(value.clone())),
             })),
         };
@@ -577,6 +579,7 @@ mod tests {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
                 id: "inspect".to_string(),
                 call_id: None,
+                name: None,
                 content: OneOrMany::one(ToolResultContent::image_base64(
                     BASE64.encode(&raw),
                     Some(ImageMediaType::PNG),
@@ -618,6 +621,7 @@ mod tests {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
                 id: "inspect".to_string(),
                 call_id: None,
+                name: None,
                 content,
             })),
         };
@@ -685,6 +689,7 @@ mod tests {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
                 id: "inspect".to_string(),
                 call_id: None,
+                name: None,
                 content,
             })),
         };
@@ -720,6 +725,7 @@ mod tests {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
                 id: "inspect".to_string(),
                 call_id: None,
+                name: None,
                 content: OneOrMany::one(ToolResultContent::image_raw(
                     vec![1, 2, 3],
                     Some(ImageMediaType::GIF),

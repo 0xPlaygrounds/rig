@@ -186,6 +186,7 @@ impl PartialStreamedTurn {
                 tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
+                    tool_call.function.name.clone(),
                     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                 )
             })
@@ -193,6 +194,7 @@ impl PartialStreamedTurn {
         retry_results.push(tool_result_message(
             invalid_tool_call.id,
             invalid_tool_call.call_id,
+            invalid_tool_call.function.name,
             feedback,
         ));
 

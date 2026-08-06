@@ -599,21 +599,23 @@ pub(crate) fn build_full_history(
 fn tool_result_with(
     id: String,
     call_id: Option<String>,
+    name: String,
     content: OneOrMany<ToolResultContent>,
 ) -> UserContent {
-    match call_id {
-        Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
-        None => UserContent::tool_result(id, content),
-    }
+    // The *executed* tool's name travels as data on the result: several
+    // wires require it on replay (Gemini `functionResponse.name`, Ollama
+    // tool messages), and an identifier is not a name.
+    UserContent::tool_result_named(id, call_id, name, content)
 }
 
 /// Shape a canonical real tool output as a tool result without reparsing text.
 pub(crate) fn tool_result_output(
     id: String,
     call_id: Option<String>,
+    name: String,
     output: ToolOutput,
 ) -> UserContent {
-    tool_result_with(id, call_id, output.into_content())
+    tool_result_with(id, call_id, name, output.into_content())
 }
 
 /// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
@@ -624,11 +626,13 @@ pub(crate) fn tool_result_output(
 pub(crate) fn tool_result_message(
     id: String,
     call_id: Option<String>,
+    name: String,
     message: String,
 ) -> UserContent {
     tool_result_with(
         id,
         call_id,
+        name,
         OneOrMany::one(ToolResultContent::text(message)),
     )
 }
@@ -645,12 +649,14 @@ pub(crate) fn invalid_tool_retry_user_message(
                 Some(tool_result_message(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
+                    tool_call.function.name.clone(),
                     feedback.clone(),
                 ))
             }
             AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
                 tool_call.id.clone(),
                 tool_call.call_id.clone(),
+                tool_call.function.name.clone(),
                 TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
             )),
             _ => None,

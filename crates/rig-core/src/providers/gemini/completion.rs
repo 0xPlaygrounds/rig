@@ -876,8 +876,13 @@ pub mod gemini_api_types {
                 message::UserContent::ToolResult(message::ToolResult {
                     id,
                     call_id,
+                    name,
                     content,
                 }) => {
+                    // The executed tool's name travels as data; the id is a
+                    // legacy fallback for pre-field histories the shim could
+                    // not pair.
+                    let function_name = name.filter(|name| !name.is_empty()).unwrap_or(id);
                     let mut response_values = Vec::new();
                     let mut parts: Vec<FunctionResponsePart> = Vec::new();
 
@@ -944,7 +949,7 @@ pub mod gemini_api_types {
                         thought: Some(false),
                         thought_signature: None,
                         part: PartKind::FunctionResponse(FunctionResponse {
-                            name: id,
+                            name: function_name,
                             id: call_id,
                             response: response_json,
                             parts: if parts.is_empty() { None } else { Some(parts) },
@@ -3365,6 +3370,7 @@ mod tests {
         // Create a tool result with both text and image content
         let tool_result = ToolResult {
             id: "test_tool".to_string(),
+            name: None,
             call_id: Some("call-123".to_string()),
             content: OneOrMany::many(vec![
                 ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
@@ -3431,6 +3437,7 @@ mod tests {
             content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
                 id: "ordered_tool".to_string(),
                 call_id: None,
+                name: None,
                 content: OneOrMany::many(vec![
                     ToolResultContent::image_base64("first-image", Some(ImageMediaType::PNG), None),
                     ToolResultContent::text("between-images"),
@@ -3477,6 +3484,7 @@ mod tests {
         let message = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
                 id: "ordered_tool".to_string(),
+                name: None,
                 call_id: None,
                 content: OneOrMany::many(vec![
                     ToolResultContent::json(json!({ "status": "ok" })),
@@ -3513,6 +3521,7 @@ mod tests {
         let tool_result = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
                 id: "url_tool".to_string(),
+                name: None,
                 call_id: None,
                 content: OneOrMany::many(vec![
                     ToolResultContent::Image(Image {
@@ -3552,6 +3561,7 @@ mod tests {
                 content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
                     id: "image_tool".to_string(),
                     call_id: None,
+                    name: None,
                     content: OneOrMany::one(ToolResultContent::image_base64(
                         "image-data",
                         Some(media_type),
@@ -3579,6 +3589,7 @@ mod tests {
         let message = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
                 id: "collision_tool".to_string(),
+                name: None,
                 call_id: None,
                 content: OneOrMany::many(vec![
                     ToolResultContent::json(json!({
@@ -3639,6 +3650,7 @@ mod tests {
                 content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
                     id: "test_tool".to_string(),
                     call_id: None,
+                    name: None,
                     content: OneOrMany::one(tool_content),
                 })),
             };
@@ -3727,6 +3739,7 @@ mod tests {
 
         let tool_result = ToolResult {
             id: "screenshot_tool".to_string(),
+            name: None,
             call_id: None,
             content: OneOrMany::one(ToolResultContent::Image(Image {
                 data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),

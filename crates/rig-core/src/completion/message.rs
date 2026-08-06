@@ -214,6 +214,17 @@ pub struct ToolResult {
     /// Provider-specific call ID, when distinct from `id`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub call_id: Option<String>,
+    /// Name of the tool that produced this result — the *executed* tool,
+    /// which can differ from the model's call when a hook repaired it.
+    ///
+    /// Carried as data because several wires require it on replay (Gemini's
+    /// `functionResponse.name`, Ollama's tool messages) and an identifier is
+    /// not a name: rig used to smuggle the name through `id`, which
+    /// collided two calls to the same tool and misnamed cross-provider
+    /// replays (review 84a43e9e #5). `None` on histories persisted before
+    /// this field existed; serializers fall back to history pairing then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// One or more content items produced by the tool.
     pub content: OneOrMany<ToolResultContent>,
 }
@@ -682,6 +693,7 @@ impl Message {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: id.into(),
                 call_id: None,
+                name: None,
                 content: OneOrMany::one(ToolResultContent::text(content)),
             })),
         }
@@ -696,6 +708,7 @@ impl Message {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: id.into(),
                 call_id,
+                name: None,
                 content: OneOrMany::one(ToolResultContent::text(content)),
             })),
         }
@@ -838,6 +851,24 @@ impl UserContent {
         UserContent::ToolResult(ToolResult {
             id: id.into(),
             call_id: None,
+            name: None,
+            content,
+        })
+    }
+
+    /// Tool result content carrying the executed tool's name — the form the
+    /// agent drivers use, so name-requiring wires (Gemini, Ollama) replay
+    /// without reconstructing the name from history.
+    pub fn tool_result_named(
+        id: impl Into<String>,
+        call_id: Option<String>,
+        name: impl Into<String>,
+        content: OneOrMany<ToolResultContent>,
+    ) -> Self {
+        UserContent::ToolResult(ToolResult {
+            id: id.into(),
+            call_id,
+            name: Some(name.into()),
             content,
         })
     }
@@ -851,6 +882,7 @@ impl UserContent {
         UserContent::ToolResult(ToolResult {
             id: id.into(),
             call_id: Some(call_id),
+            name: None,
             content,
         })
     }
@@ -1298,6 +1330,7 @@ impl From<ToolResultContent> for Message {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
                 id: String::new(),
                 call_id: None,
+                name: None,
                 content: OneOrMany::one(tool_result_content),
             })),
         }

@@ -978,3 +978,67 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
     )
     .await;
 }
+
+/// Cross-provider replay, recorded live (84a43e9e finding #5): a history
+/// sourced from an OpenAI-Chat-shaped provider carries
+/// `ToolResult { id: "call_abc", name: None }`. Replayed to Gemini, the
+/// request's `functionResponse.name` must be the tool's *name* resolved
+/// from the paired call — never the identifier `call_abc`, which the
+/// pre-fix heuristic kept verbatim. The recording is the evidence: Gemini
+/// accepts the request and answers from the tool result.
+///
+/// Re-record with:
+/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini chat_sourced_history_replays -- --test-threads=1`
+#[tokio::test]
+async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
+    super::super::support::with_gemini_cassette(
+        "streaming_grammar/chat_sourced_history_replay",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let history = vec![
+                rig::message::Message::user(
+                    "Use the add tool to compute 2 + 3, then state the result.",
+                ),
+                rig::message::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
+                        // The OpenAI-Chat shape: the identifier fills `id`,
+                        // no separate call_id, and (pre-field histories) no
+                        // result name.
+                        id: "call_abc123".to_owned(),
+                        call_id: None,
+                        function: rig::message::ToolFunction {
+                            name: "add".to_owned(),
+                            arguments: serde_json::json!({"x": 2, "y": 3}),
+                        },
+                        signature: None,
+                        additional_params: None,
+                    })),
+                },
+                rig::message::Message::User {
+                    content: OneOrMany::one(UserContent::ToolResult(rig::message::ToolResult {
+                        id: "call_abc123".to_owned(),
+                        call_id: None,
+                        name: None,
+                        content: OneOrMany::one(ToolResultContent::text("5")),
+                    })),
+                },
+            ];
+            let request = model
+                .completion_request("State the final result in one short sentence.")
+                .preamble(
+                    "You are a calculator assistant. Report tool results faithfully.".to_string(),
+                )
+                .tool(rig::tool::tool_definition(&crate::support::Adder))
+                .messages(history)
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            assert!(
+                run.text.contains('5'),
+                "the model should answer from the replayed tool result, got {:?}",
+                run.text
+            );
+        },
+    )
+    .await;
+}

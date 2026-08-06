@@ -1035,15 +1035,12 @@ impl AgentRun {
                         diagnostic_history,
                     ));
                 }
-                let user_content = if let Some(call_id) = tool_call.call_id.clone() {
-                    UserContent::tool_result_with_call_id(
-                        tool_call.id.clone(),
-                        call_id,
-                        OneOrMany::one(reason.into()),
-                    )
-                } else {
-                    UserContent::tool_result(tool_call.id.clone(), OneOrMany::one(reason.into()))
-                };
+                let user_content = UserContent::tool_result_named(
+                    tool_call.id.clone(),
+                    tool_call.call_id.clone(),
+                    tool_call.function.name.clone(),
+                    OneOrMany::one(reason.into()),
+                );
                 resolving.skipped.insert(tool_call.id.clone(), user_content);
                 resolving.recovered = true;
                 resolving.any_skipped = true;
@@ -1211,6 +1208,7 @@ impl AgentRun {
                         tool_result_message(
                             tool_call.id.clone(),
                             tool_call.call_id.clone(),
+                            tool_call.function.name.clone(),
                             TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                         )
                     });
@@ -1376,6 +1374,7 @@ impl AgentRun {
                 let skipped_tool_result = ToolResult {
                     id: invalid.tool_call.id.clone(),
                     call_id: invalid.tool_call.call_id.clone(),
+                    name: Some(invalid.tool_call.function.name.clone()),
                     content: OneOrMany::one(ToolResultContent::text(reason.clone())),
                 };
                 let Some((assistant_message, user_message)) =

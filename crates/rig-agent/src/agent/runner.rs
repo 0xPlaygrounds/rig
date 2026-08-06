@@ -819,6 +819,7 @@ pub(crate) async fn run_single_tool(
                 content: tool_result_output(
                     tool_call.id.clone(),
                     tool_call.call_id.clone(),
+                    tool_call.function.name.clone(),
                     replacement,
                 ),
                 execution,
@@ -831,6 +832,7 @@ pub(crate) async fn run_single_tool(
             let content = tool_result_output(
                 tool_call.id.clone(),
                 tool_call.call_id.clone(),
+                tool_call.function.name.clone(),
                 exec.output().clone(),
             );
             Ok(ToolCallOutcome { content, execution })

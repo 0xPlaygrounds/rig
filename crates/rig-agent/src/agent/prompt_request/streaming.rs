@@ -1954,6 +1954,7 @@ mod migrated_tests {
         let user_content = tool_result_output(
             "tool_call_1".to_string(),
             Some("call_1".to_string()),
+            "render_reference_image".to_string(),
             crate::tool::ToolOutput::content(content),
         );
 

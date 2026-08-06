@@ -2199,6 +2199,7 @@ mod tests {
         let tool_result = message::ToolResult {
             id: "result-id".to_string(),
             call_id: Some("call-id".to_string()),
+            name: None,
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text("first"),
                 message::ToolResultContent::text("second"),
@@ -2433,6 +2434,7 @@ mod tests {
     fn multiple_tool_result_blocks_convert_to_distinct_content_parts() {
         let result = message::ToolResult {
             id: "result-id".to_string(),
+            name: None,
             call_id: Some("call-id".to_string()),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text("first"),

@@ -30,22 +30,20 @@ pub(crate) fn completion_usage(
     }
 }
 
-/// Resolve each tool result's function name from its paired assistant call.
+/// Back-compat shim: resolve a tool result's function name from its paired
+/// assistant call, for histories that predate [`ToolResult::name`].
 ///
 /// Some wires require the *function name* on a replayed tool result
-/// (Gemini's `functionResponse.name`, Ollama's tool-message name), which
-/// rig's durable `ToolResult` does not carry as a field. Gemini's
-/// `functionResponse.name` is the *function name*, which rig's
-/// durable `ToolResult` does not carry as a field — and rig no longer
-/// smuggles it through the tool-call id (two calls to the same tool must
-/// stay distinct; identity is not a name). The pairing is recovered from the
-/// history itself: a result matches a pending call by a non-empty
-/// `call_id`/`id`, else the oldest unanswered call in order — the wire's own
-/// correlation model. A result with no pending call keeps its `id` as the
-/// name, which is what legacy histories stored there.
-///
-/// The resolved name is written into `ToolResult::id`, the field the
-/// `FunctionResponse` conversion reads as the name.
+/// (Gemini's `functionResponse.name`, Ollama's tool-message name). Since
+/// review 84a43e9e the durable [`ToolResult`](crate::message::ToolResult)
+/// carries it as data (`name`), populated by the agent drivers at
+/// construction — a result with `name: Some(..)` is left untouched here and
+/// only advances the pairing bookkeeping. The heuristic below runs only for
+/// `name: None` results (persisted pre-field histories, hand-built
+/// results): pair by identifier when one exists, by wire order when none
+/// does, and treat a non-empty id that matches no call as the name itself
+/// (the legacy name-in-id encoding). The resolved name is written into
+/// `ToolResult::name`; serializers read `name` first and fall back to `id`.
 pub(crate) fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
     let mut pending: std::collections::VecDeque<(String, String)> =
         std::collections::VecDeque::new();
@@ -69,26 +67,14 @@ pub(crate) fn resolve_tool_result_names(history: &mut [crate::message::Message])
                     let crate::message::UserContent::ToolResult(result) = item else {
                         continue;
                     };
-                    // What does this result's `id` hold? Three shapes exist
-                    // in the wild:
-                    //   1. Empty — the id-less wire; rig fabricates nothing.
-                    //      The name comes from the paired call: by non-empty
-                    //      `call_id`, else the oldest unanswered call (the
-                    //      wire's own in-order correlation).
-                    //   2. Equal to `call_id` — a wire identifier copied onto
-                    //      both fields. The name comes from the call bearing
-                    //      that identifier.
-                    //   3. Anything else — the id *is* the function name
-                    //      (legacy name-in-id histories; results whose
-                    //      executed tool differs from the model's call, e.g.
-                    //      a repair hook renaming it). Kept verbatim.
                     let call_id = result.call_id.as_deref().filter(|id| !id.is_empty());
-                    let id_is_identifier = call_id.is_some_and(|call_id| result.id == call_id);
-                    if !result.id.is_empty() && !id_is_identifier {
-                        // Shape 3: advance the in-order bookkeeping past the
-                        // answered call so later results keep pairing.
+                    // A result that already carries its name needs no
+                    // heuristic — advance the pairing bookkeeping and move
+                    // on, so later name-less results keep pairing in order.
+                    if result.name.is_some() {
                         if let Some(index) = pending.iter().position(|(call_identity, _)| {
-                            Some(call_identity.as_str()) == call_id || call_identity == &result.id
+                            Some(call_identity.as_str()) == call_id
+                                || (!result.id.is_empty() && call_identity == &result.id)
                         }) {
                             pending.remove(index);
                         } else {
@@ -96,24 +82,161 @@ pub(crate) fn resolve_tool_result_names(history: &mut [crate::message::Message])
                         }
                         continue;
                     }
-                    // Shapes 1 and 2: resolve the name from the paired call.
-                    let matched = match call_id {
-                        Some(identity) => pending
-                            .iter()
-                            .position(|(call_identity, _)| call_identity == identity),
+                    // Legacy shapes, decided by what `id` holds:
+                    //   1. Empty — pair by non-empty `call_id`, else the
+                    //      oldest unanswered call (the wire's own in-order
+                    //      correlation).
+                    //   2. Matching a pending call's identity (directly or
+                    //      via `call_id`) — the id is an *identifier*, and
+                    //      the match is proof: take that call's name
+                    //      (84a43e9e #5 — an OpenAI-Chat `call_abc` replayed
+                    //      cross-provider must never become the name).
+                    //   3. Non-empty and matching nothing — the id *is* the
+                    //      name (the legacy name-in-id encoding, and results
+                    //      whose executed tool differs from the model's
+                    //      call, e.g. a repair hook renaming it).
+                    let identity_match = pending.iter().position(|(call_identity, _)| {
+                        Some(call_identity.as_str()) == call_id
+                            || (!result.id.is_empty() && call_identity == &result.id)
+                    });
+                    let matched = identity_match.or_else(|| {
                         // A non-matching identifier is a veto, never a
                         // license to pair positionally.
-                        None if result.id.is_empty() => (!pending.is_empty()).then_some(0),
-                        None => None,
-                    };
-                    if let Some(index) = matched
-                        && let Some((_, name)) = pending.remove(index)
-                    {
-                        result.id = name;
+                        (result.id.is_empty() && call_id.is_none() && !pending.is_empty())
+                            .then_some(0)
+                    });
+                    match matched {
+                        Some(index) => {
+                            if let Some((_, name)) = pending.remove(index) {
+                                result.name = Some(name);
+                            }
+                        }
+                        None if !result.id.is_empty() => {
+                            // Shape 3: the id is the name.
+                            result.name = Some(result.id.clone());
+                            pending.pop_front();
+                        }
+                        None => {}
                     }
                 }
             }
             crate::message::Message::System { .. } => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod resolve_tool_result_names_tests {
+    use super::resolve_tool_result_names;
+    use crate::message::{
+        AssistantContent, Message, ToolCall, ToolFunction, ToolResult, ToolResultContent,
+        UserContent,
+    };
+    use crate::one_or_many::OneOrMany;
+
+    fn call(id: &str, call_id: Option<&str>, name: &str) -> Message {
+        Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
+                id: id.to_owned(),
+                call_id: call_id.map(str::to_owned),
+                function: ToolFunction {
+                    name: name.to_owned(),
+                    arguments: serde_json::json!({}),
+                },
+                signature: None,
+                additional_params: None,
+            })),
+        }
+    }
+
+    fn result(id: &str, call_id: Option<&str>, name: Option<&str>) -> Message {
+        Message::User {
+            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+                id: id.to_owned(),
+                call_id: call_id.map(str::to_owned),
+                name: name.map(str::to_owned),
+                content: OneOrMany::one(ToolResultContent::text("out")),
+            })),
+        }
+    }
+
+    fn resolved_name(history: &[Message], index: usize) -> Option<String> {
+        let Message::User { content } = &history[index] else {
+            panic!("expected user message");
+        };
+        let UserContent::ToolResult(result) = content.first() else {
+            panic!("expected tool result");
+        };
+        result.name.clone()
+    }
+
+    /// A result that already carries its name is data, not a candidate for
+    /// the heuristic: the executed tool's name wins, even when the paired
+    /// call's name differs (a repair hook renamed the call).
+    #[test]
+    fn an_existing_name_is_never_overwritten() {
+        let mut history = vec![
+            call("call_1", None, "model_named_tool"),
+            result("call_1", None, Some("executed_tool")),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 1), Some("executed_tool".into()));
+    }
+
+    /// 84a43e9e finding #5, pinned: an OpenAI-Chat-shaped history
+    /// (`ToolResult { id: "call_abc" }`) replayed cross-provider. The id
+    /// matches the call's identity — proof it is an identifier — so the
+    /// resolved name is the call's function name, never `call_abc`.
+    #[test]
+    fn an_identifier_matching_a_call_resolves_to_that_calls_name() {
+        let mut history = vec![
+            call("call_abc", None, "get_weather"),
+            result("call_abc", None, None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 1), Some("get_weather".into()));
+    }
+
+    /// The legacy name-in-id encoding still resolves: a non-empty id
+    /// matching no pending call is the name itself.
+    #[test]
+    fn a_legacy_name_in_id_history_keeps_the_name() {
+        let mut history = vec![
+            call("", None, "get_weather"),
+            result("get_weather", None, None),
+        ];
+        resolve_tool_result_names(&mut history);
+        // "get_weather" matches the... call identity is "" here, so the id
+        // matches nothing and is kept as the name.
+        assert_eq!(resolved_name(&history, 1), Some("get_weather".into()));
+    }
+
+    /// Id-less results pair with unanswered calls in wire order.
+    #[test]
+    fn id_less_results_pair_in_wire_order() {
+        let mut history = vec![
+            call("", None, "first_tool"),
+            call("", None, "second_tool"),
+            result("", None, None),
+            result("", None, None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 2), Some("first_tool".into()));
+        assert_eq!(resolved_name(&history, 3), Some("second_tool".into()));
+    }
+
+    /// A named result still advances the in-order bookkeeping, so a later
+    /// name-less result pairs with the RIGHT remaining call.
+    #[test]
+    fn named_results_advance_the_pairing_bookkeeping() {
+        let mut history = vec![
+            call("", None, "first_tool"),
+            call("", None, "second_tool"),
+            result("", None, Some("first_tool_executed")),
+            result("", None, None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 3), Some("second_tool".into()));
     }
 }

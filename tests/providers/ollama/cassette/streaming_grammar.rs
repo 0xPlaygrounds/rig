@@ -311,3 +311,69 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
     })
     .await;
 }
+
+/// Cross-provider replay, recorded live (84a43e9e finding #5): an
+/// OpenAI-Chat-shaped history (`ToolResult { id: "call_abc123", name: None }`)
+/// replayed to Ollama must name the tool message with the resolved tool
+/// *name*, never the identifier. The recording is the evidence: the model
+/// answers from the replayed result.
+///
+/// Re-record with (local Ollama daemon with `qwen3:4b` pulled):
+/// `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama chat_sourced_history_replays -- --test-threads=1`
+#[tokio::test]
+async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
+    with_ollama_cassette(
+        "streaming_grammar/chat_sourced_history_replay",
+        |client| async move {
+            let model = client.completion_model(MODEL);
+            let history = vec![
+                rig::message::Message::user(
+                    "/no_think Use the add tool to compute 2 + 3, then state the result.",
+                ),
+                rig::message::Message::Assistant {
+                    id: None,
+                    content: rig::OneOrMany::one(AssistantContent::ToolCall(
+                        rig::message::ToolCall {
+                            id: "call_abc123".to_owned(),
+                            call_id: None,
+                            function: rig::message::ToolFunction {
+                                name: "add".to_owned(),
+                                arguments: serde_json::json!({"x": 2, "y": 3}),
+                            },
+                            signature: None,
+                            additional_params: None,
+                        },
+                    )),
+                },
+                rig::message::Message::User {
+                    content: rig::OneOrMany::one(rig::message::UserContent::ToolResult(
+                        rig::message::ToolResult {
+                            id: "call_abc123".to_owned(),
+                            call_id: None,
+                            name: None,
+                            content: rig::OneOrMany::one(rig::message::ToolResultContent::text(
+                                "5",
+                            )),
+                        },
+                    )),
+                },
+            ];
+            let request = model
+                .completion_request("/no_think State the final result in one short sentence.")
+                .preamble(
+                    "You are a calculator assistant. Report tool results faithfully.".to_string(),
+                )
+                .tool(rig::tool::tool_definition(&Adder))
+                .messages(history)
+                .additional_params(serde_json::json!({ "think": false }))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            assert!(
+                run.text.contains('5'),
+                "the model should answer from the replayed tool result, got {:?}",
+                run.text
+            );
+        },
+    )
+    .await;
+}

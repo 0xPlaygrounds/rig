@@ -36,7 +36,7 @@ enum TurnEnd {
     Finished,
     /// Mid-stream recovery abandoned the turn (retry or skip).
     Abandoned {
-        skipped_tool_result: Option<ToolResult>,
+        skipped_tool_result: Option<Box<ToolResult>>,
     },
 }
 
@@ -112,7 +112,7 @@ async fn run_streamed_turn(
                                         );
                                     }
                                     return Ok(TurnEnd::Abandoned {
-                                        skipped_tool_result,
+                                        skipped_tool_result: skipped_tool_result.map(Box::new),
                                     });
                                 }
                             }

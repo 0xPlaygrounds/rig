@@ -20,6 +20,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
     let tool_result = ToolResult {
         id: "tool_1".to_string(),
         call_id: None,
+        name: None,
         content: OneOrMany::one(ToolResultContent::text("72F and sunny")),
     };
 

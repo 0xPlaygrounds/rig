@@ -2996,6 +2996,7 @@ mod tests {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
                 id: "result-id".to_string(),
                 call_id: Some("call-id".to_string()),
+                name: None,
                 content: OneOrMany::one(content),
             })),
         }
@@ -3209,6 +3210,7 @@ mod tests {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
                 id: "result-id".to_string(),
                 call_id: Some("call-id".to_string()),
+                name: None,
                 content,
             })),
         };
@@ -3313,6 +3315,7 @@ mod tests {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
                 id: "result-id".to_string(),
                 call_id: Some("call-id".to_string()),
+                name: None,
                 content,
             })),
         };

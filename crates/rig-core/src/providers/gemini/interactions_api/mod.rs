@@ -1932,6 +1932,7 @@ pub mod interactions_api_types {
                 message::UserContent::ToolResult(message::ToolResult {
                     id,
                     call_id,
+                    name,
                     content,
                 }) => {
                     let Some(call_id) = call_id else {
@@ -1970,7 +1971,9 @@ pub mod interactions_api_types {
                     };
 
                     Ok(Self::FunctionResult(FunctionResultContent {
-                        name: Some(id),
+                        // The executed tool's name travels as data; the id
+                        // is the legacy name-in-id fallback.
+                        name: Some(name.filter(|name| !name.is_empty()).unwrap_or(id)),
                         is_error: None,
                         result: Some(result),
                         call_id: Some(call_id),
@@ -2742,6 +2745,7 @@ mod tests {
         let content = message::UserContent::ToolResult(message::ToolResult {
             id: "get_weather".to_string(),
             call_id: None,
+            name: None,
             content: OneOrMany::one(message::ToolResultContent::text("ok")),
         });
 
@@ -2753,6 +2757,7 @@ mod tests {
     fn test_tool_result_preserves_text_and_json_types() {
         let content = message::UserContent::ToolResult(message::ToolResult {
             id: "get_weather".to_string(),
+            name: None,
             call_id: Some("call-123".to_string()),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text(r#"{"status":"literal"}"#),
@@ -2809,6 +2814,7 @@ mod tests {
             let content = message::UserContent::ToolResult(message::ToolResult {
                 id: "get_weather".to_string(),
                 call_id: Some("call-123".to_string()),
+                name: None,
                 content: OneOrMany::one(tool_content),
             });
 
@@ -2849,6 +2855,7 @@ mod tests {
             let content = message::UserContent::ToolResult(message::ToolResult {
                 id: "get_weather".to_string(),
                 call_id: Some("call-123".to_string()),
+                name: None,
                 content: OneOrMany::one(tool_content),
             });
 
@@ -2865,6 +2872,7 @@ mod tests {
     fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
         let tool_result = message::UserContent::ToolResult(message::ToolResult {
             id: "render".to_string(),
+            name: None,
             call_id: Some("call-image".to_string()),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::image_base64(

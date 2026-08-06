@@ -278,6 +278,27 @@ association.
 
 ## 0.41 → next
 
+### `ToolResult` carries the executed tool's name
+
+`rig::message::ToolResult` gains `name: Option<String>` — the name of the
+tool that actually executed (which can differ from the model's call when a
+hook repaired it). Struct-literal constructions need the new field
+(`name: None` preserves the old shape); `UserContent::tool_result_named` is
+the constructor the agent drivers use, and serde skips the field when
+absent, so persisted histories round-trip unchanged.
+
+Why: several wires require the function *name* on a replayed tool result
+(Gemini's `functionResponse.name`, Ollama's tool messages), and rig used to
+smuggle it through the tool-call id — which collided two calls to the same
+tool and, for histories sourced from OpenAI-Chat-shaped providers, replayed
+the literal identifier (`call_abc`) as the function name. The name is now
+data on the result; the history-pairing heuristic
+(`resolve_tool_result_names`) survives only as a back-compat shim for
+results with `name: None`, and an id that matches a paired call's identity
+now resolves to that call's *name* instead of leaking the identifier.
+
+
+
 ### Stream parse policy and aggregation are centralized
 
 Choice aggregation is one component (`PartsAccumulator`); a full reasoning
