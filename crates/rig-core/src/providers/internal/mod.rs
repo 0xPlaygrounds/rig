@@ -49,20 +49,32 @@ pub(crate) fn completion_usage(
 /// name-keyed tool-result wire (rig-vertexai's `functionResponse.name`)
 /// carry the same contract; it is not part of rig-core's stable public API.
 pub fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
-    let mut pending: std::collections::VecDeque<(String, String)> =
-        std::collections::VecDeque::new();
+    /// A call's identifiers are a *set*: wires like OpenAI Responses issue
+    /// both an item id (`fc_…`, [`ToolCall::id`](crate::message::ToolCall::id))
+    /// and a `call_id` (`call_…`), and a legacy result may mirror either or
+    /// both. Any id-vs-name decision below must test against the whole set —
+    /// an id that equals *either* identifier is an identifier, never a name.
+    struct PendingCall {
+        call_id: Option<String>,
+        item_id: Option<String>,
+        name: String,
+    }
+    impl PendingCall {
+        fn matches(&self, candidate: &str) -> bool {
+            self.call_id.as_deref() == Some(candidate) || self.item_id.as_deref() == Some(candidate)
+        }
+    }
+    let mut pending: std::collections::VecDeque<PendingCall> = std::collections::VecDeque::new();
     for msg in history {
         match msg {
             crate::message::Message::Assistant { content, .. } => {
                 for item in content.iter() {
                     if let crate::message::AssistantContent::ToolCall(call) = item {
-                        let identity = call
-                            .call_id
-                            .clone()
-                            .filter(|id| !id.is_empty())
-                            .or_else(|| Some(call.id.clone()).filter(|id| !id.is_empty()))
-                            .unwrap_or_default();
-                        pending.push_back((identity, call.function.name.clone()));
+                        pending.push_back(PendingCall {
+                            call_id: call.call_id.clone().filter(|id| !id.is_empty()),
+                            item_id: Some(call.id.clone()).filter(|id| !id.is_empty()),
+                            name: call.function.name.clone(),
+                        });
                     }
                 }
             }
@@ -76,9 +88,9 @@ pub fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
                     // heuristic — advance the pairing bookkeeping and move
                     // on, so later name-less results keep pairing in order.
                     if result.name.is_some() {
-                        if let Some(index) = pending.iter().position(|(call_identity, _)| {
-                            Some(call_identity.as_str()) == call_id
-                                || (!result.id.is_empty() && call_identity == &result.id)
+                        if let Some(index) = pending.iter().position(|call| {
+                            call_id.is_some_and(|id| call.matches(id))
+                                || (!result.id.is_empty() && call.matches(&result.id))
                         }) {
                             pending.remove(index);
                         } else {
@@ -98,17 +110,19 @@ pub fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
                     //   3. Non-empty and matching nothing — the id *is* the
                     //      name (the legacy name-in-id encoding).
                     //   4. `call_id` matched a call, but `id` is a distinct
-                    //      non-empty value that is neither that call's
-                    //      identity nor its name — `call_id` already carries
-                    //      the association, so the id is not an identifier;
-                    //      it is the *executed* name (the legacy
-                    //      repair-hook-rename encoding: the tool that ran
-                    //      differs from the tool the model called).
-                    //      Identifier-match-wins holds only when the id was
-                    //      the matching identifier itself.
-                    let identity_match = pending.iter().position(|(call_identity, _)| {
-                        Some(call_identity.as_str()) == call_id
-                            || (!result.id.is_empty() && call_identity == &result.id)
+                    //      non-empty value that is *neither of that call's
+                    //      identifiers* nor its name — `call_id` already
+                    //      carries the association and the id belongs to no
+                    //      identifier slot, so it is the *executed* name
+                    //      (the legacy repair-hook-rename encoding: the tool
+                    //      that ran differs from the tool the model called).
+                    //      Dual-identifier wires (OpenAI Responses: item id
+                    //      `fc_…` + `call_id` `call_…`) mirror both onto the
+                    //      result; the mirrored item id matches the call's
+                    //      identifier set, so it stays an identifier.
+                    let identity_match = pending.iter().position(|call| {
+                        call_id.is_some_and(|id| call.matches(id))
+                            || (!result.id.is_empty() && call.matches(&result.id))
                     });
                     let matched = identity_match.or_else(|| {
                         // A non-matching identifier is a veto, never a
@@ -118,17 +132,17 @@ pub fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
                     });
                     match matched {
                         Some(index) => {
-                            if let Some((call_identity, name)) = pending.remove(index) {
+                            if let Some(call) = pending.remove(index) {
                                 let id_is_divergent_name = !result.id.is_empty()
-                                    && result.id != call_identity
-                                    && result.id != name;
+                                    && !call.matches(&result.id)
+                                    && result.id != call.name;
                                 result.name = if id_is_divergent_name {
                                     // Shape 4: the association came from
                                     // `call_id`; the id carries the name of
                                     // the tool that actually executed.
                                     Some(result.id.clone())
                                 } else {
-                                    Some(name)
+                                    Some(call.name)
                                 };
                             }
                         }
@@ -261,6 +275,62 @@ mod resolve_tool_result_names_tests {
         resolve_tool_result_names(&mut history);
         assert_eq!(resolved_name(&history, 1), Some("get_weather".into()));
         assert_eq!(resolved_name(&history, 3), Some("add".into()));
+    }
+
+    /// Dual-identifier wires (OpenAI Responses) issue an item id (`fc_…`)
+    /// AND a `call_id` (`call_…`); a legacy result mirrors both. The
+    /// mirrored item id matches the call's identifier *set*, so it is an
+    /// identifier — the resolved name is the call's function name, never
+    /// `fc_1`.
+    #[test]
+    fn a_dual_identifier_result_resolves_to_the_calls_name() {
+        let mut history = vec![
+            call("fc_1", Some("call_1"), "get_weather"),
+            result("fc_1", Some("call_1"), None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 1), Some("get_weather".into()));
+    }
+
+    /// Shape 4 still wins on a dual-identifier call when the result's id
+    /// matches *neither* identifier nor the called name: it is the executed
+    /// tool's name.
+    #[test]
+    fn a_dual_identifier_call_still_honors_a_genuine_repair_rename() {
+        let mut history = vec![
+            call("fc_1", Some("call_1"), "get_weather"),
+            result("executed_tool", Some("call_1"), None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 1), Some("executed_tool".into()));
+    }
+
+    /// A result carrying only the item id (no `call_id`) still pairs with
+    /// its call — either identifier slot associates.
+    #[test]
+    fn an_item_id_only_result_pairs_with_its_call() {
+        let mut history = vec![
+            call("fc_1", Some("call_1"), "get_weather"),
+            result("fc_1", None, None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 1), Some("get_weather".into()));
+    }
+
+    /// Parallel dual-identifier calls with results replayed in swapped
+    /// order: each result pairs by identifier, not position, and resolves
+    /// its own call's name.
+    #[test]
+    fn parallel_dual_identifier_results_resolve_out_of_order() {
+        let mut history = vec![
+            call("fc_1", Some("call_1"), "get_weather"),
+            call("fc_2", Some("call_2"), "get_time"),
+            result("fc_2", Some("call_2"), None),
+            result("fc_1", Some("call_1"), None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 2), Some("get_time".into()));
+        assert_eq!(resolved_name(&history, 3), Some("get_weather".into()));
     }
 
     /// Id-less results pair with unanswered calls in wire order.

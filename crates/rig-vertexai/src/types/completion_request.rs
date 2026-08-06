@@ -384,6 +384,11 @@ mod tests {
                 // call — `call_abc` must never reach the wire as a name.
                 call("call_abc", Some("call_abc"), "get_weather"),
                 result("call_abc", Some("call_abc"), None),
+                // A dual-identifier legacy result (OpenAI Responses: item id
+                // `fc_…` + `call_id` `call_…`, both mirrored) resolves to the
+                // call's name — `fc_1` must never reach the wire as a name.
+                call("fc_1", Some("call_9"), "get_time"),
+                result("fc_1", Some("call_9"), None),
             ])
             .expect("non-empty history"),
             ..minimal_request()
@@ -400,7 +405,11 @@ mod tests {
 
         assert_eq!(
             response_names,
-            vec!["sum".to_owned(), "get_weather".to_owned()]
+            vec![
+                "sum".to_owned(),
+                "get_weather".to_owned(),
+                "get_time".to_owned()
+            ]
         );
     }
 
