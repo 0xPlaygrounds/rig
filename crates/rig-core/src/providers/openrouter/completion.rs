@@ -1540,12 +1540,17 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
         // id-less detail keys accumulation by a minted key and replays with
         // the id absent — no fabricated empty "wire" id, and no
         // per-serializer empty-string filter downstream (84a43e9e #4).
+        // The mint kind is `EncryptedReasoning`, NOT `Reasoning`: the shared
+        // compat adapter accumulates `reasoning`/`reasoning_content` text
+        // under `Minted { Reasoning, 0 }`, and a whole block under that same
+        // key would restate — i.e. replace — the open text part. Distinct
+        // content classes get distinct minted keys.
         let provider_id = id.and_then(crate::streaming::WireId::new);
         let key = provider_id
             .as_ref()
             .map(|id| crate::streaming::StreamPartId::wire(id.as_str()))
             .unwrap_or(crate::streaming::StreamPartId::Minted {
-                kind: crate::streaming::MintKind::Reasoning,
+                kind: crate::streaming::MintKind::EncryptedReasoning,
                 index: 0,
             });
         Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
@@ -3105,6 +3110,69 @@ mod tests {
                     if id == "rs_1" && data == "enc_blob"
             )),
             "encrypted reasoning must replay as a reasoning_details entry: {reasoning_details:#?}"
+        );
+    }
+
+    /// An id-less encrypted detail must not clobber the reasoning text
+    /// accumulating under the wire's constant minted key.
+    ///
+    /// The shared compat adapter keys `reasoning` text deltas by
+    /// `Minted { Reasoning, 0 }`; the id-less encrypted detail arrives as a
+    /// whole block while that part is still open. Keyed identically, the
+    /// whole block would *restate* — replace — the open text part
+    /// (pre-fix, all accumulated reasoning text was lost). Keyed as
+    /// `EncryptedReasoning` it is a sibling: both parts reach the
+    /// aggregated choice.
+    #[tokio::test]
+    async fn id_less_encrypted_detail_does_not_replace_open_reasoning_text() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"deep "},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"reasoning":"thought"},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"reasoning":null,"reasoning_details":[{"type":"reasoning.encrypted","id":null,"format":"openai-responses-v1","index":0,"data":"enc_blob"}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("openai/o4-mini");
+        let request = model.completion_request("weather?").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+        while stream.next().await.is_some() {}
+
+        let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+                    if matches!(
+                        content.first(),
+                        Some(message::ReasoningContent::Text { text, .. }) if text == "deep thought"
+                    )
+            )),
+            "the accumulated reasoning text must survive the encrypted detail: {choice:#?}"
+        );
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { id: None, content })
+                    if matches!(
+                        content.first(),
+                        Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                    )
+            )),
+            "the encrypted blob must reach the choice as its own part: {choice:#?}"
         );
     }
 

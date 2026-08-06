@@ -39,6 +39,11 @@ pub enum MintKind {
     /// Reasoning blocks on constant-id wires (gemini REST, ollama,
     /// chat-compat `reasoning_content`, candle).
     Reasoning,
+    /// Encrypted/opaque reasoning payloads on id-less wires (openrouter's
+    /// `reasoning.encrypted` detail). A distinct kind from [`Reasoning`] so
+    /// a whole encrypted block can never restate — and replace — the text
+    /// block accumulating under the wire's constant reasoning key.
+    EncryptedReasoning,
     /// Content blocks on index-as-id wires (anthropic, bedrock).
     Block,
     /// OpenAI Responses `output_index` fallback for delta events lacking
