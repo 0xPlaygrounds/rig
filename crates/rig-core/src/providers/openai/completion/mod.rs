@@ -3325,7 +3325,7 @@ mod tests {
         assert!(json["file"].get("file_data").is_none());
     }
 
-    // Guards against `OneOrMany::many` flattening at the User content site:
+    // Guards against flattening at the User content site:
     // a mixed text + PDF message must produce one User message with both parts.
     #[test]
     fn mixed_text_and_pdf_user_message_produces_two_content_parts() {

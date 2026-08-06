@@ -1304,8 +1304,9 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                     }
                 }
 
-                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
-                //  so either `content` or `tool_calls` will have some content.
+                // `content` and `tool_calls` may both be empty: an assistant
+                // turn that carried nothing is representable, and Ollama accepts
+                // the empty message back.
                 Ok(vec![Message::Assistant {
                     content: text_content.join(" "),
                     thinking,

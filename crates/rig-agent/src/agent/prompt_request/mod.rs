@@ -363,7 +363,7 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // Serialize *and* deserialize both go through `PromptResponseRepr` so the two
 // directions agree on `content`'s wire shape (an `Option`). Routing only
-// deserialize through the shadow would make serialize write a bare `OneOrMany`
+// deserialize through the shadow would make serialize write a bare `Vec`
 // while deserialize expects an `Option`, breaking round-trips for positional /
 // non-self-describing formats (e.g. bincode). The repr carries the field serde
 // attributes, so the JSON shape is unchanged.
@@ -1321,7 +1321,7 @@ mod tests {
         // Serialize *and* deserialize both route through `PromptResponseRepr`, so
         // the two directions agree on `content`'s wire shape (an `Option`).
         // Routing only deserialize through the shadow would make serialize write a
-        // bare `OneOrMany` while deserialize expects an `Option`, breaking
+        // bare `Vec` while deserialize expects an `Option`, breaking
         // round-trips for positional / non-self-describing formats. Assert this
         // structurally: the message content types use `#[serde(flatten)]`, which no
         // length-prefixed binary format can encode, and self-describing formats
@@ -1839,8 +1839,7 @@ mod tests {
             MockTurn::from_contents([
                 AssistantContent::ToolCall(valid_tool_call),
                 AssistantContent::ToolCall(invalid_tool_call),
-            ])
-            .expect("tool-call response should be non-empty"),
+            ]),
             MockTurn::text("retried"),
         ]);
         let recorded = model.clone();
@@ -1935,8 +1934,7 @@ mod tests {
             MockTurn::from_contents([
                 AssistantContent::ToolCall(valid_tool_call),
                 AssistantContent::ToolCall(invalid_tool_call),
-            ])
-            .expect("tool-call response should be non-empty"),
+            ]),
             MockTurn::text("skipped"),
         ]);
         let agent = AgentBuilder::new(model)
@@ -2465,8 +2463,7 @@ mod tests {
             AssistantContent::Text(Text::new("According to the document, ")),
             AssistantContent::Text(Text::new("the grass is green")),
             AssistantContent::Text(Text::new(" and the sky is blue.")),
-        ])
-        .expect("mock response should contain text blocks")]);
+        ])]);
         let agent = AgentBuilder::new(model).build();
 
         let response = agent

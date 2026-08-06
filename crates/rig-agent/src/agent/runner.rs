@@ -3345,8 +3345,7 @@ mod migrated_tests {
                     "tc_flaky",
                     ToolFunction::new("flaky_tool".to_string(), json!({})),
                 )),
-            ])
-            .expect("two tool calls");
+            ]);
 
             let observer = OutcomeHook::default();
             let response = AgentBuilder::new(MockCompletionModel::from_turns([
@@ -4343,8 +4342,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 2, "y": 3})),
                 tool_call_content("tc2", json!({"x": 10, "y": 20})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let blocking = AgentBuilder::new(blocking_model)
@@ -4449,8 +4447,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 1, "y": 0})),
                 tool_call_content("tc2", json!({"x": 2, "y": 0})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let response = AgentBuilder::new(model)
@@ -4527,8 +4524,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 2, "y": 3})),
                 tool_call_content("tc2", json!({"x": 10, "y": 20})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let blocking = AgentBuilder::new(blocking_model)
@@ -4958,8 +4954,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 1, "y": 1})),
                 tool_call_content("tc2", json!({"x": 2, "y": 2})),
-            ])
-            .expect("two tool calls is non-empty"),
+            ]),
             MockTurn::text("unreachable"),
         ])
     }
@@ -5677,8 +5672,7 @@ mod migrated_tests {
                 tool_call_content("c2", json!({})),
                 tool_call_content("c3", json!({})),
                 tool_call_content("c4", json!({})),
-            ])
-            .expect("four tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
 
@@ -6211,7 +6205,6 @@ mod migrated_tests {
                             ToolFunction::new(call.name.to_string(), call.args.clone()),
                         ))
                     }))
-                    .expect("a scripted tool-call turn has at least one call")
                 }
             }
         }
@@ -6518,8 +6511,7 @@ mod migrated_tests {
                     "tc1",
                     ToolFunction::new("default_api".to_string(), json!({"x": 2, "y": 3})),
                 )),
-            ])
-            .expect("a text + tool-call turn is valid"),
+            ]),
             MockTurn::text("the answer is 5"),
         ]);
         let blocking_hook = RecordingHook::default();

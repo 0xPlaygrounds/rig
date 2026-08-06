@@ -65,9 +65,9 @@
 //! ```
 //!
 //! Return [`ToolOutput`] for explicit JSON or multimodal presentation. A
-//! [`ToolResultContent`](rig_core::message::ToolResultContent) or
-//! [`OneOrMany`](rig_core::OneOrMany) of content blocks can also be used directly
-//! as a typed tool output without being mistaken for ordinary JSON.
+//! [`ToolResultContent`](rig_core::message::ToolResultContent) or a `Vec` of
+//! content blocks can also be used directly as a typed tool output without being
+//! mistaken for ordinary JSON.
 //!
 //! ```
 //! use rig_core::{
@@ -82,7 +82,7 @@
 //! ));
 //! assert!(matches!(
 //!     output.as_content().first(),
-//!     ToolResultContent::Image(_)
+//!     Some(ToolResultContent::Image(_))
 //! ));
 //! ```
 //!
@@ -168,7 +168,7 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     ///
     /// Every owned serializable value implements [`IntoToolOutput`]
     /// automatically. [`ToolResultContent`](rig_core::message::ToolResultContent)
-    /// and [`OneOrMany`](rig_core::OneOrMany) preserve rich content when returned
+    /// and a `Vec` of them preserve rich content when returned
     /// directly; use [`ToolOutput`] when constructing the presentation
     /// explicitly.
     type Output: IntoToolOutput;

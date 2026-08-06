@@ -103,17 +103,18 @@ impl MockTurn {
     }
 
     /// Create a response turn from multiple assistant content items.
-    pub fn from_contents(
-        content: impl IntoIterator<Item = AssistantContent>,
-    ) -> Result<Self, crate::one_or_many::EmptyListError> {
-        Ok(Self {
+    ///
+    /// Infallible now that the choice is a `Vec`: an empty content list is a
+    /// representable turn, so there is nothing left to reject.
+    pub fn from_contents(content: impl IntoIterator<Item = AssistantContent>) -> Self {
+        Self {
             response: Ok(MockTurnResponse {
                 choice: content.into_iter().collect(),
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
             }),
-        })
+        }
     }
 
     /// Attach a provider-specific call ID to a tool-call response turn.

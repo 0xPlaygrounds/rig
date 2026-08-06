@@ -2143,8 +2143,7 @@ mod tests {
                 "subtract",
                 serde_json::json!({"x": 10, "y": 2}),
             ),
-        ])
-        .map_err(|error| ScenarioError::contract("test_fixture", error.to_string()))?;
+        ]);
         let report = parallel_tools(
             MockCompletionModel::new([first, MockTurn::text("7 and 8")]),
             |builder| builder,
@@ -2171,8 +2170,7 @@ mod tests {
         let first = MockTurn::from_contents([
             tool_call("motto_call", "fetch_motto", serde_json::json!({})),
             tool_call("config_call", "fetch_config", serde_json::json!({})),
-        ])
-        .map_err(|error| ScenarioError::contract("test_fixture", error.to_string()))?;
+        ]);
         let serialized = tool_output_serialization(
             MockCompletionModel::new([first, MockTurn::text("summary")]),
             |builder| builder,

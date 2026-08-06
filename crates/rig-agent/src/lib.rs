@@ -43,18 +43,18 @@ extern crate self as rig;
 /// Portable `rig-core` root items are reachable here, but deliberately *not*
 /// at the `rig_agent` crate root — adding a root export to `rig-core` must not
 /// silently add one to `rig-agent`. A stable `rig-core` root export
-/// ([`rig_core::OneOrMany`]) demonstrates both halves of that invariant (the
-/// two doctests below enforce it):
+/// ([`rig_core::ProviderResponseError`]) demonstrates both halves of that
+/// invariant (the two doctests below enforce it):
 ///
 /// ```
 /// // Reachable through the explicit `core` namespace.
-/// use rig_agent::core::OneOrMany;
+/// use rig_agent::core::ProviderResponseError;
 /// let _reachable: Option<Vec<u8>> = None;
 /// ```
 ///
 /// ```compile_fail
 /// // NOT reachable at the `rig_agent` crate root.
-/// use rig_agent::OneOrMany as _;
+/// use rig_agent::ProviderResponseError as _;
 /// ```
 pub mod core {
     pub use rig_core::*;
