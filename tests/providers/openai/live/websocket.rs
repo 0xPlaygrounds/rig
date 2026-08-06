@@ -59,7 +59,8 @@ async fn websocket_session_roundtrip() -> Result<()> {
                     break;
                 }
             }
-            ResponsesWebSocketEvent::Done(_) => {}
+            // Unknown frames are raw passthrough noise for this live assertion.
+            ResponsesWebSocketEvent::Done(_) | ResponsesWebSocketEvent::Unknown(_) => {}
             ResponsesWebSocketEvent::Error(error) => {
                 return Err(anyhow::anyhow!(error.to_string()));
             }

@@ -188,13 +188,17 @@ impl TryFrom<RigMessage> for Vec<Message> {
 
         fn reasoning_item(
             reasoning: crate::message::Reasoning,
-        ) -> Result<Message, CompletionError> {
+        ) -> Result<Option<Message>, CompletionError> {
             let crate::message::Reasoning { id, content } = reasoning;
-            let id = id.ok_or_else(|| {
-                CompletionError::RequestError(
-                    "Assistant reasoning `id` is required for xAI Responses replay".into(),
-                )
-            })?;
+            // Only wire-genuine ids exist in durable histories (the streaming
+            // layer populates `Reasoning::id` exclusively from
+            // `PartId::Wire`). An id-less reasoning item — a cross-provider
+            // replay from a wire that issues no reasoning ids — drops from
+            // request input, mirroring the OpenAI Responses handling, rather
+            // than failing the whole request locally.
+            let Some(id) = id else {
+                return Ok(None);
+            };
             let mut encrypted_content = None;
             let mut summary = Vec::new();
             for reasoning_content in content {
@@ -216,7 +220,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                 }
             }
 
-            Ok(Message::reasoning(id, summary, encrypted_content))
+            Ok(Some(Message::reasoning(id, summary, encrypted_content)))
         }
 
         match msg {
@@ -337,7 +341,9 @@ impl TryFrom<RigMessage> for Vec<Message> {
                         }
                         AssistantContent::Reasoning(r) => {
                             flush_assistant_text(&mut items, &mut text_parts);
-                            items.push(reasoning_item(r)?);
+                            if let Some(item) = reasoning_item(r)? {
+                                items.push(item);
+                            }
                         }
                         AssistantContent::Image(_) => {
                             return Err(CompletionError::RequestError(
@@ -527,20 +533,24 @@ mod tests {
     }
 
     #[test]
-    fn assistant_reasoning_without_id_returns_request_error() {
+    fn assistant_reasoning_without_id_is_dropped_from_request_input() {
+        // Only wire-genuine ids exist in durable histories; an id-less
+        // reasoning item (a cross-provider replay from a wire that issues no
+        // reasoning ids) drops from request input — mirroring the OpenAI
+        // Responses handling — instead of failing the whole request or,
+        // worse, fabricating an identifier xAI never issued (#2258 A1).
         let message = RigMessage::Assistant {
             id: Some("assistant_no_reasoning_id".to_string()),
             content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thinking"))),
         };
 
-        let converted = Vec::<Message>::try_from(message);
-        assert!(matches!(
-            converted,
-            Err(CompletionError::RequestError(error))
-                if error
-                    .to_string()
-                    .contains("Assistant reasoning `id` is required")
-        ));
+        let converted = Vec::<Message>::try_from(message).expect("conversion must not fail");
+        assert!(
+            converted
+                .iter()
+                .all(|item| !matches!(item, Message::Reasoning { .. })),
+            "an id-less reasoning item must not reach the request: {converted:?}"
+        );
     }
 
     #[test]

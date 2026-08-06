@@ -1,3 +1,4 @@
+mod streaming_conformance;
 mod support;
 
 mod cassette {

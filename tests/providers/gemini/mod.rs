@@ -32,6 +32,7 @@ mod cassette {
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
     mod streaming;
+    mod streaming_grammar;
     mod streaming_multimodal_tool_results;
     mod streaming_tools;
     mod structured_output;

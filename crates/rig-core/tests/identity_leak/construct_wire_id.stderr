@@ -1,0 +1,11 @@
+error[E0423]: cannot initialize a tuple struct which contains private fields
+ --> tests/identity_leak/construct_wire_id.rs:6:13
+  |
+6 |     let _ = rig_core::streaming::WireId("fabricated".to_string());
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+note: constructor is not visible here due to private fields
+ --> src/streaming/identity.rs
+  |
+  | pub struct WireId(String);
+  |                   ^^^^^^ private field

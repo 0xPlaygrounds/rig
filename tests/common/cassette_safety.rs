@@ -118,6 +118,9 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/perplexity/cassette",
         wrapper_names: &["with_perplexity_cassette"],
     },
+    // NOTE(#2258): `tests/providers/cohere/cassette` is written but ready-to-record
+    // (no COHERE_API_KEY in the environment); register it here once its
+    // cassettes are recorded and the `#[ignore]` markers are dropped.
     ProviderCassetteSuite {
         provider: "mistralrs",
         source_dir: "tests/providers/mistralrs/cassette",

@@ -2088,6 +2088,15 @@ impl CassetteScrubber {
     }
 
     fn placeholder(&mut self, original: &str, kind: &'static str) -> String {
+        // An empty value carries nothing to redact, and minting a placeholder
+        // for it *invents data*: a recording would show a non-empty token
+        // where the wire sent `""`, changing replay semantics for any code
+        // that reads the field (observed on Anthropic's
+        // `content_block_start.signature`, which is empty on the wire).
+        if original.is_empty() {
+            return String::new();
+        }
+
         if let Some(existing) = self.placeholders.get(original) {
             return existing.clone();
         }
@@ -2505,6 +2514,26 @@ fn assert_path_is_repo_relative(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Scrubbing must redact, never invent. An empty wire value carries
+    /// nothing sensitive, and minting a placeholder for it makes a recording
+    /// claim the provider sent a token where it sent `""` — which silently
+    /// changes replay semantics for code that reads the field (found via
+    /// Anthropic's `content_block_start.signature`, empty on the wire).
+    #[test]
+    fn scrubbing_an_empty_value_invents_nothing() {
+        let mut scrubber = CassetteScrubber::new(CassettePolicy::default());
+        assert_eq!(scrubber.placeholder("", "signature_"), "");
+        // A real value still redacts, and stays stable across occurrences.
+        let first = scrubber.placeholder("sig-abc", "signature_");
+        assert!(!first.is_empty());
+        assert_eq!(scrubber.placeholder("sig-abc", "signature_"), first);
+        // The empty value did not consume a counter slot.
+        assert!(
+            first.ends_with('1'),
+            "the first real value should take placeholder 1, got {first}"
+        );
+    }
 
     fn query_pair(name: &str, value: &str) -> NameValue {
         NameValue {

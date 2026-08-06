@@ -72,6 +72,39 @@ pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
     Some(normalized)
 }
 
+/// Turn a tool-protocol terminal `finishReason` into an error, mirroring the
+/// REST wire's `function_call_finish_reason_error`.
+///
+/// These reasons mean the turn ABORTED inside the tool protocol: the model
+/// emitted a call the API could not parse, called a tool that was not
+/// offered, or exceeded the per-turn call budget. The candidate that carries
+/// them has no usable tool call, so reporting the turn as merely "finished
+/// for some other reason" lets an agent loop read an aborted turn as a
+/// complete one. The REST surface has always failed here; the gRPC surface
+/// must not diverge.
+///
+/// Only the reasons this proto models are matched — REST's
+/// `MISSING_THOUGHT_SIGNATURE` / `MALFORMED_RESPONSE` have no protobuf
+/// discriminant in `v1beta`, so an unmapped value cannot masquerade as one.
+pub fn tool_protocol_finish_reason_error(
+    reason: i32,
+    finish_message: Option<&str>,
+) -> Option<CompletionError> {
+    use proto::candidate::FinishReason as Wire;
+
+    let reason = Wire::try_from(reason).ok()?;
+    match reason {
+        Wire::MalformedFunctionCall | Wire::UnexpectedToolCall | Wire::TooManyToolCalls => {
+            let message = finish_message.unwrap_or("no finish message provided");
+            Some(CompletionError::ResponseError(format!(
+                "Gemini stopped with finish_reason={}: {message}",
+                reason.as_str_name()
+            )))
+        }
+        _ => None,
+    }
+}
+
 impl CompletionModel {
     /// Execute a completion and return Gemini's own protobuf response.
     ///
@@ -445,6 +478,15 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ResponseError("No response candidates in response".into())
         })?;
+
+        // Same helper (and therefore the same message) as the streaming path,
+        // so a tool-protocol abort reads identically on both surfaces.
+        if let Some(err) = tool_protocol_finish_reason_error(
+            candidate.finish_reason,
+            candidate.finish_message.as_deref(),
+        ) {
+            return Err(err);
+        }
 
         let content_ref = candidate.content.as_ref().ok_or_else(|| {
             CompletionError::ResponseError(format!(

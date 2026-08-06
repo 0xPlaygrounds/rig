@@ -1538,14 +1538,36 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         self.finalize_request_body(body)
     }
 
-    /// Decorate streamed tool calls from provider-specific streaming detail
-    /// payloads. Most OpenAI-compatible providers do not emit such details.
+    /// Map a provider-specific streaming detail payload onto a complete
+    /// reasoning block — its identity and content — that the stream emits as
+    /// the turn's own output. OpenRouter's `reasoning_details` entries of type
+    /// `reasoning.encrypted` are the in-tree case: the wire carries them with
+    /// `reasoning: null`, so this hook is the only place they can reach the
+    /// aggregated choice (and, from there, the next turn's request).
+    ///
+    /// A detail maps to *either* a reasoning block or a
+    /// [`decoration`](Self::decorate_streaming_tool_call), never both.
+    fn streaming_detail_reasoning(
+        &self,
+        detail: &serde_json::Value,
+    ) -> Option<(crate::streaming::PartId, crate::message::ReasoningContent)> {
+        let _ = detail;
+        None
+    }
+
+    /// Decorate a streamed tool call from a provider-specific streaming
+    /// detail payload, matched by its established provider id. Most
+    /// OpenAI-compatible providers do not emit such details.
+    ///
+    /// The decoration is an adapter-level event rewrite: it rides the
+    /// adapter's tool-input end event onto the completed call; fragment
+    /// assembly itself lives in the shared accumulator.
     fn decorate_streaming_tool_call(
         &self,
         detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        let _ = (detail, tool_calls);
+    ) -> Option<crate::streaming::ToolCallDecoration> {
+        let _ = detail;
+        None
     }
 }
 
@@ -2106,6 +2128,59 @@ where
 
 #[cfg(test)]
 mod tests {
+    /// Boundary-minted tool ids (`tool-{index}`, from id-less streamed calls)
+    /// replay to the chat wire as a self-consistent pair: the assistant
+    /// message's `tool_calls[].id` and the tool result's `tool_call_id` carry
+    /// the same minted value. The wire requires both fields, so gating minted
+    /// ids out (the Responses reasoning treatment) is impossible here — and
+    /// unnecessary: a gateway that omitted ids has no server-side id to
+    /// validate against, so the consistent pair is accepted. This pins the
+    /// per-wire upstream rule documented on `SyntheticIds`.
+    #[test]
+    fn minted_tool_ids_replay_as_a_consistent_pair() {
+        let assistant = crate::message::Message::Assistant {
+            id: None,
+            content: crate::OneOrMany::one(crate::message::AssistantContent::tool_call(
+                "tool-0",
+                "get_weather",
+                serde_json::json!({"city": "Tokyo"}),
+            )),
+        };
+        let tool_result = crate::message::Message::User {
+            content: crate::OneOrMany::one(crate::message::UserContent::tool_result(
+                "tool-0",
+                crate::OneOrMany::one(crate::message::ToolResultContent::text("22C")),
+            )),
+        };
+
+        let assistant_wire: Vec<super::Message> = assistant.try_into().expect("assistant converts");
+        let result_wire: Vec<super::Message> =
+            tool_result.try_into().expect("tool result converts");
+
+        let call_id = assistant_wire
+            .iter()
+            .find_map(|message| match message {
+                super::Message::Assistant { tool_calls, .. } => {
+                    tool_calls.first().map(|call| call.id.clone())
+                }
+                _ => None,
+            })
+            .expect("assistant message carries the tool call");
+        let result_id = result_wire
+            .iter()
+            .find_map(|message| match message {
+                super::Message::ToolResult { tool_call_id, .. } => Some(tool_call_id.clone()),
+                _ => None,
+            })
+            .expect("tool result message present");
+
+        assert_eq!(call_id, "tool-0");
+        assert_eq!(
+            result_id, call_id,
+            "the minted pair must be self-consistent"
+        );
+    }
+
     use super::*;
     use crate::completion::CompletionRequestBuilder;
     use crate::telemetry::ProviderResponseExt;

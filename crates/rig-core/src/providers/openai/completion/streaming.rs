@@ -11,6 +11,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleTerminal, CompatibleToolCallChunk,
 };
+use crate::providers::internal::wire;
 use crate::providers::openai::completion::{
     CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider, Usage,
 };
@@ -367,42 +368,13 @@ where
     type Detail = serde_json::Value;
     type FinalResponse = StreamingCompletionResponse<Self::Usage>;
 
-    fn normalize_chunk(
+    fn classify_chunk(
         &self,
         data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        let data = match serde_json::from_str::<StreamingCompletionChunk<U>>(data) {
-            Ok(data) => data,
-            Err(error) => {
-                // The chat-completions wire has no `type` discriminator, so a
-                // recognizable chunk is one that says `"object":
-                // "chat.completion.chunk"` or carries `choices`. Valid JSON
-                // that is neither is an event shape this client doesn't model
-                // yet — skipped for forward compatibility. A recognizable
-                // chunk that fails to decode, or a frame that isn't JSON at
-                // all, is a corrupt frame and must surface as an error item;
-                // the shared layer keeps consuming after it and withholds the
-                // terminal record when no frame ever decoded.
-                let is_unrecognized_event = serde_json::from_str::<serde_json::Value>(data)
-                    .is_ok_and(|value| {
-                        value.get("object").and_then(serde_json::Value::as_str)
-                            != Some("chat.completion.chunk")
-                            && value.get("choices").is_none()
-                    });
-                if is_unrecognized_event {
-                    tracing::warn!(
-                        ?error,
-                        message = data,
-                        "skipping unrecognized chat-completions SSE event"
-                    );
-                    return Ok(None);
-                }
-                tracing::error!(?error, message = data, "Failed to parse SSE message");
-                return Err(error.into());
-            }
-        };
-
-        Ok(Some(
+    ) -> wire::WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
+        // Classification only — the unknown/corrupt policy (warn-skip vs.
+        // in-band `Err` item) lives in the shared driver, not here.
+        wire::classify_chat_completions_frame::<StreamingCompletionChunk<U>>(data).map(|data| {
             openai_chat_completions_compatible::normalize_first_choice_chunk(
                 data.id,
                 data.model,
@@ -424,8 +396,8 @@ where
                     ),
                     details: choice.delta.reasoning_details.clone(),
                 },
-            ),
-        ))
+            )
+        })
     }
 
     fn build_final_response(
@@ -435,13 +407,18 @@ where
         StreamingCompletionResponse::from_terminal(terminal)
     }
 
+    fn detail_reasoning(
+        &self,
+        detail: &Self::Detail,
+    ) -> Option<(crate::streaming::PartId, crate::message::ReasoningContent)> {
+        self.provider.streaming_detail_reasoning(detail)
+    }
+
     fn decorate_tool_call(
         &self,
         detail: &Self::Detail,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        self.provider
-            .decorate_streaming_tool_call(detail, tool_calls);
+    ) -> Option<crate::streaming::ToolCallDecoration> {
+        self.provider.decorate_streaming_tool_call(detail)
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -1261,13 +1238,18 @@ mod tests {
 
         let mut error_count = 0;
         let mut saw_final = false;
+        let mut unknown = None;
         while let Some(item) = stream.next().await {
             match item {
                 Ok(streaming::StreamedAssistantContent::Final(_)) => saw_final = true,
+                // The unknown-shaped event skips the semantic path but
+                // surfaces verbatim on the raw passthrough channel.
+                Ok(streaming::StreamedAssistantContent::Unknown(value)) => unknown = Some(value),
                 Ok(other) => panic!("unexpected stream item: {other:?}"),
                 Err(_) => error_count += 1,
             }
         }
+        assert_eq!(unknown, Some(serde_json::json!({"type": "ping"})));
 
         assert_eq!(
             error_count, 2,

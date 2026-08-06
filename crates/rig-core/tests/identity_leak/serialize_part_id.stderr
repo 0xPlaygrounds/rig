@@ -1,0 +1,28 @@
+error[E0277]: the trait bound `PartId: serde::Serialize` is not satisfied
+ --> tests/identity_leak/serialize_part_id.rs:6:35
+  |
+6 |     let _ = serde_json::to_string(&id);
+  |             --------------------- ^^^ the trait `rig_core::serde::Serialize` is not implemented for `PartId`
+  |             |
+  |             required by a bound introduced by this call
+  |
+  = note: for local types consider adding `#[derive(serde::Serialize)]` to your `PartId` type
+  = note: for types from other crates check whether the crate offers a `serde` feature flag
+  = help: the following other types implement trait `rig_core::serde::Serialize`:
+            &'a T
+            &'a mut T
+            ()
+            (T,)
+            (T0, T1)
+            (T0, T1, T2)
+            (T0, T1, T2, T3)
+            (T0, T1, T2, T3, T4)
+          and $N others
+note: required by a bound in `serde_json::to_string`
+ --> $CARGO/serde_json-$VERSION/src/ser.rs
+  |
+  | pub fn to_string<T>(value: &T) -> Result<String>
+  |        --------- required by a bound in this function
+  | where
+  |     T: ?Sized + Serialize,
+  |                 ^^^^^^^^^ required by this bound in `to_string`

@@ -118,29 +118,34 @@ mod tests {
                 text: "s2".to_string(),
             },
         ];
-        let choices = reasoning_choices_from_done_item("xr_1", &summary, &[], Some("enc"));
+        let choices = reasoning_choices_from_done_item(
+            &crate::streaming::PartId::wire("xr_1"),
+            &summary,
+            &[],
+            Some("enc"),
+        );
 
         assert_eq!(choices.len(), 3);
         assert!(matches!(
             choices.first(),
             Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+                id,
                 content: ReasoningContent::Summary(text),
-            }) if id == "xr_1" && text == "s1"
+            }) if id.as_wire() == Some("xr_1") && text == "s1"
         ));
         assert!(matches!(
             choices.get(1),
             Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+                id,
                 content: ReasoningContent::Summary(text),
-            }) if id == "xr_1" && text == "s2"
+            }) if id.as_wire() == Some("xr_1") && text == "s2"
         ));
         assert!(matches!(
             choices.get(2),
             Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
+                id,
                 content: ReasoningContent::Encrypted(data),
-            }) if id == "xr_1" && data == "enc"
+            }) if id.as_wire() == Some("xr_1") && data == "enc"
         ));
     }
 

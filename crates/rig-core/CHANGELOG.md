@@ -7,12 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(streaming)* [**breaking**] part identity is provenance-typed: `RawStreamingChoice`'s `TextStart`/`ToolCallDelta`/`Reasoning`/`ReasoningDelta` ids, `ToolInputEnd::id` and `RawStreamingToolCall::id` are `streaming::PartId` (`Wire` round-trips upstream; `Minted` keys accumulation and structurally cannot reach a request — no `Serialize`, and the only request-serializable form `WireId` is constructible solely from `Wire`). `SyntheticIds` moved to `rig_core::streaming` and mints `PartId`; `MINTED_ID_NAMESPACES`/`is_boundary_minted_id` and the Responses request-side provenance gate are deleted
+- *(streaming)* [**breaking**] `RawStreamingChoice::ToolCallDelta` lost `internal_call_id` (the shared accumulator mints it at assembly open; read it from `StreamedAssistantContent::ToolCallDelta`), gained a `ToolInputEnd` variant and a `ReasoningSignature` variant — exhaustive matches need new arms; `RawStreamingChoice` is not `#[non_exhaustive]`
+- *(providers)* [**breaking**] `OpenAICompatibleProvider::decorate_streaming_tool_call` returns `Option<ToolCallDecoration>` instead of mutating a `&mut HashMap<usize, RawStreamingToolCall>`; `OutputFunctionCall::arguments` is a `FunctionCallArguments` newtype over the raw string (`.parse()`/`.as_str()`)
+- *(providers)* [**breaking**] the Anthropic and OpenAI Responses streaming event enums no longer carry `#[serde(other)]`: unrecognized events triage as `Unknown` in the classify layer, and a known tag with a defective payload is a decode error instead of a silent absorb
+- *(providers)* [**behavior**] gemini (REST/interactions/gRPC) and ollama no longer fabricate durable tool-call ids — not from an index and not from the tool name, so two calls to the same tool in one turn stay distinct; id-less calls replay with the id absent, and the function name a replayed tool result needs (gemini `functionResponse.name`, ollama tool messages) is resolved by pairing each result with its assistant-turn call in the history
+
 ### Added
 
+- *(streaming)* `wire::classify_typed_event` extends the decode-then-validate policy to typed-transport wires (bedrock, candle, gemini-grpc): modeled variants are `Known`, the SDK's non-exhaustive/unrecognized variants are `Unknown`, SDK decode errors are `Corrupt` — a typed transport earns no policy exemption
+- *(streaming)* `WireAdapter` gains an associated `Frame` type so typed-event wires implement the same contract over their SDK events; `classify` now takes the frame by value
+- *(streaming)* the conformance corpus accepts typed-event input (`WireInput::{Bytes, Event}`), so typed wires run the shared scenarios events-first with no mock transport; frame-level scenarios a typed wire cannot spell report visible skips
+- *(streaming)* wire-sequence conformance corpus (`test_utils::streaming_conformance` + `tests/core`) driving raw bytes through each provider's full pipeline; recorded `streaming_grammar` cassette suites for openai (reasoning summaries, encrypted multi-part reasoning, parallel tool calls, incomplete) and gemini (max-tokens truncation, tool calls, thinking, interactions requires_action)
+- *(streaming)* `OpenAICompatibleProvider::streaming_detail_reasoning` — a defaulted hook letting an OpenAI-compatible provider map a per-chunk streaming detail onto a complete reasoning block instead of a tool-call decoration
 - *(completion)* add typed `raw_completion`/`raw_stream` escape hatches on every provider model
 - *(completion)* add public `ProviderCapabilities`, replacing `CompletionModel::composes_native_output_with_tools`
 
+### Fixed
+
+- *(gemini)* a trailing `thoughtSignature` arriving after the answer text now signs the reasoning block that carries the chain-of-thought (via the new `ReasoningSignature` lifecycle event) instead of appending an empty signed sibling and leaving the real thinking to replay unsigned; the gRPC surface no longer drops a signature carried on a non-thought part
+- *(streaming)* non-object JSON frames (a gateway keep-alive `null`, a bare array or scalar) classify `Unknown` (warn-and-skip) on every classifier instead of `Corrupt` (a fatal in-band error); conversely an Anthropic `content_block_delta` whose `delta` omits `type` is `Corrupt` instead of a silent skip that yielded a successful empty completion
+- *(streaming)* an OpenAI-compatible error body that also carries `"choices":[]` (or `null`) is detected as an error — previously the mere presence of a `choices` key masked it and a following `[DONE]` committed the failed turn as a successful zero-usage completion (introduced in #1944)
+- *(streaming)* cancelling a paused stream terminates instead of deadlocking (`cancel()` also resumes); a streamed tool call's accumulated argument bytes are bounded, with overflow finalizing through the wire's unparseable-input policy instead of growing memory without bound
+- *(openrouter)* [**data loss**] encrypted reasoning (`reasoning_details` of type `reasoning.encrypted`) was dropped on every streaming turn and could not be replayed on the next request — the decoration key never matched (reasoning ids are `rs_*`, tool ids `call_*`) and the detail arrived before any tool slot existed. It now reaches the aggregated choice as `ReasoningContent::Encrypted`, matching the non-streaming path. Two committed cassettes had recorded the loss into their turn-2 request bodies; both were re-recorded live and the provider accepts the replayed blob
+- *(anthropic)* signature-only thinking blocks are no longer dropped: a block whose text is empty but which carries a signature survives into chat history and replays, matching the non-streaming path (Anthropic rejects a replayed adaptive-thinking turn missing it)
+- *(openai)* `response.reasoning_text.done` is a modeled Responses event; it previously logged an "unknown event type" warning and passed through as `Unknown` on every raw-reasoning block, across the SSE, buffered and websocket surfaces
+- *(streaming)* a wire that streams a tool call's input as fragments and then restates it as a complete `ToolCall` now publishes the completed call under the `internal_call_id` its deltas already used, and a trailing `ToolInputEnd` for that id no longer produces a duplicate call in the aggregated choice
+- *(streaming)* re-polling a drained `StreamingCompletionResponse` no longer re-runs the destructive aggregation, which replaced the aggregated choice with an empty text part
+- *(streaming)* a paused stream parks on the pause channel instead of busy-polling its executor task
+- *(streaming)* `close_minted_reasoning` no longer scans every reasoning key on every text token
+
+### Removed
+
+- *(streaming)* [**breaking**] the `"aborted"`-substring special case in the stream error path. A `CompletionError::ProviderError` whose message merely *contained* `"aborted"` used to terminate the stream as a clean end-of-stream — silently discarding both the error and every item streamed before it. Such errors now reach the consumer like any other. Real cancellation is unaffected: `StreamingCompletionResponse::cancel()` goes through `Abortable` and still ends the stream normally. Nothing in-tree produced the sentinel
+
 ### Changed
+
+- *(streaming)* choice aggregation lives in one `PartsAccumulator` keyed by (item id, part ordinal) with replace-and-discard-buffer supersede semantics — OpenAI multi-part reasoning items keep every part; the aggregation heuristics in `poll_next` are gone
+- *(streaming)* stream parse policy is decode-then-validate, stated once per wire family: known event with a defective payload surfaces an `Err`; unknown event types warn and skip; corrupt frames surface and the stream continues
+- *(providers)* copilot's Responses route and the ChatGPT buffered SSE path delegate to the shared Responses interpreter — seven latent behavioral divergences resolved toward the canonical path
+- *(streaming)* [**breaking**] reasoning stream events carry mandatory identity: `RawStreamingChoice::{Reasoning, ReasoningDelta}` and `StreamedAssistantContent::ReasoningDelta` take `id: String`; providers propagate wire identity or mint a stream-stable id, and aggregation keys by exact id — OpenAI Responses summary-delta streams no longer duplicate reasoning content
+- *(streaming)* [**breaking**] text-block stream events carry mandatory identity: `RawStreamingChoice::TextStart` takes `id: String` and aggregation keys text blocks by it — two OpenAI Responses `message` output items now aggregate as two distinct text parts instead of concatenating; wires that never announce text boundaries need no `TextStart` (a bare `Message` opens a block under a boundary-minted `text-{n}` id, preserving single-block aggregation exactly)
+- *(streaming)* the public wire-adapter surface (`WireAdapter`, `run_wire_stream`, `run_wire_buffered`, `SyntheticIds`, `ToolCallBridge`) is documented as a contract for out-of-tree provider authors: classify delegation, driver-owns-policy, the reserved minted-id namespaces and their provenance gate, and the finish/flush obligations (see MIGRATING)
 
 - *(completion)* [**breaking**] normalize completion responses at the provider boundary — `CompletionResponse` and `StreamingCompletionResponse` are concrete and carry normalized `finish_reason`/`provider`/`model`/`message_id`
 - *(completion)* [**breaking**] `CompletionModel` no longer requires `Clone`; generic code that cloned models must bound `+ Clone` explicitly, and `completion_request` now gates on `Self: Clone` (a relaxation for implementors — derives kept only for the old bound can be dropped)

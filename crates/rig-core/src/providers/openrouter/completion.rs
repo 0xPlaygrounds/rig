@@ -1201,12 +1201,16 @@ fn assistant_contents_to_messages(
                         reasoning = Some(display);
                     }
                 } else {
+                    // A block the stream aggregated without a wire id carries
+                    // the accumulator's shared "" identity; send it back as a
+                    // null id, the shape the non-streaming path produces.
+                    let reasoning_id = r.id.clone().filter(|id| !id.is_empty());
                     for reasoning_block in &r.content {
                         let index = Some(reasoning_details.len());
                         match reasoning_block {
                             message::ReasoningContent::Text { text, signature } => {
                                 reasoning_details.push(ReasoningDetails::Text {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     text: Some(text.clone()),
@@ -1215,7 +1219,7 @@ fn assistant_contents_to_messages(
                             }
                             message::ReasoningContent::Summary(summary) => {
                                 reasoning_details.push(ReasoningDetails::Summary {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     summary: summary.clone(),
@@ -1224,7 +1228,7 @@ fn assistant_contents_to_messages(
                             message::ReasoningContent::Encrypted(data)
                             | message::ReasoningContent::Redacted { data } => {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     data: data.clone(),
@@ -1511,28 +1515,30 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
         Ok(())
     }
 
-    fn decorate_streaming_tool_call(
+    /// Encrypted reasoning (`{"type":"reasoning.encrypted"}`) is the turn's own
+    /// output, not tool-call metadata: it arrives with `reasoning: null` and an
+    /// `rs_*` id of its own, which never matches a `call_*` tool-call id, and it
+    /// arrives before any tool call opens. Emitting it as a reasoning block
+    /// matches the non-streaming path (which maps the same detail to
+    /// [`message::ReasoningContent::Encrypted`]) and is what lets the blob reach
+    /// the aggregated choice and be replayed on the next turn.
+    fn streaming_detail_reasoning(
         &self,
         detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
+    ) -> Option<(crate::streaming::PartId, message::ReasoningContent)> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
             serde_json::from_value::<ReasoningDetails>(detail.clone())
         else {
-            return;
-        };
-        let Some(id) = id else {
-            return;
-        };
-        let Some(tool_call) = tool_calls
-            .values_mut()
-            .find(|tool_call| tool_call.id.eq(&id))
-        else {
-            return;
+            return None;
         };
 
-        tool_call.signature = Some(data);
-        tool_call.additional_params = Some(detail.clone());
+        // An id-less detail degrades to the accumulator's shared empty wire
+        // identity; `assistant_contents_to_messages` maps that back to a
+        // null wire id, matching the non-streaming grouping.
+        Some((
+            crate::streaming::PartId::wire(id.unwrap_or_default()),
+            message::ReasoningContent::Encrypted(data),
+        ))
     }
 }
 
@@ -2987,6 +2993,151 @@ mod tests {
             completion::AssistantContent::Reasoning(message::Reasoning { id: Some(id), content })
                 if id == "rs_1" && content.len() == 3
         )));
+    }
+
+    /// Encrypted `reasoning_details` on the streaming wire must reach the
+    /// aggregated choice and replay on the next turn.
+    ///
+    /// The SSE below mirrors the recorded OpenRouter shape
+    /// (`tests/cassettes/openrouter/streaming_tools/raw_stream_decorates_reasoning_tool_call_metadata.yaml`):
+    /// the detail arrives with `reasoning: null` and an `rs_*` id of its own,
+    /// one chunk *before* the `call_*` tool call opens. Routed through
+    /// tool-call decoration those two id namespaces never match, so the blob
+    /// was dropped on every streaming turn while the non-streaming path kept
+    /// it.
+    #[tokio::test]
+    async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":null,"reasoning_details":[{"type":"reasoning.encrypted","id":"rs_1","format":"openai-responses-v1","index":0,"data":"enc_blob"}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":\"Tokyo\"}"}}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("openai/o4-mini");
+        let request = model.completion_request("weather?").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut events: Vec<&'static str> = Vec::new();
+        let mut streamed_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            match chunk.expect("stream item should be ok") {
+                StreamedAssistantContent::Reasoning(reasoning) => {
+                    assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+                    assert!(matches!(
+                        reasoning.content.first(),
+                        Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                    ));
+                    events.push("reasoning");
+                }
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    streamed_tool_calls.push(tool_call);
+                    events.push("tool_call");
+                }
+                _ => {}
+            }
+        }
+
+        // Wire order: the reasoning block precedes the tool call it was
+        // recorded before.
+        assert_eq!(events, vec!["reasoning", "tool_call"]);
+
+        // The tool call is *not* where the blob lives: decoration by the
+        // detail's own id could never match the call's id.
+        let tool_call = streamed_tool_calls.first().expect("streamed tool call");
+        assert_eq!(tool_call.id, "call_1");
+        assert!(tool_call.signature.is_none());
+        assert!(tool_call.additional_params.is_none());
+
+        // (a) the encrypted block reaches the aggregated choice ...
+        let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { id: Some(id), content })
+                    if id == "rs_1"
+                        && matches!(
+                            content.first(),
+                            Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                        )
+            )),
+            "encrypted reasoning must reach the aggregated choice: {choice:#?}"
+        );
+
+        // ... and (b) replays into the next turn's request messages.
+        let messages =
+            assistant_contents_to_messages(stream.choice.clone()).expect("history conversion");
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+        assert!(
+            reasoning_details.iter().any(|detail| matches!(
+                detail,
+                ReasoningDetails::Encrypted { id: Some(id), data, .. }
+                    if id == "rs_1" && data == "enc_blob"
+            )),
+            "encrypted reasoning must replay as a reasoning_details entry: {reasoning_details:#?}"
+        );
+    }
+
+    /// An encrypted detail the wire sends without an id degrades to the
+    /// accumulator's shared "" identity; it must still replay, and with a null
+    /// wire id rather than an empty string.
+    #[test]
+    fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
+        use crate::providers::openai::completion::OpenAICompatibleProvider as _;
+
+        let detail = json!({
+            "type": "reasoning.encrypted",
+            "id": null,
+            "format": null,
+            "index": 0,
+            "data": "enc_blob",
+        });
+        let (id, content) = OpenRouterExt
+            .streaming_detail_reasoning(&detail)
+            .expect("encrypted detail should map to reasoning");
+        assert_eq!(id, crate::streaming::PartId::wire(""));
+        assert!(matches!(
+            content,
+            message::ReasoningContent::Encrypted(ref data) if data == "enc_blob"
+        ));
+
+        let messages = assistant_contents_to_messages(OneOrMany::one(
+            message::AssistantContent::Reasoning(message::Reasoning {
+                id: id.as_wire().map(str::to_owned),
+                content: vec![content],
+            }),
+        ))
+        .unwrap();
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Encrypted { id: None, data, .. }) if data == "enc_blob"
+        ));
     }
 
     #[test]

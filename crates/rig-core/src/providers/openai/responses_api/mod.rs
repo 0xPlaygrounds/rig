@@ -620,7 +620,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             other_items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCall(OutputFunctionCall {
-                                    arguments: function.arguments,
+                                    arguments: function.arguments.into(),
                                     call_id: require_call_id(call_id, "Assistant tool call")?,
                                     id: tool_id,
                                     name: function.name,
@@ -672,6 +672,11 @@ fn require_call_id(call_id: Option<String>, context: &str) -> Result<String, Com
 fn openai_reasoning_from_core(
     reasoning: &crate::message::Reasoning,
 ) -> Result<Option<OpenAIReasoning>, MessageError> {
+    // Only wire-genuine ids exist in durable histories: the streaming layer
+    // populates `Reasoning::id` exclusively from `PartId::Wire`, so an
+    // id-less (rig-keyed) reasoning item arrives here as `None` and drops
+    // from request input, mirroring main's handling. No provenance gate is
+    // needed — a fabricated id structurally cannot reach this function.
     let Some(id) = reasoning.id.clone() else {
         return Ok(None);
     };
@@ -2182,9 +2187,24 @@ impl From<Output> for Vec<completion::AssistantContent> {
                 call_id,
                 name,
                 ..
-            }) => vec![completion::AssistantContent::tool_call_with_call_id(
-                id, call_id, name, arguments,
-            )],
+            }) => match arguments.parse() {
+                Ok(arguments) => vec![completion::AssistantContent::tool_call_with_call_id(
+                    id, call_id, name, arguments,
+                )],
+                // Truncation policy: arguments the wire never finished (a
+                // turn cut by `max_output_tokens` mid-tool-call) do not
+                // fabricate a call the model never fully made.
+                Err(_) => {
+                    // warn, not debug: main errored the whole response here,
+                    // so the quieter drop still deserves an operator-visible
+                    // signal.
+                    tracing::warn!(
+                        tool = %name,
+                        "dropping tool call whose arguments never fully arrived"
+                    );
+                    Vec::new()
+                }
+            },
             Output::Reasoning {
                 id,
                 summary,
@@ -2242,11 +2262,69 @@ pub struct OutputFunctionCall {
     /// output by `call_id` alone.
     #[serde(default, skip_serializing_if = "is_not_function_call_item_id")]
     pub id: String,
-    #[serde(with = "json_utils::stringified_json")]
-    pub arguments: serde_json::Value,
+    pub arguments: FunctionCallArguments,
     pub call_id: String,
     pub name: String,
     pub status: ToolStatus,
+}
+
+/// The wire form of a Responses `function_call` item's `arguments`: the raw
+/// string exactly as the provider sent it, parsed into JSON only at
+/// consumption time.
+///
+/// The Responses wire genuinely emits arguments that are not valid JSON: a
+/// turn cut by `max_output_tokens` mid-tool-call restates the call on
+/// `response.output_item.done` (and in `response.incomplete`'s `output[]`)
+/// with the arguments truncated mid-JSON (e.g. `"{\""`) and item status
+/// `incomplete`. Decoding the string eagerly (the old
+/// `json_utils::stringified_json` field) rejected those frames wholesale, so
+/// the stream classified them `Corrupt` instead of ending with a `Length`
+/// terminal. Keeping the raw string makes the typed model accept what the
+/// wire sends; whether a truncated call surfaces is decided by the settled
+/// truncation policy at parse time (partial arguments never fabricate a
+/// call).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionCallArguments(String);
+
+impl FunctionCallArguments {
+    /// Parse the raw wire string into JSON arguments. An empty string is a
+    /// parameterless invocation (`{}`); anything else must parse as JSON.
+    pub fn parse(&self) -> serde_json::Result<serde_json::Value> {
+        json_utils::parse_tool_arguments(&self.0)
+    }
+
+    /// The raw wire string, exactly as the provider sent it.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<serde_json::Value> for FunctionCallArguments {
+    /// Encode already-parsed arguments (Rig's canonical tool-call form) in
+    /// the wire's stringified-JSON spelling.
+    fn from(value: serde_json::Value) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl Serialize for FunctionCallArguments {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for FunctionCallArguments {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // The wire spells arguments as a string; a non-string payload is
+        // still a schema defect of the known `function_call` shape.
+        String::deserialize(deserializer).map(Self)
+    }
 }
 
 /// See [`OutputFunctionCall::id`]: only provider-native `fc` item IDs may be
@@ -2832,7 +2910,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                                     .into(),
                                             )
                                         })?,
-                                        arguments: function.arguments,
+                                        arguments: function.arguments.into(),
                                         id: tool_id,
                                         name: function.name,
                                         status: ToolStatus::Completed,
@@ -2950,6 +3028,134 @@ mod tests {
                 && tool_call_id == "call-id"
                 && matches!(after.first(), UserContent::InputText { text } if text == "after")
         ));
+    }
+
+    fn reasoning_input_items(items: &[InputItem]) -> Vec<serde_json::Value> {
+        items
+            .iter()
+            .map(|item| serde_json::to_value(item).expect("input item should serialize"))
+            .filter(|value| value["type"] == "reasoning")
+            .collect()
+    }
+
+    /// F7 leak route (a): reasoning replayed cross-provider — another
+    /// provider's stream aggregated under a boundary-minted id and swapped
+    /// onto a Responses model — must not serialize the fabricated id
+    /// upstream; the item is dropped like main dropped id-less reasoning.
+    /// A wire-plausible id keeps round-tripping.
+    #[tokio::test]
+    async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::MockStreamEvent;
+        use futures::StreamExt as _;
+
+        // The constant-id shape gemini/ollama/chat-compat streams leave in
+        // history, via the mock model's streaming pipeline.
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::reasoning_delta("thinking hard"),
+            MockStreamEvent::text("answer"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]]);
+        let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
+        let mut stream = model.stream(request).await.expect("mock stream");
+        while stream.next().await.is_some() {}
+        let choice = stream.choice.clone();
+        // The provenance funnel: a minted stream identity never becomes the
+        // durable `Reasoning::id`, so the replayed history carries no id at
+        // all — there is nothing for a serializer gate to filter, and no
+        // gate exists.
+        assert!(
+            choice.iter().any(
+                |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
+                    if reasoning.id.is_none())
+            ),
+            "a minted stream identity must aggregate as an id-less reasoning part"
+        );
+
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: choice,
+        })
+        .expect("history should convert");
+        assert!(
+            reasoning_input_items(&items).is_empty(),
+            "an id-less reasoning part must not reach the request input"
+        );
+
+        // A wire-plausible id is provider-issued and must round-trip.
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+                id: Some("rs_0123".to_string()),
+                content: vec![message::ReasoningContent::Text {
+                    text: "real item".to_string(),
+                    signature: None,
+                }],
+            })),
+        })
+        .expect("history should convert");
+        let reasoning = reasoning_input_items(&items);
+        assert_eq!(reasoning.len(), 1);
+        assert_eq!(reasoning[0]["id"], "rs_0123");
+    }
+
+    /// F7 leak route (b), closed structurally: a same-provider delta-only
+    /// Responses stream whose reasoning deltas lack `item_id` keys
+    /// accumulation by a minted identity that never becomes a durable id, so
+    /// the next request carries no fabricated `output-{index}` item.
+    #[tokio::test]
+    async fn delta_only_stream_minted_output_ids_are_not_serialized_upstream() {
+        use crate::test_utils::streaming_conformance::{fixtures, ok_chunks};
+        use bytes::Bytes;
+
+        let sse = |frame: &serde_json::Value| Bytes::from(format!("data: {frame}\n\n"));
+        let frames = vec![
+            // No `item_id`: the streaming adapter mints `output-0`.
+            sse(&json!({
+                "type": "response.reasoning_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "unattributed thought",
+            })),
+            sse(&json!({
+                "type": "response.completed",
+                "sequence_number": 2,
+                "response": {
+                    "id": "resp_1",
+                    "object": "response",
+                    "created_at": 0,
+                    "status": "completed",
+                    "model": "gpt-5.4",
+                    "output": [],
+                    "tools": [],
+                    "usage": null,
+                },
+            })),
+        ];
+        let drained = fixtures::openai_responses::driver()
+            .drive(ok_chunks(frames))
+            .await
+            .expect("stream should complete");
+        // The minted `output_index` identity keys accumulation only; the
+        // aggregated part carries no durable id, so nothing can go upstream.
+        assert!(
+            drained.choice.iter().any(
+                |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
+                    if reasoning.id.is_none())
+            ),
+            "an id-less delta stream must aggregate as an id-less reasoning part"
+        );
+
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: drained.choice.clone(),
+        })
+        .expect("history should convert");
+        assert!(
+            reasoning_input_items(&items).is_empty(),
+            "an id-less reasoning part must not reach the request input"
+        );
     }
 
     #[test]

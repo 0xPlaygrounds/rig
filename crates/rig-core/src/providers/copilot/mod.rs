@@ -35,18 +35,17 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
     CompatibleToolCallChunk,
 };
+use crate::providers::internal::wire;
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
-use crate::streaming::{self, RawStreamingChoice, StreamingCompletionResponse};
+use crate::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use async_stream::stream;
 use futures::StreamExt;
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use tracing_futures::Instrument as _;
@@ -1020,246 +1019,18 @@ where
         .build();
 
         let client = self.client.clone();
-        let mut event_source = crate::http_client::sse::GenericEventSource::new(client, req);
+        let event_source = crate::http_client::sse::GenericEventSource::new(client, req);
 
-        let stream = tracing_futures::Instrument::instrument(
-            stream! {
-                let mut final_usage = responses_api::ResponsesUsage::new();
-                let mut final_status = None;
-                let mut final_response_id = None;
-                let mut final_incomplete_details = None;
-                let mut final_model = None;
-                let mut reasoning_metadata = None;
-                let mut reasoning_context = None;
-                let mut tool_calls: Vec<streaming::RawStreamingChoice<CopilotStreamingResponse>> = Vec::new();
-                let mut tool_call_internal_ids: HashMap<String, String> = HashMap::new();
-                let span = tracing::Span::current();
-
-                // A terminal failure is captured here rather than yielded
-                // in-loop so that fully-delivered tool calls can be flushed
-                // *before* the error: consumers that stop at the first `Err`
-                // (including rig's agent loop) still see the completed work.
-                let mut terminal_error: Option<CompletionError> = None;
-
-                while let Some(event_result) = event_source.next().await {
-                    match event_result {
-                        Ok(crate::http_client::sse::Event::Open) => continue,
-                        Ok(crate::http_client::sse::Event::Message(evt)) => {
-                            if evt.data.trim().is_empty() {
-                                continue;
-                            }
-
-                            let Ok(data) = serde_json::from_str::<responses_api::streaming::StreamingCompletionChunk>(&evt.data) else {
-                                continue;
-                            };
-
-                            if let responses_api::streaming::StreamingCompletionChunk::Delta(chunk) = &data {
-                                use responses_api::streaming::{ItemChunkKind, StreamingItemDoneOutput};
-
-                                match &chunk.data {
-                                    ItemChunkKind::OutputItemAdded(message) => {
-                                        if let StreamingItemDoneOutput { item: responses_api::Output::FunctionCall(func), .. } = message {
-                                            let internal_call_id = tool_call_internal_ids
-                                                .entry(func.id.clone())
-                                                .or_insert_with(crate::id::generate)
-                                                .clone();
-                                            yield Ok(RawStreamingChoice::ToolCallDelta {
-                                                id: func.id.clone(),
-                                                internal_call_id,
-                                                content: streaming::ToolCallDeltaContent::Name(func.name.clone()),
-                                            });
-                                        }
-                                    }
-                                    ItemChunkKind::OutputItemDone(message) => match message {
-                                        StreamingItemDoneOutput { item: responses_api::Output::FunctionCall(func), .. } => {
-                                            let internal_id = tool_call_internal_ids
-                                                .entry(func.id.clone())
-                                                .or_insert_with(crate::id::generate)
-                                                .clone();
-                                            let raw_tool_call = streaming::RawStreamingToolCall::new(
-                                                func.id.clone(),
-                                                func.name.clone(),
-                                                func.arguments.clone(),
-                                            )
-                                            .with_internal_call_id(internal_id)
-                                            .with_call_id(func.call_id.clone());
-                                            tool_calls.push(RawStreamingChoice::ToolCall(raw_tool_call));
-                                        }
-                                        StreamingItemDoneOutput { item: responses_api::Output::Reasoning { summary, id, content, encrypted_content, .. }, .. } => {
-                                            for reasoning_choice in responses_api::streaming::reasoning_choices_from_done_item(
-                                                id,
-                                                summary,
-                                                content,
-                                                encrypted_content.as_deref(),
-                                            ) {
-                                                match reasoning_choice {
-                                                    RawStreamingChoice::Reasoning { id, content } => {
-                                                        yield Ok(RawStreamingChoice::Reasoning { id, content });
-                                                    }
-                                                    RawStreamingChoice::ReasoningDelta { id, reasoning } => {
-                                                        yield Ok(RawStreamingChoice::ReasoningDelta { id, reasoning });
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-                                        }
-                                        StreamingItemDoneOutput { item: responses_api::Output::Message(msg), .. } => {
-                                            yield Ok(RawStreamingChoice::MessageId(msg.id.clone()));
-                                        }
-                                        // Surface an unmodeled output item (e.g. a hosted-tool result) to the consumer verbatim.
-                                        StreamingItemDoneOutput { item: responses_api::Output::Unknown(value), .. } => {
-                                            yield Ok(RawStreamingChoice::Unknown(value.clone()));
-                                        }
-                                    },
-                                    ItemChunkKind::OutputTextDelta(delta) => {
-                                        yield Ok(RawStreamingChoice::Message(delta.delta.clone()))
-                                    }
-                                    ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
-                                        yield Ok(RawStreamingChoice::ReasoningDelta { id: None, reasoning: delta.delta.clone() })
-                                    }
-                                    ItemChunkKind::RefusalDelta(delta) => {
-                                        yield Ok(RawStreamingChoice::Message(delta.delta.clone()))
-                                    }
-                                    ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                                        if let Some(item_id) = chunk.item_id.as_ref() {
-                                            let internal_call_id = tool_call_internal_ids
-                                                .entry(item_id.clone())
-                                                .or_insert_with(crate::id::generate)
-                                                .clone();
-                                            yield Ok(RawStreamingChoice::ToolCallDelta {
-                                                id: item_id.clone(),
-                                                internal_call_id,
-                                                content: streaming::ToolCallDeltaContent::Delta(delta.delta.clone())
-                                            })
-                                        }
-                                    }
-                                    _ => continue,
-                                }
-                            }
-
-                            if let responses_api::streaming::StreamingCompletionChunk::Response(chunk) = data {
-                                let responses_api::streaming::ResponseChunk { kind, response, .. } = *chunk;
-                                match kind {
-                                    // `response.incomplete` is a genuine terminal (e.g. hitting
-                                    // `max_output_tokens`): the delivered content and usage are
-                                    // kept, and the recorded status/incomplete_details map to the
-                                    // finish reason downstream, matching the OpenAI Responses SSE
-                                    // path's accumulator.
-                                    responses_api::streaming::ResponseChunkKind::ResponseCompleted
-                                    | responses_api::streaming::ResponseChunkKind::ResponseIncomplete => {
-                                        span.record("gen_ai.response.id", response.id.as_str());
-                                        span.record("gen_ai.response.model", response.model.as_str());
-                                        if !response.id.is_empty() {
-                                            final_response_id = Some(response.id.clone());
-                                        }
-                                        // Terminal metadata for the normalized
-                                        // `StreamFinal`: the response `status`
-                                        // drives the finish reason, and the
-                                        // model name is the one the wire
-                                        // reported.
-                                        final_status = Some(response.status.clone());
-                                        final_incomplete_details = response.incomplete_details.clone();
-                                        final_model = Some(response.model.clone());
-                                        if let Some(usage) = response.usage {
-                                            final_usage = usage;
-                                        }
-                                        if response.reasoning_metadata.is_some() {
-                                            reasoning_metadata = response.reasoning_metadata;
-                                        }
-                                        if response.reasoning_context.is_some() {
-                                            reasoning_context = response.reasoning_context;
-                                        }
-                                    }
-                                    responses_api::streaming::ResponseChunkKind::ResponseFailed => {
-                                        // Deliberate two-tier behaviour matching the OpenAI Responses
-                                        // SSE path: when the provider supplies an error object we
-                                        // preserve the raw event JSON via `completion_error_from_body`
-                                        // so the `provider_response_*` helpers surface the full payload
-                                        // (code + message). The error arrives over an established 2xx
-                                        // stream, so there is no HTTP status to attach (status: None).
-                                        // When the object is absent we emit a Rig-authored
-                                        // `ProviderError` diagnostic (provider_response_body() is None).
-                                        terminal_error = Some(match response.error.as_ref() {
-                                            Some(_) => crate::provider_response::completion_error_from_body(
-                                                evt.data.clone(),
-                                            ),
-                                            None => CompletionError::ProviderError(
-                                                "Copilot response stream failed".into(),
-                                            ),
-                                        });
-                                        break;
-                                    }
-                                    _ => continue,
-                                }
-                            }
-                        }
-                        Err(crate::http_client::Error::StreamEnded) => {
-                            break;
-                        }
-                        Err(error) => {
-                            terminal_error = Some(CompletionError::from_stream_transport(error));
-                            break;
-                        }
-                    }
-                }
-
-                event_source.close();
-
-                // Tool calls the provider fully delivered are content, so both
-                // a truncated stream and one that ended in an error still
-                // flush them to the consumer.
-                for tool_call in &tool_calls {
-                    yield Ok(tool_call.to_owned())
-                }
-
-                // Fully-delivered tool calls come first on the wire, then the
-                // terminal error, then the stream ends with no terminal
-                // record.
-                if let Some(error) = terminal_error {
-                    yield Err(error);
-                    return;
-                }
-
-                // But only a genuine `response.completed` event counts as the
-                // provider completing the turn. A stream that reached EOF
-                // without that event (truncation) gets no terminal record —
-                // synthesizing one would present the partial turn as a
-                // successful completion.
-                if final_status.is_none() {
-                    return;
-                }
-
-                span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
-                span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
-                span.record(
-                    "gen_ai.usage.cache_read.input_tokens",
-                    final_usage
-                        .input_tokens_details
-                        .as_ref()
-                        .map(|details| details.cached_tokens)
-                        .unwrap_or(0),
-                );
-
-                yield Ok(RawStreamingChoice::FinalResponse(
-                    CopilotStreamingResponse::Responses(
-                        responses_api::streaming::StreamingCompletionResponse {
-                            usage: final_usage,
-                            reasoning_metadata,
-                            reasoning_context,
-                            status: final_status,
-                            incomplete_details: final_incomplete_details,
-                            // The assistant message ID is emitted as its own
-                            // `MessageId` event upstream, which takes
-                            // precedence over the terminal record anyway.
-                            message_id: None,
-                            response_id: final_response_id,
-                            model: final_model,
-                        }
-                    )
-                ));
-            },
-            span,
-        );
+        // Copilot's `/responses` route relays OpenAI's Responses SSE wire
+        // verbatim, so the shared classify + `RawChoiceAccumulator` machinery
+        // is the event interpreter — only the auth/transport above and the
+        // route-carrying terminal wrapper below are Copilot-specific.
+        let raw = responses_api::streaming::raw_stream_from_event_source(event_source, span);
+        let stream = raw.map(|item| {
+            item.and_then(|choice| {
+                choice.try_map_final(|response| Ok(CopilotStreamingResponse::Responses(response)))
+            })
+        });
 
         Ok(Box::pin(stream))
     }
@@ -1676,38 +1447,13 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
     type Detail = ();
     type FinalResponse = CopilotStreamingResponse;
 
-    fn normalize_chunk(
+    fn classify_chunk(
         &self,
         data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
-        // Chat completion chunks carry no `type` discriminator, so a frame is
-        // recognized by `"object": "chat.completion.chunk"` or the presence
-        // of `"choices"`. A recognizable chunk that fails the full parse has
-        // a data-level defect and is surfaced as an `Err` item; valid JSON
-        // that isn't a recognizable chunk is an event this client doesn't
-        // know yet and is skipped for forward compatibility. Invalid JSON is
-        // a genuinely corrupt frame, also surfaced as an `Err` item; the
-        // shared compat layer keeps consuming, so a later genuine terminal
-        // still completes the stream.
-        let data = match serde_json::from_str::<ChatStreamingChunk>(data) {
-            Ok(chunk) => chunk,
-            Err(error) => {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(data) {
-                    let is_chat_chunk = value
-                        .get("object")
-                        .and_then(serde_json::Value::as_str)
-                        .is_some_and(|object| object == "chat.completion.chunk")
-                        || value.get("choices").is_some();
-                    if !is_chat_chunk {
-                        tracing::warn!("skipping unrecognized Copilot chat SSE event: {error:?}");
-                        return Ok(None);
-                    }
-                }
-                return Err(CompletionError::from(error));
-            }
-        };
-
-        Ok(Some(
+    ) -> wire::WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
+        // Classification only — the unknown/corrupt policy (warn-skip vs.
+        // in-band `Err` item) lives in the shared driver, not here.
+        wire::classify_chat_completions_frame::<ChatStreamingChunk>(data).map(|data| {
             openai_chat_completions_compatible::normalize_first_choice_chunk(
                 data.id,
                 data.model,
@@ -1739,8 +1485,8 @@ impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
                     ),
                     details: Vec::new(),
                 },
-            ),
-        ))
+            )
+        })
     }
 
     fn build_final_response(
@@ -2306,6 +2052,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn responses_stream_object_less_failed_still_attaches_the_raw_event() {
+        // #2258 F4 decision: the old Copilot code kept a deliberate two-tier
+        // shape — `response.failed` WITHOUT an error object surfaced as a
+        // `ProviderError` with `provider_response_body() == None`. The shared
+        // Responses interpreter unifies this: the raw event body is ALWAYS
+        // attached, error object or not, so callers can inspect what the
+        // provider actually sent. Documented in MIGRATING.
+        let failed = serde_json::json!({
+            "type": "response.failed",
+            "sequence_number": 1,
+            "response": {
+                "id": "resp_123",
+                "object": "response",
+                "created_at": 1700000000,
+                "status": "failed",
+                "error": null,
+                "incomplete_details": null,
+                "instructions": null,
+                "max_output_tokens": null,
+                "model": "gpt-5.3-codex",
+                "usage": null,
+                "output": [],
+                "tools": []
+            }
+        });
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[failed]),
+        };
+        let client = Client::builder()
+            .api_key("copilot-token")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.completion_model("gpt-5.3-codex");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let err = match stream.next().await.expect("stream should yield an item") {
+            Ok(item) => panic!("stream should surface a provider error, got {item:?}"),
+            Err(err) => err,
+        };
+        assert!(matches!(
+            err,
+            crate::completion::CompletionError::ProviderResponse(_)
+        ));
+        assert_eq!(err.provider_response_status(), None);
+        assert!(
+            err.provider_response_body()
+                .is_some_and(|body| body.contains("response.failed")),
+            "an object-less response.failed must still carry the raw event body"
+        );
+        assert!(
+            stream.next().await.is_none(),
+            "responses stream should end after the terminal error"
+        );
+    }
+
+    #[tokio::test]
     async fn responses_stream_incomplete_is_a_terminal_with_partial_content() {
         // The content exists only in the delta; the terminal
         // `response.incomplete` body has an empty `output`.
@@ -2473,7 +2277,8 @@ mod tests {
     async fn chat_stream_skips_unrecognized_event_and_still_completes() {
         // Valid JSON that is not recognizably a chat completion chunk (no
         // `choices`, no `"object": "chat.completion.chunk"`) is an event this
-        // client doesn't know yet — skipped for forward compatibility.
+        // client doesn't know yet — skipped semantically for forward
+        // compatibility, surfaced verbatim on the raw passthrough channel.
         let http_client = MockStreamingClient {
             sse_bytes: sse_bytes_from_data_lines([
                 "{\"type\":\"copilot.heartbeat\",\"payload\":{}}",
@@ -2493,15 +2298,22 @@ mod tests {
 
         let mut text = String::new();
         let mut terminal = None;
+        let mut unknown = None;
         while let Some(item) = stream.next().await {
             match item.expect("unrecognized events must not surface errors") {
                 StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
                 StreamedAssistantContent::Final(final_response) => terminal = Some(final_response),
+                StreamedAssistantContent::Unknown(value) => unknown = Some(value),
                 other => panic!("unexpected stream item: {other:?}"),
             }
         }
 
         assert_eq!(text, "hello");
+        assert_eq!(
+            unknown,
+            Some(serde_json::json!({"type": "copilot.heartbeat", "payload": {}})),
+            "the unrecognized frame must surface verbatim on the raw channel"
+        );
         let terminal = terminal.expect("stream should still emit its terminal record");
         assert_eq!(
             terminal.finish_reason,

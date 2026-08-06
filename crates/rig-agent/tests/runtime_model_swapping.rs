@@ -26,8 +26,8 @@ use rig_agent::{
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
-        RawStreamingChoice, RawStreamingToolCall, StreamFinal, StreamedAssistantContent,
-        StreamingCompletionResponse, StreamingPrompt,
+        RawStreamingChoice, StreamFinal, StreamedAssistantContent, StreamingCompletionResponse,
+        StreamingPrompt,
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
@@ -281,27 +281,31 @@ fn stream_from_script(
             arguments,
             ..
         } => {
-            let raw = RawStreamingToolCall::new(id.clone(), name.clone(), arguments.clone())
-                .with_internal_call_id(format!("{id}-internal"));
+            // Canonical fragmenting-wire shape: name/args fragments closed by
+            // a tool-input end; the shared accumulator assembles the call and
+            // mints the correlation id at the first fragment.
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: id.clone(),
-                internal_call_id: raw.internal_call_id.clone(),
+                id: rig_agent::streaming::PartId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Name(name.clone()),
             }));
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: id.clone(),
-                internal_call_id: raw.internal_call_id.clone(),
+                id: rig_agent::streaming::PartId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
             }));
-            events.push(Ok(RawStreamingChoice::ToolCall(raw)));
+            events.push(Ok(RawStreamingChoice::ToolInputEnd(
+                rig_agent::streaming::ToolInputEnd::new(
+                    id.clone(),
+                    rig_agent::streaming::UnparseableToolInput::Drop,
+                ),
+            )));
         }
         Turn::Rich { text, .. } => {
             events.push(Ok(RawStreamingChoice::Reasoning {
-                id: Some("reasoning-1".to_owned()),
+                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(1),
                 content: ReasoningContent::Summary("summary".to_owned()),
             }));
             events.push(Ok(RawStreamingChoice::ReasoningDelta {
-                id: Some("reasoning-2".to_owned()),
+                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(2),
                 reasoning: "reasoning delta".to_owned(),
             }));
             events.push(Ok(RawStreamingChoice::Unknown(serde_json::json!({
@@ -1056,9 +1060,16 @@ async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
             "tool-result"
         ]
     );
+    // The correlation id is minted by the shared accumulator when the call's
+    // first fragment arrives; every downstream stage must carry that one id.
+    let correlation = stream_internal_call_ids
+        .first()
+        .expect("at least one correlated event")
+        .clone();
+    assert!(!correlation.is_empty());
     assert_eq!(
         stream_internal_call_ids,
-        vec!["lookup-call-internal"; 5],
+        vec![correlation; 5],
         "deltas, the completed call, execution, and result retain one correlation id"
     );
 }
