@@ -278,6 +278,37 @@ association.
 
 ## 0.41 → next
 
+### Stream keys are opaque; durable ids and correlators are separate values
+
+The raw-event identity type is now `rig_core::streaming::StreamPartId` — an
+**opaque accumulation key**: `Eq + Hash + Clone + Debug` and nothing else. It
+has no serialization, no rendering, and no accessor into the durable id
+space (the `identity_leak` compile-fail suite pins all three), plus a
+`Composite` variant for adapter-composed keys. The durable provider handle
+travels separately as `WireId` (`Reasoning`/`ReasoningDelta` gain
+`provider_id: Option<WireId>`; `RawStreamingToolCall` gains
+`tool_id: Option<WireId>`; `ToolInputEnd::tool_id` is `Option<WireId>`).
+`WireId::new` rejects the empty string, so an absent handle is `None` by
+construction — the fabricated-empty-id class (and every per-serializer
+`.filter(|id| !id.is_empty())` compensating for it) is gone.
+
+Public stream items change accordingly (breaking):
+
+- `StreamedAssistantContent::ReasoningDelta.id` is now a **rig-generated
+  correlator** — stable per reasoning part, unique per run — plus a new
+  `provider_id: Option<String>` carrying the provider-issued item id when
+  one exists. The previous `rig:reasoning:0`-style renderings (and their
+  one-stream uniqueness caveat) are gone; the caveat documented for
+  `0.41 → next` is superseded.
+- `StreamedAssistantContent::ToolCallDelta` loses its `id` field:
+  `internal_call_id` is the correlator, and provider ids arrive on the
+  completed `ToolCall`. The agent hook payload `ToolCallDelta` loses
+  `tool_call_id` for the same reason.
+- Consumers reconstructing durable ids from delta ids must use
+  `provider_id`: the assembled `Reasoning::id` carries only provider-issued
+  values (this closes a latent leak where a minted rendering could enter
+  history through the agent's delta-only assembly path).
+
 ### `ToolResult` carries the executed tool's name
 
 `rig::message::ToolResult` gains `name: Option<String>` — the name of the

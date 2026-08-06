@@ -16,7 +16,7 @@ use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
-    self, MintKind, PartId, RawStreamingChoice, RawStreamingResult, StreamFinal,
+    self, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
     ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -620,7 +620,7 @@ fn handle_event(
                     // Emit the delta so UI can show progress; the shared
                     // accumulator assembles the fragments.
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: PartId::wire(id.clone()),
+                        id: StreamPartId::wire(id.clone()),
                         content: ToolCallDeltaContent::Delta(partial_json.clone()),
                     }));
                 }
@@ -636,6 +636,7 @@ fn handle_event(
                     // Anthropic has no reasoning item id; the content-block
                     // index is stable across a block's deltas and its stop.
                     id: MintKind::Block.for_wire_index(*index as u64),
+                    provider_id: None,
                     reasoning: thinking.clone(),
                 }))
             }
@@ -705,7 +706,7 @@ fn handle_event(
             Content::ToolUse { id, name, .. } => {
                 *current_tool_call = Some(id.clone());
                 Some(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: PartId::wire(id.clone()),
+                    id: StreamPartId::wire(id.clone()),
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }))
             }
@@ -727,8 +728,9 @@ fn handle_event(
                 None
             }
             Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
-                // Derive identity from the content-block index (no wire id).
+                // Derive the key from the content-block index (no wire id).
                 id: MintKind::Block.for_wire_index(*index as u64),
+                provider_id: None,
                 content: ReasoningContent::Redacted { data: data.clone() },
             })),
             // Handle other content types - they don't need special handling
@@ -751,6 +753,7 @@ fn handle_event(
                         // Same block index as this block's ThinkingDeltas, so
                         // the full block supersedes the accumulated deltas.
                         id: MintKind::Block.for_wire_index(*index as u64),
+                        provider_id: None,
                         content: ReasoningContent::Text { text, signature },
                     }));
                 }
@@ -1322,6 +1325,7 @@ mod tests {
         match result {
             RawStreamingChoice::Reasoning {
                 id,
+                provider_id: _,
                 content: ReasoningContent::Text { text, signature },
             } => {
                 assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(0));
@@ -1435,6 +1439,7 @@ mod tests {
         {
             RawStreamingChoice::Reasoning {
                 id,
+                provider_id: _,
                 content: ReasoningContent::Text { text, signature },
             } => {
                 assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(2));
@@ -1563,7 +1568,7 @@ mod tests {
 
         match choice {
             RawStreamingChoice::ToolCallDelta { id, content } => {
-                assert_eq!(id.as_wire(), Some("tool_123"));
+                assert_eq!(id, crate::streaming::StreamPartId::wire("tool_123"));
                 match content {
                     ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
                     _ => panic!("Expected Delta content"),
@@ -1624,7 +1629,7 @@ mod tests {
 
         match final_result.unwrap().unwrap() {
             RawStreamingChoice::ToolInputEnd(end) => {
-                assert_eq!(end.id.as_wire(), Some("tool_123"));
+                assert_eq!(end.id, crate::streaming::StreamPartId::wire("tool_123"));
                 assert!(matches!(
                     end.on_unparseable,
                     crate::streaming::UnparseableToolInput::Error

@@ -119,7 +119,8 @@ mod tests {
             },
         ];
         let choices = reasoning_choices_from_done_item(
-            &crate::streaming::PartId::wire("xr_1"),
+            &crate::streaming::StreamPartId::wire("xr_1"),
+            crate::streaming::WireId::new("xr_1").as_ref(),
             &summary,
             &[],
             Some("enc"),
@@ -130,22 +131,25 @@ mod tests {
             choices.first(),
             Some(RawStreamingChoice::Reasoning {
                 id,
+                provider_id,
                 content: ReasoningContent::Summary(text),
-            }) if id.as_wire() == Some("xr_1") && text == "s1"
+            }) if id == &crate::streaming::StreamPartId::wire("xr_1") && text == "s1"
         ));
         assert!(matches!(
             choices.get(1),
             Some(RawStreamingChoice::Reasoning {
                 id,
+                provider_id,
                 content: ReasoningContent::Summary(text),
-            }) if id.as_wire() == Some("xr_1") && text == "s2"
+            }) if id == &crate::streaming::StreamPartId::wire("xr_1") && text == "s2"
         ));
         assert!(matches!(
             choices.get(2),
             Some(RawStreamingChoice::Reasoning {
                 id,
+                provider_id,
                 content: ReasoningContent::Encrypted(data),
-            }) if id.as_wire() == Some("xr_1") && data == "enc"
+            }) if id == &crate::streaming::StreamPartId::wire("xr_1") && data == "enc"
         ));
     }
 

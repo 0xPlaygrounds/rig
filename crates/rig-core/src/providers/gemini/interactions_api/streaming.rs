@@ -228,7 +228,8 @@ struct InteractionsAdapter {
     /// `streaming_grammar/interactions_same_tool_twice`; the pre-fix code
     /// emitted the empty-args call at `step.start` and dropped every
     /// fragment.
-    open_function_steps: std::collections::HashMap<i32, streaming::PartId>,
+    open_function_steps:
+        std::collections::HashMap<i32, (streaming::StreamPartId, Option<streaming::WireId>)>,
 }
 
 impl WireAdapter for InteractionsAdapter {
@@ -248,7 +249,7 @@ impl WireAdapter for InteractionsAdapter {
         match event {
             InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
                 ContentDelta::ArgumentsDelta(arguments_delta) => {
-                    if let (Some(key), Some(fragment)) = (
+                    if let (Some((key, _)), Some(fragment)) = (
                         self.open_function_steps.get(&index),
                         arguments_delta.arguments,
                     ) {
@@ -306,10 +307,11 @@ impl WireAdapter for InteractionsAdapter {
                     // and drop every fragment. Key by the wire's own id
                     // when present; never the tool name.
                     self.thought_buffer.clear();
-                    let key = id
-                        .filter(|id| !id.is_empty())
-                        .map(streaming::PartId::wire)
-                        .unwrap_or(streaming::PartId::Minted {
+                    let wire_id = id.and_then(streaming::WireId::new);
+                    let key = wire_id
+                        .as_ref()
+                        .map(|id| streaming::StreamPartId::wire(id.as_str()))
+                        .unwrap_or(streaming::StreamPartId::Minted {
                             kind: streaming::MintKind::Tool,
                             index: index.max(0) as u64,
                         });
@@ -327,7 +329,7 @@ impl WireAdapter for InteractionsAdapter {
                             content: streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
                         }));
                     }
-                    self.open_function_steps.insert(index, key);
+                    self.open_function_steps.insert(index, (key, wire_id));
                 } else if let Some(choice) = step_start_to_choice(step) {
                     // Non-thought output closes the open reasoning item
                     // (accumulator minted-id boundary).
@@ -339,14 +341,11 @@ impl WireAdapter for InteractionsAdapter {
                 // The wire promised a complete function-call step: close its
                 // assembly. Malformed accumulated input surfaces in-band
                 // (`Error` policy), matching the other complete-block wires.
-                if let Some(key) = self.open_function_steps.remove(&index) {
-                    let mut end = streaming::ToolInputEnd::new(
-                        key.clone(),
-                        streaming::UnparseableToolInput::Error,
-                    );
-                    if let Some(id) = key.as_wire() {
-                        end.call_id = Some(id.to_owned());
-                    }
+                if let Some((key, wire_id)) = self.open_function_steps.remove(&index) {
+                    let mut end =
+                        streaming::ToolInputEnd::new(key, streaming::UnparseableToolInput::Error);
+                    end.call_id = wire_id.as_ref().map(|id| id.as_str().to_owned());
+                    end.tool_id = wire_id;
                     out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(end)));
                 }
             }

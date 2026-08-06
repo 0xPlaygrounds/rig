@@ -673,7 +673,7 @@ fn openai_reasoning_from_core(
     reasoning: &crate::message::Reasoning,
 ) -> Result<Option<OpenAIReasoning>, MessageError> {
     // Only wire-genuine ids exist in durable histories: the streaming layer
-    // populates `Reasoning::id` exclusively from `PartId::Wire`, so an
+    // populates `Reasoning::id` exclusively from `StreamPartId::Wire`, so an
     // id-less (rig-keyed) reasoning item arrives here as `None` and drops
     // from request input, mirroring main's handling. No provenance gate is
     // needed — a fabricated id structurally cannot reach this function.

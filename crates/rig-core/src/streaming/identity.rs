@@ -1,32 +1,39 @@
-//! Provenance-carrying part identity for the streaming layer.
+//! Stream-part identity: an opaque accumulation key, and the separate
+//! durable provider handle.
 //!
-//! One streamed part has exactly one identity, and that identity knows where
-//! it came from: [`PartId::Wire`] is an identifier the provider put on the
-//! wire, and [`PartId::Minted`] is an identifier rig fabricated at a stream
-//! boundary because the wire supplied none. The two have different rights:
+//! One streamed part has two distinct identity concerns, carried as two
+//! values (never fused — review 84a43e9e root cause B):
 //!
-//! - A **wire** identity is durable. It may populate the replayable message
-//!   types ([`crate::message::Reasoning::id`], [`crate::message::ToolCall::id`])
-//!   and travel upstream on the next request.
-//! - A **minted** identity exists to key accumulation while the stream is
-//!   live. It never reaches a request: the only way to obtain a
-//!   request-serializable id is [`WireId`], and a [`WireId`] can only be
-//!   produced from [`PartId::Wire`]. There is deliberately no `Serialize`
-//!   impl on [`PartId`] and no accessor that renders a minted identity into
-//!   the durable id space — the leak is a compile error, not a runtime gate.
+//! - [`StreamPartId`] — the **accumulation key**. Opaque: `Eq + Hash` and
+//!   nothing else. It has no rendering, no serialization, and no path into a
+//!   request or a public stream item; it exists to key the accumulator's
+//!   maps for the life of one stream and then dies. Because nothing can
+//!   observe it, an adapter may freely compose it
+//!   ([`StreamPartId::Composite`], vercel's `` `${item.id}:0` `` move) or
+//!   mint it ([`SyntheticIds`]) without any global-uniqueness obligation.
+//! - [`WireId`] — the **durable provider handle**, present only when the
+//!   provider actually issued one. It is the only value that may populate
+//!   the replayable message types ([`crate::message::Reasoning::id`],
+//!   [`crate::message::ToolCall::id`]) and travel upstream. Its only
+//!   constructor rejects the empty string, so "absent" is `Option::None` —
+//!   never a fabricated `""` a serializer must remember to filter.
 //!
-//! Reference designs: pydantic-ai's `_parts_manager` keeps the accumulation
-//! key in a private side map that dies with the stream; vercel's content
-//! types have no id field for a block id to leak into. Both reach the same
-//! invariant this type states directly: *the stream accumulation key and the
-//! durable provider handle are different things.*
+//! Consumer-facing correlation uses neither: public stream items carry
+//! rig-generated correlators (`internal_call_id` for tool calls, the
+//! part-scoped correlators the stream mints for reasoning), unique per run
+//! by construction — pydantic-ai's part-index shape.
+//!
+//! Reference designs: vercel-ai-sdk carries the composite stream key on the
+//! event and the durable handle in `providerMetadata.openai.itemId`;
+//! pydantic-ai's `VendorId = Hashable` is an arbitrary private key with
+//! durable ids as separate part fields.
 
 /// What kind of part a minted identity was fabricated for.
 ///
-/// The kind partitions the minted id space so identities minted by different
-/// subsystems (reasoning blocks, anthropic/bedrock content blocks, Responses
-/// output items, tool-call fragments, text blocks) can never collide even
-/// when their indices do.
+/// The kind partitions minted keys per subsystem so independent minters
+/// need no coordination. This is bookkeeping, not a public contract: the
+/// key is opaque, so overlapping kinds could at most confuse a debugger,
+/// never a consumer or a serializer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MintKind {
     /// Reasoning blocks on constant-id wires (gemini REST, ollama,
@@ -45,135 +52,131 @@ pub enum MintKind {
 }
 
 impl MintKind {
-    /// The minted identity for a wire-supplied index (anthropic's
-    /// content-block index pattern). Unsigned by contract: signed wire index
-    /// types must be converted at the adapter boundary, so a negative index
-    /// is a decode error there rather than a divergent identity here.
-    pub fn for_wire_index(self, index: u64) -> PartId {
-        PartId::Minted { kind: self, index }
-    }
-
-    /// Stable lowercase name, used only for display/debug rendering.
-    fn name(self) -> &'static str {
-        match self {
-            Self::Reasoning => "reasoning",
-            Self::Block => "block",
-            Self::Output => "output",
-            Self::Tool => "tool",
-            Self::Text => "text",
-        }
+    /// The minted key for a wire-supplied index (anthropic's content-block
+    /// index pattern). Unsigned by contract: signed wire index types must be
+    /// converted at the adapter boundary, so a negative index is a decode
+    /// error there rather than a divergent identity here.
+    pub fn for_wire_index(self, index: u64) -> StreamPartId {
+        StreamPartId::Minted { kind: self, index }
     }
 }
 
-/// Identity of one streamed part, carrying its provenance in the type.
+/// Opaque accumulation key of one streamed part.
 ///
-/// See the module docs for the contract. `PartId` deliberately implements
-/// neither `Serialize` nor `Deserialize`: it is a stream-scoped key, not a
-/// durable value. The public stream items render it for consumer-side
-/// correlation via [`PartId::render`]; the durable message types receive an
-/// id only through [`PartId::into_wire_id`] / [`PartId::as_wire`].
+/// `Eq + Hash + Clone + Debug` and nothing else — deliberately no
+/// `Serialize`/`Deserialize`, no rendering, and no accessor into the
+/// durable id space (see the module docs; the `identity_leak` compile-fail
+/// suite pins this). Keys derived from wire ids ([`StreamPartId::Wire`])
+/// stay distinguishable from minted ones because the accumulator's
+/// interleaving-boundary lifecycle still asks
+/// [`StreamPartId::is_minted`]; that discriminant is stream-internal
+/// bookkeeping, not provenance a serializer may consult.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum PartId {
-    /// Identity the provider put on the wire. Round-trips upstream.
+pub enum StreamPartId {
+    /// A key derived from an identifier the provider put on the wire.
+    ///
+    /// This is a *key*, not the durable handle: the handle travels
+    /// separately as [`WireId`] on the events that have one.
     Wire(String),
-    /// Identity rig minted at a stream boundary. Keys accumulation for the
-    /// life of the stream and never leaves it.
+    /// A key rig minted at a stream boundary because the wire supplied none.
     Minted {
-        /// The subsystem that minted this identity.
+        /// The subsystem that minted this key.
         kind: MintKind,
         /// Position within the mint's own sequence (a counter or the wire's
-        /// unsigned index). Unsigned by construction: no wire index can
-        /// render a shape the identity machinery disagrees about.
+        /// unsigned index).
         index: u64,
+    },
+    /// A key composed from a parent key and a sub-index — the Responses
+    /// multi-part-under-one-item-id shape (vercel's `` `${item.id}:0` ``).
+    /// Legal precisely because the key is unobservable.
+    Composite {
+        /// The parent part's key.
+        parent: Box<StreamPartId>,
+        /// Position under the parent.
+        ordinal: u32,
     },
 }
 
-/// A bare string is by definition a wire identity — fabricating a
-/// [`PartId::Minted`] requires naming a [`MintKind`] explicitly (normally via
-/// [`SyntheticIds`]), so no conversion can accidentally launder a fabricated
-/// id into the wire-genuine space.
-impl From<String> for PartId {
+/// A bare string is by definition a wire-derived key — fabricating a
+/// [`StreamPartId::Minted`] requires naming a [`MintKind`] explicitly
+/// (normally via [`SyntheticIds`]), so no conversion can launder a
+/// fabricated key into the wire-derived space. The empty string converts
+/// too — as a *key* that is harmless (it can collide only with itself
+/// within one stream) — but it carries no durable handle: [`WireId`]
+/// construction is separate and rejects emptiness.
+impl From<String> for StreamPartId {
     fn from(id: String) -> Self {
         Self::Wire(id)
     }
 }
 
-impl From<&str> for PartId {
+impl From<&str> for StreamPartId {
     fn from(id: &str) -> Self {
         Self::Wire(id.to_owned())
     }
 }
 
-impl PartId {
-    /// A wire-supplied identity.
+impl StreamPartId {
+    /// A key derived from a wire-supplied identifier.
     pub fn wire(id: impl Into<String>) -> Self {
         Self::Wire(id.into())
     }
 
-    /// The wire identity, if this id is wire-genuine. `None` for minted ids:
-    /// this is the funnel that keeps fabricated identities out of the
-    /// durable message types.
-    pub fn as_wire(&self) -> Option<&str> {
-        match self {
-            Self::Wire(id) => Some(id),
-            Self::Minted { .. } => None,
+    /// A key composed under `self` at `ordinal` (the Responses sibling
+    /// shape).
+    pub fn composed(&self, ordinal: u32) -> Self {
+        Self::Composite {
+            parent: Box::new(self.clone()),
+            ordinal,
         }
     }
 
-    /// Consume into the request-serializable [`WireId`], if wire-genuine.
-    pub fn into_wire_id(self) -> Option<WireId> {
-        match self {
-            Self::Wire(id) => Some(WireId(id)),
-            Self::Minted { .. } => None,
-        }
-    }
-
-    /// Whether this identity was minted at a stream boundary.
+    /// Whether this key was minted at a stream boundary (stream-internal
+    /// lifecycle bookkeeping: minted-key reasoning items close on
+    /// interleaving output). A composite key inherits its parent's answer.
     pub fn is_minted(&self) -> bool {
-        matches!(self, Self::Minted { .. })
-    }
-
-    /// Render for consumer-side correlation on the public stream items.
-    ///
-    /// The rendering of a minted id is namespaced (`rig:reasoning:0`) and
-    /// unique **within one stream** only; it restarts on every turn of a
-    /// multi-turn run, so consumers must not key across streams by it. It is
-    /// not a provider identifier and there is no path from this string back
-    /// into a request: durable ids come only from [`PartId::into_wire_id`].
-    pub fn render(&self) -> String {
         match self {
-            Self::Wire(id) => id.clone(),
-            Self::Minted { kind, index } => format!("rig:{}:{}", kind.name(), index),
+            Self::Wire(_) => false,
+            Self::Minted { .. } => true,
+            Self::Composite { parent, .. } => parent.is_minted(),
         }
     }
 }
 
-/// A request-serializable, wire-genuine identifier.
+/// The durable provider handle: an identifier the provider actually issued,
+/// ready for the replayable message types and request payloads.
 ///
-/// The only constructor is [`PartId::into_wire_id`], which refuses minted
-/// identities — request serializers that require this type therefore cannot
-/// receive a fabricated id, by construction.
+/// The only constructor rejects the empty string, so an absent handle is
+/// `Option::None` by construction — no serializer ever needs an
+/// empty-string filter.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WireId(String);
 
 impl WireId {
-    /// The wire identifier, ready for a request payload.
+    /// A provider-issued identifier. `None` for the empty string: absence
+    /// is not an id.
+    pub fn new(id: impl Into<String>) -> Option<Self> {
+        let id = id.into();
+        if id.is_empty() { None } else { Some(Self(id)) }
+    }
+
+    /// The identifier, ready for a request payload.
     pub fn into_string(self) -> String {
         self.0
     }
 
-    /// Borrow the wire identifier.
+    /// Borrow the identifier.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-/// Fabricated per-stream identity for wires that carry none.
+/// Fabricated per-stream keys for wires that carry none.
 ///
-/// Every id-less wire mints ids the same way — a [`MintKind`] plus a counter
-/// or the wire's own unsigned index — and the result is a [`PartId::Minted`]
-/// that structurally cannot reach a request. This is the **only** mint:
-/// providers never hand-roll a minted identity.
+/// Every id-less wire mints keys the same way — a [`MintKind`] plus a
+/// counter or the wire's own unsigned index — and the result is a
+/// [`StreamPartId::Minted`] that, like every stream key, structurally
+/// cannot reach a request or a public stream item.
 #[derive(Debug)]
 pub struct SyntheticIds {
     kind: MintKind,
@@ -186,41 +189,41 @@ impl SyntheticIds {
         Self { kind, next: 0 }
     }
 
-    /// Ids for reasoning blocks on constant-id wires.
+    /// Keys for reasoning blocks on constant-id wires.
     pub fn reasoning() -> Self {
         Self::new(MintKind::Reasoning)
     }
 
-    /// Ids for content blocks on index-as-id wires.
+    /// Keys for content blocks on index-as-id wires.
     pub fn block() -> Self {
         Self::new(MintKind::Block)
     }
 
-    /// Ids for the Responses `output_index` fallback.
+    /// Keys for the Responses `output_index` fallback.
     pub fn output() -> Self {
         Self::new(MintKind::Output)
     }
 
-    /// Ids for tool-call fragments whose wire supplies no tool-call id.
+    /// Keys for tool-call fragments whose wire supplies no tool-call id.
     pub fn tool() -> Self {
         Self::new(MintKind::Tool)
     }
 
-    /// Ids for text blocks opened by a bare `Message`.
+    /// Keys for text blocks opened by a bare `Message`.
     pub fn text() -> Self {
         Self::new(MintKind::Text)
     }
 
-    /// Mint the next counter-based id (vercel's `blockCounter++` pattern).
-    pub fn mint(&mut self) -> PartId {
+    /// Mint the next counter-based key (vercel's `blockCounter++` pattern).
+    pub fn mint(&mut self) -> StreamPartId {
         let id = self.for_index(self.next);
         self.next = self.next.saturating_add(1);
         id
     }
 
-    /// The id for a stable wire-supplied index; see
+    /// The key for a stable wire-supplied index; see
     /// [`MintKind::for_wire_index`].
-    pub fn for_index(&self, index: u64) -> PartId {
+    pub fn for_index(&self, index: u64) -> StreamPartId {
         self.kind.for_wire_index(index)
     }
 }
@@ -229,26 +232,15 @@ impl SyntheticIds {
 mod tests {
     use super::*;
 
-    /// The compile-time contract, stated as a runtime probe of the API
-    /// shape: a minted id has no accessor into the durable id space. (The
-    /// stronger property — `PartId: !Serialize` and `WireId`'s constructor
-    /// privacy — is enforced by the `identity_leak` compile-fail tests.)
+    /// The opaque-key contract, at the API-shape level (the stronger
+    /// property — no `Serialize`, no rendering, `WireId` rejecting
+    /// emptiness at its only constructor — is enforced by the
+    /// `identity_leak` compile-fail tests).
     #[test]
-    fn minted_ids_have_no_wire_rendering() {
-        let minted = PartId::Minted {
-            kind: MintKind::Reasoning,
-            index: 0,
-        };
-        assert_eq!(minted.as_wire(), None);
-        assert!(minted.into_wire_id().is_none());
-    }
-
-    #[test]
-    fn wire_ids_round_trip() {
-        let id = PartId::wire("rs_123");
-        assert_eq!(id.as_wire(), Some("rs_123"));
+    fn an_absent_provider_handle_is_none_not_empty() {
+        assert!(WireId::new("").is_none());
         assert_eq!(
-            id.into_wire_id().expect("wire-genuine").into_string(),
+            WireId::new("rs_123").expect("non-empty").into_string(),
             "rs_123"
         );
     }
@@ -258,26 +250,41 @@ mod tests {
         let mut ids = SyntheticIds::reasoning();
         assert_eq!(
             ids.mint(),
-            PartId::Minted {
+            StreamPartId::Minted {
                 kind: MintKind::Reasoning,
                 index: 0
             }
         );
         assert_eq!(
             ids.mint(),
-            PartId::Minted {
+            StreamPartId::Minted {
                 kind: MintKind::Reasoning,
                 index: 1
             }
         );
     }
 
-    /// Injectivity across kinds and indices: two mints are equal only when
-    /// both kind and index are equal, so identities minted by different
-    /// subsystems can never collide. (Structural for an enum of plain data —
-    /// pinned so a future change to the shape keeps the property.)
+    /// Distinctness within one stream is what the accumulator needs; the
+    /// key space is otherwise obligation-free (opaque). Composite keys are
+    /// distinct from their parents and from each other, and inherit the
+    /// minted lifecycle discriminant.
     #[test]
-    fn minted_ids_are_injective_across_kinds_and_indices() {
+    fn composite_keys_are_distinct_and_inherit_mintedness() {
+        let wire = StreamPartId::wire("rs_1");
+        assert_ne!(wire, wire.composed(0));
+        assert_ne!(wire.composed(0), wire.composed(1));
+        assert!(!wire.composed(3).is_minted());
+
+        let minted = MintKind::Reasoning.for_wire_index(0);
+        assert!(minted.composed(2).is_minted());
+        assert_ne!(minted.composed(0), wire.composed(0));
+    }
+
+    /// Keys minted by different subsystems stay distinct even at equal
+    /// indices — bookkeeping hygiene (nothing can observe a collision, but
+    /// the accumulator's maps deserve distinct keys anyway).
+    #[test]
+    fn minted_keys_are_distinct_across_kinds_and_indices() {
         let kinds = [
             MintKind::Reasoning,
             MintKind::Block,
@@ -285,22 +292,13 @@ mod tests {
             MintKind::Tool,
             MintKind::Text,
         ];
-        let indices = [0u64, 1, 7, u64::MAX];
         let mut seen = std::collections::HashSet::new();
         for kind in kinds {
-            for index in indices {
+            for index in [0u64, 1, 7, u64::MAX] {
                 assert!(
-                    seen.insert(PartId::Minted { kind, index }),
+                    seen.insert(StreamPartId::Minted { kind, index }),
                     "collision at {kind:?}:{index}"
                 );
-            }
-        }
-        // Minted ids never collide with wire ids, including a wire id that
-        // happens to spell a minted rendering.
-        for kind in kinds {
-            for index in indices {
-                let minted = PartId::Minted { kind, index };
-                assert_ne!(minted, PartId::wire(minted.render()));
             }
         }
     }

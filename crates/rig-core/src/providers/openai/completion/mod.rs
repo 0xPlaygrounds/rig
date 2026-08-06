@@ -1550,7 +1550,11 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     fn streaming_detail_reasoning(
         &self,
         detail: &serde_json::Value,
-    ) -> Option<(crate::streaming::PartId, crate::message::ReasoningContent)> {
+    ) -> Option<(
+        crate::streaming::StreamPartId,
+        Option<crate::streaming::WireId>,
+        crate::message::ReasoningContent,
+    )> {
         let _ = detail;
         None
     }

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(streaming)* [**breaking**] the raw-event identity is the opaque `StreamPartId` (no `Serialize`, no rendering, no durable accessor; `Composite` variant for adapter-composed keys), with the durable provider handle carried separately as `WireId` (`provider_id` on reasoning events, `tool_id` on `RawStreamingToolCall`/`ToolInputEnd`); `WireId::new` rejects the empty string so absence is `None` — the fabricated `Wire("")` class and its per-serializer empty-string filters are gone (review 84a43e9e #3/#4). Public delta ids are rig-generated correlators (`ReasoningDelta` gains `provider_id`; `ToolCallDelta` drops `id`)
+
 - *(completion)* [**breaking**] `message::ToolResult` gains `name: Option<String>` — the executed tool's name as data (struct literals need the field; serde skips it when absent, so persisted histories round-trip). Name-requiring wires (Gemini `functionResponse.name`, Ollama tool messages) read it first; the history-pairing heuristic is now a back-compat shim for `name: None` results, and an id matching a paired call's identity resolves to that call's name instead of replaying the identifier verbatim (review 84a43e9e #5, pinned by live cross-provider replay cassettes)
 - *(gemini)* [**behavior**] Interactions function-call steps assemble their `arguments_delta` fragments through the shared accumulator — previously the wire's fragmented tool-call arguments were dropped entirely (the call aggregated with `{}` args) and an unmodeled `arguments_delta` frame errored the stream; recorded live in `interactions_same_tool_twice`
 

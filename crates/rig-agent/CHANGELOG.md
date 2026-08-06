@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] the `ToolCallDelta` hook payload loses `tool_call_id` (provider ids arrive on the completed call; `internal_call_id` is the correlator); the streamed assembler keys delta state by `internal_call_id` and takes the assembled reasoning block's durable id only from the provider-issued `provider_id` — a rig correlator can no longer enter history
+
 - *(streaming)* [**behavior**] mirrored from rig-core's provenance-typed part identity: `MultiTurnStreamItem` delta ids render minted stream identities namespaced (`rig:reasoning:0`) and unique within one stream only — they restart every turn of a run, so correlate across a run by `internal_call_id`, never by delta id; aggregated reasoning from minted-identity streams carries `id: None`, and id-less tool calls (gemini, ollama) carry the absent (empty) durable id
 
 ### Added

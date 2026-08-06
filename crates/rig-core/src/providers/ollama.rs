@@ -904,11 +904,12 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
             {
                 out.push(Ok(RawStreamingChoice::ReasoningDelta {
                     // `thinking` deltas carry no wire id and never
-                    // interleave; per-stream constant minted identity.
-                    id: crate::streaming::PartId::Minted {
+                    // interleave; per-stream constant minted key.
+                    id: crate::streaming::StreamPartId::Minted {
                         kind: crate::streaming::MintKind::Reasoning,
                         index: 0,
                     },
+                    provider_id: None,
                     reasoning: thinking_content,
                 }));
             }

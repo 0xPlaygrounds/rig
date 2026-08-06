@@ -1525,20 +1525,30 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
     fn streaming_detail_reasoning(
         &self,
         detail: &serde_json::Value,
-    ) -> Option<(crate::streaming::PartId, message::ReasoningContent)> {
+    ) -> Option<(
+        crate::streaming::StreamPartId,
+        Option<crate::streaming::WireId>,
+        message::ReasoningContent,
+    )> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
             serde_json::from_value::<ReasoningDetails>(detail.clone())
         else {
             return None;
         };
 
-        // An id-less detail degrades to the accumulator's shared empty wire
-        // identity; `assistant_contents_to_messages` maps that back to a
-        // null wire id, matching the non-streaming grouping.
-        Some((
-            crate::streaming::PartId::wire(id.unwrap_or_default()),
-            message::ReasoningContent::Encrypted(data),
-        ))
+        // The durable handle exists only when the wire issued one; an
+        // id-less detail keys accumulation by a minted key and replays with
+        // the id absent — no fabricated empty "wire" id, and no
+        // per-serializer empty-string filter downstream (84a43e9e #4).
+        let provider_id = id.and_then(crate::streaming::WireId::new);
+        let key = provider_id
+            .as_ref()
+            .map(|id| crate::streaming::StreamPartId::wire(id.as_str()))
+            .unwrap_or(crate::streaming::StreamPartId::Minted {
+                kind: crate::streaming::MintKind::Reasoning,
+                index: 0,
+            });
+        Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
     }
 }
 
@@ -3112,10 +3122,21 @@ mod tests {
             "index": 0,
             "data": "enc_blob",
         });
-        let (id, content) = OpenRouterExt
+        let (id, provider_id, content) = OpenRouterExt
             .streaming_detail_reasoning(&detail)
             .expect("encrypted detail should map to reasoning");
-        assert_eq!(id, crate::streaming::PartId::wire(""));
+        // 84a43e9e #4, closed: an id-less detail keys accumulation by a
+        // minted (opaque) key and carries NO durable handle — a fabricated
+        // "wire" empty id is unrepresentable, so no serializer needs an
+        // empty-string filter.
+        assert!(
+            id.is_minted(),
+            "id-less details key by a minted key: {id:?}"
+        );
+        assert!(
+            provider_id.is_none(),
+            "absence is None, never a fabricated id"
+        );
         assert!(matches!(
             content,
             message::ReasoningContent::Encrypted(ref data) if data == "enc_blob"
@@ -3123,7 +3144,7 @@ mod tests {
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::Reasoning(message::Reasoning {
-                id: id.as_wire().map(str::to_owned),
+                id: provider_id.map(|id| id.into_string()),
                 content: vec![content],
             }),
         ))

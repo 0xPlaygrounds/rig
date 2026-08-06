@@ -606,9 +606,10 @@ pub struct TextDelta<'a> {
 /// Streaming tool-call delta.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
-    /// Provider tool-call id.
-    pub tool_call_id: &'a str,
-    /// Rig correlation id.
+    /// Rig correlation id — stable across this call's fragments and its
+    /// completed [`ToolCall`], unique per run. Provider-issued ids arrive on
+    /// the completed call; no provider id (and no stream-internal key) is
+    /// available or rendered at delta time.
     pub internal_call_id: &'a str,
     /// Tool name on the first delta.
     pub tool_name: Option<&'a str>,

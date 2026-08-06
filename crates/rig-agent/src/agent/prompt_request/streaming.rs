@@ -1174,7 +1174,6 @@ impl TurnSource for StreamingTurnSource {
                             }
                         }
                         StreamedTurnEvent::EmitToolCallDelta {
-                            id,
                             internal_call_id,
                             content,
                         } => {
@@ -1189,7 +1188,6 @@ impl TurnSource for StreamingTurnSource {
                                         .on_tool_call_delta(
                                             hook_ctx,
                                             ToolCallDelta {
-                                                tool_call_id: &id,
                                                 internal_call_id: &internal_call_id,
                                                 tool_name: delta_name,
                                                 delta: delta_text,
@@ -1206,7 +1204,6 @@ impl TurnSource for StreamingTurnSource {
 
                             yield Ok(MultiTurnStreamItem::StreamAssistantItem(
                                 StreamedAssistantContent::ToolCallDelta {
-                                    id,
                                     internal_call_id,
                                     content,
                                 },
@@ -3306,7 +3303,7 @@ mod migrated_tests {
         }
     }
 
-    type RecordedToolCallDelta = (String, String, Option<String>, String);
+    type RecordedToolCallDelta = (String, Option<String>, String);
 
     #[derive(Clone)]
     struct RepairDefaultApiHook;
@@ -3423,13 +3420,11 @@ mod migrated_tests {
         ) -> ObservationAction {
             match event {
                 ToolCallDelta {
-                    tool_call_id,
                     internal_call_id,
                     tool_name,
                     delta,
                 } => {
                     let record = (
-                        tool_call_id.to_string(),
                         internal_call_id.to_string(),
                         tool_name.map(str::to_string),
                         delta.to_string(),
@@ -3589,13 +3584,11 @@ mod migrated_tests {
         ) -> ObservationAction {
             match event {
                 ToolCallDelta {
-                    tool_call_id,
                     internal_call_id,
                     tool_name,
                     delta,
                 } => {
                     let record = (
-                        tool_call_id.to_string(),
                         internal_call_id.to_string(),
                         tool_name.map(str::to_string),
                         delta.to_string(),
@@ -3970,6 +3963,8 @@ mod migrated_tests {
         assert_eq!(contexts.len(), 1);
         let context = &contexts[0];
         assert_eq!(context.tool_name, "default_api");
+        // The call COMPLETED with the wire's own id, which is the durable
+        // provider handle the context reports.
         assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
         assert!(context.internal_call_id.is_some());
         assert!(context.is_streaming);
@@ -4541,8 +4536,11 @@ mod migrated_tests {
                     ))
                     && content.iter().any(|item| matches!(
                     item,
+                    // An invalid NAME DELTA never completed, so its
+                    // diagnostic call carries no durable id (provider ids
+                    // arrive on completion; stream keys never surface).
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "tool_call_1"
+                        if tool_call.id.is_empty()
                             && tool_call.function.name == "default_api"
                             && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
                 ))
@@ -4565,7 +4563,8 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.id == "tool_call_1"
+                        if result.id.is_empty()
+                            && result.name.as_deref() == Some("default_api")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -4620,7 +4619,16 @@ mod migrated_tests {
         assert_eq!(contexts.len(), 1);
         let context = &contexts[0];
         assert_eq!(context.tool_name, "default_api");
-        assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
+        // The invalid name delta never completed, so no provider tool id
+        // exists; correlation is by internal_call_id.
+        assert!(
+            context
+                .tool_call_id
+                .as_deref()
+                .is_none_or(|id| id.is_empty()),
+            "no durable id may be fabricated for an unfinished call, got {:?}",
+            context.tool_call_id
+        );
         assert!(
             context
                 .internal_call_id
@@ -4756,7 +4764,10 @@ mod migrated_tests {
 
         let skipped_tool_result =
             skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
-        assert_eq!(skipped_tool_result.id, "tool_call_1");
+        // The invalid name delta never completed, so its synthetic result
+        // carries no durable id; the executed-name field identifies it.
+        assert_eq!(skipped_tool_result.id, "");
+        assert_eq!(skipped_tool_result.name.as_deref(), Some("default_api"));
         assert!(skipped_tool_result.call_id.is_none());
         assert!(skipped_tool_result.content.iter().any(|content| matches!(
             content,
@@ -4784,8 +4795,11 @@ mod migrated_tests {
                     ))
                     && content.iter().any(|item| matches!(
                     item,
+                    // An invalid NAME DELTA never completed, so its
+                    // diagnostic call carries no durable id (provider ids
+                    // arrive on completion; stream keys never surface).
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "tool_call_1"
+                        if tool_call.id.is_empty()
                             && tool_call.function.name == "default_api"
                             && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
                 ))
@@ -4808,7 +4822,8 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.id == "tool_call_1"
+                        if result.id.is_empty()
+                            && result.name.as_deref() == Some("default_api")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -5624,12 +5639,11 @@ mod migrated_tests {
             match item {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(
                     StreamedAssistantContent::ToolCallDelta {
-                        id,
                         internal_call_id,
                         content,
                     },
                 )) => {
-                    stream_deltas.push((id, internal_call_id, content));
+                    stream_deltas.push((internal_call_id, content));
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
                 Ok(_) => {}
@@ -5642,47 +5656,29 @@ mod migrated_tests {
         // rather than a scripted literal.
         let internal = stream_deltas
             .first()
-            .map(|delta| delta.1.clone())
+            .map(|delta| delta.0.clone())
             .expect("at least one delta");
         assert!(!internal.is_empty());
         assert_eq!(
             hook.observed(),
             vec![
-                (
-                    "tool_1".to_string(),
-                    internal.clone(),
-                    Some("add".to_string()),
-                    String::new()
-                ),
-                (
-                    "tool_1".to_string(),
-                    internal.clone(),
-                    None,
-                    "{\"x\":".to_string()
-                ),
-                (
-                    "tool_1".to_string(),
-                    internal.clone(),
-                    None,
-                    "1}".to_string()
-                ),
+                (internal.clone(), Some("add".to_string()), String::new()),
+                (internal.clone(), None, "{\"x\":".to_string()),
+                (internal.clone(), None, "1}".to_string()),
             ]
         );
         assert_eq!(
             stream_deltas,
             vec![
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Name("add".to_string())
                 ),
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Delta("1}".to_string())
                 ),
@@ -5746,7 +5742,9 @@ mod migrated_tests {
                     message.contains("streamed tool call arguments"),
                     "{message}"
                 );
-                assert!(message.contains("tool_1"), "{message}");
+                // The diagnostic names the rig correlator (present and
+                // non-empty); no stream key or fabricated provider id.
+                assert!(message.contains("internal_call_id"), "{message}");
             }
             other => panic!("expected completion response error, got {other:?}"),
         }
@@ -5834,12 +5832,11 @@ mod migrated_tests {
             match item {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(
                     StreamedAssistantContent::ToolCallDelta {
-                        id,
                         internal_call_id,
                         content,
                     },
                 )) => {
-                    deltas.push((id, internal_call_id, content));
+                    deltas.push((internal_call_id, content));
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
                 Ok(_) => {}
@@ -5852,24 +5849,21 @@ mod migrated_tests {
         // rather than a scripted literal.
         let internal = deltas
             .first()
-            .map(|delta| delta.1.clone())
+            .map(|delta| delta.0.clone())
             .expect("at least one delta");
         assert!(!internal.is_empty());
         assert_eq!(
             deltas,
             vec![
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Name("add".to_string())
                 ),
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Delta("1}".to_string())
                 ),
@@ -5898,12 +5892,11 @@ mod migrated_tests {
             match item {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(
                     StreamedAssistantContent::ToolCallDelta {
-                        id,
                         internal_call_id,
                         content,
                     },
                 )) => {
-                    stream_deltas.push((id, internal_call_id, content));
+                    stream_deltas.push((internal_call_id, content));
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
                 Ok(_) => {}
@@ -5916,47 +5909,29 @@ mod migrated_tests {
         // rather than a scripted literal.
         let internal = stream_deltas
             .first()
-            .map(|delta| delta.1.clone())
+            .map(|delta| delta.0.clone())
             .expect("at least one delta");
         assert!(!internal.is_empty());
         assert_eq!(
             hook.observed(),
             vec![
-                (
-                    "tool_1".to_string(),
-                    internal.clone(),
-                    Some("add".to_string()),
-                    String::new()
-                ),
-                (
-                    "tool_1".to_string(),
-                    internal.clone(),
-                    None,
-                    "{\"x\":".to_string()
-                ),
-                (
-                    "tool_1".to_string(),
-                    internal.clone(),
-                    None,
-                    "1}".to_string()
-                ),
+                (internal.clone(), Some("add".to_string()), String::new()),
+                (internal.clone(), None, "{\"x\":".to_string()),
+                (internal.clone(), None, "1}".to_string()),
             ]
         );
         assert_eq!(
             stream_deltas,
             vec![
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Name("add".to_string())
                 ),
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Delta("{\"x\":".to_string())
                 ),
                 (
-                    "tool_1".to_string(),
                     internal.clone(),
                     ToolCallDeltaContent::Delta("1}".to_string())
                 ),
@@ -6005,10 +5980,9 @@ mod migrated_tests {
         let observed = hook.observed();
         assert_eq!(observed.len(), 1);
         let first = observed.first().expect("one observed delta");
-        assert_eq!(first.0, "tool_1");
-        assert!(!first.1.is_empty());
-        assert_eq!(first.2, Some("add".to_string()));
-        assert_eq!(first.3, String::new());
+        assert!(!first.0.is_empty());
+        assert_eq!(first.1, Some("add".to_string()));
+        assert_eq!(first.2, String::new());
         assert!(!saw_delta);
         assert!(!saw_final_response);
         assert!(

@@ -73,7 +73,7 @@ struct ReasoningState {
 /// negative index yields a distinct, well-formed minted identity instead of
 /// a rendering the identity machinery could disagree about — the mint stays
 /// total instead of trusting the wire.
-fn block_id(content_block_index: i32) -> rig_core::streaming::PartId {
+fn block_id(content_block_index: i32) -> rig_core::streaming::StreamPartId {
     let index = (i64::from(content_block_index) - i64::from(i32::MIN)) as u64;
     rig_core::streaming::MintKind::Block.for_wire_index(index)
 }
@@ -99,6 +99,7 @@ fn finalize_reasoning(
         // is stable across its deltas and stop, so the full block supersedes
         // the accumulated deltas.
         id: block_id(content_block_index),
+        provider_id: None,
         content: ReasoningContent::Text {
             text: state.content,
             signature: state.signature,
@@ -166,6 +167,7 @@ fn process_event(
                                 // Derive identity from `contentBlockIndex`
                                 // (no wire id on Converse reasoning blocks).
                                 id: block_id(event.content_block_index),
+                                provider_id: None,
                             }));
                         }
                     }
@@ -194,6 +196,7 @@ fn process_event(
                             // reasoning paths, so provenance and boundary
                             // semantics stay uniform.
                             id: block_id(event.content_block_index),
+                            provider_id: None,
                             content: ReasoningContent::Redacted {
                                 // The wire carries raw bytes; rig's canonical
                                 // reasoning content is a string, so the blob
@@ -898,7 +901,11 @@ mod tests {
 
         let choice = finalize_reasoning(state, 0).expect("should emit reasoning");
         match choice {
-            RawStreamingChoice::Reasoning { id, content } => {
+            RawStreamingChoice::Reasoning {
+                id,
+                provider_id: _,
+                content,
+            } => {
                 assert_eq!(id, block_id(0));
                 match content {
                     ReasoningContent::Text { text, signature } => {

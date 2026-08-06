@@ -192,7 +192,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
             let crate::message::Reasoning { id, content } = reasoning;
             // Only wire-genuine ids exist in durable histories (the streaming
             // layer populates `Reasoning::id` exclusively from
-            // `PartId::Wire`). An id-less reasoning item — a cross-provider
+            // `StreamPartId::Wire`). An id-less reasoning item — a cross-provider
             // replay from a wire that issues no reasoning ids — drops from
             // request input, mirroring the OpenAI Responses handling, rather
             // than failing the whole request locally.

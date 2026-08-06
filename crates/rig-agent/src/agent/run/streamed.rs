@@ -264,8 +264,6 @@ pub enum StreamedTurnEvent {
     /// Forward this tool-call delta. Argument deltas buffered while the tool
     /// name awaited validation are replayed through this event.
     EmitToolCallDelta {
-        /// Provider-supplied tool call ID.
-        id: String,
         /// Rig-generated identifier correlating this call's stream items.
         internal_call_id: String,
         /// The (possibly repaired) name or argument delta.
@@ -304,10 +302,7 @@ enum PendingInvalid {
         internal_call_id: String,
     },
     /// A streamed tool-name delta with a disallowed name.
-    NameDelta {
-        id: String,
-        internal_call_id: String,
-    },
+    NameDelta { internal_call_id: String },
 }
 
 /// Sans-IO accumulator that assembles one streamed model turn. See the
@@ -321,7 +316,7 @@ pub struct StreamedTurnAssembler {
     pending_reasoning_delta_text: String,
     pending_reasoning_delta_id: Option<String>,
     pending_tool_calls: Vec<(ToolCall, String)>,
-    delta_states: HashMap<(String, String), ToolCallDeltaState>,
+    delta_states: HashMap<String, ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
 }
 
@@ -410,14 +405,21 @@ impl StreamedTurnAssembler {
                 merge_reasoning_blocks(&mut self.accumulated_reasoning, reasoning);
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
-            StreamedAssistantContent::ReasoningDelta { reasoning, id } => {
+            StreamedAssistantContent::ReasoningDelta {
+                reasoning,
+                provider_id,
+                ..
+            } => {
                 // Deltas lack signatures/encrypted content that full blocks
                 // carry; mixing them into accumulated reasoning causes
                 // providers like Anthropic to reject with "signature required",
-                // so they are kept aside until the turn ends.
+                // so they are kept aside until the turn ends. Only the
+                // provider-issued id may become the assembled block's durable
+                // id — the public correlator is rig-generated and must never
+                // enter history.
                 self.pending_reasoning_delta_text.push_str(reasoning);
                 if self.pending_reasoning_delta_id.is_none() {
-                    self.pending_reasoning_delta_id = Some(id.clone());
+                    self.pending_reasoning_delta_id = provider_id.clone();
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
@@ -447,11 +449,10 @@ impl StreamedTurnAssembler {
                 Ok(Vec::new())
             }
             StreamedAssistantContent::ToolCallDelta {
-                id,
                 internal_call_id,
                 content,
             } => {
-                let key = (id.clone(), internal_call_id.clone());
+                let key = internal_call_id.clone();
                 match content {
                     ToolCallDeltaContent::Name(name) => {
                         if !self.allowed_tool_names.contains(name) {
@@ -461,18 +462,14 @@ impl StreamedTurnAssembler {
                                 .map(|state| state.buffered_arguments.join(""))
                                 .unwrap_or_default();
                             let invalid = StreamedInvalidToolCall {
-                                tool_call: self.name_delta_diagnostic_tool_call(
-                                    id,
-                                    name,
-                                    &buffered_args,
-                                ),
+                                tool_call: self
+                                    .name_delta_diagnostic_tool_call(name, &buffered_args),
                                 internal_call_id: internal_call_id.clone(),
                                 args: Some(buffered_args),
                                 executable_tool_names: self.executable_tool_names.clone(),
                                 allowed_tool_names: self.allowed_tool_names.clone(),
                             };
                             self.pending_invalid = Some(PendingInvalid::NameDelta {
-                                id: id.clone(),
                                 internal_call_id: internal_call_id.clone(),
                             });
                             return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
@@ -484,7 +481,6 @@ impl StreamedTurnAssembler {
                         let state = self.delta_states.entry(key.clone()).or_default();
                         if state.name_validated {
                             Ok(vec![StreamedTurnEvent::EmitToolCallDelta {
-                                id: id.clone(),
                                 internal_call_id: internal_call_id.clone(),
                                 content: ToolCallDeltaContent::Delta(arguments.clone()),
                             }])
@@ -541,24 +537,15 @@ impl StreamedTurnAssembler {
             }
             (
                 StreamedResolution::Repaired { tool_name },
-                PendingInvalid::NameDelta {
-                    id,
-                    internal_call_id,
-                },
-            ) => {
-                let key = (id, internal_call_id);
-                self.validate_delta_name(&key, tool_name.clone())
-            }
+                PendingInvalid::NameDelta { internal_call_id },
+            ) => self.validate_delta_name(&internal_call_id, tool_name.clone()),
             (
                 StreamedResolution::TurnAbandoned { .. },
-                PendingInvalid::NameDelta {
-                    id,
-                    internal_call_id,
-                },
+                PendingInvalid::NameDelta { internal_call_id },
             ) => {
                 // The abandoned call's buffered state must not trip the
                 // pending-delta consistency check while usage is drained.
-                self.delta_states.remove(&(id, internal_call_id));
+                self.delta_states.remove(&internal_call_id);
                 Vec::new()
             }
             (StreamedResolution::TurnAbandoned { .. }, PendingInvalid::FullCall { .. }) => {
@@ -573,9 +560,9 @@ impl StreamedTurnAssembler {
         self.delta_states
             .iter()
             .find(|(_, state)| !state.name_validated && !state.buffered_arguments.is_empty())
-            .map(|((id, internal_call_id), state)| {
+            .map(|(internal_call_id, state)| {
                 CompletionError::ResponseError(format!(
-                    "streamed tool call arguments received before a validated tool name for id `{id}` and internal_call_id `{internal_call_id}` ({} buffered argument delta(s))",
+                    "streamed tool call arguments received before a validated tool name for internal_call_id `{internal_call_id}` ({} buffered argument delta(s))",
                     state.buffered_arguments.len()
                 ))
             })
@@ -628,41 +615,32 @@ impl StreamedTurnAssembler {
         }
     }
 
-    fn name_delta_diagnostic_tool_call(
-        &self,
-        id: &str,
-        name: &str,
-        buffered_args: &str,
-    ) -> ToolCall {
+    fn name_delta_diagnostic_tool_call(&self, name: &str, buffered_args: &str) -> ToolCall {
         let diagnostic_args = if buffered_args.trim().is_empty() {
             serde_json::Value::Null
         } else {
             serde_json::from_str(buffered_args).unwrap_or(serde_json::Value::Null)
         };
+        // Diagnostic only: the durable id is unknown at delta time, and no
+        // stream-internal key may surface, so the synthetic call is id-less.
         ToolCall::new(
-            id.to_string(),
+            String::new(),
             ToolFunction::new(name.to_string(), diagnostic_args),
         )
     }
 
-    fn validate_delta_name(
-        &mut self,
-        key: &(String, String),
-        name: String,
-    ) -> Vec<StreamedTurnEvent> {
-        let state = self.delta_states.entry(key.clone()).or_default();
+    fn validate_delta_name(&mut self, key: &str, name: String) -> Vec<StreamedTurnEvent> {
+        let state = self.delta_states.entry(key.to_owned()).or_default();
         state.name_validated = true;
         let buffered_arguments = std::mem::take(&mut state.buffered_arguments);
 
         let mut events = vec![StreamedTurnEvent::EmitToolCallDelta {
-            id: key.0.clone(),
-            internal_call_id: key.1.clone(),
+            internal_call_id: key.to_owned(),
             content: ToolCallDeltaContent::Name(name),
         }];
         events.extend(buffered_arguments.into_iter().map(|arguments| {
             StreamedTurnEvent::EmitToolCallDelta {
-                id: key.0.clone(),
-                internal_call_id: key.1.clone(),
+                internal_call_id: key.to_owned(),
                 content: ToolCallDeltaContent::Delta(arguments),
             }
         }));
@@ -712,7 +690,6 @@ mod tests {
 
     fn name_delta(id: &str, name: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCallDelta {
-            id: id.to_string(),
             internal_call_id: format!("internal_{id}"),
             content: ToolCallDeltaContent::Name(name.to_string()),
         }
@@ -720,7 +697,6 @@ mod tests {
 
     fn args_delta(id: &str, arguments: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCallDelta {
-            id: id.to_string(),
             internal_call_id: format!("internal_{id}"),
             content: ToolCallDeltaContent::Delta(arguments.to_string()),
         }
@@ -816,7 +792,8 @@ mod tests {
     fn finish_orders_reasoning_text_then_tool_calls() {
         let mut asm = assembler();
         asm.ingest(&StreamedAssistantContent::ReasoningDelta {
-            id: "rs_1".to_string(),
+            id: "corr_1".to_string(),
+            provider_id: Some("rs_1".to_string()),
             reasoning: "think".to_string(),
         })
         .expect("ingest should succeed");

@@ -18,7 +18,7 @@ use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming::{
-    self, MintKind, PartId, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent,
+    self, MintKind, RawStreamingChoice, StreamPartId, ToolCallDecoration, ToolCallDeltaContent,
     UnparseableToolInput,
 };
 use crate::wasm_compat::WasmCompatSend;
@@ -263,7 +263,11 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     fn detail_reasoning(
         &self,
         _detail: &Self::Detail,
-    ) -> Option<(PartId, crate::message::ReasoningContent)> {
+    ) -> Option<(
+        StreamPartId,
+        Option<crate::streaming::WireId>,
+        crate::message::ReasoningContent,
+    )> {
         None
     }
 
@@ -412,8 +416,12 @@ where
         // carries a reasoning block arrives before (or with) the tool call it
         // precedes, and a reasoning block never depends on an open slot.
         for detail in &choice.details {
-            if let Some((id, content)) = self.profile.detail_reasoning(detail) {
-                out.push(Ok(RawStreamingChoice::Reasoning { id, content }));
+            if let Some((id, provider_id, content)) = self.profile.detail_reasoning(detail) {
+                out.push(Ok(RawStreamingChoice::Reasoning {
+                    id,
+                    provider_id,
+                    content,
+                }));
             }
         }
 
@@ -485,11 +493,12 @@ where
         {
             out.push(Ok(RawStreamingChoice::ReasoningDelta {
                 // `reasoning_content` deltas carry no wire id and never
-                // interleave; per-stream constant minted identity.
-                id: PartId::Minted {
+                // interleave; per-stream constant minted key.
+                id: StreamPartId::Minted {
                     kind: MintKind::Reasoning,
                     index: 0,
                 },
+                provider_id: None,
                 reasoning,
             }));
         }
@@ -886,8 +895,7 @@ mod tests {
             .expect("expected tool call delta before normalize error")
             .expect("first item should be ok")
         {
-            StreamedAssistantContent::ToolCallDelta { id, content, .. } => {
-                assert_eq!(id, "call_123");
+            StreamedAssistantContent::ToolCallDelta { content, .. } => {
                 assert_eq!(
                     content,
                     crate::streaming::ToolCallDeltaContent::Name("ping".to_owned())

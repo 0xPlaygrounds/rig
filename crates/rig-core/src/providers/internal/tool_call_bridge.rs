@@ -8,7 +8,7 @@
 //! so the mandatory-identity invariant on
 //! [`RawStreamingChoice::ToolCallDelta`](crate::streaming::RawStreamingChoice)
 //! is enforced in exactly one place: when the wire supplies no id, the slot's
-//! grammar id is a [`PartId::Minted`] from the bridge's [`SyntheticIds`]
+//! grammar id is a [`StreamPartId::Minted`] from the bridge's [`SyntheticIds`]
 //! counter, so parallel id-less calls can never share an assembly key
 //! downstream — and a minted id structurally cannot serialize upstream as a
 //! wire-genuine one.
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use crate::streaming::{
-    PartId, SyntheticIds, ToolCallDecoration, ToolInputEnd, UnparseableToolInput,
+    StreamPartId, SyntheticIds, ToolCallDecoration, ToolInputEnd, UnparseableToolInput,
 };
 
 /// Wire identity of a tool call whose input is streaming, as tracked by an
@@ -33,7 +33,7 @@ pub struct ToolCallSlot {
     /// Fixed at open: the first-seen provider id, or a minted identity when
     /// the wire omits one — so parallel id-less calls can never share an
     /// assembly key downstream.
-    key: PartId,
+    key: StreamPartId,
     /// Established provider id: updated when a later chunk carries one.
     /// Empty until the wire supplies one.
     pub id: String,
@@ -47,7 +47,7 @@ pub struct ToolCallSlot {
 
 impl ToolCallSlot {
     /// The assembly id this call's fragments are emitted under.
-    pub fn key(&self) -> &PartId {
+    pub fn key(&self) -> &StreamPartId {
         &self.key
     }
 
@@ -55,11 +55,10 @@ impl ToolCallSlot {
     /// accumulator, carrying the established provider id and any decoration.
     pub fn end_event(&self, on_unparseable: UnparseableToolInput) -> ToolInputEnd {
         let mut end = ToolInputEnd::new(self.key.clone(), on_unparseable);
-        // Only an established provider id overrides the assembly key; a call
-        // whose wire never supplied one keeps its minted `tool-{index}` id.
-        if !self.id.is_empty() {
-            end.tool_id = Some(self.id.clone());
-        }
+        // Only an established provider id overrides the assembly key; a
+        // call whose wire never supplied one carries no durable handle at
+        // all (`WireId::new` rejects the empty string by construction).
+        end.tool_id = crate::streaming::WireId::new(self.id.clone());
         end.signature = self.signature.clone();
         end.additional_params = self.additional_params.clone();
         end
@@ -120,7 +119,7 @@ where
         let minted = &mut self.minted;
         let slot = self.slots.entry(index).or_insert_with(|| ToolCallSlot {
             key: match wire_id {
-                Some(id) if !id.is_empty() => PartId::wire(id),
+                Some(id) if !id.is_empty() => StreamPartId::wire(id),
                 // Id-less wires (several llama.cpp/vllm-style gateways) key
                 // tool calls by index alone; the slot identity is minted so
                 // it can never collide with a wire-genuine id — and can
@@ -227,14 +226,14 @@ mod tests {
     fn wire_id_becomes_the_assembly_key() {
         let mut bridge = ToolCallBridge::<usize>::new();
         let slot = bridge.open(0, Some("call_abc"), Some("get_weather"));
-        assert_eq!(slot.key(), &PartId::wire("call_abc"));
+        assert_eq!(slot.key(), &StreamPartId::wire("call_abc"));
         assert_eq!(slot.id, "call_abc");
         assert_eq!(slot.name, "get_weather");
 
         // The established id rides the end event as the override.
         let end = slot.end_event(UnparseableToolInput::Drop);
-        assert_eq!(end.id, PartId::wire("call_abc"));
-        assert_eq!(end.tool_id.as_deref(), Some("call_abc"));
+        assert_eq!(end.id, StreamPartId::wire("call_abc"));
+        assert_eq!(end.tool_id.as_ref().map(|id| id.as_str()), Some("call_abc"));
     }
 
     #[test]
@@ -281,7 +280,7 @@ mod tests {
         let evicted = bridge
             .evict_if(0, |slot| slot.id == "call_a")
             .expect("predicate matched: slot must be evicted");
-        assert_eq!(evicted.key(), &PartId::wire("call_a"));
+        assert_eq!(evicted.key(), &StreamPartId::wire("call_a"));
         assert!(bridge.get(0).is_none());
     }
 
@@ -371,7 +370,7 @@ mod tests {
         bridge.open(0, Some("call_a"), None);
         bridge.open(1, Some("call_b"), None);
 
-        let keys: Vec<PartId> = bridge
+        let keys: Vec<StreamPartId> = bridge
             .drain_ordered()
             .into_iter()
             .map(|slot| slot.key().clone())
@@ -379,9 +378,9 @@ mod tests {
         assert_eq!(
             keys,
             vec![
-                PartId::wire("call_a"),
-                PartId::wire("call_b"),
-                PartId::wire("call_c")
+                StreamPartId::wire("call_a"),
+                StreamPartId::wire("call_b"),
+                StreamPartId::wire("call_c")
             ]
         );
         assert!(bridge.is_empty());

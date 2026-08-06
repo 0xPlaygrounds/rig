@@ -100,10 +100,11 @@ impl WireAdapter for GrpcAdapter {
                                         // block boundaries; a per-stream
                                         // constant minted identity merges
                                         // them into one item.
-                                        id: rig_core::streaming::PartId::Minted {
+                                        id: rig_core::streaming::StreamPartId::Minted {
                                             kind: rig_core::streaming::MintKind::Reasoning,
                                             index: 0,
                                         },
+                                        provider_id: None,
                                         content: rig_core::message::ReasoningContent::Text {
                                             text: std::mem::take(&mut self.thought_buffer),
                                             signature: Some(signature),
@@ -115,10 +116,11 @@ impl WireAdapter for GrpcAdapter {
                                         // block boundaries; a per-stream
                                         // constant minted identity merges
                                         // them into one item.
-                                        id: rig_core::streaming::PartId::Minted {
+                                        id: rig_core::streaming::StreamPartId::Minted {
                                             kind: rig_core::streaming::MintKind::Reasoning,
                                             index: 0,
                                         },
+                                        provider_id: None,
                                         reasoning: text.clone(),
                                     }));
                                 }
@@ -131,7 +133,7 @@ impl WireAdapter for GrpcAdapter {
                                 if let Some(signature) = encode_signature(&part.thought_signature) {
                                     out.push(Ok(
                                         streaming::RawStreamingChoice::ReasoningSignature {
-                                            id: rig_core::streaming::PartId::Minted {
+                                            id: rig_core::streaming::StreamPartId::Minted {
                                                 kind: rig_core::streaming::MintKind::Reasoning,
                                                 index: 0,
                                             },
@@ -168,7 +170,7 @@ impl WireAdapter for GrpcAdapter {
                             let tool_id = if function_call.id.is_empty() {
                                 rig_core::streaming::MintKind::Tool.for_wire_index(0)
                             } else {
-                                rig_core::streaming::PartId::wire(function_call.id.clone())
+                                rig_core::streaming::StreamPartId::wire(function_call.id.clone())
                             };
 
                             let mut tool_call = streaming::RawStreamingToolCall::new(

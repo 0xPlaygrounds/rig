@@ -26,13 +26,13 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 pub(crate) mod shared_parts {
     use serde_json::Value;
 
-    use crate::streaming::{MintKind, PartId, RawStreamingChoice, RawStreamingToolCall};
+    use crate::streaming::{MintKind, RawStreamingChoice, RawStreamingToolCall, StreamPartId};
 
     /// Gemini thought parts carry no id or block boundaries; a per-stream
     /// constant minted identity keeps all thought deltas merging into one
     /// item, and the core accumulator's minted-id boundary splits items
     /// around other output. Minted, so it can never reach a request.
-    pub(crate) const REASONING_ID: PartId = PartId::Minted {
+    pub(crate) const REASONING_ID: StreamPartId = StreamPartId::Minted {
         kind: MintKind::Reasoning,
         index: 0,
     };
@@ -41,6 +41,7 @@ pub(crate) mod shared_parts {
     pub(crate) fn reasoning_delta<R>(text: String) -> RawStreamingChoice<R> {
         RawStreamingChoice::ReasoningDelta {
             id: REASONING_ID,
+            provider_id: None,
             reasoning: text,
         }
     }
@@ -54,6 +55,8 @@ pub(crate) mod shared_parts {
     pub(crate) fn signed_reasoning<R>(text: String, signature: String) -> RawStreamingChoice<R> {
         RawStreamingChoice::Reasoning {
             id: REASONING_ID,
+            // Gemini thought parts carry no reasoning item id.
+            provider_id: None,
             content: crate::completion::message::ReasoningContent::Text {
                 text,
                 signature: Some(signature),
@@ -75,16 +78,17 @@ pub(crate) mod shared_parts {
         // identity and replays with the id absent. The tool *name* is never
         // an identity — two calls to the same tool in one turn must stay
         // distinct, correlated by order and by the rig-internal call id.
-        let id = wire_id
-            .clone()
-            .filter(|id| !id.is_empty())
-            .map(PartId::wire)
-            .unwrap_or(PartId::Minted {
+        let tool_id = wire_id.clone().and_then(crate::streaming::WireId::new);
+        let id = tool_id
+            .as_ref()
+            .map(|id| StreamPartId::wire(id.as_str()))
+            .unwrap_or(StreamPartId::Minted {
                 kind: MintKind::Tool,
                 index: 0,
             });
         let tool_call = RawStreamingToolCall {
             id,
+            tool_id,
             internal_call_id: crate::id::generate(),
             call_id: wire_id.filter(|id| !id.is_empty()),
             name,

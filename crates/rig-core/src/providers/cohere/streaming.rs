@@ -8,14 +8,14 @@ use crate::providers::cohere::completion::{
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
 use crate::providers::internal::wire;
 use crate::streaming::{
-    MintKind, PartId, RawStreamingChoice, RawStreamingResult, StreamFinal, ToolCallDeltaContent,
-    ToolInputEnd, UnparseableToolInput,
+    MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
+    ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 
 /// Cohere thinking deltas carry no id; a per-stream constant minted identity
 /// keys their accumulation and can never reach a request.
-const REASONING_ID: PartId = PartId::Minted {
+const REASONING_ID: StreamPartId = StreamPartId::Minted {
     kind: MintKind::Reasoning,
     index: 0,
 };
@@ -187,6 +187,7 @@ impl WireAdapter for CohereAdapter {
                 {
                     out.push(Ok(RawStreamingChoice::ReasoningDelta {
                         id: REASONING_ID,
+                        provider_id: None,
                         reasoning: thinking.clone(),
                     }));
                 }
@@ -244,14 +245,14 @@ impl WireAdapter for CohereAdapter {
                 self.current_tool_call = Some(id.clone());
 
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: PartId::wire(id.clone()),
+                    id: StreamPartId::wire(id.clone()),
                     content: ToolCallDeltaContent::Name(name),
                 }));
                 // `tool-call-start` may carry initial argument text; on the
                 // wire it is empty, but any payload must still enter assembly.
                 if !arguments.is_empty() {
                     out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: PartId::wire(id),
+                        id: StreamPartId::wire(id),
                         content: ToolCallDeltaContent::Delta(arguments),
                     }));
                 }
@@ -279,7 +280,7 @@ impl WireAdapter for CohereAdapter {
 
                 // Emit the delta so UI can show progress
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: PartId::wire(id),
+                    id: StreamPartId::wire(id),
                     content: ToolCallDeltaContent::Delta(arguments),
                 }));
             }
