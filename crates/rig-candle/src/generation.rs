@@ -643,11 +643,15 @@ pub(crate) fn stream_generate(
                 for content in reasoning.content {
                     emit(RawStreamingChoice::Reasoning {
                         // Local generation has no wire id; fall back to a
-                        // per-stream constant.
+                        // per-stream constant minted identity.
                         id: reasoning
                             .id
                             .clone()
-                            .unwrap_or_else(|| "reasoning-0".to_string()),
+                            .map(rig_core::streaming::PartId::wire)
+                            .unwrap_or(rig_core::streaming::PartId::Minted {
+                                kind: rig_core::streaming::MintKind::Reasoning,
+                                index: 0,
+                            }),
                         content,
                     })?;
                 }

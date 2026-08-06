@@ -374,7 +374,7 @@ mod grammar_guards {
     /// style chat-compat gateways stream tool-call deltas with NO ids, keyed
     /// by chunk index alone. Two such calls interleaving their argument
     /// fragments must aggregate as two distinct uncorrupted calls under
-    /// boundary-minted `tool-{index}` ids — a shared empty grammar id would
+    /// distinct minted assembly identities — a shared identity would
     /// interleave both calls' fragments into one garbled argument buffer.
     #[tokio::test]
     async fn id_less_parallel_tool_calls_assemble_distinct_on_the_chat_wire() {
@@ -438,8 +438,13 @@ mod grammar_guards {
         assert_eq!(
             shape,
             vec![
-                ("tool-0", "get_weather", &json!({"city": "Tokyo"})),
-                ("tool-1", "get_time", &json!({"zone": "UTC"})),
+                // A minted assembly identity keeps the interleaved fragments
+                // distinct but never becomes a durable provider id: the
+                // finalized calls carry the absent (empty) id serializers
+                // omit — rig does not invent identifiers the provider never
+                // issued.
+                ("", "get_weather", &json!({"city": "Tokyo"})),
+                ("", "get_time", &json!({"zone": "UTC"})),
             ],
             "two id-less indexed calls must assemble distinct and uncorrupted"
         );

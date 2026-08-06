@@ -26,17 +26,21 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 pub(crate) mod shared_parts {
     use serde_json::Value;
 
-    use crate::streaming::{RawStreamingChoice, RawStreamingToolCall};
+    use crate::streaming::{MintKind, PartId, RawStreamingChoice, RawStreamingToolCall};
 
     /// Gemini thought parts carry no id or block boundaries; a per-stream
-    /// constant keeps all thought deltas merging into one item, and the core
-    /// accumulator's minted-id boundary splits items around other output.
-    pub(crate) const REASONING_ID: &str = "reasoning-0";
+    /// constant minted identity keeps all thought deltas merging into one
+    /// item, and the core accumulator's minted-id boundary splits items
+    /// around other output. Minted, so it can never reach a request.
+    pub(crate) const REASONING_ID: PartId = PartId::Minted {
+        kind: MintKind::Reasoning,
+        index: 0,
+    };
 
     /// A thought fragment as a canonical reasoning delta.
     pub(crate) fn reasoning_delta<R>(text: String) -> RawStreamingChoice<R> {
         RawStreamingChoice::ReasoningDelta {
-            id: REASONING_ID.to_string(),
+            id: REASONING_ID,
             reasoning: text,
         }
     }
@@ -49,7 +53,7 @@ pub(crate) mod shared_parts {
     /// passed through verbatim).
     pub(crate) fn signed_reasoning<R>(text: String, signature: String) -> RawStreamingChoice<R> {
         RawStreamingChoice::Reasoning {
-            id: REASONING_ID.to_string(),
+            id: REASONING_ID,
             content: crate::completion::message::ReasoningContent::Text {
                 text,
                 signature: Some(signature),
@@ -62,15 +66,31 @@ pub(crate) mod shared_parts {
     pub(crate) fn function_call<R>(
         name: String,
         args: Value,
-        call_id: Option<String>,
+        wire_id: Option<String>,
         signature: Option<String>,
     ) -> RawStreamingChoice<R> {
-        let tool_call =
-            RawStreamingToolCall::new(name.clone(), name, args).with_signature(signature);
-        let tool_call = if let Some(id) = call_id {
-            tool_call.with_call_id(id)
-        } else {
-            tool_call
+        // Never fabricate the identifier that travels upstream: the wire's
+        // own id (when Gemini supplies one) is both the part identity and
+        // the correlation id; an id-less call keys the stream by a minted
+        // identity and replays with the id absent. The tool *name* is never
+        // an identity — two calls to the same tool in one turn must stay
+        // distinct, correlated by order and by the rig-internal call id.
+        let id = wire_id
+            .clone()
+            .filter(|id| !id.is_empty())
+            .map(PartId::wire)
+            .unwrap_or(PartId::Minted {
+                kind: MintKind::Tool,
+                index: 0,
+            });
+        let tool_call = RawStreamingToolCall {
+            id,
+            internal_call_id: crate::id::generate(),
+            call_id: wire_id.filter(|id| !id.is_empty()),
+            name,
+            arguments: args,
+            signature,
+            additional_params: None,
         };
         RawStreamingChoice::ToolCall(tool_call)
     }

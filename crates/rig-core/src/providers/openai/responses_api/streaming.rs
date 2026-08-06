@@ -139,7 +139,7 @@ pub(crate) fn normalize_responses_stream(
 }
 
 pub(crate) fn reasoning_choices_from_done_item(
-    id: &str,
+    id: &crate::streaming::PartId,
     summary: &[ReasoningSummary],
     content: &[String],
     encrypted_content: Option<&str>,
@@ -148,14 +148,14 @@ pub(crate) fn reasoning_choices_from_done_item(
         .iter()
         .map(|reasoning_summary| match reasoning_summary {
             ReasoningSummary::SummaryText { text } => RawStreamingChoice::Reasoning {
-                id: id.to_owned(),
+                id: id.clone(),
                 content: ReasoningContent::Summary(text.to_owned()),
             },
         })
         .collect::<Vec<_>>();
 
     choices.extend(content.iter().map(|text| RawStreamingChoice::Reasoning {
-        id: id.to_owned(),
+        id: id.clone(),
         content: ReasoningContent::Text {
             text: text.to_owned(),
             signature: None,
@@ -164,7 +164,7 @@ pub(crate) fn reasoning_choices_from_done_item(
 
     if let Some(encrypted_content) = encrypted_content.filter(|s| !s.is_empty()) {
         choices.push(RawStreamingChoice::Reasoning {
-            id: id.to_owned(),
+            id: id.clone(),
             content: ReasoningContent::Encrypted(encrypted_content.to_owned()),
         });
     }
@@ -381,7 +381,7 @@ pub(crate) struct RawChoiceAccumulator {
     /// its blocks by that id while the deltas were keyed `output-{index}`
     /// appends the restated content beside the delta-built part instead of
     /// superseding it (#2258 F3, the ChatGPT envelope-less replay path).
-    minted_reasoning_ids: std::collections::HashMap<u64, String>,
+    minted_reasoning_ids: std::collections::HashMap<u64, crate::streaming::PartId>,
     /// Tool-call identities minted for function-call items whose wire events
     /// carried no `fc_*` id (gateways and the ChatGPT envelope-less replay
     /// bodies), keyed by output slot. Mirrors `minted_reasoning_ids`: the
@@ -419,7 +419,7 @@ impl RawChoiceAccumulator {
             minted_reasoning_ids: std::collections::HashMap::new(),
             tool_slots:
                 crate::providers::internal::tool_call_bridge::ToolCallBridge::with_minted_namespace(
-                    crate::providers::internal::adapter::SyntheticIds::output(),
+                    crate::streaming::SyntheticIds::output(),
                 ),
             current_text_item: None,
         }
@@ -437,7 +437,7 @@ impl RawChoiceAccumulator {
         {
             self.current_text_item = Some(item_id.clone());
             immediate.push(streaming::RawStreamingChoice::TextStart {
-                id: item_id.clone(),
+                id: crate::streaming::PartId::wire(item_id.clone()),
                 additional_params: None,
             });
         }
@@ -461,10 +461,11 @@ impl RawChoiceAccumulator {
         // accumulator's exact keying works. This is the fix for the
         // summary-delta duplication (34ee8ba5 P1-1): summary deltas previously
         // carried no identity at all.
-        let reasoning_item_id = |outer: &Option<String>| -> String {
+        let reasoning_item_id = |outer: &Option<String>| -> crate::streaming::PartId {
             outer
                 .clone()
-                .unwrap_or_else(|| format!("output-{output_index}"))
+                .map(crate::streaming::PartId::wire)
+                .unwrap_or(crate::streaming::MintKind::Output.for_wire_index(output_index))
         };
 
         match item {
@@ -551,7 +552,7 @@ impl RawChoiceAccumulator {
                     .tool_slots
                     .open(output_index, outer_item_id.as_deref(), None)
                     .key()
-                    .to_owned();
+                    .clone();
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                     id: key,
                     content: streaming::ToolCallDeltaContent::Delta(delta.delta),
@@ -635,9 +636,11 @@ impl RawChoiceAccumulator {
                     // The slot's established key wins even when the done item
                     // restates a real `fc_*` id — assembled fragments must
                     // not dangle under a different key.
-                    Some(slot) => slot.key().to_owned(),
-                    None if func.id.is_empty() => format!("output-{output_index}"),
-                    None => func.id.clone(),
+                    Some(slot) => slot.key().clone(),
+                    None if func.id.is_empty() => {
+                        crate::streaming::MintKind::Output.for_wire_index(output_index)
+                    }
+                    None => crate::streaming::PartId::wire(func.id.clone()),
                 };
                 let mut end = streaming::ToolInputEnd::new(
                     item_id.clone(),
@@ -696,7 +699,7 @@ impl RawChoiceAccumulator {
                 let id = self
                     .minted_reasoning_ids
                     .remove(&output_index)
-                    .unwrap_or(id);
+                    .unwrap_or(crate::streaming::PartId::wire(id));
                 immediate.extend(reasoning_choices_from_done_item(
                     &id,
                     &summary,
@@ -1846,33 +1849,37 @@ mod tests {
             },
         ];
         let content = vec!["private reasoning".to_string()];
-        let choices =
-            reasoning_choices_from_done_item("rs_1", &summary, &content, Some("enc_blob"));
+        let choices = reasoning_choices_from_done_item(
+            &crate::streaming::PartId::wire("rs_1"),
+            &summary,
+            &content,
+            Some("enc_blob"),
+        );
 
         assert_eq!(choices.len(), 4);
         assert!(matches!(
             choices.first(),
             Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Summary(text),
-            }) if id == "rs_1" && text == "step 1"
+            }) if id.as_wire() == Some("rs_1") && text == "step 1"
         ));
         assert!(matches!(
             choices.get(1),
             Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Summary(text),
-            }) if id == "rs_1" && text == "step 2"
+            }) if id.as_wire() == Some("rs_1") && text == "step 2"
         ));
         assert!(matches!(
             choices.get(2),
             Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Text { text, signature: None },
-            }) if id == "rs_1" && text == "private reasoning"
+            }) if id.as_wire() == Some("rs_1") && text == "private reasoning"
         ));
         assert!(matches!(
             choices.get(3),
             Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Encrypted(data),
-            }) if id == "rs_1" && data == "enc_blob"
+            }) if id.as_wire() == Some("rs_1") && data == "enc_blob"
         ));
     }
 
@@ -1901,7 +1908,7 @@ mod tests {
             choices.first(),
             Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Text { text, signature: None },
-            }) if id == "rs_text_1" && text == "visible reasoning"
+            }) if id.as_wire() == Some("rs_text_1") && text == "visible reasoning"
         ));
     }
 
@@ -1925,7 +1932,7 @@ mod tests {
         assert!(matches!(
             choices.first(),
             Some(RawStreamingChoice::ReasoningDelta { id, reasoning })
-                if id == "rs_delta_1" && reasoning == "thinking"
+                if id.as_wire() == Some("rs_delta_1") && reasoning == "thinking"
         ));
     }
 
@@ -1970,14 +1977,19 @@ mod tests {
         let summary = vec![ReasoningSummary::SummaryText {
             text: "only summary".to_string(),
         }];
-        let choices = reasoning_choices_from_done_item("rs_2", &summary, &[], None);
+        let choices = reasoning_choices_from_done_item(
+            &crate::streaming::PartId::wire("rs_2"),
+            &summary,
+            &[],
+            None,
+        );
 
         assert_eq!(choices.len(), 1);
         assert!(matches!(
             choices.first(),
             Some(RawStreamingChoice::Reasoning {                id,
                 content: ReasoningContent::Summary(text),
-            }) if id == "rs_2" && text == "only summary"
+            }) if id.as_wire() == Some("rs_2") && text == "only summary"
         ));
     }
 
@@ -1985,7 +1997,12 @@ mod tests {
     fn empty_encrypted_reasoning_is_not_emitted() {
         let content = vec!["visible reasoning".to_string()];
 
-        let choices = reasoning_choices_from_done_item("rs_1", &[], &content, Some(""));
+        let choices = reasoning_choices_from_done_item(
+            &crate::streaming::PartId::wire("rs_1"),
+            &[],
+            &content,
+            Some(""),
+        );
 
         assert_eq!(choices.len(), 1);
         assert!(matches!(
@@ -2730,7 +2747,7 @@ mod tests {
             .expect("an id-less args delta must repair and decode");
         assert!(choices.iter().any(|choice| matches!(
             choice,
-            RawStreamingChoice::ToolCallDelta { id, .. } if id == "output-0"
+            RawStreamingChoice::ToolCallDelta { id, .. } if id == &crate::streaming::MintKind::Output.for_wire_index(0)
         )));
 
         // Live-path parity, pinned: an envelope-less bookkeeping event whose
@@ -2759,7 +2776,7 @@ mod tests {
         assert!(choices.iter().any(|choice| matches!(
             choice,
             RawStreamingChoice::ReasoningDelta { id, reasoning }
-                if id == "output-0" && reasoning == "think"
+                if id == &crate::streaming::MintKind::Output.for_wire_index(0) && reasoning == "think"
         )));
     }
 
@@ -2796,7 +2813,7 @@ mod tests {
         // The done item's full block shares the minted per-slot identity.
         assert!(raw_choices.iter().any(|choice| matches!(
             choice,
-            RawStreamingChoice::Reasoning { id, .. } if id == "output-0"
+            RawStreamingChoice::Reasoning { id, .. } if id == &crate::streaming::MintKind::Output.for_wire_index(0)
         )));
 
         let raw_response = sample_response(ResponseStatus::Completed);
@@ -2886,7 +2903,7 @@ mod tests {
             .filter(|choice| {
                 matches!(
                     choice,
-                    RawStreamingChoice::TextStart { id, .. } if id == "msg_1"
+                    RawStreamingChoice::TextStart { id, .. } if id.as_wire() == Some("msg_1")
                 )
             })
             .count();
@@ -2984,7 +3001,7 @@ mod tests {
 
         // Every tool event (name delta, args delta, input end) carries the
         // slot's single key — no fragment dangles under a second identity.
-        let mut keys: Vec<String> = raw_choices
+        let mut keys: Vec<crate::streaming::PartId> = raw_choices
             .iter()
             .filter_map(|choice| match choice {
                 RawStreamingChoice::ToolCallDelta { id, .. } => Some(id.clone()),
@@ -2993,7 +3010,11 @@ mod tests {
             })
             .collect();
         keys.dedup();
-        assert_eq!(keys, ["fc_real"], "one slot, one assembly key");
+        assert_eq!(
+            keys,
+            [crate::streaming::PartId::wire("fc_real")],
+            "one slot, one assembly key"
+        );
 
         let raw_response = sample_response(ResponseStatus::Completed);
         let response =
@@ -3144,7 +3165,7 @@ mod tests {
                 RawStreamingChoice::ToolCallDelta {
                     id,
                     content: crate::streaming::ToolCallDeltaContent::Delta(delta),
-                } if id == "output-0" && delta == "{\"loc\":"
+                } if id == &crate::streaming::MintKind::Output.for_wire_index(0) && delta == "{\"loc\":"
             )),
             "the id-less args fragment must surface as a delta: {raw_choices:?}"
         );
@@ -3214,7 +3235,7 @@ data: {completed}
         use crate::providers::openai::responses_api::Output;
 
         let raw_choices = vec![RawStreamingChoice::ReasoningDelta {
-            id: "rs_1".to_string(),
+            id: crate::streaming::PartId::wire("rs_1"),
             reasoning: "thinking".to_string(),
         }];
 

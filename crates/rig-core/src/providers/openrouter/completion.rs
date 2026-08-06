@@ -1525,18 +1525,18 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
     fn streaming_detail_reasoning(
         &self,
         detail: &serde_json::Value,
-    ) -> Option<(String, message::ReasoningContent)> {
+    ) -> Option<(crate::streaming::PartId, message::ReasoningContent)> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
             serde_json::from_value::<ReasoningDetails>(detail.clone())
         else {
             return None;
         };
 
-        // An id-less detail degrades to the accumulator's shared "" identity;
-        // `assistant_contents_to_messages` maps that back to a null wire id,
-        // matching the non-streaming grouping.
+        // An id-less detail degrades to the accumulator's shared empty wire
+        // identity; `assistant_contents_to_messages` maps that back to a
+        // null wire id, matching the non-streaming grouping.
         Some((
-            id.unwrap_or_default(),
+            crate::streaming::PartId::wire(id.unwrap_or_default()),
             message::ReasoningContent::Encrypted(data),
         ))
     }
@@ -3115,7 +3115,7 @@ mod tests {
         let (id, content) = OpenRouterExt
             .streaming_detail_reasoning(&detail)
             .expect("encrypted detail should map to reasoning");
-        assert_eq!(id, "");
+        assert_eq!(id, crate::streaming::PartId::wire(""));
         assert!(matches!(
             content,
             message::ReasoningContent::Encrypted(ref data) if data == "enc_blob"
@@ -3123,7 +3123,7 @@ mod tests {
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::Reasoning(message::Reasoning {
-                id: Some(id),
+                id: id.as_wire().map(str::to_owned),
                 content: vec![content],
             }),
         ))

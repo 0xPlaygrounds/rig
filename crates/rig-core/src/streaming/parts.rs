@@ -16,14 +16,14 @@ use std::collections::{HashMap, HashSet};
 
 use crate::completion::CompletionError;
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
-use crate::providers::internal::adapter::SyntheticIds;
+use crate::streaming::identity::{PartId, SyntheticIds, WireId};
 use crate::streaming::{ToolInputEnd, UnparseableToolInput};
 
-/// Identity of a reasoning part: the provider-scoped item id plus a part
-/// ordinal distinguishing sibling parts of one multi-part item.
+/// Identity of a reasoning part: the part identity plus an ordinal
+/// distinguishing sibling parts of one multi-part item.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct PartKey {
-    item_id: String,
+    item_id: PartId,
     ordinal: u32,
 }
 
@@ -60,13 +60,14 @@ pub(crate) struct PartsAccumulator {
     /// index holds an `AssistantContent::Reasoning` part.
     reasoning_index: HashMap<PartKey, usize>,
     /// Item id → ordinal of that item's currently open (latest) part.
-    open_ordinal: HashMap<String, u32>,
+    open_ordinal: HashMap<PartId, u32>,
     /// Boundary-minted reasoning ids with a part at their currently open
     /// ordinal — exactly the ids [`PartsAccumulator::close_minted_reasoning`]
     /// would bump. Every text token and completed tool call is a boundary, so
     /// the common case (no open minted item) must not pay for a scan of every
-    /// reasoning key (#2258 G5).
-    open_minted_reasoning: Vec<String>,
+    /// reasoning key (#2258 G5). Whether an id is minted is its [`PartId`]
+    /// discriminant — lifecycle bookkeeping never parses an id string.
+    open_minted_reasoning: Vec<PartId>,
     /// Active text block; text deltas and metadata merge here until the block
     /// is closed by a text start, a reasoning event, or a tool call.
     text_index: Option<usize>,
@@ -75,14 +76,14 @@ pub(crate) struct PartsAccumulator {
     /// block instead of opening a duplicate, so a wire item's text keeps
     /// collapsing across interleaved output. Invariant: every mapped index
     /// holds an `AssistantContent::Text` part.
-    text_ids: HashMap<String, usize>,
+    text_ids: HashMap<PartId, usize>,
     /// Identity announced by the latest `TextStart` whose block has not yet
     /// opened; blocks open lazily on the first delta or metadata so a
     /// content-less `TextStart` never leaves an empty text part behind.
-    pending_text_id: Option<String>,
-    /// Mints `text-{n}` identities for blocks a bare `Message` opens on
-    /// wires that never announce text boundaries. Purely internal
-    /// bookkeeping: text parts carry no id in the aggregated choice.
+    pending_text_id: Option<PartId>,
+    /// Mints identities for blocks a bare `Message` opens on wires that
+    /// never announce text boundaries. Purely internal bookkeeping: text
+    /// parts carry no id in the aggregated choice.
     minted_text_ids: SyntheticIds,
     /// Tool calls under delta assembly, keyed by the fragment id, in start
     /// order. A completed call leaves this list, so a reused id after
@@ -95,7 +96,7 @@ pub(crate) struct PartsAccumulator {
     /// [`PartsAccumulator::tool_input_end`] for that id must not finalize a
     /// duplicate part (#2258 F1). Cleared for an id when fragments reopen it,
     /// so a reused id still assembles a fresh call.
-    closed_by_full_call: HashSet<String>,
+    closed_by_full_call: HashSet<PartId>,
     /// Whether any completed tool call was recorded; the streaming
     /// counterpart of the unary path's finish-reason reconciliation input.
     saw_tool_call: bool,
@@ -110,7 +111,7 @@ pub(crate) struct PartsAccumulator {
 /// provider.
 struct OpenToolInput {
     /// Assembly identity: every fragment of one call carries this id.
-    id: String,
+    id: PartId,
     /// Rig-minted correlation id, created when the call opens.
     internal_call_id: String,
     /// Tool name; a later non-empty name fragment replaces it.
@@ -162,7 +163,7 @@ impl PartsAccumulator {
     /// block — a wire item's text keeps collapsing across interleaved output,
     /// the reasoning keying applied to text. An unseen id closes the active
     /// block and opens the new one lazily, on its first delta or metadata.
-    pub(crate) fn text_start(&mut self, id: &str, additional_params: Option<serde_json::Value>) {
+    pub(crate) fn text_start(&mut self, id: &PartId, additional_params: Option<serde_json::Value>) {
         self.close_minted_reasoning();
         match self.text_ids.get(id) {
             Some(&index) => {
@@ -171,7 +172,7 @@ impl PartsAccumulator {
             }
             None => {
                 self.text_index = None;
-                self.pending_text_id = Some(id.to_owned());
+                self.pending_text_id = Some(id.clone());
             }
         }
         if let Some(additional_params) = additional_params {
@@ -210,12 +211,12 @@ impl PartsAccumulator {
     /// currently open part. A delta arriving after that part was completed by
     /// a full block opens a fresh part under the next ordinal — it never
     /// resurrects a superseded buffer.
-    pub(crate) fn reasoning_delta(&mut self, id: &str, text: &str) {
+    pub(crate) fn reasoning_delta(&mut self, id: &PartId, text: &str) {
         self.text_index = None;
 
         let ordinal = self.open_ordinal.get(id).copied().unwrap_or(0);
         let key = PartKey {
-            item_id: id.to_owned(),
+            item_id: id.clone(),
             ordinal,
         };
 
@@ -240,10 +241,10 @@ impl PartsAccumulator {
                 // the item's next part.
                 _ => {
                     let next = ordinal + 1;
-                    self.open_ordinal.insert(id.to_owned(), next);
+                    self.open_ordinal.insert(id.clone(), next);
                     self.push_reasoning(
                         PartKey {
-                            item_id: id.to_owned(),
+                            item_id: id.clone(),
                             ordinal: next,
                         },
                         ManagedPart::DeltaBuilt(delta_reasoning(id, text)),
@@ -276,13 +277,10 @@ impl PartsAccumulator {
     /// arrive consecutively, before any later output — so adjacency insertion
     /// (which would shift every stored part index) is not worth its
     /// complexity.
-    pub(crate) fn reasoning_full(&mut self, reasoning: Reasoning) {
+    pub(crate) fn reasoning_full(&mut self, id: &PartId, reasoning: Reasoning) {
         self.text_index = None;
 
-        // Ids are mandatory on the raw grammar; an absent id degrades to a
-        // single shared "" identity rather than a panic.
-        let id = reasoning.id.clone().unwrap_or_default();
-        let ordinal = self.open_ordinal.get(&id).copied().unwrap_or(0);
+        let ordinal = self.open_ordinal.get(id).copied().unwrap_or(0);
         let key = PartKey {
             item_id: id.clone(),
             ordinal,
@@ -300,7 +298,7 @@ impl PartsAccumulator {
                     self.open_ordinal.insert(id.clone(), next);
                     self.push_reasoning(
                         PartKey {
-                            item_id: id,
+                            item_id: id.clone(),
                             ordinal: next,
                         },
                         ManagedPart::Complete(AssistantContent::Reasoning(reasoning)),
@@ -336,13 +334,14 @@ impl PartsAccumulator {
     /// (#2258 F1).
     pub(crate) fn tool_call(
         &mut self,
+        id: &PartId,
         tool_call: ToolCall,
         minted_internal_call_id: String,
     ) -> String {
         let adopted = self
             .open_tool_inputs
             .iter()
-            .position(|input| input.id == tool_call.id)
+            .position(|input| input.id == *id)
             .map(|index| {
                 let input = self.open_tool_inputs.remove(index);
                 self.closed_by_full_call.insert(input.id);
@@ -381,7 +380,7 @@ impl PartsAccumulator {
     /// Open-tool state deliberately does not close the active text or
     /// reasoning block — only the *completed* call is a part boundary,
     /// matching the pre-assembly behavior where deltas bypassed accumulation.
-    pub(crate) fn tool_name_delta(&mut self, id: &str, name: &str) -> String {
+    pub(crate) fn tool_name_delta(&mut self, id: &PartId, name: &str) -> String {
         let index = self.ensure_open_tool_input(id);
         match self.open_tool_inputs.get_mut(index) {
             Some(input) => {
@@ -404,7 +403,7 @@ impl PartsAccumulator {
     /// call if `id` has no open call. Returns the call's minted internal id.
     ///
     /// `id` must be non-empty; see [`PartsAccumulator::tool_name_delta`].
-    pub(crate) fn tool_args_delta(&mut self, id: &str, fragment: &str) -> String {
+    pub(crate) fn tool_args_delta(&mut self, id: &PartId, fragment: &str) -> String {
         let index = self.ensure_open_tool_input(id);
         match self.open_tool_inputs.get_mut(index) {
             Some(input) => {
@@ -476,6 +475,13 @@ impl PartsAccumulator {
             ),
             None => (crate::id::generate(), end.id.clone(), String::new(), None),
         };
+        // Only a wire identity becomes the durable tool-call id; an assembly
+        // opened under a minted key yields the empty string, which every
+        // serializer treats as absent.
+        let opened_id = opened_id
+            .into_wire_id()
+            .map(WireId::into_string)
+            .unwrap_or_default();
         // An authoritative end-event name supersedes assembly, but an *empty*
         // one is filtered like the fragment path (`tool_name_delta`'s
         // last-non-empty semantics): it must not erase an established name and
@@ -571,11 +577,11 @@ impl PartsAccumulator {
     }
 
     /// Index of the open call for `id`, opening one if none exists.
-    fn ensure_open_tool_input(&mut self, id: &str) -> usize {
+    fn ensure_open_tool_input(&mut self, id: &PartId) -> usize {
         match self
             .open_tool_inputs
             .iter()
-            .position(|input| input.id == id)
+            .position(|input| input.id == *id)
         {
             Some(index) => index,
             None => {
@@ -584,7 +590,7 @@ impl PartsAccumulator {
                 // drop the mark so its end event finalizes normally.
                 self.closed_by_full_call.remove(id);
                 self.open_tool_inputs.push(OpenToolInput {
-                    id: id.to_owned(),
+                    id: id.clone(),
                     internal_call_id: crate::id::generate(),
                     name: String::new(),
                     buffer: None,
@@ -640,12 +646,12 @@ impl PartsAccumulator {
         if self.open_minted_reasoning.is_empty() {
             return;
         }
-        let open_minted: Vec<(String, u32)> = self
+        let open_minted: Vec<(PartId, u32)> = self
             .reasoning_index
             .keys()
             .filter(|key| {
                 key.ordinal == self.open_ordinal.get(&key.item_id).copied().unwrap_or(0)
-                    && crate::streaming::is_boundary_minted_id(&key.item_id)
+                    && key.item_id.is_minted()
             })
             .map(|key| (key.item_id.clone(), key.ordinal))
             .collect();
@@ -660,9 +666,7 @@ impl PartsAccumulator {
     fn push_reasoning(&mut self, key: PartKey, part: ManagedPart) {
         // The pushed part is always the item's open ordinal, so a minted id
         // becomes closeable here and nowhere else.
-        if crate::streaming::is_boundary_minted_id(&key.item_id)
-            && !self.open_minted_reasoning.contains(&key.item_id)
-        {
+        if key.item_id.is_minted() && !self.open_minted_reasoning.contains(&key.item_id) {
             self.open_minted_reasoning.push(key.item_id.clone());
         }
         self.parts.push(part);
@@ -670,9 +674,10 @@ impl PartsAccumulator {
     }
 }
 
-fn delta_reasoning(id: &str, text: &str) -> AssistantContent {
+fn delta_reasoning(id: &PartId, text: &str) -> AssistantContent {
     AssistantContent::Reasoning(Reasoning {
-        id: Some(id.to_owned()),
+        // The provenance funnel: only a wire identity becomes the durable id.
+        id: id.as_wire().map(str::to_owned),
         content: vec![ReasoningContent::Text {
             text: text.to_owned(),
             signature: None,
@@ -711,6 +716,27 @@ fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serd
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Fixture-syntax part id: the legacy minted renderings (`reasoning-0`,
+    /// `block-3`, `tool-1`, ...) decode to a [`PartId::Minted`] of that kind
+    /// and index; anything else is a wire id.
+    fn pid(id: &str) -> PartId {
+        use crate::streaming::MintKind;
+        for (namespace, kind) in [
+            ("reasoning-", MintKind::Reasoning),
+            ("block-", MintKind::Block),
+            ("output-", MintKind::Output),
+            ("tool-", MintKind::Tool),
+            ("text-", MintKind::Text),
+        ] {
+            if let Some(rest) = id.strip_prefix(namespace)
+                && let Ok(index) = rest.parse::<u64>()
+            {
+                return kind.for_wire_index(index);
+            }
+        }
+        PartId::wire(id)
+    }
 
     fn full(id: &str, content: ReasoningContent) -> Reasoning {
         Reasoning {
@@ -751,9 +777,12 @@ mod tests {
     #[test]
     fn a_full_block_replaces_its_delta_accumulation() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("rs_1", "partial ");
-        accumulator.reasoning_delta("rs_1", "thought");
-        accumulator.reasoning_full(full("rs_1", reasoning_text("the complete chain")));
+        accumulator.reasoning_delta(&pid("rs_1"), "partial ");
+        accumulator.reasoning_delta(&pid("rs_1"), "thought");
+        accumulator.reasoning_full(
+            &pid("rs_1"),
+            full("rs_1", reasoning_text("the complete chain")),
+        );
 
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["the complete chain"]);
@@ -763,8 +792,9 @@ mod tests {
     #[test]
     fn replacement_is_keyed_across_interleaved_output() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("rs_1", "partial");
+        accumulator.reasoning_delta(&pid("rs_1"), "partial");
         accumulator.tool_call(
+            &pid("call_1"),
             ToolCall {
                 id: "call_1".to_owned(),
                 call_id: None,
@@ -777,7 +807,7 @@ mod tests {
             },
             "internal-probe".to_owned(),
         );
-        accumulator.reasoning_full(full("rs_1", reasoning_text("full block")));
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", reasoning_text("full block")));
 
         let parts = accumulator.finish();
         assert_eq!(
@@ -801,10 +831,13 @@ mod tests {
     #[test]
     fn same_key_full_blocks_are_siblings_and_all_survive() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_full(full("rs_1", summary("s1")));
-        accumulator.reasoning_full(full("rs_1", summary("s2")));
-        accumulator.reasoning_full(full("rs_1", reasoning_text("visible")));
-        accumulator.reasoning_full(full("rs_1", ReasoningContent::Encrypted("enc".to_owned())));
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", summary("s1")));
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", summary("s2")));
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", reasoning_text("visible")));
+        accumulator.reasoning_full(
+            &pid("rs_1"),
+            full("rs_1", ReasoningContent::Encrypted("enc".to_owned())),
+        );
 
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["s1", "s2", "visible", "enc"]);
@@ -815,10 +848,13 @@ mod tests {
     #[test]
     fn deltas_then_sibling_full_blocks_keep_each_part_once() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("rs_1", "s1");
-        accumulator.reasoning_full(full("rs_1", summary("s1")));
-        accumulator.reasoning_full(full("rs_1", summary("s2")));
-        accumulator.reasoning_full(full("rs_1", ReasoningContent::Encrypted("enc".to_owned())));
+        accumulator.reasoning_delta(&pid("rs_1"), "s1");
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", summary("s1")));
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", summary("s2")));
+        accumulator.reasoning_full(
+            &pid("rs_1"),
+            full("rs_1", ReasoningContent::Encrypted("enc".to_owned())),
+        );
 
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["s1", "s2", "enc"]);
@@ -827,9 +863,9 @@ mod tests {
     #[test]
     fn a_delta_after_replacement_opens_a_fresh_part() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("rs_1", "first");
-        accumulator.reasoning_full(full("rs_1", reasoning_text("first complete")));
-        accumulator.reasoning_delta("rs_1", "second");
+        accumulator.reasoning_delta(&pid("rs_1"), "first");
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", reasoning_text("first complete")));
+        accumulator.reasoning_delta(&pid("rs_1"), "second");
 
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["first complete", "second"]);
@@ -838,8 +874,11 @@ mod tests {
     #[test]
     fn distinct_item_ids_never_interact() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("rs_1", "first item deltas");
-        accumulator.reasoning_full(full("rs_2", reasoning_text("a different item")));
+        accumulator.reasoning_delta(&pid("rs_1"), "first item deltas");
+        accumulator.reasoning_full(
+            &pid("rs_2"),
+            full("rs_2", reasoning_text("a different item")),
+        );
 
         let parts = accumulator.finish();
         assert_eq!(
@@ -852,7 +891,7 @@ mod tests {
     fn text_and_reasoning_interleave_in_arrival_order() {
         let mut accumulator = PartsAccumulator::new();
         accumulator.text_delta("intro");
-        accumulator.reasoning_full(full("rs_1", summary("thinking")));
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", summary("thinking")));
         accumulator.text_delta("out");
         accumulator.text_delta("ro");
 
@@ -877,9 +916,9 @@ mod tests {
     #[test]
     fn distinct_text_start_ids_open_distinct_parts() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.text_start("msg_1", None);
+        accumulator.text_start(&pid("msg_1"), None);
         accumulator.text_delta("first");
-        accumulator.text_start("msg_2", None);
+        accumulator.text_start(&pid("msg_2"), None);
         accumulator.text_delta("second");
 
         let parts = accumulator.finish();
@@ -899,10 +938,10 @@ mod tests {
     #[test]
     fn a_seen_text_start_id_reactivates_its_block() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.text_start("msg_1", None);
+        accumulator.text_start(&pid("msg_1"), None);
         accumulator.text_delta("collapsing ");
-        accumulator.reasoning_full(full("rs_1", summary("thinking")));
-        accumulator.text_start("msg_1", None);
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", summary("thinking")));
+        accumulator.text_start(&pid("msg_1"), None);
         accumulator.text_delta("text");
 
         let parts = accumulator.finish();
@@ -918,8 +957,8 @@ mod tests {
     #[test]
     fn a_content_less_text_start_leaves_no_empty_part() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.text_start("msg_1", None);
-        accumulator.reasoning_full(full("rs_1", summary("thinking")));
+        accumulator.text_start(&pid("msg_1"), None);
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", summary("thinking")));
 
         let parts = accumulator.finish();
         assert_eq!(parts.len(), 1);
@@ -948,9 +987,13 @@ mod tests {
     #[test]
     fn other_output_closes_a_minted_id_reasoning_item() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("reasoning-0", "A");
-        accumulator.tool_call(probe_tool_call(), "internal-probe".to_owned());
-        accumulator.reasoning_delta("reasoning-0", "B");
+        accumulator.reasoning_delta(&pid("reasoning-0"), "A");
+        accumulator.tool_call(
+            &pid("call_1"),
+            probe_tool_call(),
+            "internal-probe".to_owned(),
+        );
+        accumulator.reasoning_delta(&pid("reasoning-0"), "B");
 
         let parts = accumulator.finish();
         assert_eq!(parts.len(), 3);
@@ -972,9 +1015,16 @@ mod tests {
     #[test]
     fn a_full_block_after_the_boundary_does_not_erase_prior_minted_id_deltas() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("reasoning-0", "A");
-        accumulator.tool_call(probe_tool_call(), "internal-probe".to_owned());
-        accumulator.reasoning_full(full("reasoning-0", reasoning_text("B")));
+        accumulator.reasoning_delta(&pid("reasoning-0"), "A");
+        accumulator.tool_call(
+            &pid("call_1"),
+            probe_tool_call(),
+            "internal-probe".to_owned(),
+        );
+        accumulator.reasoning_full(
+            &pid("reasoning-0"),
+            full("reasoning-0", reasoning_text("B")),
+        );
 
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["A", "B"]);
@@ -986,9 +1036,9 @@ mod tests {
     #[test]
     fn text_output_closes_a_minted_id_reasoning_item() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("reasoning-0", "A");
+        accumulator.reasoning_delta(&pid("reasoning-0"), "A");
         accumulator.text_delta("visible");
-        accumulator.reasoning_delta("reasoning-0", "B");
+        accumulator.reasoning_delta(&pid("reasoning-0"), "B");
 
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["A", "B"]);
@@ -1004,9 +1054,9 @@ mod tests {
     #[test]
     fn text_metadata_closes_a_minted_id_reasoning_item() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("reasoning-0", "A");
+        accumulator.reasoning_delta(&pid("reasoning-0"), "A");
         accumulator.text_additional_params(serde_json::json!({"citations": ["c1"]}));
-        accumulator.reasoning_delta("reasoning-0", "B");
+        accumulator.reasoning_delta(&pid("reasoning-0"), "B");
 
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["A", "B"]);
@@ -1028,8 +1078,8 @@ mod tests {
     #[test]
     fn repeated_text_deltas_after_a_closed_minted_block_are_a_no_op() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("reasoning-0", "A");
-        assert_eq!(accumulator.open_minted_reasoning, vec!["reasoning-0"]);
+        accumulator.reasoning_delta(&pid("reasoning-0"), "A");
+        assert_eq!(accumulator.open_minted_reasoning, vec![pid("reasoning-0")]);
 
         accumulator.text_delta("one");
         assert!(
@@ -1045,7 +1095,7 @@ mod tests {
 
         // Behavior is unchanged by the guard: one boundary, one text block,
         // and a later delta still opens a fresh reasoning part.
-        accumulator.reasoning_delta("reasoning-0", "B");
+        accumulator.reasoning_delta(&pid("reasoning-0"), "B");
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["A", "B"]);
         assert_eq!(parts.len(), 3);
@@ -1061,7 +1111,7 @@ mod tests {
     #[test]
     fn wire_reasoning_ids_never_enter_the_minted_boundary_guard() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("rs_1", "thinking");
+        accumulator.reasoning_delta(&pid("rs_1"), "thinking");
         assert!(accumulator.open_minted_reasoning.is_empty());
     }
 
@@ -1071,9 +1121,13 @@ mod tests {
     #[test]
     fn wire_id_full_blocks_still_collapse_across_interleaved_output() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.reasoning_delta("rs_1", "thinking");
-        accumulator.tool_call(probe_tool_call(), "internal-probe".to_owned());
-        accumulator.reasoning_full(full("rs_1", reasoning_text("full reasoning")));
+        accumulator.reasoning_delta(&pid("rs_1"), "thinking");
+        accumulator.tool_call(
+            &pid("call_1"),
+            probe_tool_call(),
+            "internal-probe".to_owned(),
+        );
+        accumulator.reasoning_full(&pid("rs_1"), full("rs_1", reasoning_text("full reasoning")));
 
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["full reasoning"]);
@@ -1091,16 +1145,16 @@ mod tests {
     // trackers (compat, Responses, Anthropic, Bedrock) used to hand-roll. ---
 
     fn end(id: &str, mode: UnparseableToolInput) -> ToolInputEnd {
-        ToolInputEnd::new(id, mode)
+        ToolInputEnd::new(pid(id), mode)
     }
 
     #[test]
     fn fragments_assemble_into_a_completed_tool_call_with_a_stable_internal_id() {
         let mut accumulator = PartsAccumulator::new();
-        let first = accumulator.tool_name_delta("call_1", "get_weather");
-        let second = accumulator.tool_args_delta("call_1", "{\"location\":");
-        let third = accumulator.tool_args_delta("call_1", "\"Paris\",");
-        accumulator.tool_args_delta("call_1", "\"temp\":\"20C\"}");
+        let first = accumulator.tool_name_delta(&pid("call_1"), "get_weather");
+        let second = accumulator.tool_args_delta(&pid("call_1"), "{\"location\":");
+        let third = accumulator.tool_args_delta(&pid("call_1"), "\"Paris\",");
+        accumulator.tool_args_delta(&pid("call_1"), "\"temp\":\"20C\"}");
         assert_eq!(first, second);
         assert_eq!(second, third);
 
@@ -1128,9 +1182,9 @@ mod tests {
     #[test]
     fn an_empty_name_fragment_does_not_erase_an_established_name() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_1", "get_weather");
-        accumulator.tool_name_delta("call_1", "");
-        accumulator.tool_args_delta("call_1", "{}");
+        accumulator.tool_name_delta(&pid("call_1"), "get_weather");
+        accumulator.tool_name_delta(&pid("call_1"), "");
+        accumulator.tool_args_delta(&pid("call_1"), "{}");
 
         let (tool_call, _) = accumulator
             .tool_input_end(end("call_1", UnparseableToolInput::Drop))
@@ -1145,8 +1199,8 @@ mod tests {
     #[test]
     fn an_empty_authoritative_end_name_does_not_erase_an_established_name() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_1", "get_weather");
-        accumulator.tool_args_delta("call_1", "{}");
+        accumulator.tool_name_delta(&pid("call_1"), "get_weather");
+        accumulator.tool_args_delta(&pid("call_1"), "{}");
 
         let mut done = end("call_1", UnparseableToolInput::Drop);
         done.name = Some(String::new());
@@ -1161,9 +1215,9 @@ mod tests {
     fn a_call_with_no_streamed_arguments_is_a_parameterless_invocation() {
         for fragments in [Vec::new(), vec![""]] {
             let mut accumulator = PartsAccumulator::new();
-            accumulator.tool_name_delta("call_1", "ping");
+            accumulator.tool_name_delta(&pid("call_1"), "ping");
             for fragment in fragments {
-                accumulator.tool_args_delta("call_1", fragment);
+                accumulator.tool_args_delta(&pid("call_1"), fragment);
             }
             let (tool_call, _) = accumulator
                 .tool_input_end(end("call_1", UnparseableToolInput::Drop))
@@ -1178,8 +1232,8 @@ mod tests {
     #[test]
     fn drop_mode_drops_partial_arguments_and_nameless_calls() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_1", "ping");
-        accumulator.tool_args_delta("call_1", "{\"x\":");
+        accumulator.tool_name_delta(&pid("call_1"), "ping");
+        accumulator.tool_args_delta(&pid("call_1"), "{\"x\":");
         assert!(
             accumulator
                 .tool_input_end(end("call_1", UnparseableToolInput::Drop))
@@ -1187,7 +1241,7 @@ mod tests {
                 .is_none()
         );
 
-        accumulator.tool_args_delta("call_2", "{\"y\":1}");
+        accumulator.tool_args_delta(&pid("call_2"), "{\"y\":1}");
         assert!(
             accumulator
                 .tool_input_end(end("call_2", UnparseableToolInput::Drop))
@@ -1203,8 +1257,8 @@ mod tests {
     #[test]
     fn empty_object_mode_delivers_unparseable_input_as_an_empty_object() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_1", "memory_search");
-        accumulator.tool_args_delta("call_1", "{\"query\":");
+        accumulator.tool_name_delta(&pid("call_1"), "memory_search");
+        accumulator.tool_args_delta(&pid("call_1"), "{\"query\":");
         let (tool_call, _) = accumulator
             .tool_input_end(end("call_1", UnparseableToolInput::EmptyObject))
             .expect("no error")
@@ -1217,8 +1271,8 @@ mod tests {
     #[test]
     fn error_mode_surfaces_malformed_input_as_an_error() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_1", "get_weather");
-        accumulator.tool_args_delta("call_1", "{\"location\": not-json");
+        accumulator.tool_name_delta(&pid("call_1"), "get_weather");
+        accumulator.tool_args_delta(&pid("call_1"), "{\"location\": not-json");
         let err = accumulator
             .tool_input_end(end("call_1", UnparseableToolInput::Error))
             .expect_err("malformed complete input must error");
@@ -1231,8 +1285,8 @@ mod tests {
     #[test]
     fn keep_mode_leaves_the_call_open_for_later_fragments() {
         let mut accumulator = PartsAccumulator::new();
-        let internal = accumulator.tool_name_delta("call_1", "search");
-        accumulator.tool_args_delta("call_1", "{\"q\":\"ru");
+        let internal = accumulator.tool_name_delta(&pid("call_1"), "search");
+        accumulator.tool_args_delta(&pid("call_1"), "{\"q\":\"ru");
         assert!(
             accumulator
                 .tool_input_end(end("call_1", UnparseableToolInput::Keep))
@@ -1240,7 +1294,7 @@ mod tests {
                 .is_none()
         );
 
-        accumulator.tool_args_delta("call_1", "st\"}");
+        accumulator.tool_args_delta(&pid("call_1"), "st\"}");
         let (tool_call, internal_after) = accumulator
             .tool_input_end(end("call_1", UnparseableToolInput::Drop))
             .expect("no error")
@@ -1258,8 +1312,8 @@ mod tests {
     #[test]
     fn authoritative_end_fields_supersede_assembly() {
         let mut accumulator = PartsAccumulator::new();
-        let internal = accumulator.tool_name_delta("fc_1", "provisional");
-        accumulator.tool_args_delta("fc_1", "{\"partial\":");
+        let internal = accumulator.tool_name_delta(&pid("fc_1"), "provisional");
+        accumulator.tool_args_delta(&pid("fc_1"), "{\"partial\":");
 
         let mut done = end("fc_1", UnparseableToolInput::Drop);
         done.name = Some("final_name".to_owned());
@@ -1296,7 +1350,7 @@ mod tests {
     #[test]
     fn a_stale_end_for_a_finalized_key_is_a_no_op() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_1", "ping");
+        accumulator.tool_name_delta(&pid("call_1"), "ping");
         accumulator
             .tool_input_end(end("call_1", UnparseableToolInput::Drop))
             .expect("no error")
@@ -1322,10 +1376,10 @@ mod tests {
     #[test]
     fn null_placeholder_is_replaced_by_following_json_fragments() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_123", "web_search");
-        accumulator.tool_args_delta("call_123", "null");
-        accumulator.tool_args_delta("call_123", "{\"query\": \"META");
-        accumulator.tool_args_delta("call_123", " Platforms news\"}");
+        accumulator.tool_name_delta(&pid("call_123"), "web_search");
+        accumulator.tool_args_delta(&pid("call_123"), "null");
+        accumulator.tool_args_delta(&pid("call_123"), "{\"query\": \"META");
+        accumulator.tool_args_delta(&pid("call_123"), " Platforms news\"}");
         let (tool_call, _) = accumulator
             .tool_input_end(end("call_123", UnparseableToolInput::Drop))
             .expect("no error")
@@ -1350,8 +1404,8 @@ mod tests {
                 UnparseableToolInput::EmptyObject,
             ] {
                 let mut accumulator = PartsAccumulator::new();
-                accumulator.tool_name_delta("call_1", "tool");
-                accumulator.tool_args_delta("call_1", encoded);
+                accumulator.tool_name_delta(&pid("call_1"), "tool");
+                accumulator.tool_args_delta(&pid("call_1"), encoded);
                 let (tool_call, _) = accumulator
                     .tool_input_end(end("call_1", mode))
                     .expect("no error")
@@ -1366,10 +1420,10 @@ mod tests {
     #[test]
     fn parallel_calls_assemble_independently() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_a", "get_weather");
-        accumulator.tool_name_delta("call_b", "get_time");
-        accumulator.tool_args_delta("call_a", "{\"location\":\"Paris\"}");
-        accumulator.tool_args_delta("call_b", "{\"zone\":\"UTC\"}");
+        accumulator.tool_name_delta(&pid("call_a"), "get_weather");
+        accumulator.tool_name_delta(&pid("call_b"), "get_time");
+        accumulator.tool_args_delta(&pid("call_a"), "{\"location\":\"Paris\"}");
+        accumulator.tool_args_delta(&pid("call_b"), "{\"zone\":\"UTC\"}");
         let (call_b, _) = accumulator
             .tool_input_end(end("call_b", UnparseableToolInput::Drop))
             .expect("no error")
@@ -1395,12 +1449,12 @@ mod tests {
     #[test]
     fn minted_tool_index_ids_keep_id_less_parallel_calls_distinct() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("tool-0", "get_weather");
-        accumulator.tool_name_delta("tool-1", "get_time");
-        accumulator.tool_args_delta("tool-0", "{\"city\":");
-        accumulator.tool_args_delta("tool-1", "{\"zone\":");
-        accumulator.tool_args_delta("tool-0", "\"Tokyo\"}");
-        accumulator.tool_args_delta("tool-1", "\"UTC\"}");
+        accumulator.tool_name_delta(&pid("tool-0"), "get_weather");
+        accumulator.tool_name_delta(&pid("tool-1"), "get_time");
+        accumulator.tool_args_delta(&pid("tool-0"), "{\"city\":");
+        accumulator.tool_args_delta(&pid("tool-1"), "{\"zone\":");
+        accumulator.tool_args_delta(&pid("tool-0"), "\"Tokyo\"}");
+        accumulator.tool_args_delta(&pid("tool-1"), "\"UTC\"}");
         let (first, _) = accumulator
             .tool_input_end(end("tool-0", UnparseableToolInput::Drop))
             .expect("no error")
@@ -1409,8 +1463,10 @@ mod tests {
             .tool_input_end(end("tool-1", UnparseableToolInput::Drop))
             .expect("no error")
             .expect("finalizes");
-        assert_eq!(first.id, "tool-0");
-        assert_eq!(second.id, "tool-1");
+        // Minted assembly identities never become durable provider ids: the
+        // finalized calls carry the absent (empty) id every serializer omits.
+        assert_eq!(first.id, "");
+        assert_eq!(second.id, "");
         assert_eq!(
             first.function.arguments,
             serde_json::json!({"city": "Tokyo"})
@@ -1426,8 +1482,8 @@ mod tests {
     #[test]
     fn finish_discards_calls_still_open_at_stream_end() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("call_1", "ping");
-        accumulator.tool_args_delta("call_1", "{\"x\":");
+        accumulator.tool_name_delta(&pid("call_1"), "ping");
+        accumulator.tool_args_delta(&pid("call_1"), "{\"x\":");
         let parts = accumulator.finish();
         assert_eq!(parts, vec![AssistantContent::text("")]);
         assert!(!accumulator.saw_tool_call());
@@ -1438,7 +1494,7 @@ mod tests {
     #[test]
     fn the_tool_id_override_supersedes_the_assembly_key() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("", "ping");
+        accumulator.tool_name_delta(&pid(""), "ping");
         let mut done = end("", UnparseableToolInput::Drop);
         done.tool_id = Some("call_late".to_owned());
         let (tool_call, _) = accumulator
@@ -1475,10 +1531,14 @@ mod tests {
     #[test]
     fn a_full_call_adopts_the_internal_id_its_deltas_published() {
         let mut accumulator = PartsAccumulator::new();
-        let published = accumulator.tool_name_delta("tc1", "add");
-        accumulator.tool_args_delta("tc1", "{\"x\":1}");
+        let published = accumulator.tool_name_delta(&pid("tc1"), "add");
+        accumulator.tool_args_delta(&pid("tc1"), "{\"x\":1}");
 
-        let adopted = accumulator.tool_call(call_named("tc1", "add"), "freshly-minted".to_owned());
+        let adopted = accumulator.tool_call(
+            &pid("tc1"),
+            call_named("tc1", "add"),
+            "freshly-minted".to_owned(),
+        );
         assert_eq!(
             adopted, published,
             "the completed call must correlate with its own deltas"
@@ -1500,9 +1560,13 @@ mod tests {
     #[test]
     fn an_end_after_a_full_call_for_the_same_id_is_a_no_op() {
         let mut accumulator = PartsAccumulator::new();
-        accumulator.tool_name_delta("tc1", "add");
-        accumulator.tool_args_delta("tc1", "{\"x\":1}");
-        accumulator.tool_call(call_named("tc1", "add"), "freshly-minted".to_owned());
+        accumulator.tool_name_delta(&pid("tc1"), "add");
+        accumulator.tool_args_delta(&pid("tc1"), "{\"x\":1}");
+        accumulator.tool_call(
+            &pid("tc1"),
+            call_named("tc1", "add"),
+            "freshly-minted".to_owned(),
+        );
 
         let mut done = end("tc1", UnparseableToolInput::Drop);
         done.name = Some("add".to_owned());
@@ -1531,13 +1595,17 @@ mod tests {
     #[test]
     fn fragments_reusing_a_closed_id_open_a_fresh_call() {
         let mut accumulator = PartsAccumulator::new();
-        let first = accumulator.tool_name_delta("tc1", "add");
-        let adopted = accumulator.tool_call(call_named("tc1", "add"), "freshly-minted".to_owned());
+        let first = accumulator.tool_name_delta(&pid("tc1"), "add");
+        let adopted = accumulator.tool_call(
+            &pid("tc1"),
+            call_named("tc1", "add"),
+            "freshly-minted".to_owned(),
+        );
         assert_eq!(adopted, first);
 
-        let second = accumulator.tool_name_delta("tc1", "subtract");
+        let second = accumulator.tool_name_delta(&pid("tc1"), "subtract");
         assert_ne!(second, first, "the reused id opens a distinct call");
-        accumulator.tool_args_delta("tc1", "{\"y\":2}");
+        accumulator.tool_args_delta(&pid("tc1"), "{\"y\":2}");
         let (tool_call, internal) = accumulator
             .tool_input_end(end("tc1", UnparseableToolInput::Drop))
             .expect("no error")
@@ -1561,12 +1629,14 @@ mod tests {
     #[test]
     fn a_full_call_with_no_open_assembly_keeps_its_minted_id() {
         let mut accumulator = PartsAccumulator::new();
-        let published = accumulator.tool_call(call_named("tc1", "add"), "minted-1".to_owned());
+        let published =
+            accumulator.tool_call(&pid("tc1"), call_named("tc1", "add"), "minted-1".to_owned());
         assert_eq!(published, "minted-1");
 
         // A different id's assembly is untouched by an unrelated full call.
-        let other = accumulator.tool_name_delta("tc2", "subtract");
-        let published = accumulator.tool_call(call_named("tc3", "add"), "minted-2".to_owned());
+        let other = accumulator.tool_name_delta(&pid("tc2"), "subtract");
+        let published =
+            accumulator.tool_call(&pid("tc3"), call_named("tc3", "add"), "minted-2".to_owned());
         assert_eq!(published, "minted-2");
         assert_ne!(other, published);
         let (_, internal) = accumulator

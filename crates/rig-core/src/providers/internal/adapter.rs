@@ -80,16 +80,14 @@ pub type AdapterOutput<R> = Vec<Result<RawStreamingChoice<R>, CompletionError>>;
 /// - **Driver-owns-policy**: unknown/corrupt-frame handling belongs to the
 ///   driver (module policy table); adapters contain no `match WireEvent`.
 /// - **Mandatory identity**: every `Reasoning`/`ReasoningDelta`,
-///   `ToolCallDelta`, and `TextStart` event carries a non-empty id — the
-///   wire's own identity when it exists, else an id minted via
-///   [`SyntheticIds`] in the reserved namespaces (`reasoning-{n}`,
-///   `block-{n}`, `output-{n}`, `tool-{index}`, `text-{n}`). Wire ids must
-///   never use these shapes. The upstream rule is per-wire: providers that
-///   validate identity server-side gate minted ids out of requests (the
-///   Responses reasoning path drops boundary-minted items); wires where
-///   identity is structurally required (chat `tool_call_id`) replay minted
-///   ids as a self-consistent pair, which id-omitting gateways accept —
-///   they had no server-side id to check against in the first place.
+///   `ToolCallDelta`, and `TextStart` event carries a
+///   [`PartId`](crate::streaming::PartId) — the wire's own identity
+///   ([`PartId::Wire`](crate::streaming::PartId::Wire)) when it exists, else
+///   an identity minted via [`SyntheticIds`]
+///   ([`PartId::Minted`](crate::streaming::PartId::Minted)). Provenance
+///   travels in the type: a minted identity keys stream accumulation and
+///   structurally cannot become a durable provider handle or reach a request
+///   serializer, so no per-provider gate exists or is needed.
 /// - **Finish/flush obligations**: see [`WireAdapter::finish`] (EOF-only,
 ///   never synthesizes a terminal) and
 ///   [`WireAdapter::flush_before_terminal_error`] (fully-delivered content
@@ -364,142 +362,4 @@ fn drain_buffered<R>(
     Ok(saw_terminal)
 }
 
-/// Fabricated per-stream identity for wires that carry none.
-///
-/// Every id-less wire mints ids the same way — a namespace plus a counter or
-/// wire index — and the namespaces are the reserved set the boundary-minted
-/// provenance gate recognizes (`streaming::MINTED_ID_NAMESPACES`). Where a
-/// provider validates ids server-side, the gate keeps minted ids out of
-/// requests; where the wire structurally requires an id (chat
-/// `tool_call_id`), the minted id replays as a self-consistent pair.
-#[derive(Debug)]
-pub struct SyntheticIds {
-    namespace: &'static str,
-    next: u64,
-}
-
-impl SyntheticIds {
-    /// Ids in the `reasoning-` namespace (constant-id wires: gemini REST,
-    /// ollama, chat-compat, candle).
-    pub fn reasoning() -> Self {
-        Self::new("reasoning-")
-    }
-
-    /// Ids in the `block-` namespace (index-as-id wires: anthropic, bedrock).
-    pub fn block() -> Self {
-        Self::new("block-")
-    }
-
-    /// Ids in the `output-` namespace (the Responses `output_index` fallback).
-    pub fn output() -> Self {
-        Self::new("output-")
-    }
-
-    /// Ids in the `tool-` namespace (chat-compat tool-call fragments whose
-    /// wire supplies no tool-call id; identity derives from the chunk index).
-    pub fn tool() -> Self {
-        Self::new("tool-")
-    }
-
-    /// Ids in the `text-` namespace (text blocks opened by a bare
-    /// [`crate::streaming::RawStreamingChoice::Message`] on wires that never
-    /// announce text-block boundaries).
-    pub fn text() -> Self {
-        Self::new("text-")
-    }
-
-    fn new(namespace: &'static str) -> Self {
-        Self { namespace, next: 0 }
-    }
-
-    /// Mint the next counter-based id (vercel's `blockCounter++` pattern).
-    pub fn mint(&mut self) -> String {
-        let id = self.for_index(self.next);
-        self.next += 1;
-        id
-    }
-
-    /// The id for a stable wire-supplied index (anthropic's content-block
-    /// index pattern).
-    ///
-    /// Signed index types (Bedrock's `i32` content-block indices) render
-    /// negatives sign-free as `n{magnitude}` (`-1` → `tool-n1`): a literal
-    /// `-` inside the id would escape
-    /// [`is_boundary_minted_id`](crate::streaming::is_boundary_minted_id)'s
-    /// suffix check, letting a minted id masquerade as wire-genuine. The gate
-    /// models the same `n` marker, and
-    /// `every_for_index_rendering_is_provenance_gated` pins the agreement.
-    /// Negative indices don't occur on any known wire; the scheme just keeps
-    /// the mint total instead of trusting that.
-    pub fn for_index(&self, index: impl std::fmt::Display) -> String {
-        let rendered = index.to_string();
-        let rendered = match rendered.strip_prefix('-') {
-            Some(magnitude) => format!("n{magnitude}"),
-            None => rendered,
-        };
-        format!("{}{}", self.namespace, rendered)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Every id this helper can mint must be recognized by the F7 provenance
-    /// gate, so server-validated paths can drop fabricated identities before
-    /// they reach a request.
-    #[test]
-    fn minted_ids_are_recognized_as_boundary_minted() {
-        for mut ids in [
-            SyntheticIds::reasoning(),
-            SyntheticIds::block(),
-            SyntheticIds::output(),
-            SyntheticIds::tool(),
-            SyntheticIds::text(),
-        ] {
-            let counter_id = ids.mint();
-            assert!(
-                crate::streaming::is_boundary_minted_id(&counter_id),
-                "{counter_id} must be provenance-gated"
-            );
-            let index_id = ids.for_index(7usize);
-            assert!(
-                crate::streaming::is_boundary_minted_id(&index_id),
-                "{index_id} must be provenance-gated"
-            );
-        }
-    }
-
-    #[test]
-    fn mint_counts_up_per_stream() {
-        let mut ids = SyntheticIds::reasoning();
-        assert_eq!(ids.mint(), "reasoning-0");
-        assert_eq!(ids.mint(), "reasoning-1");
-    }
-
-    /// Mint/gate agreement, property-style over the signed index domain:
-    /// every rendering `for_index` can produce — negative (Bedrock's `i32`
-    /// indices), zero, and large in both directions — must pass the
-    /// provenance gate. A negative index renders sign-free (`tool-n1`), so
-    /// no minted id ever carries a literal `-` the gate would miss.
-    #[test]
-    fn every_for_index_rendering_is_provenance_gated() {
-        let ids = SyntheticIds::tool();
-        for index in [i64::MIN, -1_000_000, -7, -1, 0, 1, 7, 1_000_000, i64::MAX] {
-            let id = ids.for_index(index);
-            assert!(
-                crate::streaming::is_boundary_minted_id(&id),
-                "{id} (index {index}) must be provenance-gated"
-            );
-            let suffix = id
-                .strip_prefix("tool-")
-                .expect("minted in the tool namespace");
-            assert!(
-                !suffix.contains('-'),
-                "sanity: only the namespace separator may be a dash: {id}"
-            );
-        }
-        assert_eq!(ids.for_index(-1i32), "tool-n1");
-        assert_eq!(ids.for_index(0i32), "tool-0");
-    }
-}
+pub use crate::streaming::SyntheticIds;

@@ -66,6 +66,18 @@ struct ReasoningState {
     signature: Option<String>,
 }
 
+/// Minted block identity for a Converse `contentBlockIndex`.
+///
+/// The wire index is `i32`; the minted index space is unsigned. The offset
+/// map is injective over the whole `i32` domain, so even a (spec-violating)
+/// negative index yields a distinct, well-formed minted identity instead of
+/// a rendering the identity machinery could disagree about — the mint stays
+/// total instead of trusting the wire.
+fn block_id(content_block_index: i32) -> rig_core::streaming::PartId {
+    let index = (i64::from(content_block_index) - i64::from(i32::MIN)) as u64;
+    rig_core::streaming::MintKind::Block.for_wire_index(index)
+}
+
 /// Convert an accumulated [`ReasoningState`] into a streaming reasoning chunk.
 ///
 /// Adaptive-thinking blocks from Bedrock can arrive as signature-only — i.e. a
@@ -86,7 +98,7 @@ fn finalize_reasoning(
         // Bedrock has no reasoning item id; the block's `contentBlockIndex`
         // is stable across its deltas and stop, so the full block supersedes
         // the accumulated deltas.
-        id: format!("block-{content_block_index}"),
+        id: block_id(content_block_index),
         content: ReasoningContent::Text {
             text: state.content,
             signature: state.signature,
@@ -153,7 +165,7 @@ fn process_event(
                                 reasoning: text.clone(),
                                 // Derive identity from `contentBlockIndex`
                                 // (no wire id on Converse reasoning blocks).
-                                id: format!("block-{}", event.content_block_index),
+                                id: block_id(event.content_block_index),
                             }));
                         }
                     }
@@ -178,10 +190,10 @@ fn process_event(
                         }
 
                         items.push(Ok(RawStreamingChoice::Reasoning {
-                            // Same `block-{index}` shape as the sibling
-                            // reasoning paths, all-digit suffix so the core
-                            // still recognizes it as a boundary-minted id.
-                            id: format!("block-{}", event.content_block_index),
+                            // Same minted block identity as the sibling
+                            // reasoning paths, so provenance and boundary
+                            // semantics stay uniform.
+                            id: block_id(event.content_block_index),
                             content: ReasoningContent::Redacted {
                                 // The wire carries raw bytes; rig's canonical
                                 // reasoning content is a string, so the blob
@@ -887,7 +899,7 @@ mod tests {
         let choice = finalize_reasoning(state, 0).expect("should emit reasoning");
         match choice {
             RawStreamingChoice::Reasoning { id, content } => {
-                assert_eq!(id, "block-0");
+                assert_eq!(id, block_id(0));
                 match content {
                     ReasoningContent::Text { text, signature } => {
                         assert_eq!(text, "I am thinking");

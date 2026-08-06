@@ -64,6 +64,32 @@ pub enum MockStreamEvent {
 
 use super::completion::MockError;
 
+/// Fixture-syntax decoding of a part identity.
+///
+/// Corpus fixtures are plain data and spell identities as strings; the
+/// legacy minted renderings (`reasoning-0`, `block-3`, `output-1`, `tool-2`,
+/// `text-0`) are the fixture syntax for a [`PartId::Minted`] of that kind
+/// and index, and anything else is a wire id. This is *fixture encoding*,
+/// not provenance recovery: production code never parses an id string —
+/// provenance travels in [`PartId`] itself.
+fn fixture_part_id(id: String) -> crate::streaming::PartId {
+    use crate::streaming::MintKind;
+    for (namespace, kind) in [
+        ("reasoning-", MintKind::Reasoning),
+        ("block-", MintKind::Block),
+        ("output-", MintKind::Output),
+        ("tool-", MintKind::Tool),
+        ("text-", MintKind::Text),
+    ] {
+        if let Some(rest) = id.strip_prefix(namespace)
+            && let Ok(index) = rest.parse::<u64>()
+        {
+            return kind.for_wire_index(index);
+        }
+    }
+    crate::streaming::PartId::wire(id)
+}
+
 impl MockStreamEvent {
     /// Create a text chunk.
     pub fn text(text: impl Into<String>) -> Self {
@@ -194,7 +220,7 @@ impl MockStreamEvent {
                 id,
                 additional_params,
             } => Ok(RawStreamingChoice::TextStart {
-                id,
+                id: fixture_part_id(id),
                 additional_params,
             }),
             Self::TextAdditionalParams(additional_params) => {
@@ -206,19 +232,24 @@ impl MockStreamEvent {
                 arguments,
                 call_id,
             } => {
-                let mut tool_call = RawStreamingToolCall::new(id, name, arguments);
+                let mut tool_call = RawStreamingToolCall::new(fixture_part_id(id), name, arguments);
                 if let Some(call_id) = call_id {
                     tool_call = tool_call.with_call_id(call_id);
                 }
                 Ok(RawStreamingChoice::ToolCall(tool_call))
             }
-            Self::ToolCallDelta { id, content } => {
-                Ok(RawStreamingChoice::ToolCallDelta { id, content })
-            }
-            Self::Reasoning { id, content } => Ok(RawStreamingChoice::Reasoning { id, content }),
-            Self::ReasoningDelta { id, reasoning } => {
-                Ok(RawStreamingChoice::ReasoningDelta { id, reasoning })
-            }
+            Self::ToolCallDelta { id, content } => Ok(RawStreamingChoice::ToolCallDelta {
+                id: fixture_part_id(id),
+                content,
+            }),
+            Self::Reasoning { id, content } => Ok(RawStreamingChoice::Reasoning {
+                id: fixture_part_id(id),
+                content,
+            }),
+            Self::ReasoningDelta { id, reasoning } => Ok(RawStreamingChoice::ReasoningDelta {
+                id: fixture_part_id(id),
+                reasoning,
+            }),
             Self::MessageId(id) => Ok(RawStreamingChoice::MessageId(id)),
             Self::Unknown(value) => Ok(RawStreamingChoice::Unknown(value)),
             Self::FinalResponse(response) => Ok(RawStreamingChoice::FinalResponse(response)),

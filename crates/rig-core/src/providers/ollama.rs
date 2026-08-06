@@ -397,9 +397,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         }
         // Process tool_calls following Ollama's chat response definition.
         // Each ToolCall has an id, a type, and a function field.
+        // Ollama's wire carries no tool-call id; the durable id stays absent
+        // (empty) rather than fabricating one from the tool name — a
+        // name-as-id would collide two same-tool calls in one turn. Replay
+        // drops the id anyway (Ollama tool messages carry no id).
         for tc in tool_calls.iter() {
             assistant_contents.push(completion::AssistantContent::tool_call(
-                tc.function.name.clone(),
+                "",
                 tc.function.name.clone(),
                 tc.function.arguments.clone(),
             ));
@@ -471,6 +475,10 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         // Build up the order of messages.
         let mut partial_history = vec![];
         partial_history.extend(chat_history);
+        // Ollama's tool messages carry the *function name*; resolve it from
+        // each result's paired assistant call (rig no longer smuggles the
+        // name through the tool-call id).
+        crate::providers::internal::resolve_tool_result_names(&mut partial_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -896,8 +904,11 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
             {
                 out.push(Ok(RawStreamingChoice::ReasoningDelta {
                     // `thinking` deltas carry no wire id and never
-                    // interleave; per-stream constant.
-                    id: "reasoning-0".to_string(),
+                    // interleave; per-stream constant minted identity.
+                    id: crate::streaming::PartId::Minted {
+                        kind: crate::streaming::MintKind::Reasoning,
+                        index: 0,
+                    },
                     reasoning: thinking_content,
                 }));
             }
@@ -906,10 +917,13 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                 out.push(Ok(RawStreamingChoice::Message(content)));
             }
 
-            for tool_call in tool_calls {
+            // No wire id: each call keys the stream by a distinct minted
+            // identity and its durable id stays absent — never the tool
+            // name, which would collide two same-tool calls in one turn.
+            for (index, tool_call) in tool_calls.into_iter().enumerate() {
                 out.push(Ok(RawStreamingChoice::ToolCall(
                     crate::streaming::RawStreamingToolCall::new(
-                        tool_call.function.name.clone(),
+                        crate::streaming::MintKind::Tool.for_wire_index(index as u64),
                         tool_call.function.name,
                         tool_call.function.arguments,
                     ),
@@ -1293,10 +1307,11 @@ impl From<Message> for crate::completion::Message {
                 assistant_contents.push(crate::completion::message::AssistantContent::Text(
                     Text::new(content),
                 ));
+                // Same absent-id policy as the unary decode above.
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
-                            tc.function.name.clone(),
+                            "",
                             tc.function.name,
                             tc.function.arguments,
                         ),

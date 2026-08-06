@@ -410,7 +410,7 @@ where
     fn detail_reasoning(
         &self,
         detail: &Self::Detail,
-    ) -> Option<(String, crate::message::ReasoningContent)> {
+    ) -> Option<(crate::streaming::PartId, crate::message::ReasoningContent)> {
         self.provider.streaming_detail_reasoning(detail)
     }
 

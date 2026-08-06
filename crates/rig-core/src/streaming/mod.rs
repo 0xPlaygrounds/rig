@@ -5,40 +5,10 @@
 //! Provider implementations use these types to expose raw streamed completion
 //! events without depending on a runtime.
 
+mod identity;
 mod parts;
 
-/// Reserved id namespaces for identities minted at the provider boundary
-/// rather than read off the wire: `reasoning-{n}` (gemini REST /
-/// interactions / gRPC, ollama, chat-compat `reasoning_content`, candle),
-/// `block-{n}` (anthropic, bedrock), `output-{n}` (the OpenAI Responses
-/// fallback for delta events lacking `item_id`), `tool-{index}`
-/// (chat-compat tool-call fragments whose wire omits the tool-call id), and
-/// `text-{n}` (text blocks opened by a bare `Message` on wires that never
-/// announce text-block boundaries).
-/// Wire-supplied ids must never use these shapes; they gate two behaviors:
-/// the [`PartsAccumulator`] interleaving boundary (a minted *reasoning* id is
-/// a per-stream constant, so other output must close the open reasoning item)
-/// and the OpenAI Responses request-serialization guard (a minted id must not
-/// be replayed upstream as if the provider issued it).
-pub(crate) const MINTED_ID_NAMESPACES: [&str; 5] =
-    ["reasoning-", "block-", "output-", "tool-", "text-"];
-
-/// Whether `id` belongs to a reserved boundary-minted namespace.
-///
-/// The suffix is the mint's index rendering
-/// ([`SyntheticIds::for_index`](crate::providers::internal::adapter::SyntheticIds)):
-/// digits, optionally prefixed with the `n` marker the mint uses for negative
-/// indices (`tool-n1` is minted from index `-1`; a literal `-` never appears
-/// inside a minted id). Gate and mint must agree — a rendering the gate
-/// misses would let a minted id masquerade as wire-genuine.
-pub(crate) fn is_boundary_minted_id(id: &str) -> bool {
-    MINTED_ID_NAMESPACES.iter().any(|namespace| {
-        id.strip_prefix(namespace).is_some_and(|rest| {
-            let digits = rest.strip_prefix('n').unwrap_or(rest);
-            !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
-        })
-    })
-}
+pub use identity::{MintKind, PartId, SyntheticIds, WireId};
 
 use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionResponse, Usage};
@@ -136,7 +106,7 @@ pub enum UnparseableToolInput {
 #[derive(Debug, Clone)]
 pub struct ToolInputEnd {
     /// Assembly identity: the id the call's fragments were emitted under.
-    pub id: String,
+    pub id: PartId,
     /// Authoritative provider tool-call id, when it differs from the
     /// assembly id (e.g. an id that arrived after the call opened id-less).
     pub tool_id: Option<String>,
@@ -171,7 +141,7 @@ pub struct ToolCallDecoration {
 impl ToolInputEnd {
     /// End the call identified by `id`, finalizing from assembled fragments
     /// with the given unparseable-input policy.
-    pub fn new(id: impl Into<String>, on_unparseable: UnparseableToolInput) -> Self {
+    pub fn new(id: impl Into<PartId>, on_unparseable: UnparseableToolInput) -> Self {
         Self {
             id: id.into(),
             tool_id: None,
@@ -400,18 +370,18 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     TextStart {
         /// Identity of the text block being opened.
         ///
-        /// Required and never empty — the same mandatory-identity contract as
+        /// The same mandatory-identity contract as
         /// [`RawStreamingChoice::Reasoning::id`]: distinct wire output items
         /// must aggregate as distinct text parts (two OpenAI Responses
         /// `message` items must not concatenate), so the accumulator keys
         /// text blocks by identity. Providers propagate the wire's item
-        /// identity (the Responses `item_id`, Anthropic's `block-{index}`)
-        /// when it exists, or mint one at the boundary (`text-{n}`, in the
-        /// reserved `MINTED_ID_NAMESPACES` set). A wire that never announces
-        /// text boundaries may skip `TextStart` entirely: a bare
+        /// identity ([`PartId::Wire`]: the Responses `item_id`, Anthropic's
+        /// block index) when it exists, or mint one at the boundary
+        /// ([`PartId::Minted`], via [`SyntheticIds`]). A wire that never
+        /// announces text boundaries may skip `TextStart` entirely: a bare
         /// [`RawStreamingChoice::Message`] with no open block opens a
         /// boundary-minted block.
-        id: String,
+        id: PartId,
         /// Provider-specific metadata attached to this text block.
         additional_params: Option<serde_json::Value>,
     },
@@ -437,15 +407,17 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// Identity of the tool call this fragment extends, stable across the
         /// call's fragments.
         ///
-        /// Required and never empty — the same mandatory-identity contract as
+        /// The same mandatory-identity contract as
         /// [`RawStreamingChoice::Reasoning::id`]: parallel calls interleave
         /// their fragments on real wires, so the accumulator must key
-        /// assembly by identity. Providers propagate the wire's tool-call id,
-        /// or mint one at the boundary from the wire's own index
-        /// (`tool-{index}`, in the reserved `MINTED_ID_NAMESPACES` set) when
-        /// the wire omits it — an empty id would collapse parallel calls into
-        /// one corrupted assembly.
-        id: String,
+        /// assembly by identity. Providers propagate the wire's tool-call id
+        /// ([`PartId::Wire`]), or mint one at the boundary from the wire's
+        /// own index ([`PartId::Minted`], via [`SyntheticIds`]) when the wire
+        /// omits it — a shared identity would collapse parallel calls into
+        /// one corrupted assembly. A minted identity keys assembly only; it
+        /// never becomes the completed call's durable
+        /// [`ToolCall::id`](crate::message::ToolCall::id).
+        id: PartId,
         content: ToolCallDeltaContent,
     },
     /// End of a streamed tool call's input: the shared accumulator finalizes
@@ -459,12 +431,15 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// Required: reasoning interleaves with other output on real wires
         /// (OpenAI Responses emits the completed item after tool calls), so
         /// the accumulator must key by identity rather than guess by
-        /// adjacency. Providers propagate the wire's item id (`item_id` on
-        /// Responses events, the content-block index on Anthropic/Bedrock)
-        /// or mint a stream-stable id at the boundary when the wire has
-        /// none — core never invents identity. Deltas and the full block
-        /// for the same item MUST carry the same id.
-        id: String,
+        /// adjacency. Providers propagate the wire's item id
+        /// ([`PartId::Wire`]: `item_id` on Responses events) or mint a
+        /// stream-scoped id at the boundary ([`PartId::Minted`], via
+        /// [`SyntheticIds`]) when the wire has none. Deltas and the full
+        /// block for the same item MUST carry the same id. Only a wire
+        /// identity becomes the durable
+        /// [`Reasoning::id`](crate::message::Reasoning::id); a minted one
+        /// keys accumulation and dies with the stream.
+        id: PartId,
         /// Complete reasoning content block.
         content: ReasoningContent,
     },
@@ -473,7 +448,7 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// Identity of the reasoning item this delta extends. Same contract
         /// as [`RawStreamingChoice::Reasoning::id`]; all deltas of one block
         /// share one id.
-        id: String,
+        id: PartId,
         /// Partial reasoning text.
         reasoning: String,
     },
@@ -531,8 +506,11 @@ impl<R> RawStreamingChoice<R> {
 /// Describes a streaming tool call response (in its entirety)
 #[derive(Debug, Clone)]
 pub struct RawStreamingToolCall {
-    /// Provider-supplied tool call ID.
-    pub id: String,
+    /// Identity of the tool call. [`PartId::Wire`] when the provider
+    /// supplied an id; [`PartId::Minted`] when the wire omitted one — a
+    /// minted identity keys stream-side correlation only and yields an
+    /// id-less durable [`ToolCall`].
+    pub id: PartId,
     /// Rig-generated unique identifier for this tool call.
     pub internal_call_id: String,
     /// Provider-specific call ID used by some APIs for tool result correlation.
@@ -551,7 +529,7 @@ impl RawStreamingToolCall {
     /// Create an empty tool call accumulator for provider streaming parsers.
     pub fn empty() -> Self {
         Self {
-            id: String::new(),
+            id: PartId::Wire(String::new()),
             internal_call_id: crate::id::generate(),
             call_id: None,
             name: String::new(),
@@ -562,9 +540,9 @@ impl RawStreamingToolCall {
     }
 
     /// Create a complete tool call with a generated internal call ID.
-    pub fn new(id: String, name: String, arguments: serde_json::Value) -> Self {
+    pub fn new(id: impl Into<PartId>, name: String, arguments: serde_json::Value) -> Self {
         Self {
-            id,
+            id: id.into(),
             internal_call_id: crate::id::generate(),
             call_id: None,
             name,
@@ -602,7 +580,14 @@ impl RawStreamingToolCall {
 impl From<RawStreamingToolCall> for ToolCall {
     fn from(tool_call: RawStreamingToolCall) -> Self {
         ToolCall {
-            id: tool_call.id,
+            // Only a wire identity becomes the durable id; a minted one
+            // yields the empty string, which every serializer treats as
+            // absent — rig never replays a fabricated tool-call id upstream.
+            id: tool_call
+                .id
+                .into_wire_id()
+                .map(WireId::into_string)
+                .unwrap_or_default(),
             call_id: tool_call.call_id,
             function: ToolFunction {
                 name: tool_call.name,
@@ -902,7 +887,7 @@ impl Stream for StreamingCompletionResponse {
                             }
                         };
                         Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCallDelta {
-                            id,
+                            id: id.render(),
                             internal_call_id,
                             content,
                         })))
@@ -922,22 +907,28 @@ impl Stream for StreamingCompletionResponse {
                         Err(err) => Poll::Ready(Some(Err(err))),
                     },
                     RawStreamingChoice::Reasoning { id, content } => {
+                        // The provenance funnel: only a wire identity becomes
+                        // the durable `Reasoning::id`. A minted identity keys
+                        // accumulation and is rendered on the public stream
+                        // for correlation, but the replayable message carries
+                        // no fabricated provider handle.
                         let reasoning = Reasoning {
-                            id: Some(id),
+                            id: id.as_wire().map(str::to_owned),
                             content: vec![content],
                         };
-                        stream.parts.reasoning_full(reasoning.clone());
+                        stream.parts.reasoning_full(&id, reasoning.clone());
                         Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
                     }
                     RawStreamingChoice::ReasoningDelta { id, reasoning } => {
                         stream.parts.reasoning_delta(&id, &reasoning);
                         Poll::Ready(Some(Ok(StreamedAssistantContent::ReasoningDelta {
-                            id,
+                            id: id.render(),
                             reasoning,
                         })))
                     }
                     RawStreamingChoice::ToolCall(raw_tool_call) => {
                         let minted_internal_call_id = raw_tool_call.internal_call_id.clone();
+                        let part_id = raw_tool_call.id.clone();
                         let tool_call: ToolCall = raw_tool_call.into();
                         // A wire that fragmented this call's input already
                         // published an internal id on its deltas; the
@@ -945,9 +936,11 @@ impl Stream for StreamingCompletionResponse {
                         // correlated with them (the contract on
                         // `StreamedAssistantContent::ToolCall`). With no open
                         // assembly the emitter's minted id is kept.
-                        let internal_call_id = stream
-                            .parts
-                            .tool_call(tool_call.clone(), minted_internal_call_id);
+                        let internal_call_id = stream.parts.tool_call(
+                            &part_id,
+                            tool_call.clone(),
+                            minted_internal_call_id,
+                        );
                         Poll::Ready(Some(Ok(StreamedAssistantContent::ToolCall {
                             tool_call,
                             internal_call_id,
@@ -1077,7 +1070,7 @@ mod tests {
 
     fn create_reasoning_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {                id: "rs_1".to_string(),
+            yield Ok(RawStreamingChoice::Reasoning {                id: PartId::wire("rs_1"),
                 content: ReasoningContent::Text {
                     text: "step one".to_string(),
                     signature: Some("sig_1".to_string()),
@@ -1092,7 +1085,7 @@ mod tests {
 
     fn create_reasoning_only_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {                id: "rs_only".to_string(),
+            yield Ok(RawStreamingChoice::Reasoning {                id: PartId::wire("rs_only"),
                 content: ReasoningContent::Summary("hidden summary".to_string()),
             });
             yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
@@ -1103,7 +1096,7 @@ mod tests {
 
     fn create_interleaved_stream() -> StreamingCompletionResponse {
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Reasoning {                id: "rs_interleaved".to_string(),
+            yield Ok(RawStreamingChoice::Reasoning {                id: PartId::wire("rs_interleaved"),
                 content: ReasoningContent::Text {
                     text: "chain-of-thought".to_string(),
                     signature: None,
@@ -1143,7 +1136,7 @@ mod tests {
     fn create_text_metadata_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::TextStart {
-                id: "block-0".to_string(),
+                id: PartId::wire("block-0"),
                 additional_params: None,
             });
             yield Ok(RawStreamingChoice::Message("first".to_string()));
@@ -1166,7 +1159,7 @@ mod tests {
                 }]
             })));
             yield Ok(RawStreamingChoice::TextStart {
-                id: "block-1".to_string(),
+                id: PartId::wire("block-1"),
                 additional_params: Some(serde_json::json!({
                     "block": 2
                 })),
@@ -1257,7 +1250,7 @@ mod tests {
         // streaming path must reconcile it exactly as the unary path does.
         let raw: RawStreamingResult<Usage> = Box::pin(stream! {
             yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall {
-                id: "call_1".to_string(),
+                id: PartId::wire("call_1"),
                 call_id: None,
                 internal_call_id: "internal_1".to_string(),
                 name: "lookup".to_string(),
@@ -1608,11 +1601,11 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ToolCallDelta {
-                    id: "tc1".to_string(),
+                    id: PartId::wire("tc1"),
                     content: ToolCallDeltaContent::Name("add".to_string()),
                 });
                 yield Ok(RawStreamingChoice::ToolCallDelta {
-                    id: "tc1".to_string(),
+                    id: PartId::wire("tc1"),
                     content: ToolCallDeltaContent::Delta("{\"x\":1}".to_string()),
                 });
                 yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
@@ -1695,10 +1688,10 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: "rs_1".to_string(),
+                    id: PartId::wire("rs_1"),
                     reasoning: "partial ".to_string(),
                 });
-                yield Ok(RawStreamingChoice::Reasoning {                    id: "rs_1".to_string(),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: PartId::wire("rs_1"),
                     content: ReasoningContent::Text {
                         text: "the complete chain".to_string(),
                         signature: Some("sig_1".to_string()),
@@ -1736,10 +1729,10 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: "rs_1".to_string(),
+                    id: PartId::wire("rs_1"),
                     reasoning: "first item deltas".to_string(),
                 });
-                yield Ok(RawStreamingChoice::Reasoning {                    id: "rs_2".to_string(),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: PartId::wire("rs_2"),
                     content: ReasoningContent::Text {
                         text: "a different item".to_string(),
                         signature: None,
@@ -1772,7 +1765,7 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: "rs_1".to_string(),
+                    id: PartId::wire("rs_1"),
                     reasoning: "partial ".to_string(),
                 });
                 yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall::new(
@@ -1780,7 +1773,7 @@ mod tests {
                     "probe".to_string(),
                     serde_json::json!({}),
                 )));
-                yield Ok(RawStreamingChoice::Reasoning {                    id: "rs_1".to_string(),
+                yield Ok(RawStreamingChoice::Reasoning {                    id: PartId::wire("rs_1"),
                     content: ReasoningContent::Text {
                         text: "the full block".to_string(),
                         signature: None,
@@ -1826,11 +1819,11 @@ mod tests {
             TEST_PROVIDER,
             to_stream_result(stream! {
                 yield Ok(RawStreamingChoice::ReasoningDelta {
-                    id: "rs_1".to_string(),
+                    id: PartId::wire("rs_1"),
                     reasoning: "identified deltas".to_string(),
                 });
                 yield Ok(RawStreamingChoice::Reasoning {
-                    id: "reasoning-0".to_string(),
+                    id: PartId::wire("reasoning-0"),
                     content: ReasoningContent::Text {
                         text: "anonymous block".to_string(),
                         signature: None,

@@ -391,11 +391,12 @@ fn step_start_to_choice(
             id,
         }) => {
             let name = name?;
-            let call_id = id.unwrap_or_else(|| name.clone());
+            // The wire's id when present; never the tool name — a
+            // name-as-id fallback collides two same-tool calls in one turn.
             Some(shared_parts::function_call(
                 name,
                 arguments.unwrap_or(Value::Object(Map::new())),
-                Some(call_id),
+                id,
                 None,
             ))
         }
@@ -428,11 +429,12 @@ fn content_delta_to_choice(
             id,
         }) => {
             let name = name?;
-            let call_id = id.unwrap_or_else(|| name.clone());
+            // The wire's id when present; never the tool name — a
+            // name-as-id fallback collides two same-tool calls in one turn.
             Some(shared_parts::function_call(
                 name,
                 arguments.unwrap_or(Value::Object(Map::new())),
-                Some(call_id),
+                id,
                 None,
             ))
         }

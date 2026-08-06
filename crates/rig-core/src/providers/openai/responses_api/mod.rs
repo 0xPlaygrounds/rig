@@ -672,20 +672,14 @@ fn require_call_id(call_id: Option<String>, context: &str) -> Result<String, Com
 fn openai_reasoning_from_core(
     reasoning: &crate::message::Reasoning,
 ) -> Result<Option<OpenAIReasoning>, MessageError> {
+    // Only wire-genuine ids exist in durable histories: the streaming layer
+    // populates `Reasoning::id` exclusively from `PartId::Wire`, so an
+    // id-less (rig-keyed) reasoning item arrives here as `None` and drops
+    // from request input, mirroring main's handling. No provenance gate is
+    // needed — a fabricated id structurally cannot reach this function.
     let Some(id) = reasoning.id.clone() else {
         return Ok(None);
     };
-    // Provenance gate: ids in the reserved boundary-minted namespaces
-    // (`reasoning-{n}`, `block-{n}`, `output-{n}` — see
-    // `streaming::MINTED_ID_NAMESPACES`) were fabricated by rig, not
-    // issued by OpenAI. Serializing one upstream risks a 400 on multi-turn:
-    // reachable via cross-provider replay (another provider's reasoning
-    // history swapped onto a Responses model) and via a same-provider
-    // delta-only stream whose deltas lacked `item_id`. Mirror main's handling
-    // of id-less reasoning: drop the item from request input.
-    if crate::streaming::is_boundary_minted_id(&id) {
-        return Ok(None);
-    }
 
     let mut summary = Vec::new();
     let mut reasoning_content = Vec::new();
@@ -3066,12 +3060,16 @@ mod tests {
         let mut stream = model.stream(request).await.expect("mock stream");
         while stream.next().await.is_some() {}
         let choice = stream.choice.clone();
+        // The provenance funnel: a minted stream identity never becomes the
+        // durable `Reasoning::id`, so the replayed history carries no id at
+        // all — there is nothing for a serializer gate to filter, and no
+        // gate exists.
         assert!(
             choice.iter().any(
                 |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
-                    if reasoning.id.as_deref() == Some("reasoning-0"))
+                    if reasoning.id.is_none())
             ),
-            "precondition: the replayed history carries the minted id"
+            "a minted stream identity must aggregate as an id-less reasoning part"
         );
 
         let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
@@ -3081,22 +3079,8 @@ mod tests {
         .expect("history should convert");
         assert!(
             reasoning_input_items(&items).is_empty(),
-            "a boundary-minted reasoning id must not reach the request input"
+            "an id-less reasoning part must not reach the request input"
         );
-
-        // The anthropic/bedrock namespace is reserved too.
-        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
-            id: None,
-            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
-                id: Some("block-1".to_string()),
-                content: vec![message::ReasoningContent::Text {
-                    text: "anthropic thought".to_string(),
-                    signature: None,
-                }],
-            })),
-        })
-        .expect("history should convert");
-        assert!(reasoning_input_items(&items).is_empty());
 
         // A wire-plausible id is provider-issued and must round-trip.
         let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
@@ -3115,10 +3099,10 @@ mod tests {
         assert_eq!(reasoning[0]["id"], "rs_0123");
     }
 
-    /// F7 leak route (b): a same-provider delta-only Responses stream whose
-    /// reasoning deltas lack `item_id` aggregates under the minted
-    /// `output-{index}` identity; with no `output_item.done` to supersede it,
-    /// that id must be filtered before the next request.
+    /// F7 leak route (b), closed structurally: a same-provider delta-only
+    /// Responses stream whose reasoning deltas lack `item_id` keys
+    /// accumulation by a minted identity that never becomes a durable id, so
+    /// the next request carries no fabricated `output-{index}` item.
     #[tokio::test]
     async fn delta_only_stream_minted_output_ids_are_not_serialized_upstream() {
         use crate::test_utils::streaming_conformance::{fixtures, ok_chunks};
@@ -3153,12 +3137,14 @@ mod tests {
             .drive(ok_chunks(frames))
             .await
             .expect("stream should complete");
+        // The minted `output_index` identity keys accumulation only; the
+        // aggregated part carries no durable id, so nothing can go upstream.
         assert!(
             drained.choice.iter().any(
                 |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
-                    if reasoning.id.as_deref() == Some("output-0"))
+                    if reasoning.id.is_none())
             ),
-            "precondition: the delta-only stream aggregates under the minted id"
+            "an id-less delta stream must aggregate as an id-less reasoning part"
         );
 
         let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
@@ -3168,7 +3154,7 @@ mod tests {
         .expect("history should convert");
         assert!(
             reasoning_input_items(&items).is_empty(),
-            "the minted `output-0` identity must not go back upstream"
+            "an id-less reasoning part must not reach the request input"
         );
     }
 

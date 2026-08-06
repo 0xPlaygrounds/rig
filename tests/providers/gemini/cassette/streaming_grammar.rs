@@ -452,9 +452,15 @@ async fn parallel_function_calls_stay_distinct() {
                 2,
                 "aggregated choice should contain exactly the two parallel calls"
             );
+            // The recorded turn carries no wire ids, and rig no longer
+            // fabricates durable identifiers (not from an index, not from the
+            // tool name): both calls replay with the id absent, and stay
+            // distinct as parts — two calls, in wire order, uncorrupted.
+            assert_eq!(aggregated[0].id, "");
+            assert_eq!(aggregated[1].id, "");
             assert_ne!(
-                aggregated[0].id, aggregated[1].id,
-                "parallel calls must keep distinct identities"
+                aggregated[0].function.name, aggregated[1].function.name,
+                "the two parallel calls stay distinct parts"
             );
         },
     )

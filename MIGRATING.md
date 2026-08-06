@@ -302,19 +302,20 @@ inspect the preserved event JSON instead.
 
 ### Streaming reasoning events carry mandatory identity
 
-`RawStreamingChoice::Reasoning` and `RawStreamingChoice::ReasoningDelta` — and
-the public `StreamedAssistantContent::ReasoningDelta` — now carry `id: String`
-instead of `id: Option<String>`. Reasoning interleaves with other output on
-real wires (OpenAI Responses emits the completed item after tool calls), so
-aggregation keys by identity rather than guessing by adjacency; an optional id
-made the correct behavior unimplementable.
+`RawStreamingChoice::Reasoning` and `RawStreamingChoice::ReasoningDelta` now
+carry `id: PartId` instead of `id: Option<String>`, and the public
+`StreamedAssistantContent::ReasoningDelta` carries a rendered `id: String`.
+Reasoning interleaves with other output on real wires (OpenAI Responses emits
+the completed item after tool calls), so aggregation keys by identity rather
+than guessing by adjacency; an optional id made the correct behavior
+unimplementable.
 
-Provider authors: propagate the wire's item identity (the Responses `item_id`,
-a content-block index) when it exists; when the wire has none, mint a
-stream-stable id at the boundary (a per-stream constant like `"reasoning-0"`
-preserves merge-into-one-block behavior for non-interleaving protocols). All
-deltas of one block must share one id with that block's completed form —
-that id is what lets a full block supersede its deltas.
+Provider authors: propagate the wire's item identity as `PartId::wire(...)`
+(the Responses `item_id`) when it exists; when the wire has none, mint one
+via `SyntheticIds` / `MintKind::for_wire_index` (a per-stream constant minted
+identity preserves merge-into-one-block behavior for non-interleaving
+protocols). All deltas of one block must share one id with that block's
+completed form — that id is what lets a full block supersede its deltas.
 
 Consumers matching on `ReasoningDelta { id, .. }` drop the `Option` unwrap.
 A full `Reasoning` event supersedes prior deltas with the same id — render it
@@ -360,7 +361,7 @@ streaming and unary gRPC paths.
 
 ### Streaming text blocks carry mandatory identity
 
-`RawStreamingChoice::TextStart` now carries `id: String` alongside its
+`RawStreamingChoice::TextStart` now carries `id: PartId` alongside its
 optional `additional_params`. The contract mirrors [reasoning
 identity](#streaming-reasoning-events-carry-mandatory-identity): distinct wire
 output items must aggregate as distinct text parts, so aggregation keys text
@@ -382,6 +383,49 @@ Minted text ids are internal bookkeeping only: aggregated
 `AssistantContent::Text` parts carry no id, so nothing changes downstream for
 consumers — except that multi-item streams now produce the correct number of
 text parts.
+
+### Streaming part identity carries provenance (`PartId`)
+
+Every identity-bearing raw streaming event — `TextStart`, `ToolCallDelta`,
+`Reasoning`, `ReasoningDelta`, `ToolInputEnd::id`, and
+`RawStreamingToolCall::id` — now uses `rig_core::streaming::PartId` instead
+of a `String`:
+
+- `PartId::Wire(String)` is an identifier the provider put on the wire. It is
+  the only identity that becomes a durable provider handle
+  (`Reasoning::id`, `ToolCall::id`) and round-trips upstream.
+- `PartId::Minted { kind, index }` is an identity rig fabricated at a stream
+  boundary because the wire supplied none. It keys accumulation for the life
+  of the stream and structurally cannot reach a request: `PartId` implements
+  no `Serialize`, and the only request-serializable form (`WireId`) is
+  constructible solely from `PartId::Wire`. The reserved string namespaces
+  (`reasoning-{n}`, `block-{n}`, `output-{n}`, `tool-{index}`, `text-{n}`)
+  and the `is_boundary_minted_id` provenance gate are gone — provenance
+  travels in the type, so there is nothing to parse and no serializer gate
+  to keep in sync.
+
+Provider authors: wrap wire identities with `PartId::wire(...)` (a plain
+`String`/`&str` also converts via `From`, always to `Wire`); mint via
+`SyntheticIds` (now `rig_core::streaming::SyntheticIds`, minting `PartId`
+values; the old string-based helper in `providers::internal::adapter` is
+re-exported from its new home) or `MintKind::for_wire_index`.
+
+Public stream consumers: `StreamedAssistantContent::ReasoningDelta` /
+`ToolCallDelta` ids are the rendered form. A wire id renders verbatim; a
+minted id renders namespaced (`rig:reasoning:0`) and is **unique within one
+stream only** — it restarts on every turn of a multi-turn run, so never key
+across streams by it (correlate across a run with `internal_call_id`
+instead). Aggregated `Reasoning` parts from minted-identity streams now carry
+`id: None` (previously the minted string leaked into history and, on some
+providers, upstream).
+
+Behavior change on id-less wires (gemini REST/interactions, ollama,
+chat-compat gateways): rig no longer fabricates a durable tool-call id — not
+from an index, and not from the tool name (two calls to the same tool in one
+turn no longer collide). The durable `ToolCall::id` is the absent (empty)
+value and serializers omit it; Gemini's `functionResponse.name` is resolved
+by pairing each result with its assistant-turn call in the history (by
+`call_id` when the wire supplied one, else in wire order).
 
 ### The streaming wire-adapter surface is public and contractual
 
@@ -437,6 +481,37 @@ implementation must uphold:
 - **`is_finished`**: return `true` after `interpret` consumed the wire's own
   in-band terminal failure; the driver then stops without running `finish` —
   the adapter has already pushed its flush-then-`Err` sequence.
+
+### Raw streaming surface: smaller, stricter events
+
+Four adjacent breaking changes to the raw streaming vocabulary (none of these
+types are `#[non_exhaustive]`, so exhaustive matches and constructions
+break):
+
+- `RawStreamingChoice::ToolCallDelta` lost its `internal_call_id` field. The
+  shared accumulator now mints the internal correlation id when a call's
+  assembly opens and returns it on every fragment; adapters no longer track
+  per-call state. Consumers read it from
+  `StreamedAssistantContent::ToolCallDelta::internal_call_id`, unchanged.
+- `RawStreamingChoice` gained a `ToolInputEnd` variant — the shared
+  assembler's signal to finalize a fragmented tool call. Exhaustive matches
+  over the enum need a new arm.
+- `OpenAICompatibleProvider::decorate_streaming_tool_call` changed from
+  mutating a `&mut HashMap<usize, RawStreamingToolCall>` in place to
+  returning `Option<ToolCallDecoration>` — an event rewrite the adapter
+  applies, instead of a hook into assembler state.
+- `OutputFunctionCall::arguments` (OpenAI Responses) is a
+  `FunctionCallArguments` newtype over the raw string, so unparseable
+  restated arguments can be routed through assembly instead of failing the
+  decode. Call `.parse()` / `.as_str()` where a `String` was read before.
+
+Separately, the Anthropic and OpenAI Responses streaming event enums no
+longer carry a `#[serde(other)]` catch-all: an unrecognized event now decodes
+through the wire classifier as `Unknown` (warn-and-skip, surfaced verbatim)
+instead of being silently absorbed into a unit variant — and a frame that
+matches a modeled event's tag but not its shape is a decode **error** rather
+than a silent absorb. Code deserializing those enums directly must handle
+the error case.
 
 ### Completion responses are concrete and normalized
 

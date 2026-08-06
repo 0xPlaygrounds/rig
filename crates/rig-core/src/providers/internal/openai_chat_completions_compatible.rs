@@ -18,7 +18,8 @@ use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming::{
-    self, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent, UnparseableToolInput,
+    self, MintKind, PartId, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent,
+    UnparseableToolInput,
 };
 use crate::wasm_compat::WasmCompatSend;
 
@@ -251,7 +252,7 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     fn detail_reasoning(
         &self,
         _detail: &Self::Detail,
-    ) -> Option<(String, crate::message::ReasoningContent)> {
+    ) -> Option<(PartId, crate::message::ReasoningContent)> {
         None
     }
 
@@ -431,7 +432,7 @@ where
                 && !name.is_empty()
             {
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: slot.key().to_owned(),
+                    id: slot.key().clone(),
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }));
             }
@@ -440,7 +441,7 @@ where
                 && !arguments.is_empty()
             {
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: slot.key().to_owned(),
+                    id: slot.key().clone(),
                     content: ToolCallDeltaContent::Delta(arguments.clone()),
                 }));
             }
@@ -473,8 +474,11 @@ where
         {
             out.push(Ok(RawStreamingChoice::ReasoningDelta {
                 // `reasoning_content` deltas carry no wire id and never
-                // interleave; per-stream constant.
-                id: "reasoning-0".to_string(),
+                // interleave; per-stream constant minted identity.
+                id: PartId::Minted {
+                    kind: MintKind::Reasoning,
+                    index: 0,
+                },
                 reasoning,
             }));
         }

@@ -139,18 +139,21 @@ async fn thinking_and_tool_call_in_one_stream() {
                 })
                 .expect("aggregated choice should keep the tool call");
             assert_eq!(aggregated.id, streamed.id, "id should aggregate unchanged");
+            // Ollama's wire carries no tool-call id and rig fabricates none:
+            // the durable id is absent (empty), and serializers omit it.
             assert!(
-                !streamed.id.is_empty(),
-                "id-less wire calls must carry a minted, non-empty grammar id"
+                streamed.id.is_empty(),
+                "an id-less wire call must not carry a fabricated durable id"
             );
         },
     )
     .await;
 }
 
-/// Parallel tool calls on an **id-less** wire: both calls keep distinct minted
-/// identities and uncorrupted arguments — the 2258 item-0 collapse pin against
-/// real traffic.
+/// Parallel tool calls on an **id-less** wire: both calls survive as
+/// distinct parts with uncorrupted arguments — the 2258 item-0 collapse pin
+/// against real traffic. Stream-side distinctness comes from minted
+/// accumulation identities; durably, neither call carries a fabricated id.
 #[tokio::test]
 async fn parallel_id_less_tool_calls_stay_distinct() {
     with_ollama_cassette(
@@ -194,8 +197,8 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                     "{name} id should aggregate"
                 );
                 assert!(
-                    !streamed.id.is_empty(),
-                    "{name} must carry a minted, non-empty grammar id"
+                    streamed.id.is_empty(),
+                    "{name} must not carry a fabricated durable id"
                 );
                 assert!(
                     streamed.function.arguments.is_object(),
@@ -212,14 +215,14 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                 run.tool_calls.len(),
                 "every streamed call should survive as its own aggregated part"
             );
-            let mut ids: Vec<&str> = run.tool_calls.iter().map(|call| call.id.as_str()).collect();
-            ids.sort_unstable();
-            let total = ids.len();
-            ids.dedup();
-            assert_eq!(
-                ids.len(),
-                total,
-                "id-less parallel calls must keep distinct minted identities"
+            // Distinctness is structural — every streamed call is its own
+            // aggregated part (asserted above) — not fabricated: all durable
+            // ids are absent, so nothing invented can collide or leak
+            // upstream. Cross-referencing streamed and aggregated calls
+            // happens by internal correlation ids on the public stream.
+            assert!(
+                run.tool_calls.iter().all(|call| call.id.is_empty()),
+                "no id-less call may carry a fabricated durable id"
             );
         },
     )

@@ -285,11 +285,11 @@ fn stream_from_script(
             // a tool-input end; the shared accumulator assembles the call and
             // mints the correlation id at the first fragment.
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: id.clone(),
+                id: rig_agent::streaming::PartId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Name(name.clone()),
             }));
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: id.clone(),
+                id: rig_agent::streaming::PartId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
             }));
             events.push(Ok(RawStreamingChoice::ToolInputEnd(
@@ -301,11 +301,11 @@ fn stream_from_script(
         }
         Turn::Rich { text, .. } => {
             events.push(Ok(RawStreamingChoice::Reasoning {
-                id: "reasoning-1".to_owned(),
+                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(1),
                 content: ReasoningContent::Summary("summary".to_owned()),
             }));
             events.push(Ok(RawStreamingChoice::ReasoningDelta {
-                id: "reasoning-2".to_owned(),
+                id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(2),
                 reasoning: "reasoning delta".to_owned(),
             }));
             events.push(Ok(RawStreamingChoice::Unknown(serde_json::json!({

@@ -98,8 +98,12 @@ impl WireAdapter for GrpcAdapter {
                                     out.push(Ok(streaming::RawStreamingChoice::Reasoning {
                                         // Thought parts carry no wire id or
                                         // block boundaries; a per-stream
-                                        // constant merges them into one item.
-                                        id: "reasoning-0".to_string(),
+                                        // constant minted identity merges
+                                        // them into one item.
+                                        id: rig_core::streaming::PartId::Minted {
+                                            kind: rig_core::streaming::MintKind::Reasoning,
+                                            index: 0,
+                                        },
                                         content: rig_core::message::ReasoningContent::Text {
                                             text: std::mem::take(&mut self.thought_buffer),
                                             signature: Some(signature),
@@ -109,8 +113,12 @@ impl WireAdapter for GrpcAdapter {
                                     out.push(Ok(streaming::RawStreamingChoice::ReasoningDelta {
                                         // Thought parts carry no wire id or
                                         // block boundaries; a per-stream
-                                        // constant merges them into one item.
-                                        id: "reasoning-0".to_string(),
+                                        // constant minted identity merges
+                                        // them into one item.
+                                        id: rig_core::streaming::PartId::Minted {
+                                            kind: rig_core::streaming::MintKind::Reasoning,
+                                            index: 0,
+                                        },
                                         reasoning: text.clone(),
                                     }));
                                 }

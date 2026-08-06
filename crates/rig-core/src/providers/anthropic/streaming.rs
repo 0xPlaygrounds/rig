@@ -16,8 +16,8 @@ use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
-    self, RawStreamingChoice, RawStreamingResult, StreamFinal, ToolCallDeltaContent, ToolInputEnd,
-    UnparseableToolInput,
+    self, MintKind, PartId, RawStreamingChoice, RawStreamingResult, StreamFinal,
+    ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -614,7 +614,7 @@ fn handle_event(
                     // Emit the delta so UI can show progress; the shared
                     // accumulator assembles the fragments.
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: id.clone(),
+                        id: PartId::wire(id.clone()),
                         content: ToolCallDeltaContent::Delta(partial_json.clone()),
                     }));
                 }
@@ -629,7 +629,7 @@ fn handle_event(
                 Some(Ok(RawStreamingChoice::ReasoningDelta {
                     // Anthropic has no reasoning item id; the content-block
                     // index is stable across a block's deltas and its stop.
-                    id: format!("block-{index}"),
+                    id: MintKind::Block.for_wire_index(*index as u64),
                     reasoning: thinking.clone(),
                 }))
             }
@@ -673,7 +673,7 @@ fn handle_event(
                 Some(Ok(RawStreamingChoice::TextStart {
                     // Anthropic has no text item id; the content-block index
                     // is stable for the block's lifetime.
-                    id: format!("block-{index}"),
+                    id: MintKind::Block.for_wire_index(*index as u64),
                     additional_params,
                 }))
             }
@@ -691,7 +691,7 @@ fn handle_event(
             }
             raw @ (Content::WebSearchToolResult { .. }
             | Content::CodeExecutionToolResult { .. }) => Some(Ok(RawStreamingChoice::TextStart {
-                id: format!("block-{index}"),
+                id: MintKind::Block.for_wire_index(*index as u64),
                 additional_params: Some(json!({
                     super::completion::ANTHROPIC_RAW_CONTENT_KEY: raw
                 })),
@@ -699,7 +699,7 @@ fn handle_event(
             Content::ToolUse { id, name, .. } => {
                 *current_tool_call = Some(id.clone());
                 Some(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: id.clone(),
+                    id: PartId::wire(id.clone()),
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }))
             }
@@ -722,7 +722,7 @@ fn handle_event(
             }
             Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
                 // Derive identity from the content-block index (no wire id).
-                id: format!("block-{index}"),
+                id: MintKind::Block.for_wire_index(*index as u64),
                 content: ReasoningContent::Redacted { data: data.clone() },
             })),
             // Handle other content types - they don't need special handling
@@ -744,7 +744,7 @@ fn handle_event(
                     return Some(Ok(RawStreamingChoice::Reasoning {
                         // Same block index as this block's ThinkingDeltas, so
                         // the full block supersedes the accumulated deltas.
-                        id: format!("block-{index}"),
+                        id: MintKind::Block.for_wire_index(*index as u64),
                         content: ReasoningContent::Text { text, signature },
                     }));
                 }
@@ -765,7 +765,7 @@ fn handle_event(
                 };
 
                 return Some(Ok(RawStreamingChoice::TextStart {
-                    id: format!("block-{index}"),
+                    id: MintKind::Block.for_wire_index(*index as u64),
                     additional_params: Some(json!({
                         super::completion::ANTHROPIC_RAW_CONTENT_KEY: Content::ServerToolUse {
                             id: server_tool_use.id,
@@ -1224,7 +1224,7 @@ mod tests {
 
         match choice {
             RawStreamingChoice::ReasoningDelta { id, reasoning, .. } => {
-                assert_eq!(id, "block-0");
+                assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(0));
                 assert_eq!(reasoning, "Analyzing the request...");
             }
             _ => panic!("Expected ReasoningDelta choice"),
@@ -1318,7 +1318,7 @@ mod tests {
                 id,
                 content: ReasoningContent::Text { text, signature },
             } => {
-                assert_eq!(id, "block-0");
+                assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(0));
                 assert_eq!(text, "");
                 assert_eq!(signature.as_deref(), Some("the_whole_signature"));
             }
@@ -1431,7 +1431,7 @@ mod tests {
                 id,
                 content: ReasoningContent::Text { text, signature },
             } => {
-                assert_eq!(id, "block-2");
+                assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(2));
                 assert_eq!(text, "opening rest");
                 assert_eq!(signature, None);
             }
@@ -1557,7 +1557,7 @@ mod tests {
 
         match choice {
             RawStreamingChoice::ToolCallDelta { id, content } => {
-                assert_eq!(id, "tool_123");
+                assert_eq!(id.as_wire(), Some("tool_123"));
                 match content {
                     ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
                     _ => panic!("Expected Delta content"),
@@ -1618,7 +1618,7 @@ mod tests {
 
         match final_result.unwrap().unwrap() {
             RawStreamingChoice::ToolInputEnd(end) => {
-                assert_eq!(end.id, "tool_123");
+                assert_eq!(end.id.as_wire(), Some("tool_123"));
                 assert!(matches!(
                     end.on_unparseable,
                     crate::streaming::UnparseableToolInput::Error
@@ -1899,7 +1899,7 @@ mod tests {
         else {
             panic!("expected text-start metadata for code_execution_tool_result");
         };
-        assert_eq!(id, "block-1");
+        assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(1));
         assert_eq!(
             additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
             "code_execution_tool_result"
