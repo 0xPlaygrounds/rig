@@ -1046,7 +1046,12 @@ impl Stream for StreamingCompletionResponse {
                             id: provider_id.map(WireId::into_string),
                             content: vec![content],
                         };
-                        match stream.parts.reasoning_end(&id, Some(restatement), None) {
+                        let completed = stream.parts.reasoning_end(&id, Some(restatement), None);
+                        // The part is finished: drop its delta correlator so a
+                        // reused accumulation key (constant minted keys reopen
+                        // a NEW part) mints a fresh one.
+                        stream.reasoning_correlators.remove(&id);
+                        match completed {
                             Some(completed) => Poll::Ready(Some(Ok(
                                 StreamedAssistantContent::Reasoning(completed),
                             ))),
@@ -1072,7 +1077,12 @@ impl Stream for StreamingCompletionResponse {
                         // the wire never sent would change what downstream
                         // history builders observe.
                         let authoritative = reasoning.is_some() || signature.is_some();
-                        match stream.parts.reasoning_end(&id, reasoning, signature) {
+                        let completed = stream.parts.reasoning_end(&id, reasoning, signature);
+                        // The part is finished: drop its delta correlator so a
+                        // reused accumulation key mints a fresh one for the
+                        // next part (`ReasoningDelta::id` is unique per part).
+                        stream.reasoning_correlators.remove(&id);
+                        match completed {
                             Some(completed) if authoritative => Poll::Ready(Some(Ok(
                                 StreamedAssistantContent::Reasoning(completed),
                             ))),
@@ -1958,6 +1968,53 @@ mod tests {
             .collect();
 
         assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("rs_2")]);
+    }
+
+    /// The public delta correlator is unique per *part*, not per key: when a
+    /// constant minted key (boundary-less wires) is reused for a new block
+    /// after the previous one ended, the new block's deltas carry a fresh
+    /// correlator.
+    #[tokio::test]
+    async fn reused_key_after_end_mints_a_fresh_delta_correlator() {
+        let key = || StreamPartId::Minted {
+            kind: MintKind::Reasoning,
+            index: 0,
+        };
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: key(),
+                    provider_id: None,
+                    reasoning: "block A".to_string(),
+                });
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: key(),
+                    reasoning: None,
+                    signature: None,
+                });
+                yield Ok(RawStreamingChoice::Message("interleaved".to_string()));
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: key(),
+                    provider_id: None,
+                    reasoning: "block B".to_string(),
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+
+        let mut delta_ids = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Ok(StreamedAssistantContent::ReasoningDelta { id, .. }) = item {
+                delta_ids.push(id);
+            }
+        }
+
+        assert_eq!(delta_ids.len(), 2, "one delta per block");
+        assert_ne!(
+            delta_ids[0], delta_ids[1],
+            "distinct parts must not share a correlator"
+        );
     }
 
     #[tokio::test]
