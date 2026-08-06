@@ -123,10 +123,13 @@ pub struct Usage {
     pub billed_units: Option<BilledUnits>,
     #[serde(default)]
     pub tokens: Option<Tokens>,
+    /// Subset of `tokens.input_tokens`; excluded from `billed_units.input_tokens`.
     #[serde(default)]
     pub cached_tokens: Option<f64>,
 }
 
+/// `tokens` is the total-usage counter; `billed_units` excludes cached input
+/// and system overhead, silently undercounting.
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> crate::completion::Usage {
         let mut normalized = crate::completion::Usage::new();
@@ -135,6 +138,8 @@ impl From<&Usage> for crate::completion::Usage {
             normalized.input_tokens = tokens.input_tokens.unwrap_or_default() as u64;
             normalized.output_tokens = tokens.output_tokens.unwrap_or_default() as u64;
             normalized.total_tokens = normalized.input_tokens + normalized.output_tokens;
+            // `cached_input_tokens` is a subset of `input_tokens`, so it's only
+            // reported when Cohere also reports `input_tokens`.
             normalized.cached_input_tokens = usage.cached_tokens.unwrap_or_default() as u64;
         }
 
@@ -563,6 +568,9 @@ pub struct CompletionModel<T = reqwest::Client> {
     pub model: String,
 }
 
+/// Cohere's `tool_choice` is a bare string; only `REQUIRED`/`NONE` are valid.
+/// `Auto` errors below rather than silently mapping to the omitted-field
+/// behavior that would actually let the model decide.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CohereToolChoice {
@@ -721,6 +729,8 @@ where
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         async {
+            // Left unboxed so `provider_response_status`/`_body` can read the
+            // status and body straight off `InvalidStatusCodeWithMessage`.
             let response = self.client.send::<_, bytes::Bytes>(req).await?;
 
             let status = response.status();
