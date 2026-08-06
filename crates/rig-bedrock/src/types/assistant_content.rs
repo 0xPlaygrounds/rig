@@ -222,19 +222,40 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                     .collect();
 
                 if !opaque.is_empty() {
+                    // A mixed block — e.g. `[Summary, Encrypted]`, exactly
+                    // what the OpenAI Responses path builds when
+                    // `encrypted_content` is requested — cannot be
+                    // represented on Converse (one block is either
+                    // `reasoningText` or `redactedContent`). Cross-provider
+                    // replay must degrade, not fail the whole request
+                    // locally: drop the un-representable opaque part(s),
+                    // keep the representable text. Another provider's
+                    // ciphertext is unreadable to Bedrock anyway.
                     if opaque.len() != reasoning.content.len() {
-                        return Err(CompletionError::ProviderError(
-                            "AWS Bedrock cannot represent a reasoning block mixing opaque \
-                             (redacted/encrypted) content with reasoning text in one content block"
-                                .to_owned(),
-                        ));
+                        tracing::warn!(
+                            dropped = opaque.len(),
+                            "dropping opaque (redacted/encrypted) reasoning payloads Bedrock \
+                             cannot carry alongside reasoning text; replaying the text only"
+                        );
+                        let mut text_only = reasoning.clone();
+                        text_only.content.retain(|content| {
+                            !matches!(
+                                content,
+                                rig_core::message::ReasoningContent::Redacted { .. }
+                                    | rig_core::message::ReasoningContent::Encrypted(_)
+                            )
+                        });
+                        return RigAssistantContent(AssistantContent::Reasoning(text_only))
+                            .try_into();
                     }
                     if opaque.len() > 1 {
-                        return Err(CompletionError::ProviderError(
-                            "AWS Bedrock does not support multiple opaque reasoning payloads in \
-                             one content block"
-                                .to_owned(),
-                        ));
+                        // All-opaque with several payloads: keep the first,
+                        // drop the rest — same degrade-don't-fail policy.
+                        tracing::warn!(
+                            dropped = opaque.len() - 1,
+                            "dropping extra opaque reasoning payloads; Bedrock carries one \
+                             redactedContent blob per block"
+                        );
                     }
 
                     // Round-trips the encoding the inbound legs apply: the
@@ -793,24 +814,67 @@ mod tests {
         }
     }
 
+    /// A mixed block degrades: the un-representable opaque part drops (with
+    /// a warning), the text replays — the request must not fail locally.
+    /// Never as flattened plaintext: the ciphertext must not reach the
+    /// `reasoningText` body.
     #[test]
-    fn opaque_reasoning_mixed_with_text_is_rejected_not_flattened() {
+    fn opaque_reasoning_mixed_with_text_drops_the_opaque_part_not_the_request() {
         let mut reasoning = rig_core::message::Reasoning::new("visible thinking");
         reasoning.content.push(ReasoningContent::Redacted {
             data: BASE64_STANDARD.encode(REDACTED_BLOB),
         });
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
-        assert!(matches!(
-            aws_content_block,
-            Err(completion::CompletionError::ProviderError(message))
-                if message.contains("mixing opaque")
-        ));
+        let aws_content_block: aws_bedrock::ContentBlock =
+            rig_content.try_into().expect("mixed block must degrade");
+        match aws_content_block {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::ReasoningText(text),
+            ) => {
+                assert_eq!(text.text(), "visible thinking");
+            }
+            other => panic!("Expected ReasoningText, got {other:?}"),
+        }
     }
 
+    /// The exact shape the OpenAI Responses path builds when
+    /// `encrypted_content` is requested: `[Summary, Encrypted]`. Replaying
+    /// that history to Bedrock must degrade to the summary text, never fail
+    /// the whole request (#2258 B3).
     #[test]
-    fn multiple_opaque_reasoning_payloads_are_rejected() {
+    fn responses_summary_plus_encrypted_reasoning_replays_as_text() {
+        let mut reasoning = rig_core::message::Reasoning::new("");
+        reasoning.content.clear();
+        reasoning
+            .content
+            .push(ReasoningContent::Summary("the summary".to_owned()));
+        reasoning
+            .content
+            .push(ReasoningContent::Encrypted("enc-opaque-blob".to_owned()));
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+
+        let aws_content_block: aws_bedrock::ContentBlock = rig_content
+            .try_into()
+            .expect("the Responses encrypted shape must degrade, not fail the request");
+        match aws_content_block {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::ReasoningText(text),
+            ) => {
+                assert_eq!(text.text(), "the summary");
+                assert!(
+                    !text.text().contains("enc-opaque-blob"),
+                    "ciphertext must never flatten into the plaintext body"
+                );
+            }
+            other => panic!("Expected ReasoningText, got {other:?}"),
+        }
+    }
+
+    /// All-opaque with several payloads keeps the first and drops the rest
+    /// (Converse carries one `redactedContent` blob per block).
+    #[test]
+    fn multiple_opaque_reasoning_payloads_keep_the_first() {
         let mut reasoning =
             rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(REDACTED_BLOB));
         reasoning.content.push(ReasoningContent::Redacted {
@@ -818,12 +882,17 @@ mod tests {
         });
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
-        assert!(matches!(
-            aws_content_block,
-            Err(completion::CompletionError::ProviderError(message))
-                if message.contains("multiple opaque reasoning payloads")
-        ));
+        let aws_content_block: aws_bedrock::ContentBlock = rig_content
+            .try_into()
+            .expect("multiple opaque payloads must degrade");
+        match aws_content_block {
+            aws_bedrock::ContentBlock::ReasoningContent(
+                aws_bedrock::ReasoningContentBlock::RedactedContent(blob),
+            ) => {
+                assert_eq!(blob.as_ref(), REDACTED_BLOB);
+            }
+            other => panic!("Expected RedactedContent, got {other:?}"),
+        }
     }
 
     #[test]
