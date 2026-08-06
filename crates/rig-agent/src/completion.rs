@@ -83,6 +83,15 @@ impl PromptError {
         }
     }
 
+    /// Returns the HTTP response headers exposed by a wrapped completion error,
+    /// when they were captured (e.g. `Retry-After` on a 429).
+    pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+        match self {
+            Self::CompletionError(error) => error.provider_response_headers(),
+            _ => None,
+        }
+    }
+
     pub(crate) fn prompt_cancelled(
         chat_history: impl IntoIterator<Item = Message>,
         reason: impl Into<String>,
@@ -130,6 +139,15 @@ impl StructuredOutputError {
     pub fn provider_response_status(&self) -> Option<http::StatusCode> {
         match self {
             Self::PromptError(error) => error.provider_response_status(),
+            _ => None,
+        }
+    }
+
+    /// Returns the HTTP response headers exposed through the wrapped prompt
+    /// error, when they were captured (e.g. `Retry-After` on a 429).
+    pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+        match self {
+            Self::PromptError(error) => error.provider_response_headers(),
             _ => None,
         }
     }
@@ -201,6 +219,7 @@ mod provider_response_tests {
             http_client::Error::InvalidStatusCodeWithMessage(
                 http::StatusCode::UNAUTHORIZED,
                 body.to_string(),
+                None,
             ),
         ));
 
@@ -214,6 +233,39 @@ mod provider_response_tests {
             Some(serde_json::json!({
                 "error": { "message": "unauthorized" }
             }))
+        );
+    }
+
+    #[test]
+    fn prompt_error_provider_response_helpers_forward_captured_headers() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::RETRY_AFTER,
+            http::HeaderValue::from_static("20"),
+        );
+        let error = PromptError::CompletionError(CompletionError::HttpError(
+            http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                r#"{"error":{"message":"rate limited"}}"#.to_string(),
+                Some(Box::new(headers)),
+            ),
+        ));
+
+        assert_eq!(
+            error
+                .provider_response_headers()
+                .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                .and_then(|value| value.to_str().ok()),
+            Some("20"),
+        );
+
+        let error = StructuredOutputError::PromptError(Box::new(error));
+        assert_eq!(
+            error
+                .provider_response_headers()
+                .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                .and_then(|value| value.to_str().ok()),
+            Some("20"),
         );
     }
 

@@ -530,18 +530,21 @@ where
                 Err(VerifyError::InvalidAuthentication)
             }
             StatusCode::INTERNAL_SERVER_ERROR => {
+                let headers = Box::new(response.headers().clone());
                 let text = http_client::text(response).await?;
                 Err(VerifyError::HttpError(
                     http_client::Error::InvalidStatusCodeWithMessage(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         text,
+                        Some(headers),
                     ),
                 ))
             }
             status if status.as_u16() == 529 => {
+                let headers = Box::new(response.headers().clone());
                 let text = http_client::text(response).await?;
                 Err(VerifyError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                    http_client::Error::InvalidStatusCodeWithMessage(status, text, Some(headers)),
                 ))
             }
             _ => {
@@ -550,9 +553,14 @@ where
                 if status.is_success() {
                     Ok(())
                 } else {
+                    let headers = Box::new(response.headers().clone());
                     let text: String = String::from_utf8_lossy(&response.into_body().await?).into();
                     Err(VerifyError::HttpError(
-                        http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                        http_client::Error::InvalidStatusCodeWithMessage(
+                            status,
+                            text,
+                            Some(headers),
+                        ),
                     ))
                 }
             }

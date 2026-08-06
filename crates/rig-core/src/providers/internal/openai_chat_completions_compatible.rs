@@ -1076,6 +1076,7 @@ mod tests {
             Err(http_client::Error::InvalidStatusCodeWithMessage(
                 http::StatusCode::BAD_GATEWAY,
                 body.to_string(),
+                None,
             )),
         ];
         let client = SequencedStreamingHttpClient::new(chunks);

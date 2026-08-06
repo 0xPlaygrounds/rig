@@ -322,7 +322,7 @@ where
             .send::<_, Vec<u8>>(req)
             .await
             .map_err(|error| match error {
-                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
+                http_client::Error::InvalidStatusCodeWithMessage(status, message, _) => {
                     ModelListingError::api_error_with_context(
                         "Xiaomi MiMo",
                         path,

@@ -89,6 +89,7 @@ macro_rules! impl_provider_response_helpers {
                     Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithMessage(
                         status,
                         body.into(),
+                        None,
                     ))
                 }
             }
@@ -157,6 +158,25 @@ macro_rules! impl_provider_response_helpers {
                     _ => None,
                 }
             }
+
+            /// Returns the HTTP response headers when this error preserved them.
+            ///
+            /// Rig's bundled HTTP clients capture the response headers whenever a
+            /// non-success status error is built from a live response, so
+            /// rate-limit metadata such as `Retry-After` or `x-ratelimit-*`
+            /// stays available to backoff logic.
+            ///
+            /// Returns `None` when the error carries no captured headers: the
+            /// `ProviderResponse` variant (2xx error envelopes and non-HTTP
+            /// transports), Rig-generated diagnostics, and HTTP errors that were
+            /// constructed from only a status and body (e.g. via
+            /// [`Self::from_http_response`]).
+            pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+                match self {
+                    Self::HttpError(error) => error.non_success_headers(),
+                    _ => None,
+                }
+            }
         }
     };
 }
@@ -219,6 +239,42 @@ mod tests {
             let err = <$err>::from_provider_body("");
             assert_eq!(err.provider_response_body(), Some(""));
             assert!(err.provider_response_json().expect("ok").is_none());
+
+            // Headers are only available when captured at construction: the
+            // status+body funnels never have them...
+            let err = <$err>::from_http_response(StatusCode::SERVICE_UNAVAILABLE, body);
+            assert!(
+                err.provider_response_headers().is_none(),
+                concat!(
+                    stringify!($err),
+                    ": from_http_response cannot invent headers"
+                ),
+            );
+
+            // ...but an HttpError built from a live response preserves them,
+            // keeping `Retry-After` recoverable for backoff logic.
+            let mut headers = http::HeaderMap::new();
+            headers.insert(
+                http::header::RETRY_AFTER,
+                http::HeaderValue::from_static("20"),
+            );
+            let err = <$err>::HttpError($crate::http_client::Error::InvalidStatusCodeWithMessage(
+                StatusCode::TOO_MANY_REQUESTS,
+                body.to_string(),
+                Some(Box::new(headers)),
+            ));
+            assert_eq!(
+                err.provider_response_headers()
+                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                    .and_then(|value| value.to_str().ok()),
+                Some("20"),
+                concat!(stringify!($err), ": captured Retry-After not surfaced"),
+            );
+            assert_eq!(
+                err.provider_response_status(),
+                Some(StatusCode::TOO_MANY_REQUESTS)
+            );
+            assert_eq!(err.provider_response_body(), Some(body));
         }};
     }
 
