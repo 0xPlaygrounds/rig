@@ -552,16 +552,16 @@ fn macro_body(source: &str, start: usize) -> &str {
     let bytes = body.as_bytes();
     let mut depth = 0usize;
     let mut index = 0usize;
-    while index < bytes.len() {
-        match bytes[index] {
+    while let Some(&byte) = bytes.get(index) {
+        match byte {
             // Ordinary string literal: skip to its closing quote, honoring
             // escapes. A stray `"` inside would otherwise desync the paren
             // tracking and truncate the body (fail OPEN), so string forms
             // are handled explicitly.
             b'"' => {
                 index += 1;
-                while index < bytes.len() {
-                    match bytes[index] {
+                while let Some(&inner) = bytes.get(index) {
+                    match inner {
                         b'\\' => index += 1,
                         b'"' => break,
                         _ => {}
@@ -580,10 +580,11 @@ fn macro_body(source: &str, start: usize) -> &str {
                 }
                 if bytes.get(probe) == Some(&b'"') {
                     index = probe + 1;
-                    while index < bytes.len() {
-                        if bytes[index] == b'"'
-                            && bytes[index + 1..].len() >= hashes
-                            && bytes[index + 1..index + 1 + hashes].iter().all(|b| *b == b'#')
+                    while let Some(&inner) = bytes.get(index) {
+                        if inner == b'"'
+                            && bytes
+                                .get(index + 1..index + 1 + hashes)
+                                .is_some_and(|tail| tail.iter().all(|b| *b == b'#'))
                         {
                             index += hashes;
                             break;
@@ -701,8 +702,12 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
                 ));
             }
         }
-        let warn_sites = shipped.match_indices("warn!").map(|(start, _)| (start, false));
-        let event_sites = shipped.match_indices("event!").map(|(start, _)| (start, true));
+        let warn_sites = shipped
+            .match_indices("warn!")
+            .map(|(start, _)| (start, false));
+        let event_sites = shipped
+            .match_indices("event!")
+            .map(|(start, _)| (start, true));
         for (start, is_event) in warn_sites.chain(event_sites) {
             // Mid-identifier matches (e.g. a `it_would_warn!` test helper)
             // are not the tracing macros.
