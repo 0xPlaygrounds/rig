@@ -1538,6 +1538,23 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         self.finalize_request_body(body)
     }
 
+    /// Map a provider-specific streaming detail payload onto a complete
+    /// reasoning block — its identity and content — that the stream emits as
+    /// the turn's own output. OpenRouter's `reasoning_details` entries of type
+    /// `reasoning.encrypted` are the in-tree case: the wire carries them with
+    /// `reasoning: null`, so this hook is the only place they can reach the
+    /// aggregated choice (and, from there, the next turn's request).
+    ///
+    /// A detail maps to *either* a reasoning block or a
+    /// [`decoration`](Self::decorate_streaming_tool_call), never both.
+    fn streaming_detail_reasoning(
+        &self,
+        detail: &serde_json::Value,
+    ) -> Option<(String, crate::message::ReasoningContent)> {
+        let _ = detail;
+        None
+    }
+
     /// Decorate a streamed tool call from a provider-specific streaming
     /// detail payload, matched by its established provider id. Most
     /// OpenAI-compatible providers do not emit such details.

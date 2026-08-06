@@ -407,6 +407,13 @@ where
         StreamingCompletionResponse::from_terminal(terminal)
     }
 
+    fn detail_reasoning(
+        &self,
+        detail: &Self::Detail,
+    ) -> Option<(String, crate::message::ReasoningContent)> {
+        self.provider.streaming_detail_reasoning(detail)
+    }
+
     fn decorate_tool_call(
         &self,
         detail: &Self::Detail,

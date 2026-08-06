@@ -239,6 +239,22 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
             && should_evict_distinct_named_tool_call(existing, incoming)
     }
 
+    /// Map a provider-specific per-chunk detail onto a complete reasoning
+    /// block (identity, content) that belongs to the turn rather than to any
+    /// one tool call — OpenRouter's `reasoning_details` entries of type
+    /// `reasoning.encrypted` are the in-tree case.
+    ///
+    /// A detail maps to *either* a reasoning block or a
+    /// [`decoration`](Self::decorate_tool_call), never both: the reasoning
+    /// block is the provider's own output, while a decoration is metadata for
+    /// an in-flight tool call keyed by that call's established provider id.
+    fn detail_reasoning(
+        &self,
+        _detail: &Self::Detail,
+    ) -> Option<(String, crate::message::ReasoningContent)> {
+        None
+    }
+
     /// Map a provider-specific per-chunk detail onto a decoration for an
     /// in-flight tool call (matched by its established provider id). This is
     /// the adapter-level event rewrite that replaced the old hook mutating
@@ -379,6 +395,16 @@ where
             self.saw_terminal = true;
         }
 
+        // Reasoning details are the turn's own output, so they are emitted
+        // before this chunk's tool-call events: on the wire the detail that
+        // carries a reasoning block arrives before (or with) the tool call it
+        // precedes, and a reasoning block never depends on an open slot.
+        for detail in &choice.details {
+            if let Some((id, content)) = self.profile.detail_reasoning(detail) {
+                out.push(Ok(RawStreamingChoice::Reasoning { id, content }));
+            }
+        }
+
         for incoming in choice.tool_calls {
             let profile = &self.profile;
             if let Some(evicted) = self.open_tool_calls.evict_if(incoming.index, |existing| {
@@ -433,6 +459,9 @@ where
             }
         }
 
+        // Decorations run after the tool-call loop: they match an in-flight
+        // call by its established provider id, which this chunk may have just
+        // opened.
         for detail in &choice.details {
             if let Some(decoration) = self.profile.decorate_tool_call(detail) {
                 self.open_tool_calls.decorate(decoration);
