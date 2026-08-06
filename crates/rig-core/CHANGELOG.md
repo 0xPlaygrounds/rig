@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(streaming)* [**breaking**] `RawStreamingChoice::ReasoningEnd` gains `wire_sent`; the driver yields the completed `Reasoning` block for a payload-carrying end OR a bare end frame the wire itself sent (anthropic `content_block_stop` on an unsigned thinking block, restoring its pre-lifecycle completed event) — only adapter-synthesized bare ends stay silent. The chat-compat adapter now synthesizes the reasoning end before tool calls as well as text, matching the ollama adapter
+
+- *(ollama)* `ToolCall` gains `id: Option<String>`: modern daemons issue `"id":"call_..."` and rig now preserves it as the durable tool-call id (streaming key + blocking history) instead of discarding it; absent ids still mint. Never serialized back — request shapes are unchanged
+
+- *(openrouter)* id-less encrypted reasoning details key by a dedicated `MintKind::EncryptedReasoning`, so a whole encrypted block can no longer replace reasoning text accumulating under the shared compat `Reasoning` mint key
+
+- *(providers)* `resolve_tool_result_names` prefers a divergent name-shaped `id` over the paired call's name when `call_id` already carries the association (the legacy repair-hook-rename encoding); identifier-matched ids still resolve to the call's function name
+
 - *(streaming)* [**breaking**] the raw grammar is a part lifecycle: `ReasoningStart`/`ReasoningEnd`/`TextEnd` join the vocabulary, `ReasoningSignature` is deleted (a trailing signature is an `End` arriving late), and the accumulator becomes open-maps into an arrival-ordered part list with entity-owned idempotence — a repeated `ToolInputEnd` finalizes nothing even with an authoritative payload (review 84a43e9e #1), and one end primitive replaces the per-adapter signature/boundary branches (#2). Boundary-less wires synthesize their ends in the adapter; the ordinal machinery, `closed_by_full_call`, and every adapter-side thought/restatement buffer are deleted
 
 - *(streaming)* [**breaking**] the raw-event identity is the opaque `StreamPartId` (no `Serialize`, no rendering, no durable accessor; `Composite` variant for adapter-composed keys), with the durable provider handle carried separately as `WireId` (`provider_id` on reasoning events, `tool_id` on `RawStreamingToolCall`/`ToolInputEnd`); `WireId::new` rejects the empty string so absence is `None` — the fabricated `Wire("")` class and its per-serializer empty-string filters are gone (review 84a43e9e #3/#4). Public delta ids are rig-generated correlators (`ReasoningDelta` gains `provider_id`; `ToolCallDelta` drops `id`)

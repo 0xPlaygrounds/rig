@@ -7,14 +7,13 @@
 //! Re-record with (local Ollama daemon with `qwen3:4b` pulled, no key needed):
 //! `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama streaming_grammar -- --test-threads=1`
 //!
-//! Ollama's native wire ships tool calls without ids — its `ToolCall` type has
-//! no id field at all — and this provider derives each call's identity from
-//! the function name rather than minting a `tool-{index}` identity (the mint
-//! is the chat-compat adapter's fallback and is pinned by the synthetic
-//! `id_less_parallel_tool_calls_assemble_distinct_on_the_chat_wire` corpus
-//! scenario). What these recordings pin against real traffic is the property
-//! that matters downstream: parallel calls on an id-less wire stay distinct
-//! and assemble with uncorrupted arguments.
+//! Modern Ollama daemons issue tool-call ids (`"id":"call_..."`); rig reads
+//! them as the durable id and falls back to a minted `tool-{index}` identity
+//! only when a daemon omits them (the id-less mint stays pinned by the
+//! synthetic `id_less_parallel_tool_calls_assemble_distinct_on_the_chat_wire`
+//! corpus scenario). What these recordings pin against real traffic is the
+//! property that matters downstream: parallel calls stay distinct — by
+//! daemon id and by structure — and assemble with uncorrupted arguments.
 
 use futures::StreamExt;
 use rig::OneOrMany;
@@ -145,21 +144,20 @@ async fn thinking_and_tool_call_in_one_stream() {
                 })
                 .expect("aggregated choice should keep the tool call");
             assert_eq!(aggregated.id, streamed.id, "id should aggregate unchanged");
-            // Ollama's wire carries no tool-call id and rig fabricates none:
-            // the durable id is absent (empty), and serializers omit it.
+            // Modern Ollama daemons issue a call id (`"id":"call_..."`);
+            // rig preserves it as the durable id instead of discarding it.
             assert!(
-                streamed.id.is_empty(),
-                "an id-less wire call must not carry a fabricated durable id"
+                !streamed.id.is_empty(),
+                "the daemon-issued call id must be preserved"
             );
         },
     )
     .await;
 }
 
-/// Parallel tool calls on an **id-less** wire: both calls survive as
+/// Parallel tool calls on real recorded traffic: both calls survive as
 /// distinct parts with uncorrupted arguments — the 2258 item-0 collapse pin
-/// against real traffic. Stream-side distinctness comes from minted
-/// accumulation identities; durably, neither call carries a fabricated id.
+/// against real traffic — and each keeps its daemon-issued call id.
 #[tokio::test]
 async fn parallel_id_less_tool_calls_stay_distinct() {
     with_ollama_cassette(
@@ -203,8 +201,8 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                     "{name} id should aggregate"
                 );
                 assert!(
-                    streamed.id.is_empty(),
-                    "{name} must not carry a fabricated durable id"
+                    !streamed.id.is_empty(),
+                    "{name} must keep its daemon-issued call id"
                 );
                 assert!(
                     streamed.function.arguments.is_object(),
@@ -221,14 +219,16 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                 run.tool_calls.len(),
                 "every streamed call should survive as its own aggregated part"
             );
-            // Distinctness is structural — every streamed call is its own
-            // aggregated part (asserted above) — not fabricated: all durable
-            // ids are absent, so nothing invented can collide or leak
-            // upstream. Cross-referencing streamed and aggregated calls
-            // happens by internal correlation ids on the public stream.
-            assert!(
-                run.tool_calls.iter().all(|call| call.id.is_empty()),
-                "no id-less call may carry a fabricated durable id"
+            // Distinctness is doubly guaranteed: structurally (every
+            // streamed call is its own aggregated part, asserted above) and
+            // by the daemon-issued ids, which are preserved and pairwise
+            // distinct — nothing is fabricated, nothing collides.
+            let distinct_ids: std::collections::HashSet<&str> =
+                run.tool_calls.iter().map(|call| call.id.as_str()).collect();
+            assert_eq!(
+                distinct_ids.len(),
+                run.tool_calls.len(),
+                "daemon-issued call ids must be preserved distinct"
             );
         },
     )
@@ -236,11 +236,10 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
 }
 
 /// Two calls to the SAME tool in one turn, on real recorded traffic — the
-/// live twin of the corpus pin (#2258 A2 / review 84a43e9e). Ollama's wire
-/// carries no tool-call ids, and rig fabricates none: both calls must
+/// live twin of the corpus pin (#2258 A2 / review 84a43e9e). Modern Ollama
+/// daemons issue distinct call ids; rig preserves them, and both calls
 /// survive as distinct aggregated parts with their own uncorrupted
-/// arguments and the absent (empty) durable id. The old name-as-id scheme
-/// collapsed exactly this shape.
+/// arguments. The old name-as-id scheme collapsed exactly this shape.
 ///
 /// Re-record with (local Ollama daemon with `qwen3:4b` pulled, no key
 /// needed):
@@ -278,11 +277,11 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
             run.tool_calls
         );
         // Same name, distinct calls: every call keeps its own arguments and
-        // the absent durable id — nothing invented can collide.
+        // its daemon-issued id — nothing fabricated, nothing collapsed.
         for call in &add_calls {
             assert!(
-                call.id.is_empty(),
-                "an id-less wire call must not carry a fabricated durable id"
+                !call.id.is_empty(),
+                "the daemon-issued call id must be preserved"
             );
             assert!(
                 call.function.arguments.is_object(),
@@ -297,6 +296,13 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
         assert!(
             argument_sets.len() >= 2,
             "the two same-name calls must keep distinct argument payloads, got {argument_sets:?}"
+        );
+        let distinct_ids: std::collections::HashSet<&str> =
+            add_calls.iter().map(|call| call.id.as_str()).collect();
+        assert_eq!(
+            distinct_ids.len(),
+            add_calls.len(),
+            "same-name calls must keep their distinct daemon-issued ids"
         );
         let aggregated_adds = run
             .choice

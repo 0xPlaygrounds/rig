@@ -396,14 +396,14 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             assistant_contents.push(completion::AssistantContent::text(visible_content));
         }
         // Process tool_calls following Ollama's chat response definition.
-        // Each ToolCall has an id, a type, and a function field.
-        // Ollama's wire carries no tool-call id; the durable id stays absent
-        // (empty) rather than fabricating one from the tool name — a
-        // name-as-id would collide two same-tool calls in one turn. Replay
-        // drops the id anyway (Ollama tool messages carry no id).
+        // Modern daemons issue a call id (`"id":"call_..."`); it is read as
+        // the durable id when present. An absent id stays absent (empty)
+        // rather than fabricating one from the tool name — a name-as-id
+        // would collide two same-tool calls in one turn. Replay drops the
+        // id either way (Ollama tool messages correlate by `tool_name`).
         for tc in tool_calls.iter() {
             assistant_contents.push(completion::AssistantContent::tool_call(
-                "",
+                tc.id.as_deref().unwrap_or(""),
                 tc.function.name.clone(),
                 tc.function.arguments.clone(),
             ));
@@ -942,13 +942,23 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                 out.push(Ok(RawStreamingChoice::Message(content)));
             }
 
-            // No wire id: each call keys the stream by a distinct minted
-            // identity and its durable id stays absent — never the tool
-            // name, which would collide two same-tool calls in one turn.
+            // A daemon-issued call id keys the stream and travels as the
+            // durable id; an id-less call (older daemons) keys by a
+            // distinct minted identity and its durable id stays absent —
+            // never the tool name, which would collide two same-tool calls
+            // in one turn.
             for (index, tool_call) in tool_calls.into_iter().enumerate() {
+                let key = match tool_call
+                    .id
+                    .as_deref()
+                    .and_then(crate::streaming::WireId::new)
+                {
+                    Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
+                    None => crate::streaming::MintKind::Tool.for_wire_index(index as u64),
+                };
                 out.push(Ok(RawStreamingChoice::ToolCall(
                     crate::streaming::RawStreamingToolCall::new(
-                        crate::streaming::MintKind::Tool.for_wire_index(index as u64),
+                        key,
                         tool_call.function.name,
                         tool_call.function.arguments,
                     ),
@@ -1094,6 +1104,13 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
+    /// The daemon-issued call id (`"id":"call_..."`), present on modern
+    /// Ollama daemons and absent on older ones. Read when present — it is
+    /// the durable handle that distinguishes two same-tool calls in one
+    /// turn — but never serialized back: Ollama's request schema correlates
+    /// tool messages by `tool_name`, and replayed histories predate the id.
+    #[serde(default, skip_serializing)]
+    pub id: Option<String>,
     #[serde(default, rename = "type")]
     pub r#type: ToolType,
     pub function: Function,
@@ -1391,6 +1408,9 @@ impl Message {
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
+            // Never serialized (replay correlates by `tool_name`); the
+            // request shape is id-less regardless of what history holds.
+            id: None,
             r#type: ToolType::Function,
             function: Function {
                 name: tool_call.function.name,

@@ -2248,11 +2248,22 @@ fn is_generated_token(token: &str, prefix: TokenPrefix) -> bool {
         return false;
     };
 
-    suffix.len() >= prefix.min_suffix_len
-        && suffix
+    if suffix.len() < prefix.min_suffix_len
+        || !suffix
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
-        && suffix.chars().any(|ch| ch.is_ascii_digit())
+    {
+        return false;
+    }
+
+    // The digit requirement keeps prose identifiers (`call_id`,
+    // `tool_call_id`) out of the generated-token class. Ollama daemons mint
+    // digit-less lowercase call ids (`call_kqpofucm`), so for `call_` a
+    // long all-lowercase suffix also counts as generated.
+    suffix.chars().any(|ch| ch.is_ascii_digit())
+        || (prefix.raw == "call_"
+            && suffix.len() >= 8
+            && suffix.chars().all(|ch| ch.is_ascii_lowercase()))
 }
 
 fn is_redacted_placeholder(value: &str) -> bool {
