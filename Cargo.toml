@@ -20,6 +20,26 @@ members = [
     "crates/*",
     "examples/*",
 ]
+# The root manifest is itself the `rig` facade package, so without an
+# explicit `default-members` a bare `cargo nextest run` resolved to the
+# facade alone and every `crates/*` unit test ran only where a CI step named
+# its package (#2258: ~1,200 rig-core lib unit tests executed in no step).
+# The default set is the facade plus the crates whose unit tests must always
+# run; the service-backed vector-store integrations and examples stay
+# opt-in.
+# rig-derive is deliberately absent: a proc-macro crate's test binary links
+# libstd dynamically, which breaks under toolchains installed without the
+# dylib component; its macro suite runs via the dedicated
+# `cargo test -p rig-core --test macro_hygiene` CI step and rig-derive's own
+# trybuild tests.
+default-members = [
+    ".",
+    "crates/rig-core",
+    "crates/rig-agent",
+    "crates/rig-bedrock",
+    "crates/rig-candle",
+    "crates/rig-gemini-grpc",
+]
 exclude = [
     "archived",
     # Data/infra dirs under examples/ that are not Cargo packages.
