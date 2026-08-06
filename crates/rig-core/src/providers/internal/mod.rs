@@ -92,9 +92,16 @@ pub(crate) fn resolve_tool_result_names(history: &mut [crate::message::Message])
                     //      (84a43e9e #5 — an OpenAI-Chat `call_abc` replayed
                     //      cross-provider must never become the name).
                     //   3. Non-empty and matching nothing — the id *is* the
-                    //      name (the legacy name-in-id encoding, and results
-                    //      whose executed tool differs from the model's
-                    //      call, e.g. a repair hook renaming it).
+                    //      name (the legacy name-in-id encoding).
+                    //   4. `call_id` matched a call, but `id` is a distinct
+                    //      non-empty value that is neither that call's
+                    //      identity nor its name — `call_id` already carries
+                    //      the association, so the id is not an identifier;
+                    //      it is the *executed* name (the legacy
+                    //      repair-hook-rename encoding: the tool that ran
+                    //      differs from the tool the model called).
+                    //      Identifier-match-wins holds only when the id was
+                    //      the matching identifier itself.
                     let identity_match = pending.iter().position(|(call_identity, _)| {
                         Some(call_identity.as_str()) == call_id
                             || (!result.id.is_empty() && call_identity == &result.id)
@@ -107,8 +114,18 @@ pub(crate) fn resolve_tool_result_names(history: &mut [crate::message::Message])
                     });
                     match matched {
                         Some(index) => {
-                            if let Some((_, name)) = pending.remove(index) {
-                                result.name = Some(name);
+                            if let Some((call_identity, name)) = pending.remove(index) {
+                                let id_is_divergent_name = !result.id.is_empty()
+                                    && result.id != call_identity
+                                    && result.id != name;
+                                result.name = if id_is_divergent_name {
+                                    // Shape 4: the association came from
+                                    // `call_id`; the id carries the name of
+                                    // the tool that actually executed.
+                                    Some(result.id.clone())
+                                } else {
+                                    Some(name)
+                                };
                             }
                         }
                         None if !result.id.is_empty() => {
@@ -210,6 +227,36 @@ mod resolve_tool_result_names_tests {
         // "get_weather" matches the... call identity is "" here, so the id
         // matches nothing and is kept as the name.
         assert_eq!(resolved_name(&history, 1), Some("get_weather".into()));
+    }
+
+    /// Shape 4: the legacy repair-hook-rename encoding. The result's
+    /// `call_id` carries the association; its `id` holds the *executed*
+    /// tool's name, which differs from the paired call's name. The executed
+    /// name wins — the association is not a license to rename what ran.
+    #[test]
+    fn a_call_id_paired_result_with_a_divergent_name_in_id_keeps_the_executed_name() {
+        let mut history = vec![
+            call("call_1", Some("call_1"), "get_weather"),
+            result("executed_tool", Some("call_1"), None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 1), Some("executed_tool".into()));
+    }
+
+    /// The shape-4 carve-out never fires when the id IS the matched
+    /// identifier (finding #5 stays fixed) or when it equals the call's
+    /// name — both resolve to the call's function name.
+    #[test]
+    fn a_call_id_paired_result_whose_id_matches_identity_or_name_takes_the_calls_name() {
+        let mut history = vec![
+            call("call_abc", Some("call_abc"), "get_weather"),
+            result("call_abc", Some("call_abc"), None),
+            call("call_2", Some("call_2"), "add"),
+            result("add", Some("call_2"), None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 1), Some("get_weather".into()));
+        assert_eq!(resolved_name(&history, 3), Some("add".into()));
     }
 
     /// Id-less results pair with unanswered calls in wire order.
