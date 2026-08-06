@@ -2,12 +2,6 @@
 //! through the *normalized* path: the aggregated
 //! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
 //! record, usage, and finish reason.
-//!
-//! **Ready-to-record**: the test is written but no cassette exists yet — the
-//! environment has no `COHERE_API_KEY`. Record with:
-//! `RIG_PROVIDER_TEST_MODE=record COHERE_API_KEY=... cargo test --test cohere streaming_grammar -- --test-threads=1 --ignored`
-//! then drop the `#[ignore]` markers and register the suite in
-//! `tests/common/cassette_safety.rs` (`PROVIDER_CASSETTE_SUITES`).
 
 use futures::StreamExt;
 use rig::OneOrMany;
@@ -67,7 +61,6 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 /// A `thinking`-bearing stream: the thinking deltas aggregate into one
 /// reasoning part that survives as a discrete sibling of the answer text.
 #[tokio::test]
-#[ignore = "no credentials to record"]
 async fn thinking_stream_keeps_reasoning_and_text_discrete() {
     with_cohere_cassette("streaming_grammar/thinking_stream", |client| async move {
         let model = client.completion_model(REASONING_MODEL);
