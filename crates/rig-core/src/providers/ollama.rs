@@ -1357,11 +1357,12 @@ impl From<Message> for crate::completion::Message {
                 assistant_contents.push(crate::completion::message::AssistantContent::Text(
                     Text::new(content),
                 ));
-                // Same absent-id policy as the unary decode above.
+                // Same id policy as the unary decode above: a daemon-issued
+                // id is preserved, an absent one stays absent (empty).
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
-                            "",
+                            tc.id.as_deref().unwrap_or(""),
                             tc.function.name,
                             tc.function.arguments,
                         ),
@@ -1946,6 +1947,41 @@ mod tests {
         } else {
             panic!("Expected Assistant message with thinking");
         }
+    }
+
+    /// A user-supplied ollama-format assistant message carrying a
+    /// daemon-issued call id keeps it through conversion — the same id
+    /// policy as the unary decode (preserve when present, absent stays
+    /// empty).
+    #[test]
+    fn wire_message_conversion_preserves_the_daemon_tool_call_id() {
+        let wire = Message::Assistant {
+            content: String::new(),
+            thinking: None,
+            images: None,
+            name: None,
+            tool_calls: vec![ToolCall {
+                id: Some("call_abc".to_owned()),
+                r#type: ToolType::default(),
+                function: Function {
+                    name: "get_weather".to_owned(),
+                    arguments: json!({}),
+                },
+            }],
+        };
+
+        let converted: crate::completion::Message = wire.into();
+        let crate::completion::Message::Assistant { content, .. } = converted else {
+            panic!("Expected Assistant message");
+        };
+        let ids: Vec<String> = content
+            .iter()
+            .filter_map(|item| match item {
+                crate::message::AssistantContent::ToolCall(call) => Some(call.id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ids, vec!["call_abc".to_owned()]);
     }
 
     /// Regression test for issue #1926: a non-streaming `/api/chat` response that
