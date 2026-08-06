@@ -417,7 +417,9 @@ impl GeminiRestAdapter {
                 )));
             }
             part => {
-                tracing::warn!(?part, "Unsupported response type with streaming");
+                // Structural metadata only: an unmodeled part can carry
+                // model output, which must not leak into WARN logs.
+                crate::providers::internal::adapter::warn_unmodeled("gemini_part", &part);
             }
         }
     }

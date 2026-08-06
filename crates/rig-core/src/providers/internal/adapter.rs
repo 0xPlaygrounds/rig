@@ -178,25 +178,35 @@ pub fn triage_frame<T>(event: WireEvent<T>) -> Result<TriagedFrame<T>, Completio
     match event {
         WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
         WireEvent::Unknown { event_type, value } => {
-            // Structural metadata only: an unknown future event can carry
-            // model output or other sensitive provider data, which must not
-            // leak into production WARN logs. The full payload survives on
-            // the `Unknown` raw passthrough channel — that channel IS the
-            // opt-in for consumers who want the content.
-            tracing::warn!(
-                event_type,
-                payload_bytes = unknown_payload_bytes(&value),
-                "skipping unrecognized stream event"
-            );
+            // Structural metadata only — see `warn_unmodeled`. The full
+            // payload survives on the `Unknown` raw passthrough channel;
+            // that channel IS the opt-in for consumers who want the content.
+            warn_unmodeled(&event_type, &value);
             Ok(TriagedFrame::Unknown(value))
         }
         WireEvent::Corrupt(error) => Err(CompletionError::JsonError(error)),
     }
 }
 
+/// Warn about an unmodeled wire payload with **structural metadata only** —
+/// its kind and serialized byte size, never the payload itself. Unmodeled
+/// frames and parts can carry model output or other sensitive provider
+/// data, which must not leak into production WARN logs; the one redaction
+/// policy lives here, used by the driver's Unknown arm and by adapters that
+/// skip an unmodeled part kind. `driver_adoption.rs` scans streaming
+/// modules for direct `warn!(?...)` payload captures, so bypassing this
+/// helper fails CI.
+pub fn warn_unmodeled(kind: &str, payload: &impl serde::Serialize) {
+    tracing::warn!(
+        kind,
+        payload_bytes = unknown_payload_bytes(payload),
+        "skipping unmodeled wire payload"
+    );
+}
+
 /// Serialized byte size of an unknown frame's payload, for the structural
 /// warn log (the log never carries the payload itself).
-fn unknown_payload_bytes(value: &serde_json::Value) -> u64 {
+fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
     /// Counter sink: measures how many bytes serialization would write
     /// without buffering them.
     struct CountingWriter(u64);

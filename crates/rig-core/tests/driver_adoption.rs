@@ -540,6 +540,45 @@ fn scan_streaming_source(
     violations
 }
 
+/// Shipped streaming code never Debug-prints a wire payload into a WARN log:
+/// unmodeled frames and parts can carry model output, and the one redaction
+/// policy (kind + byte size only) lives in `adapter::warn_unmodeled`. A
+/// direct `warn!(?...)` capture in a streaming module bypasses it.
+#[test]
+fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
+    let mut violations = Vec::new();
+    let mut walked = Vec::new();
+    let mut scanned_targets = 0usize;
+    for_each_shipped_source(|path, shipped| {
+        walked.push(path.to_string_lossy().replace('\\', "/"));
+        if !is_serde_wall_target(path, shipped) {
+            return;
+        }
+        scanned_targets += 1;
+        for (index, line) in shipped.lines().enumerate() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            if (line.contains("warn!(?") || line.contains("warn!(\n"))
+                || (line.contains("warn!") && line.contains("(?"))
+            {
+                violations.push(format!("{}:{}: {}", path.display(), index + 1, line.trim()));
+            }
+        }
+    });
+    assert_walk_floor(&walked);
+    assert!(
+        scanned_targets > 5,
+        "the payload-warn scan scoped almost nothing ({scanned_targets} files) — vacuous"
+    );
+    assert!(
+        violations.is_empty(),
+        "a WARN log Debug-captures a wire payload — route it through \
+         `adapter::warn_unmodeled` (kind + byte size only):\n{}",
+        violations.join("\n")
+    );
+}
+
 /// Shipped provider streaming code never raw-parses the wire: decoding goes
 /// through the `wire.rs` classifiers, and every exception is allowlisted with
 /// a justification in `serde_policy_allowlist.txt`.
