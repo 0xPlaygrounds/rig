@@ -31,7 +31,7 @@ pub(crate) fn completion_usage(
 }
 
 /// Back-compat shim: resolve a tool result's function name from its paired
-/// assistant call, for histories that predate [`ToolResult::name`].
+/// assistant call, for histories that predate [`ToolResult::name`](crate::message::ToolResult::name).
 ///
 /// Some wires require the *function name* on a replayed tool result
 /// (Gemini's `functionResponse.name`, Ollama's tool-message name). Since

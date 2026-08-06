@@ -376,9 +376,9 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// must aggregate as distinct text parts (two OpenAI Responses
         /// `message` items must not concatenate), so the accumulator keys
         /// text blocks by identity. Providers propagate the wire's item
-        /// identity ([`StreamPartId::Wire`]: the Responses `item_id`, Anthropic's
+        /// identity (`StreamPartId::Wire`: the Responses `item_id`, Anthropic's
         /// block index) when it exists, or mint one at the boundary
-        /// ([`StreamPartId::Minted`], via [`SyntheticIds`]). A wire that never
+        /// (`StreamPartId::Minted`, via [`SyntheticIds`]). A wire that never
         /// announces text boundaries may skip `TextStart` entirely: a bare
         /// [`RawStreamingChoice::Message`] with no open block opens a
         /// boundary-minted block.
@@ -412,8 +412,8 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// [`RawStreamingChoice::Reasoning::id`]: parallel calls interleave
         /// their fragments on real wires, so the accumulator must key
         /// assembly by identity. Providers propagate the wire's tool-call id
-        /// ([`StreamPartId::Wire`]), or mint one at the boundary from the wire's
-        /// own index ([`StreamPartId::Minted`], via [`SyntheticIds`]) when the wire
+        /// (`StreamPartId::Wire`), or mint one at the boundary from the wire's
+        /// own index (`StreamPartId::Minted`, via [`SyntheticIds`]) when the wire
         /// omits it — a shared identity would collapse parallel calls into
         /// one corrupted assembly. A minted identity keys assembly only; it
         /// never becomes the completed call's durable
@@ -433,8 +433,8 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// (OpenAI Responses emits the completed item after tool calls), so
         /// the accumulator must key by identity rather than guess by
         /// adjacency. Providers propagate the wire's item id
-        /// ([`StreamPartId::Wire`]: `item_id` on Responses events) or mint a
-        /// stream-scoped id at the boundary ([`StreamPartId::Minted`], via
+        /// (`StreamPartId::Wire`: `item_id` on Responses events) or mint a
+        /// stream-scoped id at the boundary (`StreamPartId::Minted`, via
         /// [`SyntheticIds`]) when the wire has none. Deltas and the full
         /// block for the same item MUST carry the same key.
         id: StreamPartId,
@@ -605,7 +605,7 @@ impl<R> RawStreamingChoice<R> {
 #[derive(Debug, Clone)]
 pub struct RawStreamingToolCall {
     /// Accumulation/reconciliation key of the tool call —
-    /// [`StreamPartId::Wire`]-derived when the provider supplied an id,
+    /// `StreamPartId::Wire`-derived when the provider supplied an id,
     /// minted when the wire omitted one. A key only; the durable id is
     /// [`RawStreamingToolCall::tool_id`].
     pub id: StreamPartId,

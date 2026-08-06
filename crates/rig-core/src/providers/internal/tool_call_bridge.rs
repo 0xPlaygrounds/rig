@@ -8,7 +8,7 @@
 //! so the mandatory-identity invariant on
 //! [`RawStreamingChoice::ToolCallDelta`](crate::streaming::RawStreamingChoice)
 //! is enforced in exactly one place: when the wire supplies no id, the slot's
-//! grammar id is a [`StreamPartId::Minted`] from the bridge's [`SyntheticIds`]
+//! grammar id is a `StreamPartId::Minted` from the bridge's [`SyntheticIds`]
 //! counter, so parallel id-less calls can never share an assembly key
 //! downstream — and a minted id structurally cannot serialize upstream as a
 //! wire-genuine one.

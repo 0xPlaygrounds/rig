@@ -82,9 +82,9 @@ pub type AdapterOutput<R> = Vec<Result<RawStreamingChoice<R>, CompletionError>>;
 /// - **Mandatory identity**: every `Reasoning`/`ReasoningDelta`,
 ///   `ToolCallDelta`, and `TextStart` event carries a
 ///   [`StreamPartId`](crate::streaming::StreamPartId) — the wire's own identity
-///   ([`StreamPartId::Wire`](crate::streaming::StreamPartId::Wire)) when it exists, else
+///   (`StreamPartId::Wire`) when it exists, else
 ///   an identity minted via [`SyntheticIds`]
-///   ([`StreamPartId::Minted`](crate::streaming::StreamPartId::Minted)). Provenance
+///   (`StreamPartId::Minted`). Provenance
 ///   travels in the type: a minted identity keys stream accumulation and
 ///   structurally cannot become a durable provider handle or reach a request
 ///   serializer, so no per-provider gate exists or is needed.

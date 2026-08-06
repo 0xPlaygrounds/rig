@@ -699,7 +699,10 @@ fn the_warn_scan_catches_every_capture_spelling() {
         "tracing::warn!(\n    payload =\n        ?frame,\n    \"skipping\"\n);",
     ] {
         assert!(
-            body_debug_captures(macro_body(leaking, leaking.find("warn!").unwrap())),
+            body_debug_captures(macro_body(
+                leaking,
+                leaking.find("warn!").expect("fixture contains warn!")
+            )),
             "must flag: {leaking}"
         );
     }
@@ -712,7 +715,10 @@ fn the_warn_scan_catches_every_capture_spelling() {
         "tracing::warn!(\n    delta = ?std::mem::discriminant(&unknown),\n    \"skipping\"\n);",
     ] {
         assert!(
-            !body_debug_captures(macro_body(clean, clean.find("warn!").unwrap())),
+            !body_debug_captures(macro_body(
+                clean,
+                clean.find("warn!").expect("fixture contains warn!")
+            )),
             "must not flag: {clean}"
         );
     }

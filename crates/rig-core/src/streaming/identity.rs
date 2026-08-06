@@ -9,7 +9,7 @@
 //!   request or a public stream item; it exists to key the accumulator's
 //!   maps for the life of one stream and then dies. Because nothing can
 //!   observe it, an adapter may freely compose it
-//!   ([`StreamPartId::Composite`], vercel's `` `${item.id}:0` `` move) or
+//!   (`StreamPartId::Composite`, vercel's `` `${item.id}:0` `` move) or
 //!   mint it ([`SyntheticIds`]) without any global-uniqueness obligation.
 //! - [`WireId`] — the **durable provider handle**, present only when the
 //!   provider actually issued one. It is the only value that may populate
@@ -40,7 +40,7 @@ pub enum MintKind {
     /// chat-compat `reasoning_content`, candle).
     Reasoning,
     /// Encrypted/opaque reasoning payloads on id-less wires (openrouter's
-    /// `reasoning.encrypted` detail). A distinct kind from [`Reasoning`] so
+    /// `reasoning.encrypted` detail). A distinct kind from [`MintKind::Reasoning`] so
     /// a whole encrypted block can never restate — and replace — the text
     /// block accumulating under the wire's constant reasoning key.
     EncryptedReasoning,
@@ -71,7 +71,7 @@ impl MintKind {
 /// `Eq + Hash + Clone + Debug` and nothing else — deliberately no
 /// `Serialize`/`Deserialize`, no rendering, and no accessor into the
 /// durable id space (see the module docs; the `identity_leak` compile-fail
-/// suite pins this). Keys derived from wire ids ([`StreamPartId::Wire`])
+/// suite pins this). Keys derived from wire ids (`StreamPartId::Wire`)
 /// stay distinguishable from minted ones because the accumulator's
 /// interleaving-boundary lifecycle still asks
 /// [`StreamPartId::is_minted`]; that discriminant is stream-internal
@@ -112,7 +112,7 @@ enum Repr {
 }
 
 /// A bare string is by definition a wire-derived key — fabricating a
-/// [`StreamPartId::Minted`] requires naming a [`MintKind`] explicitly
+/// `StreamPartId::Minted` requires naming a [`MintKind`] explicitly
 /// (normally via [`SyntheticIds`]), so no conversion can launder a
 /// fabricated key into the wire-derived space. The empty string converts
 /// too — as a *key* that is harmless (it can collide only with itself
@@ -205,7 +205,7 @@ impl WireId {
 ///
 /// Every id-less wire mints keys the same way — a [`MintKind`] plus a
 /// counter or the wire's own unsigned index — and the result is a
-/// [`StreamPartId::Minted`] that, like every stream key, structurally
+/// `StreamPartId::Minted` that, like every stream key, structurally
 /// cannot reach a request or a public stream item.
 #[derive(Debug)]
 pub struct SyntheticIds {

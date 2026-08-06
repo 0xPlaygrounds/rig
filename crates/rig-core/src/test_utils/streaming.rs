@@ -68,7 +68,7 @@ use super::completion::MockError;
 ///
 /// Corpus fixtures are plain data and spell identities as strings; the
 /// legacy minted renderings (`reasoning-0`, `block-3`, `output-1`, `tool-2`,
-/// `text-0`) are the fixture syntax for a [`StreamPartId::Minted`] of that kind
+/// `text-0`) are the fixture syntax for a `StreamPartId::Minted` of that kind
 /// and index, and anything else is a wire id. This is *fixture encoding*,
 /// not provenance recovery: production code never parses an id string —
 /// provenance travels in [`StreamPartId`] itself.
