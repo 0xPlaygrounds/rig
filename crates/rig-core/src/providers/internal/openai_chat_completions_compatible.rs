@@ -429,6 +429,21 @@ where
             }
         }
 
+        // A tool call starting is as much a reasoning boundary as text is:
+        // this wire never announces the block's end, so it is synthesized
+        // before the first fragment of any other part class.
+        if !choice.tool_calls.is_empty() && self.reasoning_open {
+            self.reasoning_open = false;
+            out.push(Ok(RawStreamingChoice::ReasoningEnd {
+                id: StreamPartId::Minted {
+                    kind: MintKind::Reasoning,
+                    index: 0,
+                },
+                reasoning: None,
+                signature: None,
+            }));
+        }
+
         for incoming in choice.tool_calls {
             let profile = &self.profile;
             if let Some(evicted) = self.open_tool_calls.evict_if(incoming.index, |existing| {
@@ -757,7 +772,7 @@ mod tests {
     use crate::test_utils::MockStreamingClient;
     use crate::test_utils::internal_streaming_profiles::{
         DistinctToolCallEvictionProfile, ErrorAfterPendingToolCallProfile,
-        FinishReasonCleanupProfile,
+        FinishReasonCleanupProfile, ReasoningAroundToolCallProfile,
     };
     use futures::StreamExt;
 
@@ -822,6 +837,62 @@ mod tests {
         assert!(
             detect(r#"{"error":{"message":"rate limited"},"choices":null}"#).is_some(),
             "a null choices value must not mask the error"
+        );
+    }
+
+    /// A tool call starting is a reasoning boundary on this wire: reasoning
+    /// deltas straddling a complete tool call aggregate as TWO reasoning
+    /// parts, because the adapter synthesizes the end this wire never
+    /// announces before the first tool-call fragment (as it already did for
+    /// interleaved text).
+    #[tokio::test]
+    async fn tool_call_closes_the_open_reasoning_block() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "reasoning_a",
+                "tool_call",
+                "reasoning_b",
+                "finish",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, ReasoningAroundToolCallProfile)
+                .await
+                .expect("stream should start");
+        while stream.next().await.is_some() {}
+
+        let reasoning_texts: Vec<String> = stream
+            .choice
+            .clone()
+            .into_iter()
+            .filter_map(|item| match item {
+                crate::completion::AssistantContent::Reasoning(reasoning) => Some(
+                    reasoning
+                        .content
+                        .iter()
+                        .filter_map(|content| match content {
+                            crate::message::ReasoningContent::Text { text, .. } => {
+                                Some(text.as_str())
+                            }
+                            _ => None,
+                        })
+                        .collect::<String>(),
+                ),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            reasoning_texts,
+            vec!["thinking before".to_owned(), "thinking after".to_owned()],
+            "the tool call must split the reasoning into two parts"
         );
     }
 
