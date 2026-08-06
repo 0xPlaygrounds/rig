@@ -219,6 +219,16 @@ struct InteractionsAdapter {
     /// provider aborted, and interpreting more output (or a terminal) would
     /// dress the failure up as a completed turn.
     failed: bool,
+    /// Function-call steps whose arguments may still stream as
+    /// `arguments_delta` fragments, keyed by the wire's step index →
+    /// assembly identity. The wire announces the call in `step.start`
+    /// (usually with `"arguments": {}`), fragments the real payload across
+    /// `step.delta` `arguments_delta` events, and closes it with
+    /// `step.stop` — a genuine start/delta/end lifecycle. Recorded live in
+    /// `streaming_grammar/interactions_same_tool_twice`; the pre-fix code
+    /// emitted the empty-args call at `step.start` and dropped every
+    /// fragment.
+    open_function_steps: std::collections::HashMap<i32, streaming::PartId>,
 }
 
 impl WireAdapter for InteractionsAdapter {
@@ -236,7 +246,23 @@ impl WireAdapter for InteractionsAdapter {
         }
 
         match event {
-            InteractionSseEvent::StepDelta { delta, .. } => match delta {
+            InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
+                ContentDelta::ArgumentsDelta(arguments_delta) => {
+                    if let (Some(key), Some(fragment)) = (
+                        self.open_function_steps.get(&index),
+                        arguments_delta.arguments,
+                    ) {
+                        out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                            id: key.clone(),
+                            content: streaming::ToolCallDeltaContent::Delta(fragment),
+                        }));
+                    } else {
+                        tracing::warn!(
+                            step_index = index,
+                            "arguments_delta with no open function-call step; dropping fragment"
+                        );
+                    }
+                }
                 ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
                     if let ThoughtSummaryContent::Text(text) = content {
                         self.thought_buffer.push_str(&text.text);
@@ -266,12 +292,62 @@ impl WireAdapter for InteractionsAdapter {
                     }
                 }
             },
-            InteractionSseEvent::StepStart { step, .. } => {
-                if let Some(choice) = step_start_to_choice(step) {
+            InteractionSseEvent::StepStart { index, step, .. } => {
+                if let Step::FunctionCall(FunctionCallContent {
+                    name: Some(name),
+                    arguments,
+                    id,
+                }) = step
+                {
+                    // A function-call step opens an ASSEMBLY: the wire may
+                    // fragment the arguments as later `arguments_delta`
+                    // events at this index, so emitting a whole call here
+                    // would freeze the (usually empty) start-event payload
+                    // and drop every fragment. Key by the wire's own id
+                    // when present; never the tool name.
+                    self.thought_buffer.clear();
+                    let key = id
+                        .filter(|id| !id.is_empty())
+                        .map(streaming::PartId::wire)
+                        .unwrap_or(streaming::PartId::Minted {
+                            kind: streaming::MintKind::Tool,
+                            index: index.max(0) as u64,
+                        });
+                    out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                        id: key.clone(),
+                        content: streaming::ToolCallDeltaContent::Name(name),
+                    }));
+                    if let Some(arguments) = arguments
+                        && arguments
+                            .as_object()
+                            .is_none_or(|object| !object.is_empty())
+                    {
+                        out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                            id: key.clone(),
+                            content: streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
+                        }));
+                    }
+                    self.open_function_steps.insert(index, key);
+                } else if let Some(choice) = step_start_to_choice(step) {
                     // Non-thought output closes the open reasoning item
                     // (accumulator minted-id boundary).
                     self.thought_buffer.clear();
                     out.push(Ok(choice));
+                }
+            }
+            InteractionSseEvent::StepStop { index, .. } => {
+                // The wire promised a complete function-call step: close its
+                // assembly. Malformed accumulated input surfaces in-band
+                // (`Error` policy), matching the other complete-block wires.
+                if let Some(key) = self.open_function_steps.remove(&index) {
+                    let mut end = streaming::ToolInputEnd::new(
+                        key.clone(),
+                        streaming::UnparseableToolInput::Error,
+                    );
+                    if let Some(id) = key.as_wire() {
+                        end.call_id = Some(id.to_owned());
+                    }
+                    out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(end)));
                 }
             }
             InteractionSseEvent::InteractionCompleted { interaction, .. } => {
@@ -311,8 +387,7 @@ impl WireAdapter for InteractionsAdapter {
                 )));
             }
             InteractionSseEvent::InteractionCreated { .. }
-            | InteractionSseEvent::InteractionStatusUpdate { .. }
-            | InteractionSseEvent::StepStop { .. } => {}
+            | InteractionSseEvent::InteractionStatusUpdate { .. } => {}
         }
     }
 

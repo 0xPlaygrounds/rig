@@ -25,7 +25,7 @@ use rig::streaming::{StreamFinal, StreamedAssistantContent};
 
 use super::super::support::with_ollama_cassette;
 use crate::support::{
-    AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
+    Adder, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
     TWO_TOOL_STREAM_PREAMBLE,
 };
 
@@ -232,5 +232,82 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
             );
         },
     )
+    .await;
+}
+
+/// Two calls to the SAME tool in one turn, on real recorded traffic — the
+/// live twin of the corpus pin (#2258 A2 / review 84a43e9e). Ollama's wire
+/// carries no tool-call ids, and rig fabricates none: both calls must
+/// survive as distinct aggregated parts with their own uncorrupted
+/// arguments and the absent (empty) durable id. The old name-as-id scheme
+/// collapsed exactly this shape.
+///
+/// Re-record with (local Ollama daemon with `qwen3:4b` pulled, no key
+/// needed):
+/// `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama same_tool_called_twice -- --test-threads=1`
+#[tokio::test]
+async fn same_tool_called_twice_in_one_turn_stays_distinct() {
+    with_ollama_cassette("streaming_grammar/same_tool_twice", |client| async move {
+        let model = client.completion_model(MODEL);
+        let request = model
+            .completion_request(
+                "/no_think Use the `add` tool twice in this single reply, before any text: \
+                 first add 2 and 3, then add 10 and 20. Emit both tool calls together in \
+                 this one turn — do not wait for results between them, and do not compute \
+                 the sums yourself.",
+            )
+            .preamble(
+                "You are a calculator assistant. You MUST use the provided tools for every \
+                 arithmetic operation instead of computing results yourself."
+                    .to_string(),
+            )
+            .tool(rig::tool::tool_definition(&Adder))
+            .additional_params(serde_json::json!({ "think": false }))
+            .build();
+        let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+        assert_terminal(&run, FinishReason::ToolCalls);
+        let add_calls: Vec<&ToolCall> = run
+            .tool_calls
+            .iter()
+            .filter(|call| call.function.name == "add")
+            .collect();
+        assert!(
+            add_calls.len() >= 2,
+            "the turn should stream (at least) two `add` calls, got {:?}",
+            run.tool_calls
+        );
+        // Same name, distinct calls: every call keeps its own arguments and
+        // the absent durable id — nothing invented can collide.
+        for call in &add_calls {
+            assert!(
+                call.id.is_empty(),
+                "an id-less wire call must not carry a fabricated durable id"
+            );
+            assert!(
+                call.function.arguments.is_object(),
+                "each call's arguments must assemble uncorrupted, got {:?}",
+                call.function.arguments
+            );
+        }
+        let argument_sets: std::collections::HashSet<String> = add_calls
+            .iter()
+            .map(|call| call.function.arguments.to_string())
+            .collect();
+        assert!(
+            argument_sets.len() >= 2,
+            "the two same-name calls must keep distinct argument payloads, got {argument_sets:?}"
+        );
+        let aggregated_adds = run
+            .choice
+            .iter()
+            .filter(|content| matches!(content, AssistantContent::ToolCall(call) if call.function.name == "add"))
+            .count();
+        assert_eq!(
+            aggregated_adds,
+            add_calls.len(),
+            "every streamed same-name call must survive as its own aggregated part"
+        );
+    })
     .await;
 }

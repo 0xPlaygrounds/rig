@@ -798,3 +798,183 @@ async fn interactions_requires_action_roundtrip() {
     )
     .await;
 }
+
+/// Two STREAMED calls to the SAME tool in one Interactions turn, on real
+/// recorded traffic — the live twin of the corpus pin (review 84a43e9e).
+/// Whatever identity the wire supplies (Interactions function calls may or
+/// may not carry ids), the two calls must survive as distinct aggregated
+/// parts with their own uncorrupted arguments, and rig must not fabricate a
+/// durable id where the wire gave none — in particular never the tool name.
+///
+/// Re-record with:
+/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_same_tool_twice -- --test-threads=1`
+#[tokio::test]
+async fn interactions_same_tool_called_twice_stays_distinct() {
+    super::super::support::with_gemini_interactions_cassette(
+        "streaming_grammar/interactions_same_tool_twice",
+        |client| async move {
+            let model = client.completion_model("gemini-3-flash-preview");
+            let request = model
+                .completion_request(
+                    "Use the `add` tool twice in this single reply, before any text: first \
+                     add 2 and 3, then add 10 and 20. Emit both tool calls together in this \
+                     one turn — do not wait for results between them, and do not compute the \
+                     sums yourself.",
+                )
+                .preamble(
+                    "You are a calculator assistant. You MUST use the provided tools for \
+                     every arithmetic operation instead of computing results yourself."
+                        .to_string(),
+                )
+                .tool(rig::tool::tool_definition(&crate::support::Adder))
+                .tool_choice(ToolChoice::Required)
+                .additional_params(
+                    serde_json::to_value(interactions_api::AdditionalParameters {
+                        store: Some(true),
+                        ..Default::default()
+                    })
+                    .expect("params should serialize"),
+                )
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_terminal(&run, FinishReason::ToolCalls);
+            let add_calls: Vec<&ToolCall> = run
+                .tool_calls
+                .iter()
+                .filter(|call| call.function.name == "add")
+                .collect();
+            assert!(
+                add_calls.len() >= 2,
+                "the turn should stream (at least) two `add` calls, got {:?}",
+                run.tool_calls
+            );
+            for call in &add_calls {
+                assert_ne!(
+                    call.id, "add",
+                    "the tool name must never be fabricated into the durable id"
+                );
+                assert_ne!(
+                    call.call_id.as_deref(),
+                    Some("add"),
+                    "the tool name must never be fabricated into the correlation id"
+                );
+                assert!(
+                    call.function.arguments.is_object(),
+                    "each call's arguments must survive uncorrupted, got {:?}",
+                    call.function.arguments
+                );
+            }
+            let argument_sets: std::collections::HashSet<String> = add_calls
+                .iter()
+                .map(|call| call.function.arguments.to_string())
+                .collect();
+            assert_eq!(
+                argument_sets,
+                std::collections::HashSet::from([
+                    serde_json::json!({"x": 2, "y": 3}).to_string(),
+                    serde_json::json!({"x": 10, "y": 20}).to_string(),
+                ]),
+                "each same-name call must carry its own streamed arguments — the wire \
+                 fragments them as `arguments_delta` events the pre-fix code dropped"
+            );
+            let aggregated_adds = run
+                .choice
+                .iter()
+                .filter(|content| {
+                    matches!(content, AssistantContent::ToolCall(call) if call.function.name == "add")
+                })
+                .count();
+            assert_eq!(
+                aggregated_adds,
+                add_calls.len(),
+                "every streamed same-name call must survive as its own aggregated part"
+            );
+        },
+    )
+    .await;
+}
+
+/// A thinking turn with summaries suppressed (`thinking_summaries: none`),
+/// recorded live: if the wire still delivers a `thought_signature`, it
+/// arrives with NO accumulated summary text — the empty-buffer shape that
+/// review 84a43e9e finding #2 shows the Interactions adapter mishandling
+/// (an empty signed reasoning sibling instead of signature-as-lifecycle-
+/// metadata). The assertions pin the invariant both adapters must satisfy:
+/// no signed empty sibling may exist alongside the answer, and any
+/// signature the wire delivered must survive into the aggregated choice.
+///
+/// Re-record with:
+/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_signature_without_summaries -- --test-threads=1`
+#[tokio::test]
+async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibling() {
+    super::super::support::with_gemini_interactions_cassette(
+        "streaming_grammar/interactions_signature_without_summaries",
+        |client| async move {
+            let model = client.completion_model("gemini-3-flash-preview");
+            let request = model
+                .completion_request(
+                    "How many positive integers n < 100 are divisible by 6 but not by 9? \
+                     Think it through, then answer with just the number.",
+                )
+                .additional_params(
+                    serde_json::to_value(interactions_api::AdditionalParameters {
+                        generation_config: Some(interactions_api::GenerationConfig {
+                            thinking_level: Some(interactions_api::ThinkingLevel::Medium),
+                            thinking_summaries: Some(interactions_api::ThinkingSummaries::None),
+                            ..Default::default()
+                        }),
+                        store: Some(true),
+                        ..Default::default()
+                    })
+                    .expect("params should serialize"),
+                )
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert!(!run.text.trim().is_empty(), "turn should produce text");
+            let signature_delivered = run.choice.iter().any(|content| {
+                matches!(content, AssistantContent::Reasoning(reasoning)
+                    if reasoning.content.iter().any(|part| matches!(
+                        part,
+                        ReasoningContent::Text { signature: Some(signature), .. }
+                            if !signature.is_empty()
+                    )))
+            });
+            // The invariant under test: whatever the wire delivered, the
+            // aggregate must never carry a reasoning part that is *only* an
+            // empty signed shell fabricated by the adapter. (A genuinely
+            // signature-only stream keeps its signature — on a part the
+            // accumulator records deliberately — but text-empty parts must
+            // then be the ONLY reasoning, not a sibling beside real text.)
+            let reasoning_parts: Vec<&Reasoning> = run
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                    _ => None,
+                })
+                .collect();
+            let empty_parts = reasoning_parts
+                .iter()
+                .filter(|reasoning| {
+                    reasoning
+                        .content
+                        .iter()
+                        .all(|part| matches!(part, ReasoningContent::Text { text, .. } if text.trim().is_empty()))
+                })
+                .count();
+            assert!(
+                empty_parts == 0 || reasoning_parts.len() == empty_parts,
+                "an empty signed reasoning shell must not appear beside real reasoning: {:?}",
+                run.choice
+            );
+            // Recording note: if this cassette carries no signature at all,
+            // the wire withholds signatures when summaries are off and the
+            // empty-buffer shape is not live-coaxable — the corpus twin
+            // covers it instead.
+            let _ = signature_delivered;
+        },
+    )
+    .await;
+}

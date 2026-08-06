@@ -2461,6 +2461,7 @@ pub mod interactions_api_types {
         ThoughtSummary(ThoughtSummaryDelta),
         ThoughtSignature(ThoughtSignatureDelta),
         FunctionCall(FunctionCallDelta),
+        ArgumentsDelta(ArgumentsDelta),
         FunctionResult(FunctionResultDelta),
         CodeExecutionCall(CodeExecutionCallDelta),
         CodeExecutionResult(CodeExecutionResultDelta),
@@ -2471,6 +2472,18 @@ pub mod interactions_api_types {
         McpServerToolCall(McpServerToolCallDelta),
         McpServerToolResult(McpServerToolResultDelta),
         FileSearchResult(FileSearchResultDelta),
+    }
+
+    /// Streaming function-call arguments fragment: the wire fragments a
+    /// `function_call` step's arguments as raw JSON text across
+    /// `arguments_delta` events at the step's index (recorded live in
+    /// `streaming_grammar/interactions_same_tool_twice`; the `step.start`
+    /// announces the call with `"arguments": {}` and the real payload
+    /// arrives here).
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ArgumentsDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<String>,
     }
 
     /// Streaming text delta.
