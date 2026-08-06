@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(gemini)* [**behavior**] the gRPC surface now reports `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL` and `TOO_MANY_TOOL_CALLS` as errors and stops the stream, matching REST — previously an aborted turn was reported as a completed one, and the wire's `finish_message` was never read
+- *(gemini)* a `thought_signature` carried on a trailing non-thought part is no longer dropped — it attaches to the reasoning block it signs via the shared `ReasoningSignature` lifecycle event
+- *(gemini)* [**behavior**] the tool name is no longer used as the tool-call id when the wire omits one; id-less calls carry the absent id and stay distinct
+
 ### Changed
 
 - *(streaming)* the gRPC stream routes through the shared `WireAdapter` driver; an unrecognized part kind (`part.data` oneof decoding to `None`) is warn-skipped instead of silently dropped; `streaming::stream_from_events` is the events-first conformance seam; the generated `proto` module is public to support it

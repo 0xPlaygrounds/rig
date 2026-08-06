@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(streaming)* [**breaking**] part identity is provenance-typed: `RawStreamingChoice`'s `TextStart`/`ToolCallDelta`/`Reasoning`/`ReasoningDelta` ids, `ToolInputEnd::id` and `RawStreamingToolCall::id` are `streaming::PartId` (`Wire` round-trips upstream; `Minted` keys accumulation and structurally cannot reach a request — no `Serialize`, and the only request-serializable form `WireId` is constructible solely from `Wire`). `SyntheticIds` moved to `rig_core::streaming` and mints `PartId`; `MINTED_ID_NAMESPACES`/`is_boundary_minted_id` and the Responses request-side provenance gate are deleted
+- *(streaming)* [**breaking**] `RawStreamingChoice::ToolCallDelta` lost `internal_call_id` (the shared accumulator mints it at assembly open; read it from `StreamedAssistantContent::ToolCallDelta`), gained a `ToolInputEnd` variant and a `ReasoningSignature` variant — exhaustive matches need new arms; `RawStreamingChoice` is not `#[non_exhaustive]`
+- *(providers)* [**breaking**] `OpenAICompatibleProvider::decorate_streaming_tool_call` returns `Option<ToolCallDecoration>` instead of mutating a `&mut HashMap<usize, RawStreamingToolCall>`; `OutputFunctionCall::arguments` is a `FunctionCallArguments` newtype over the raw string (`.parse()`/`.as_str()`)
+- *(providers)* [**breaking**] the Anthropic and OpenAI Responses streaming event enums no longer carry `#[serde(other)]`: unrecognized events triage as `Unknown` in the classify layer, and a known tag with a defective payload is a decode error instead of a silent absorb
+- *(providers)* [**behavior**] gemini (REST/interactions/gRPC) and ollama no longer fabricate durable tool-call ids — not from an index and not from the tool name, so two calls to the same tool in one turn stay distinct; id-less calls replay with the id absent, and the function name a replayed tool result needs (gemini `functionResponse.name`, ollama tool messages) is resolved by pairing each result with its assistant-turn call in the history
+
 ### Added
 
 - *(streaming)* `wire::classify_typed_event` extends the decode-then-validate policy to typed-transport wires (bedrock, candle, gemini-grpc): modeled variants are `Known`, the SDK's non-exhaustive/unrecognized variants are `Unknown`, SDK decode errors are `Corrupt` — a typed transport earns no policy exemption
@@ -19,11 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(gemini)* a trailing `thoughtSignature` arriving after the answer text now signs the reasoning block that carries the chain-of-thought (via the new `ReasoningSignature` lifecycle event) instead of appending an empty signed sibling and leaving the real thinking to replay unsigned; the gRPC surface no longer drops a signature carried on a non-thought part
+- *(streaming)* non-object JSON frames (a gateway keep-alive `null`, a bare array or scalar) classify `Unknown` (warn-and-skip) on every classifier instead of `Corrupt` (a fatal in-band error); conversely an Anthropic `content_block_delta` whose `delta` omits `type` is `Corrupt` instead of a silent skip that yielded a successful empty completion
+- *(streaming)* an OpenAI-compatible error body that also carries `"choices":[]` (or `null`) is detected as an error — previously the mere presence of a `choices` key masked it and a following `[DONE]` committed the failed turn as a successful zero-usage completion (introduced in #1944)
+- *(streaming)* cancelling a paused stream terminates instead of deadlocking (`cancel()` also resumes); a streamed tool call's accumulated argument bytes are bounded, with overflow finalizing through the wire's unparseable-input policy instead of growing memory without bound
 - *(openrouter)* [**data loss**] encrypted reasoning (`reasoning_details` of type `reasoning.encrypted`) was dropped on every streaming turn and could not be replayed on the next request — the decoration key never matched (reasoning ids are `rs_*`, tool ids `call_*`) and the detail arrived before any tool slot existed. It now reaches the aggregated choice as `ReasoningContent::Encrypted`, matching the non-streaming path. Two committed cassettes had recorded the loss into their turn-2 request bodies; both were re-recorded live and the provider accepts the replayed blob
 - *(anthropic)* signature-only thinking blocks are no longer dropped: a block whose text is empty but which carries a signature survives into chat history and replays, matching the non-streaming path (Anthropic rejects a replayed adaptive-thinking turn missing it)
-- *(bedrock)* redacted reasoning survives all three legs — streaming no longer drops `RedactedContent`, the non-streaming path no longer fails the whole response, and it is replayed as `redactedContent` instead of being flattened into unsigned plaintext
-- *(bedrock)* an unmodeled `ContentBlockStart` variant warns and skips instead of failing the stream with "Stream is empty", matching its sibling arms and the classify layer's Unknown policy
-- *(gemini)* [**behavior**] the gRPC surface now reports `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL` and `TOO_MANY_TOOL_CALLS` as errors and stops the stream, matching REST — previously an aborted turn was reported as a completed one, and the wire's `finish_message` was never read
 - *(openai)* `response.reasoning_text.done` is a modeled Responses event; it previously logged an "unknown event type" warning and passed through as `Unknown` on every raw-reasoning block, across the SSE, buffered and websocket surfaces
 - *(streaming)* a wire that streams a tool call's input as fragments and then restates it as a complete `ToolCall` now publishes the completed call under the `internal_call_id` its deltas already used, and a trailing `ToolInputEnd` for that id no longer produces a duplicate call in the aggregated choice
 - *(streaming)* re-polling a drained `StreamingCompletionResponse` no longer re-runs the destructive aggregation, which replaced the aggregated choice with an empty text part
