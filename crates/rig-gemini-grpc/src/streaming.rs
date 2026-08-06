@@ -112,6 +112,7 @@ impl WireAdapter for GrpcAdapter {
                                         id: REASONING_ID,
                                         reasoning: None,
                                         signature: Some(signature),
+                                        wire_sent: false,
                                     }));
                                 }
                             } else {
@@ -125,6 +126,7 @@ impl WireAdapter for GrpcAdapter {
                                         id: REASONING_ID,
                                         reasoning: None,
                                         signature: Some(signature),
+                                        wire_sent: false,
                                     }));
                                 }
                                 if !text.is_empty() {
@@ -137,6 +139,7 @@ impl WireAdapter for GrpcAdapter {
                                             id: REASONING_ID,
                                             reasoning: None,
                                             signature: None,
+                                            wire_sent: false,
                                         }));
                                     }
                                     out.push(Ok(streaming::RawStreamingChoice::Message(
@@ -156,6 +159,7 @@ impl WireAdapter for GrpcAdapter {
                                     },
                                     reasoning: None,
                                     signature: None,
+                                    wire_sent: false,
                                 }));
                             }
                             let args_json = function_call

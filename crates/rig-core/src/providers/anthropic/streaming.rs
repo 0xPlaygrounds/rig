@@ -762,6 +762,9 @@ fn handle_event(
                     id: MintKind::Block.for_wire_index(*index as u64),
                     reasoning: None,
                     signature: thinking_state.into_signature(),
+                    // `content_block_stop` is the wire's own end frame, so
+                    // even an unsigned block yields its completed event.
+                    wire_sent: true,
                 }));
             }
 
@@ -1449,6 +1452,7 @@ mod tests {
                 id,
                 reasoning: None,
                 signature: None,
+                wire_sent: true,
             } => {
                 assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(2));
             }

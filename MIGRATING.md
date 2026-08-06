@@ -311,11 +311,15 @@ cause A; vercel's stream-part triples and pydantic-ai's
   `DeltaBuilt`/`Complete` part tags, `closed_by_full_call`, and every
   adapter-side thought/restatement buffer (gemini REST/interactions/gRPC,
   anthropic's thinking-text buffer).
-- Consumers: `StreamedAssistantContent::Reasoning` now fires when a
-  block closes **with a wire-authoritative payload** (a restatement or a
-  signature) — the wire said something at the block's end. A bare
-  rig-synthesized end stays silent: consumers already received every delta,
-  and no fabricated completion event changes what history builders observe.
+- Consumers: `StreamedAssistantContent::Reasoning` now fires when the
+  **wire said something at the block's end** — an end carrying an
+  authoritative payload (a restatement or a signature), or a bare end frame
+  the wire itself sent (`ReasoningEnd { wire_sent: true }`, e.g. anthropic's
+  `content_block_stop` on an *unsigned* thinking block, which keeps firing a
+  completed event exactly as before this refactor). Only a bare end a rig
+  adapter *synthesized* at an interleaving boundary stays silent: consumers
+  already received every delta, and no fabricated completion event changes
+  what history builders observe.
 
 ### Stream keys are opaque; durable ids and correlators are separate values
 

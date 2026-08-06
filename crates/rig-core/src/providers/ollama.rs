@@ -934,6 +934,7 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                         },
                         reasoning: None,
                         signature: None,
+                        wire_sent: false,
                     }));
                 }
             }

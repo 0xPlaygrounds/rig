@@ -205,6 +205,7 @@ impl WireAdapter for CohereAdapter {
                             id: REASONING_ID,
                             reasoning: None,
                             signature: None,
+                            wire_sent: false,
                         }));
                     }
                     out.push(Ok(RawStreamingChoice::Message(text.clone())));
@@ -263,6 +264,7 @@ impl WireAdapter for CohereAdapter {
                         id: REASONING_ID,
                         reasoning: None,
                         signature: None,
+                        wire_sent: false,
                     }));
                 }
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {

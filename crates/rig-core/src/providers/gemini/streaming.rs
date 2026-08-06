@@ -59,6 +59,10 @@ pub(crate) mod shared_parts {
             id: REASONING_ID,
             reasoning: None,
             signature,
+            // The gemini wires never announce a reasoning boundary of their
+            // own: every bare end here is synthesized at an interleaving
+            // boundary (a wire-carried signature still yields, as payload).
+            wire_sent: false,
         }
     }
 

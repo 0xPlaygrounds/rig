@@ -441,6 +441,7 @@ where
                 },
                 reasoning: None,
                 signature: None,
+                wire_sent: false,
             }));
         }
 
@@ -537,6 +538,7 @@ where
                     },
                     reasoning: None,
                     signature: None,
+                    wire_sent: false,
                 }));
             }
             out.push(Ok(RawStreamingChoice::Message(content)));

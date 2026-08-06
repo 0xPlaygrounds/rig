@@ -477,7 +477,13 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     ///
     /// The completed part is yielded to consumers as
     /// [`StreamedAssistantContent::Reasoning`] — the uniform
-    /// block-completed signal across every wire.
+    /// block-completed signal across every wire — when the wire itself
+    /// said something at the boundary: an end carrying a restatement or
+    /// signature, or a bare end frame the wire actually sent
+    /// (`wire_sent`). A bare end an adapter *synthesized* at an
+    /// interleaving boundary stays silent: the consumer already received
+    /// every delta, and fabricating a completion event the wire never
+    /// sent would change what downstream history builders observe.
     ReasoningEnd {
         /// Accumulation key of the reasoning part being closed.
         id: StreamPartId,
@@ -485,6 +491,11 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         reasoning: Option<Reasoning>,
         /// A provider signature closing the block.
         signature: Option<String>,
+        /// Whether the wire itself sent this end frame (anthropic's
+        /// `content_block_stop`), as opposed to the adapter synthesizing
+        /// it at a boundary the wire never announces. Wire-sent ends
+        /// yield the completed block even when bare.
+        wire_sent: bool,
     },
 
     /// Close the text block identified by `id`: later bare text deltas open
@@ -575,10 +586,12 @@ impl<R> RawStreamingChoice<R> {
                 id,
                 reasoning,
                 signature,
+                wire_sent,
             } => RawStreamingChoice::ReasoningEnd {
                 id,
                 reasoning,
                 signature,
+                wire_sent,
             },
             Self::TextEnd { id } => RawStreamingChoice::TextEnd { id },
             Self::FinalResponse(response) => RawStreamingChoice::FinalResponse(map(response)?),
@@ -1066,17 +1079,19 @@ impl Stream for StreamingCompletionResponse {
                         id,
                         reasoning,
                         signature,
+                        wire_sent,
                     } => {
-                        // Only a wire-authoritative end payload (a
-                        // restatement or a signature) yields the completed
-                        // block to consumers — the wire said something at
-                        // the block's end and the consumer must see it. A
-                        // bare synthesized end is rig-side lifecycle
-                        // bookkeeping: the consumer already received every
-                        // delta, and fabricating a "completed block" event
-                        // the wire never sent would change what downstream
-                        // history builders observe.
-                        let authoritative = reasoning.is_some() || signature.is_some();
+                        // The completed block is yielded when the wire said
+                        // something at the boundary: an end payload (a
+                        // restatement or a signature) or a bare end frame
+                        // the wire actually sent (anthropic's
+                        // `content_block_stop` on an unsigned block). Only a
+                        // bare end an adapter *synthesized* stays silent —
+                        // the consumer already received every delta, and
+                        // fabricating a "completed block" event the wire
+                        // never sent would change what downstream history
+                        // builders observe.
+                        let authoritative = reasoning.is_some() || signature.is_some() || wire_sent;
                         let completed = stream.parts.reasoning_end(&id, reasoning, signature);
                         // The part is finished: drop its delta correlator so a
                         // reused accumulation key mints a fresh one for the
@@ -1970,6 +1985,59 @@ mod tests {
         assert_eq!(reasoning_ids, vec![Some("rs_1"), Some("rs_2")]);
     }
 
+    /// A bare end the wire actually sent yields the completed block (the
+    /// wire announced the boundary and the consumer must see it — e.g.
+    /// anthropic's `content_block_stop` on an unsigned thinking block); a
+    /// bare end an adapter synthesized stays silent.
+    #[tokio::test]
+    async fn wire_sent_bare_end_yields_the_completed_block_synthesized_stays_silent() {
+        let run = |wire_sent: bool| async move {
+            let mut stream = StreamingCompletionResponse::stream(
+                TEST_PROVIDER,
+                to_stream_result(stream! {
+                    yield Ok(RawStreamingChoice::ReasoningDelta {
+                        id: StreamPartId::Minted {
+                            kind: MintKind::Block,
+                            index: 0,
+                        },
+                        provider_id: None,
+                        reasoning: "unsigned thoughts".to_string(),
+                    });
+                    yield Ok(RawStreamingChoice::ReasoningEnd {
+                        id: StreamPartId::Minted {
+                            kind: MintKind::Block,
+                            index: 0,
+                        },
+                        reasoning: None,
+                        signature: None,
+                        wire_sent,
+                    });
+                    yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+                }),
+            );
+            let mut completed = Vec::new();
+            while let Some(item) = stream.next().await {
+                if let Ok(StreamedAssistantContent::Reasoning(reasoning)) = item {
+                    completed.push(reasoning);
+                }
+            }
+            completed
+        };
+
+        let wire = run(true).await;
+        assert_eq!(wire.len(), 1, "a wire-sent end announces the boundary");
+        assert!(matches!(
+            wire[0].content.first(),
+            Some(ReasoningContent::Text { text, signature: None }) if text == "unsigned thoughts"
+        ));
+
+        let synthesized = run(false).await;
+        assert!(
+            synthesized.is_empty(),
+            "a synthesized bare end fabricates nothing: {synthesized:?}"
+        );
+    }
+
     /// The public delta correlator is unique per *part*, not per key: when a
     /// constant minted key (boundary-less wires) is reused for a new block
     /// after the previous one ended, the new block's deltas carry a fresh
@@ -1992,6 +2060,7 @@ mod tests {
                     id: key(),
                     reasoning: None,
                     signature: None,
+                    wire_sent: false,
                 });
                 yield Ok(RawStreamingChoice::Message("interleaved".to_string()));
                 yield Ok(RawStreamingChoice::ReasoningDelta {
