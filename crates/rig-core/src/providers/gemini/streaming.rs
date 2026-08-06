@@ -46,21 +46,19 @@ pub(crate) mod shared_parts {
         }
     }
 
-    /// A completed signed thinking block: the full accumulated thought text
-    /// restated with its provider signature, superseding the deltas it
-    /// restates (the core accumulator's replace-on-supersede keys on the
-    /// per-stream [`REASONING_ID`]). Shared by the REST and Interactions
-    /// wires, whose signature payloads coincide (an opaque provider string,
-    /// passed through verbatim).
-    pub(crate) fn signed_reasoning<R>(text: String, signature: String) -> RawStreamingChoice<R> {
-        RawStreamingChoice::Reasoning {
+    /// Close the thought block, optionally signing it. One lifecycle
+    /// primitive covers every shape the wires produce: a signature closing
+    /// an open block signs the accumulated deltas; a trailing signature
+    /// after interleaved output signs the block that holds the
+    /// chain-of-thought; a signature with nothing streamed records a
+    /// signature-only part; a bare close with nothing open is a no-op.
+    /// Shared by the REST, Interactions and gRPC wires (an opaque provider
+    /// string, passed through verbatim).
+    pub(crate) fn reasoning_end<R>(signature: Option<String>) -> RawStreamingChoice<R> {
+        RawStreamingChoice::ReasoningEnd {
             id: REASONING_ID,
-            // Gemini thought parts carry no reasoning item id.
-            provider_id: None,
-            content: crate::completion::message::ReasoningContent::Text {
-                text,
-                signature: Some(signature),
-            },
+            reasoning: None,
+            signature,
         }
     }
 
@@ -220,14 +218,10 @@ const RECOGNIZABLE_CHUNK_KEYS: &[&str] = &["candidates", "usageMetadata"];
 /// not here.
 #[derive(Default)]
 struct GeminiRestAdapter {
-    /// Thought text since the last boundary (signed emission, visible text,
-    /// or tool call). The grammar requires a full `Reasoning` block to be the
-    /// block's *completed* form, but Gemini's `thoughtSignature` chunk
-    /// carries only its own final fragment — so the adapter restates the
-    /// accumulated text. Reset on non-thought output to mirror the
-    /// accumulator's minted-id boundary: a signed chunk after interleaved
-    /// output completes only the post-boundary part.
-    thought_buffer: String,
+    /// Whether a thought block is open — the one bit the adapter needs to
+    /// synthesize the lifecycle ends this wire never announces. All
+    /// accumulation lives in the shared accumulator.
+    reasoning_open: bool,
     final_usage: Option<PartialUsage>,
     final_finish_reason: Option<FinishReason>,
     final_finish_message: Option<String>,
@@ -346,25 +340,17 @@ impl GeminiRestAdapter {
                 thought_signature,
                 ..
             } => {
-                if let Some(signature) = thought_signature {
-                    // Signature arrives on the final chunk of a thinking
-                    // block; emit a full Reasoning — the completed restatement
-                    // of every fragment since the last boundary, not just this
-                    // chunk's text — so the core accumulator's
-                    // replace-on-supersede discards only the deltas it
-                    // restates.
-                    self.thought_buffer.push_str(&text);
-                    // Emit even when no thought text accumulated: a
-                    // signature-only block still carries replay-required
-                    // provider state, and the gRPC and Interactions adapters
-                    // already emit it — the REST wire must not diverge.
-                    out.push(Ok(shared_parts::signed_reasoning(
-                        std::mem::take(&mut self.thought_buffer),
-                        signature,
-                    )));
-                } else if !text.is_empty() {
-                    self.thought_buffer.push_str(&text);
+                if !text.is_empty() {
+                    self.reasoning_open = true;
                     out.push(Ok(shared_parts::reasoning_delta(text)));
+                }
+                if let Some(signature) = thought_signature {
+                    // The signature closes the thinking block; the shared
+                    // accumulator signs the accumulated deltas (or records a
+                    // signature-only part when nothing streamed — replay-
+                    // required provider state either way).
+                    self.reasoning_open = false;
+                    out.push(Ok(shared_parts::reasoning_end(Some(signature))));
                 }
             }
             Part {
@@ -380,28 +366,23 @@ impl GeminiRestAdapter {
                 // for the signature. Dropping it costs the replay-required
                 // provider state Gemini validates (`MISSING_THOUGHT_SIGNATURE`).
                 if let Some(signature) = thought_signature {
-                    if self.thought_buffer.is_empty() {
-                        // The thought block already closed (interleaved
-                        // answer text cleared the buffer): the signature is
-                        // lifecycle metadata for that block. Attaching it as
-                        // a full block here would sign an *empty* sibling
-                        // appended after the answer and leave the real
-                        // chain-of-thought replaying unsigned (#2258 B4).
-                        out.push(Ok(streaming::RawStreamingChoice::ReasoningSignature {
-                            id: shared_parts::REASONING_ID,
-                            signature,
-                        }));
-                    } else {
-                        out.push(Ok(shared_parts::signed_reasoning(
-                            std::mem::take(&mut self.thought_buffer),
-                            signature,
-                        )));
-                    }
+                    // The wire attaches a trailing `thoughtSignature` to a
+                    // part with no `thought` flag (recorded traffic:
+                    // `{"text":"","thoughtSignature":"..."}`). One lifecycle
+                    // end covers every case — open block (sign the deltas),
+                    // already-closed block (sign the block that holds the
+                    // chain-of-thought, #2258 B4), nothing streamed
+                    // (signature-only part). No per-case branch to forget.
+                    self.reasoning_open = false;
+                    out.push(Ok(shared_parts::reasoning_end(Some(signature))));
                 }
                 if !text.is_empty() {
-                    // Non-thought output closes the open reasoning item
-                    // (accumulator minted-id boundary).
-                    self.thought_buffer.clear();
+                    // Interleaving output ends an open thought block — the
+                    // boundary this wire never announces, synthesized here.
+                    if self.reasoning_open {
+                        self.reasoning_open = false;
+                        out.push(Ok(shared_parts::reasoning_end(None)));
+                    }
                     out.push(Ok(streaming::RawStreamingChoice::Message(text)));
                 }
             }
@@ -410,9 +391,11 @@ impl GeminiRestAdapter {
                 thought_signature,
                 ..
             } => {
-                // Non-thought output closes the open reasoning item
-                // (accumulator minted-id boundary).
-                self.thought_buffer.clear();
+                // Interleaving output ends an open thought block.
+                if self.reasoning_open {
+                    self.reasoning_open = false;
+                    out.push(Ok(shared_parts::reasoning_end(None)));
+                }
                 out.push(Ok(shared_parts::function_call(
                     function_call.name,
                     function_call.args,

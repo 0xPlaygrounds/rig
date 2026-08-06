@@ -151,6 +151,9 @@ struct CohereAdapter {
     /// finalize policy live in the shared accumulator.
     current_tool_call: Option<String>,
     message_id: Option<String>,
+    /// Whether a thinking block is open — synthesizes the lifecycle end
+    /// this wire never announces.
+    reasoning_open: bool,
 }
 
 impl WireAdapter for CohereAdapter {
@@ -178,13 +181,12 @@ impl WireAdapter for CohereAdapter {
                     return;
                 };
 
-                // Thinking deltas carry no wire id and never interleave with
-                // other output mid-item; the per-stream constant lives in the
-                // minted namespace so the accumulator's boundary bump and the
-                // upstream-serialization guard both apply.
+                // Thinking deltas carry no wire id; a per-stream constant
+                // minted key merges them into one part.
                 if let Some(thinking) = &content.thinking
                     && !thinking.is_empty()
                 {
+                    self.reasoning_open = true;
                     out.push(Ok(RawStreamingChoice::ReasoningDelta {
                         id: REASONING_ID,
                         provider_id: None,
@@ -195,6 +197,16 @@ impl WireAdapter for CohereAdapter {
                 if let Some(text) = &content.text
                     && !text.is_empty()
                 {
+                    // Interleaving output ends an open thinking block — the
+                    // boundary this wire never announces, synthesized here.
+                    if self.reasoning_open {
+                        self.reasoning_open = false;
+                        out.push(Ok(RawStreamingChoice::ReasoningEnd {
+                            id: REASONING_ID,
+                            reasoning: None,
+                            signature: None,
+                        }));
+                    }
                     out.push(Ok(RawStreamingChoice::Message(text.clone())));
                 }
             }
@@ -244,6 +256,15 @@ impl WireAdapter for CohereAdapter {
 
                 self.current_tool_call = Some(id.clone());
 
+                // Interleaving output ends an open thinking block.
+                if self.reasoning_open {
+                    self.reasoning_open = false;
+                    out.push(Ok(RawStreamingChoice::ReasoningEnd {
+                        id: REASONING_ID,
+                        reasoning: None,
+                        signature: None,
+                    }));
+                }
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {
                     id: StreamPartId::wire(id.clone()),
                     content: ToolCallDeltaContent::Name(name),

@@ -447,20 +447,54 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// Complete reasoning content block.
         content: ReasoningContent,
     },
-    /// A provider signature for an already-streamed reasoning item.
+    /// Open the reasoning part identified by `id`.
     ///
-    /// Some wires deliver the signature *after* the block it signs closed —
-    /// Gemini attaches `thoughtSignature` to a trailing part that follows
-    /// the answer text. This is lifecycle metadata for the existing block,
-    /// not new reasoning: the accumulator attaches it to the item's latest
-    /// part instead of opening an empty sibling that would leave the real
-    /// chain-of-thought replaying unsigned. Not yielded to public stream
-    /// consumers; the signature reaches them on the aggregated choice.
-    ReasoningSignature {
-        /// Accumulation key of the reasoning item the signature belongs to.
+    /// Optional — a bare [`RawStreamingChoice::ReasoningDelta`] opens its
+    /// part leniently — but a wire that announces block starts should emit
+    /// it so arrival order is fixed at the wire's own boundary. A start for
+    /// an already-open key is a no-op; a start for a finished key opens a
+    /// new part (key reuse). Not yielded to public stream consumers.
+    ReasoningStart {
+        /// Accumulation key of the reasoning part being opened.
         id: StreamPartId,
-        /// The provider signature, verbatim.
-        signature: String,
+        /// The provider-issued reasoning item id, when one exists.
+        provider_id: Option<WireId>,
+    },
+
+    /// Close the reasoning part identified by `id` — the lifecycle
+    /// primitive every wire has (or has synthesized by its adapter at the
+    /// boundaries it already detects), so "is this part still open?" is
+    /// never re-derived per wire.
+    ///
+    /// `reasoning` is the wire's authoritative whole-block restatement; it
+    /// supersedes the delta accumulation. `signature` is a provider
+    /// signature closing the block; it attaches to the part's text — and
+    /// because an end for an already-finished key with only a signature
+    /// attaches to THAT part, a trailing signature signs the block that
+    /// holds the chain-of-thought instead of fabricating an empty sibling.
+    /// A repeated end with no payload is a no-op: idempotence belongs to
+    /// the entity, not to a guard each route must remember.
+    ///
+    /// The completed part is yielded to consumers as
+    /// [`StreamedAssistantContent::Reasoning`] — the uniform
+    /// block-completed signal across every wire.
+    ReasoningEnd {
+        /// Accumulation key of the reasoning part being closed.
+        id: StreamPartId,
+        /// The wire's authoritative completed block, when it restates one.
+        reasoning: Option<Reasoning>,
+        /// A provider signature closing the block.
+        signature: Option<String>,
+    },
+
+    /// Close the text block identified by `id`: later bare text deltas open
+    /// a fresh block instead of extending it. (A later
+    /// [`RawStreamingChoice::TextStart`] with the same key still
+    /// reactivates the block — the keyed collapse is explicit.) Not yielded
+    /// to public stream consumers.
+    TextEnd {
+        /// Accumulation key of the text block being closed.
+        id: StreamPartId,
     },
 
     /// A reasoning partial/delta
@@ -534,9 +568,19 @@ impl<R> RawStreamingChoice<R> {
                 provider_id,
                 reasoning,
             },
-            Self::ReasoningSignature { id, signature } => {
-                RawStreamingChoice::ReasoningSignature { id, signature }
+            Self::ReasoningStart { id, provider_id } => {
+                RawStreamingChoice::ReasoningStart { id, provider_id }
             }
+            Self::ReasoningEnd {
+                id,
+                reasoning,
+                signature,
+            } => RawStreamingChoice::ReasoningEnd {
+                id,
+                reasoning,
+                signature,
+            },
+            Self::TextEnd { id } => RawStreamingChoice::TextEnd { id },
             Self::FinalResponse(response) => RawStreamingChoice::FinalResponse(map(response)?),
             Self::MessageId(id) => RawStreamingChoice::MessageId(id),
             Self::Unknown(value) => RawStreamingChoice::Unknown(value),
@@ -993,18 +1037,50 @@ impl Stream for StreamingCompletionResponse {
                         provider_id,
                         content,
                     } => {
-                        // The durable `Reasoning::id` comes only from the
-                        // provider-issued handle; the accumulation key is
-                        // opaque and cannot reach the replayable message.
-                        let reasoning = Reasoning {
+                        // A whole block is open + authoritative restatement
+                        // + close in one event. The durable `Reasoning::id`
+                        // comes only from the provider-issued handle; the
+                        // accumulation key is opaque and cannot reach the
+                        // replayable message.
+                        let restatement = Reasoning {
                             id: provider_id.map(WireId::into_string),
                             content: vec![content],
                         };
-                        stream.parts.reasoning_full(&id, reasoning.clone());
-                        Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning(reasoning))))
+                        match stream.parts.reasoning_end(&id, Some(restatement), None) {
+                            Some(completed) => Poll::Ready(Some(Ok(
+                                StreamedAssistantContent::Reasoning(completed),
+                            ))),
+                            None => continue,
+                        }
                     }
-                    RawStreamingChoice::ReasoningSignature { id, signature } => {
-                        stream.parts.reasoning_signature(&id, signature);
+                    RawStreamingChoice::ReasoningStart { id, provider_id } => {
+                        stream.parts.reasoning_start(&id, provider_id.as_ref());
+                        continue;
+                    }
+                    RawStreamingChoice::ReasoningEnd {
+                        id,
+                        reasoning,
+                        signature,
+                    } => {
+                        // Only a wire-authoritative end payload (a
+                        // restatement or a signature) yields the completed
+                        // block to consumers — the wire said something at
+                        // the block's end and the consumer must see it. A
+                        // bare synthesized end is rig-side lifecycle
+                        // bookkeeping: the consumer already received every
+                        // delta, and fabricating a "completed block" event
+                        // the wire never sent would change what downstream
+                        // history builders observe.
+                        let authoritative = reasoning.is_some() || signature.is_some();
+                        match stream.parts.reasoning_end(&id, reasoning, signature) {
+                            Some(completed) if authoritative => Poll::Ready(Some(Ok(
+                                StreamedAssistantContent::Reasoning(completed),
+                            ))),
+                            _ => continue,
+                        }
+                    }
+                    RawStreamingChoice::TextEnd { id } => {
+                        stream.parts.text_end(&id);
                         continue;
                     }
                     RawStreamingChoice::ReasoningDelta {

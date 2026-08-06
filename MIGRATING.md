@@ -278,6 +278,45 @@ association.
 
 ## 0.41 → next
 
+### The raw grammar is a part lifecycle: Start / Delta / End per content kind
+
+Every streamed part is now an **entity with a lifecycle** — open, mutate in
+place, close — instead of an id-keyed event sequence (review 84a43e9e root
+cause A; vercel's stream-part triples and pydantic-ai's
+`_stop_tracking_vendor_id` are the reference designs):
+
+- `RawStreamingChoice` gains `ReasoningStart { id, provider_id }`,
+  `ReasoningEnd { id, reasoning, signature }` and `TextEnd { id }`. The
+  whole-block `Reasoning` event remains as shorthand for
+  open + authoritative restatement + close. `ReasoningSignature` (added
+  earlier in this PR's lineage) is **deleted** — a trailing signature is
+  just an `End` arriving late, and one end primitive covers a signature
+  closing an open block, a trailing signature after interleaved output, and
+  a signature-only stream, with no per-case branch for an adapter to
+  forget.
+- The accumulator reduces to open-maps into an arrival-ordered part list:
+  open registers the part once (fixing order), deltas mutate through the
+  handle, end applies the authoritative payload and moves the key to a
+  finished-set. **Idempotence belongs to the entity**: the finished-set is
+  populated by every finalization route (fragment ends,
+  authoritative-payload ends, whole-call adoption), so a repeated
+  `ToolInputEnd` — even one carrying an authoritative name and arguments —
+  finalizes nothing. Key reuse after finishing opens a new part; that
+  lenient rule replaces the ordinal machinery.
+- Wires that never announce boundaries (gemini thought parts, ollama and
+  chat-compat reasoning, cohere thinking) have their adapters *synthesize*
+  the end events at the boundaries they already detect — one grammar
+  instead of per-wire lifecycle re-derivation. Deleted with the old
+  machinery: `close_minted_reasoning`, the ordinal maps, the
+  `DeltaBuilt`/`Complete` part tags, `closed_by_full_call`, and every
+  adapter-side thought/restatement buffer (gemini REST/interactions/gRPC,
+  anthropic's thinking-text buffer).
+- Consumers: `StreamedAssistantContent::Reasoning` now fires when a
+  block closes **with a wire-authoritative payload** (a restatement or a
+  signature) — the wire said something at the block's end. A bare
+  rig-synthesized end stays silent: consumers already received every delta,
+  and no fabricated completion event changes what history builders observe.
+
 ### Stream keys are opaque; durable ids and correlators are separate values
 
 The raw-event identity type is now `rig_core::streaming::StreamPartId` — an

@@ -849,8 +849,10 @@ where
             }
         };
 
-        let stream: RawStreamingResult<StreamingCompletionResponse> =
-            Box::pin(internal::adapter::run_wire_stream(transport, OllamaAdapter).instrument(span));
+        let stream: RawStreamingResult<StreamingCompletionResponse> = Box::pin(
+            internal::adapter::run_wire_stream(transport, OllamaAdapter::default())
+                .instrument(span),
+        );
 
         Ok(stream)
     }
@@ -864,7 +866,12 @@ where
 /// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
 /// still complete the stream) lives in
 /// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
-struct OllamaAdapter;
+#[derive(Default)]
+struct OllamaAdapter {
+    /// Whether a thinking block is open — synthesizes the lifecycle end
+    /// this wire never announces.
+    reasoning_open: bool,
+}
 
 impl internal::adapter::WireAdapter for OllamaAdapter {
     type Frame = internal::adapter::WireFrame;
@@ -902,9 +909,10 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
             if let Some(thinking_content) = thinking
                 && !thinking_content.is_empty()
             {
+                self.reasoning_open = true;
                 out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                    // `thinking` deltas carry no wire id and never
-                    // interleave; per-stream constant minted key.
+                    // `thinking` deltas carry no wire id; per-stream
+                    // constant minted key.
                     id: crate::streaming::StreamPartId::Minted {
                         kind: crate::streaming::MintKind::Reasoning,
                         index: 0,
@@ -914,6 +922,21 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                 }));
             }
 
+            if !content.is_empty() || !tool_calls.is_empty() {
+                // Interleaving output ends an open thinking block — the
+                // boundary this wire never announces, synthesized here.
+                if self.reasoning_open {
+                    self.reasoning_open = false;
+                    out.push(Ok(RawStreamingChoice::ReasoningEnd {
+                        id: crate::streaming::StreamPartId::Minted {
+                            kind: crate::streaming::MintKind::Reasoning,
+                            index: 0,
+                        },
+                        reasoning: None,
+                        signature: None,
+                    }));
+                }
+            }
             if !content.is_empty() {
                 out.push(Ok(RawStreamingChoice::Message(content)));
             }

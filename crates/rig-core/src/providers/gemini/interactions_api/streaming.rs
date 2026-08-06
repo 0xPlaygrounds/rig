@@ -207,14 +207,10 @@ where
 /// debug-log-and-skip handling of every decode failure.
 #[derive(Default)]
 struct InteractionsAdapter {
-    /// Thought-summary text since the last boundary (signed emission or
-    /// non-thought output). The grammar requires a full `Reasoning` block to
-    /// be the block's *completed* form, but the wire's `thought_signature`
-    /// delta carries only the signature — so the adapter restates the
-    /// accumulated text (mirroring the REST wire's `thoughtSignature`
-    /// handling). Reset on non-thought output to mirror the accumulator's
-    /// minted-id boundary.
-    thought_buffer: String,
+    /// Whether a thought block is open — the one bit needed to synthesize
+    /// the lifecycle ends this wire never announces. All accumulation lives
+    /// in the shared accumulator.
+    reasoning_open: bool,
     /// A provider `error` event ended the turn; later frames are dead — the
     /// provider aborted, and interpreting more output (or a terminal) would
     /// dress the failure up as a completed turn.
@@ -266,29 +262,28 @@ impl WireAdapter for InteractionsAdapter {
                 }
                 ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
                     if let ThoughtSummaryContent::Text(text) = content {
-                        self.thought_buffer.push_str(&text.text);
+                        self.reasoning_open = true;
                         out.push(Ok(shared_parts::reasoning_delta(text.text)));
                     }
                 }
                 ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
-                    // The signature closes the thinking block: emit the
-                    // completed signed `Reasoning` — the full accumulated
-                    // text restated with the signature — superseding the
-                    // deltas it restates (same treatment as the REST wire's
-                    // `thoughtSignature` chunk; the payload is an opaque
-                    // provider string, passed through verbatim). A
-                    // signature-only block (no preceding summary text) still
-                    // emits, so the signature survives into chat history.
-                    out.push(Ok(shared_parts::signed_reasoning(
-                        std::mem::take(&mut self.thought_buffer),
-                        signature,
-                    )));
+                    // One lifecycle end covers every shape (open block,
+                    // already-closed block, signature-only stream); the
+                    // shared accumulator signs the right part — the missing
+                    // empty-buffer branch class (84a43e9e #2) cannot recur
+                    // because there is no branch.
+                    self.reasoning_open = false;
+                    out.push(Ok(shared_parts::reasoning_end(Some(signature))));
                 }
                 delta => {
                     if let Some(choice) = content_delta_to_choice(delta) {
-                        // Non-thought output closes the open reasoning item
-                        // (accumulator minted-id boundary).
-                        self.thought_buffer.clear();
+                        // Interleaving output ends an open thought block —
+                        // the boundary this wire never announces,
+                        // synthesized here.
+                        if self.reasoning_open {
+                            self.reasoning_open = false;
+                            out.push(Ok(shared_parts::reasoning_end(None)));
+                        }
                         out.push(Ok(choice));
                     }
                 }
@@ -306,7 +301,10 @@ impl WireAdapter for InteractionsAdapter {
                     // would freeze the (usually empty) start-event payload
                     // and drop every fragment. Key by the wire's own id
                     // when present; never the tool name.
-                    self.thought_buffer.clear();
+                    if self.reasoning_open {
+                        self.reasoning_open = false;
+                        out.push(Ok(shared_parts::reasoning_end(None)));
+                    }
                     let wire_id = id.and_then(streaming::WireId::new);
                     let key = wire_id
                         .as_ref()
@@ -331,9 +329,11 @@ impl WireAdapter for InteractionsAdapter {
                     }
                     self.open_function_steps.insert(index, (key, wire_id));
                 } else if let Some(choice) = step_start_to_choice(step) {
-                    // Non-thought output closes the open reasoning item
-                    // (accumulator minted-id boundary).
-                    self.thought_buffer.clear();
+                    // Interleaving output ends an open thought block.
+                    if self.reasoning_open {
+                        self.reasoning_open = false;
+                        out.push(Ok(shared_parts::reasoning_end(None)));
+                    }
                     out.push(Ok(choice));
                 }
             }

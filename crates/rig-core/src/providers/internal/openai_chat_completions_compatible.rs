@@ -324,6 +324,9 @@ pub(crate) enum CompatEvent<U, D> {
 /// Fragment assembly itself lives in the shared accumulator.
 struct CompatAdapter<P: CompatibleStreamProfile> {
     profile: P,
+    /// Whether a `reasoning_content` block is open — synthesizes the
+    /// lifecycle end this wire never announces.
+    reasoning_open: bool,
     /// Index-to-identity bridge only: the Chat Completions wire keys tool
     /// call fragments by chunk index, so the adapter must correlate.
     open_tool_calls: ToolCallBridge<usize>,
@@ -344,6 +347,7 @@ impl<P: CompatibleStreamProfile> CompatAdapter<P> {
     fn new(profile: P) -> Self {
         Self {
             profile,
+            reasoning_open: false,
             open_tool_calls: ToolCallBridge::new(),
             final_usage: None,
             final_finish_reason: None,
@@ -491,9 +495,10 @@ where
         if let Some(reasoning) = choice.reasoning
             && !reasoning.is_empty()
         {
+            self.reasoning_open = true;
             out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                // `reasoning_content` deltas carry no wire id and never
-                // interleave; per-stream constant minted key.
+                // `reasoning_content` deltas carry no wire id; per-stream
+                // constant minted key.
                 id: StreamPartId::Minted {
                     kind: MintKind::Reasoning,
                     index: 0,
@@ -506,6 +511,19 @@ where
         if let Some(content) = choice.text
             && !content.is_empty()
         {
+            // Interleaving output ends an open reasoning block — the
+            // boundary this wire never announces, synthesized here.
+            if self.reasoning_open {
+                self.reasoning_open = false;
+                out.push(Ok(RawStreamingChoice::ReasoningEnd {
+                    id: StreamPartId::Minted {
+                        kind: MintKind::Reasoning,
+                        index: 0,
+                    },
+                    reasoning: None,
+                    signature: None,
+                }));
+            }
             out.push(Ok(RawStreamingChoice::Message(content)));
         }
 

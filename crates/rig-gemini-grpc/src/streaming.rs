@@ -31,7 +31,9 @@ struct GrpcAdapter {
     /// accumulated text, mirroring the REST wire's `thoughtSignature`
     /// handling. Reset on non-thought output to mirror the accumulator's
     /// minted-id boundary.
-    thought_buffer: String,
+    /// Whether a thought block is open — the one bit needed to synthesize
+    /// the lifecycle ends this wire never announces.
+    reasoning_open: bool,
     /// A tool-protocol finish reason ended the turn; later frames are dead —
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn. Mirrors the REST
@@ -82,70 +84,61 @@ impl WireAdapter for GrpcAdapter {
                 for part in &content.parts {
                     match &part.data {
                         Some(proto::part::Data::Text(text)) => {
+                            const REASONING_ID: rig_core::streaming::StreamPartId =
+                                rig_core::streaming::StreamPartId::Minted {
+                                    kind: rig_core::streaming::MintKind::Reasoning,
+                                    index: 0,
+                                };
                             if part.thought {
-                                self.thought_buffer.push_str(text);
-                                if let Some(signature) = encode_signature(&part.thought_signature) {
-                                    // The signature closes the thinking
-                                    // block: emit the completed signed
-                                    // `Reasoning` — the full accumulated
-                                    // text restated with the signature —
-                                    // superseding the deltas it restates
-                                    // (same base64 encoding as the unary
-                                    // path's `Reasoning::new_with_signature`
-                                    // conversion). A signature on an empty
-                                    // trailer part still emits, so it
-                                    // survives into chat history.
-                                    out.push(Ok(streaming::RawStreamingChoice::Reasoning {
-                                        // Thought parts carry no wire id or
-                                        // block boundaries; a per-stream
-                                        // constant minted identity merges
-                                        // them into one item.
-                                        id: rig_core::streaming::StreamPartId::Minted {
-                                            kind: rig_core::streaming::MintKind::Reasoning,
-                                            index: 0,
-                                        },
-                                        provider_id: None,
-                                        content: rig_core::message::ReasoningContent::Text {
-                                            text: std::mem::take(&mut self.thought_buffer),
-                                            signature: Some(signature),
-                                        },
-                                    }));
-                                } else if !text.is_empty() {
+                                if !text.is_empty() {
+                                    self.reasoning_open = true;
                                     out.push(Ok(streaming::RawStreamingChoice::ReasoningDelta {
                                         // Thought parts carry no wire id or
                                         // block boundaries; a per-stream
-                                        // constant minted identity merges
-                                        // them into one item.
-                                        id: rig_core::streaming::StreamPartId::Minted {
-                                            kind: rig_core::streaming::MintKind::Reasoning,
-                                            index: 0,
-                                        },
+                                        // constant minted key merges them
+                                        // into one part.
+                                        id: REASONING_ID,
                                         provider_id: None,
                                         reasoning: text.clone(),
+                                    }));
+                                }
+                                if let Some(signature) = encode_signature(&part.thought_signature) {
+                                    // The signature closes the thinking
+                                    // block; the shared accumulator signs
+                                    // the accumulated deltas (same base64
+                                    // encoding as the unary path).
+                                    self.reasoning_open = false;
+                                    out.push(Ok(streaming::RawStreamingChoice::ReasoningEnd {
+                                        id: REASONING_ID,
+                                        reasoning: None,
+                                        signature: Some(signature),
                                     }));
                                 }
                             } else {
                                 // A trailing non-thought part can carry the
                                 // signature of the already-closed thought
-                                // block; it is lifecycle metadata, not new
-                                // reasoning, and must not be dropped
-                                // (#2258 B4).
+                                // block: one lifecycle end signs the right
+                                // part in every case (#2258 B4).
                                 if let Some(signature) = encode_signature(&part.thought_signature) {
-                                    out.push(Ok(
-                                        streaming::RawStreamingChoice::ReasoningSignature {
-                                            id: rig_core::streaming::StreamPartId::Minted {
-                                                kind: rig_core::streaming::MintKind::Reasoning,
-                                                index: 0,
-                                            },
-                                            signature,
-                                        },
-                                    ));
+                                    self.reasoning_open = false;
+                                    out.push(Ok(streaming::RawStreamingChoice::ReasoningEnd {
+                                        id: REASONING_ID,
+                                        reasoning: None,
+                                        signature: Some(signature),
+                                    }));
                                 }
-                                // Non-thought output closes the open
-                                // reasoning item (accumulator minted-id
-                                // boundary).
-                                self.thought_buffer.clear();
                                 if !text.is_empty() {
+                                    // Interleaving output ends an open
+                                    // thought block — the boundary this wire
+                                    // never announces, synthesized here.
+                                    if self.reasoning_open {
+                                        self.reasoning_open = false;
+                                        out.push(Ok(streaming::RawStreamingChoice::ReasoningEnd {
+                                            id: REASONING_ID,
+                                            reasoning: None,
+                                            signature: None,
+                                        }));
+                                    }
                                     out.push(Ok(streaming::RawStreamingChoice::Message(
                                         text.clone(),
                                     )));
@@ -153,9 +146,18 @@ impl WireAdapter for GrpcAdapter {
                             }
                         }
                         Some(proto::part::Data::FunctionCall(function_call)) => {
-                            // Non-thought output closes the open reasoning
-                            // item (accumulator minted-id boundary).
-                            self.thought_buffer.clear();
+                            // Interleaving output ends an open thought block.
+                            if self.reasoning_open {
+                                self.reasoning_open = false;
+                                out.push(Ok(streaming::RawStreamingChoice::ReasoningEnd {
+                                    id: rig_core::streaming::StreamPartId::Minted {
+                                        kind: rig_core::streaming::MintKind::Reasoning,
+                                        index: 0,
+                                    },
+                                    reasoning: None,
+                                    signature: None,
+                                }));
+                            }
                             let args_json = function_call
                                 .args
                                 .as_ref()
