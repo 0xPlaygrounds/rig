@@ -429,9 +429,40 @@ where
             }
         }
 
-        // A tool call starting is as much a reasoning boundary as text is:
-        // this wire never announces the block's end, so it is synthesized
-        // before the first fragment of any other part class.
+        // This chunk's parts are emitted reasoning → text → tool calls, so
+        // a chunk carrying several classes at once keeps the wire's logical
+        // order: the model reasons, speaks, then acts. Each later class
+        // closes a still-open reasoning block before its first fragment —
+        // the boundary this wire never announces.
+        if let Some(reasoning) = choice.reasoning
+            && !reasoning.is_empty()
+        {
+            self.reasoning_open = true;
+            out.push(Ok(RawStreamingChoice::ReasoningDelta {
+                // `reasoning_content` deltas carry no wire id; per-stream
+                // constant minted key.
+                id: StreamPartId::minted(MintKind::Reasoning, 0),
+                provider_id: None,
+                reasoning,
+            }));
+        }
+
+        if let Some(content) = choice.text
+            && !content.is_empty()
+        {
+            if self.reasoning_open {
+                self.reasoning_open = false;
+                out.push(Ok(RawStreamingChoice::ReasoningEnd {
+                    id: StreamPartId::minted(MintKind::Reasoning, 0),
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: false,
+                }));
+            }
+            out.push(Ok(RawStreamingChoice::Message(content)));
+        }
+
+        // A tool call starting is as much a reasoning boundary as text is.
         if !choice.tool_calls.is_empty() && self.reasoning_open {
             self.reasoning_open = false;
             out.push(Ok(RawStreamingChoice::ReasoningEnd {
@@ -503,36 +534,6 @@ where
             if let Some(decoration) = self.profile.decorate_tool_call(detail) {
                 self.open_tool_calls.decorate(decoration);
             }
-        }
-
-        if let Some(reasoning) = choice.reasoning
-            && !reasoning.is_empty()
-        {
-            self.reasoning_open = true;
-            out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                // `reasoning_content` deltas carry no wire id; per-stream
-                // constant minted key.
-                id: StreamPartId::minted(MintKind::Reasoning, 0),
-                provider_id: None,
-                reasoning,
-            }));
-        }
-
-        if let Some(content) = choice.text
-            && !content.is_empty()
-        {
-            // Interleaving output ends an open reasoning block — the
-            // boundary this wire never announces, synthesized here.
-            if self.reasoning_open {
-                self.reasoning_open = false;
-                out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                    id: StreamPartId::minted(MintKind::Reasoning, 0),
-                    reasoning: None,
-                    signature: None,
-                    wire_sent: false,
-                }));
-            }
-            out.push(Ok(RawStreamingChoice::Message(content)));
         }
 
         if choice.finish_reason.is_tool_calls() {
@@ -886,6 +887,47 @@ mod tests {
             reasoning_texts,
             vec!["thinking before".to_owned(), "thinking after".to_owned()],
             "the tool call must split the reasoning into two parts"
+        );
+    }
+
+    /// One chunk carrying BOTH a reasoning delta and a complete tool call:
+    /// the adapter's within-chunk order is reasoning → text → tool calls
+    /// (the model reasons, speaks, then acts — the order every boundary-less
+    /// wire and this crate's ollama adapter use), so the reasoning part
+    /// completes BEFORE the tool call in the aggregated content.
+    #[tokio::test]
+    async fn a_combined_chunk_emits_reasoning_before_its_tool_call() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(["combined", "finish"]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, ReasoningAroundToolCallProfile)
+                .await
+                .expect("stream should start");
+        while stream.next().await.is_some() {}
+
+        let kinds: Vec<&'static str> = stream
+            .choice
+            .clone()
+            .into_iter()
+            .map(|item| match item {
+                crate::completion::AssistantContent::Reasoning(_) => "reasoning",
+                crate::completion::AssistantContent::ToolCall(_) => "tool_call",
+                _ => "other",
+            })
+            .collect();
+
+        assert_eq!(
+            kinds,
+            vec!["reasoning", "tool_call"],
+            "the same-chunk reasoning must close before the tool call opens"
         );
     }
 
