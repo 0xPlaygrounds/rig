@@ -1186,7 +1186,7 @@ mod tests {
 
             let mut signed = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Reasoning(reasoning) =
+                if let StreamedAssistantContent::Reasoning { reasoning, .. } =
                     item.expect("stream item should be Ok")
                 {
                     signed = Some(reasoning);

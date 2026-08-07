@@ -463,10 +463,30 @@ pub fn assert_valid_event_stream(
         }
     }
 
+    // Law 4b: reasoning correlation. Every completed reasoning block
+    // carries a non-empty correlator no other completed block shares (a
+    // delta-only part may legitimately have no completed block — e.g. a
+    // visible chain of thought whose synthesized end stays silent — so
+    // delta ids are not required to appear among the completed ids).
+    let mut completed_reasoning_ids: Vec<&str> = Vec::new();
+    for item in &ok_items {
+        if let Item::Reasoning { id, .. } = item {
+            assert!(
+                !id.is_empty(),
+                "law 4b (reasoning correlation): a completed block carries an empty correlator"
+            );
+            assert!(
+                !completed_reasoning_ids.contains(&id.as_str()),
+                "law 4b (reasoning correlation): two completed blocks share correlator {id}"
+            );
+            completed_reasoning_ids.push(id);
+        }
+    }
+
     // Law 5: reasoning provenance.
     let yielded_reasoning = ok_items
         .iter()
-        .any(|item| matches!(item, Item::Reasoning(_) | Item::ReasoningDelta { .. }));
+        .any(|item| matches!(item, Item::Reasoning { .. } | Item::ReasoningDelta { .. }));
     let aggregated_reasoning = choice
         .iter()
         .any(|content| matches!(content, AssistantContent::Reasoning(_)));
@@ -476,7 +496,7 @@ pub fn assert_valid_event_stream(
     );
     let yielded_full_block = ok_items
         .iter()
-        .any(|item| matches!(item, Item::Reasoning(_)));
+        .any(|item| matches!(item, Item::Reasoning { .. }));
     if yielded_reasoning && !yielded_full_block {
         let streamed_reasoning: String = ok_items
             .iter()

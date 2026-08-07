@@ -354,6 +354,15 @@ Public stream items change accordingly (breaking):
   `provider_id`: the assembled `Reasoning::id` carries only provider-issued
   values (this closes a latent leak where a minted rendering could enter
   history through the agent's delta-only assembly path).
+- `StreamedAssistantContent::Reasoning` becomes a struct variant
+  `Reasoning { reasoning, id }`: the completed block restates the
+  rig-generated correlator its deltas carried, mirroring the completed
+  `ToolCall`'s `internal_call_id`. On wires with no provider handle
+  (anthropic unsigned thinking, gemini signature-only ends) the correlator
+  is the *only* way to associate the completed replacement with its prior
+  deltas — `reasoning.id` stays the durable provider handle and the
+  correlator never enters replayable history. Matchers change from
+  `Reasoning(reasoning)` to `Reasoning { reasoning, .. }`.
 
 ### `ToolResult` carries the executed tool's name
 

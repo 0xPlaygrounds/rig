@@ -309,9 +309,9 @@ async fn collect_concurrent_tool_observation(
             )) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                _,
-            ))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
+                ..
+            })) => {
                 observation.events.push("reasoning");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(

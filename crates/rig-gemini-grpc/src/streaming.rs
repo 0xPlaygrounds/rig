@@ -401,7 +401,7 @@ mod tests {
         let mut stream = stream_from_events(futures::stream::iter(events.into_iter().map(Ok)));
         let mut blocks = Vec::new();
         while let Some(item) = stream.next().await {
-            if let StreamedAssistantContent::Reasoning(reasoning) =
+            if let StreamedAssistantContent::Reasoning { reasoning, .. } =
                 item.expect("stream item should be ok")
             {
                 blocks.push(reasoning);

@@ -1222,7 +1222,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     while let Some(item) = stream.next().await {
         match item.expect("normalized stream item") {
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Reasoning(_),
+                StreamedAssistantContent::Reasoning { .. },
             ) => saw_reasoning = true,
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::ReasoningDelta { .. },

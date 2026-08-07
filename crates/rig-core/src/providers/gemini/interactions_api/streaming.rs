@@ -716,7 +716,9 @@ mod tests {
         let signed = items
             .iter()
             .find_map(|item| match item {
-                Ok(StreamedAssistantContent::Reasoning(reasoning)) => Some(reasoning.clone()),
+                Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
+                    Some(reasoning.clone())
+                }
                 _ => None,
             })
             .expect("the signature must yield a completed Reasoning block");
@@ -763,7 +765,9 @@ mod tests {
         let signed = items
             .iter()
             .find_map(|item| match item {
-                Ok(StreamedAssistantContent::Reasoning(reasoning)) => Some(reasoning.clone()),
+                Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
+                    Some(reasoning.clone())
+                }
                 _ => None,
             })
             .expect("a signature-only block must still yield a signed Reasoning");

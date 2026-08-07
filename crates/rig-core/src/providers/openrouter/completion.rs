@@ -3052,7 +3052,7 @@ mod tests {
         let mut streamed_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
             match chunk.expect("stream item should be ok") {
-                StreamedAssistantContent::Reasoning(reasoning) => {
+                StreamedAssistantContent::Reasoning { reasoning, .. } => {
                     assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
                     assert!(matches!(
                         reasoning.content.first(),

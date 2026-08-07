@@ -1617,9 +1617,10 @@ pub async fn stream_to_stdout(
                 print!("{text}");
                 std::io::Write::flush(&mut std::io::stdout())?;
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
                 reasoning,
-            ))) => {
+                ..
+            })) => {
                 let reasoning = reasoning.display_text();
                 print!("{reasoning}");
                 std::io::Write::flush(&mut std::io::stdout())?;
@@ -1653,7 +1654,6 @@ mod migrated_tests {
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, HookContext};
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
-    use crate::agent::run::streamed::merge_reasoning_blocks;
     use crate::client::AgentClientExt;
     use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
@@ -1679,16 +1679,6 @@ mod migrated_tests {
     use tracing::{Id, Subscriber};
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
-
-    fn reasoning(
-        id: Option<&str>,
-        content: impl IntoIterator<Item = ReasoningContent>,
-    ) -> rig_core::message::Reasoning {
-        let mut reasoning = rig_core::message::Reasoning::new("");
-        reasoning.id = id.map(str::to_string);
-        reasoning.content = content.into_iter().collect();
-        reasoning
-    }
 
     struct StopAgentStreamingBeforeCompletion;
 
@@ -1831,110 +1821,6 @@ mod migrated_tests {
         // A plain-text finalize (no tool call) is left to the caller.
         let text_only = OneOrMany::one(AssistantContent::text(r#"{"city":"Tokyo"}"#));
         assert!(finalize_streamed_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
-    }
-
-    #[test]
-    fn merge_reasoning_blocks_preserves_order_and_signatures() {
-        let mut accumulated = Vec::new();
-        let first = reasoning(
-            Some("rs_1"),
-            [ReasoningContent::Text {
-                text: "step-1".to_string(),
-                signature: Some("sig-1".to_string()),
-            }],
-        );
-        let second = reasoning(
-            Some("rs_1"),
-            [
-                ReasoningContent::Text {
-                    text: "step-2".to_string(),
-                    signature: Some("sig-2".to_string()),
-                },
-                ReasoningContent::Summary("summary".to_string()),
-            ],
-        );
-
-        merge_reasoning_blocks(&mut accumulated, &first);
-        merge_reasoning_blocks(&mut accumulated, &second);
-
-        assert_eq!(accumulated.len(), 1);
-        let merged = accumulated.first().expect("expected accumulated reasoning");
-        assert_eq!(merged.id.as_deref(), Some("rs_1"));
-        assert_eq!(merged.content.len(), 3);
-        assert!(matches!(
-            merged.content.first(),
-            Some(ReasoningContent::Text { text, signature: Some(sig) })
-                if text == "step-1" && sig == "sig-1"
-        ));
-        assert!(matches!(
-            merged.content.get(1),
-            Some(ReasoningContent::Text { text, signature: Some(sig) })
-                if text == "step-2" && sig == "sig-2"
-        ));
-    }
-
-    #[test]
-    fn merge_reasoning_blocks_keeps_distinct_ids_as_separate_items() {
-        let mut accumulated = vec![reasoning(
-            Some("rs_a"),
-            [ReasoningContent::Text {
-                text: "step-1".to_string(),
-                signature: None,
-            }],
-        )];
-        let incoming = reasoning(
-            Some("rs_b"),
-            [ReasoningContent::Text {
-                text: "step-2".to_string(),
-                signature: None,
-            }],
-        );
-
-        merge_reasoning_blocks(&mut accumulated, &incoming);
-        assert_eq!(accumulated.len(), 2);
-        assert_eq!(
-            accumulated.first().and_then(|r| r.id.as_deref()),
-            Some("rs_a")
-        );
-        assert_eq!(
-            accumulated.get(1).and_then(|r| r.id.as_deref()),
-            Some("rs_b")
-        );
-    }
-
-    #[test]
-    fn merge_reasoning_blocks_keeps_none_ids_separate_items() {
-        let mut accumulated = vec![reasoning(
-            None,
-            [ReasoningContent::Text {
-                text: "first".to_string(),
-                signature: None,
-            }],
-        )];
-        let incoming = reasoning(
-            None,
-            [ReasoningContent::Text {
-                text: "second".to_string(),
-                signature: None,
-            }],
-        );
-
-        merge_reasoning_blocks(&mut accumulated, &incoming);
-        assert_eq!(accumulated.len(), 2);
-        assert!(accumulated.first().is_some_and(|reasoning| {
-            reasoning.id.is_none()
-                && matches!(
-                    reasoning.content.first(),
-                    Some(ReasoningContent::Text { text, .. }) if text == "first"
-                )
-        }));
-        assert!(accumulated.get(1).is_some_and(|reasoning| {
-            reasoning.id.is_none()
-                && matches!(
-                    reasoning.content.first(),
-                    Some(ReasoningContent::Text { text, .. }) if text == "second"
-                )
-        }));
     }
 
     #[test]

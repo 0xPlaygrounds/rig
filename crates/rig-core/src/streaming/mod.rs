@@ -1054,14 +1054,22 @@ impl Stream for StreamingCompletionResponse {
                             content: vec![content],
                         };
                         let completed = stream.parts.reasoning_end(&id, Some(restatement), None);
-                        // The part is finished: drop its delta correlator so a
-                        // reused accumulation key (constant minted keys reopen
-                        // a NEW part) mints a fresh one.
-                        stream.reasoning_correlators.remove(&id);
+                        // The part is finished: take its delta correlator (so a
+                        // reused accumulation key — constant minted keys reopen
+                        // a NEW part — mints a fresh one) and restate it on the
+                        // completed event; a block with no prior deltas mints
+                        // its own so the field stays total.
+                        let correlator = stream
+                            .reasoning_correlators
+                            .remove(&id)
+                            .unwrap_or_else(crate::id::generate);
                         match completed {
-                            Some(completed) => Poll::Ready(Some(Ok(
-                                StreamedAssistantContent::Reasoning(completed),
-                            ))),
+                            Some(completed) => {
+                                Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning {
+                                    reasoning: completed,
+                                    id: correlator,
+                                })))
+                            }
                             None => continue,
                         }
                     }
@@ -1087,14 +1095,24 @@ impl Stream for StreamingCompletionResponse {
                         // builders observe.
                         let authoritative = reasoning.is_some() || signature.is_some() || wire_sent;
                         let completed = stream.parts.reasoning_end(&id, reasoning, signature);
-                        // The part is finished: drop its delta correlator so a
+                        // The part is finished: take its delta correlator so a
                         // reused accumulation key mints a fresh one for the
                         // next part (`ReasoningDelta::id` is unique per part).
-                        stream.reasoning_correlators.remove(&id);
+                        // The removal is unconditional — a suppressed
+                        // synthesized end must still clear the map — and the
+                        // yielded completed event restates the correlator its
+                        // deltas carried.
+                        let correlator = stream
+                            .reasoning_correlators
+                            .remove(&id)
+                            .unwrap_or_else(crate::id::generate);
                         match completed {
-                            Some(completed) if authoritative => Poll::Ready(Some(Ok(
-                                StreamedAssistantContent::Reasoning(completed),
-                            ))),
+                            Some(completed) if authoritative => {
+                                Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning {
+                                    reasoning: completed,
+                                    id: correlator,
+                                })))
+                            }
                             _ => continue,
                         }
                     }
@@ -1635,7 +1653,7 @@ mod tests {
                 Ok(StreamedAssistantContent::Final(res)) => {
                     println!("\nFinal response: {res:?}");
                 }
-                Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+                Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
                     let reasoning = reasoning.display_text();
                     print!("{reasoning}");
                     std::io::Write::flush(&mut std::io::stdout()).unwrap();
@@ -2005,7 +2023,7 @@ mod tests {
             );
             let mut completed = Vec::new();
             while let Some(item) = stream.next().await {
-                if let Ok(StreamedAssistantContent::Reasoning(reasoning)) = item {
+                if let Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) = item {
                     completed.push(reasoning);
                 }
             }
@@ -2067,6 +2085,142 @@ mod tests {
         assert_eq!(delta_ids.len(), 2, "one delta per block");
         assert_ne!(
             delta_ids[0], delta_ids[1],
+            "distinct parts must not share a correlator"
+        );
+    }
+
+    /// The completed reasoning event restates the correlator its deltas
+    /// carried (the anthropic shape: id-less deltas, wire-sent bare stop),
+    /// keeping it distinct from the durable provider handle, which stays
+    /// absent.
+    #[tokio::test]
+    async fn completed_reasoning_restates_the_delta_correlator() {
+        let key = || StreamPartId::minted(MintKind::Block, 0);
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: key(),
+                    provider_id: None,
+                    reasoning: "unsigned thoughts".to_string(),
+                });
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: key(),
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: true,
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+
+        let mut delta_ids = Vec::new();
+        let mut completed = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::ReasoningDelta { id, .. }) => delta_ids.push(id),
+                Ok(StreamedAssistantContent::Reasoning { reasoning, id }) => {
+                    completed.push((reasoning, id));
+                }
+                _ => {}
+            }
+        }
+
+        let (reasoning, correlator) = completed.first().expect("one completed block");
+        assert_eq!(
+            Some(correlator),
+            delta_ids.first(),
+            "the completed block restates its deltas' correlator"
+        );
+        assert_eq!(
+            reasoning.id, None,
+            "no provider handle exists on this wire; the correlator must not leak into it"
+        );
+    }
+
+    /// On a signed end (the gemini shape) the completed event carries BOTH
+    /// identities as distinct values: the rig correlator matching the
+    /// deltas, and the durable provider handle in `reasoning.id`.
+    #[tokio::test]
+    async fn completed_reasoning_keeps_correlator_and_provider_handle_distinct() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: StreamPartId::wire("rs_1"),
+                    provider_id: WireId::new("rs_1"),
+                    reasoning: "signed thoughts".to_string(),
+                });
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: StreamPartId::wire("rs_1"),
+                    reasoning: None,
+                    signature: Some("sig_1".to_string()),
+                    wire_sent: true,
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+
+        let mut delta_ids = Vec::new();
+        let mut completed = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::ReasoningDelta { id, .. }) => delta_ids.push(id),
+                Ok(StreamedAssistantContent::Reasoning { reasoning, id }) => {
+                    completed.push((reasoning, id));
+                }
+                _ => {}
+            }
+        }
+
+        let (reasoning, correlator) = completed.first().expect("one completed block");
+        assert_eq!(Some(correlator), delta_ids.first());
+        assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+        assert_ne!(
+            correlator.as_str(),
+            "rs_1",
+            "the rig correlator and the provider handle are separate values"
+        );
+    }
+
+    /// A whole-block reasoning event with no prior deltas still carries a
+    /// non-empty correlator, and two such parts never share one.
+    #[tokio::test]
+    async fn whole_block_reasoning_mints_a_unique_correlator() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: StreamPartId::wire("rs_1"),
+                    provider_id: WireId::new("rs_1"),
+                    content: ReasoningContent::Text {
+                        text: "first".to_string(),
+                        signature: None,
+                    },
+                });
+                yield Ok(RawStreamingChoice::Reasoning {
+                    id: StreamPartId::wire("rs_2"),
+                    provider_id: WireId::new("rs_2"),
+                    content: ReasoningContent::Text {
+                        text: "second".to_string(),
+                        signature: None,
+                    },
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+
+        let mut correlators = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Ok(StreamedAssistantContent::Reasoning { id, .. }) = item {
+                correlators.push(id);
+            }
+        }
+
+        assert_eq!(correlators.len(), 2);
+        assert!(correlators.iter().all(|id| !id.is_empty()));
+        assert_ne!(
+            correlators[0], correlators[1],
             "distinct parts must not share a correlator"
         );
     }
@@ -2323,11 +2477,19 @@ pub enum StreamedAssistantContent {
     /// Complete reasoning block emitted by the assistant.
     ///
     /// Supersedes any prior [`StreamedAssistantContent::ReasoningDelta`]s
-    /// carrying the same reasoning `id`: render it as a *replacement* for
-    /// the accumulated delta text, not an addition. The aggregated
-    /// [`StreamingCompletionResponse::choice`] already applies this
-    /// replacement.
-    Reasoning(Reasoning),
+    /// carrying the same correlator `id`: render it as a *replacement* for
+    /// the accumulated delta text, not an addition. The match key is this
+    /// variant's `id`, not [`Reasoning::id`](crate::message::Reasoning::id).
+    /// The aggregated [`StreamingCompletionResponse::choice`] already
+    /// applies this replacement.
+    Reasoning {
+        reasoning: Reasoning,
+        /// Rig-generated correlator: matches the `id` on this part's prior
+        /// [`StreamedAssistantContent::ReasoningDelta`]s and is unique per
+        /// run. The durable provider handle is `reasoning.id`; this value
+        /// never enters replayable history.
+        id: String,
+    },
     /// Partial reasoning text emitted by the assistant.
     ReasoningDelta {
         /// Rig-generated correlator for the reasoning part this delta

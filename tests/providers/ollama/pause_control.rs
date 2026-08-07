@@ -27,9 +27,8 @@ async fn streaming_pause_and_resume() {
             StreamedAssistantContent::Text(text) => {
                 chunk_count += usize::from(!text.text.is_empty());
             }
-            StreamedAssistantContent::ToolCall { .. } | StreamedAssistantContent::Reasoning(_) => {
-                chunk_count += 1
-            }
+            StreamedAssistantContent::ToolCall { .. }
+            | StreamedAssistantContent::Reasoning { .. } => chunk_count += 1,
             StreamedAssistantContent::Final(_) => break,
             _ => {}
         }

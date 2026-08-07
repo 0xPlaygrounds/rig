@@ -235,9 +235,10 @@ async fn consume_workspace_like_stream(
                 observation.events.push("text");
                 observation.streamed_text.push_str(&text.text);
             }
-            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
+            MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
                 reasoning,
-            )) => {
+                ..
+            }) => {
                 observation.events.push("reasoning");
                 observation
                     .reasoning_text

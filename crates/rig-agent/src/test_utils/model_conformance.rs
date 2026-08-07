@@ -1260,7 +1260,7 @@ where
             }
             crate::streaming::StreamedAssistantContent::ToolCall { .. }
             | crate::streaming::StreamedAssistantContent::ToolCallDelta { .. }
-            | crate::streaming::StreamedAssistantContent::Reasoning(_)
+            | crate::streaming::StreamedAssistantContent::Reasoning { .. }
             | crate::streaming::StreamedAssistantContent::ReasoningDelta { .. }
             | crate::streaming::StreamedAssistantContent::Unknown(_) => {}
         }

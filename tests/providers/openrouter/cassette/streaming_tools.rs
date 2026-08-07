@@ -79,7 +79,7 @@ async fn observe_stream(
     while let Some(item) = stream.next().await {
         match item {
             Ok(StreamedAssistantContent::Text(text)) => observation.text.push_str(&text.text),
-            Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
                 observation
                     .streamed_encrypted
                     .extend(encrypted_blocks_of(&reasoning));

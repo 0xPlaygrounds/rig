@@ -124,10 +124,6 @@ struct StreamState {
     final_stop_reason: Option<StopReason>,
 }
 
-/// Handle one Converse stream event, returning the items to yield in order.
-///
-/// Kept as a plain function over [`StreamState`] so the event bookkeeping can
-/// be unit-tested without an AWS event receiver.
 /// A static, log-safe label for a stop reason: known variants map to their
 /// wire spelling, `Unknown` collapses to `"other"` so its carried wire
 /// string (potentially model output) never reaches a log line.
@@ -143,6 +139,10 @@ fn stop_reason_label(stop_reason: &StopReason) -> &'static str {
     }
 }
 
+/// Handle one Converse stream event, returning the items to yield in order.
+///
+/// Kept as a plain function over [`StreamState`] so the event bookkeeping can
+/// be unit-tested without an AWS event receiver.
 fn process_event(
     state: &mut StreamState,
     output: aws_bedrock::ConverseStreamOutput,
@@ -585,7 +585,7 @@ mod tests {
 
         while let Some(item) = stream.next().await {
             match item {
-                Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+                Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
                     drained.reasoning.push(reasoning);
                 }
                 Ok(StreamedAssistantContent::Final(_)) => drained.reached_terminal = true,
