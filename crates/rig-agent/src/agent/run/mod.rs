@@ -236,8 +236,12 @@ struct ResolvingState {
     next_index: usize,
     executable_tool_names: BTreeSet<String>,
     allowed_tool_names: BTreeSet<String>,
-    /// Synthetic tool results for skipped tool calls, keyed by tool call ID.
-    skipped: BTreeMap<String, UserContent>,
+    /// Synthetic tool results for skipped tool calls, keyed by the call's
+    /// position in `items` — never by the tool-call id, which is empty for
+    /// every call on id-less wires (older ollama daemons) and would collide
+    /// two skipped calls (and hand a non-skipped id-less call a preresolved
+    /// result it never earned).
+    skipped: BTreeMap<usize, UserContent>,
     recovered: bool,
     any_skipped: bool,
     has_tool_calls: bool,
@@ -248,7 +252,8 @@ struct TurnState {
     message_id: Option<String>,
     items: Vec<AssistantContent>,
     has_tool_calls: bool,
-    skipped: BTreeMap<String, UserContent>,
+    /// Keyed by position in `items` (see `ResolvingState::skipped`).
+    skipped: BTreeMap<usize, UserContent>,
     /// `(tool_call_id, internal_call_id)` pairs for streamed turns, in
     /// emission order; empty for non-streamed turns.
     #[serde(default)]
@@ -756,7 +761,8 @@ impl AgentRun {
                     self.output_retries = 0;
                     let calls: Vec<PendingToolCall> = items
                         .iter()
-                        .filter_map(|item| match item {
+                        .enumerate()
+                        .filter_map(|(index, item)| match item {
                             AssistantContent::ToolCall(tool_call) => {
                                 // Consume pairs positionally so duplicate
                                 // provider IDs within one turn stay
@@ -764,10 +770,10 @@ impl AgentRun {
                                 let internal_call_id = internal_call_ids
                                     .iter()
                                     .position(|(id, _)| *id == tool_call.id)
-                                    .map(|index| internal_call_ids.remove(index).1);
+                                    .map(|pair| internal_call_ids.remove(pair).1);
                                 Some(PendingToolCall {
                                     tool_call: tool_call.clone(),
-                                    preresolved_result: skipped.get(&tool_call.id).cloned(),
+                                    preresolved_result: skipped.get(&index).cloned(),
                                     internal_call_id,
                                 })
                             }
@@ -904,7 +910,7 @@ impl AgentRun {
         message_id: Option<String>,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
-        skipped: BTreeMap<String, UserContent>,
+        skipped: BTreeMap<usize, UserContent>,
         internal_call_ids: Vec<(String, String)>,
     ) {
         self.state = RunState::AwaitingAdvance(Box::new(TurnState {
@@ -1041,7 +1047,10 @@ impl AgentRun {
                     tool_call.function.name.clone(),
                     OneOrMany::one(reason.into()),
                 );
-                resolving.skipped.insert(tool_call.id.clone(), user_content);
+                // Keyed by the call's position: `next_index` is exactly the
+                // invalid call's slot in `items`, and later mutations only
+                // touch indices at or after it, so earlier keys stay stable.
+                resolving.skipped.insert(resolving.next_index, user_content);
                 resolving.recovered = true;
                 resolving.any_skipped = true;
                 resolving.next_index += 1;
@@ -1202,9 +1211,9 @@ impl AgentRun {
         // When any tool call was skipped, none of the turn's tool calls
         // execute: peers get a synthetic "not executed" result.
         if any_skipped {
-            for item in &items {
+            for (index, item) in items.iter().enumerate() {
                 if let AssistantContent::ToolCall(tool_call) = item {
-                    skipped.entry(tool_call.id.clone()).or_insert_with(|| {
+                    skipped.entry(index).or_insert_with(|| {
                         tool_result_message(
                             tool_call.id.clone(),
                             tool_call.call_id.clone(),
@@ -2065,6 +2074,59 @@ mod tests {
         assert_eq!(calls.len(), 2);
         // Both the skipped call and its valid peer carry preresolved results.
         assert!(calls.iter().all(|call| call.preresolved_result.is_some()));
+    }
+
+    /// Two ID-LESS calls (older ollama daemons issue no tool-call id) must
+    /// not collide in the skipped map: skipping the invalid one leaves the
+    /// valid peer with its own "not executed" result, and each call reads
+    /// back its OWN preresolved result — position, not id, is the key.
+    #[test]
+    fn id_less_calls_keep_distinct_skip_results() {
+        let mut run = AgentRun::new("call things").max_turns(2);
+
+        expect_call_model(&mut run);
+        let turn = ModelTurn::new(
+            None,
+            OneOrMany::many(vec![tool_call("", "unknown"), tool_call("", "add")])
+                .expect("two items"),
+            Usage::new(),
+            tool_names(&["add"]),
+            tool_names(&["add"]),
+        );
+        expect_needs_resolution(
+            run.model_response(turn)
+                .expect("model_response should succeed"),
+        );
+        let suppressed = expect_continue(
+            run.resolve_invalid_tool_call(InvalidToolCallAction::skip("not available"))
+                .expect("skip should be accepted"),
+        );
+        assert!(suppressed);
+
+        let calls = expect_call_tools(&mut run);
+        assert_eq!(calls.len(), 2);
+        let results: Vec<String> = calls
+            .iter()
+            .map(|call| match call.preresolved_result.as_ref() {
+                Some(rig_core::message::UserContent::ToolResult(result)) => result
+                    .content
+                    .iter()
+                    .filter_map(|content| match content {
+                        rig_core::message::ToolResultContent::Text(text) => Some(text.text.clone()),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => panic!("both calls carry preresolved results"),
+            })
+            .collect();
+        assert_eq!(
+            results[0], "not available",
+            "the skipped call reads its own feedback"
+        );
+        assert_eq!(
+            results[1], TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
+            "the peer reads its own synthetic result, not the skipped one\'s"
+        );
     }
 
     #[test]
