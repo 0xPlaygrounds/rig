@@ -70,7 +70,7 @@ impl MintKind {
 /// `Eq + Hash + Clone + Debug` and nothing else — deliberately no
 /// `Serialize`/`Deserialize`, no rendering, and no *public* accessor into
 /// the durable id space (crate-internal legacy-fallback sites read
-/// [`StreamPartId::wire_str`]; the `identity_leak` compile-fail suite pins
+/// `StreamPartId::wire_str`; the `identity_leak` compile-fail suite pins
 /// the public boundary). Keys derived from wire ids (`StreamPartId::Wire`)
 /// stay distinguishable from minted ones because the accumulator's
 /// interleaving-boundary lifecycle still asks
