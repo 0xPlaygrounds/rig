@@ -969,6 +969,7 @@ impl TurnSource for UnaryTurnSource {
                                             message_id: resp.message_id.as_deref(),
                                             identity: &identity,
                                             raw: attempt_raw,
+                                            response_id: resp.response_id.as_deref(),
                                         },
                                     )
                                     .await,
@@ -8304,6 +8305,92 @@ mod migrated_tests {
             .build()
             .runner("go")
             .without_memory()
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_eq!(probe.0.lock().unwrap().as_slice(), [None]);
+    }
+
+    /// Records the response-scoped id each surface reported to hooks.
+    #[derive(Clone, Default)]
+    struct ResponseIdProbe(Arc<Mutex<Vec<Option<String>>>>);
+
+    impl AgentHook for ResponseIdProbe {
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            event: crate::agent::hook::CompletionResponse<'_>,
+        ) -> ObservationAction {
+            self.0
+                .lock()
+                .unwrap()
+                .push(event.response_id.map(str::to_string));
+            ObservationAction::Continue
+        }
+
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            event: StreamResponseFinish<'_>,
+        ) -> ObservationAction {
+            self.0
+                .lock()
+                .unwrap()
+                .push(event.response_id.map(str::to_string));
+            ObservationAction::Continue
+        }
+    }
+
+    /// The response-scoped id is deliberately kept out of history, so a hook is
+    /// the only place it can be correlated with provider logs.
+    #[tokio::test]
+    async fn hooks_observe_the_response_scoped_id_on_both_surfaces() {
+        let probe = ResponseIdProbe::default();
+        AgentBuilder::new(MockCompletionModel::from_turns([
+            MockTurn::text("done").with_response_id("chatcmpl-123")
+        ]))
+        .add_hook(probe.clone())
+        .build()
+        .runner("go")
+        .run()
+        .await
+        .expect("blocking run should succeed");
+        assert_eq!(
+            probe.0.lock().unwrap().as_slice(),
+            [Some("chatcmpl-123".to_string())]
+        );
+
+        let streaming = ResponseIdProbe::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("done"),
+            MockStreamEvent::FinalResponse(
+                crate::streaming::StreamFinal::new("mock", Usage::new())
+                    .with_response_id("chatcmpl-456"),
+            ),
+        ]]))
+        .add_hook(streaming.clone())
+        .build()
+        .runner("go")
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        assert_eq!(
+            streaming.0.lock().unwrap().as_slice(),
+            [Some("chatcmpl-456".to_string())]
+        );
+    }
+
+    /// A provider that reports no response id yields `None` rather than an
+    /// empty string, matching how the identifier setters treat `""`.
+    #[tokio::test]
+    async fn an_unreported_response_id_is_none() {
+        let probe = ResponseIdProbe::default();
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+            .add_hook(probe.clone())
+            .build()
+            .runner("go")
             .run()
             .await
             .expect("blocking run should succeed");
