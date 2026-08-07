@@ -736,6 +736,57 @@ mod interleaved_constant_id_reasoning {
         );
     }
 
+    /// Two id-less calls arriving in SEPARATE records must also stay
+    /// distinct: a per-record index enumeration handed both `Minted(Tool,0)`
+    /// and one call silently swallowed the other (round-5 O3 bonus). The
+    /// per-stream minter counts across records.
+    #[tokio::test]
+    async fn ollama_id_less_calls_in_separate_records_stay_distinct() {
+        use rig_core::message::AssistantContent;
+        use serde_json::json;
+
+        let ndjson = |frame: &serde_json::Value| {
+            conformance::WireInput::Bytes(bytes::Bytes::from(format!("{frame}\n")))
+        };
+        let record = |city: &str| {
+            ndjson(&json!({
+                "model": "llama3.2",
+                "created_at": "2023-08-04T19:22:45.499127Z",
+                "message": {"role": "assistant", "content": "", "tool_calls": [
+                    {"function": {"name": "get_weather", "arguments": {"city": city}}},
+                ]},
+                "done": false,
+            }))
+        };
+        let frames = vec![
+            record("Tokyo"),
+            record("Paris"),
+            ndjson(&json!({
+                "model": "llama3.2",
+                "created_at": "2023-08-04T19:22:47.499127Z",
+                "message": {"role": "assistant", "content": ""},
+                "done": true,
+                "done_reason": "stop",
+            })),
+        ];
+
+        let drained = ollama::fixture()
+            .driver
+            .drive(conformance::ok_chunks(frames))
+            .await
+            .expect("stream should drive");
+        assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
+        assert_eq!(
+            drained
+                .choice
+                .iter()
+                .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
+                .count(),
+            2,
+            "calls from separate records must survive as distinct parts"
+        );
+    }
+
     /// The gemini-interactions twin of the same-name pin above: two id-less
     /// calls to one tool in a single turn stay distinct — no name-as-id
     /// collapse, no fabricated durable id.

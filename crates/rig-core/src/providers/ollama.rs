@@ -871,6 +871,11 @@ struct OllamaAdapter {
     /// accumulate under the per-stream minted key, and the boundary end
     /// this wire never announces is derived, not hand-rolled here.
     reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
+    /// Per-stream minter for id-less tool-call keys. Counted across the
+    /// whole stream, not per record — a per-record enumeration would hand
+    /// two id-less calls in separate records the same `Minted(Tool, 0)`
+    /// key, and one would silently swallow the other downstream.
+    tool_ids: crate::streaming::SyntheticIds,
 }
 
 impl Default for OllamaAdapter {
@@ -879,6 +884,7 @@ impl Default for OllamaAdapter {
             reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 crate::streaming::StreamPartId::minted(crate::streaming::MintKind::Reasoning, 0),
             ),
+            tool_ids: crate::streaming::SyntheticIds::tool(),
         }
     }
 }
@@ -921,25 +927,24 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
             // distinct minted identity and its durable id stays absent —
             // never the tool name, which would collide two same-tool calls
             // in one turn.
-            let tool_events = tool_calls
-                .into_iter()
-                .enumerate()
-                .map(|(index, tool_call)| {
-                    let key = match tool_call
-                        .id
-                        .as_deref()
-                        .and_then(crate::streaming::WireId::new)
-                    {
-                        Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
-                        None => crate::streaming::MintKind::Tool.for_wire_index(index as u64),
-                    };
-                    RawStreamingChoice::ToolCall(crate::streaming::RawStreamingToolCall::new(
+            let mut tool_events = Vec::with_capacity(tool_calls.len());
+            for tool_call in tool_calls {
+                let key = match tool_call
+                    .id
+                    .as_deref()
+                    .and_then(crate::streaming::WireId::new)
+                {
+                    Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
+                    None => self.tool_ids.mint(),
+                };
+                tool_events.push(RawStreamingChoice::ToolCall(
+                    crate::streaming::RawStreamingToolCall::new(
                         key,
                         tool_call.function.name,
                         tool_call.function.arguments,
-                    ))
-                })
-                .collect();
+                    ),
+                ));
+            }
 
             // Declare what the record carried; the shared lifecycle derives
             // the canonical sequence (boundary end included).

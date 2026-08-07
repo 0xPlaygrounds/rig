@@ -210,6 +210,12 @@ struct InteractionsAdapter {
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
+    /// Per-stream minter for id-less tool keys, shared by BOTH id-less
+    /// paths — fragmenting step assemblies and whole calls — so they can
+    /// never collide on one key (the step-0 assembly used to share
+    /// `Minted(Tool, 0)` with every id-less whole call, and the whole call
+    /// silently swallowed the open assembly).
+    tool_ids: crate::streaming::SyntheticIds,
     /// A provider `error` event ended the turn; later frames are dead — the
     /// provider aborted, and interpreting more output (or a terminal) would
     /// dress the failure up as a completed turn.
@@ -233,6 +239,7 @@ impl Default for InteractionsAdapter {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 shared_parts::REASONING_ID,
             ),
+            tool_ids: crate::streaming::SyntheticIds::tool(),
             failed: false,
             open_function_steps: std::collections::HashMap::new(),
         }
@@ -301,7 +308,7 @@ impl WireAdapter for InteractionsAdapter {
                     );
                 }
                 delta => {
-                    if let Some(choice) = content_delta_to_choice(delta) {
+                    if let Some(choice) = content_delta_to_choice(delta, &mut self.tool_ids) {
                         // Interleaving content ends an open thought block —
                         // the shared lifecycle synthesizes the boundary end.
                         self.reasoning.emit_chunk(
@@ -333,13 +340,11 @@ impl WireAdapter for InteractionsAdapter {
                     let key = wire_id
                         .as_ref()
                         .map(|id| streaming::StreamPartId::wire(id.as_str()))
-                        .unwrap_or(streaming::StreamPartId::minted(
-                            streaming::MintKind::Tool,
-                            // Unsigned at the wire type: a negative index is
-                            // a decode error at the boundary, never an
-                            // identity clamped onto step 0.
-                            u64::from(index),
-                        ));
+                        // The per-stream minter, not the step index: the
+                        // wire index already keys `open_function_steps`,
+                        // and drawing assemblies and whole calls from ONE
+                        // counter is what makes their keys disjoint.
+                        .unwrap_or_else(|| self.tool_ids.mint());
                     let mut tool_events = vec![streaming::RawStreamingChoice::ToolCallDelta {
                         id: key.clone(),
                         content: streaming::ToolCallDeltaContent::Name(name),
@@ -366,7 +371,7 @@ impl WireAdapter for InteractionsAdapter {
                         out,
                     );
                     self.open_function_steps.insert(index, (key, wire_id));
-                } else if let Some(choice) = step_start_to_choice(step) {
+                } else if let Some(choice) = step_start_to_choice(step, &mut self.tool_ids) {
                     // Interleaving content ends an open thought block — the
                     // shared lifecycle synthesizes the boundary end.
                     self.reasoning.emit_chunk(
@@ -499,9 +504,12 @@ where
 
 fn step_start_to_choice(
     step: Step,
+    tool_ids: &mut streaming::SyntheticIds,
 ) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
     match step {
-        Step::ModelOutput { content } => content.into_iter().find_map(content_to_choice),
+        Step::ModelOutput { content } => content
+            .into_iter()
+            .find_map(|content| content_to_choice(content, tool_ids)),
         Step::FunctionCall(FunctionCallContent {
             name,
             arguments,
@@ -515,6 +523,7 @@ fn step_start_to_choice(
                 arguments.unwrap_or(Value::Object(Map::new())),
                 id,
                 None,
+                tool_ids,
             ))
         }
         _ => None,
@@ -523,18 +532,22 @@ fn step_start_to_choice(
 
 fn content_to_choice(
     content: Content,
+    tool_ids: &mut streaming::SyntheticIds,
 ) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
     match content {
         Content::Text(text) if !text.text.is_empty() => {
             Some(streaming::RawStreamingChoice::Message(text.text))
         }
-        Content::FunctionCall(content) => step_start_to_choice(Step::FunctionCall(content)),
+        Content::FunctionCall(content) => {
+            step_start_to_choice(Step::FunctionCall(content), tool_ids)
+        }
         _ => None,
     }
 }
 
 fn content_delta_to_choice(
     delta: ContentDelta,
+    tool_ids: &mut streaming::SyntheticIds,
 ) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
     match delta {
         ContentDelta::Text(TextDelta {
@@ -553,6 +566,7 @@ fn content_delta_to_choice(
                 arguments.unwrap_or(Value::Object(Map::new())),
                 id,
                 None,
+                tool_ids,
             ))
         }
         // Thought deltas (`thought_summary`, `thought_signature`) are
@@ -604,7 +618,8 @@ mod tests {
             panic!("expected step delta");
         };
 
-        let choice = content_delta_to_choice(delta).expect("choice should exist");
+        let choice = content_delta_to_choice(delta, &mut streaming::SyntheticIds::tool())
+            .expect("choice should exist");
         match choice {
             crate::streaming::RawStreamingChoice::Message(text) => {
                 assert_eq!(text, "Hello");
@@ -841,7 +856,8 @@ mod tests {
             panic!("expected step delta");
         };
 
-        let choice = content_delta_to_choice(delta).expect("choice should exist");
+        let choice = content_delta_to_choice(delta, &mut streaming::SyntheticIds::tool())
+            .expect("choice should exist");
         match choice {
             crate::streaming::RawStreamingChoice::ToolCall(call) => {
                 assert_eq!(call.name, "get_weather");

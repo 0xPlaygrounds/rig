@@ -41,18 +41,21 @@ pub(crate) mod shared_parts {
         args: Value,
         wire_id: Option<String>,
         signature: Option<String>,
+        tool_ids: &mut crate::streaming::SyntheticIds,
     ) -> RawStreamingChoice<R> {
         // Never fabricate the identifier that travels upstream: the wire's
         // own id (when Gemini supplies one) is both the part identity and
         // the correlation id; an id-less call keys the stream by a minted
-        // identity and replays with the id absent. The tool *name* is never
-        // an identity — two calls to the same tool in one turn must stay
-        // distinct, correlated by order and by the rig-internal call id.
+        // identity — counted up per stream, so two id-less calls never
+        // collide on one key — and replays with the id absent. The tool
+        // *name* is never an identity — two calls to the same tool in one
+        // turn must stay distinct, correlated by order and by the
+        // rig-internal call id.
         let tool_id = wire_id.clone().and_then(crate::streaming::WireId::new);
         let id = tool_id
             .as_ref()
             .map(|id| StreamPartId::wire(id.as_str()))
-            .unwrap_or(StreamPartId::minted(MintKind::Tool, 0));
+            .unwrap_or_else(|| tool_ids.mint());
         let tool_call = RawStreamingToolCall {
             id,
             tool_id,
@@ -190,6 +193,9 @@ struct GeminiRestAdapter {
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
+    /// Per-stream minter for id-less tool-call keys — a fresh key per call,
+    /// so two id-less calls in one turn never collide on one identity.
+    tool_ids: crate::streaming::SyntheticIds,
     final_usage: Option<PartialUsage>,
     final_finish_reason: Option<FinishReason>,
     final_finish_message: Option<String>,
@@ -207,6 +213,7 @@ impl Default for GeminiRestAdapter {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 shared_parts::REASONING_ID,
             ),
+            tool_ids: crate::streaming::SyntheticIds::tool(),
             final_usage: None,
             final_finish_reason: None,
             final_finish_message: None,
@@ -385,6 +392,7 @@ impl GeminiRestAdapter {
                             function_call.args,
                             function_call.id,
                             thought_signature,
+                            &mut self.tool_ids,
                         )],
                     },
                     out,
