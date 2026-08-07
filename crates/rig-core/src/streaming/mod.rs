@@ -351,11 +351,6 @@ impl From<StreamFinalRepr> for StreamFinal {
     }
 }
 
-/// Enum representing a streaming chunk from the model.
-///
-/// `R` is the terminal record type. Ordinary streams use the normalized
-/// [`StreamFinal`] default; a provider's inherent `raw_stream` method
-/// substitutes its own native terminal type over the same event vocabulary,
 /// An unmodeled wire payload on the raw passthrough channel.
 ///
 /// Wraps the raw JSON with a **redacted** `Debug` (structural metadata only):
@@ -429,6 +424,11 @@ mod unknown_payload_tests {
     }
 }
 
+/// Enum representing a streaming chunk from the model.
+///
+/// `R` is the terminal record type. Ordinary streams use the normalized
+/// [`StreamFinal`] default; a provider's inherent `raw_stream` method
+/// substitutes its own native terminal type over the same event vocabulary,
 /// which is what keeps [`crate::completion::CompletionModel`] free of response
 /// associated types.
 #[derive(Debug, Clone)]
