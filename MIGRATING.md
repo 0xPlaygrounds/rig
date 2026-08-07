@@ -564,7 +564,7 @@ implementation must uphold:
   model output, and `warn!(?value)`-style Debug captures were a recurring
   leak class; with the payload unable to Debug-print its content, the class
   is closed by the type rather than policed by review. Consumers who want
-  the content call `.value()` / `.into_value()` (serialization is unchanged
+  the content call `.value()` (serialization is unchanged
   — the wrapper is `#[serde(transparent)]`); construct one with
   `UnknownPayload::new(value)` or `value.into()`.
 - **Behavioral note — `Unknown` events can now occur on every network

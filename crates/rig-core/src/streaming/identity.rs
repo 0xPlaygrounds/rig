@@ -22,7 +22,7 @@
 //! part-scoped correlators the stream mints for reasoning), unique per run
 //! by construction — pydantic-ai's part-index shape.
 //!
-//! Reference designs: vercel-ai-sdk carries the composite stream key on the
+//! Reference designs: vercel-ai-sdk carries the per-part stream key on the
 //! event and the durable handle in `providerMetadata.openai.itemId`;
 //! pydantic-ai's `VendorId = Hashable` is an arbitrary private key with
 //! durable ids as separate part fields.
@@ -199,16 +199,6 @@ impl SyntheticIds {
         Self { kind, next: 0 }
     }
 
-    /// Keys for reasoning blocks on constant-id wires.
-    pub fn reasoning() -> Self {
-        Self::new(MintKind::Reasoning)
-    }
-
-    /// Keys for content blocks on index-as-id wires.
-    pub fn block() -> Self {
-        Self::new(MintKind::Block)
-    }
-
     /// Keys for the Responses `output_index` fallback.
     pub fn output() -> Self {
         Self::new(MintKind::Output)
@@ -232,8 +222,8 @@ impl SyntheticIds {
     }
 
     /// The key for a stable wire-supplied index; see
-    /// [`MintKind::for_wire_index`].
-    pub fn for_index(&self, index: u64) -> StreamPartId {
+    /// [`MintKind::for_wire_index`] (the public spelling).
+    fn for_index(&self, index: u64) -> StreamPartId {
         self.kind.for_wire_index(index)
     }
 }
@@ -257,7 +247,7 @@ mod tests {
 
     #[test]
     fn mint_counts_up_per_stream() {
-        let mut ids = SyntheticIds::reasoning();
+        let mut ids = SyntheticIds::new(MintKind::Reasoning);
         assert_eq!(ids.mint(), StreamPartId::minted(MintKind::Reasoning, 0));
         assert_eq!(ids.mint(), StreamPartId::minted(MintKind::Reasoning, 1));
     }

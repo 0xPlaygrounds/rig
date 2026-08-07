@@ -1,8 +1,9 @@
 //! Shared lifecycle derivation for boundary-less constant-key wires.
 //!
 //! Wires with no reasoning boundary of their own (ollama's `thinking`,
-//! cohere's `thinking` content, gemini REST's `thought` parts) used to
-//! hand-roll the same algorithm per adapter: track `reasoning_open`, emit
+//! cohere's `thinking` content, gemini REST's `thought` parts, gemini
+//! Interactions' thought summaries) used to hand-roll the same algorithm
+//! per adapter: track `reasoning_open`, emit
 //! the delta under the per-stream constant minted key, and synthesize a
 //! silent `ReasoningEnd` before any other content class. Every review round
 //! found one adapter that missed a piece of it ("close the open reasoning

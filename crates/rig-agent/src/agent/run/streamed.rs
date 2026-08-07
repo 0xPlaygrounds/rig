@@ -385,8 +385,8 @@ impl StreamedTurnAssembler {
             return;
         }
 
-        // Same semantics as `merge_reasoning_blocks`: completed blocks
-        // sharing a provider-issued id extend one another.
+        // Completed blocks sharing a provider-issued id extend one
+        // another (the multi-part same-id reasoning item shape).
         let extends = self.reasoning_parts.iter_mut().rev().find(|part| {
             matches!(part.state, ReasoningPartState::Completed(_))
                 && matches!(

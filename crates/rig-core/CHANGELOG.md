@@ -52,7 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(streaming)* a wire that streams a tool call's input as fragments and then restates it as a complete `ToolCall` now publishes the completed call under the `internal_call_id` its deltas already used, and a trailing `ToolInputEnd` for that id no longer produces a duplicate call in the aggregated choice
 - *(streaming)* re-polling a drained `StreamingCompletionResponse` no longer re-runs the destructive aggregation, which replaced the aggregated choice with an empty text part
 - *(streaming)* a paused stream parks on the pause channel instead of busy-polling its executor task
-- *(streaming)* `close_minted_reasoning` no longer scans every reasoning key on every text token
+- *(streaming)* [**breaking**] a completed reasoning event restates the correlator its deltas carried (including through a synthesized silent end followed by trailing signature metadata), and streamed-turn assembly keeps distinct reasoning parts distinct instead of merging them into one buffer
+- *(streaming)* [**breaking**] the raw unknown-frame passthrough carries `streaming::UnknownPayload` instead of a bare `serde_json::Value`: serialization is transparent, `Debug` is redacted by the type (structural byte count only), and consumers opt into the content via `.value()`
 
 ### Removed
 

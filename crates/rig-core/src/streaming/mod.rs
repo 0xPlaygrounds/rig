@@ -365,7 +365,7 @@ impl From<StreamFinalRepr> for StreamFinal {
 /// unable to Debug-print its content, that class is structurally closed for
 /// the JSON channel — the redaction is a property of the type, not a
 /// convention. Consumers who want the content opt in explicitly via
-/// [`UnknownPayload::value`] / [`UnknownPayload::into_value`]; serialization
+/// [`UnknownPayload::value`]; serialization
 /// is `#[serde(transparent)]`, so wire round-trips are unchanged.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -380,11 +380,6 @@ impl UnknownPayload {
     /// The raw payload, for consumers who opt in to the content.
     pub fn value(&self) -> &serde_json::Value {
         &self.0
-    }
-
-    /// Unwrap into the raw payload.
-    pub fn into_value(self) -> serde_json::Value {
-        self.0
     }
 }
 
