@@ -8237,6 +8237,79 @@ mod migrated_tests {
         assert_request(&streaming_requests[0]);
     }
 
+    /// Records the conversation the run belongs to, as seen from a hook.
+    #[derive(Clone, Default)]
+    struct ConversationProbe(Arc<Mutex<Vec<Option<String>>>>);
+
+    impl AgentHook for ConversationProbe {
+        async fn on_completion_call(
+            &self,
+            ctx: &HookContext,
+            _event: CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            self.0
+                .lock()
+                .unwrap()
+                .push(ctx.conversation_id().map(str::to_string));
+            CompletionCallAction::continue_run()
+        }
+    }
+
+    /// A hook is where per-conversation state belongs — a provider that keeps
+    /// its own session on the far side of the wire needs to know which
+    /// conversation a run is continuing, and only the runner knows that.
+    #[tokio::test]
+    async fn hooks_observe_the_conversation_the_run_names() {
+        let probe = ConversationProbe::default();
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+            .add_hook(probe.clone())
+            .build()
+            .runner("go")
+            .conversation("user-42")
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_eq!(
+            probe.0.lock().unwrap().as_slice(),
+            [Some("user-42".to_string())]
+        );
+
+        // Streaming mints its own hook context; it must report the same id.
+        let streaming = ConversationProbe::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+            ScriptedTurn::Text("done").as_stream_events(StreamShape::Complete),
+        ]))
+        .add_hook(streaming.clone())
+        .build()
+        .runner("go")
+        .conversation("user-42")
+        .stream()
+        .await;
+        while let Some(item) = stream.next().await {
+            let _ = item.map_err(|err| panic!("stream item errored: {err}"));
+        }
+        assert_eq!(
+            streaming.0.lock().unwrap().as_slice(),
+            [Some("user-42".to_string())]
+        );
+    }
+
+    /// A run that names no conversation reports none, so a hook can tell an
+    /// anonymous run from a threaded one rather than inventing a key.
+    #[tokio::test]
+    async fn a_run_without_a_conversation_reports_none() {
+        let probe = ConversationProbe::default();
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+            .add_hook(probe.clone())
+            .build()
+            .runner("go")
+            .without_memory()
+            .run()
+            .await
+            .expect("blocking run should succeed");
+        assert_eq!(probe.0.lock().unwrap().as_slice(), [None]);
+    }
+
     // --- Hook system v2: extra_context, history view, ModelTurnFinished, chained rewrites ---
 
     fn hook_doc(id: &str, text: &str) -> crate::completion::Document {
