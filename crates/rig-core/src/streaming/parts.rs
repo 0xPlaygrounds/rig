@@ -482,30 +482,29 @@ impl PartsAccumulator {
         let index = self.ensure_open_tool_input(id);
         match self.open_tool_inputs.get_mut(index) {
             Some(input) => {
-                match input.buffer.as_mut() {
-                    Some(buffer) => {
-                        // Some OpenAI-compatible gateways emit a literal
-                        // `null` placeholder before streaming the real JSON
-                        // argument fragments; a later non-empty fragment
-                        // supersedes it.
-                        if buffer.trim() == "null" && !fragment.trim().is_empty() {
-                            buffer.clear();
-                        }
-                        if buffer.len().saturating_add(fragment.len()) > MAX_TOOL_INPUT_BYTES {
-                            if !input.overflowed {
-                                input.overflowed = true;
-                                tracing::warn!(
-                                    tool = %input.name,
-                                    "streamed tool-call input exceeded the accumulation bound; \
-                                     truncating — the call will finalize through the wire's \
-                                     unparseable-input policy"
-                                );
-                            }
-                        } else {
-                            buffer.push_str(fragment);
-                        }
+                // The first fragment takes the same guarded path as every
+                // later one — an oversized single fragment must trip the
+                // bound, not bypass it.
+                let buffer = input.buffer.get_or_insert_with(String::new);
+                // Some OpenAI-compatible gateways emit a literal
+                // `null` placeholder before streaming the real JSON
+                // argument fragments; a later non-empty fragment
+                // supersedes it.
+                if buffer.trim() == "null" && !fragment.trim().is_empty() {
+                    buffer.clear();
+                }
+                if buffer.len().saturating_add(fragment.len()) > MAX_TOOL_INPUT_BYTES {
+                    if !input.overflowed {
+                        input.overflowed = true;
+                        tracing::warn!(
+                            tool = %input.name,
+                            "streamed tool-call input exceeded the accumulation bound; \
+                             truncating — the call will finalize through the wire's \
+                             unparseable-input policy"
+                        );
                     }
-                    None => input.buffer = Some(fragment.to_owned()),
+                } else {
+                    buffer.push_str(fragment);
                 }
                 input.internal_call_id.clone()
             }
@@ -1384,6 +1383,26 @@ mod tests {
                 .expect("no error")
                 .is_none()
         );
+    }
+
+    /// The accumulation bound applies to the FIRST fragment too: a single
+    /// oversized fragment trips overflow (and thereby the
+    /// unparseable-input policy at finalization) exactly like the same
+    /// payload split across fragments.
+    #[test]
+    fn an_oversized_first_fragment_trips_the_accumulation_bound() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta(&pid("call_1"), "big");
+        let oversized = "x".repeat(MAX_TOOL_INPUT_BYTES + 1);
+        accumulator.tool_args_delta(&pid("call_1"), &oversized);
+        assert!(
+            accumulator
+                .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none(),
+            "overflow forces the unparseable path; the call must not finalize"
+        );
+        assert!(!accumulator.saw_tool_call());
     }
 
     #[test]
