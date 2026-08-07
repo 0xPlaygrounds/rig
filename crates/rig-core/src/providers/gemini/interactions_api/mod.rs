@@ -321,7 +321,11 @@ pub(crate) fn create_request_body(
 
     let mut history = Vec::new();
     history.extend(chat_history);
-    let (history_system, history) = split_system_messages_from_history(history);
+    let (history_system, mut history) = split_system_messages_from_history(history);
+    // `functionResponse.name` is a *function name* wire: resolve legacy
+    // name-less tool results by pairing them with their calls, exactly as
+    // the REST-Gemini, gRPC, Vertex, and Ollama serializers do.
+    crate::providers::internal::resolve_tool_result_names(&mut history);
 
     let steps = history
         .into_iter()
@@ -2738,6 +2742,113 @@ mod tests {
             Content::Text(TextContent { text, .. }) => assert_eq!(text, "Hello"),
             other => panic!("unexpected content: {other:?}"),
         }
+    }
+
+    /// `functionResponse.name` is the executed function's name: read from
+    /// `ToolResult::name` when the driver carried it, resolved by pairing
+    /// for legacy name-less histories — never an identifier.
+    #[test]
+    fn tool_result_serializes_the_executed_name_not_an_identifier() {
+        use message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
+
+        let call = |id: &str, call_id: Option<&str>, name: &str| Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
+                id: id.to_owned(),
+                call_id: call_id.map(str::to_owned),
+                function: ToolFunction {
+                    name: name.to_owned(),
+                    arguments: json!({}),
+                },
+                signature: None,
+                additional_params: None,
+            })),
+        };
+        let result = |id: &str, call_id: Option<&str>, name: Option<&str>| Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                id: id.to_owned(),
+                call_id: call_id.map(str::to_owned),
+                name: name.map(str::to_owned),
+                content: OneOrMany::one(ToolResultContent::text("out")),
+            })),
+        };
+
+        let request = CompletionRequest {
+            record_telemetry_content: false,
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                // A driver-built result carries the executed name (a repair
+                // hook renamed the call: `sum` ran, not `add`).
+                call("add", Some("call_1"), "sum"),
+                result("add", Some("call_1"), Some("sum")),
+                // A legacy cross-provider result is name-less with an
+                // OpenAI-shaped identifier: the resolver pairs it with its
+                // call — `call_abc` must never reach the wire as a name.
+                call("call_abc", Some("call_abc"), "get_weather"),
+                result("call_abc", Some("call_abc"), None),
+                // A dual-identifier legacy result (OpenAI Responses: item id
+                // `fc_…` + `call_id` `call_…`, both mirrored) resolves to the
+                // call's name — `fc_1` must never reach the wire as a name.
+                call("fc_1", Some("call_9"), "get_time"),
+                result("fc_1", Some("call_9"), None),
+            ])
+            .expect("non-empty history"),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = create_request_body("gemini-2.5-flash".to_string(), request, None)
+            .expect("request should build");
+        let input = serde_json::to_value(&body.input).expect("input should serialize");
+        let mut names = Vec::new();
+        let mut call_ids = Vec::new();
+        fn collect(value: &serde_json::Value, names: &mut Vec<String>, call_ids: &mut Vec<String>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    if map.get("type").and_then(|t| t.as_str()) == Some("function_result") {
+                        if let Some(name) = map.get("name").and_then(|n| n.as_str()) {
+                            names.push(name.to_owned());
+                        }
+                        if let Some(call_id) = map.get("call_id").and_then(|c| c.as_str()) {
+                            call_ids.push(call_id.to_owned());
+                        }
+                    }
+                    for nested in map.values() {
+                        collect(nested, names, call_ids);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for nested in items {
+                        collect(nested, names, call_ids);
+                    }
+                }
+                _ => {}
+            }
+        }
+        collect(&input, &mut names, &mut call_ids);
+
+        assert_eq!(
+            names,
+            vec![
+                "sum".to_owned(),
+                "get_weather".to_owned(),
+                "get_time".to_owned()
+            ]
+        );
+        assert_eq!(
+            call_ids,
+            vec![
+                "call_1".to_owned(),
+                "call_abc".to_owned(),
+                "call_9".to_owned()
+            ]
+        );
     }
 
     #[test]
