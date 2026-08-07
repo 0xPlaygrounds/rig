@@ -1989,6 +1989,17 @@ pub mod fixtures {
                     r#"{"id":"","object":"","choices":[{"prompt_index":0,"content_filter_results":{"hate":{"filtered":false,"severity":"safe"}}}]}"#,
                 )),
                 refusal: None,
+                // Deliberately absent — a documented named skip, not a gap.
+                // The chat wire streams tool calls as fragments that only
+                // finalize at a boundary the wire itself signals (next slot,
+                // finish_reason, terminal), so the AGGREGATED part order
+                // cannot pin reasoning→tool→reasoning without risky early
+                // finalization; and the chat request format erases part
+                // order on replay regardless (`tool_calls` is a flat array
+                // beside `content`). The boundary the adapter does own —
+                // closing the open reasoning block before emitting tool
+                // content — is pinned at emission level by the adapter's
+                // unit tests and by the driver's debug-mode sequence laws.
                 interleaved_reasoning: None,
             }
         }
