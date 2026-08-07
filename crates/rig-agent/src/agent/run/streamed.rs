@@ -359,23 +359,43 @@ impl StreamedTurnAssembler {
         }
     }
 
-    /// Record a completed reasoning block. It supersedes the pending delta
-    /// buffer of the same part — matched by the stream correlator first,
-    /// then by the durable provider id — because the completed block
-    /// restates the delta text plus payloads (signatures, encrypted
-    /// content) the deltas lacked. A block matching no open part merges
-    /// with an earlier completed block sharing its provider id, else
-    /// occupies a new slot; unmatched pending buffers are never dropped
-    /// (a delta-only visible part and a completed encrypted block can
-    /// coexist in one stream).
+    /// Record a completed reasoning block. It supersedes the same part —
+    /// matched by the stream correlator first, regardless of whether that
+    /// part is still pending or already completed (the stream restates one
+    /// correlator per part, so a later same-correlator completion is the
+    /// same part's authoritative whole, e.g. a signed restatement after an
+    /// unsigned close), then by the durable provider id for pending parts —
+    /// because the completed block restates the delta text plus payloads
+    /// (signatures, encrypted content) the deltas lacked. A block matching
+    /// no part by correlator merges with an earlier completed block sharing
+    /// its provider id, else occupies a new slot; unmatched pending buffers
+    /// are never dropped (a delta-only visible part and a completed
+    /// encrypted block can coexist in one stream).
     fn ingest_completed_reasoning(&mut self, reasoning: &Reasoning, correlator: &str) {
+        // An exact correlator match IS the part, whatever its state:
+        // replace wholesale (pydantic-ai's replace-part semantics — the
+        // completed block always carries the whole content, the
+        // accumulator having merged signatures before yielding). Checked
+        // before the provider-id fallbacks so a signed restatement can
+        // never double-extend its own part.
+        let same_part = self
+            .reasoning_parts
+            .iter_mut()
+            .find(|part| part.correlator.as_deref() == Some(correlator));
+        if let Some(part) = same_part {
+            if reasoning.id.is_some() {
+                part.provider_id = reasoning.id.clone();
+            }
+            part.state = ReasoningPartState::Completed(reasoning.clone());
+            return;
+        }
+
         let superseded = self.reasoning_parts.iter_mut().find(|part| {
             matches!(part.state, ReasoningPartState::Pending(_))
-                && (part.correlator.as_deref() == Some(correlator)
-                    || matches!(
-                        (&part.provider_id, &reasoning.id),
-                        (Some(pending_id), Some(incoming_id)) if pending_id == incoming_id
-                    ))
+                && matches!(
+                    (&part.provider_id, &reasoning.id),
+                    (Some(pending_id), Some(incoming_id)) if pending_id == incoming_id
+                )
         });
         if let Some(part) = superseded {
             if reasoning.id.is_some() {
@@ -974,6 +994,59 @@ mod tests {
         ));
         assert_eq!(reasoning[0].id, None);
         assert_eq!(reasoning[1].id.as_deref(), Some("rd_1"));
+    }
+
+    /// A later completion restating the SAME correlator is the same part's
+    /// authoritative whole (the unsigned-close-then-signed-restatement
+    /// shape): it replaces the completed slot, never appends a duplicate.
+    #[test]
+    fn a_same_correlator_completion_replaces_the_completed_part() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", None, "think"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning("corr_a", None, "think", None))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning("corr_a", None, "think", Some("sig")))
+            .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(
+            reasoning.len(),
+            1,
+            "one part per correlator, signed restatement replaces: {reasoning:?}"
+        );
+        assert!(matches!(
+            reasoning[0].content.first(),
+            Some(rig_core::message::ReasoningContent::Text { text, signature: Some(sig) })
+                if text == "think" && sig == "sig"
+        ));
+    }
+
+    /// Same shape with a provider id: the exact-correlator match must win
+    /// BEFORE the shared-provider-id extend fallback, or the signed
+    /// restatement doubles its own text.
+    #[test]
+    fn a_same_correlator_completion_with_a_provider_id_does_not_double_extend() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_1"), "think"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning("corr_a", Some("rs_1"), "think", None))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning(
+            "corr_a",
+            Some("rs_1"),
+            "think",
+            Some("sig"),
+        ))
+        .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(reasoning.len(), 1, "{reasoning:?}");
+        assert_eq!(
+            reasoning[0].content.len(),
+            1,
+            "the restatement must replace, not extend: {reasoning:?}"
+        );
     }
 
     #[test]
