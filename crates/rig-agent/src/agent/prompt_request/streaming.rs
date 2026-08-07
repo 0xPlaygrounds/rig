@@ -4422,11 +4422,12 @@ mod migrated_tests {
                     ))
                     && content.iter().any(|item| matches!(
                     item,
-                    // An invalid NAME DELTA never completed, so its
-                    // diagnostic call carries no durable id (provider ids
-                    // arrive on completion; stream keys never surface).
+                    // An invalid NAME DELTA never completed, so no provider
+                    // id exists — the transcript pair carries a rig-minted
+                    // id instead (wire schemas require a non-empty
+                    // tool_call_id; stream keys never surface).
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.is_empty()
+                        if !tool_call.id.is_empty()
                             && tool_call.function.name == "default_api"
                             && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
                 ))
@@ -4449,7 +4450,7 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.id.is_empty()
+                        if !result.id.is_empty()
                             && result.name.as_deref() == Some("default_api")
                             && result.content.iter().any(|content| matches!(
                                 content,
@@ -4650,8 +4651,10 @@ mod migrated_tests {
 
         let skipped_tool_result =
             skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
-        // The invalid name delta never completed, so its synthetic result
-        // carries no durable id; the executed-name field identifies it.
+        // The invalid name delta never completed, so no provider id exists;
+        // the CONSUMER-visible synthetic result faithfully carries none (the
+        // executed-name field identifies it). Only the retry TRANSCRIPT
+        // mints an id, at the rollback_messages boundary.
         assert_eq!(skipped_tool_result.id, "");
         assert_eq!(skipped_tool_result.name.as_deref(), Some("default_api"));
         assert!(skipped_tool_result.call_id.is_none());
@@ -4681,11 +4684,12 @@ mod migrated_tests {
                     ))
                     && content.iter().any(|item| matches!(
                     item,
-                    // An invalid NAME DELTA never completed, so its
-                    // diagnostic call carries no durable id (provider ids
-                    // arrive on completion; stream keys never surface).
+                    // An invalid NAME DELTA never completed, so no provider
+                    // id exists — the transcript pair carries a rig-minted
+                    // id instead (wire schemas require a non-empty
+                    // tool_call_id; stream keys never surface).
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id.is_empty()
+                        if !tool_call.id.is_empty()
                             && tool_call.function.name == "default_api"
                             && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
                 ))
@@ -4708,7 +4712,7 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.id.is_empty()
+                        if !result.id.is_empty()
                             && result.name.as_deref() == Some("default_api")
                             && result.content.iter().any(|content| matches!(
                                 content,

@@ -150,9 +150,20 @@ impl PartialStreamedTurn {
     /// call and a synthetic "not executed" result for each validated peer.
     pub(crate) fn rollback_messages(
         &self,
-        invalid_tool_call: ToolCall,
+        mut invalid_tool_call: ToolCall,
         feedback: String,
     ) -> Option<(Message, Message)> {
+        // The transcript pair is rig-fabricated conversational fiction, and
+        // wire schemas require a non-empty `tool_call_id` on both sides —
+        // two retries in one conversation must also stay distinguishable.
+        // Rig is this id's legitimate author (pydantic-ai's generated
+        // tool-call-id posture): mint one here, at the transcript boundary,
+        // so hooks upstream still observe that the provider issued none.
+        // Never a provider handle (`call_id` stays None) and never a
+        // stream key.
+        if invalid_tool_call.id.is_empty() {
+            invalid_tool_call.id = rig_core::id::generate();
+        }
         let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
 
         let mut retry_results = self
@@ -707,7 +718,10 @@ impl StreamedTurnAssembler {
             serde_json::from_str(buffered_args).unwrap_or(serde_json::Value::Null)
         };
         // Diagnostic only: the durable id is unknown at delta time, and no
-        // stream-internal key may surface, so the synthetic call is id-less.
+        // stream-internal key may surface, so the IN-MEMORY call is id-less
+        // (hooks faithfully observe that no provider id exists; correlation
+        // is by internal_call_id). The retry TRANSCRIPT mints an id at
+        // serialization time — see `rollback_messages`.
         ToolCall::new(
             String::new(),
             ToolFunction::new(name.to_string(), diagnostic_args),
