@@ -291,9 +291,19 @@ impl PartsAccumulator {
         signature: Option<String>,
     ) -> Option<Reasoning> {
         if let Some(index) = self.open_reasoning.remove(id) {
-            if let Some(restatement) = restatement
+            if let Some(mut restatement) = restatement
                 && let Some(part) = self.parts.get_mut(index)
             {
+                // The restatement supersedes accumulated content, but an
+                // absent field must not erase established identity: the
+                // durable handle set at part-open survives a restatement
+                // that doesn't restate it (the `?? existing` merge every
+                // reference SDK applies to end payloads).
+                if restatement.id.is_none()
+                    && let AssistantContent::Reasoning(open) = &*part
+                {
+                    restatement.id = open.id.clone();
+                }
                 *part = AssistantContent::Reasoning(restatement);
             }
             if let Some(signature) = signature {
@@ -876,6 +886,45 @@ mod tests {
         let parts = accumulator.finish();
         assert_eq!(reasoning_texts(&parts), vec!["the complete chain"]);
         assert_eq!(parts.len(), 1);
+    }
+
+    /// A restatement that doesn't restate the durable handle must not erase
+    /// the one established at part-open; a restatement that does carries
+    /// its own.
+    #[test]
+    fn an_id_less_restatement_keeps_the_open_parts_provider_handle() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta(&pid("rs_1"), wid("rs_1").as_ref(), "partial");
+        let completed = accumulator
+            .reasoning_end(
+                &pid("rs_1"),
+                Some(Reasoning {
+                    id: None,
+                    content: vec![reasoning_text("the complete chain")],
+                }),
+                None,
+            )
+            .expect("open part completes");
+        assert_eq!(
+            completed.id.as_deref(),
+            Some("rs_1"),
+            "an absent restatement id falls back to the handle set at open"
+        );
+
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.reasoning_delta(&pid("rs_2"), wid("rs_2").as_ref(), "partial");
+        let completed = accumulator
+            .reasoning_end(
+                &pid("rs_2"),
+                Some(full("rs_other", reasoning_text("restated"))),
+                None,
+            )
+            .expect("open part completes");
+        assert_eq!(
+            completed.id.as_deref(),
+            Some("rs_other"),
+            "a restated handle wins over the one set at open"
+        );
     }
 
     /// An open part keeps collapsing across interleaved output: with no end
