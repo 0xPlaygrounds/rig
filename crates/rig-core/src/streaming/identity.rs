@@ -8,9 +8,8 @@
 //!   nothing else. It has no rendering, no serialization, and no path into a
 //!   request or a public stream item; it exists to key the accumulator's
 //!   maps for the life of one stream and then dies. Because nothing can
-//!   observe it, an adapter may freely compose it
-//!   (`StreamPartId::Composite`, vercel's `` `${item.id}:0` `` move) or
-//!   mint it ([`SyntheticIds`]) without any global-uniqueness obligation.
+//!   observe it, an adapter may freely mint it ([`SyntheticIds`]) without
+//!   any global-uniqueness obligation.
 //! - [`WireId`] — the **durable provider handle**, present only when the
 //!   provider actually issued one. It is the only value that may populate
 //!   the replayable message types ([`crate::message::Reasoning::id`],
@@ -69,19 +68,19 @@ impl MintKind {
 /// Opaque accumulation key of one streamed part.
 ///
 /// `Eq + Hash + Clone + Debug` and nothing else — deliberately no
-/// `Serialize`/`Deserialize`, no rendering, and no accessor into the
-/// durable id space (see the module docs; the `identity_leak` compile-fail
-/// suite pins this). Keys derived from wire ids (`StreamPartId::Wire`)
+/// `Serialize`/`Deserialize`, no rendering, and no *public* accessor into
+/// the durable id space (crate-internal legacy-fallback sites read
+/// [`StreamPartId::wire_str`]; the `identity_leak` compile-fail suite pins
+/// the public boundary). Keys derived from wire ids (`StreamPartId::Wire`)
 /// stay distinguishable from minted ones because the accumulator's
 /// interleaving-boundary lifecycle still asks
 /// [`StreamPartId::is_minted`]; that discriminant is stream-internal
 /// bookkeeping, not provenance a serializer may consult.
-/// The representation is **private**: pattern-matching cannot extract the
-/// wire string (or any other payload), so "no accessor into the durable id
-/// space" is a property of the type, not a convention — the `identity_leak`
-/// compile-fail suite pins it. Construction goes through [`StreamPartId::wire`],
-/// [`StreamPartId::minted`] / [`MintKind::for_wire_index`], and
-/// [`StreamPartId::composed`].
+/// The representation is **private**: outside the crate, pattern-matching
+/// cannot extract the wire string (or any other payload), so the public
+/// surface's opacity is a property of the type, not a convention.
+/// Construction goes through [`StreamPartId::wire`] and
+/// [`StreamPartId::minted`] / [`MintKind::for_wire_index`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StreamPartId(Repr);
 
@@ -99,15 +98,6 @@ enum Repr {
         /// Position within the mint's own sequence (a counter or the wire's
         /// unsigned index).
         index: u64,
-    },
-    /// A key composed from a parent key and a sub-index — the Responses
-    /// multi-part-under-one-item-id shape (vercel's `` `${item.id}:0` ``).
-    /// Legal precisely because the key is unobservable.
-    Composite {
-        /// The parent part's key.
-        parent: Box<StreamPartId>,
-        /// Position under the parent.
-        ordinal: u32,
     },
 }
 
@@ -142,23 +132,13 @@ impl StreamPartId {
         Self(Repr::Minted { kind, index })
     }
 
-    /// A key composed under `self` at `ordinal` (the Responses sibling
-    /// shape).
-    pub fn composed(&self, ordinal: u32) -> Self {
-        Self(Repr::Composite {
-            parent: Box::new(self.clone()),
-            ordinal,
-        })
-    }
-
     /// Whether this key was minted at a stream boundary (stream-internal
     /// lifecycle bookkeeping: minted-key reasoning items close on
-    /// interleaving output). A composite key inherits its parent's answer.
+    /// interleaving output).
     pub fn is_minted(&self) -> bool {
         match &self.0 {
             Repr::Wire(_) => false,
             Repr::Minted { .. } => true,
-            Repr::Composite { parent, .. } => parent.is_minted(),
         }
     }
 
@@ -280,22 +260,6 @@ mod tests {
         let mut ids = SyntheticIds::reasoning();
         assert_eq!(ids.mint(), StreamPartId::minted(MintKind::Reasoning, 0));
         assert_eq!(ids.mint(), StreamPartId::minted(MintKind::Reasoning, 1));
-    }
-
-    /// Distinctness within one stream is what the accumulator needs; the
-    /// key space is otherwise obligation-free (opaque). Composite keys are
-    /// distinct from their parents and from each other, and inherit the
-    /// minted lifecycle discriminant.
-    #[test]
-    fn composite_keys_are_distinct_and_inherit_mintedness() {
-        let wire = StreamPartId::wire("rs_1");
-        assert_ne!(wire, wire.composed(0));
-        assert_ne!(wire.composed(0), wire.composed(1));
-        assert!(!wire.composed(3).is_minted());
-
-        let minted = MintKind::Reasoning.for_wire_index(0);
-        assert!(minted.composed(2).is_minted());
-        assert_ne!(minted.composed(0), wire.composed(0));
     }
 
     /// Keys minted by different subsystems stay distinct even at equal

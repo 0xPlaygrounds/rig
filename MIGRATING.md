@@ -329,8 +329,7 @@ has no serialization, no rendering, and no accessor into the durable id
 space — and its representation is private, so pattern-matching cannot
 extract the wire string either (the `identity_leak` compile-fail suite pins
 all four). Construction goes through `StreamPartId::wire` /
-`StreamPartId::minted` / `MintKind::for_wire_index`, plus
-`StreamPartId::composed` for adapter-composed keys. The durable provider handle
+`StreamPartId::minted` / `MintKind::for_wire_index`. The durable provider handle
 travels separately as `WireId` (`Reasoning`/`ReasoningDelta` gain
 `provider_id: Option<WireId>`; `RawStreamingToolCall` gains
 `tool_id: Option<WireId>`; `ToolInputEnd::tool_id` is `Option<WireId>`).
