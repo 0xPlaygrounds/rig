@@ -538,6 +538,13 @@ impl PartsAccumulator {
         // carrying an authoritative name/arguments payload: pre-84a43e9e-#1
         // that payload route bypassed the guard and duplicated the call.
         if position.is_none() && self.finished_tools.contains(&end.id) {
+            if end.name.is_some() || end.arguments.is_some() {
+                tracing::debug!(
+                    carries_name = end.name.is_some(),
+                    carries_arguments = end.arguments.is_some(),
+                    "ignoring a payload-bearing repeated end for a finished tool call"
+                );
+            }
             return Ok(None);
         }
         let open = position.map(|index| self.open_tool_inputs.remove(index));
@@ -575,6 +582,10 @@ impl PartsAccumulator {
         if name.is_empty() {
             if matches!(end.on_unparseable, UnparseableToolInput::Keep) {
                 keep_open(self, open);
+            } else {
+                // The drop finalizes the entity: a later payload-bearing
+                // end for this key must not resurrect it as a phantom call.
+                self.finished_tools.insert(end.id);
             }
             return Ok(None);
         }
@@ -608,6 +619,9 @@ impl PartsAccumulator {
                                     tool = %name,
                                     "dropping streamed tool call whose arguments never fully arrived"
                                 );
+                                // The drop finalizes the entity, exactly like
+                                // a successful completion.
+                                self.finished_tools.insert(end.id);
                                 return Ok(None);
                             }
                             // The wire superseded this call mid-assembly; deliver
@@ -1298,6 +1312,62 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    /// A drop is a finalization: a truncated call dismissed under `Drop`
+    /// must not be resurrected by a later payload-bearing end for the same
+    /// key — that end is the same repeated-end defect the finished-set
+    /// guard exists for, arriving after a drop instead of a success.
+    #[test]
+    fn a_dropped_truncated_call_is_not_resurrected_by_a_payload_bearing_end() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta(&pid("call_1"), "get_weather");
+        accumulator.tool_args_delta(&pid("call_1"), "{\"loc\":");
+        assert!(
+            accumulator
+                .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none(),
+            "truncated arguments drop"
+        );
+        let mut retry = end("call_1", UnparseableToolInput::Drop);
+        retry.name = Some("get_weather".to_owned());
+        retry.arguments = Some(serde_json::json!({"loc": "Paris"}));
+        assert!(
+            accumulator
+                .tool_input_end(retry)
+                .expect("no error")
+                .is_none(),
+            "the dropped entity is finished; a later payload must not fabricate a phantom call"
+        );
+        assert!(!accumulator.saw_tool_call());
+    }
+
+    /// Same for the nameless drop: the entity finished when it was
+    /// dismissed, so a later end supplying the missing name is repeated,
+    /// not completing.
+    #[test]
+    fn a_dropped_nameless_call_is_not_resurrected_by_a_named_end() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_args_delta(&pid("call_1"), "{\"y\":1}");
+        assert!(
+            accumulator
+                .tool_input_end(end("call_1", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none(),
+            "nameless call drops"
+        );
+        let mut retry = end("call_1", UnparseableToolInput::Drop);
+        retry.name = Some("late_name".to_owned());
+        retry.arguments = Some(serde_json::json!({"y": 1}));
+        assert!(
+            accumulator
+                .tool_input_end(retry)
+                .expect("no error")
+                .is_none(),
+            "the dropped entity is finished; a late name must not fabricate a phantom call"
+        );
+        assert!(!accumulator.saw_tool_call());
     }
 
     #[test]
