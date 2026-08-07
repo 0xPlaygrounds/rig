@@ -243,6 +243,12 @@ where
     Box::pin(async_stream::stream! {
         let mut transport = Box::pin(transport);
         let mut out: AdapterOutput<A::Response> = Vec::new();
+        // Debug-mode sequence laws over the raw adapter output: every
+        // conformance fixture and cassette replay checks what the adapter
+        // ACTUALLY emits, not just what accumulator fixtures spell.
+        // Compiled out of release builds.
+        #[cfg(any(test, debug_assertions))]
+        let mut sequence_laws = super::sequence_law::SequenceLaws::default();
 
         while let Some(frame) = transport.next().await {
             let frame = match frame {
@@ -276,6 +282,9 @@ where
                 }
             }
 
+            #[cfg(any(test, debug_assertions))]
+            sequence_laws.check_batch(&out);
+
             let saw_terminal = out
                 .iter()
                 .any(|item| matches!(item, Ok(RawStreamingChoice::FinalResponse(_))));
@@ -288,6 +297,8 @@ where
         }
 
         adapter.finish(&mut out);
+        #[cfg(any(test, debug_assertions))]
+        sequence_laws.check_batch(&out);
         for item in out.drain(..) {
             yield item;
         }
@@ -324,6 +335,9 @@ where
 {
     let mut out: AdapterOutput<A::Response> = Vec::new();
     let mut choices = Vec::new();
+    // Same debug-mode sequence laws as `run_wire_stream` (see there).
+    #[cfg(any(test, debug_assertions))]
+    let mut sequence_laws = super::sequence_law::SequenceLaws::default();
 
     for frame in frames {
         match adapter.classify(frame) {
@@ -346,6 +360,9 @@ where
             }
         }
 
+        #[cfg(any(test, debug_assertions))]
+        sequence_laws.check_batch(&out);
+
         let saw_terminal = drain_buffered(&mut out, &mut choices)?;
         if saw_terminal || adapter.is_finished() {
             return Ok(choices);
@@ -353,6 +370,8 @@ where
     }
 
     adapter.finish(&mut out);
+    #[cfg(any(test, debug_assertions))]
+    sequence_laws.check_batch(&out);
     drain_buffered(&mut out, &mut choices)?;
     Ok(choices)
 }

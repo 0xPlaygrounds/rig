@@ -10,6 +10,8 @@
 pub mod adapter;
 pub(crate) mod auth;
 pub(crate) mod openai_chat_completions_compatible;
+#[cfg(any(test, debug_assertions))]
+pub(crate) mod sequence_law;
 pub mod tool_call_bridge;
 pub mod wire;
 
