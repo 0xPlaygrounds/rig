@@ -542,14 +542,28 @@ fn scan_streaming_source(
 
 /// The whole `warn!(...)` invocation starting at `start` (the index of the
 /// macro name), through its matching close paren — rustfmt-wrapped
-/// multi-line bodies included. Falls back to the rest of the file when the
-/// parens never balance (fail closed: an unparseable body is scanned whole).
-fn macro_body(source: &str, start: usize) -> &str {
+/// multi-line bodies included, comments elided (a stray `)` or capture-like
+/// text inside one must neither truncate nor pollute the scanned body).
+/// Falls back to the rest of the file when the parens never balance (fail
+/// closed: an unparseable body is scanned whole).
+fn macro_body(source: &str, start: usize) -> String {
     let Some(open) = source[start..].find('(') else {
-        return &source[start..];
+        return source[start..].to_owned();
     };
     let body = &source[start + open..];
     let bytes = body.as_bytes();
+    // Comment byte ranges within `body`, elided from the returned text.
+    let mut comments: Vec<(usize, usize)> = Vec::new();
+    let assemble = |end: usize, comments: &[(usize, usize)]| {
+        let mut kept = source[start..start + open].to_owned();
+        let mut cursor = 0usize;
+        for &(from, to) in comments {
+            kept.push_str(&body[cursor..from.min(end)]);
+            cursor = to.min(end);
+        }
+        kept.push_str(&body[cursor..end]);
+        kept
+    };
     let mut depth = 0usize;
     let mut index = 0usize;
     while let Some(&byte) = bytes.get(index) {
@@ -603,18 +617,55 @@ fn macro_body(source: &str, start: usize) -> &str {
                     index += 2;
                 }
             }
+            // Line comment: an unbalanced `)` or `"` inside would desync
+            // the tracking (a stray `)` truncates the body — fail OPEN),
+            // and comment prose can imitate captures — so comments are
+            // skipped AND elided from the returned body.
+            b'/' if bytes.get(index + 1) == Some(&b'/') => {
+                let from = index;
+                while let Some(&inner) = bytes.get(index) {
+                    if inner == b'\n' {
+                        break;
+                    }
+                    index += 1;
+                }
+                comments.push((from, index));
+                continue;
+            }
+            // Block comment, nesting honored (Rust block comments nest).
+            b'/' if bytes.get(index + 1) == Some(&b'*') => {
+                let from = index;
+                let mut comment_depth = 1usize;
+                index += 2;
+                while let Some(&inner) = bytes.get(index) {
+                    if inner == b'/' && bytes.get(index + 1) == Some(&b'*') {
+                        comment_depth += 1;
+                        index += 1;
+                    } else if inner == b'*' && bytes.get(index + 1) == Some(&b'/') {
+                        comment_depth -= 1;
+                        index += 1;
+                        if comment_depth == 0 {
+                            index += 1;
+                            break;
+                        }
+                    }
+                    index += 1;
+                }
+                comments.push((from, index));
+                continue;
+            }
             b'(' => depth += 1,
             b')' => {
                 depth -= 1;
                 if depth == 0 {
-                    return &source[start..start + open + index + 1];
+                    return assemble(index + 1, &comments);
                 }
             }
             _ => {}
         }
         index += 1;
     }
-    &source[start..]
+    assemble(body.len(), &comments)
 }
 
 /// Whether a warn-macro body Debug-captures a value: a `?ident` field
@@ -625,9 +676,12 @@ fn macro_body(source: &str, start: usize) -> &str {
 /// construction (the variant tag Debug-prints as a kind, never the payload)
 /// and is not a violation.
 fn body_debug_captures(body: &str) -> bool {
-    // `:?}` / `:#?}` covers both the positional placeholders (`{:?}`) and
-    // inline captures (`{frame:?}`); anything Debug-formatted ends this way.
-    if body.contains(":?}") || body.contains(":#?}") {
+    // Every Debug format spec ends `?}` — `{:?}`, `{frame:?}`, `{:#?}`,
+    // and the less common specs (`{frame:x?}`, `{frame:>10?}`,
+    // `{frame:.3?}`) alike — so the sigil-agnostic suffix is the check
+    // (an escaped-brace literal like `{{x:?}}` can only over-flag, which
+    // fails closed).
+    if body.contains("?}") {
         return true;
     }
     let bytes = body.as_bytes();
@@ -691,15 +745,23 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
         }
         scanned_targets += 1;
         // Renaming the macro would move its call sites out of the scan's
-        // sight; the alias itself is the violation.
-        for aliased in ["tracing::warn as", "tracing::event as"] {
-            if let Some(at) = shipped.find(aliased) {
-                let line_number = shipped[..at].matches('\n').count() + 1;
-                violations.push(format!(
-                    "{}:{}: `use {aliased} …` hides WARN call sites from this scan",
-                    path.display(),
-                    line_number,
-                ));
+        // sight; the alias itself is the violation. The path-qualified
+        // spelling (`use tracing::warn as w`) and the brace-grouped one
+        // (`use tracing::{warn as w}`, possibly multi-line) both count: an
+        // `… as` occurrence whose enclosing statement (back to the previous
+        // `;`) is a `use` of `tracing` is an alias.
+        for aliased in ["warn as", "event as"] {
+            for (at, _) in shipped.match_indices(aliased) {
+                let statement_start = shipped[..at].rfind(';').map_or(0, |semi| semi + 1);
+                let statement = &shipped[statement_start..at];
+                if statement.contains("use") && statement.contains("tracing") {
+                    let line_number = shipped[..at].matches('\n').count() + 1;
+                    violations.push(format!(
+                        "{}:{}: a `use … {aliased} …` alias hides WARN call sites from this scan",
+                        path.display(),
+                        line_number,
+                    ));
+                }
             }
         }
         let warn_sites = shipped
@@ -732,12 +794,12 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
             if is_event && !body.contains("Level::WARN") {
                 continue;
             }
-            if body_debug_captures(body) {
+            if body_debug_captures(&body) {
                 violations.push(format!(
                     "{}:{}: {}",
                     path.display(),
                     line_number,
-                    body.lines().next().unwrap_or(body).trim()
+                    body.lines().next().unwrap_or(&body).trim()
                 ));
             }
         }
@@ -768,6 +830,16 @@ fn the_warn_scan_catches_every_capture_spelling() {
         // Rust-2021 inline format captures Debug-print just as loudly.
         "tracing::warn!(\"bad frame: {frame:?}\");",
         "tracing::warn!(\"bad frame: {frame:#?}\");",
+        // Exotic Debug specs (hex, width, precision) still Debug-print
+        // the payload.
+        "tracing::warn!(\"bad frame: {frame:x?}\");",
+        "tracing::warn!(\"bad frame: {frame:X?}\");",
+        "tracing::warn!(\"bad frame: {frame:>10?}\");",
+        "tracing::warn!(\"bad frame: {frame:.3?}\");",
+        // A stray `)` in a comment must not truncate the scanned body
+        // ahead of the capture.
+        "tracing::warn!(\n    // see step 3)\n    ?frame,\n    \"skipping\"\n);",
+        "tracing::warn!(\n    /* note (a) */\n    ?frame,\n    \"skipping\"\n);",
         // `event!` at WARN level is the same macro in a longer coat.
         "tracing::event!(tracing::Level::WARN, ?frame, \"skipping\");",
     ] {
@@ -776,7 +848,7 @@ fn the_warn_scan_catches_every_capture_spelling() {
             .or_else(|| leaking.find("event!"))
             .expect("fixture contains a warn-level macro");
         assert!(
-            body_debug_captures(macro_body(leaking, start)),
+            body_debug_captures(&macro_body(leaking, start)),
             "must flag: {leaking}"
         );
     }
@@ -793,7 +865,7 @@ fn the_warn_scan_catches_every_capture_spelling() {
         "tracing::warn!(r#\"marker \"quoted\" text\"#, count);",
     ] {
         assert!(
-            !body_debug_captures(macro_body(
+            !body_debug_captures(&macro_body(
                 clean,
                 clean.find("warn!").expect("fixture contains warn!")
             )),
