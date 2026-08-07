@@ -517,6 +517,14 @@ pub struct CompletionResponse<'a> {
     pub usage: Usage,
     /// Provider-assigned message ID, when available.
     pub message_id: Option<&'a str>,
+    /// Provider-assigned ID for the response as a whole, when available.
+    ///
+    /// Response-scoped, unlike [`message_id`](Self::message_id): an OpenAI
+    /// chat `chatcmpl-` ID, a Gemini `responseId`. It is what
+    /// `gen_ai.response.id` reports, so a hook correlating a turn with provider
+    /// logs or with state the provider keeps per response reads it here. It is
+    /// deliberately never promoted into history.
+    pub response_id: Option<&'a str>,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -655,6 +663,13 @@ pub struct StreamResponseFinish<'a> {
     pub usage: Usage,
     /// Provider-assigned message ID, when available.
     pub message_id: Option<&'a str>,
+    /// Provider-assigned ID for the response as a whole, when the stream
+    /// reached its terminal record and carried one.
+    ///
+    /// The streaming counterpart of
+    /// [`CompletionResponse::response_id`](CompletionResponse::response_id);
+    /// `None` for a stream that ended before its terminal record.
+    pub response_id: Option<&'a str>,
 }
 
 /// Hook event kind used only as an observation performance hint.

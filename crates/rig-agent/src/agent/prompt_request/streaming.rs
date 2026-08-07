@@ -1360,6 +1360,12 @@ impl TurnSource for StreamingTurnSource {
                                 content: &streamed_turn.choice,
                                 usage: last_usage,
                                 message_id: streamed_turn.message_id.as_deref(),
+                                // Only the terminal record names the response;
+                                // a stream cut short simply reports none.
+                                response_id: stream
+                                    .response
+                                    .as_ref()
+                                    .and_then(|final_record| final_record.response_id.as_deref()),
                             },
                         )
                         .await,
