@@ -825,6 +825,12 @@ pub struct StreamingCompletionResponse {
     /// accumulation key: stable across a part's deltas, unique per run, and
     /// carrying nothing an accumulation key could leak.
     reasoning_correlators: std::collections::HashMap<StreamPartId, String>,
+    /// Correlators of finished reasoning parts, kept for the stream's
+    /// lifetime (mirroring the accumulator's `finished_reasoning`): a
+    /// trailing signature-only end — Gemini's `thoughtSignature` after a
+    /// synthesized silent boundary — must restate the identity its part's
+    /// deltas carried, not mint a fresh one the assembler cannot match.
+    finished_reasoning_correlators: std::collections::HashMap<StreamPartId, String>,
     /// The provider's normalized terminal record, may be `None`
     /// if the provider didn't yield it during the stream
     pub response: Option<StreamFinal>,
@@ -853,6 +859,7 @@ impl StreamingCompletionResponse {
             finished: false,
             resume_wait: None,
             reasoning_correlators: std::collections::HashMap::new(),
+            finished_reasoning_correlators: std::collections::HashMap::new(),
             response: None,
             final_response_yielded: AtomicBool::new(false),
             message_id: None,
@@ -862,6 +869,38 @@ impl StreamingCompletionResponse {
     /// Stable descriptor name of the provider producing this stream.
     pub fn provider(&self) -> &str {
         &self.provider
+    }
+
+    /// Resolve the public correlator for a reasoning part that just ended,
+    /// keeping the identity available for the part's afterlife.
+    ///
+    /// An end always clears the live delta map — a reused accumulation key
+    /// opens a NEW part whose deltas must mint fresh — but the taken
+    /// correlator moves to the finished map rather than dying, so trailing
+    /// metadata (a late signature after a synthesized silent end) restates
+    /// the identity the part's deltas carried. A restatement under a spent
+    /// key is a new sibling part: it mints fresh and overwrites the entry,
+    /// exactly as the accumulator overwrites its finished index. Entries
+    /// live until the stream is dropped, matching `finished_reasoning`.
+    fn reasoning_end_correlator(&mut self, id: StreamPartId, restated: bool) -> String {
+        match self.reasoning_correlators.remove(&id) {
+            Some(taken) => {
+                self.finished_reasoning_correlators
+                    .insert(id, taken.clone());
+                taken
+            }
+            None if restated => {
+                let minted = crate::id::generate();
+                self.finished_reasoning_correlators
+                    .insert(id, minted.clone());
+                minted
+            }
+            None => self
+                .finished_reasoning_correlators
+                .entry(id)
+                .or_insert_with(crate::id::generate)
+                .clone(),
+        }
     }
 
     /// Cancel the stream and immediately drop the provider's inner stream.
@@ -1054,15 +1093,11 @@ impl Stream for StreamingCompletionResponse {
                             content: vec![content],
                         };
                         let completed = stream.parts.reasoning_end(&id, Some(restatement), None);
-                        // The part is finished: take its delta correlator (so a
-                        // reused accumulation key — constant minted keys reopen
-                        // a NEW part — mints a fresh one) and restate it on the
-                        // completed event; a block with no prior deltas mints
-                        // its own so the field stays total.
-                        let correlator = stream
-                            .reasoning_correlators
-                            .remove(&id)
-                            .unwrap_or_else(crate::id::generate);
+                        // The part is finished: its delta correlator (fresh-
+                        // minted for a block with no prior deltas) is restated
+                        // on the completed event and retained for trailing
+                        // metadata under the same key.
+                        let correlator = stream.reasoning_end_correlator(id, true);
                         match completed {
                             Some(completed) => {
                                 Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning {
@@ -1094,18 +1129,16 @@ impl Stream for StreamingCompletionResponse {
                         // never sent would change what downstream history
                         // builders observe.
                         let authoritative = reasoning.is_some() || signature.is_some() || wire_sent;
+                        let restated = reasoning.is_some();
                         let completed = stream.parts.reasoning_end(&id, reasoning, signature);
-                        // The part is finished: take its delta correlator so a
-                        // reused accumulation key mints a fresh one for the
-                        // next part (`ReasoningDelta::id` is unique per part).
-                        // The removal is unconditional — a suppressed
-                        // synthesized end must still clear the map — and the
-                        // yielded completed event restates the correlator its
-                        // deltas carried.
-                        let correlator = stream
-                            .reasoning_correlators
-                            .remove(&id)
-                            .unwrap_or_else(crate::id::generate);
+                        // The part is finished: the live delta map is cleared
+                        // unconditionally — a suppressed synthesized end must
+                        // still make a reused key mint fresh — but the
+                        // correlator survives in the finished map, so a
+                        // trailing signature-bearing end for this key restates
+                        // the identity its deltas carried instead of minting
+                        // one the assembler cannot match.
+                        let correlator = stream.reasoning_end_correlator(id, restated);
                         match completed {
                             Some(completed) if authoritative => {
                                 Poll::Ready(Some(Ok(StreamedAssistantContent::Reasoning {
@@ -2180,6 +2213,121 @@ mod tests {
             correlator.as_str(),
             "rs_1",
             "the rig correlator and the provider handle are separate values"
+        );
+    }
+
+    /// A trailing signature after a synthesized silent end restates the
+    /// deltas' correlator (the gemini shape: thought deltas, visible text
+    /// forcing a synthesized boundary, then a bare `thoughtSignature`
+    /// frame). The suppressed end must not discard the part's identity —
+    /// a fresh mint here strands the signed completion where the
+    /// streamed-turn assembler cannot match it, duplicating the part.
+    #[tokio::test]
+    async fn late_signature_after_synthesized_end_restates_the_delta_correlator() {
+        let key = || StreamPartId::minted(MintKind::Reasoning, 0);
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: key(),
+                    provider_id: None,
+                    reasoning: "hidden thoughts".to_string(),
+                });
+                // The adapter saw visible text begin and synthesized a
+                // silent boundary the wire never sent.
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: key(),
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: false,
+                });
+                yield Ok(RawStreamingChoice::Message("visible".to_string()));
+                // The trailing signature frame closes the same part.
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: key(),
+                    reasoning: None,
+                    signature: Some("sig_late".to_string()),
+                    wire_sent: true,
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+
+        let mut delta_ids = Vec::new();
+        let mut completed = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(StreamedAssistantContent::ReasoningDelta { id, .. }) => delta_ids.push(id),
+                Ok(StreamedAssistantContent::Reasoning { reasoning, id }) => {
+                    completed.push((reasoning, id));
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(completed.len(), 1, "one signed completion, no duplicate");
+        let (reasoning, correlator) = completed.first().expect("one completed block");
+        assert_eq!(
+            Some(correlator),
+            delta_ids.first(),
+            "the signed completion restates the correlator its deltas carried"
+        );
+        assert!(
+            reasoning.content.iter().any(|content| matches!(
+                content,
+                ReasoningContent::Text { signature: Some(sig), .. } if sig == "sig_late"
+            )),
+            "the trailing signature landed on the completed part"
+        );
+    }
+
+    /// Ending a part and streaming new deltas under the same accumulation
+    /// key opens a NEW part: the second part's correlator is fresh, never
+    /// the finished part's retained identity.
+    #[tokio::test]
+    async fn reused_accumulation_key_mints_a_fresh_correlator_after_an_end() {
+        let key = || StreamPartId::minted(MintKind::Reasoning, 0);
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: key(),
+                    provider_id: None,
+                    reasoning: "first part".to_string(),
+                });
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: key(),
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: true,
+                });
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: key(),
+                    provider_id: None,
+                    reasoning: "second part".to_string(),
+                });
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: key(),
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: true,
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+
+        let mut completed_ids = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Ok(StreamedAssistantContent::Reasoning { id, .. }) = item {
+                completed_ids.push(id);
+            }
+        }
+
+        assert_eq!(completed_ids.len(), 2, "two parts under the reused key");
+        assert_ne!(
+            completed_ids.first(),
+            completed_ids.get(1),
+            "a reused key opens a new part with a fresh correlator"
         );
     }
 
