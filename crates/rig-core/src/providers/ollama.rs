@@ -866,11 +866,21 @@ where
 /// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
 /// still complete the stream) lives in
 /// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
-#[derive(Default)]
 struct OllamaAdapter {
-    /// Whether a thinking block is open — synthesizes the lifecycle end
-    /// this wire never announces.
-    reasoning_open: bool,
+    /// Owns the constant-key reasoning lifecycle: `thinking` deltas
+    /// accumulate under the per-stream minted key, and the boundary end
+    /// this wire never announces is derived, not hand-rolled here.
+    reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
+}
+
+impl Default for OllamaAdapter {
+    fn default() -> Self {
+        Self {
+            reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
+                crate::streaming::StreamPartId::minted(crate::streaming::MintKind::Reasoning, 0),
+            ),
+        }
+    }
 }
 
 impl internal::adapter::WireAdapter for OllamaAdapter {
@@ -906,64 +916,42 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
             ..
         } = response.message
         {
-            if let Some(thinking_content) = thinking
-                && !thinking_content.is_empty()
-            {
-                self.reasoning_open = true;
-                out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                    // `thinking` deltas carry no wire id; per-stream
-                    // constant minted key.
-                    id: crate::streaming::StreamPartId::minted(
-                        crate::streaming::MintKind::Reasoning,
-                        0,
-                    ),
-                    provider_id: None,
-                    reasoning: thinking_content,
-                }));
-            }
-
-            if !content.is_empty() || !tool_calls.is_empty() {
-                // Interleaving output ends an open thinking block — the
-                // boundary this wire never announces, synthesized here.
-                if self.reasoning_open {
-                    self.reasoning_open = false;
-                    out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                        id: crate::streaming::StreamPartId::minted(
-                            crate::streaming::MintKind::Reasoning,
-                            0,
-                        ),
-                        reasoning: None,
-                        signature: None,
-                        wire_sent: false,
-                    }));
-                }
-            }
-            if !content.is_empty() {
-                out.push(Ok(RawStreamingChoice::Message(content)));
-            }
-
             // A daemon-issued call id keys the stream and travels as the
             // durable id; an id-less call (older daemons) keys by a
             // distinct minted identity and its durable id stays absent —
             // never the tool name, which would collide two same-tool calls
             // in one turn.
-            for (index, tool_call) in tool_calls.into_iter().enumerate() {
-                let key = match tool_call
-                    .id
-                    .as_deref()
-                    .and_then(crate::streaming::WireId::new)
-                {
-                    Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
-                    None => crate::streaming::MintKind::Tool.for_wire_index(index as u64),
-                };
-                out.push(Ok(RawStreamingChoice::ToolCall(
-                    crate::streaming::RawStreamingToolCall::new(
+            let tool_events = tool_calls
+                .into_iter()
+                .enumerate()
+                .map(|(index, tool_call)| {
+                    let key = match tool_call
+                        .id
+                        .as_deref()
+                        .and_then(crate::streaming::WireId::new)
+                    {
+                        Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
+                        None => crate::streaming::MintKind::Tool.for_wire_index(index as u64),
+                    };
+                    RawStreamingChoice::ToolCall(crate::streaming::RawStreamingToolCall::new(
                         key,
                         tool_call.function.name,
                         tool_call.function.arguments,
-                    ),
-                )));
-            }
+                    ))
+                })
+                .collect();
+
+            // Declare what the record carried; the shared lifecycle derives
+            // the canonical sequence (boundary end included).
+            self.reasoning.emit_chunk(
+                internal::chunk_lifecycle::ChunkParts {
+                    reasoning: thinking,
+                    reasoning_signature: None,
+                    text: Some(content),
+                    tool_events,
+                },
+                out,
+            );
         }
 
         // Only a `done: true` record counts as the provider completing the

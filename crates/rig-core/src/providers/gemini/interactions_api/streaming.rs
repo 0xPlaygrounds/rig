@@ -205,12 +205,11 @@ where
 /// Frame-triage policy (warn on `Unknown`, in-band `Err` on `Corrupt`) lives
 /// in [`run_wire_stream`], not here — this ends the wire's former
 /// debug-log-and-skip handling of every decode failure.
-#[derive(Default)]
 struct InteractionsAdapter {
-    /// Whether a thought block is open — the one bit needed to synthesize
-    /// the lifecycle ends this wire never announces. All accumulation lives
-    /// in the shared accumulator.
-    reasoning_open: bool,
+    /// Owns the constant-key thought lifecycle — the ends this wire never
+    /// announces are derived by the shared lifecycle, not hand-rolled here.
+    /// All accumulation lives in the shared accumulator.
+    reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
     /// A provider `error` event ended the turn; later frames are dead — the
     /// provider aborted, and interpreting more output (or a terminal) would
     /// dress the failure up as a completed turn.
@@ -226,6 +225,18 @@ struct InteractionsAdapter {
     /// fragment.
     open_function_steps:
         std::collections::HashMap<u32, (streaming::StreamPartId, Option<streaming::WireId>)>,
+}
+
+impl Default for InteractionsAdapter {
+    fn default() -> Self {
+        Self {
+            reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
+                shared_parts::REASONING_ID,
+            ),
+            failed: false,
+            open_function_steps: std::collections::HashMap::new(),
+        }
+    }
 }
 
 impl WireAdapter for InteractionsAdapter {
@@ -262,8 +273,15 @@ impl WireAdapter for InteractionsAdapter {
                 }
                 ContentDelta::ThoughtSummary(ThoughtSummaryDelta { content }) => {
                     if let ThoughtSummaryContent::Text(text) = content {
-                        self.reasoning_open = true;
-                        out.push(Ok(shared_parts::reasoning_delta(text.text)));
+                        self.reasoning.emit_chunk(
+                            crate::providers::internal::chunk_lifecycle::ChunkParts {
+                                reasoning: Some(text.text),
+                                reasoning_signature: None,
+                                text: None,
+                                tool_events: Vec::new(),
+                            },
+                            out,
+                        );
                     }
                 }
                 ContentDelta::ThoughtSignature(ThoughtSignatureDelta { signature }) => {
@@ -272,19 +290,29 @@ impl WireAdapter for InteractionsAdapter {
                     // shared accumulator signs the right part — the missing
                     // empty-buffer branch class (84a43e9e #2) cannot recur
                     // because there is no branch.
-                    self.reasoning_open = false;
-                    out.push(Ok(shared_parts::reasoning_end(Some(signature))));
+                    self.reasoning.emit_chunk(
+                        crate::providers::internal::chunk_lifecycle::ChunkParts {
+                            reasoning: None,
+                            reasoning_signature: Some(signature),
+                            text: None,
+                            tool_events: Vec::new(),
+                        },
+                        out,
+                    );
                 }
                 delta => {
                     if let Some(choice) = content_delta_to_choice(delta) {
-                        // Interleaving output ends an open thought block —
-                        // the boundary this wire never announces,
-                        // synthesized here.
-                        if self.reasoning_open {
-                            self.reasoning_open = false;
-                            out.push(Ok(shared_parts::reasoning_end(None)));
-                        }
-                        out.push(Ok(choice));
+                        // Interleaving content ends an open thought block —
+                        // the shared lifecycle synthesizes the boundary end.
+                        self.reasoning.emit_chunk(
+                            crate::providers::internal::chunk_lifecycle::ChunkParts {
+                                reasoning: None,
+                                reasoning_signature: None,
+                                text: None,
+                                tool_events: vec![choice],
+                            },
+                            out,
+                        );
                     }
                 }
             },
@@ -301,10 +329,6 @@ impl WireAdapter for InteractionsAdapter {
                     // would freeze the (usually empty) start-event payload
                     // and drop every fragment. Key by the wire's own id
                     // when present; never the tool name.
-                    if self.reasoning_open {
-                        self.reasoning_open = false;
-                        out.push(Ok(shared_parts::reasoning_end(None)));
-                    }
                     let wire_id = id.and_then(streaming::WireId::new);
                     let key = wire_id
                         .as_ref()
@@ -316,28 +340,44 @@ impl WireAdapter for InteractionsAdapter {
                             // identity clamped onto step 0.
                             u64::from(index),
                         ));
-                    out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                    let mut tool_events = vec![streaming::RawStreamingChoice::ToolCallDelta {
                         id: key.clone(),
                         content: streaming::ToolCallDeltaContent::Name(name),
-                    }));
+                    }];
                     if let Some(arguments) = arguments
                         && arguments
                             .as_object()
                             .is_none_or(|object| !object.is_empty())
                     {
-                        out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
+                        tool_events.push(streaming::RawStreamingChoice::ToolCallDelta {
                             id: key.clone(),
                             content: streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
-                        }));
+                        });
                     }
+                    // Tool content interleaving an open thought block: the
+                    // shared lifecycle synthesizes the boundary end.
+                    self.reasoning.emit_chunk(
+                        crate::providers::internal::chunk_lifecycle::ChunkParts {
+                            reasoning: None,
+                            reasoning_signature: None,
+                            text: None,
+                            tool_events,
+                        },
+                        out,
+                    );
                     self.open_function_steps.insert(index, (key, wire_id));
                 } else if let Some(choice) = step_start_to_choice(step) {
-                    // Interleaving output ends an open thought block.
-                    if self.reasoning_open {
-                        self.reasoning_open = false;
-                        out.push(Ok(shared_parts::reasoning_end(None)));
-                    }
-                    out.push(Ok(choice));
+                    // Interleaving content ends an open thought block — the
+                    // shared lifecycle synthesizes the boundary end.
+                    self.reasoning.emit_chunk(
+                        crate::providers::internal::chunk_lifecycle::ChunkParts {
+                            reasoning: None,
+                            reasoning_signature: None,
+                            text: None,
+                            tool_events: vec![choice],
+                        },
+                        out,
+                    );
                 }
             }
             InteractionSseEvent::StepStop { index, .. } => {

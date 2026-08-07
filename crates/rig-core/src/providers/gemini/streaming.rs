@@ -34,35 +34,6 @@ pub(crate) mod shared_parts {
     /// around other output. Minted, so it can never reach a request.
     pub(crate) const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
 
-    /// A thought fragment as a canonical reasoning delta.
-    pub(crate) fn reasoning_delta<R>(text: String) -> RawStreamingChoice<R> {
-        RawStreamingChoice::ReasoningDelta {
-            id: REASONING_ID,
-            provider_id: None,
-            reasoning: text,
-        }
-    }
-
-    /// Close the thought block, optionally signing it. One lifecycle
-    /// primitive covers every shape the wires produce: a signature closing
-    /// an open block signs the accumulated deltas; a trailing signature
-    /// after interleaved output signs the block that holds the
-    /// chain-of-thought; a signature with nothing streamed records a
-    /// signature-only part; a bare close with nothing open is a no-op.
-    /// Shared by the REST, Interactions and gRPC wires (an opaque provider
-    /// string, passed through verbatim).
-    pub(crate) fn reasoning_end<R>(signature: Option<String>) -> RawStreamingChoice<R> {
-        RawStreamingChoice::ReasoningEnd {
-            id: REASONING_ID,
-            reasoning: None,
-            signature,
-            // The gemini wires never announce a reasoning boundary of their
-            // own: every bare end here is synthesized at an interleaving
-            // boundary (a wire-carried signature still yields, as payload).
-            wire_sent: false,
-        }
-    }
-
     /// A whole function-call part as a canonical tool call (Gemini never
     /// streams arguments incrementally).
     pub(crate) fn function_call<R>(
@@ -214,12 +185,11 @@ const RECOGNIZABLE_CHUNK_KEYS: &[&str] = &["candidates", "usageMetadata"];
 /// metadata); frame-triage policy lives in
 /// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
 /// not here.
-#[derive(Default)]
 struct GeminiRestAdapter {
-    /// Whether a thought block is open — the one bit the adapter needs to
-    /// synthesize the lifecycle ends this wire never announces. All
-    /// accumulation lives in the shared accumulator.
-    reasoning_open: bool,
+    /// Owns the constant-key thought lifecycle — the ends this wire never
+    /// announces are derived by the shared lifecycle, not hand-rolled here.
+    /// All accumulation lives in the shared accumulator.
+    reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
     final_usage: Option<PartialUsage>,
     final_finish_reason: Option<FinishReason>,
     final_finish_message: Option<String>,
@@ -229,6 +199,22 @@ struct GeminiRestAdapter {
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn.
     failed: bool,
+}
+
+impl Default for GeminiRestAdapter {
+    fn default() -> Self {
+        Self {
+            reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
+                shared_parts::REASONING_ID,
+            ),
+            final_usage: None,
+            final_finish_reason: None,
+            final_finish_message: None,
+            final_model_version: None,
+            final_response_id: None,
+            failed: false,
+        }
+    }
 }
 
 impl WireAdapter for GeminiRestAdapter {
@@ -338,18 +324,19 @@ impl GeminiRestAdapter {
                 thought_signature,
                 ..
             } => {
-                if !text.is_empty() {
-                    self.reasoning_open = true;
-                    out.push(Ok(shared_parts::reasoning_delta(text)));
-                }
-                if let Some(signature) = thought_signature {
-                    // The signature closes the thinking block; the shared
-                    // accumulator signs the accumulated deltas (or records a
-                    // signature-only part when nothing streamed — replay-
-                    // required provider state either way).
-                    self.reasoning_open = false;
-                    out.push(Ok(shared_parts::reasoning_end(Some(signature))));
-                }
+                // Declare what the part carried; the shared lifecycle
+                // derives the sequence (a signature closes the block; the
+                // shared accumulator signs the accumulated deltas or records
+                // a signature-only part when nothing streamed).
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: Some(text),
+                        reasoning_signature: thought_signature,
+                        text: None,
+                        tool_events: Vec::new(),
+                    },
+                    out,
+                );
             }
             Part {
                 part: PartKind::Text(text),
@@ -363,43 +350,45 @@ impl GeminiRestAdapter {
                 // `thought: true` arm above, which real streams never reach
                 // for the signature. Dropping it costs the replay-required
                 // provider state Gemini validates (`MISSING_THOUGHT_SIGNATURE`).
-                if let Some(signature) = thought_signature {
-                    // The wire attaches a trailing `thoughtSignature` to a
-                    // part with no `thought` flag (recorded traffic:
-                    // `{"text":"","thoughtSignature":"..."}`). One lifecycle
-                    // end covers every case — open block (sign the deltas),
-                    // already-closed block (sign the block that holds the
-                    // chain-of-thought, #2258 B4), nothing streamed
-                    // (signature-only part). No per-case branch to forget.
-                    self.reasoning_open = false;
-                    out.push(Ok(shared_parts::reasoning_end(Some(signature))));
-                }
-                if !text.is_empty() {
-                    // Interleaving output ends an open thought block — the
-                    // boundary this wire never announces, synthesized here.
-                    if self.reasoning_open {
-                        self.reasoning_open = false;
-                        out.push(Ok(shared_parts::reasoning_end(None)));
-                    }
-                    out.push(Ok(streaming::RawStreamingChoice::Message(text)));
-                }
+                // A trailing `thoughtSignature` rides a part with no
+                // `thought` flag (recorded traffic:
+                // `{"text":"","thoughtSignature":"..."}`); the shared
+                // lifecycle emits its close before the text, and one end
+                // covers every case — open block (sign the deltas),
+                // already-closed block (sign the block that holds the
+                // chain-of-thought, #2258 B4), nothing streamed
+                // (signature-only part). No per-case branch to forget.
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: None,
+                        reasoning_signature: thought_signature,
+                        text: Some(text),
+                        tool_events: Vec::new(),
+                    },
+                    out,
+                );
             }
             Part {
                 part: PartKind::FunctionCall(function_call),
                 thought_signature,
                 ..
             } => {
-                // Interleaving output ends an open thought block.
-                if self.reasoning_open {
-                    self.reasoning_open = false;
-                    out.push(Ok(shared_parts::reasoning_end(None)));
-                }
-                out.push(Ok(shared_parts::function_call(
-                    function_call.name,
-                    function_call.args,
-                    function_call.id,
-                    thought_signature,
-                )));
+                // Tool content interleaving an open thought block: the
+                // shared lifecycle synthesizes the boundary end.
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: None,
+                        reasoning_signature: None,
+                        text: None,
+                        tool_events: vec![shared_parts::function_call(
+                            function_call.name,
+                            function_call.args,
+                            function_call.id,
+                            thought_signature,
+                        )],
+                    },
+                    out,
+                );
             }
             part => {
                 // Structural metadata only: an unmodeled part can carry
