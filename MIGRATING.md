@@ -1,5 +1,81 @@
 # Migrating Rig
 
+<!-- MIGRATING-GUIDE-INSTRUCTIONS:START -->
+
+## Maintainers: generate this guide for every release
+
+> [!IMPORTANT]
+> This section is the immutable preamble. Keep it at the top of this file,
+> unchanged and between these markers, when updating the migration guide. Edit
+> the release material below the end marker. CI pins both its placement and its
+> contents.
+
+`MIGRATING.md` is an editorial synthesis, not the output of one generator. Use
+the public API diff as its exhaustive spine, the changelogs for release context,
+and the relevant pull requests for migration details. This is the process used
+to produce the guide in [#2216](https://github.com/0xPlaygrounds/rig/pull/2216).
+
+1. Choose the previous release tag and the release ref (`HEAD` while preparing a
+   release, or the new tag when auditing a completed release). Run API diffs in
+   a separate, up-to-date, clean worktree and do not edit the guide there.
+   `cargo public-api` checks out both refs in place and restores the original
+   checkout, so uncommitted changes will prevent a tag-to-ref diff.
+2. Install [`cargo-public-api`](https://github.com/cargo-public-api/cargo-public-api)
+   and ensure `jq` is available. With the clean worktree checked out at each ref
+   in turn, enumerate the publishable library and proc-macro packages. Take the
+   union of both lists so packages added or removed during the release are not
+   missed:
+
+   ```console
+   cargo metadata --no-deps --format-version 1 | \
+     jq -r '.packages[] | select(.publish != []) | select(any(.targets[]; any(.kind[]; . == "lib" or . == "proc-macro"))) | .name'
+   ```
+
+   Diff every package in that union, including re-exporting facades such as
+   `rig`:
+
+   ```console
+   cargo install cargo-public-api --locked
+   cargo public-api -p PACKAGE --simplified diff PREVIOUS_TAG..RELEASE_REF
+   # Example while preparing the release after v0.41.0:
+   cargo public-api -p rig-core --simplified diff v0.41.0..HEAD
+   ```
+
+   Repeat the diff with `--all-features` or the relevant `--features` when the
+   release changed feature-gated APIs. Review and classify every added, removed,
+   or changed item, even when the diff is only one line: additions such as enum
+   variants, public fields, or required trait items can also break downstream
+   code. If a package exists at only one ref, inspect its complete public API and
+   document the package-level addition or removal instead of expecting a range
+   diff to work.
+3. Read the matching entries in the root and affected crate `CHANGELOG.md`
+   files. Use their breaking-change entries to explain intent and identify the
+   replacement API, but do not assume the changelogs are exhaustive.
+4. Inspect the pull request, commits, tests, and documentation for each change
+   found by the API diff or changelogs. Record the old form, the new form, and
+   the smallest useful migration example. Do not summarize every merged pull
+   request; investigate the changes that affect downstream users.
+5. Review the release range for behavior changes that a public API diff cannot
+   detect, including changed defaults, serialization or wire formats, provider
+   behavior, feature semantics, and error handling. Put these under **Silent
+   behavior changes** because compiling successfully does not make them safe.
+6. Add the newest release section first, update **Which sections apply to
+   you**, and update the old-to-new symbol appendix. Keep each release section
+   self-contained. When an API changes again in a later release, tell users who
+   are skipping versions which intermediate form they can skip.
+7. Before release, verify every named symbol and feature against the release
+   tree, check every internal Markdown link, and compile or test code snippets
+   where practical. Clearly label snippets that are illustrative or transcribed
+   instead of compiled. Rebase, update or recreate the clean API-diff worktree,
+   repeat the diffs for newly merged changes, and replace `next` with the final
+   version number immediately before tagging.
+
+The public API diff finds compiler-visible changes; the changelogs and targeted
+history explain why and how to migrate; the final behavior review catches the
+changes that still compile. All three inputs are required for each release.
+
+<!-- MIGRATING-GUIDE-INSTRUCTIONS:END -->
+
 This guide covers every breaking change from 0.30 through the unreleased changes
 after 0.41. Releases 0.36, 0.37, 0.40 and 0.41 were the disruptive ones; 0.40
 alone carried 31 breaking changes, and 0.37 renamed `rig-core`'s library
