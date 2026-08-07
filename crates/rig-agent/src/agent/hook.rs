@@ -307,6 +307,7 @@ pub struct HookContext {
     turn: AtomicUsize,
     is_streaming: bool,
     agent_name: Option<String>,
+    conversation_id: Option<String>,
     scratchpad: Scratchpad,
     tool_call_rewrite_frames: ToolCallRewriteFrames,
 }
@@ -318,9 +319,15 @@ impl HookContext {
             turn: AtomicUsize::new(0),
             is_streaming,
             agent_name,
+            conversation_id: None,
             scratchpad: Scratchpad::default(),
             tool_call_rewrite_frames: ToolCallRewriteFrames::default(),
         }
+    }
+
+    pub(crate) fn with_conversation_id(mut self, conversation_id: Option<String>) -> Self {
+        self.conversation_id = conversation_id;
+        self
     }
 
     pub(crate) fn set_turn(&self, turn: usize) {
@@ -345,6 +352,27 @@ impl HookContext {
     /// Configured agent name.
     pub fn agent_name(&self) -> Option<&str> {
         self.agent_name.as_deref()
+    }
+
+    /// Conversation this run belongs to, when the caller named one.
+    ///
+    /// This is the id passed to
+    /// [`conversation`](crate::agent::AgentRunner::conversation) — the key
+    /// [`ConversationMemory`] loads and appends under. It is reported here
+    /// whether or not a memory backend is configured, because it also names
+    /// the conversation for anything a hook keeps of its own: per-conversation
+    /// budgets, routing, or state a provider holds on the far side of the wire
+    /// under its own session id.
+    ///
+    /// This reports the id the caller named, not whether memory used it: an
+    /// explicit `chat_history` bypasses loading and saving for the run while
+    /// leaving the conversation named. It is `None` only when no id was set,
+    /// or when [`without_memory`](crate::agent::AgentRunner::without_memory)
+    /// cleared it.
+    ///
+    /// [`ConversationMemory`]: rig_core::memory::ConversationMemory
+    pub fn conversation_id(&self) -> Option<&str> {
+        self.conversation_id.as_deref()
     }
 
     /// Shared run scratchpad.
@@ -2438,9 +2466,17 @@ mod migrated_tests {
         let context = HookContext::new(true, Some("agent".into()));
         assert!(context.is_streaming());
         assert_eq!(context.agent_name(), Some("agent"));
+        assert_eq!(context.conversation_id(), None);
         context.set_turn(3);
         assert_eq!(context.turn(), 3);
         assert!(!context.run_id().as_str().is_empty());
+    }
+
+    #[test]
+    fn hook_context_reports_the_conversation_when_the_caller_named_one() {
+        let context =
+            HookContext::new(false, None).with_conversation_id(Some("user-42".to_string()));
+        assert_eq!(context.conversation_id(), Some("user-42"));
     }
 
     struct RewriteHook(Value);
