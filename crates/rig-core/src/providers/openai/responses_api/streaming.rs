@@ -727,7 +727,7 @@ impl RawChoiceAccumulator {
             // the raw item to stream consumers, mirroring how the non-streaming
             // decode preserves it on `CompletionResponse.output`.
             Output::Unknown(value) => {
-                immediate.push(streaming::RawStreamingChoice::Unknown(value));
+                immediate.push(streaming::RawStreamingChoice::Unknown(value.into()));
             }
         }
     }
@@ -1985,7 +1985,7 @@ mod tests {
         });
         assert_eq!(
             unknown,
-            Some(&item),
+            Some(&item.clone().into()),
             "the raw web_search_call item should reach the consumer verbatim",
         );
     }

@@ -26,7 +26,7 @@ fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
 fn unknown_frame<U, D>(data: &str) -> WireEvent<CompatibleChunk<U, D>> {
     WireEvent::Unknown {
         event_type: data.to_owned(),
-        value: serde_json::Value::String(data.to_owned()),
+        value: serde_json::Value::String(data.to_owned()).into(),
     }
 }
 

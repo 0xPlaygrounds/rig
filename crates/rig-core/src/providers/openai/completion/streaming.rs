@@ -1253,7 +1253,7 @@ mod tests {
                 Err(_) => error_count += 1,
             }
         }
-        assert_eq!(unknown, Some(serde_json::json!({"type": "ping"})));
+        assert_eq!(unknown, Some(serde_json::json!({"type": "ping"}).into()));
 
         assert_eq!(
             error_count, 2,

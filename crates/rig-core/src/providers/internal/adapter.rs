@@ -162,7 +162,7 @@ pub enum TriagedFrame<T> {
     /// as [`RawStreamingChoice::Unknown`] where the surface has a raw channel
     /// (openai-agents' raw-event precedent), and never interprets it — the
     /// semantic path skips it.
-    Unknown(serde_json::Value),
+    Unknown(crate::streaming::UnknownPayload),
 }
 
 /// Triage one classified frame under the shared policy table (see the module

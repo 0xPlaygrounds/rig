@@ -796,7 +796,7 @@ mod tests {
 
         let events = asm
             .ingest(&StreamedAssistantContent::Unknown(
-                json!({ "type": "web_search_call", "id": "ws_1" }),
+                json!({ "type": "web_search_call", "id": "ws_1" }).into(),
             ))
             .expect("ingest unknown should succeed");
 

@@ -273,7 +273,7 @@ impl MockStreamEvent {
                 })
             }
             Self::MessageId(id) => Ok(RawStreamingChoice::MessageId(id)),
-            Self::Unknown(value) => Ok(RawStreamingChoice::Unknown(value)),
+            Self::Unknown(value) => Ok(RawStreamingChoice::Unknown(value.into())),
             Self::FinalResponse(response) => Ok(RawStreamingChoice::FinalResponse(response)),
             Self::Error(error) => Err(error.into_completion_error()),
         }

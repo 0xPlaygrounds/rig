@@ -356,6 +356,84 @@ impl From<StreamFinalRepr> for StreamFinal {
 /// `R` is the terminal record type. Ordinary streams use the normalized
 /// [`StreamFinal`] default; a provider's inherent `raw_stream` method
 /// substitutes its own native terminal type over the same event vocabulary,
+/// An unmodeled wire payload on the raw passthrough channel.
+///
+/// Wraps the raw JSON with a **redacted** `Debug` (structural metadata only):
+/// unmodeled frames can carry model output or other sensitive provider data,
+/// and `warn!(?value)`-style Debug captures in streaming modules were a
+/// recurring leak class a text scanner existed to police. With the payload
+/// unable to Debug-print its content, that class is structurally closed for
+/// the JSON channel — the redaction is a property of the type, not a
+/// convention. Consumers who want the content opt in explicitly via
+/// [`UnknownPayload::value`] / [`UnknownPayload::into_value`]; serialization
+/// is `#[serde(transparent)]`, so wire round-trips are unchanged.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UnknownPayload(serde_json::Value);
+
+impl UnknownPayload {
+    /// Wrap a raw unmodeled payload.
+    pub fn new(value: serde_json::Value) -> Self {
+        Self(value)
+    }
+
+    /// The raw payload, for consumers who opt in to the content.
+    pub fn value(&self) -> &serde_json::Value {
+        &self.0
+    }
+
+    /// Unwrap into the raw payload.
+    pub fn into_value(self) -> serde_json::Value {
+        self.0
+    }
+}
+
+impl std::fmt::Debug for UnknownPayload {
+    /// Structural metadata only — never the payload.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let bytes = serde_json::to_vec(&self.0)
+            .map(|json| json.len())
+            .unwrap_or(0);
+        write!(f, "UnknownPayload({bytes} bytes redacted)")
+    }
+}
+
+impl From<serde_json::Value> for UnknownPayload {
+    fn from(value: serde_json::Value) -> Self {
+        Self(value)
+    }
+}
+
+#[cfg(test)]
+mod unknown_payload_tests {
+    use super::UnknownPayload;
+
+    /// The redaction is a property of the type: no Debug rendering — direct,
+    /// via a containing derive, or through a `warn!(?value)` capture — can
+    /// reproduce payload content.
+    #[test]
+    fn debug_output_never_contains_payload_content() {
+        let payload = UnknownPayload::new(serde_json::json!({
+            "secret_field": "SENSITIVE-CONTENT",
+        }));
+        let rendered = format!("{payload:?}");
+        assert!(!rendered.contains("SENSITIVE-CONTENT"));
+        assert!(!rendered.contains("secret_field"));
+        assert!(rendered.contains("redacted"));
+    }
+
+    /// Serialization stays transparent, so wire round-trips are unchanged.
+    #[test]
+    fn serde_round_trip_is_transparent() {
+        let value = serde_json::json!({"type": "future_event", "n": 1});
+        let payload = UnknownPayload::new(value.clone());
+        let encoded = serde_json::to_string(&payload).expect("serializes");
+        assert_eq!(encoded, serde_json::to_string(&value).expect("serializes"));
+        let decoded: UnknownPayload = serde_json::from_str(&encoded).expect("deserializes");
+        assert_eq!(decoded, payload);
+    }
+}
+
 /// which is what keeps [`crate::completion::CompletionModel`] free of response
 /// associated types.
 #[derive(Debug, Clone)]
@@ -536,7 +614,7 @@ pub enum RawStreamingChoice<R = StreamFinal> {
     /// verbatim. Forwarded to the stream consumer as
     /// [`StreamedAssistantContent::Unknown`] but not folded into the accumulated
     /// assistant message (there is no `AssistantContent::Unknown` history slot).
-    Unknown(serde_json::Value),
+    Unknown(UnknownPayload),
 }
 
 impl<R> RawStreamingChoice<R> {
@@ -1588,7 +1666,10 @@ mod tests {
         });
         let decoded = serde_json::from_value::<StreamedAssistantContent>(provider_item.clone())
             .expect("deserialize unknown item");
-        assert_eq!(decoded, StreamedAssistantContent::Unknown(provider_item));
+        assert_eq!(
+            decoded,
+            StreamedAssistantContent::Unknown(provider_item.into())
+        );
     }
 
     /// Deserialization funnels through `new` + the setters, so the invariants
@@ -2511,7 +2592,7 @@ mod tests {
         });
         let yielded = unknown.clone();
         let stream = stream! {
-            yield Ok(RawStreamingChoice::Unknown(yielded));
+            yield Ok(RawStreamingChoice::Unknown(yielded.into()));
             yield Ok(RawStreamingChoice::Message("done".to_string()));
             yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(1)));
         };
@@ -2529,7 +2610,7 @@ mod tests {
         }
 
         // The consumer receives the unmodeled item verbatim ...
-        assert_eq!(consumer_unknown.as_ref(), Some(&unknown));
+        assert_eq!(consumer_unknown.as_ref(), Some(&unknown.into()));
         assert_eq!(consumer_text, "done");
 
         // ... but it is structurally absent from the aggregated assistant choice
@@ -2661,9 +2742,9 @@ pub enum StreamedAssistantContent {
     /// `file_search_call`, `computer_call`, `code_interpreter_call`). It is
     /// yielded to the consumer for inspection/forwarding but is not added to the
     /// accumulated assistant message or persisted history. Kept last because the
-    /// enum is `#[serde(untagged)]` and a raw [`Value`](serde_json::Value)
+    /// enum is `#[serde(untagged)]` and the transparent payload wrapper
     /// matches anything, so earlier (typed) variants must be tried first.
-    Unknown(serde_json::Value),
+    Unknown(UnknownPayload),
 }
 
 impl StreamedAssistantContent {

@@ -310,10 +310,13 @@ fn stream_from_script(
                 provider_id: None,
                 reasoning: "reasoning delta".to_owned(),
             }));
-            events.push(Ok(RawStreamingChoice::Unknown(serde_json::json!({
-                "type": "provider_native_event",
-                "provider": script.provider,
-            }))));
+            events.push(Ok(RawStreamingChoice::Unknown(
+                serde_json::json!({
+                    "type": "provider_native_event",
+                    "provider": script.provider,
+                })
+                .into(),
+            )));
             events.push(Ok(RawStreamingChoice::Message(text.clone())));
         }
         // Handled by the early return above.
@@ -1230,7 +1233,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::Unknown(value),
             ) => {
-                saw_unknown = value["type"] == "provider_native_event";
+                saw_unknown = value.value()["type"] == "provider_native_event";
             }
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::Final(final_),

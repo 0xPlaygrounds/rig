@@ -733,6 +733,14 @@ fn body_debug_captures(body: &str) -> bool {
 /// (`warn!(?frame)`) and named (`warn!(payload = ?frame)`) captures, and
 /// `{:?}` format-string Debug prints — so no spelling of a direct payload
 /// capture bypasses the helper without failing CI.
+///
+/// Scope note: the JSON passthrough channel is now type-walled —
+/// `streaming::UnknownPayload` Debug-redacts itself, so `warn!(?value)` on
+/// that channel leaks nothing by construction. This scan's remaining
+/// load-bearing scope is payloads rig does not own the type of: SDK frame
+/// enums and typed events (bedrock's Converse types, gemini-grpc's protos)
+/// whose derived `Debug` prints wire content. The type system cannot
+/// withhold `Debug` on foreign types, so the scan stays for them.
 #[test]
 fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
     let mut violations = Vec::new();

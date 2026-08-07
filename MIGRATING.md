@@ -555,8 +555,18 @@ implementation must uphold:
   the operation), transport errors end the stream with truncation semantics.
   Adapters contain no `match WireEvent`; `interpret` maps `Known` events
   only. (For websocket consumers: `ResponsesWebSocketEvent` gained an
-  `Unknown(serde_json::Value)` variant carrying the same raw passthrough —
-  exhaustive `match`es over that enum need a new arm.)
+  `Unknown` variant carrying the same raw passthrough — exhaustive `match`es
+  over that enum need a new arm.)
+- **The unknown payload is `UnknownPayload`, not a bare `Value`.**
+  `RawStreamingChoice::Unknown` and `StreamedAssistantContent::Unknown` carry
+  `streaming::UnknownPayload` — a transparent-serde wrapper whose `Debug`
+  is **redacted** (structural metadata only). Unmodeled frames can carry
+  model output, and `warn!(?value)`-style Debug captures were a recurring
+  leak class; with the payload unable to Debug-print its content, the class
+  is closed by the type rather than policed by review. Consumers who want
+  the content call `.value()` / `.into_value()` (serialization is unchanged
+  — the wrapper is `#[serde(transparent)]`); construct one with
+  `UnknownPayload::new(value)` or `value.into()`.
 - **Behavioral note — `Unknown` events can now occur on every network
   provider.** `StreamedAssistantContent::Unknown` is not a new variant (it
   has carried unmodeled Responses output items since #1950), but it

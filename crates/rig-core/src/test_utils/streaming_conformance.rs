@@ -574,7 +574,7 @@ impl DrainedStream {
         self.items
             .iter()
             .filter_map(|item| match item {
-                Ok(StreamedAssistantContent::Unknown(value)) => Some(value),
+                Ok(StreamedAssistantContent::Unknown(value)) => Some(value.value()),
                 _ => None,
             })
             .collect()
