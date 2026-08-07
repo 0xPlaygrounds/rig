@@ -26,39 +26,46 @@
 //!   are also exempt — they are reasoning-class content, and id-less
 //!   encrypted blocks legally interleave a constant-key text accumulation
 //!   (the mixed OpenRouter stream).
-//! - **Intra-batch order law**: within one `interpret` call's output,
-//!   content-bearing events follow canonical class order — reasoning, then
-//!   text, then tool calls. Lifecycle bookkeeping (`*End` events, terminal
-//!   records, ids, unknown passthrough) is exempt: closing an older entity
-//!   after newer content is legitimate eviction, not disorder.
+//!
+//! There is deliberately no intra-batch ORDER law: pass-through adapters
+//! forward provider parts in wire order, and no wire contracts an order
+//! (every reference SDK iterates parts as delivered — vercel's google
+//! provider even documents "preserve original order"). Canonical order is
+//! a property of the `chunk_lifecycle` canonicalizer and is unit-tested
+//! there, where it is actually produced.
+//!
+//! Violations always emit `tracing::error!`; they panic only in rig's own
+//! test-harness builds (`cfg(test)` or the `test-utils` feature, which
+//! rig's test targets enable via the self-dev-dependency). A downstream
+//! application's debug build gets a grep-able error log, never a process
+//! abort — a library must not take down a user's process over wire data,
+//! and a wrong law must cost rig's suites, not rig's users.
 
-// This module IS a panic facility: it exists only under
-// `cfg(any(test, debug_assertions))` as a debug assertion over adapter
-// output, and a law violation must abort the test that exposed it.
-#![expect(
-    clippy::panic,
-    reason = "debug-only sequence assertions; compiled out of release builds"
+// A law violation must abort the rig test that exposed it; outside rig's
+// own harness builds the same violation is an error log (see `violation`).
+#![cfg_attr(
+    any(test, feature = "test-utils"),
+    expect(
+        clippy::panic,
+        reason = "harness-only sequence assertions; log-only outside rig's own test builds"
+    )
 )]
 
 use crate::streaming::RawStreamingChoice;
 
-/// Content class of one raw event, for the intra-batch order law.
-/// `None` for lifecycle bookkeeping, which the law exempts.
-fn content_class<R>(choice: &RawStreamingChoice<R>) -> Option<u8> {
-    match choice {
-        RawStreamingChoice::Reasoning { .. }
-        | RawStreamingChoice::ReasoningStart { .. }
-        | RawStreamingChoice::ReasoningDelta { .. } => Some(0),
-        RawStreamingChoice::Message(_) | RawStreamingChoice::TextStart { .. } => Some(1),
-        RawStreamingChoice::ToolCall(_) | RawStreamingChoice::ToolCallDelta { .. } => Some(2),
-        RawStreamingChoice::ReasoningEnd { .. }
-        | RawStreamingChoice::TextEnd { .. }
-        | RawStreamingChoice::ToolInputEnd(_)
-        | RawStreamingChoice::TextAdditionalParams(_)
-        | RawStreamingChoice::FinalResponse(_)
-        | RawStreamingChoice::MessageId(_)
-        | RawStreamingChoice::Unknown(_) => None,
-    }
+/// Whether one raw event is non-reasoning CONTENT — the classes whose
+/// arrival closes a boundary-less wire's open reasoning block. Lifecycle
+/// bookkeeping (`*End` events, terminals, ids, unknown passthrough) is
+/// exempt: closing an older entity after newer content is legitimate
+/// eviction, not a boundary violation.
+fn is_boundary_content<R>(choice: &RawStreamingChoice<R>) -> bool {
+    matches!(
+        choice,
+        RawStreamingChoice::Message(_)
+            | RawStreamingChoice::TextStart { .. }
+            | RawStreamingChoice::ToolCall(_)
+            | RawStreamingChoice::ToolCallDelta { .. }
+    )
 }
 
 /// Cross-frame validator state: which minted reasoning keys are open.
@@ -69,28 +76,25 @@ pub(crate) struct SequenceLaws {
 
 impl SequenceLaws {
     /// Check one `interpret` batch (the `out` buffer for a single frame)
-    /// against the laws, updating cross-frame state. Panics on violation —
-    /// this is a test/debug assertion, compiled out of release builds by the
-    /// caller's `cfg`.
+    /// against the boundary law, updating cross-frame state. Violations log
+    /// always and panic only in rig's own harness builds (see `violation`).
     pub(crate) fn check_batch<R>(
         &mut self,
         batch: &[Result<RawStreamingChoice<R>, crate::completion::CompletionError>],
     ) {
-        let mut max_class_seen: Option<u8> = None;
         for item in batch {
             let Ok(choice) = item else { continue };
 
             // Boundary law: while a minted reasoning key is open, the only
             // legal content is more reasoning; text or tool content means an
             // adapter forgot to synthesize the boundary end.
-            if !self.open_minted_reasoning.is_empty()
-                && matches!(content_class(choice), Some(1) | Some(2))
-            {
-                panic!(
-                    "sequence-law violation: {} emitted while a minted-key reasoning \
-                     part is open — a boundary-less wire's adapter must synthesize \
-                     ReasoningEnd before any other content class",
+            if !self.open_minted_reasoning.is_empty() && is_boundary_content(choice) {
+                violation(
+                    "boundary",
                     variant_name(choice),
+                    "emitted while a minted-key reasoning part is open — a \
+                     boundary-less wire's adapter must synthesize ReasoningEnd \
+                     before any other content class",
                 );
             }
 
@@ -104,25 +108,36 @@ impl SequenceLaws {
                 RawStreamingChoice::ReasoningEnd { id, .. } => {
                     self.open_minted_reasoning.remove(id);
                 }
-                _ => {}
-            }
-
-            // Intra-batch order law over content-bearing events.
-            if let Some(class) = content_class(choice) {
-                if let Some(max_class) = max_class_seen
-                    && class < max_class
-                {
-                    panic!(
-                        "sequence-law violation: {} emitted after a later content \
-                         class in the same frame batch — canonical intra-chunk \
-                         order is reasoning, text, tool calls",
-                        variant_name(choice),
-                    );
+                // A whole block is open + restatement + close in ONE event
+                // (pydantic-ai's replace-part semantics; the Bedrock adapter
+                // spells its delta accumulation's close exactly this way):
+                // a same-key whole block replaces AND closes the open part.
+                // For a never-opened key the remove is a no-op, keeping the
+                // id-less encrypted interleave exempt.
+                RawStreamingChoice::Reasoning { id, .. } => {
+                    self.open_minted_reasoning.remove(id);
                 }
-                max_class_seen = Some(max_class_seen.unwrap_or(class).max(class));
+                _ => {}
             }
         }
     }
+}
+
+/// Surface one law violation: always an error log (variant names only —
+/// raw events can carry wire content that must not reach logs), a panic
+/// only in rig's own test-harness builds. `test-utils` is the harness
+/// signal; rig-core's self-dev-dependency turns it on for every rig-core
+/// test target, so the laws fail rig's suites loudly while a downstream
+/// application's debug build only logs.
+fn violation(law: &'static str, variant: &'static str, message: &'static str) {
+    tracing::error!(
+        target: "rig::sequence_law",
+        law,
+        variant,
+        "sequence-law violation: {message}"
+    );
+    #[cfg(any(test, feature = "test-utils"))]
+    panic!("sequence-law violation ({law}): {variant} {message}");
 }
 
 /// Stable variant name for law-violation messages (no payload — raw events
@@ -198,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "sequence-law violation: Message emitted while a minted-key")]
+    #[should_panic(expected = "sequence-law violation (boundary): Message")]
     fn text_while_a_minted_reasoning_part_is_open_panics() {
         drive(vec![
             vec![minted_delta()],
@@ -207,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "sequence-law violation: ToolCallDelta emitted while a minted-key")]
+    #[should_panic(expected = "sequence-law violation (boundary): ToolCallDelta")]
     fn tool_content_while_a_minted_reasoning_part_is_open_panics() {
         drive(vec![
             vec![minted_delta()],
@@ -241,9 +256,11 @@ mod tests {
         ]);
     }
 
+    /// Pass-through wire order is legal: there is no intra-batch order law
+    /// (no wire contracts part order; canonical order is the
+    /// `chunk_lifecycle` canonicalizer's property, tested there).
     #[test]
-    #[should_panic(expected = "canonical intra-chunk order")]
-    fn reasoning_after_text_in_one_batch_panics() {
+    fn wire_order_within_a_batch_is_not_a_violation() {
         drive(vec![vec![
             RawStreamingChoice::Message("visible".to_owned()),
             RawStreamingChoice::Reasoning {
@@ -257,10 +274,35 @@ mod tests {
         ]]);
     }
 
+    /// A same-key whole-block Reasoning event is open + restatement + close
+    /// in one event: it closes the accumulation its deltas opened (the
+    /// Bedrock shape — deltas under a minted Block key, then the full block
+    /// under the same key), so following text is legal.
     #[test]
-    fn lifecycle_bookkeeping_is_exempt_from_the_order_law() {
+    fn a_same_key_whole_block_closes_the_open_reasoning_part() {
+        let key = || StreamPartId::minted(MintKind::Block, 0);
+        drive(vec![
+            vec![RawStreamingChoice::ReasoningDelta {
+                id: key(),
+                provider_id: None,
+                reasoning: "thinking".to_owned(),
+            }],
+            vec![RawStreamingChoice::Reasoning {
+                id: key(),
+                provider_id: None,
+                content: crate::message::ReasoningContent::Text {
+                    text: "thinking, complete".to_owned(),
+                    signature: None,
+                },
+            }],
+            vec![RawStreamingChoice::Message("visible".to_owned())],
+        ]);
+    }
+
+    #[test]
+    fn lifecycle_bookkeeping_is_not_boundary_content() {
         // Closing an older tool entity after newer text is legitimate
-        // eviction, not disorder.
+        // eviction.
         drive(vec![vec![
             RawStreamingChoice::Message("visible".to_owned()),
             RawStreamingChoice::ToolInputEnd(crate::streaming::ToolInputEnd {

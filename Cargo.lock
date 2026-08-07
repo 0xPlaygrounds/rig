@@ -9970,6 +9970,7 @@ dependencies = [
  "reqwest 0.13.4",
  "reqwest-middleware",
  "reqwest-retry",
+ "rig-core",
  "rig-derive",
  "schemars 1.2.1",
  "serde",

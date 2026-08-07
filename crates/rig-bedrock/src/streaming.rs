@@ -597,6 +597,25 @@ mod tests {
         drained
     }
 
+    /// Ordinary extended-thinking shape through the SHARED driver: thinking
+    /// deltas, the block's whole-block close at `contentBlockStop`, then
+    /// visible text. The driver's boundary law must treat the same-key whole
+    /// block as a close — this exact stream used to abort every debug build
+    /// (sequence-law O1).
+    #[tokio::test]
+    async fn thinking_then_text_streams_through_the_driver_without_violation() {
+        let drained = drain(vec![
+            reasoning_text_delta(0, "let me think"),
+            block_stop(0),
+            text_delta_event(1, "the answer"),
+            block_stop_event(1),
+            message_stop_event(aws_bedrock::StopReason::EndTurn),
+        ])
+        .await;
+        assert!(drained.errors.is_empty(), "{:?}", drained.errors);
+        assert_eq!(drained.reasoning.len(), 1);
+    }
+
     const REDACTED_BLOB: &[u8] = b"\x00opaque-stream-ciphertext\xff";
 
     /// #2258 F2(a): the redacted delta used to hit `_ => {}` and vanish.

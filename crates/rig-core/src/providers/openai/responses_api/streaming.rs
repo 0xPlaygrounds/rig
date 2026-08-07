@@ -1930,6 +1930,51 @@ mod tests {
         ));
     }
 
+    /// Envelope-less replay shape (ChatGPT bodies): an id-less summary
+    /// delta mints an Output-kind key, the done item restates the whole
+    /// block under the SAME adopted minted key, and visible text follows.
+    /// The driver's boundary law must treat the same-key whole block as a
+    /// close — this exact body used to abort every debug build
+    /// (sequence-law O1, Responses variant).
+    #[test]
+    fn envelope_less_reasoning_then_text_decodes_without_violation() {
+        let body = format!(
+            "data: {}\ndata: {}\ndata: {}\n",
+            json!({
+                "type": "response.reasoning_summary_text.delta",
+                "output_index": 0,
+                "summary_index": 0,
+                "sequence_number": 1,
+                "delta": "thinking",
+            }),
+            json!({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "sequence_number": 2,
+                "item": {
+                    "type": "reasoning",
+                    "id": "",
+                    "summary": [{ "type": "summary_text", "text": "thinking, complete" }],
+                    "status": "completed"
+                },
+            }),
+            json!({
+                "type": "response.output_text.delta",
+                "item_id": "msg_1",
+                "output_index": 1,
+                "content_index": 0,
+                "sequence_number": 3,
+                "delta": "the answer",
+            }),
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("sse body should decode without a sequence-law violation");
+        assert!(choices.iter().any(
+            |choice| matches!(choice, RawStreamingChoice::Message(text) if text == "the answer")
+        ));
+    }
+
     #[test]
     fn reasoning_text_delta_emits_reasoning_delta() {
         let body = format!(
