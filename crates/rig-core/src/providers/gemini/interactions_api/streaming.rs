@@ -225,7 +225,7 @@ struct InteractionsAdapter {
     /// emitted the empty-args call at `step.start` and dropped every
     /// fragment.
     open_function_steps:
-        std::collections::HashMap<i32, (streaming::StreamPartId, Option<streaming::WireId>)>,
+        std::collections::HashMap<u32, (streaming::StreamPartId, Option<streaming::WireId>)>,
 }
 
 impl WireAdapter for InteractionsAdapter {
@@ -311,7 +311,10 @@ impl WireAdapter for InteractionsAdapter {
                         .map(|id| streaming::StreamPartId::wire(id.as_str()))
                         .unwrap_or(streaming::StreamPartId::minted(
                             streaming::MintKind::Tool,
-                            index.max(0) as u64,
+                            // Unsigned at the wire type: a negative index is
+                            // a decode error at the boundary, never an
+                            // identity clamped onto step 0.
+                            u64::from(index),
                         ));
                     out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
                         id: key.clone(),

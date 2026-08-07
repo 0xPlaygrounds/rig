@@ -40,9 +40,12 @@ pub(crate) fn completion_usage(
 /// construction — a result with `name: Some(..)` is left untouched here and
 /// only advances the pairing bookkeeping. The heuristic below runs only for
 /// `name: None` results (persisted pre-field histories, hand-built
-/// results): pair by identifier when one exists, by wire order when none
-/// does, and treat a non-empty id that matches no call as the name itself
-/// (the legacy name-in-id encoding). The resolved name is written into
+/// results): pair by identifier when one exists, else by tool name, else
+/// by wire order, and treat a non-empty id that matches no call as the
+/// name itself (the legacy name-in-id encoding). The name tier is
+/// legacy-encoding support, not general matching policy — id-keyed SDKs
+/// never fall back to names, and neither does any result that carries a
+/// usable identifier. The resolved name is written into
 /// `ToolResult::name`; serializers read `name` first and fall back to `id`.
 ///
 /// `pub` (not `pub(crate)`) because sibling serializer crates that speak a
@@ -87,11 +90,23 @@ pub fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
                     // A result that already carries its name needs no
                     // heuristic — advance the pairing bookkeeping and move
                     // on, so later name-less results keep pairing in order.
-                    if result.name.is_some() {
+                    if let Some(name) = result.name.as_deref() {
                         if let Some(index) = pending.iter().position(|call| {
                             call_id.is_some_and(|id| call.matches(id))
                                 || (!result.id.is_empty() && call.matches(&result.id))
                         }) {
+                            pending.remove(index);
+                        } else if let Some(index) =
+                            pending.iter().position(|call| call.name == name)
+                        {
+                            // No identifier matched, but the known name
+                            // does: the result answers *that* call, which
+                            // need not be the oldest — front-popping here
+                            // would discard an unrelated call and shift
+                            // every later positional pairing. Duplicate
+                            // names take the oldest, preserving wire order.
+                            // (Legacy-shim tier only: id-keyed wires never
+                            // reach it.)
                             pending.remove(index);
                         } else {
                             pending.pop_front();
@@ -147,9 +162,23 @@ pub fn resolve_tool_result_names(history: &mut [crate::message::Message]) {
                             }
                         }
                         None if !result.id.is_empty() => {
-                            // Shape 3: the id is the name.
+                            // Shape 3: the id is the name — of the answered
+                            // call, which need not be the oldest pending
+                            // one. Consume the oldest call *bearing that
+                            // name* when one exists so an out-of-order
+                            // legacy result doesn't discard an unrelated
+                            // call and shift every later positional
+                            // pairing; only a name matching nothing falls
+                            // back to wire order.
                             result.name = Some(result.id.clone());
-                            pending.pop_front();
+                            match pending.iter().position(|call| call.name == result.id) {
+                                Some(index) => {
+                                    pending.remove(index);
+                                }
+                                None => {
+                                    pending.pop_front();
+                                }
+                            }
                         }
                         None => {}
                     }
@@ -359,5 +388,44 @@ mod resolve_tool_result_names_tests {
         ];
         resolve_tool_result_names(&mut history);
         assert_eq!(resolved_name(&history, 3), Some("second_tool".into()));
+    }
+
+    /// A legacy name-in-id result answering a LATER call consumes the call
+    /// it names, not the oldest pending one — front-popping would discard
+    /// an unrelated call and shift every subsequent pairing.
+    #[test]
+    fn an_out_of_order_name_in_id_result_consumes_the_call_it_names() {
+        let mut history = vec![
+            call("1", None, "alpha"),
+            call("2", None, "beta"),
+            result("beta", None, None),
+            result("1", None, None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(resolved_name(&history, 2), Some("beta".into()));
+        assert_eq!(
+            resolved_name(&history, 3),
+            Some("alpha".into()),
+            "the beta result must not have consumed alpha's pending slot"
+        );
+    }
+
+    /// Same discipline for a named result on an id-less history: with no
+    /// identifier to match, the known name selects the pending call to
+    /// consume before wire order does.
+    #[test]
+    fn an_out_of_order_named_result_consumes_the_call_it_names() {
+        let mut history = vec![
+            call("", None, "alpha"),
+            call("", None, "beta"),
+            result("", None, Some("beta")),
+            result("", None, None),
+        ];
+        resolve_tool_result_names(&mut history);
+        assert_eq!(
+            resolved_name(&history, 3),
+            Some("alpha".into()),
+            "the named beta result must not have consumed alpha's pending slot"
+        );
     }
 }

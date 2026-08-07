@@ -2423,21 +2423,21 @@ pub mod interactions_api_types {
         },
         #[serde(rename = "step.start")]
         StepStart {
-            index: i32,
+            index: u32,
             step: Step,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
         #[serde(rename = "step.delta")]
         StepDelta {
-            index: i32,
+            index: u32,
             delta: ContentDelta,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
         #[serde(rename = "step.stop")]
         StepStop {
-            index: i32,
+            index: u32,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
