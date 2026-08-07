@@ -282,7 +282,7 @@ impl ProviderClient for CompletionsClient {
 /// caller; `message` is only used for logging.
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
-    #[serde(default, alias = "error", deserialize_with = "error_message_or_value")]
+    #[serde(alias = "error", deserialize_with = "error_message_or_value")]
     pub(crate) message: String,
 }
 
@@ -474,6 +474,7 @@ mod tests {
                 assert_eq!(
                     tool_calls[0],
                     ToolCall {
+                        index: None,
                         id: "call_h89ipqYUjEpCPI6SxspMnoUU".to_string(),
                         r#type: ToolType::Function,
                         function: Function {
