@@ -1182,7 +1182,16 @@ impl Stream for StreamingCompletionResponse {
                         }
                     }
                     RawStreamingChoice::ReasoningStart { id, provider_id } => {
-                        stream.parts.reasoning_start(&id, provider_id.as_ref());
+                        // A start that genuinely opened a part installs a
+                        // fresh live correlator: without it, a part that
+                        // closes with no deltas (a signature-only end under
+                        // a reused key) would fall back to the finished map
+                        // and inherit the PREVIOUS part's public identity.
+                        if stream.parts.reasoning_start(&id, provider_id.as_ref()) {
+                            stream
+                                .reasoning_correlators
+                                .insert(id, crate::id::generate());
+                        }
                         continue;
                     }
                     RawStreamingChoice::ReasoningEnd {
@@ -2354,6 +2363,57 @@ mod tests {
                 ReasoningContent::Text { signature: Some(sig), .. } if sig == "sig_late"
             )),
             "the trailing signature landed on the completed part"
+        );
+    }
+
+    /// A delta-less `ReasoningStart` under a reused key opens a NEW part
+    /// with a fresh public correlator — even when that part closes with a
+    /// signature-only end and no delta ever minted one (sequence O9: the
+    /// finished map must never leak the previous part's identity onto a
+    /// distinct part).
+    #[tokio::test]
+    async fn a_delta_less_start_under_a_reused_key_mints_a_fresh_correlator() {
+        let key = || StreamPartId::minted(MintKind::Reasoning, 0);
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::ReasoningDelta {
+                    id: key(),
+                    provider_id: None,
+                    reasoning: "part one".to_string(),
+                });
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: key(),
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: true,
+                });
+                yield Ok(RawStreamingChoice::ReasoningStart {
+                    id: key(),
+                    provider_id: None,
+                });
+                yield Ok(RawStreamingChoice::ReasoningEnd {
+                    id: key(),
+                    reasoning: None,
+                    signature: Some("sig2".to_string()),
+                    wire_sent: true,
+                });
+                yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(2)));
+            }),
+        );
+
+        let mut completed_ids = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Ok(StreamedAssistantContent::Reasoning { id, .. }) = item {
+                completed_ids.push(id);
+            }
+        }
+
+        assert_eq!(completed_ids.len(), 2, "two distinct parts complete");
+        assert_ne!(
+            completed_ids.first(),
+            completed_ids.get(1),
+            "distinct parts must not share a public correlator"
         );
     }
 

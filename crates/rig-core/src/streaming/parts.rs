@@ -220,13 +220,21 @@ impl PartsAccumulator {
     // --- reasoning lifecycle --------------------------------------------
 
     /// Open the reasoning entity for `id`, registering an empty part at the
-    /// current arrival position. A start for an already-open key is a no-op;
-    /// a start for a finished key opens a **new** part (key reuse).
-    pub(crate) fn reasoning_start(&mut self, id: &StreamPartId, provider_id: Option<&WireId>) {
+    /// current arrival position. A start for an already-open key is a no-op
+    /// (returns `false`); a start for a finished key opens a **new** part
+    /// (key reuse) — the `true` return tells the stream handler to mint a
+    /// fresh public correlator, so the new part never inherits the finished
+    /// part's identity.
+    pub(crate) fn reasoning_start(
+        &mut self,
+        id: &StreamPartId,
+        provider_id: Option<&WireId>,
+    ) -> bool {
         if self.open_reasoning.contains_key(id) {
-            return;
+            return false;
         }
         self.open_fresh_reasoning(id, provider_id, Vec::new());
+        true
     }
 
     /// Append reasoning delta text to the entity's open part, opening one if
