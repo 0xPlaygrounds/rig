@@ -43,6 +43,11 @@ pub struct ToolCallSlot {
     pub signature: Option<String>,
     /// Provider-specific decoration carried onto the call's end event.
     pub additional_params: Option<serde_json::Value>,
+    /// Whether any raw argument fragment streamed for this slot. The done
+    /// item's unparseable restatement re-emits its raw bytes only when NO
+    /// fragment preceded it — the buffer already holds streamed bytes, and
+    /// re-emitting the restatement doubled them.
+    pub saw_arguments_delta: bool,
 }
 
 impl ToolCallSlot {
@@ -115,7 +120,12 @@ where
     /// point of the mandatory-identity invariant. Later fragments update the
     /// established provider id and name from any non-empty values they
     /// carry.
-    pub fn open(&mut self, index: I, wire_id: Option<&str>, name: Option<&str>) -> &ToolCallSlot {
+    pub fn open(
+        &mut self,
+        index: I,
+        wire_id: Option<&str>,
+        name: Option<&str>,
+    ) -> &mut ToolCallSlot {
         let minted = &mut self.minted;
         let slot = self.slots.entry(index).or_insert_with(|| ToolCallSlot {
             key: match wire_id {
@@ -130,6 +140,7 @@ where
             name: String::new(),
             signature: None,
             additional_params: None,
+            saw_arguments_delta: false,
         });
 
         if let Some(id) = wire_id

@@ -577,11 +577,11 @@ impl RawChoiceAccumulator {
                 // fragments survive truncation before the authoritative
                 // `output_item.done` restatement (#2258 P3). A late wire id
                 // updates the slot's reported id without moving the key.
-                let key = self
+                let slot = self
                     .tool_slots
-                    .open(output_index, outer_item_id.as_deref(), None)
-                    .key()
-                    .clone();
+                    .open(output_index, outer_item_id.as_deref(), None);
+                slot.saw_arguments_delta = true;
+                let key = slot.key().clone();
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                     id: key,
                     content: streaming::ToolCallDeltaContent::Delta(delta.delta),
@@ -690,13 +690,24 @@ impl RawChoiceAccumulator {
                 // preceded the done item.
                 match func.arguments.parse() {
                     Ok(arguments) => end.arguments = Some(arguments),
+                    // Fragments already streamed these bytes into the
+                    // assembly buffer — re-emitting the restatement doubled
+                    // them (rendered twice by delta consumers and
+                    // double-charged against the accumulation bound). Only a
+                    // fragment-less done item (pure replay of a truncated
+                    // restatement) routes its raw string through the buffer,
+                    // so the truncation policy still has bytes to judge.
                     Err(_) => {
-                        immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
-                            id: item_id,
-                            content: streaming::ToolCallDeltaContent::Delta(
-                                func.arguments.as_str().to_owned(),
-                            ),
-                        });
+                        let saw_fragments =
+                            slot.as_ref().is_some_and(|slot| slot.saw_arguments_delta);
+                        if !saw_fragments {
+                            immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
+                                id: item_id,
+                                content: streaming::ToolCallDeltaContent::Delta(
+                                    func.arguments.as_str().to_owned(),
+                                ),
+                            });
+                        }
                     }
                 }
                 end.call_id = Some(func.call_id);
@@ -2974,6 +2985,102 @@ mod tests {
             RawStreamingChoice::ReasoningDelta { id, provider_id: _, reasoning }
                 if id == &crate::streaming::MintKind::Output.for_wire_index(0) && reasoning == "think"
         )));
+    }
+
+    /// The `max_output_tokens`-mid-tool-call shape: `arguments_delta`
+    /// frames stream partial JSON and the done item restates the same
+    /// truncated bytes (unparseable). Re-emitting the restatement as
+    /// another raw delta put the partial JSON in the buffer TWICE — a
+    /// delta-reassembling consumer rendered it twice and the bytes were
+    /// double-charged against the accumulation bound. Fragments seen →
+    /// the buffer already holds the bytes; only a fragment-less done item
+    /// (pure replay of a truncated restatement) still routes its raw
+    /// string through the buffer at all (#2258 P3).
+    #[test]
+    fn an_unparseable_restatement_is_not_reemitted_over_streamed_fragments() {
+        let delta = json!({
+            "type": "response.function_call_arguments.delta",
+            "item_id": "fc_1",
+            "output_index": 0,
+            "sequence_number": 1,
+            "delta": "{\"x\":481",
+        });
+        let done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 2,
+            "item": {
+                "type": "function_call",
+                "id": "fc_1",
+                "call_id": "call_1",
+                "name": "add",
+                "arguments": "{\"x\":481",
+                "status": "incomplete"
+            },
+        });
+        let body = format!(
+            "data: {delta}
+data: {done}
+"
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the truncated shape must decode");
+        let raw_fragments: Vec<&str> = choices
+            .iter()
+            .filter_map(|choice| match choice {
+                RawStreamingChoice::ToolCallDelta {
+                    content: crate::streaming::ToolCallDeltaContent::Delta(fragment),
+                    ..
+                } => Some(fragment.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            raw_fragments,
+            vec!["{\"x\":481"],
+            "the streamed fragment is buffered once; the restatement adds nothing"
+        );
+    }
+
+    /// The pure-replay half of the same policy: a truncated restatement
+    /// with NO preceding fragments must still reach the buffer (else the
+    /// bytes never arrive and the truncation policy has nothing to judge).
+    #[test]
+    fn a_fragmentless_unparseable_restatement_still_reaches_the_buffer() {
+        let done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 1,
+            "item": {
+                "type": "function_call",
+                "id": "fc_1",
+                "call_id": "call_1",
+                "name": "add",
+                "arguments": "{\"x\":481",
+                "status": "incomplete"
+            },
+        });
+        let body = format!(
+            "data: {done}
+"
+        );
+
+        let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the replayed truncated shape must decode");
+        let raw_fragments = choices
+            .iter()
+            .filter(|choice| {
+                matches!(
+                    choice,
+                    RawStreamingChoice::ToolCallDelta {
+                        content: crate::streaming::ToolCallDeltaContent::Delta(_),
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(raw_fragments, 1, "the raw bytes must reach the buffer once");
     }
 
     /// A slot mixing id-bearing and id-less reasoning frames (gateways and
