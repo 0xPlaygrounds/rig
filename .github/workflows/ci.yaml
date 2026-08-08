@@ -183,6 +183,13 @@ jobs:
         with:
           args: --all-features --all-targets
 
+  # The PR gate's test sweep. The full `--all-features` run (companion vector
+  # stores, Docker-backed integration tests, the nested-`cargo check` facade
+  # build guard) lives in nightly.yaml: it runs on a schedule, on demand via
+  # workflow_dispatch, and — via cd.yaml's `workflow_call` — on every push to
+  # main, so nothing is released without the full suite. `--all-features`
+  # COMPILE coverage stays on the PR gate regardless: the clippy job lints
+  # `--all-features --all-targets`, and doctest/doc build all features too.
   test:
     name: stable / test
     runs-on: ubuntu-latest
@@ -200,30 +207,96 @@ jobs:
         with:
           tool: nextest
 
-      # Required to compile rig-lancedb
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      # No protoc here: it is only required to compile rig-lancedb, which is
+      # not in this job's default+bedrock graph (rig-gemini-grpc vendors its
+      # own via protoc-bin-vendored). The all-features jobs keep the install.
 
-      # `nextest` below runs with `--all-features`, which does not compile the
-      # default-feature test graph. Build the root integration tests with the
-      # default feature set so feature-gated test modules cannot accidentally
-      # depend on APIs that only exist under optional features.
+      # `nextest` below runs with `--features bedrock`, which does not compile
+      # the pure default-feature test graph. Build the root integration tests
+      # with the default feature set so feature-gated test modules cannot
+      # accidentally depend on APIs that only exist under optional features.
       - name: Compile default-feature root test targets
         run: cargo test -p rig --tests --no-run
+
+      # The workspace sweep over the default members' default features, plus
+      # the facade's `bedrock` feature. `bedrock` rides along because the
+      # bedrock wire-conformance suite compiles into the facade's `bedrock`
+      # test binary and this step is the one
+      # `tests/core/streaming_conformance_registry.rs` names as executing it
+      # (rig-bedrock itself is already a default member, so the extra compile
+      # cost is marginal). Everything that needs the remaining optional
+      # features executes in nightly.yaml's identical-command full run.
+      #
+      # The provider keys stay here even though the cassette suites replay
+      # recorded traffic without them: the few live tests that check for keys
+      # at runtime keep running on same-repo PRs exactly as they did before
+      # the fast/full split (fork PRs never received secrets either way).
+      - name: Test with latest nextest release
+        uses: actions-rs/cargo@v1
+        with:
+          command: nextest
+          args: run --features bedrock --retries 2
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+
+  # The cross-crate contract tripwires, split from `test` so the two halves
+  # run in parallel: each step deliberately compiles a package set with its
+  # own feature configuration (see the comments below), which serializes
+  # poorly behind the default-feature sweep above.
+  test-guards:
+    name: stable / test guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      # No protoc here either: none of the packages below (rig-agent,
+      # rig-core, rig-candle, rig-gemini-grpc) compile rig-lancedb, and
+      # rig-gemini-grpc vendors its own protoc.
 
       - name: Test rig-agent agent unit tests with all features
         run: cargo nextest run -p rig-agent --all-features -E 'test(agent::)' --retries 2
 
-      # `cargo nextest run` (below) selects the workspace's *default members*,
-      # and this workspace's root manifest is itself the `rig` package with no
-      # `default-members` — so that run covers `rig` alone and a `crates/*` unit
-      # test executes in CI only when its package is named explicitly. The
+      # The full rig-core and rig-agent lib test sets under `--all-features`.
+      # Before the fast/full split, the workspace-wide `--all-features` sweep
+      # ran these on every PR; that sweep now lives in nightly.yaml, and this
+      # step keeps the feature-gated unit tests (the rmcp tool registry, the
+      # pdf/epub loaders, audio generation, …) from silently demoting to
+      # nightly-only coverage. It reuses the compile artifacts of the
+      # telemetry step below (same packages, same `--all-features`), so the
+      # cost is execution time only. The telemetry:: tests also run here with
+      # retries — harmless duplication: their no-retries discipline is
+      # enforced by the dedicated step below, exactly as it was when the
+      # workspace sweep ran them with `--retries 2` alongside it.
+      - name: Test rig-core and rig-agent unit tests with all features
+        run: cargo nextest run -p rig-core -p rig-agent --all-features --lib --retries 2
+
+      # `cargo nextest run` (in the `test` job) selects the workspace's
+      # *default members* — historically just the `rig` facade, which is why a
+      # `crates/*` unit test executed in CI only when its package was named
+      # explicitly; `default-members` now lists the core crates, but that
+      # sweep compiles them with *default* features and `--retries 2`. The
       # rig-agent half of the completion-parent contract rides along on the
-      # `agent::` filter above, but rig-core's `telemetry::` tests match nothing
-      # and would otherwise never run. They are the drift tripwires for the
-      # marker and the required `gen_ai.*` field set: unrun, the three forms of
-      # the contract can silently desync, which is the exact failure the
-      # `completion_parent_span!` macro exists to prevent.
+      # `agent::` filter above; this step is what runs rig-core's
+      # `telemetry::` tests under `--all-features` and without retries. They
+      # are the drift tripwires for the marker and the required `gen_ai.*`
+      # field set: unrun, the three forms of the contract can silently
+      # desync, which is the exact failure the `completion_parent_span!`
+      # macro exists to prevent.
       #
       # rig-agent is named explicitly even though `test(agent::)` above already
       # matches `span_safety_net::`, so the cross-crate tripwire keeps running
@@ -236,8 +309,8 @@ jobs:
       # concealing nondeterminism rather than tolerating a flaky network.
       #
       # This resolves rig-core with its own `--all-features` set, a different
-      # configuration from both the `-p rig-agent` step above and the root
-      # `-p rig` run below, so rig-core is compiled here rather than reused.
+      # configuration from both the `-p rig-agent` step above and the `test`
+      # job's facade sweep, so rig-core is compiled here rather than reused.
       # That cost is accepted deliberately: folding these tests into the
       # `agent::` step would share one build but hand them its `--retries 2`,
       # and a drift tripwire that passes on the second attempt conceals exactly
@@ -256,15 +329,15 @@ jobs:
       #
       #   * `crates/rig-core/tests/driver_adoption.rs` is a rig-core *package*
       #     target, so the single-policy-driver guard and the serde policy wall
-      #     never built in the `-p rig` run below. The mechanism that keeps
-      #     "one triage policy site" true over time was itself unrun.
+      #     never built in the facade-only `-p rig` run. The mechanism that
+      #     keeps "one triage policy site" true over time was itself unrun.
       #   * three wire-conformance families live in test binaries outside the
       #     `rig` facade — `openai_responses_websocket`
       #     (`rig-core/tests/streaming_conformance_websocket.rs`), `candle`
       #     (`rig-candle`) and `gemini_grpc` (`rig-gemini-grpc`) — so the
       #     registry reported them covered while nothing executed them.
-      #     (`bedrock`'s suite is feature-gated inside `rig`, so the run below
-      #     already covers it.)
+      #     (`bedrock`'s suite is feature-gated inside `rig`, so the `test`
+      #     job's `--features bedrock` sweep covers it.)
       #
       # `binary(...)`, not `test(...)`: nextest's `test()` predicate matches the
       # test's own name (`suite_is_complete`, …), never the binary it lives in,
@@ -282,18 +355,6 @@ jobs:
       # flaky network.
       - name: Test out-of-facade streaming conformance and structural guards
         run: cargo nextest run -p rig-core -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
-
-      - name: Test with latest nextest release
-        uses: actions-rs/cargo@v1
-        with:
-          command: nextest
-          args: run --all-features --retries 2
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
 
   # `cargo nextest` (used by the `test` job) does NOT run doctests, and the
   # `doc` job only builds documentation — so without this job nothing executes

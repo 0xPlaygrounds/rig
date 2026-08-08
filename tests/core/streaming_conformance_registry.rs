@@ -89,8 +89,8 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         ci_selector: None,
         ci_package: None,
         reason: "lives in the `rig` facade but behind the `bedrock` feature, so it compiles into \
-                 the `bedrock` test binary rather than `core`; the workspace `--all-features` run \
-                 executes it",
+                 the `bedrock` test binary rather than `core`; the workspace sweep enables \
+                 `--features bedrock` specifically so this step keeps executing it",
     },
 ];
 

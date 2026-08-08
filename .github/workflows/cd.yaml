@@ -16,9 +16,17 @@ jobs:
     uses: ./.github/workflows/ci.yaml
     secrets: inherit
 
+  # ci.yaml is the fast PR gate; the `--all-features` suite (Docker-backed
+  # vector-store integrations, the facade build guard) lives in nightly.yaml.
+  # Calling it here keeps the pre-split guarantee: release-plz never runs on
+  # a commit the full suite has not passed.
+  run-full-ci:
+    uses: ./.github/workflows/nightly.yaml
+    secrets: inherit
+
   release-plz:
     name: Release-plz
-    needs: run-ci
+    needs: [run-ci, run-full-ci]
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
