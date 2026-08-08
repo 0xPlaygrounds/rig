@@ -43,6 +43,19 @@ for workflow in .github/workflows/*.yaml .github/workflows/*.yml; do
     fi
   done < <(grep -E '^\s*RUST_VERSION:' "$workflow" \
     | sed -E 's/\r$//; s/^[[:space:]]*RUST_VERSION:[[:space:]]*//; s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^"([^"]*)"$/\1/; s/^'"'"'([^'"'"']*)'"'"'$/\1/')
+
+  # Also catch the bypass this env-var check cannot see: a job that pins a
+  # literal version directly in `setup-rust-toolchain`'s `with:` block
+  # (`toolchain: 1.93.0`) declares no RUST_VERSION and would pass vacuously
+  # while silently building on a stale toolchain. `${{ env.RUST_VERSION }}`
+  # references are skipped — they resolve to a value already checked above.
+  while IFS= read -r inline; do
+    if [ "$inline" != "$channel" ]; then
+      echo "::error file=$workflow::inline toolchain pin is $inline but rust-toolchain.toml pins $channel"
+      status=1
+    fi
+  done < <(grep -E '^\s*toolchain:' "$workflow" | grep -vF '${{' \
+    | sed -E 's/\r$//; s/^[[:space:]]*toolchain:[[:space:]]*//; s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^"([^"]*)"$/\1/; s/^'"'"'([^'"'"']*)'"'"'$/\1/')
 done
 
 if [ "$status" -eq 0 ]; then

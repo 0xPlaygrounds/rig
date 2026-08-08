@@ -6,6 +6,17 @@ on:
       - main
   workflow_dispatch:
 
+# The full-suite gate makes this workflow run ~25-30 minutes before
+# release-plz starts, so two pushes landing minutes apart (e.g. consecutive
+# merge-queue batches) would otherwise reach release-plz concurrently and
+# race on release-PR creation and crates.io publishes. Serialize runs per
+# ref; `cancel-in-progress: false` because a run that may already be
+# publishing must never be killed mid-release — later pushes queue behind it
+# and release the superset.
+concurrency:
+  group: release-plz-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   RUST_VERSION: 1.94.0
 

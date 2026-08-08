@@ -203,13 +203,16 @@ jobs:
   # build guard) lives in nightly.yaml: it runs on a schedule, on demand via
   # workflow_dispatch, and — via cd.yaml's `workflow_call` — on every push to
   # main, so nothing is released without the full suite. `--all-features`
-  # COMPILE coverage stays on the PR gate regardless: the clippy job lints
-  # `--all-features --all-targets`, and doctest/doc build all features too —
-  # with one deliberate exception: feature-unification means no
-  # `--all-features` build can catch a facade feature that forgets to forward
-  # a sub-feature, so that class of compile break is caught only by
-  # nightly.yaml's nested-`cargo check` guard (`tests/tool_facade_features.rs`,
-  # ~4 minutes, which is exactly why it is not on the gate).
+  # TYPE-CHECK coverage stays on the PR gate regardless: the clippy job lints
+  # `--all-features --all-targets`, and doctest/doc build all features too.
+  # Two narrower classes wait for the full lane: codegen/link of the
+  # feature-gated test binaries clippy only type-checks, and — because
+  # feature-unification means no `--all-features` build can catch a facade
+  # feature that forgets to forward a sub-feature — the per-feature facade
+  # compile breaks that only nightly.yaml's nested-`cargo check` guard
+  # (`tests/tool_facade_features.rs`, ~4 minutes, which is exactly why it is
+  # not on the gate) can see. Both surface in merge_group at the latest,
+  # before anything lands on main.
   test:
     name: stable / test
     runs-on: ubuntu-latest
@@ -272,8 +275,14 @@ jobs:
       # `--features bedrock` step below never reuses (~1-2 wasted minutes even
       # warm, since rust-cache never persists workspace-member artifacts).
       # `check` still runs build scripts, so the protoc requirement above is
-      # unchanged; link errors stay covered by the bedrock run below and by
-      # nightly's full sweep.
+      # unchanged. Be precise about what this trades away: the bedrock run
+      # below and nightly's sweep link *superset* feature configurations, so
+      # no lane anywhere links the pure default-feature binaries — a
+      # default-only codegen/link break would surface first in merge_group's
+      # full run. That gap is accepted as theoretical: `bedrock` is purely
+      # additive and the workspace has no `cfg(not(feature = …))` in test
+      # code, so a break that appears only with features *removed* has no
+      # known mechanism.
       - name: Check default-feature root test targets
         run: cargo check --locked -p rig --tests
 

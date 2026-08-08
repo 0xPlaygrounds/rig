@@ -157,7 +157,11 @@ fn cassettes_do_not_contain_obvious_secrets() {
     //   * every registered suite's `tests/<provider>.rs` must include this
     //     module — so each registered directory is provably scanned by
     //     exactly the binary that owns it, and adding a suite without wiring
-    //     the scan into its binary fails everywhere too.
+    //     the scan into its binary fails everywhere too;
+    //   * every registered provider name must be a valid crate identifier —
+    //     `env!("CARGO_CRATE_NAME")` mangles hyphens to underscores, so a
+    //     hyphenated provider would resolve `own_dir` to a path that never
+    //     exists and skip its own scan without a single failure.
     let mut failures = Vec::new();
 
     let registered: BTreeSet<&str> = PROVIDER_CASSETTE_SUITES
@@ -182,13 +186,23 @@ fn cassettes_do_not_contain_obvious_secrets() {
         }
     }
     for suite in PROVIDER_CASSETTE_SUITES {
-        let binary_source = repo_path(&format!("tests/{}.rs", suite.provider));
-        let includes_scan = fs::read_to_string(&binary_source)
-            .is_ok_and(|contents| contents.contains("common/cassette_safety.rs"));
-        if !includes_scan {
+        if !suite
+            .provider
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
+        {
             failures.push(format!(
-                "tests/{}.rs does not include common/cassette_safety.rs, so \
-                 tests/cassettes/{} is scanned for secrets by no binary",
+                "provider {:?} is not equal to its test binary's CARGO_CRATE_NAME (hyphens and \
+                 other non-identifier characters are mangled), so its cassette directory would \
+                 be scanned by no binary — rename the provider or its directory",
+                suite.provider
+            ));
+        }
+        let binary_source = repo_path(&format!("tests/{}.rs", suite.provider));
+        if !binary_compiles_cassette_scan(&binary_source) {
+            failures.push(format!(
+                "tests/{}.rs does not include common/cassette_safety.rs as an unconditional \
+                 `mod`, so tests/cassettes/{} is scanned for secrets by no binary",
                 suite.provider, suite.provider
             ));
         }
@@ -335,6 +349,43 @@ fn collect_rust_files_in_dir(dir: &Path, files: &mut Vec<PathBuf>) {
             files.push(path);
         }
     }
+}
+
+/// Structural, not substring: the guarded claim is "this binary *compiles*
+/// the secret scan", so the check must parse the source and find an actual
+/// `#[path = ".../common/cassette_safety.rs"] mod …` item with no `#[cfg]`
+/// attached. A raw `contents.contains(...)` would stay satisfied by a
+/// commented-out include or by a cfg-gated one — a false green on the safety
+/// net itself, the same paper-claim failure mode the streaming-conformance
+/// registry's CI-step check guards against.
+fn binary_compiles_cassette_scan(source: &Path) -> bool {
+    let Ok(contents) = fs::read_to_string(source) else {
+        return false;
+    };
+    let Ok(syntax) = syn::parse_file(&contents) else {
+        return false;
+    };
+    syntax.items.iter().any(|item| {
+        let syn::Item::Mod(module) = item else {
+            return false;
+        };
+        let cfg_gated = module
+            .attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"));
+        let includes_scan = module.attrs.iter().any(|attr| {
+            attr.path().is_ident("path")
+                && matches!(
+                    &attr.meta,
+                    syn::Meta::NameValue(name_value) if matches!(
+                        &name_value.value,
+                        Expr::Lit(ExprLit { lit: Lit::Str(path), .. })
+                            if path.value().ends_with("common/cassette_safety.rs")
+                    )
+                )
+        });
+        includes_scan && !cfg_gated
+    })
 }
 
 fn cassette_scenarios_in_file(

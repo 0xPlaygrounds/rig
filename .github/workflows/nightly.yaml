@@ -57,6 +57,11 @@ on:
       - "crates/rig-vectorize/**"
       - "tests/integrations/**"
       - "tests/integrations.rs"
+      # The facade feature-forwarding guard is the one test whose failure
+      # class (a facade feature forgetting a sub-feature, invisible to any
+      # `--all-features` build — see the header) nothing on the PR gate can
+      # catch, so a PR that edits it must run it.
+      - "tests/tool_facade_features.rs"
       - ".github/workflows/nightly.yaml"
       # The companion crates' dependency versions do not live under
       # `crates/rig-*/`: they are `workspace = true` references resolved in

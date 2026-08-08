@@ -88,10 +88,14 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         ci_step: FACADE_CI_STEP,
         // The PR gate's sweep runs `--features bedrock`, not `--all-features`,
         // so this suite's existence now depends on that one flag: without it
-        // `tests/bedrock.rs` is `#[cfg(feature = "bedrock")]`-ed out and the
-        // whole binary — all 11 conformance tests — silently stops compiling.
-        // Asserting only the step *name* would leave that a paper claim, the
-        // exact failure mode this file's module doc describes.
+        // the `#[cfg(feature = "bedrock")] mod bedrock` in `tests/bedrock.rs`
+        // is cfg-ed out and all 11 conformance tests silently stop compiling.
+        // (The binary itself still builds — its cassette-safety scan is
+        // deliberately ungated — so do NOT "fix" this by gating the whole
+        // file: that would drop the bedrock cassette secret scan from every
+        // default-feature run.) Asserting only the step *name* would leave
+        // the suite a paper claim, the exact failure mode this file's module
+        // doc describes.
         ci_selector: Some("--features bedrock"),
         ci_package: None,
         reason: "lives in the `rig` facade but behind the `bedrock` feature, so it compiles into \
@@ -207,7 +211,14 @@ fn out_of_binary_families_name_a_live_ci_step() {
         let block: Vec<&str> = lines[start + 1..]
             .iter()
             .take_while(|line| {
-                !is_step_line(line) && (line.trim().is_empty() || step_indent(line) >= job_seam)
+                // Comment lines pass the seam test unconditionally: comments
+                // are legal at any indentation, so a low-indent comment
+                // inside a step's span must not truncate the block (it is
+                // dropped by the filter below either way).
+                !is_step_line(line)
+                    && (line.trim().is_empty()
+                        || line.trim_start().starts_with('#')
+                        || step_indent(line) >= job_seam)
             })
             .filter(|line| !line.trim_start().starts_with('#'))
             .copied()
