@@ -230,6 +230,21 @@ pub struct ToolResult {
     pub content: OneOrMany<ToolResultContent>,
 }
 
+impl ToolResult {
+    /// The identifier for a wire whose call-id slot is *required*: the
+    /// provider-issued `call_id` when the provider issued one, else rig's
+    /// minted handle — always non-empty.
+    ///
+    /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
+    /// [`ToolResult::provider`] directly instead: minted handles never
+    /// travel upstream there.
+    pub fn wire_call_id(&self) -> &str {
+        self.provider
+            .as_ref()
+            .map_or(self.call.as_str(), |provider| provider.call_id.as_str())
+    }
+}
+
 /// Describes one typed item in a tool result.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -319,6 +334,21 @@ impl ToolCallId {
     /// wires that may omit the identifier.
     pub fn new_or_mint(id: impl Into<String>) -> Self {
         Self::new(id).unwrap_or_else(Self::mint)
+    }
+
+    /// The correlation handle for the given provider identity: the
+    /// provider's `call_id` when the provider issued one, minted when it
+    /// did not. The single derivation the message and streaming layers
+    /// share — a result correlates with its call because both derive the
+    /// handle from the same provider identity.
+    ///
+    /// (`ProviderCallId`'s constructors reject the empty string, but its
+    /// fields are public, so an empty `call_id` from a literal
+    /// construction still mints rather than producing an empty handle.)
+    pub fn for_provider(provider: Option<&ProviderCallId>) -> Self {
+        provider
+            .and_then(|provider| Self::new(provider.call_id.clone()))
+            .unwrap_or_else(Self::mint)
     }
 
     /// Borrow the identifier.
@@ -492,10 +522,7 @@ impl ToolCall {
     /// issued one, mint when it did not (empty or absent ids mint).
     pub fn from_wire(wire_id: impl Into<String>, function: ToolFunction) -> Self {
         let provider = ProviderCallId::new(wire_id);
-        let id = provider
-            .as_ref()
-            .and_then(|provider| ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(ToolCallId::mint);
+        let id = ToolCallId::for_provider(provider.as_ref());
         Self {
             id,
             provider,
@@ -517,10 +544,7 @@ impl ToolCall {
             let item_id = item_id.into();
             provider.with_item_id(item_id)
         });
-        let id = provider
-            .as_ref()
-            .and_then(|provider| ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(ToolCallId::mint);
+        let id = ToolCallId::for_provider(provider.as_ref());
         Self {
             id,
             provider,
@@ -534,6 +558,19 @@ impl ToolCall {
     pub fn with_provider(mut self, provider: ProviderCallId) -> Self {
         self.provider = Some(provider);
         self
+    }
+
+    /// The identifier for a wire whose call-id slot is *required*: the
+    /// provider-issued `call_id` when the provider issued one, else rig's
+    /// minted handle — always non-empty.
+    ///
+    /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
+    /// [`ToolCall::provider`] directly instead: minted handles never travel
+    /// upstream there.
+    pub fn wire_call_id(&self) -> &str {
+        self.provider
+            .as_ref()
+            .map_or(self.id.as_str(), |provider| provider.call_id.as_str())
     }
 
     pub fn with_signature(mut self, signature: Option<String>) -> Self {
@@ -1064,10 +1101,7 @@ impl UserContent {
         content: OneOrMany<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(call_id);
-        let call = provider
-            .as_ref()
-            .and_then(|provider| ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(ToolCallId::mint);
+        let call = ToolCallId::for_provider(provider.as_ref());
         UserContent::ToolResult(ToolResult {
             call,
             provider,
@@ -1104,10 +1138,7 @@ impl UserContent {
         content: OneOrMany<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
-        let call = provider
-            .as_ref()
-            .and_then(|provider| ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(ToolCallId::mint);
+        let call = ToolCallId::for_provider(provider.as_ref());
         UserContent::ToolResult(ToolResult {
             call,
             provider,

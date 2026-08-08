@@ -1079,6 +1079,11 @@ fn user_contents_to_messages(
         match content {
             message::UserContent::ToolResult(tool_result) => {
                 flush_user_content(&mut messages, &mut pending)?;
+                // Prefer the provider-issued call id, matching the
+                // assistant echo (shared From<message::ToolCall>);
+                // provider-less results fall back to rig's minted
+                // handle — never empty.
+                let tool_call_id = tool_result.wire_call_id().to_owned();
                 let content = tool_result
                     .content
                     .into_iter()
@@ -1094,14 +1099,7 @@ fn user_contents_to_messages(
                     .collect::<Result<Vec<_>, _>>()?
                     .join("\n");
                 messages.push(Message::ToolResult {
-                    // Prefer the provider-issued call id, matching the
-                    // assistant echo (shared From<message::ToolCall>);
-                    // provider-less results fall back to rig's minted
-                    // handle — never empty.
-                    tool_call_id: tool_result
-                        .provider
-                        .map(|provider| provider.call_id)
-                        .unwrap_or_else(|| tool_result.call.into_string()),
+                    tool_call_id,
                     content: openai::completion::ToolResultContentValue::String(content),
                 });
             }

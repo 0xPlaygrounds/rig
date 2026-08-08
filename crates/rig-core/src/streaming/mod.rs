@@ -779,10 +779,7 @@ impl From<RawStreamingToolCall> for ToolCall {
             (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id.into_string()),
             (None, None) => None,
         };
-        let id = provider
-            .as_ref()
-            .and_then(|provider| crate::message::ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(crate::message::ToolCallId::mint);
+        let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         ToolCall {
             id,
             provider,

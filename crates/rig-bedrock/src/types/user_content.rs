@@ -63,12 +63,7 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
             UserContent::Text(text) => Ok(vec![aws_bedrock::ContentBlock::Text(text.text)]),
             UserContent::ToolResult(tool_result) => {
                 let builder = aws_bedrock::ToolResultBlock::builder()
-                    .tool_use_id(
-                        tool_result
-                            .provider
-                            .map(|provider| provider.call_id)
-                            .unwrap_or_else(|| tool_result.call.into_string()),
-                    )
+                    .tool_use_id(tool_result.wire_call_id().to_owned())
                     .set_content(Some(
                         tool_result
                             .content

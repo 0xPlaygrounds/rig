@@ -1929,21 +1929,15 @@ pub mod interactions_api_types {
                         annotations: None,
                     }))
                 }
-                message::UserContent::ToolResult(message::ToolResult {
-                    call,
-                    provider,
-                    name,
-                    content,
-                }) => {
+                message::UserContent::ToolResult(tool_result) => {
                     // The wire requires a call id: the provider-issued one
                     // when it exists, else rig's minted handle — always
                     // present, so the old "results require call_id" error
                     // is unrepresentable.
-                    let call_id = provider
-                        .map(|provider| provider.call_id)
-                        .unwrap_or_else(|| call.into_string());
+                    let call_id = tool_result.wire_call_id().to_owned();
+                    let name = tool_result.name;
 
-                    let mut contents = content.into_iter().collect::<Vec<_>>();
+                    let mut contents = tool_result.content.into_iter().collect::<Vec<_>>();
                     let result = if contents.len() == 1 {
                         let content = contents.pop().ok_or_else(|| {
                             message::MessageError::ConversionError(
@@ -2106,10 +2100,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
-                    let call_id = tool_call
-                        .provider
-                        .map(|provider| provider.call_id)
-                        .unwrap_or_else(|| tool_call.id.into_string());
+                    let call_id = tool_call.wire_call_id().to_owned();
                     Ok(Self::FunctionCall(FunctionCallContent {
                         name: Some(tool_call.function.name),
                         arguments: Some(tool_call.function.arguments),

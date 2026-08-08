@@ -715,10 +715,7 @@ impl PartsAccumulator {
             (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id),
             (None, None) => None,
         };
-        let id = provider
-            .as_ref()
-            .and_then(|provider| crate::message::ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(crate::message::ToolCallId::mint);
+        let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         let tool_call = ToolCall {
             id,
             provider,
