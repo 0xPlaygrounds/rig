@@ -37,10 +37,15 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
             Message::Assistant { content, .. } => aws_bedrock::Message::builder()
                 .role(aws_bedrock::ConversationRole::Assistant)
                 .set_content(Some(
+                    // `Ok(None)` items degrade away (foreign opaque
+                    // reasoning Bedrock cannot carry); errors still fail.
                     content
                         .into_iter()
-                        .map(|content| RigAssistantContent(content).try_into())
-                        .collect::<Result<Vec<aws_bedrock::ContentBlock>, _>>()?,
+                        .map(|content| RigAssistantContent(content).into_content_block())
+                        .collect::<Result<Vec<Option<aws_bedrock::ContentBlock>>, _>>()?
+                        .into_iter()
+                        .flatten()
+                        .collect(),
                 ))
                 .build()
                 .map_err(|e| CompletionError::RequestError(Box::new(e)))?,
