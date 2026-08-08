@@ -411,38 +411,61 @@ fn assistant_tool_call_with_provider_item_id_keeps_it() {
 }
 
 #[test]
-fn assistant_tool_call_without_call_id_returns_request_error() {
+fn assistant_tool_call_without_provider_id_serializes_the_minted_call_id() {
+    // An empty wire id records no provider id and mints rig's correlation
+    // handle; the Responses wire requires a `call_id`, so the minted id is
+    // sent instead of the old "`call_id` is required" request error.
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
         content: OneOrMany::one(AssistantContent::tool_call(
-            "tool_1",
+            "",
             "my_tool",
             serde_json::json!({"arg":"value"}),
         )),
     };
 
-    let items: Result<Vec<InputItem>, CompletionError> = message.try_into();
-    assert!(matches!(
-        items,
-        Err(CompletionError::RequestError(error))
-            if error
-                .to_string()
-                .contains("Assistant tool call `call_id` is required")
-    ));
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("id-less tool call should serialize with the minted call_id");
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    let call_id = item_json
+        .get("call_id")
+        .and_then(|value| value.as_str())
+        .expect("function_call should carry a call_id");
+    assert!(
+        !call_id.is_empty(),
+        "minted call_id must be non-empty: {item_json}"
+    );
+    assert!(
+        item_json.get("id").is_none(),
+        "no provider-native `fc_` item id exists to round-trip: {item_json}"
+    );
 }
 
 #[test]
-fn user_tool_result_without_call_id_returns_request_error() {
-    let message = CompletionMessage::tool_result("tool_1", "result payload");
+fn user_tool_result_without_provider_id_serializes_the_minted_call_id() {
+    // An empty provider call id mints rig's correlation handle; the
+    // Responses wire requires a `call_id`, so the minted id is sent instead
+    // of the old "`call_id` is required" request error.
+    let message = CompletionMessage::tool_result("", "my_tool", "result payload");
 
-    let items: Result<Vec<InputItem>, CompletionError> = message.try_into();
-    assert!(matches!(
-        items,
-        Err(CompletionError::RequestError(error))
-            if error
-                .to_string()
-                .contains("Tool result `call_id` is required")
-    ));
+    let items: Vec<InputItem> = message
+        .try_into()
+        .expect("id-less tool result should serialize with the minted call_id");
+    let item_json = serde_json::to_value(&items[0]).expect("serialize InputItem");
+    assert_eq!(
+        item_json.get("type").and_then(|value| value.as_str()),
+        Some("function_call_output"),
+        "tool result should serialize as a function_call_output: {item_json}"
+    );
+    let call_id = item_json
+        .get("call_id")
+        .and_then(|value| value.as_str())
+        .expect("function_call_output should carry a call_id");
+    assert!(
+        !call_id.is_empty(),
+        "minted call_id must be non-empty: {item_json}"
+    );
 }
 
 #[test]

@@ -619,7 +619,7 @@ fn user_parts(content: &OneOrMany<UserContent>) -> Vec<TelemetryPart> {
                 content: text.text.clone(),
             }),
             UserContent::ToolResult(result) => Some(TelemetryPart::ToolCallResponse {
-                id: Some(result.id.clone()),
+                id: Some(result.call.as_str().to_owned()),
                 response: tool_result_response(result),
             }),
             UserContent::Image(image) => image_part(image),
@@ -644,7 +644,7 @@ fn assistant_parts(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryPart> 
                 content: text.text.clone(),
             }],
             AssistantContent::ToolCall(tool_call) => vec![TelemetryPart::ToolCall {
-                id: Some(tool_call.id.clone()),
+                id: Some(tool_call.id.as_str().to_owned()),
                 name: tool_call.function.name.clone(),
                 arguments: tool_call.function.arguments.clone(),
             }],
@@ -848,7 +848,7 @@ mod tests {
         let input = input_messages(&[
             Message::system("follow policy"),
             Message::user("hello"),
-            Message::tool_result("call_1", "sunny"),
+            Message::tool_result("call_1", "weather", "sunny"),
         ]);
         assert_eq!(
             serde_json::to_value(input).expect("semantic-convention input DTOs serialize"),

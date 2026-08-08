@@ -11,7 +11,8 @@
 
 use rig_core::completion::{CompletionError, FinishReason};
 use rig_core::test_utils::streaming_conformance::{
-    ProviderWireFixture, WireDriver, WireInput, event_frame, fixtures::drain,
+    InterleavedReasoningFixture, ProviderWireFixture, WireDriver, WireInput, event_frame,
+    fixtures::drain,
 };
 use rig_gemini_grpc::proto;
 
@@ -90,6 +91,15 @@ fn function_call_part(name: &str) -> proto::Part {
     }
 }
 
+fn thought_part(text: &str) -> proto::Part {
+    proto::Part {
+        thought: true,
+        thought_signature: Vec::new(),
+        part_metadata: None,
+        data: Some(proto::part::Data::Text(text.to_string())),
+    }
+}
+
 /// FinishReason::Stop in the proto enumeration.
 const FINISH_STOP: i32 = 1;
 
@@ -135,13 +145,26 @@ fn fixture() -> ProviderWireFixture {
         defective_known_frame: None,
         delta_less_prelude_frame: None,
         refusal: None,
+        // Thought → interleaved function call → thought: the constant-id
+        // boundary the adapter owns by synthesizing reasoning ends.
+        interleaved_reasoning: Some(InterleavedReasoningFixture {
+            frames: vec![
+                event_frame(response(vec![thought_part("before tool")], 0)),
+                event_frame(response(vec![function_call_part("get_weather")], 0)),
+                event_frame(response(vec![thought_part("after tool")], 0)),
+                terminal(Some(usage(5, 2, 7))),
+            ],
+            first_reasoning: "before tool",
+            tool_name: "get_weather",
+            second_reasoning: "after tool",
+        }),
     }
 }
 
 rig_core::streaming_conformance_suite! {
     provider: "gemini_grpc",
     fixture: fixture(),
-    manifest: [zero_usage_terminal],
+    manifest: [zero_usage_terminal, interleaved_reasoning],
 }
 
 /// Compile-linked manifest of the wire families this binary covers.

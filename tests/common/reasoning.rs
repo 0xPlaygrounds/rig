@@ -108,7 +108,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
             Ok(StreamedAssistantContent::Text(text)) => {
                 streamed_text.push_str(&text.text);
             }
-            Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
                 saw_reasoning_block = true;
                 assistant_content.push(AssistantContent::Reasoning(reasoning));
             }
@@ -467,7 +467,7 @@ pub(crate) async fn collect_stream_stats(
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
-                StreamedAssistantContent::Reasoning(ref reasoning) => {
+                StreamedAssistantContent::Reasoning { ref reasoning, .. } => {
                     record_reasoning(&mut stats, reasoning, provider);
                 }
                 StreamedAssistantContent::ReasoningDelta { .. } => {

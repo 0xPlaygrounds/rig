@@ -628,9 +628,14 @@ pub(crate) fn stream_generate(
         match item {
             AssistantContent::Text(text) => emit(RawStreamingChoice::Message(text.text))?,
             AssistantContent::ToolCall(call) => {
-                let mut raw =
-                    RawStreamingToolCall::new(call.id, call.function.name, call.function.arguments);
-                raw.call_id = call.call_id;
+                // The envelope-parsed call always carries a wire-issued id
+                // (`from_wire` adopted it), so key the stream by it.
+                let mut raw = RawStreamingToolCall::new(
+                    call.id.as_str().to_owned(),
+                    call.function.name,
+                    call.function.arguments,
+                );
+                raw.call_id = None;
                 raw.signature = call.signature;
                 raw.additional_params = call.additional_params;
                 emit(RawStreamingChoice::ToolCall(raw))?;
@@ -647,11 +652,15 @@ pub(crate) fn stream_generate(
                         id: reasoning
                             .id
                             .clone()
-                            .map(rig_core::streaming::PartId::wire)
-                            .unwrap_or(rig_core::streaming::PartId::Minted {
-                                kind: rig_core::streaming::MintKind::Reasoning,
-                                index: 0,
-                            }),
+                            .map(rig_core::streaming::StreamPartId::wire)
+                            .unwrap_or(rig_core::streaming::StreamPartId::minted(
+                                rig_core::streaming::MintKind::Reasoning,
+                                0,
+                            )),
+                        provider_id: reasoning
+                            .id
+                            .clone()
+                            .and_then(rig_core::streaming::WireId::new),
                         content,
                     })?;
                 }

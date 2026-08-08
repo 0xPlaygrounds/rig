@@ -105,11 +105,11 @@ mod tests {
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::ReasoningSummary;
-    use crate::providers::openai::responses_api::streaming::reasoning_choices_from_done_item;
+    use crate::providers::openai::responses_api::streaming::reasoning_end_from_done_item;
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
 
     #[test]
-    fn reasoning_done_item_emits_summary_then_encrypted() {
+    fn reasoning_done_item_fuses_summary_and_encrypted_into_one_end() {
         let summary = vec![
             ReasoningSummary::SummaryText {
                 text: "s1".to_string(),
@@ -118,35 +118,36 @@ mod tests {
                 text: "s2".to_string(),
             },
         ];
-        let choices = reasoning_choices_from_done_item(
-            &crate::streaming::PartId::wire("xr_1"),
+        let end = reasoning_end_from_done_item(
+            &crate::streaming::StreamPartId::wire("xr_1"),
+            crate::streaming::WireId::new("xr_1").as_ref(),
             &summary,
             &[],
             Some("enc"),
         );
 
-        assert_eq!(choices.len(), 3);
-        assert!(matches!(
-            choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                id,
-                content: ReasoningContent::Summary(text),
-            }) if id.as_wire() == Some("xr_1") && text == "s1"
-        ));
-        assert!(matches!(
-            choices.get(1),
-            Some(RawStreamingChoice::Reasoning {
-                id,
-                content: ReasoningContent::Summary(text),
-            }) if id.as_wire() == Some("xr_1") && text == "s2"
-        ));
-        assert!(matches!(
-            choices.get(2),
-            Some(RawStreamingChoice::Reasoning {
-                id,
-                content: ReasoningContent::Encrypted(data),
-            }) if id.as_wire() == Some("xr_1") && data == "enc"
-        ));
+        // One restatement carrying every block: xai shares the Responses
+        // adapter, so its multi-block done items must also aggregate as one
+        // part instead of same-id siblings.
+        let Some(RawStreamingChoice::ReasoningEnd {
+            id,
+            reasoning: Some(reasoning),
+            signature: None,
+            wire_sent: true,
+        }) = end
+        else {
+            panic!("expected one wire-sent ReasoningEnd restatement");
+        };
+        assert_eq!(id, crate::streaming::StreamPartId::wire("xr_1"));
+        assert_eq!(reasoning.id.as_deref(), Some("xr_1"));
+        assert_eq!(
+            reasoning.content,
+            vec![
+                ReasoningContent::Summary("s1".to_string()),
+                ReasoningContent::Summary("s2".to_string()),
+                ReasoningContent::Encrypted("enc".to_string()),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -260,8 +261,12 @@ mod tests {
             .expect("first stream item should be ok")
         {
             StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                assert_eq!(tool_call.id, "fc_123");
-                assert_eq!(tool_call.call_id.as_deref(), Some("call_123"));
+                // The correlator (`call_…`) drives rig's id; the dual-wire
+                // item handle (`fc_…`) rides along as the provider item id.
+                assert_eq!(tool_call.id, "call_123");
+                let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+                assert_eq!(provider.call_id, "call_123");
+                assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
                 assert_eq!(tool_call.function.name, "example_tool");
                 assert_eq!(tool_call.function.arguments, serde_json::json!({}));
             }

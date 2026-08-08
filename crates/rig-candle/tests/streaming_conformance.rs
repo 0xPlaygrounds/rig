@@ -91,6 +91,7 @@ fn fixture() -> ProviderWireFixture {
         defective_known_frame: None,
         delta_less_prelude_frame: None,
         refusal: None,
+        interleaved_reasoning: None,
     }
 }
 

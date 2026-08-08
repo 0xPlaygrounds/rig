@@ -1431,7 +1431,7 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     override_request.model = Some("other".to_string());
     assert!(render_prompt(&override_request).is_err());
 
-    let tool_result = request(vec![Message::tool_result("id", "result")]);
+    let tool_result = request(vec![Message::tool_result("id", "tool", "result")]);
     assert!(render_prompt(&tool_result).is_err());
 
     let image = Message::User {

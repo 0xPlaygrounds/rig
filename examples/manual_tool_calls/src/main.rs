@@ -118,12 +118,12 @@ fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
 
 fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
     let content = output.into_content();
-    let result = match &tool_call.call_id {
-        Some(call_id) => {
-            UserContent::tool_result_with_call_id(tool_call.id.clone(), call_id.clone(), content)
-        }
-        None => UserContent::tool_result(tool_call.id.clone(), content),
-    };
+    let result = UserContent::tool_result_for(
+        tool_call.id.clone(),
+        tool_call.provider.clone(),
+        tool_call.function.name.clone(),
+        content,
+    );
     Message::User {
         content: OneOrMany::one(result),
     }

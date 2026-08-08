@@ -396,14 +396,15 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             assistant_contents.push(completion::AssistantContent::text(visible_content));
         }
         // Process tool_calls following Ollama's chat response definition.
-        // Each ToolCall has an id, a type, and a function field.
-        // Ollama's wire carries no tool-call id; the durable id stays absent
-        // (empty) rather than fabricating one from the tool name — a
-        // name-as-id would collide two same-tool calls in one turn. Replay
-        // drops the id anyway (Ollama tool messages carry no id).
+        // Modern daemons issue a call id (`"id":"call_..."`); it is read as
+        // the provider id when present. An absent id mints the correlation
+        // handle and records no provider id — never a name-as-id (which
+        // would collide two same-tool calls) and never an empty sentinel.
+        // Replay drops the id either way (Ollama tool messages correlate
+        // by `tool_name`).
         for tc in tool_calls.iter() {
             assistant_contents.push(completion::AssistantContent::tool_call(
-                "",
+                tc.id.as_deref().unwrap_or(""),
                 tc.function.name.clone(),
                 tc.function.arguments.clone(),
             ));
@@ -475,10 +476,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         // Build up the order of messages.
         let mut partial_history = vec![];
         partial_history.extend(chat_history);
-        // Ollama's tool messages carry the *function name*; resolve it from
-        // each result's paired assistant call (rig no longer smuggles the
-        // name through the tool-call id).
-        crate::providers::internal::resolve_tool_result_names(&mut partial_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -849,8 +846,10 @@ where
             }
         };
 
-        let stream: RawStreamingResult<StreamingCompletionResponse> =
-            Box::pin(internal::adapter::run_wire_stream(transport, OllamaAdapter).instrument(span));
+        let stream: RawStreamingResult<StreamingCompletionResponse> = Box::pin(
+            internal::adapter::run_wire_stream(transport, OllamaAdapter::default())
+                .instrument(span),
+        );
 
         Ok(stream)
     }
@@ -864,7 +863,28 @@ where
 /// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
 /// still complete the stream) lives in
 /// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
-struct OllamaAdapter;
+struct OllamaAdapter {
+    /// Owns the constant-key reasoning lifecycle: `thinking` deltas
+    /// accumulate under the per-stream minted key, and the boundary end
+    /// this wire never announces is derived, not hand-rolled here.
+    reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
+    /// Per-stream minter for id-less tool-call keys. Counted across the
+    /// whole stream, not per record — a per-record enumeration would hand
+    /// two id-less calls in separate records the same `Minted(Tool, 0)`
+    /// key, and one would silently swallow the other downstream.
+    tool_ids: crate::streaming::SyntheticIds,
+}
+
+impl Default for OllamaAdapter {
+    fn default() -> Self {
+        Self {
+            reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
+                crate::streaming::StreamPartId::minted(crate::streaming::MintKind::Reasoning, 0),
+            ),
+            tool_ids: crate::streaming::SyntheticIds::tool(),
+        }
+    }
+}
 
 impl internal::adapter::WireAdapter for OllamaAdapter {
     type Frame = internal::adapter::WireFrame;
@@ -899,36 +919,41 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
             ..
         } = response.message
         {
-            if let Some(thinking_content) = thinking
-                && !thinking_content.is_empty()
-            {
-                out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                    // `thinking` deltas carry no wire id and never
-                    // interleave; per-stream constant minted identity.
-                    id: crate::streaming::PartId::Minted {
-                        kind: crate::streaming::MintKind::Reasoning,
-                        index: 0,
-                    },
-                    reasoning: thinking_content,
-                }));
-            }
-
-            if !content.is_empty() {
-                out.push(Ok(RawStreamingChoice::Message(content)));
-            }
-
-            // No wire id: each call keys the stream by a distinct minted
-            // identity and its durable id stays absent — never the tool
-            // name, which would collide two same-tool calls in one turn.
-            for (index, tool_call) in tool_calls.into_iter().enumerate() {
-                out.push(Ok(RawStreamingChoice::ToolCall(
+            // A daemon-issued call id keys the stream and travels as the
+            // durable id; an id-less call (older daemons) keys by a
+            // distinct minted identity and its durable id stays absent —
+            // never the tool name, which would collide two same-tool calls
+            // in one turn.
+            let mut tool_events = Vec::with_capacity(tool_calls.len());
+            for tool_call in tool_calls {
+                let key = match tool_call
+                    .id
+                    .as_deref()
+                    .and_then(crate::streaming::WireId::new)
+                {
+                    Some(wire_id) => crate::streaming::StreamPartId::wire(wire_id.as_str()),
+                    None => self.tool_ids.mint(),
+                };
+                tool_events.push(RawStreamingChoice::ToolCall(
                     crate::streaming::RawStreamingToolCall::new(
-                        crate::streaming::MintKind::Tool.for_wire_index(index as u64),
+                        key,
                         tool_call.function.name,
                         tool_call.function.arguments,
                     ),
-                )));
+                ));
             }
+
+            // Declare what the record carried; the shared lifecycle derives
+            // the canonical sequence (boundary end included).
+            self.reasoning.emit_chunk(
+                internal::chunk_lifecycle::ChunkParts {
+                    reasoning: thinking,
+                    reasoning_signature: None,
+                    text: Some(content),
+                    tool_events,
+                },
+                out,
+            );
         }
 
         // Only a `done: true` record counts as the provider completing the
@@ -1069,6 +1094,13 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ToolCall {
+    /// The daemon-issued call id (`"id":"call_..."`), present on modern
+    /// Ollama daemons and absent on older ones. Read when present — it is
+    /// the durable handle that distinguishes two same-tool calls in one
+    /// turn — but never serialized back: Ollama's request schema correlates
+    /// tool messages by `tool_name`, and replayed histories predate the id.
+    #[serde(default, skip_serializing)]
+    pub id: Option<String>,
     #[serde(default, rename = "type")]
     pub r#type: ToolType,
     pub function: Function,
@@ -1200,10 +1232,12 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 for content in content {
                     match content {
                         crate::message::UserContent::ToolResult(crate::message::ToolResult {
-                            id,
+                            name,
                             content,
                             ..
                         }) => {
+                            // The executed tool's name travels as required data.
+                            let function_name = name;
                             if !pending_user_content.is_empty() {
                                 messages.push(user_message_from_content(std::mem::take(
                                     &mut pending_user_content,
@@ -1225,7 +1259,10 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?
                                 .join("\n");
-                            messages.push(Message::ToolResult { name: id, content });
+                            messages.push(Message::ToolResult {
+                                name: function_name,
+                                content,
+                            });
                         }
                         content => pending_user_content.push(content),
                     }
@@ -1307,11 +1344,12 @@ impl From<Message> for crate::completion::Message {
                 assistant_contents.push(crate::completion::message::AssistantContent::Text(
                     Text::new(content),
                 ));
-                // Same absent-id policy as the unary decode above.
+                // Same id policy as the unary decode above: a daemon-issued
+                // id is preserved, an absent one mints (provider id: none).
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
-                            "",
+                            tc.id.as_deref().unwrap_or(""),
                             tc.function.name,
                             tc.function.arguments,
                         ),
@@ -1333,7 +1371,10 @@ impl From<Message> for crate::completion::Message {
                 ))),
             },
             Message::ToolResult { name, content } => crate::completion::Message::User {
+                // Ollama tool messages carry no call id; the name is the
+                // wire's correlator and the rig-level handle is minted.
                 content: OneOrMany::one(message::UserContent::tool_result(
+                    "",
                     name,
                     OneOrMany::one(message::ToolResultContent::text(content)),
                 )),
@@ -1358,6 +1399,9 @@ impl Message {
 impl From<crate::message::ToolCall> for ToolCall {
     fn from(tool_call: crate::message::ToolCall) -> Self {
         Self {
+            // Never serialized (replay correlates by `tool_name`); the
+            // request shape is id-less regardless of what history holds.
+            id: None,
             r#type: ToolType::Function,
             function: Function {
                 name: tool_call.function.name,
@@ -1679,6 +1723,7 @@ mod tests {
             content: OneOrMany::many(vec![
                 UserContent::text("before"),
                 UserContent::tool_result(
+                    "",
                     "lookup",
                     OneOrMany::one(ToolResultContent::json(json!({ "ok": true }))),
                 ),
@@ -1893,6 +1938,42 @@ mod tests {
         } else {
             panic!("Expected Assistant message with thinking");
         }
+    }
+
+    /// A user-supplied ollama-format assistant message carrying a
+    /// daemon-issued call id keeps it through conversion — the same id
+    /// policy as the unary decode (preserve when present, absent mints).
+    #[test]
+    fn wire_message_conversion_preserves_the_daemon_tool_call_id() {
+        let wire = Message::Assistant {
+            content: String::new(),
+            thinking: None,
+            images: None,
+            name: None,
+            tool_calls: vec![ToolCall {
+                id: Some("call_abc".to_owned()),
+                r#type: ToolType::default(),
+                function: Function {
+                    name: "get_weather".to_owned(),
+                    arguments: json!({}),
+                },
+            }],
+        };
+
+        let converted: crate::completion::Message = wire.into();
+        let crate::completion::Message::Assistant { content, .. } = converted else {
+            panic!("Expected Assistant message");
+        };
+        let ids: Vec<String> = content
+            .iter()
+            .filter_map(|item| match item {
+                crate::message::AssistantContent::ToolCall(call) => {
+                    Some(call.id.as_str().to_owned())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ids, vec!["call_abc".to_owned()]);
     }
 
     /// Regression test for issue #1926: a non-streaming `/api/chat` response that

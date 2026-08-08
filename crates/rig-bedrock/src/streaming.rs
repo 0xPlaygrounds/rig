@@ -73,7 +73,7 @@ struct ReasoningState {
 /// negative index yields a distinct, well-formed minted identity instead of
 /// a rendering the identity machinery could disagree about — the mint stays
 /// total instead of trusting the wire.
-fn block_id(content_block_index: i32) -> rig_core::streaming::PartId {
+fn block_id(content_block_index: i32) -> rig_core::streaming::StreamPartId {
     let index = (i64::from(content_block_index) - i64::from(i32::MIN)) as u64;
     rig_core::streaming::MintKind::Block.for_wire_index(index)
 }
@@ -99,6 +99,7 @@ fn finalize_reasoning(
         // is stable across its deltas and stop, so the full block supersedes
         // the accumulated deltas.
         id: block_id(content_block_index),
+        provider_id: None,
         content: ReasoningContent::Text {
             text: state.content,
             signature: state.signature,
@@ -121,6 +122,21 @@ struct StreamState {
     tool_calls: ToolCallBridge<i32>,
     current_reasoning: Option<ReasoningState>,
     final_stop_reason: Option<StopReason>,
+}
+
+/// A static, log-safe label for a stop reason: known variants map to their
+/// wire spelling, `Unknown` collapses to `"other"` so its carried wire
+/// string (potentially model output) never reaches a log line.
+fn stop_reason_label(stop_reason: &StopReason) -> &'static str {
+    match stop_reason {
+        StopReason::ContentFiltered => "content_filtered",
+        StopReason::EndTurn => "end_turn",
+        StopReason::GuardrailIntervened => "guardrail_intervened",
+        StopReason::MaxTokens => "max_tokens",
+        StopReason::StopSequence => "stop_sequence",
+        StopReason::ToolUse => "tool_use",
+        StopReason::Unknown(_) => "other",
+    }
 }
 
 /// Handle one Converse stream event, returning the items to yield in order.
@@ -166,6 +182,7 @@ fn process_event(
                                 // Derive identity from `contentBlockIndex`
                                 // (no wire id on Converse reasoning blocks).
                                 id: block_id(event.content_block_index),
+                                provider_id: None,
                             }));
                         }
                     }
@@ -194,6 +211,7 @@ fn process_event(
                             // reasoning paths, so provenance and boundary
                             // semantics stay uniform.
                             id: block_id(event.content_block_index),
+                            provider_id: None,
                             content: ReasoningContent::Redacted {
                                 // The wire carries raw bytes; rig's canonical
                                 // reasoning content is a string, so the blob
@@ -297,15 +315,18 @@ fn process_event(
                     )));
                 }
             } else if !state.tool_calls.is_empty() {
-                let dropped: Vec<String> = state
-                    .tool_calls
-                    .drain_ordered()
-                    .into_iter()
-                    .map(|tool_call| tool_call.name)
-                    .collect();
+                // Structural metadata only: tool names can be model-chosen
+                // (a hallucinated call's name is model output) and the
+                // `Unknown` variant carries a wire string, so neither may
+                // reach the WARN log. Known variants log a static label —
+                // unknown ones collapse to "other", never the wire value.
+                let dropped = state.tool_calls.drain_ordered().len();
                 tracing::warn!(
-                    tools = ?dropped,
-                    stop_reason = ?state.final_stop_reason,
+                    dropped_tool_calls = dropped,
+                    stop_reason = state
+                        .final_stop_reason
+                        .as_ref()
+                        .map_or("none", stop_reason_label),
                     "dropping unfinished tool-use blocks left in flight at MessageStop"
                 );
             }
@@ -564,7 +585,7 @@ mod tests {
 
         while let Some(item) = stream.next().await {
             match item {
-                Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+                Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
                     drained.reasoning.push(reasoning);
                 }
                 Ok(StreamedAssistantContent::Final(_)) => drained.reached_terminal = true,
@@ -574,6 +595,25 @@ mod tests {
         }
 
         drained
+    }
+
+    /// Ordinary extended-thinking shape through the SHARED driver: thinking
+    /// deltas, the block's whole-block close at `contentBlockStop`, then
+    /// visible text. The driver's boundary law must treat the same-key whole
+    /// block as a close — this exact stream used to abort every debug build
+    /// (sequence-law O1).
+    #[tokio::test]
+    async fn thinking_then_text_streams_through_the_driver_without_violation() {
+        let drained = drain(vec![
+            reasoning_text_delta(0, "let me think"),
+            block_stop(0),
+            text_delta_event(1, "the answer"),
+            block_stop_event(1),
+            message_stop_event(aws_bedrock::StopReason::EndTurn),
+        ])
+        .await;
+        assert!(drained.errors.is_empty(), "{:?}", drained.errors);
+        assert_eq!(drained.reasoning.len(), 1);
     }
 
     const REDACTED_BLOB: &[u8] = b"\x00opaque-stream-ciphertext\xff";
@@ -898,7 +938,11 @@ mod tests {
 
         let choice = finalize_reasoning(state, 0).expect("should emit reasoning");
         match choice {
-            RawStreamingChoice::Reasoning { id, content } => {
+            RawStreamingChoice::Reasoning {
+                id,
+                provider_id: _,
+                content,
+            } => {
                 assert_eq!(id, block_id(0));
                 match content {
                     ReasoningContent::Text { text, signature } => {

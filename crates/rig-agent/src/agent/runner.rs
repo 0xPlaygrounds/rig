@@ -689,7 +689,7 @@ pub(crate) async fn run_single_tool(
 
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
-    tool_span.record("gen_ai.tool.call.id", &tool_call.id);
+    tool_span.record("gen_ai.tool.call.id", tool_call.id.as_str());
     if record_content {
         tool_span.record("gen_ai.tool.call.arguments", &args);
     }
@@ -705,7 +705,7 @@ pub(crate) async fn run_single_tool(
             ctx,
             ToolCallEvent {
                 tool_name,
-                tool_call_id: tool_call.call_id.as_deref(),
+                tool_call_id: Some(tool_call.id.as_str()),
                 internal_call_id,
                 args: &args,
             },
@@ -791,7 +791,7 @@ pub(crate) async fn run_single_tool(
                 ctx,
                 ToolResultEvent {
                     tool_name,
-                    tool_call_id: tool_call.call_id.as_deref(),
+                    tool_call_id: Some(tool_call.id.as_str()),
                     internal_call_id,
                     args: &args,
                     presentation: exec.output(),
@@ -818,7 +818,8 @@ pub(crate) async fn run_single_tool(
             Ok(ToolCallOutcome {
                 content: tool_result_output(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
                     replacement,
                 ),
                 execution,
@@ -830,7 +831,8 @@ pub(crate) async fn run_single_tool(
             }
             let content = tool_result_output(
                 tool_call.id.clone(),
-                tool_call.call_id.clone(),
+                tool_call.provider.clone(),
+                tool_call.function.name.clone(),
                 exec.output().clone(),
             );
             Ok(ToolCallOutcome { content, execution })
@@ -3335,12 +3337,12 @@ mod migrated_tests {
             };
 
             let turn = MockTurn::from_contents([
-                AssistantContent::ToolCall(MessageToolCall::new(
-                    "tc_add".to_string(),
+                AssistantContent::ToolCall(MessageToolCall::from_wire(
+                    "tc_add",
                     ToolFunction::new("add".to_string(), json!({ "x": 2, "y": 3 })),
                 )),
-                AssistantContent::ToolCall(MessageToolCall::new(
-                    "tc_flaky".to_string(),
+                AssistantContent::ToolCall(MessageToolCall::from_wire(
+                    "tc_flaky",
                     ToolFunction::new("flaky_tool".to_string(), json!({})),
                 )),
             ])
@@ -3379,7 +3381,7 @@ mod migrated_tests {
                     crate::completion::Message::User { content } => content
                         .iter()
                         .filter_map(|c| match c {
-                            UserContent::ToolResult(result) => Some(result.id.clone()),
+                            UserContent::ToolResult(result) => Some(result.call.to_string()),
                             _ => None,
                         })
                         .collect::<Vec<_>>(),
@@ -4282,8 +4284,11 @@ mod migrated_tests {
     }
 
     fn tool_call_content(id: &str, args: serde_json::Value) -> AssistantContent {
-        AssistantContent::ToolCall(MessageToolCall::new(
-            id.to_string(),
+        // `from_wire` mirrors the provider boundary (and the streamed mock's
+        // conversion): the wire id becomes both the durable id and the
+        // provider correlator, keeping blocking/streaming parity exact.
+        AssistantContent::ToolCall(MessageToolCall::from_wire(
+            id,
             ToolFunction::new("add".to_string(), args),
         ))
     }
@@ -4468,7 +4473,7 @@ mod migrated_tests {
                 Message::User { content } => content
                     .iter()
                     .filter_map(|item| match item {
-                        UserContent::ToolResult(result) => Some(result.id.clone()),
+                        UserContent::ToolResult(result) => Some(result.call.to_string()),
                         _ => None,
                     })
                     .collect::<Vec<_>>(),
@@ -4503,7 +4508,7 @@ mod migrated_tests {
                 Message::User { content } => content
                     .iter()
                     .filter_map(|item| match item {
-                        UserContent::ToolResult(result) => Some(result.id.clone()),
+                        UserContent::ToolResult(result) => Some(result.call.to_string()),
                         _ => None,
                     })
                     .collect::<Vec<_>>(),
@@ -4651,7 +4656,7 @@ mod migrated_tests {
                     MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         tool_result,
                         ..
-                    }) => streamed_result_ids.push(tool_result.id),
+                    }) => streamed_result_ids.push(tool_result.call.into_string()),
                     MultiTurnStreamItem::FinalResponse(resp) => final_response = Some(resp),
                     _ => {}
                 }
@@ -6198,9 +6203,11 @@ mod migrated_tests {
             match self {
                 ScriptedTurn::Text(text) => MockTurn::text(*text),
                 ScriptedTurn::ToolCalls(calls) => {
+                    // `from_wire` matches the streamed rendering's provider
+                    // boundary so both encodings yield identical calls.
                     MockTurn::from_contents(calls.iter().map(|call| {
-                        AssistantContent::ToolCall(MessageToolCall::new(
-                            call.id.to_string(),
+                        AssistantContent::ToolCall(MessageToolCall::from_wire(
+                            call.id,
                             ToolFunction::new(call.name.to_string(), call.args.clone()),
                         ))
                     }))
@@ -6507,8 +6514,8 @@ mod migrated_tests {
         let blocking_model = MockCompletionModel::from_turns([
             MockTurn::from_contents([
                 AssistantContent::text("let me compute that"),
-                AssistantContent::ToolCall(MessageToolCall::new(
-                    "tc1".to_string(),
+                AssistantContent::ToolCall(MessageToolCall::from_wire(
+                    "tc1",
                     ToolFunction::new("default_api".to_string(), json!({"x": 2, "y": 3})),
                 )),
             ])
@@ -8564,7 +8571,7 @@ mod migrated_tests {
                     if content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "real"
+                            if result.call == "real"
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)

@@ -16,7 +16,7 @@ use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
-    self, MintKind, PartId, RawStreamingChoice, RawStreamingResult, StreamFinal,
+    self, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
     ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -300,8 +300,11 @@ struct ServerToolUseState {
 
 #[derive(Default)]
 struct ThinkingState {
-    thinking: String,
-    /// Signature assembled from this block's `signature_delta`s.
+    /// Signature assembled from this block's `signature_delta`s. Only the
+    /// signature is adapter-side state — the wire fragments it across
+    /// deltas and delivers no completed form, so the adapter assembles it
+    /// for the block's end event. Thinking TEXT accumulates in the shared
+    /// accumulator via `ReasoningDelta`s; no restatement buffer exists.
     signature: String,
     /// The `signature` `content_block_start` opened the block with.
     ///
@@ -314,16 +317,15 @@ struct ThinkingState {
 }
 
 impl ThinkingState {
-    /// The block's completed content as `(text, signature)`: deltas win over
-    /// the opening value, and an absent signature is `None`.
-    fn into_parts(self) -> (String, Option<String>) {
+    /// The block's completed signature: deltas win over the opening value,
+    /// and an absent signature is `None`.
+    fn into_signature(self) -> Option<String> {
         let signature = if self.signature.is_empty() {
             self.initial_signature
         } else {
             self.signature
         };
-
-        (self.thinking, (!signature.is_empty()).then_some(signature))
+        (!signature.is_empty()).then_some(signature)
     }
 }
 
@@ -620,22 +622,20 @@ fn handle_event(
                     // Emit the delta so UI can show progress; the shared
                     // accumulator assembles the fragments.
                     return Some(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: PartId::wire(id.clone()),
+                        id: StreamPartId::wire(id.clone()),
                         content: ToolCallDeltaContent::Delta(partial_json.clone()),
                     }));
                 }
                 None
             }
             ContentDelta::ThinkingDelta { thinking } => {
-                current_thinking
-                    .get_or_insert_with(ThinkingState::default)
-                    .thinking
-                    .push_str(thinking);
+                current_thinking.get_or_insert_with(ThinkingState::default);
 
                 Some(Ok(RawStreamingChoice::ReasoningDelta {
                     // Anthropic has no reasoning item id; the content-block
                     // index is stable across a block's deltas and its stop.
                     id: MintKind::Block.for_wire_index(*index as u64),
+                    provider_id: None,
                     reasoning: thinking.clone(),
                 }))
             }
@@ -705,7 +705,7 @@ fn handle_event(
             Content::ToolUse { id, name, .. } => {
                 *current_tool_call = Some(id.clone());
                 Some(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: PartId::wire(id.clone()),
+                    id: StreamPartId::wire(id.clone()),
                     content: ToolCallDeltaContent::Name(name.clone()),
                 }))
             }
@@ -720,15 +720,23 @@ fn handle_event(
                 // by `signature_delta` — so the block's only content is a
                 // signature, which `content_block_stop` must still restate.
                 *current_thinking = Some(ThinkingState {
-                    thinking: thinking.clone(),
                     signature: String::new(),
                     initial_signature: signature.clone().unwrap_or_default(),
                 });
-                None
+                // The opening payload's text is a delta like any other; the
+                // shared accumulator owns the block's text.
+                (!thinking.is_empty()).then(|| {
+                    Ok(RawStreamingChoice::ReasoningDelta {
+                        id: MintKind::Block.for_wire_index(*index as u64),
+                        provider_id: None,
+                        reasoning: thinking.clone(),
+                    })
+                })
             }
             Content::RedactedThinking { data } => Some(Ok(RawStreamingChoice::Reasoning {
-                // Derive identity from the content-block index (no wire id).
+                // Derive the key from the content-block index (no wire id).
                 id: MintKind::Block.for_wire_index(*index as u64),
+                provider_id: None,
                 content: ReasoningContent::Redacted { data: data.clone() },
             })),
             // Handle other content types - they don't need special handling
@@ -744,16 +752,20 @@ fn handle_event(
             // a unary/streaming divergence that silently dropped the
             // signature.
             if let Some(thinking_state) = Option::take(current_thinking) {
-                let (text, signature) = thinking_state.into_parts();
-
-                if !(text.is_empty() && signature.is_none()) {
-                    return Some(Ok(RawStreamingChoice::Reasoning {
-                        // Same block index as this block's ThinkingDeltas, so
-                        // the full block supersedes the accumulated deltas.
-                        id: MintKind::Block.for_wire_index(*index as u64),
-                        content: ReasoningContent::Text { text, signature },
-                    }));
-                }
+                // `content_block_stop` is the wire's own lifecycle end: the
+                // shared accumulator holds the block's accumulated text, and
+                // the end carries the assembled signature (present for
+                // signed and adaptive signature-only blocks alike — replay-
+                // required provider state either way). A wholly empty block
+                // (no deltas, no signature) closes silently.
+                return Some(Ok(RawStreamingChoice::ReasoningEnd {
+                    id: MintKind::Block.for_wire_index(*index as u64),
+                    reasoning: None,
+                    signature: thinking_state.into_signature(),
+                    // `content_block_stop` is the wire's own end frame, so
+                    // even an unsigned block yields its completed event.
+                    wire_sent: true,
+                }));
             }
 
             if let Some(server_tool_use) = server_tool_uses.remove(index) {
@@ -1236,9 +1248,9 @@ mod tests {
             _ => panic!("Expected ReasoningDelta choice"),
         }
 
-        // Verify thinking state was updated
+        // The block is tracked (its signature may still arrive); the text
+        // itself accumulates in the shared accumulator, not here.
         assert!(thinking_state.is_some());
-        assert_eq!(thinking_state.unwrap().thinking, "Analyzing the request...");
     }
 
     #[test]
@@ -1320,15 +1332,11 @@ mod tests {
             .expect("thinking block should not be an error");
 
         match result {
-            RawStreamingChoice::Reasoning {
-                id,
-                content: ReasoningContent::Text { text, signature },
-            } => {
+            RawStreamingChoice::ReasoningEnd { id, signature, .. } => {
                 assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(0));
-                assert_eq!(text, "");
                 assert_eq!(signature.as_deref(), Some("the_whole_signature"));
             }
-            other => panic!("Expected signed Reasoning chunk, got {other:?}"),
+            other => panic!("Expected a signed lifecycle end, got {other:?}"),
         }
     }
 
@@ -1353,14 +1361,10 @@ mod tests {
             .expect("an up-front signature must not be dropped")
             .expect("thinking block should not be an error")
         {
-            RawStreamingChoice::Reasoning {
-                content: ReasoningContent::Text { text, signature },
-                ..
-            } => {
-                assert_eq!(text, "");
+            RawStreamingChoice::ReasoningEnd { signature, .. } => {
                 assert_eq!(signature.as_deref(), Some("up_front_signature"));
             }
-            other => panic!("Expected signed Reasoning chunk, got {other:?}"),
+            other => panic!("Expected a signed lifecycle end, got {other:?}"),
         }
     }
 
@@ -1396,18 +1400,17 @@ mod tests {
             .expect("thinking block should be restated")
             .expect("thinking block should not be an error")
         {
-            RawStreamingChoice::Reasoning {
-                content: ReasoningContent::Text { signature, .. },
-                ..
-            } => assert_eq!(signature.as_deref(), Some("delta_assembled")),
-            other => panic!("Expected signed Reasoning chunk, got {other:?}"),
+            RawStreamingChoice::ReasoningEnd { signature, .. } => {
+                assert_eq!(signature.as_deref(), Some("delta_assembled"))
+            }
+            other => panic!("Expected a signed lifecycle end, got {other:?}"),
         }
     }
 
     /// `content_block_start` can carry the block's opening text; discarding it
     /// would truncate the restatement the accumulator supersedes deltas with.
     #[test]
-    fn thinking_block_start_text_seeds_the_restatement() {
+    fn thinking_block_start_text_streams_as_the_first_delta() {
         let mut tool_call_state = None;
         let mut thinking_state = None;
 
@@ -1418,7 +1421,19 @@ mod tests {
                 signature: None,
             },
         };
-        assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
+        // The opening payload's text is a delta like any other; the shared
+        // accumulator owns the block's text — no adapter-side restatement
+        // buffer exists to seed.
+        match handle_event(&start, &mut tool_call_state, &mut thinking_state)
+            .expect("the opening text streams")
+            .expect("not an error")
+        {
+            RawStreamingChoice::ReasoningDelta { id, reasoning, .. } => {
+                assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(2));
+                assert_eq!(reasoning, "opening ");
+            }
+            other => panic!("Expected the opening delta, got {other:?}"),
+        }
 
         let delta = StreamingEvent::ContentBlockDelta {
             index: 2,
@@ -1430,18 +1445,18 @@ mod tests {
 
         let stop = StreamingEvent::ContentBlockStop { index: 2 };
         match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
-            .expect("thinking block should be restated")
-            .expect("thinking block should not be an error")
+            .expect("the stop emits the lifecycle end")
+            .expect("not an error")
         {
-            RawStreamingChoice::Reasoning {
+            RawStreamingChoice::ReasoningEnd {
                 id,
-                content: ReasoningContent::Text { text, signature },
+                reasoning: None,
+                signature: None,
+                wire_sent: true,
             } => {
                 assert_eq!(id, crate::streaming::MintKind::Block.for_wire_index(2));
-                assert_eq!(text, "opening rest");
-                assert_eq!(signature, None);
             }
-            other => panic!("Expected Reasoning chunk, got {other:?}"),
+            other => panic!("Expected a bare lifecycle end, got {other:?}"),
         }
     }
 
@@ -1461,7 +1476,20 @@ mod tests {
         assert!(handle_event(&start, &mut tool_call_state, &mut thinking_state).is_none());
 
         let stop = StreamingEvent::ContentBlockStop { index: 0 };
-        assert!(handle_event(&stop, &mut tool_call_state, &mut thinking_state).is_none());
+        // The stop emits a bare lifecycle end; with nothing streamed and no
+        // signature, the shared accumulator records no part (a bare end for
+        // a never-opened key is a no-op).
+        match handle_event(&stop, &mut tool_call_state, &mut thinking_state)
+            .expect("the stop emits the lifecycle end")
+            .expect("not an error")
+        {
+            RawStreamingChoice::ReasoningEnd {
+                reasoning: None,
+                signature: None,
+                ..
+            } => {}
+            other => panic!("Expected a bare lifecycle end, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1563,7 +1591,7 @@ mod tests {
 
         match choice {
             RawStreamingChoice::ToolCallDelta { id, content } => {
-                assert_eq!(id.as_wire(), Some("tool_123"));
+                assert_eq!(id, crate::streaming::StreamPartId::wire("tool_123"));
                 match content {
                     ToolCallDeltaContent::Delta(delta) => assert_eq!(delta, "{\"arg\":\"value"),
                     _ => panic!("Expected Delta content"),
@@ -1624,7 +1652,7 @@ mod tests {
 
         match final_result.unwrap().unwrap() {
             RawStreamingChoice::ToolInputEnd(end) => {
-                assert_eq!(end.id.as_wire(), Some("tool_123"));
+                assert_eq!(end.id, crate::streaming::StreamPartId::wire("tool_123"));
                 assert!(matches!(
                     end.on_unparseable,
                     crate::streaming::UnparseableToolInput::Error

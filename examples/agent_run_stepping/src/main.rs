@@ -169,8 +169,10 @@ async fn main() -> Result<()> {
                     println!("→ executing {name}({args})");
                     let mut context = rig::tool::ToolContext::new();
                     let result = local_tools.execute(name, args, &mut context).await;
-                    results.push(UserContent::tool_result(
+                    results.push(UserContent::tool_result_for(
                         call.tool_call.id.clone(),
+                        call.tool_call.provider.clone(),
+                        name.clone(),
                         result.output().clone().into_content(),
                     ));
                 }

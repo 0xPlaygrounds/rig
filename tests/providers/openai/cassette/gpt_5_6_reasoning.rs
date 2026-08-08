@@ -367,9 +367,13 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                         panic!("turn {} stream should succeed: {error}", turn_index + 1)
                     }) {
                         RawStreamingChoice::Message(delta) => text.push_str(&delta),
-                        RawStreamingChoice::Reasoning { id, content } => {
+                        RawStreamingChoice::Reasoning {
+                            provider_id,
+                            content,
+                            ..
+                        } => {
                             reasoning_blocks.push(AssistantContent::Reasoning(reasoning_block(
-                                id.as_wire().map(str::to_owned),
+                                provider_id.map(|id| id.into_string()),
                                 content,
                             )));
                         }

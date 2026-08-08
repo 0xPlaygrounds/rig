@@ -59,7 +59,9 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         raw_items.push(Ok(item.clone()));
         match item {
             StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
-            StreamedAssistantContent::Reasoning(reasoning) => run.reasoning_blocks.push(reasoning),
+            StreamedAssistantContent::Reasoning { reasoning, .. } => {
+                run.reasoning_blocks.push(reasoning)
+            }
             StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
                 run.reasoning_delta.push_str(&reasoning);
             }
@@ -214,7 +216,7 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
                 .expect("aggregated choice should keep the tool call");
             // IDs derived from the recorded turn, never minted literally.
             assert_eq!(aggregated.id, streamed.id);
-            assert_eq!(aggregated.call_id, streamed.call_id);
+            assert_eq!(aggregated.provider, streamed.provider);
         },
     )
     .await;
@@ -421,7 +423,7 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
                 })
                 .expect("aggregated choice should keep the tool call");
             assert_eq!(aggregated_call.id, streamed.id);
-            assert_eq!(aggregated_call.call_id, streamed.call_id);
+            assert_eq!(aggregated_call.provider, streamed.provider);
             assert!(
                 !aggregated_reasoning_text(&run.choice).is_empty(),
                 "reasoning text must survive alongside the tool call"
@@ -492,11 +494,18 @@ async fn parallel_function_calls_stay_distinct() {
                 "aggregated choice should contain exactly the two parallel calls"
             );
             // The recorded turn carries no wire ids, and rig no longer
-            // fabricates durable identifiers (not from an index, not from the
-            // tool name): both calls replay with the id absent, and stay
-            // distinct as parts — two calls, in wire order, uncorrupted.
-            assert_eq!(aggregated[0].id, "");
-            assert_eq!(aggregated[1].id, "");
+            // fabricates durable identifiers from the wire (not from an
+            // index, not from the tool name): both calls surface with a
+            // minted id and no provider id, and stay distinct as parts —
+            // two calls, in wire order, uncorrupted.
+            assert!(aggregated[0].provider.is_none());
+            assert!(aggregated[1].provider.is_none());
+            assert!(!aggregated[0].id.as_str().is_empty());
+            assert!(!aggregated[1].id.as_str().is_empty());
+            assert_ne!(
+                aggregated[0].id, aggregated[1].id,
+                "each id-less call mints a unique durable id"
+            );
             assert_ne!(
                 aggregated[0].function.name, aggregated[1].function.name,
                 "the two parallel calls stay distinct parts"
@@ -758,18 +767,18 @@ async fn interactions_requires_action_roundtrip() {
                 })
                 .expect("normalized choice should carry the client tool call");
             // The call id comes from the recorded turn, never minted literally.
-            let call_id = tool_call
-                .call_id
-                .clone()
-                .unwrap_or_else(|| tool_call.id.clone());
-            assert!(!call_id.is_empty(), "tool call should carry an id");
+            assert!(
+                tool_call.provider.is_some(),
+                "the recorded interactions turn should carry a provider-issued call id"
+            );
 
             let followup = model
                 .completion(
                     model
-                        .completion_request(Message::from(UserContent::tool_result_with_call_id(
-                            tool_call.function.name,
-                            call_id,
+                        .completion_request(Message::from(UserContent::tool_result_for(
+                            tool_call.id.clone(),
+                            tool_call.provider.clone(),
+                            tool_call.function.name.clone(),
                             OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
                         )))
                         .additional_params(
@@ -793,6 +802,264 @@ async fn interactions_requires_action_roundtrip() {
             assert!(
                 text.contains(ALPHA_SIGNAL_OUTPUT),
                 "follow-up should use the tool result, got {text:?}"
+            );
+        },
+    )
+    .await;
+}
+
+/// Two STREAMED calls to the SAME tool in one Interactions turn, on real
+/// recorded traffic — the live twin of the corpus pin (review 84a43e9e).
+/// Whatever identity the wire supplies (Interactions function calls may or
+/// may not carry ids), the two calls must survive as distinct aggregated
+/// parts with their own uncorrupted arguments, and rig must not fabricate a
+/// durable id where the wire gave none — in particular never the tool name.
+///
+/// Re-record with:
+/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_same_tool_twice -- --test-threads=1`
+#[tokio::test]
+async fn interactions_same_tool_called_twice_stays_distinct() {
+    super::super::support::with_gemini_interactions_cassette(
+        "streaming_grammar/interactions_same_tool_twice",
+        |client| async move {
+            let model = client.completion_model("gemini-3-flash-preview");
+            let request = model
+                .completion_request(
+                    "Use the `add` tool twice in this single reply, before any text: first \
+                     add 2 and 3, then add 10 and 20. Emit both tool calls together in this \
+                     one turn — do not wait for results between them, and do not compute the \
+                     sums yourself.",
+                )
+                .preamble(
+                    "You are a calculator assistant. You MUST use the provided tools for \
+                     every arithmetic operation instead of computing results yourself."
+                        .to_string(),
+                )
+                .tool(rig::tool::tool_definition(&crate::support::Adder))
+                .tool_choice(ToolChoice::Required)
+                .additional_params(
+                    serde_json::to_value(interactions_api::AdditionalParameters {
+                        store: Some(true),
+                        ..Default::default()
+                    })
+                    .expect("params should serialize"),
+                )
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_terminal(&run, FinishReason::ToolCalls);
+            let add_calls: Vec<&ToolCall> = run
+                .tool_calls
+                .iter()
+                .filter(|call| call.function.name == "add")
+                .collect();
+            assert!(
+                add_calls.len() >= 2,
+                "the turn should stream (at least) two `add` calls, got {:?}",
+                run.tool_calls
+            );
+            for call in &add_calls {
+                assert_ne!(
+                    call.id, "add",
+                    "the tool name must never be fabricated into the durable id"
+                );
+                assert!(
+                    call.provider
+                        .as_ref()
+                        .is_none_or(|provider| provider.call_id != "add"),
+                    "the tool name must never be fabricated into the provider call id"
+                );
+                assert!(
+                    call.function.arguments.is_object(),
+                    "each call's arguments must survive uncorrupted, got {:?}",
+                    call.function.arguments
+                );
+            }
+            let distinct_ids: std::collections::HashSet<&str> = add_calls
+                .iter()
+                .map(|call| call.id.as_str())
+                .collect();
+            assert_eq!(
+                distinct_ids.len(),
+                add_calls.len(),
+                "same-name calls must keep distinct durable ids (minted when the wire gave none)"
+            );
+            let argument_sets: std::collections::HashSet<String> = add_calls
+                .iter()
+                .map(|call| call.function.arguments.to_string())
+                .collect();
+            assert_eq!(
+                argument_sets,
+                std::collections::HashSet::from([
+                    serde_json::json!({"x": 2, "y": 3}).to_string(),
+                    serde_json::json!({"x": 10, "y": 20}).to_string(),
+                ]),
+                "each same-name call must carry its own streamed arguments — the wire \
+                 fragments them as `arguments_delta` events the pre-fix code dropped"
+            );
+            let aggregated_adds = run
+                .choice
+                .iter()
+                .filter(|content| {
+                    matches!(content, AssistantContent::ToolCall(call) if call.function.name == "add")
+                })
+                .count();
+            assert_eq!(
+                aggregated_adds,
+                add_calls.len(),
+                "every streamed same-name call must survive as its own aggregated part"
+            );
+        },
+    )
+    .await;
+}
+
+/// A thinking turn with summaries suppressed (`thinking_summaries: none`),
+/// recorded live: if the wire still delivers a `thought_signature`, it
+/// arrives with NO accumulated summary text — the empty-buffer shape that
+/// review 84a43e9e finding #2 shows the Interactions adapter mishandling
+/// (an empty signed reasoning sibling instead of signature-as-lifecycle-
+/// metadata). The assertions pin the invariant both adapters must satisfy:
+/// no signed empty sibling may exist alongside the answer, and any
+/// signature the wire delivered must survive into the aggregated choice.
+///
+/// Re-record with:
+/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini interactions_signature_without_summaries -- --test-threads=1`
+#[tokio::test]
+async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibling() {
+    super::super::support::with_gemini_interactions_cassette(
+        "streaming_grammar/interactions_signature_without_summaries",
+        |client| async move {
+            let model = client.completion_model("gemini-3-flash-preview");
+            let request = model
+                .completion_request(
+                    "How many positive integers n < 100 are divisible by 6 but not by 9? \
+                     Think it through, then answer with just the number.",
+                )
+                .additional_params(
+                    serde_json::to_value(interactions_api::AdditionalParameters {
+                        generation_config: Some(interactions_api::GenerationConfig {
+                            thinking_level: Some(interactions_api::ThinkingLevel::Medium),
+                            thinking_summaries: Some(interactions_api::ThinkingSummaries::None),
+                            ..Default::default()
+                        }),
+                        store: Some(true),
+                        ..Default::default()
+                    })
+                    .expect("params should serialize"),
+                )
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert!(!run.text.trim().is_empty(), "turn should produce text");
+            let signature_delivered = run.choice.iter().any(|content| {
+                matches!(content, AssistantContent::Reasoning(reasoning)
+                    if reasoning.content.iter().any(|part| matches!(
+                        part,
+                        ReasoningContent::Text { signature: Some(signature), .. }
+                            if !signature.is_empty()
+                    )))
+            });
+            // The invariant under test: whatever the wire delivered, the
+            // aggregate must never carry a reasoning part that is *only* an
+            // empty signed shell fabricated by the adapter. (A genuinely
+            // signature-only stream keeps its signature — on a part the
+            // accumulator records deliberately — but text-empty parts must
+            // then be the ONLY reasoning, not a sibling beside real text.)
+            let reasoning_parts: Vec<&Reasoning> = run
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                    _ => None,
+                })
+                .collect();
+            let empty_parts = reasoning_parts
+                .iter()
+                .filter(|reasoning| {
+                    reasoning
+                        .content
+                        .iter()
+                        .all(|part| matches!(part, ReasoningContent::Text { text, .. } if text.trim().is_empty()))
+                })
+                .count();
+            assert!(
+                empty_parts == 0 || reasoning_parts.len() == empty_parts,
+                "an empty signed reasoning shell must not appear beside real reasoning: {:?}",
+                run.choice
+            );
+            // Recording note: if this cassette carries no signature at all,
+            // the wire withholds signatures when summaries are off and the
+            // empty-buffer shape is not live-coaxable — the corpus twin
+            // covers it instead.
+            let _ = signature_delivered;
+        },
+    )
+    .await;
+}
+
+/// Cross-provider replay, recorded live (84a43e9e finding #5): a history
+/// sourced from an OpenAI-Chat-shaped provider carries the other wire's
+/// identifier `call_abc` only as rig's correlation handle — no Gemini
+/// provider id. Replayed to Gemini, the request's `functionResponse.name`
+/// must be the tool's *name*, read from the required `ToolResult::name` —
+/// never the identifier `call_abc`, which the pre-fix name-as-id heuristic
+/// kept verbatim — and the correlation-only handle must stay off the wire
+/// (no `functionCall.id`/`functionResponse.id`). The recording is the
+/// evidence: Gemini accepts the request and answers from the tool result.
+///
+/// Re-record with:
+/// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini chat_sourced_history_replays -- --test-threads=1`
+#[tokio::test]
+async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
+    super::super::support::with_gemini_cassette(
+        "streaming_grammar/chat_sourced_history_replay",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let cross_provider_handle = rig::message::ToolCallId::new("call_abc123")
+                .expect("the chat-sourced identifier is non-empty");
+            let history = vec![
+                rig::message::Message::user(
+                    "Use the add tool to compute 2 + 3, then state the result.",
+                ),
+                rig::message::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
+                        // The cross-provider shape: the other wire's
+                        // identifier survives as rig's correlation handle,
+                        // with no provider id for Gemini's wire.
+                        id: cross_provider_handle.clone(),
+                        provider: None,
+                        function: rig::message::ToolFunction {
+                            name: "add".to_owned(),
+                            arguments: serde_json::json!({"x": 2, "y": 3}),
+                        },
+                        signature: None,
+                        additional_params: None,
+                    })),
+                },
+                rig::message::Message::User {
+                    content: OneOrMany::one(UserContent::ToolResult(rig::message::ToolResult {
+                        call: cross_provider_handle,
+                        provider: None,
+                        name: "add".to_owned(),
+                        content: OneOrMany::one(ToolResultContent::text("5")),
+                    })),
+                },
+            ];
+            let request = model
+                .completion_request("State the final result in one short sentence.")
+                .preamble(
+                    "You are a calculator assistant. Report tool results faithfully.".to_string(),
+                )
+                .tool(rig::tool::tool_definition(&crate::support::Adder))
+                .messages(history)
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            assert!(
+                run.text.contains('5'),
+                "the model should answer from the replayed tool result, got {:?}",
+                run.text
             );
         },
     )

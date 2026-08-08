@@ -58,7 +58,7 @@ pub mod gemini_rest_suite {
     streaming_conformance_suite! {
         provider: "gemini_rest",
         fixture: gemini_rest::fixture(),
-        manifest: [zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame],
+        manifest: [zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, interleaved_reasoning],
     }
 }
 
@@ -68,7 +68,7 @@ pub mod gemini_interactions_suite {
     streaming_conformance_suite! {
         provider: "gemini_interactions",
         fixture: interactions::fixture(),
-        manifest: [zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame],
+        manifest: [zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, interleaved_reasoning],
     }
 }
 
@@ -88,7 +88,7 @@ pub mod cohere_suite {
     streaming_conformance_suite! {
         provider: "cohere",
         fixture: cohere::fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, interleaved_reasoning],
     }
 }
 
@@ -98,6 +98,6 @@ pub mod ollama_suite {
     streaming_conformance_suite! {
         provider: "ollama",
         fixture: ollama::fixture(),
-        manifest: [zero_usage_terminal, malformed_frame, defective_known_frame],
+        manifest: [zero_usage_terminal, malformed_frame, defective_known_frame, interleaved_reasoning],
     }
 }

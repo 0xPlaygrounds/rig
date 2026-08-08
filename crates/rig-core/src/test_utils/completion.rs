@@ -71,8 +71,8 @@ impl MockTurn {
         name: impl Into<String>,
         arguments: serde_json::Value,
     ) -> Self {
-        Self::from_content(AssistantContent::ToolCall(ToolCall::new(
-            id.into(),
+        Self::from_content(AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
             ToolFunction::new(name.into(), arguments),
         )))
     }
@@ -123,7 +123,7 @@ impl MockTurn {
         if let Ok(response) = &mut self.response {
             for content in response.choice.iter_mut() {
                 if let AssistantContent::ToolCall(tool_call) = content {
-                    tool_call.call_id = Some(call_id);
+                    tool_call.provider = crate::message::ProviderCallId::new(call_id);
                     break;
                 }
             }
@@ -356,7 +356,10 @@ mod tests {
             second.choice.first(),
             AssistantContent::ToolCall(tool_call)
                 if tool_call.id == "tool_1"
-                    && tool_call.call_id.as_deref() == Some("call_1")
+                    && tool_call
+                        .provider
+                        .as_ref()
+                        .is_some_and(|provider| provider.call_id == "call_1")
         ));
 
         assert_eq!(model.request_count(), 2);
@@ -415,7 +418,10 @@ mod tests {
                     }
                 },
                 StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                    saw_tool_call = tool_call.call_id.as_deref() == Some("call_1");
+                    saw_tool_call = tool_call
+                        .provider
+                        .as_ref()
+                        .is_some_and(|provider| provider.call_id == "call_1");
                 }
                 StreamedAssistantContent::Final(response) => {
                     saw_final = matches!(

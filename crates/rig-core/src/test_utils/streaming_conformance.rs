@@ -129,6 +129,10 @@ pub struct SuiteCapabilities {
     pub delta_less_prelude: bool,
     /// The wire has a refusal channel (`refusal`).
     pub refusal: bool,
+    /// The wire mints a constant per-stream reasoning identity, so
+    /// interleaving output is its only reasoning boundary
+    /// (`interleaved_reasoning`).
+    pub interleaved_reasoning: bool,
 }
 
 impl SuiteCapabilities {
@@ -148,6 +152,7 @@ impl SuiteCapabilities {
                 "defective_known_frame" => caps.defective_known_frame = true,
                 "delta_less_prelude" => caps.delta_less_prelude = true,
                 "refusal" => caps.refusal = true,
+                "interleaved_reasoning" => caps.interleaved_reasoning = true,
                 other => {
                     return Err(format!(
                         "unknown capability name in suite manifest: {other}"
@@ -172,6 +177,7 @@ pub const CANONICAL_SCENARIOS: &[&str] = &[
     "refusal_frames_deliver_text_without_error",
     "bare_terminal_after_only_unparseable_frames_fabricates_nothing",
     "usage_variants_are_reported_or_zero_sentinel",
+    "interleaved_constant_id_reasoning_preserves_order",
 ];
 
 /// Every streaming wire family in the workspace. The workspace registry test
@@ -463,10 +469,30 @@ pub fn assert_valid_event_stream(
         }
     }
 
+    // Law 4b: reasoning correlation. Every completed reasoning block
+    // carries a non-empty correlator no other completed block shares (a
+    // delta-only part may legitimately have no completed block — e.g. a
+    // visible chain of thought whose synthesized end stays silent — so
+    // delta ids are not required to appear among the completed ids).
+    let mut completed_reasoning_ids: Vec<&str> = Vec::new();
+    for item in &ok_items {
+        if let Item::Reasoning { id, .. } = item {
+            assert!(
+                !id.is_empty(),
+                "law 4b (reasoning correlation): a completed block carries an empty correlator"
+            );
+            assert!(
+                !completed_reasoning_ids.contains(&id.as_str()),
+                "law 4b (reasoning correlation): two completed blocks share correlator {id}"
+            );
+            completed_reasoning_ids.push(id);
+        }
+    }
+
     // Law 5: reasoning provenance.
     let yielded_reasoning = ok_items
         .iter()
-        .any(|item| matches!(item, Item::Reasoning(_) | Item::ReasoningDelta { .. }));
+        .any(|item| matches!(item, Item::Reasoning { .. } | Item::ReasoningDelta { .. }));
     let aggregated_reasoning = choice
         .iter()
         .any(|content| matches!(content, AssistantContent::Reasoning(_)));
@@ -476,7 +502,7 @@ pub fn assert_valid_event_stream(
     );
     let yielded_full_block = ok_items
         .iter()
-        .any(|item| matches!(item, Item::Reasoning(_)));
+        .any(|item| matches!(item, Item::Reasoning { .. }));
     if yielded_reasoning && !yielded_full_block {
         let streamed_reasoning: String = ok_items
             .iter()
@@ -548,7 +574,7 @@ impl DrainedStream {
         self.items
             .iter()
             .filter_map(|item| match item {
-                Ok(StreamedAssistantContent::Unknown(value)) => Some(value),
+                Ok(StreamedAssistantContent::Unknown(value)) => Some(value.value()),
                 _ => None,
             })
             .collect()
@@ -650,6 +676,21 @@ pub struct RefusalFixture {
     pub expected_text: &'static str,
 }
 
+/// The interleaving-boundary shape for a wire whose reasoning identity is
+/// a constant per-stream minted key: reasoning, an interleaved tool call,
+/// then more reasoning, which must aggregate as three ordered parts —
+/// never one merged item that misorders history on replay.
+pub struct InterleavedReasoningFixture {
+    /// Reasoning → tool call → reasoning frames, terminal included.
+    pub frames: Vec<WireInput>,
+    /// The reasoning content streamed before the boundary.
+    pub first_reasoning: &'static str,
+    /// The interleaved call's tool name.
+    pub tool_name: &'static str,
+    /// The reasoning content streamed after the boundary.
+    pub second_reasoning: &'static str,
+}
+
 type BufferedDriveFn = Box<
     dyn Fn(String) -> BoxFuture<'static, Result<OneOrMany<AssistantContent>, CompletionError>>
         + Send
@@ -733,6 +774,10 @@ pub struct ProviderWireFixture {
     pub delta_less_prelude_frame: Option<WireInput>,
     /// Refusal content frames, where the wire has a refusal channel.
     pub refusal: Option<RefusalFixture>,
+    /// The interleaving-boundary shape, where the wire's reasoning identity
+    /// is a constant per-stream minted key (its adapter synthesizes the
+    /// reasoning ends other output implies).
+    pub interleaved_reasoning: Option<InterleavedReasoningFixture>,
 }
 
 impl ProviderWireFixture {
@@ -753,6 +798,7 @@ impl ProviderWireFixture {
             defective_known_frame: self.defective_known_frame.is_some(),
             delta_less_prelude: self.delta_less_prelude_frame.is_some(),
             refusal: self.refusal.is_some(),
+            interleaved_reasoning: self.interleaved_reasoning.is_some(),
         }
     }
 }
@@ -1551,16 +1597,22 @@ pub async fn interleaved_reasoning_aggregates_to_one_item(
 /// "other output closes the reasoning item" boundary, lost when identity
 /// became the per-stream constant).
 pub async fn interleaved_constant_id_reasoning_preserves_order(
-    driver: &WireDriver,
-    frames: Vec<WireInput>,
-    first: &str,
-    tool_name: &str,
-    second: &str,
-) -> Result<ScenarioReport, ConformanceError> {
+    fixture: &ProviderWireFixture,
+) -> Result<ScenarioOutcome, ConformanceError> {
     const SCENARIO: &str = "interleaved_constant_id_reasoning_preserves_order";
-    let provider = driver.provider;
+    let provider = fixture.driver.provider;
+    let Some(interleaved) = &fixture.interleaved_reasoning else {
+        return Ok(ScenarioOutcome::Skipped {
+            name: SCENARIO,
+            provider,
+            reason: "wire fixture supplies no interleaved reasoning frames",
+        });
+    };
 
-    let drained = driver.drive(ok_chunks(frames)).await?;
+    let drained = fixture
+        .driver
+        .drive(ok_chunks(interleaved.frames.clone()))
+        .await?;
     if drained.error_count() != 0 || drained.response.is_none() {
         return Err(ConformanceError::contract(
             SCENARIO,
@@ -1568,13 +1620,20 @@ pub async fn interleaved_constant_id_reasoning_preserves_order(
             "the interleaved stream must complete without errors",
         ));
     }
-    assert_reasoning_tool_reasoning(SCENARIO, provider, &drained, first, tool_name, second)?;
+    assert_reasoning_tool_reasoning(
+        SCENARIO,
+        provider,
+        &drained,
+        interleaved.first_reasoning,
+        interleaved.tool_name,
+        interleaved.second_reasoning,
+    )?;
 
-    Ok(ScenarioReport {
+    Ok(ScenarioOutcome::Ran(ScenarioReport {
         name: SCENARIO,
         provider,
         observations: vec!["boundary kept: reasoning, tool call, reasoning in order".to_string()],
-    })
+    }))
 }
 
 /// On a constant-id wire whose completed reasoning block arrives as a signed
@@ -1930,6 +1989,18 @@ pub mod fixtures {
                     r#"{"id":"","object":"","choices":[{"prompt_index":0,"content_filter_results":{"hate":{"filtered":false,"severity":"safe"}}}]}"#,
                 )),
                 refusal: None,
+                // Deliberately absent — a documented named skip, not a gap.
+                // The chat wire streams tool calls as fragments that only
+                // finalize at a boundary the wire itself signals (next slot,
+                // finish_reason, terminal), so the AGGREGATED part order
+                // cannot pin reasoning→tool→reasoning without risky early
+                // finalization; and the chat request format erases part
+                // order on replay regardless (`tool_calls` is a flat array
+                // beside `content`). The boundary the adapter does own —
+                // closing the open reasoning block before emitting tool
+                // content — is pinned at emission level by the adapter's
+                // unit tests and by the driver's debug-mode sequence laws.
+                interleaved_reasoning: None,
             }
         }
     }
@@ -2182,6 +2253,7 @@ pub mod fixtures {
                     }))],
                     expected_text: "I cannot help with that.",
                 }),
+                interleaved_reasoning: None,
             }
         }
 
@@ -2407,6 +2479,7 @@ pub mod fixtures {
                 defective_known_frame: Some(sse_raw(r#"{"candidates": 42}"#)),
                 delta_less_prelude_frame: None,
                 refusal: None,
+                interleaved_reasoning: Some(interleaved_thought_fixture()),
             }
         }
 
@@ -2436,17 +2509,20 @@ pub mod fixtures {
 
         /// Thought delta, interleaved tool call, thought delta, terminal —
         /// the constant-id (`reasoning-0`) interleaving shape.
-        pub fn interleaved_thought_frames()
-        -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
-            let frames = vec![
-                chunk(json!([{"text": "before tool", "thought": true}])),
-                chunk(json!([{
-                    "functionCall": {"name": "get_weather", "args": {"city": "Tokyo"}},
-                }])),
-                chunk(json!([{"text": "after tool", "thought": true}])),
-                terminal_frame(),
-            ];
-            (frames, "before tool", "get_weather", "after tool")
+        fn interleaved_thought_fixture() -> InterleavedReasoningFixture {
+            InterleavedReasoningFixture {
+                frames: vec![
+                    chunk(json!([{"text": "before tool", "thought": true}])),
+                    chunk(json!([{
+                        "functionCall": {"name": "get_weather", "args": {"city": "Tokyo"}},
+                    }])),
+                    chunk(json!([{"text": "after tool", "thought": true}])),
+                    terminal_frame(),
+                ],
+                first_reasoning: "before tool",
+                tool_name: "get_weather",
+                second_reasoning: "after tool",
+            }
         }
 
         /// Thought delta, interleaved tool call, then a signed full thought
@@ -2549,14 +2625,14 @@ pub mod fixtures {
                 )),
                 delta_less_prelude_frame: None,
                 refusal: None,
+                interleaved_reasoning: Some(interleaved_thought_fixture()),
             }
         }
 
         /// Thought-summary delta, interleaved function call, thought-summary
         /// delta, terminal — the constant-id (`reasoning-0`) interleaving
         /// shape on the Interactions wire.
-        pub fn interleaved_thought_frames()
-        -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
+        fn interleaved_thought_fixture() -> InterleavedReasoningFixture {
             let frames = vec![
                 sse(&json!({
                     "event_type": "step.delta",
@@ -2590,7 +2666,12 @@ pub mod fixtures {
                     "total_tokens": 7,
                 }))),
             ];
-            (frames, "before tool", "get_weather", "after tool")
+            InterleavedReasoningFixture {
+                frames,
+                first_reasoning: "before tool",
+                tool_name: "get_weather",
+                second_reasoning: "after tool",
+            }
         }
     }
 
@@ -2712,6 +2793,7 @@ pub mod fixtures {
                 )),
                 delta_less_prelude_frame: None,
                 refusal: None,
+                interleaved_reasoning: None,
             }
         }
     }
@@ -2790,6 +2872,45 @@ pub mod fixtures {
                 defective_known_frame: Some(sse_raw(r#"{"type":"content-delta","delta":42}"#)),
                 delta_less_prelude_frame: None,
                 refusal: None,
+                interleaved_reasoning: Some(interleaved_thinking_fixture()),
+            }
+        }
+
+        /// Thinking delta, interleaved tool call, thinking delta, terminal —
+        /// the constant-id (`reasoning-0`) interleaving shape on the Cohere
+        /// v2 SSE wire.
+        fn interleaved_thinking_fixture() -> InterleavedReasoningFixture {
+            let frames = vec![
+                sse(&json!({"type": "message-start", "id": "msg_1"})),
+                sse(&json!({
+                    "type": "content-delta",
+                    "delta": {"message": {"content": {"thinking": "before tool"}}},
+                })),
+                sse(&json!({
+                    "type": "tool-call-start",
+                    "delta": {"message": {"tool_calls": {
+                        "id": "call_1",
+                        "function": {"name": "get_weather", "arguments": "{\"city\":\"Tokyo\"}"},
+                    }}},
+                })),
+                sse(&json!({"type": "tool-call-end"})),
+                sse(&json!({
+                    "type": "content-delta",
+                    "delta": {"message": {"content": {"thinking": "after tool"}}},
+                })),
+                sse(&json!({
+                    "type": "message-end",
+                    "delta": {
+                        "finish_reason": "COMPLETE",
+                        "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}},
+                    },
+                })),
+            ];
+            InterleavedReasoningFixture {
+                frames,
+                first_reasoning: "before tool",
+                tool_name: "get_weather",
+                second_reasoning: "after tool",
             }
         }
     }
@@ -2864,13 +2985,13 @@ pub mod fixtures {
                 }))),
                 delta_less_prelude_frame: None,
                 refusal: None,
+                interleaved_reasoning: Some(interleaved_thinking_fixture()),
             }
         }
 
         /// Thinking delta, interleaved tool call, thinking delta, terminal —
         /// the constant-id (`reasoning-0`) interleaving shape on NDJSON.
-        pub fn interleaved_thinking_frames()
-        -> (Vec<WireInput>, &'static str, &'static str, &'static str) {
+        fn interleaved_thinking_fixture() -> InterleavedReasoningFixture {
             let frames = vec![
                 ndjson(&json!({
                     "model": "llama3.2",
@@ -2902,7 +3023,12 @@ pub mod fixtures {
                     "eval_count": 4,
                 })),
             ];
-            (frames, "before tool", "get_weather", "after tool")
+            InterleavedReasoningFixture {
+                frames,
+                first_reasoning: "before tool",
+                tool_name: "get_weather",
+                second_reasoning: "after tool",
+            }
         }
     }
 }

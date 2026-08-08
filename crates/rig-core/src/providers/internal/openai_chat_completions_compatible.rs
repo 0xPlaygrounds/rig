@@ -18,7 +18,7 @@ use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::streaming::{
-    self, MintKind, PartId, RawStreamingChoice, ToolCallDecoration, ToolCallDeltaContent,
+    self, MintKind, RawStreamingChoice, StreamPartId, ToolCallDecoration, ToolCallDeltaContent,
     UnparseableToolInput,
 };
 use crate::wasm_compat::WasmCompatSend;
@@ -263,7 +263,11 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     fn detail_reasoning(
         &self,
         _detail: &Self::Detail,
-    ) -> Option<(PartId, crate::message::ReasoningContent)> {
+    ) -> Option<(
+        StreamPartId,
+        Option<crate::streaming::WireId>,
+        crate::message::ReasoningContent,
+    )> {
         None
     }
 
@@ -320,6 +324,9 @@ pub(crate) enum CompatEvent<U, D> {
 /// Fragment assembly itself lives in the shared accumulator.
 struct CompatAdapter<P: CompatibleStreamProfile> {
     profile: P,
+    /// Whether a `reasoning_content` block is open — synthesizes the
+    /// lifecycle end this wire never announces.
+    reasoning_open: bool,
     /// Index-to-identity bridge only: the Chat Completions wire keys tool
     /// call fragments by chunk index, so the adapter must correlate.
     open_tool_calls: ToolCallBridge<usize>,
@@ -340,6 +347,7 @@ impl<P: CompatibleStreamProfile> CompatAdapter<P> {
     fn new(profile: P) -> Self {
         Self {
             profile,
+            reasoning_open: false,
             open_tool_calls: ToolCallBridge::new(),
             final_usage: None,
             final_finish_reason: None,
@@ -412,9 +420,57 @@ where
         // carries a reasoning block arrives before (or with) the tool call it
         // precedes, and a reasoning block never depends on an open slot.
         for detail in &choice.details {
-            if let Some((id, content)) = self.profile.detail_reasoning(detail) {
-                out.push(Ok(RawStreamingChoice::Reasoning { id, content }));
+            if let Some((id, provider_id, content)) = self.profile.detail_reasoning(detail) {
+                out.push(Ok(RawStreamingChoice::Reasoning {
+                    id,
+                    provider_id,
+                    content,
+                }));
             }
+        }
+
+        // This chunk's parts are emitted reasoning → text → tool calls, so
+        // a chunk carrying several classes at once keeps the wire's logical
+        // order: the model reasons, speaks, then acts. Each later class
+        // closes a still-open reasoning block before its first fragment —
+        // the boundary this wire never announces.
+        if let Some(reasoning) = choice.reasoning
+            && !reasoning.is_empty()
+        {
+            self.reasoning_open = true;
+            out.push(Ok(RawStreamingChoice::ReasoningDelta {
+                // `reasoning_content` deltas carry no wire id; per-stream
+                // constant minted key.
+                id: StreamPartId::minted(MintKind::Reasoning, 0),
+                provider_id: None,
+                reasoning,
+            }));
+        }
+
+        if let Some(content) = choice.text
+            && !content.is_empty()
+        {
+            if self.reasoning_open {
+                self.reasoning_open = false;
+                out.push(Ok(RawStreamingChoice::ReasoningEnd {
+                    id: StreamPartId::minted(MintKind::Reasoning, 0),
+                    reasoning: None,
+                    signature: None,
+                    wire_sent: false,
+                }));
+            }
+            out.push(Ok(RawStreamingChoice::Message(content)));
+        }
+
+        // A tool call starting is as much a reasoning boundary as text is.
+        if !choice.tool_calls.is_empty() && self.reasoning_open {
+            self.reasoning_open = false;
+            out.push(Ok(RawStreamingChoice::ReasoningEnd {
+                id: StreamPartId::minted(MintKind::Reasoning, 0),
+                reasoning: None,
+                signature: None,
+                wire_sent: false,
+            }));
         }
 
         for incoming in choice.tool_calls {
@@ -478,26 +534,6 @@ where
             if let Some(decoration) = self.profile.decorate_tool_call(detail) {
                 self.open_tool_calls.decorate(decoration);
             }
-        }
-
-        if let Some(reasoning) = choice.reasoning
-            && !reasoning.is_empty()
-        {
-            out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                // `reasoning_content` deltas carry no wire id and never
-                // interleave; per-stream constant minted identity.
-                id: PartId::Minted {
-                    kind: MintKind::Reasoning,
-                    index: 0,
-                },
-                reasoning,
-            }));
-        }
-
-        if let Some(content) = choice.text
-            && !content.is_empty()
-        {
-            out.push(Ok(RawStreamingChoice::Message(content)));
         }
 
         if choice.finish_reason.is_tool_calls() {
@@ -730,7 +766,7 @@ mod tests {
     use crate::test_utils::MockStreamingClient;
     use crate::test_utils::internal_streaming_profiles::{
         DistinctToolCallEvictionProfile, ErrorAfterPendingToolCallProfile,
-        FinishReasonCleanupProfile,
+        FinishReasonCleanupProfile, ReasoningAroundToolCallProfile,
     };
     use futures::StreamExt;
 
@@ -795,6 +831,103 @@ mod tests {
         assert!(
             detect(r#"{"error":{"message":"rate limited"},"choices":null}"#).is_some(),
             "a null choices value must not mask the error"
+        );
+    }
+
+    /// A tool call starting is a reasoning boundary on this wire: reasoning
+    /// deltas straddling a complete tool call aggregate as TWO reasoning
+    /// parts, because the adapter synthesizes the end this wire never
+    /// announces before the first tool-call fragment (as it already did for
+    /// interleaved text).
+    #[tokio::test]
+    async fn tool_call_closes_the_open_reasoning_block() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                "reasoning_a",
+                "tool_call",
+                "reasoning_b",
+                "finish",
+            ]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, ReasoningAroundToolCallProfile)
+                .await
+                .expect("stream should start");
+        while stream.next().await.is_some() {}
+
+        let reasoning_texts: Vec<String> = stream
+            .choice
+            .clone()
+            .into_iter()
+            .filter_map(|item| match item {
+                crate::completion::AssistantContent::Reasoning(reasoning) => Some(
+                    reasoning
+                        .content
+                        .iter()
+                        .filter_map(|content| match content {
+                            crate::message::ReasoningContent::Text { text, .. } => {
+                                Some(text.as_str())
+                            }
+                            _ => None,
+                        })
+                        .collect::<String>(),
+                ),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            reasoning_texts,
+            vec!["thinking before".to_owned(), "thinking after".to_owned()],
+            "the tool call must split the reasoning into two parts"
+        );
+    }
+
+    /// One chunk carrying BOTH a reasoning delta and a complete tool call:
+    /// the adapter's within-chunk order is reasoning → text → tool calls
+    /// (the model reasons, speaks, then acts — the order every boundary-less
+    /// wire and this crate's ollama adapter use), so the reasoning part
+    /// completes BEFORE the tool call in the aggregated content.
+    #[tokio::test]
+    async fn a_combined_chunk_emits_reasoning_before_its_tool_call() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(["combined", "finish"]),
+        };
+
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream =
+            send_compatible_streaming_request(client, req, ReasoningAroundToolCallProfile)
+                .await
+                .expect("stream should start");
+        while stream.next().await.is_some() {}
+
+        let kinds: Vec<&'static str> = stream
+            .choice
+            .clone()
+            .into_iter()
+            .map(|item| match item {
+                crate::completion::AssistantContent::Reasoning(_) => "reasoning",
+                crate::completion::AssistantContent::ToolCall(_) => "tool_call",
+                _ => "other",
+            })
+            .collect();
+
+        assert_eq!(
+            kinds,
+            vec!["reasoning", "tool_call"],
+            "the same-chunk reasoning must close before the tool call opens"
         );
     }
 
@@ -886,8 +1019,7 @@ mod tests {
             .expect("expected tool call delta before normalize error")
             .expect("first item should be ok")
         {
-            StreamedAssistantContent::ToolCallDelta { id, content, .. } => {
-                assert_eq!(id, "call_123");
+            StreamedAssistantContent::ToolCallDelta { content, .. } => {
                 assert_eq!(
                     content,
                     crate::streaming::ToolCallDeltaContent::Name("ping".to_owned())

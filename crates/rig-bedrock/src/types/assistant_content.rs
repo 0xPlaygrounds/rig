@@ -185,93 +185,129 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigAssistantContent {
     }
 }
 
-impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
-    type Error = CompletionError;
-
-    fn try_from(value: RigAssistantContent) -> Result<Self, Self::Error> {
-        match value.0 {
-            AssistantContent::Text(text) => Ok(aws_bedrock::ContentBlock::Text(text.text)),
+impl RigAssistantContent {
+    /// Convert one assistant content item for the Converse request.
+    ///
+    /// `Ok(None)` means the item degrades away entirely: opaque reasoning
+    /// Bedrock cannot carry — another provider's ciphertext, or a redacted
+    /// blob that no longer decodes — drops with a warning instead of
+    /// failing the request.
+    pub(crate) fn into_content_block(
+        self,
+    ) -> Result<Option<aws_bedrock::ContentBlock>, CompletionError> {
+        match self.0 {
+            AssistantContent::Text(text) => Ok(Some(aws_bedrock::ContentBlock::Text(text.text))),
             AssistantContent::ToolCall(tool_call) => {
                 let doc: AwsDocument = tool_call.function.arguments.into();
-                Ok(aws_bedrock::ContentBlock::ToolUse(
+                Ok(Some(aws_bedrock::ContentBlock::ToolUse(
                     aws_bedrock::ToolUseBlock::builder()
                         .tool_use_id(tool_call.id)
                         .name(tool_call.function.name)
                         .input(doc.0)
                         .build()
                         .map_err(|e| CompletionError::ProviderError(e.to_string()))?,
-                ))
+                )))
             }
-            AssistantContent::Reasoning(reasoning) => {
-                // Opaque payloads (safety-redacted or provider-encrypted) are
-                // ciphertext, not prose. `display_text()` folds `Redacted`
-                // into the flattened text, so without this short-circuit the
-                // blob would be replayed to Bedrock as an unsigned
-                // `reasoningText` — worse than dropping it, because the
-                // provider is handed a body the model never wrote.
-                let opaque: Vec<&str> = reasoning
+            AssistantContent::Reasoning(mut reasoning) => {
+                // Opaque payloads are ciphertext, not prose — and their
+                // provenance is in the variant. `Redacted` is
+                // Bedrock-native: this file's own inbound legs base64-encode
+                // Converse's `redactedContent` bytes, so only it may decode
+                // back onto the wire. `Encrypted` NEVER originates here — it
+                // is OpenAI Responses `encrypted_content`, OpenRouter
+                // `reasoning.encrypted`, or Anthropic ciphertext, stored
+                // verbatim (not base64) — and Bedrock can neither verify nor
+                // use another provider's ciphertext. Shipping it as
+                // Bedrock's own `redactedContent` hands Converse a body its
+                // models never wrote, and its token shapes routinely fail
+                // strict base64, which used to fail the whole request.
+                // Degrade, don't fail: drop what Converse cannot carry.
+                let foreign = reasoning
+                    .content
+                    .iter()
+                    .filter(|content| {
+                        matches!(content, rig_core::message::ReasoningContent::Encrypted(_))
+                    })
+                    .count();
+                if foreign > 0 {
+                    tracing::warn!(
+                        dropped = foreign,
+                        "dropping foreign encrypted reasoning payload(s); Bedrock cannot \
+                         verify another provider's ciphertext"
+                    );
+                    reasoning.content.retain(|content| {
+                        !matches!(content, rig_core::message::ReasoningContent::Encrypted(_))
+                    });
+                    if reasoning.content.is_empty() {
+                        return Ok(None);
+                    }
+                }
+
+                let redacted: Vec<&str> = reasoning
                     .content
                     .iter()
                     .filter_map(|content| match content {
-                        rig_core::message::ReasoningContent::Redacted { data }
-                        | rig_core::message::ReasoningContent::Encrypted(data) => {
+                        rig_core::message::ReasoningContent::Redacted { data } => {
                             Some(data.as_str())
                         }
                         _ => None,
                     })
                     .collect();
 
-                if !opaque.is_empty() {
-                    // A mixed block — e.g. `[Summary, Encrypted]`, exactly
-                    // what the OpenAI Responses path builds when
-                    // `encrypted_content` is requested — cannot be
-                    // represented on Converse (one block is either
-                    // `reasoningText` or `redactedContent`). Cross-provider
-                    // replay must degrade, not fail the whole request
-                    // locally: drop the un-representable opaque part(s),
-                    // keep the representable text. Another provider's
-                    // ciphertext is unreadable to Bedrock anyway.
-                    if opaque.len() != reasoning.content.len() {
+                if !redacted.is_empty() {
+                    if redacted.len() != reasoning.content.len() {
+                        // A mixed block cannot be represented on Converse
+                        // (one block is either `reasoningText` or
+                        // `redactedContent`). Cross-provider replay must
+                        // degrade, not fail the whole request locally: drop
+                        // the un-representable opaque part(s), keep the
+                        // representable text.
                         tracing::warn!(
-                            dropped = opaque.len(),
-                            "dropping opaque (redacted/encrypted) reasoning payloads Bedrock \
-                             cannot carry alongside reasoning text; replaying the text only"
+                            dropped = redacted.len(),
+                            "dropping redacted reasoning payloads Bedrock cannot carry \
+                             alongside reasoning text; replaying the text only"
                         );
-                        let mut text_only = reasoning.clone();
-                        text_only.content.retain(|content| {
+                        reasoning.content.retain(|content| {
                             !matches!(
                                 content,
                                 rig_core::message::ReasoningContent::Redacted { .. }
-                                    | rig_core::message::ReasoningContent::Encrypted(_)
                             )
                         });
-                        return RigAssistantContent(AssistantContent::Reasoning(text_only))
-                            .try_into();
-                    }
-                    if opaque.len() > 1 {
-                        // All-opaque with several payloads: keep the first,
-                        // drop the rest — same degrade-don't-fail policy.
-                        tracing::warn!(
-                            dropped = opaque.len() - 1,
-                            "dropping extra opaque reasoning payloads; Bedrock carries one \
-                             redactedContent blob per block"
-                        );
-                    }
+                    } else {
+                        if redacted.len() > 1 {
+                            // All-redacted with several payloads: keep the
+                            // first, drop the rest — same degrade-don't-fail
+                            // policy.
+                            tracing::warn!(
+                                dropped = redacted.len() - 1,
+                                "dropping extra redacted reasoning payloads; Bedrock carries \
+                                 one redactedContent blob per block"
+                            );
+                        }
 
-                    // Round-trips the encoding the inbound legs apply: the
-                    // wire carries bytes, rig's canonical content is a string.
-                    let data = opaque.first().copied().unwrap_or_default();
-                    let bytes = BASE64_STANDARD.decode(data).map_err(|error| {
-                        CompletionError::ProviderError(format!(
-                            "AWS Bedrock redacted reasoning content is not valid base64: {error}"
-                        ))
-                    })?;
-
-                    return Ok(aws_bedrock::ContentBlock::ReasoningContent(
-                        aws_bedrock::ReasoningContentBlock::RedactedContent(
-                            aws_smithy_types::Blob::new(bytes),
-                        ),
-                    ));
+                        // Round-trips the encoding the inbound legs apply:
+                        // the wire carries bytes, rig's canonical content is
+                        // a string. A blob that no longer decodes cannot be
+                        // replayed — degrade like the mixed case rather than
+                        // failing the request over history Bedrock will not
+                        // miss.
+                        let data = redacted.first().copied().unwrap_or_default();
+                        return match BASE64_STANDARD.decode(data) {
+                            Ok(bytes) => Ok(Some(aws_bedrock::ContentBlock::ReasoningContent(
+                                aws_bedrock::ReasoningContentBlock::RedactedContent(
+                                    aws_smithy_types::Blob::new(bytes),
+                                ),
+                            ))),
+                            Err(error) => {
+                                tracing::warn!(
+                                    %error,
+                                    "dropping redacted reasoning content that is not valid \
+                                     base64"
+                                );
+                                Ok(None)
+                            }
+                        };
+                    }
                 }
 
                 let signed_text_count = reasoning
@@ -328,9 +364,9 @@ impl TryFrom<RigAssistantContent> for aws_bedrock::ContentBlock {
                     ))
                 })?;
 
-                Ok(aws_bedrock::ContentBlock::ReasoningContent(
+                Ok(Some(aws_bedrock::ContentBlock::ReasoningContent(
                     aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
-                ))
+                )))
             }
             AssistantContent::Image(_) => Err(CompletionError::ProviderError(
                 "AWS Bedrock does not support image content in assistant messages".to_owned(),
@@ -603,10 +639,12 @@ mod tests {
         let reasoning = rig_core::message::Reasoning::new("My reasoning content");
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
-        assert!(aws_content_block.is_ok());
+        let aws_content_block = rig_content
+            .into_content_block()
+            .expect("conversion should succeed")
+            .expect("the item converts to a block");
 
-        match aws_content_block.unwrap() {
+        match aws_content_block {
             aws_bedrock::ContentBlock::ReasoningContent(
                 aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
             ) => {
@@ -626,10 +664,12 @@ mod tests {
         );
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
-        assert!(aws_content_block.is_ok());
+        let aws_content_block = rig_content
+            .into_content_block()
+            .expect("conversion should succeed")
+            .expect("the item converts to a block");
 
-        match aws_content_block.unwrap() {
+        match aws_content_block {
             aws_bedrock::ContentBlock::ReasoningContent(
                 aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
             ) => {
@@ -651,10 +691,12 @@ mod tests {
 
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
-        assert!(aws_content_block.is_ok());
+        let aws_content_block = rig_content
+            .into_content_block()
+            .expect("conversion should succeed")
+            .expect("the item converts to a block");
 
-        match aws_content_block.unwrap() {
+        match aws_content_block {
             aws_bedrock::ContentBlock::ReasoningContent(
                 aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
             ) => {
@@ -676,10 +718,12 @@ mod tests {
         );
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
-        assert!(aws_content_block.is_ok());
+        let aws_content_block = rig_content
+            .into_content_block()
+            .expect("conversion should succeed")
+            .expect("the item converts to a block");
 
-        match aws_content_block.unwrap() {
+        match aws_content_block {
             aws_bedrock::ContentBlock::ReasoningContent(
                 aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text),
             ) => {
@@ -695,7 +739,7 @@ mod tests {
         let reasoning = rig_core::message::Reasoning::new_with_signature("", None);
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        let aws_content_block = rig_content.into_content_block();
         assert!(matches!(
             aws_content_block,
             Err(completion::CompletionError::ProviderError(message))
@@ -713,7 +757,7 @@ mod tests {
         });
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
+        let aws_content_block = rig_content.into_content_block();
         assert!(matches!(
             aws_content_block,
             Err(completion::CompletionError::ProviderError(message))
@@ -759,9 +803,10 @@ mod tests {
             rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(REDACTED_BLOB));
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: aws_bedrock::ContentBlock = rig_content
-            .try_into()
-            .expect("redacted reasoning should convert outbound");
+        let aws_content_block = rig_content
+            .into_content_block()
+            .expect("redacted reasoning should convert outbound")
+            .expect("a native redacted blob replays");
 
         match aws_content_block {
             aws_bedrock::ContentBlock::ReasoningContent(
@@ -781,9 +826,10 @@ mod tests {
 
         let rig_content: RigAssistantContent =
             inbound.try_into().expect("inbound conversion should work");
-        let outbound: aws_bedrock::ContentBlock = rig_content
-            .try_into()
-            .expect("outbound conversion should work");
+        let outbound = rig_content
+            .into_content_block()
+            .expect("outbound conversion should work")
+            .expect("a native redacted blob replays");
 
         match outbound {
             aws_bedrock::ContentBlock::ReasoningContent(
@@ -793,25 +839,24 @@ mod tests {
         }
     }
 
+    /// `Encrypted` never originates on this wire — it is another
+    /// provider's ciphertext (OpenAI Responses `encrypted_content`,
+    /// OpenRouter `reasoning.encrypted`, Anthropic). It must never ship as
+    /// Bedrock's own `redactedContent`, even when it happens to decode:
+    /// the block degrades away entirely.
     #[test]
-    fn rig_encrypted_reasoning_also_replays_as_redacted_content() {
-        // `Encrypted` is the same opaque shape under a different provider's
-        // name; `display_text()` skips it, so it used to convert to an EMPTY
-        // reasoning text block instead of surviving.
+    fn foreign_encrypted_reasoning_is_dropped_never_shipped_as_redacted() {
         let reasoning =
             rig_core::message::Reasoning::encrypted(BASE64_STANDARD.encode(REDACTED_BLOB));
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: aws_bedrock::ContentBlock = rig_content
-            .try_into()
-            .expect("encrypted reasoning should convert outbound");
-
-        match aws_content_block {
-            aws_bedrock::ContentBlock::ReasoningContent(
-                aws_bedrock::ReasoningContentBlock::RedactedContent(blob),
-            ) => assert_eq!(blob.as_ref(), REDACTED_BLOB),
-            other => panic!("Expected RedactedContent, got {other:?}"),
-        }
+        let converted = rig_content
+            .into_content_block()
+            .expect("foreign ciphertext must degrade, not fail the request");
+        assert!(
+            converted.is_none(),
+            "another provider's ciphertext must not reach Converse: {converted:?}"
+        );
     }
 
     /// A mixed block degrades: the un-representable opaque part drops (with
@@ -826,8 +871,10 @@ mod tests {
         });
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: aws_bedrock::ContentBlock =
-            rig_content.try_into().expect("mixed block must degrade");
+        let aws_content_block = rig_content
+            .into_content_block()
+            .expect("mixed block must degrade")
+            .expect("the representable text replays");
         match aws_content_block {
             aws_bedrock::ContentBlock::ReasoningContent(
                 aws_bedrock::ReasoningContentBlock::ReasoningText(text),
@@ -854,9 +901,10 @@ mod tests {
             .push(ReasoningContent::Encrypted("enc-opaque-blob".to_owned()));
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: aws_bedrock::ContentBlock = rig_content
-            .try_into()
-            .expect("the Responses encrypted shape must degrade, not fail the request");
+        let aws_content_block = rig_content
+            .into_content_block()
+            .expect("the Responses encrypted shape must degrade, not fail the request")
+            .expect("the summary text replays");
         match aws_content_block {
             aws_bedrock::ContentBlock::ReasoningContent(
                 aws_bedrock::ReasoningContentBlock::ReasoningText(text),
@@ -882,9 +930,10 @@ mod tests {
         });
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: aws_bedrock::ContentBlock = rig_content
-            .try_into()
-            .expect("multiple opaque payloads must degrade");
+        let aws_content_block = rig_content
+            .into_content_block()
+            .expect("multiple opaque payloads must degrade")
+            .expect("the first native blob replays");
         match aws_content_block {
             aws_bedrock::ContentBlock::ReasoningContent(
                 aws_bedrock::ReasoningContentBlock::RedactedContent(blob),
@@ -895,16 +944,32 @@ mod tests {
         }
     }
 
+    /// An all-encrypted block whose token is unpadded/URL-safe — the shape
+    /// OpenAI and OpenRouter actually store (verbatim, never
+    /// base64-standard) — must not fail the whole request locally, and
+    /// must never reach the decode at all.
     #[test]
-    fn non_base64_opaque_reasoning_is_rejected_rather_than_sent_corrupt() {
+    fn foreign_encrypted_reasoning_never_fails_the_request() {
+        let reasoning = rig_core::message::Reasoning::encrypted("gAAAA-non_base64-token_");
+        let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
+        let converted = rig_content
+            .into_content_block()
+            .expect("foreign ciphertext must degrade, not fail the request");
+        assert!(converted.is_none());
+    }
+
+    /// A native redacted blob that no longer decodes cannot be replayed:
+    /// it degrades away (with a warning) rather than shipping corrupt
+    /// bytes OR failing the request — consistent with the mixed-block
+    /// policy stated above.
+    #[test]
+    fn non_base64_redacted_reasoning_is_dropped_rather_than_sent_corrupt() {
         let reasoning = rig_core::message::Reasoning::redacted("not*valid*base64");
         let rig_content = RigAssistantContent(AssistantContent::Reasoning(reasoning));
 
-        let aws_content_block: Result<aws_bedrock::ContentBlock, _> = rig_content.try_into();
-        assert!(matches!(
-            aws_content_block,
-            Err(completion::CompletionError::ProviderError(message))
-                if message.contains("not valid base64")
-        ));
+        let converted = rig_content
+            .into_content_block()
+            .expect("an un-decodable blob must degrade, not fail the request");
+        assert!(converted.is_none());
     }
 }

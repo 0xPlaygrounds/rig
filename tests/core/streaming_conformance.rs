@@ -425,28 +425,32 @@ mod grammar_guards {
                 _ => None,
             })
             .collect();
-        let shape: Vec<(&str, &str, &serde_json::Value)> = calls
+        let shape: Vec<(&str, &serde_json::Value)> = calls
             .iter()
-            .map(|call| {
-                (
-                    call.id.as_str(),
-                    call.function.name.as_str(),
-                    &call.function.arguments,
-                )
-            })
+            .map(|call| (call.function.name.as_str(), &call.function.arguments))
             .collect();
         assert_eq!(
             shape,
             vec![
-                // A minted assembly identity keeps the interleaved fragments
-                // distinct but never becomes a durable provider id: the
-                // finalized calls carry the absent (empty) id serializers
-                // omit — rig does not invent identifiers the provider never
-                // issued.
-                ("", "get_weather", &json!({"city": "Tokyo"})),
-                ("", "get_time", &json!({"zone": "UTC"})),
+                ("get_weather", &json!({"city": "Tokyo"})),
+                ("get_time", &json!({"zone": "UTC"})),
             ],
             "two id-less indexed calls must assemble distinct and uncorrupted"
+        );
+        // A minted assembly identity keeps the interleaved fragments
+        // distinct: the finalized calls surface the minted durable id with
+        // `provider: None` — rig never invents a *provider* identifier the
+        // provider did not issue, and never leaves the id empty.
+        for call in &calls {
+            assert!(
+                !call.id.as_str().is_empty(),
+                "id-less calls surface a minted durable id"
+            );
+            assert!(call.provider.is_none(), "no provider id was issued");
+        }
+        assert_ne!(
+            calls[0].id, calls[1].id,
+            "each id-less call mints a unique durable id"
         );
     }
 
@@ -645,36 +649,18 @@ mod reasoning {
 // "other output closes the reasoning item" boundary must survive aggregation.
 // The Responses fixture stays on `interleaved_reasoning_aggregates_to_one_item`
 // above: real per-item ids must keep collapsing across boundaries.
+// The ordering scenario itself is canonical now (gated on the
+// `interleaved_reasoning` fixture field), so every suite runs or visibly
+// skips it; only the signature-specific variant and the id-less same-tool
+// shape stay ad hoc here.
 mod interleaved_constant_id_reasoning {
     use super::*;
-
-    #[tokio::test]
-    async fn gemini_rest_preserves_order_around_a_tool_call() {
-        let driver = gemini_rest::fixture().driver;
-        let (frames, first, tool, second) = gemini_rest::interleaved_thought_frames();
-        conformance::interleaved_constant_id_reasoning_preserves_order(
-            &driver, frames, first, tool, second,
-        )
-        .await
-        .expect("scenario should hold");
-    }
 
     #[tokio::test]
     async fn gemini_rest_signed_full_does_not_erase_prior_thought() {
         let driver = gemini_rest::fixture().driver;
         let (frames, first, tool, second) = gemini_rest::interleaved_signed_thought_frames();
         conformance::interleaved_signed_full_reasoning_does_not_erase_prior_thought(
-            &driver, frames, first, tool, second,
-        )
-        .await
-        .expect("scenario should hold");
-    }
-
-    #[tokio::test]
-    async fn interactions_preserves_order_around_a_tool_call() {
-        let driver = interactions::fixture().driver;
-        let (frames, first, tool, second) = interactions::interleaved_thought_frames();
-        conformance::interleaved_constant_id_reasoning_preserves_order(
             &driver, frames, first, tool, second,
         )
         .await
@@ -723,6 +709,7 @@ mod interleaved_constant_id_reasoning {
         assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
 
         let mut internal_ids = Vec::new();
+        let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
             if let StreamedAssistantContent::ToolCall {
@@ -731,8 +718,13 @@ mod interleaved_constant_id_reasoning {
             } = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
-                assert_eq!(tool_call.id, "", "no fabricated durable id");
+                assert!(
+                    !tool_call.id.as_str().is_empty(),
+                    "id-less calls surface a minted durable id"
+                );
+                assert_eq!(tool_call.provider, None, "no fabricated provider id");
                 internal_ids.push(internal_call_id.clone());
+                minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }
         }
@@ -743,6 +735,8 @@ mod interleaved_constant_id_reasoning {
             2,
             "same-name calls must stay correlatable via distinct internal ids"
         );
+        minted_ids.dedup();
+        assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
         assert_eq!(
             drained
                 .choice
@@ -751,6 +745,57 @@ mod interleaved_constant_id_reasoning {
                 .count(),
             2,
             "both same-name calls must survive as distinct aggregated parts"
+        );
+    }
+
+    /// Two id-less calls arriving in SEPARATE records must also stay
+    /// distinct: a per-record index enumeration handed both `Minted(Tool,0)`
+    /// and one call silently swallowed the other (round-5 O3 bonus). The
+    /// per-stream minter counts across records.
+    #[tokio::test]
+    async fn ollama_id_less_calls_in_separate_records_stay_distinct() {
+        use rig_core::message::AssistantContent;
+        use serde_json::json;
+
+        let ndjson = |frame: &serde_json::Value| {
+            conformance::WireInput::Bytes(bytes::Bytes::from(format!("{frame}\n")))
+        };
+        let record = |city: &str| {
+            ndjson(&json!({
+                "model": "llama3.2",
+                "created_at": "2023-08-04T19:22:45.499127Z",
+                "message": {"role": "assistant", "content": "", "tool_calls": [
+                    {"function": {"name": "get_weather", "arguments": {"city": city}}},
+                ]},
+                "done": false,
+            }))
+        };
+        let frames = vec![
+            record("Tokyo"),
+            record("Paris"),
+            ndjson(&json!({
+                "model": "llama3.2",
+                "created_at": "2023-08-04T19:22:47.499127Z",
+                "message": {"role": "assistant", "content": ""},
+                "done": true,
+                "done_reason": "stop",
+            })),
+        ];
+
+        let drained = ollama::fixture()
+            .driver
+            .drive(conformance::ok_chunks(frames))
+            .await
+            .expect("stream should drive");
+        assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
+        assert_eq!(
+            drained
+                .choice
+                .iter()
+                .filter(|content| matches!(content, AssistantContent::ToolCall(_)))
+                .count(),
+            2,
+            "calls from separate records must survive as distinct parts"
         );
     }
 
@@ -799,6 +844,7 @@ mod interleaved_constant_id_reasoning {
         assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
 
         let mut internal_ids = Vec::new();
+        let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
             if let StreamedAssistantContent::ToolCall {
@@ -807,15 +853,24 @@ mod interleaved_constant_id_reasoning {
             } = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
-                assert_eq!(tool_call.id, "", "no fabricated durable id");
-                assert_eq!(tool_call.call_id, None, "no name-as-id call_id fallback");
+                assert!(
+                    !tool_call.id.as_str().is_empty(),
+                    "id-less calls surface with a minted durable id"
+                );
+                assert_eq!(
+                    tool_call.provider, None,
+                    "no name-as-id provider-id fallback"
+                );
                 internal_ids.push(internal_call_id.clone());
+                minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }
         }
         assert_eq!(cities, vec![json!("Tokyo"), json!("Paris")]);
         internal_ids.dedup();
         assert_eq!(internal_ids.len(), 2, "distinct internal correlation ids");
+        minted_ids.dedup();
+        assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
         assert_eq!(
             drained
                 .choice
@@ -825,16 +880,5 @@ mod interleaved_constant_id_reasoning {
             2,
             "both same-name calls must survive as distinct aggregated parts"
         );
-    }
-
-    #[tokio::test]
-    async fn ollama_preserves_order_around_a_tool_call() {
-        let driver = ollama::fixture().driver;
-        let (frames, first, tool, second) = ollama::interleaved_thinking_frames();
-        conformance::interleaved_constant_id_reasoning_preserves_order(
-            &driver, frames, first, tool, second,
-        )
-        .await
-        .expect("scenario should hold");
     }
 }

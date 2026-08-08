@@ -1095,8 +1095,13 @@ fn user_contents_to_messages(
                     .join("\n");
                 messages.push(Message::ToolResult {
                     // Prefer the provider-issued call id, matching the
-                    // assistant echo (shared From<message::ToolCall>).
-                    tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
+                    // assistant echo (shared From<message::ToolCall>);
+                    // provider-less results fall back to rig's minted
+                    // handle — never empty.
+                    tool_call_id: tool_result
+                        .provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_else(|| tool_result.call.into_string()),
                     content: openai::completion::ToolResultContentValue::String(content),
                 });
             }
@@ -1165,10 +1170,16 @@ fn assistant_contents_to_messages(
                         }
                         ToolCallAdditionalParams::Minimal { id, format } => {
                             // Correlate with the id the wire tool call will
-                            // carry (call_id when present, else id).
+                            // carry (provider call id when present, else
+                            // rig's handle).
                             let id = id
-                                .or_else(|| tool_call.call_id.clone())
-                                .unwrap_or_else(|| tool_call.id.clone());
+                                .or_else(|| {
+                                    tool_call
+                                        .provider
+                                        .as_ref()
+                                        .map(|provider| provider.call_id.clone())
+                                })
+                                .unwrap_or_else(|| tool_call.id.as_str().to_owned());
                             if let Some(signature) = &tool_call.signature {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
                                     id: Some(id),
@@ -1183,9 +1194,10 @@ fn assistant_contents_to_messages(
                     reasoning_details.push(ReasoningDetails::Encrypted {
                         id: Some(
                             tool_call
-                                .call_id
-                                .clone()
-                                .unwrap_or_else(|| tool_call.id.clone()),
+                                .provider
+                                .as_ref()
+                                .map(|provider| provider.call_id.clone())
+                                .unwrap_or_else(|| tool_call.id.as_str().to_owned()),
                         ),
                         format: None,
                         index: None,
@@ -1525,20 +1537,35 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
     fn streaming_detail_reasoning(
         &self,
         detail: &serde_json::Value,
-    ) -> Option<(crate::streaming::PartId, message::ReasoningContent)> {
+    ) -> Option<(
+        crate::streaming::StreamPartId,
+        Option<crate::streaming::WireId>,
+        message::ReasoningContent,
+    )> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
             serde_json::from_value::<ReasoningDetails>(detail.clone())
         else {
             return None;
         };
 
-        // An id-less detail degrades to the accumulator's shared empty wire
-        // identity; `assistant_contents_to_messages` maps that back to a
-        // null wire id, matching the non-streaming grouping.
-        Some((
-            crate::streaming::PartId::wire(id.unwrap_or_default()),
-            message::ReasoningContent::Encrypted(data),
-        ))
+        // The durable handle exists only when the wire issued one; an
+        // id-less detail keys accumulation by a minted key and replays with
+        // the id absent — no fabricated empty "wire" id, and no
+        // per-serializer empty-string filter downstream (84a43e9e #4).
+        // The mint kind is `EncryptedReasoning`, NOT `Reasoning`: the shared
+        // compat adapter accumulates `reasoning`/`reasoning_content` text
+        // under `Minted { Reasoning, 0 }`, and a whole block under that same
+        // key would restate — i.e. replace — the open text part. Distinct
+        // content classes get distinct minted keys.
+        let provider_id = id.and_then(crate::streaming::WireId::new);
+        let key = provider_id
+            .as_ref()
+            .map(|id| crate::streaming::StreamPartId::wire(id.as_str()))
+            .unwrap_or(crate::streaming::StreamPartId::minted(
+                crate::streaming::MintKind::EncryptedReasoning,
+                0,
+            ));
+        Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
     }
 }
 
@@ -1598,6 +1625,7 @@ mod tests {
             message::UserContent::tool_result_with_call_id(
                 "result-id",
                 "call-id".to_string(),
+                "tool",
                 OneOrMany::one(message::ToolResultContent::text("tool output")),
             ),
             message::UserContent::text("after"),
@@ -3037,7 +3065,7 @@ mod tests {
         let mut streamed_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
             match chunk.expect("stream item should be ok") {
-                StreamedAssistantContent::Reasoning(reasoning) => {
+                StreamedAssistantContent::Reasoning { reasoning, .. } => {
                     assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
                     assert!(matches!(
                         reasoning.content.first(),
@@ -3098,9 +3126,72 @@ mod tests {
         );
     }
 
-    /// An encrypted detail the wire sends without an id degrades to the
-    /// accumulator's shared "" identity; it must still replay, and with a null
-    /// wire id rather than an empty string.
+    /// An id-less encrypted detail must not clobber the reasoning text
+    /// accumulating under the wire's constant minted key.
+    ///
+    /// The shared compat adapter keys `reasoning` text deltas by
+    /// `Minted { Reasoning, 0 }`; the id-less encrypted detail arrives as a
+    /// whole block while that part is still open. Keyed identically, the
+    /// whole block would *restate* — replace — the open text part
+    /// (pre-fix, all accumulated reasoning text was lost). Keyed as
+    /// `EncryptedReasoning` it is a sibling: both parts reach the
+    /// aggregated choice.
+    #[tokio::test]
+    async fn id_less_encrypted_detail_does_not_replace_open_reasoning_text() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"deep "},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"reasoning":"thought"},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"reasoning":null,"reasoning_details":[{"type":"reasoning.encrypted","id":null,"format":"openai-responses-v1","index":0,"data":"enc_blob"}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("openai/o4-mini");
+        let request = model.completion_request("weather?").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+        while stream.next().await.is_some() {}
+
+        let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+                    if matches!(
+                        content.first(),
+                        Some(message::ReasoningContent::Text { text, .. }) if text == "deep thought"
+                    )
+            )),
+            "the accumulated reasoning text must survive the encrypted detail: {choice:#?}"
+        );
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { id: None, content })
+                    if matches!(
+                        content.first(),
+                        Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                    )
+            )),
+            "the encrypted blob must reach the choice as its own part: {choice:#?}"
+        );
+    }
+
+    /// An encrypted detail the wire sends without an id streams under its
+    /// own minted `EncryptedReasoning` key; it must still replay, and with
+    /// a null wire id rather than an empty string.
     #[test]
     fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
         use crate::providers::openai::completion::OpenAICompatibleProvider as _;
@@ -3112,10 +3203,21 @@ mod tests {
             "index": 0,
             "data": "enc_blob",
         });
-        let (id, content) = OpenRouterExt
+        let (id, provider_id, content) = OpenRouterExt
             .streaming_detail_reasoning(&detail)
             .expect("encrypted detail should map to reasoning");
-        assert_eq!(id, crate::streaming::PartId::wire(""));
+        // 84a43e9e #4, closed: an id-less detail keys accumulation by a
+        // minted (opaque) key and carries NO durable handle — a fabricated
+        // "wire" empty id is unrepresentable, so no serializer needs an
+        // empty-string filter.
+        assert!(
+            id.is_minted(),
+            "id-less details key by a minted key: {id:?}"
+        );
+        assert!(
+            provider_id.is_none(),
+            "absence is None, never a fabricated id"
+        );
         assert!(matches!(
             content,
             message::ReasoningContent::Encrypted(ref data) if data == "enc_blob"
@@ -3123,7 +3225,7 @@ mod tests {
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::Reasoning(message::Reasoning {
-                id: id.as_wire().map(str::to_owned),
+                id: provider_id.map(|id| id.into_string()),
                 content: vec![content],
             }),
         ))
@@ -3182,16 +3284,14 @@ mod tests {
 
     #[test]
     fn test_tool_call_signature_without_params_uses_wire_id_for_encrypted_detail() {
-        let tool_call = message::ToolCall {
-            id: "call_wire".to_string(),
-            call_id: None,
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call_wire",
+            message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
             },
-            signature: Some("sig-data".to_string()),
-            additional_params: None,
-        };
+        )
+        .with_signature(Some("sig-data".to_string()));
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::ToolCall(tool_call),
@@ -3217,18 +3317,17 @@ mod tests {
 
     #[test]
     fn test_tool_call_minimal_params_fall_back_to_wire_id() {
-        let tool_call = message::ToolCall {
-            id: "call_wire".to_string(),
-            call_id: None,
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call_wire",
+            message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
             },
-            signature: Some("sig-data".to_string()),
-            // Minimal params carrying only a format: the detail id must
-            // still correlate with the wire tool-call id.
-            additional_params: Some(json!({"format": "anthropic"})),
-        };
+        )
+        .with_signature(Some("sig-data".to_string()))
+        // Minimal params carrying only a format: the detail id must
+        // still correlate with the wire tool-call id.
+        .with_additional_params(Some(json!({"format": "anthropic"})));
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::ToolCall(tool_call),

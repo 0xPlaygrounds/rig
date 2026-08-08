@@ -26,40 +26,13 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 pub(crate) mod shared_parts {
     use serde_json::Value;
 
-    use crate::streaming::{MintKind, PartId, RawStreamingChoice, RawStreamingToolCall};
+    use crate::streaming::{MintKind, RawStreamingChoice, RawStreamingToolCall, StreamPartId};
 
     /// Gemini thought parts carry no id or block boundaries; a per-stream
     /// constant minted identity keeps all thought deltas merging into one
     /// item, and the core accumulator's minted-id boundary splits items
     /// around other output. Minted, so it can never reach a request.
-    pub(crate) const REASONING_ID: PartId = PartId::Minted {
-        kind: MintKind::Reasoning,
-        index: 0,
-    };
-
-    /// A thought fragment as a canonical reasoning delta.
-    pub(crate) fn reasoning_delta<R>(text: String) -> RawStreamingChoice<R> {
-        RawStreamingChoice::ReasoningDelta {
-            id: REASONING_ID,
-            reasoning: text,
-        }
-    }
-
-    /// A completed signed thinking block: the full accumulated thought text
-    /// restated with its provider signature, superseding the deltas it
-    /// restates (the core accumulator's replace-on-supersede keys on the
-    /// per-stream [`REASONING_ID`]). Shared by the REST and Interactions
-    /// wires, whose signature payloads coincide (an opaque provider string,
-    /// passed through verbatim).
-    pub(crate) fn signed_reasoning<R>(text: String, signature: String) -> RawStreamingChoice<R> {
-        RawStreamingChoice::Reasoning {
-            id: REASONING_ID,
-            content: crate::completion::message::ReasoningContent::Text {
-                text,
-                signature: Some(signature),
-            },
-        }
-    }
+    pub(crate) const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
 
     /// A whole function-call part as a canonical tool call (Gemini never
     /// streams arguments incrementally).
@@ -68,23 +41,24 @@ pub(crate) mod shared_parts {
         args: Value,
         wire_id: Option<String>,
         signature: Option<String>,
+        tool_ids: &mut crate::streaming::SyntheticIds,
     ) -> RawStreamingChoice<R> {
         // Never fabricate the identifier that travels upstream: the wire's
         // own id (when Gemini supplies one) is both the part identity and
         // the correlation id; an id-less call keys the stream by a minted
-        // identity and replays with the id absent. The tool *name* is never
-        // an identity — two calls to the same tool in one turn must stay
-        // distinct, correlated by order and by the rig-internal call id.
-        let id = wire_id
-            .clone()
-            .filter(|id| !id.is_empty())
-            .map(PartId::wire)
-            .unwrap_or(PartId::Minted {
-                kind: MintKind::Tool,
-                index: 0,
-            });
+        // identity — counted up per stream, so two id-less calls never
+        // collide on one key — and replays with the id absent. The tool
+        // *name* is never an identity — two calls to the same tool in one
+        // turn must stay distinct, correlated by order and by the
+        // rig-internal call id.
+        let tool_id = wire_id.clone().and_then(crate::streaming::WireId::new);
+        let id = tool_id
+            .as_ref()
+            .map(|id| StreamPartId::wire(id.as_str()))
+            .unwrap_or_else(|| tool_ids.mint());
         let tool_call = RawStreamingToolCall {
             id,
+            tool_id,
             internal_call_id: crate::id::generate(),
             call_id: wire_id.filter(|id| !id.is_empty()),
             name,
@@ -214,16 +188,14 @@ const RECOGNIZABLE_CHUNK_KEYS: &[&str] = &["candidates", "usageMetadata"];
 /// metadata); frame-triage policy lives in
 /// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
 /// not here.
-#[derive(Default)]
 struct GeminiRestAdapter {
-    /// Thought text since the last boundary (signed emission, visible text,
-    /// or tool call). The grammar requires a full `Reasoning` block to be the
-    /// block's *completed* form, but Gemini's `thoughtSignature` chunk
-    /// carries only its own final fragment — so the adapter restates the
-    /// accumulated text. Reset on non-thought output to mirror the
-    /// accumulator's minted-id boundary: a signed chunk after interleaved
-    /// output completes only the post-boundary part.
-    thought_buffer: String,
+    /// Owns the constant-key thought lifecycle — the ends this wire never
+    /// announces are derived by the shared lifecycle, not hand-rolled here.
+    /// All accumulation lives in the shared accumulator.
+    reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
+    /// Per-stream minter for id-less tool-call keys — a fresh key per call,
+    /// so two id-less calls in one turn never collide on one identity.
+    tool_ids: crate::streaming::SyntheticIds,
     final_usage: Option<PartialUsage>,
     final_finish_reason: Option<FinishReason>,
     final_finish_message: Option<String>,
@@ -233,6 +205,23 @@ struct GeminiRestAdapter {
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn.
     failed: bool,
+}
+
+impl Default for GeminiRestAdapter {
+    fn default() -> Self {
+        Self {
+            reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
+                shared_parts::REASONING_ID,
+            ),
+            tool_ids: crate::streaming::SyntheticIds::tool(),
+            final_usage: None,
+            final_finish_reason: None,
+            final_finish_message: None,
+            final_model_version: None,
+            final_response_id: None,
+            failed: false,
+        }
+    }
 }
 
 impl WireAdapter for GeminiRestAdapter {
@@ -342,26 +331,19 @@ impl GeminiRestAdapter {
                 thought_signature,
                 ..
             } => {
-                if let Some(signature) = thought_signature {
-                    // Signature arrives on the final chunk of a thinking
-                    // block; emit a full Reasoning — the completed restatement
-                    // of every fragment since the last boundary, not just this
-                    // chunk's text — so the core accumulator's
-                    // replace-on-supersede discards only the deltas it
-                    // restates.
-                    self.thought_buffer.push_str(&text);
-                    // Emit even when no thought text accumulated: a
-                    // signature-only block still carries replay-required
-                    // provider state, and the gRPC and Interactions adapters
-                    // already emit it — the REST wire must not diverge.
-                    out.push(Ok(shared_parts::signed_reasoning(
-                        std::mem::take(&mut self.thought_buffer),
-                        signature,
-                    )));
-                } else if !text.is_empty() {
-                    self.thought_buffer.push_str(&text);
-                    out.push(Ok(shared_parts::reasoning_delta(text)));
-                }
+                // Declare what the part carried; the shared lifecycle
+                // derives the sequence (a signature closes the block; the
+                // shared accumulator signs the accumulated deltas or records
+                // a signature-only part when nothing streamed).
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: Some(text),
+                        reasoning_signature: thought_signature,
+                        text: None,
+                        tool_events: Vec::new(),
+                    },
+                    out,
+                );
             }
             Part {
                 part: PartKind::Text(text),
@@ -375,49 +357,51 @@ impl GeminiRestAdapter {
                 // `thought: true` arm above, which real streams never reach
                 // for the signature. Dropping it costs the replay-required
                 // provider state Gemini validates (`MISSING_THOUGHT_SIGNATURE`).
-                if let Some(signature) = thought_signature {
-                    if self.thought_buffer.is_empty() {
-                        // The thought block already closed (interleaved
-                        // answer text cleared the buffer): the signature is
-                        // lifecycle metadata for that block. Attaching it as
-                        // a full block here would sign an *empty* sibling
-                        // appended after the answer and leave the real
-                        // chain-of-thought replaying unsigned (#2258 B4).
-                        out.push(Ok(streaming::RawStreamingChoice::ReasoningSignature {
-                            id: shared_parts::REASONING_ID,
-                            signature,
-                        }));
-                    } else {
-                        out.push(Ok(shared_parts::signed_reasoning(
-                            std::mem::take(&mut self.thought_buffer),
-                            signature,
-                        )));
-                    }
-                }
-                if !text.is_empty() {
-                    // Non-thought output closes the open reasoning item
-                    // (accumulator minted-id boundary).
-                    self.thought_buffer.clear();
-                    out.push(Ok(streaming::RawStreamingChoice::Message(text)));
-                }
+                // A trailing `thoughtSignature` rides a part with no
+                // `thought` flag (recorded traffic:
+                // `{"text":"","thoughtSignature":"..."}`); the shared
+                // lifecycle emits its close before the text, and one end
+                // covers every case — open block (sign the deltas),
+                // already-closed block (sign the block that holds the
+                // chain-of-thought, #2258 B4), nothing streamed
+                // (signature-only part). No per-case branch to forget.
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: None,
+                        reasoning_signature: thought_signature,
+                        text: Some(text),
+                        tool_events: Vec::new(),
+                    },
+                    out,
+                );
             }
             Part {
                 part: PartKind::FunctionCall(function_call),
                 thought_signature,
                 ..
             } => {
-                // Non-thought output closes the open reasoning item
-                // (accumulator minted-id boundary).
-                self.thought_buffer.clear();
-                out.push(Ok(shared_parts::function_call(
-                    function_call.name,
-                    function_call.args,
-                    function_call.id,
-                    thought_signature,
-                )));
+                // Tool content interleaving an open thought block: the
+                // shared lifecycle synthesizes the boundary end.
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: None,
+                        reasoning_signature: None,
+                        text: None,
+                        tool_events: vec![shared_parts::function_call(
+                            function_call.name,
+                            function_call.args,
+                            function_call.id,
+                            thought_signature,
+                            &mut self.tool_ids,
+                        )],
+                    },
+                    out,
+                );
             }
             part => {
-                tracing::warn!(?part, "Unsupported response type with streaming");
+                // Structural metadata only: an unmodeled part can carry
+                // model output, which must not leak into WARN logs.
+                crate::providers::internal::adapter::warn_unmodeled("gemini_part", &part);
             }
         }
     }
@@ -1199,7 +1183,7 @@ mod tests {
 
             let mut signed = None;
             while let Some(item) = stream.next().await {
-                if let StreamedAssistantContent::Reasoning(reasoning) =
+                if let StreamedAssistantContent::Reasoning { reasoning, .. } =
                     item.expect("stream item should be Ok")
                 {
                     signed = Some(reasoning);

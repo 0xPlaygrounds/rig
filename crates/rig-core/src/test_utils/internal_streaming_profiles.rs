@@ -26,7 +26,7 @@ fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
 fn unknown_frame<U, D>(data: &str) -> WireEvent<CompatibleChunk<U, D>> {
     WireEvent::Unknown {
         event_type: data.to_owned(),
-        value: serde_json::Value::String(data.to_owned()),
+        value: serde_json::Value::String(data.to_owned()).into(),
     }
 }
 
@@ -156,6 +156,78 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         true
+    }
+}
+
+/// Streaming profile whose reasoning deltas straddle a complete tool call —
+/// pins that a tool call starting is a reasoning boundary on this wire.
+#[derive(Clone, Copy)]
+pub(crate) struct ReasoningAroundToolCallProfile;
+
+impl CompatibleStreamProfile for ReasoningAroundToolCallProfile {
+    type Usage = Usage;
+    type Detail = ();
+    type FinalResponse = StreamFinal;
+
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
+        let choice = match data {
+            "reasoning_a" => Some(CompatibleChoice {
+                finish_reason: CompatibleFinishReason::Absent,
+                text: None,
+                reasoning: Some("thinking before".to_owned()),
+                tool_calls: Vec::new(),
+                details: Vec::new(),
+            }),
+            "tool_call" => Some(tool_call_choice(
+                CompatibleFinishReason::Absent,
+                vec![tool_call_chunk(
+                    0,
+                    Some("call_mid"),
+                    Some("probe"),
+                    Some("{\"q\":1}"),
+                )],
+            )),
+            "reasoning_b" => Some(CompatibleChoice {
+                finish_reason: CompatibleFinishReason::Absent,
+                text: None,
+                reasoning: Some("thinking after".to_owned()),
+                tool_calls: Vec::new(),
+                details: Vec::new(),
+            }),
+            // One chunk carrying BOTH a reasoning delta and a complete tool
+            // call — pins the adapter's within-chunk order: the reasoning is
+            // emitted (and its block closed) before the tool call.
+            "combined" => Some(CompatibleChoice {
+                finish_reason: CompatibleFinishReason::Absent,
+                text: None,
+                reasoning: Some("thinking inline".to_owned()),
+                tool_calls: vec![tool_call_chunk(
+                    0,
+                    Some("call_mid"),
+                    Some("probe"),
+                    Some("{\"q\":1}"),
+                )],
+                details: Vec::new(),
+            }),
+            "finish" => Some(tool_call_choice(
+                CompatibleFinishReason::Reported(crate::completion::FinishReason::ToolCalls),
+                Vec::new(),
+            )),
+            _ => None,
+        };
+
+        match choice {
+            Some(choice) => WireEvent::Known(test_chunk(choice)),
+            None => unknown_frame(data),
+        }
+    }
+
+    fn build_final_response(
+        &self,
+        terminal: CompatibleTerminal<Self::Usage>,
+    ) -> Self::FinalResponse {
+        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason)
     }
 }
 

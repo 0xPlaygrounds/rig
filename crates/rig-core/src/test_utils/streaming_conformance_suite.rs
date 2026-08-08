@@ -200,6 +200,7 @@ macro_rules! streaming_conformance_suite {
             gated bare_terminal_after_only_unparseable_frames_fabricates_nothing
                 => bare_terminal && malformed_frame;
             ungated usage_variants_are_reported_or_zero_sentinel;
+            gated interleaved_constant_id_reasoning_preserves_order => interleaved_reasoning;
         }
 
         /// Anti-tamper: the expanded suite covers exactly the canonical

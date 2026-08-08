@@ -7,7 +7,7 @@
 
 use rig::OneOrMany;
 use rig::completion::CompletionModel;
-use rig::message::{AssistantContent, Message};
+use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::streaming::StreamingPrompt;
 use std::sync::Arc;
@@ -79,7 +79,7 @@ async fn observe_stream(
     while let Some(item) = stream.next().await {
         match item {
             Ok(StreamedAssistantContent::Text(text)) => observation.text.push_str(&text.text),
-            Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
                 observation
                     .streamed_encrypted
                     .extend(encrypted_blocks_of(&reasoning));
@@ -246,11 +246,14 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 id: stream.message_id.clone(),
                 content: stream.choice.clone(),
             };
-            let tool_result_message = Message::tool_result_with_call_id(
-                tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                "Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW",
-            );
+            let tool_result_message = Message::User {
+        content: OneOrMany::one(UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            tool_call.function.name.clone(),
+            OneOrMany::one(ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")),
+        )),
+    };
 
             let followup = model
                 .completion_request("Summarize the weather using the tool result.")
@@ -344,11 +347,14 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 id: None,
                 content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
             };
-            let tool_result_message = Message::tool_result_with_call_id(
-                tool_call.id,
-                tool_call.call_id,
-                ALPHA_SIGNAL_OUTPUT,
-            );
+            let tool_result_message = Message::User {
+        content: OneOrMany::one(UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            tool_call.function.name.clone(),
+            OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+        )),
+    };
             let followup_request = model
                 .completion_request(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",
