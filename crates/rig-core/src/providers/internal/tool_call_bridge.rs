@@ -223,9 +223,19 @@ where
     /// its wire ordering when flushed. The caller chooses the unparseable
     /// policy per flush site when building end events.
     pub fn drain_ordered(&mut self) -> Vec<ToolCallSlot> {
+        self.drain_ordered_indexed()
+            .into_iter()
+            .map(|(_, slot)| slot)
+            .collect()
+    }
+
+    /// [`ToolCallBridge::drain_ordered`], keeping each slot's wire index —
+    /// for adapters that track per-slot state of their own beside the
+    /// bridge (the Responses adapter's pending `call_id`s).
+    pub fn drain_ordered_indexed(&mut self) -> Vec<(I, ToolCallSlot)> {
         let mut slots: Vec<(I, ToolCallSlot)> = self.slots.drain().collect();
         slots.sort_by_key(|(index, _)| *index);
-        slots.into_iter().map(|(_, slot)| slot).collect()
+        slots
     }
 }
 
