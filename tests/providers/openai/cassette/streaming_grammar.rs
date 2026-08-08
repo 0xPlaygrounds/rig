@@ -307,6 +307,21 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
                     "readable reasoning part destroyed by the encrypted part: {text:?}"
                 );
             }
+
+            // One `rs_*` item, one part: the multi-block done item must not
+            // split into same-id siblings, which would replay as duplicate
+            // reasoning input items carrying the identical id.
+            let reasoning_part_count = run
+                .choice
+                .iter()
+                .filter(|content| {
+                    matches!(content, rig::message::AssistantContent::Reasoning(_))
+                })
+                .count();
+            assert_eq!(
+                reasoning_part_count, 1,
+                "the summary + encrypted done item must aggregate as one part"
+            );
         },
     )
     .await;

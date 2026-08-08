@@ -138,42 +138,52 @@ pub(crate) fn normalize_responses_stream(
     streaming::StreamingCompletionResponse::stream(provider, normalized)
 }
 
-pub(crate) fn reasoning_choices_from_done_item(
+/// The done item's blocks as ONE authoritative end-of-part restatement.
+///
+/// Every block — summaries, content texts, `encrypted_content` — belongs to
+/// one `rs_*` reasoning item, so it must land in one part: emitting a
+/// whole-block choice per entry made every block after the first a sibling
+/// part under the same key, and history then replayed duplicate reasoning
+/// input items carrying the identical `rs_*` id. The restatement supersedes
+/// the delta-built part in place (wire field order: summary, content,
+/// encrypted). `None` when the item carries no blocks — an empty done item
+/// says nothing at the boundary.
+pub(crate) fn reasoning_end_from_done_item(
     id: &crate::streaming::StreamPartId,
     provider_id: Option<&crate::streaming::WireId>,
     summary: &[ReasoningSummary],
     content: &[String],
     encrypted_content: Option<&str>,
-) -> Vec<RawStreamingChoice<StreamingCompletionResponse>> {
-    let mut choices = summary
+) -> Option<RawStreamingChoice<StreamingCompletionResponse>> {
+    let mut blocks = summary
         .iter()
         .map(|reasoning_summary| match reasoning_summary {
-            ReasoningSummary::SummaryText { text } => RawStreamingChoice::Reasoning {
-                id: id.clone(),
-                provider_id: provider_id.cloned(),
-                content: ReasoningContent::Summary(text.to_owned()),
-            },
+            ReasoningSummary::SummaryText { text } => ReasoningContent::Summary(text.to_owned()),
         })
         .collect::<Vec<_>>();
 
-    choices.extend(content.iter().map(|text| RawStreamingChoice::Reasoning {
-        id: id.clone(),
-        provider_id: provider_id.cloned(),
-        content: ReasoningContent::Text {
-            text: text.to_owned(),
-            signature: None,
-        },
+    blocks.extend(content.iter().map(|text| ReasoningContent::Text {
+        text: text.to_owned(),
+        signature: None,
     }));
 
     if let Some(encrypted_content) = encrypted_content.filter(|s| !s.is_empty()) {
-        choices.push(RawStreamingChoice::Reasoning {
-            id: id.clone(),
-            provider_id: provider_id.cloned(),
-            content: ReasoningContent::Encrypted(encrypted_content.to_owned()),
-        });
+        blocks.push(ReasoningContent::Encrypted(encrypted_content.to_owned()));
     }
 
-    choices
+    if blocks.is_empty() {
+        return None;
+    }
+
+    Some(RawStreamingChoice::ReasoningEnd {
+        id: id.clone(),
+        reasoning: Some(crate::message::Reasoning {
+            id: provider_id.map(|provider_id| provider_id.as_str().to_owned()),
+            content: blocks,
+        }),
+        signature: None,
+        wire_sent: true,
+    })
 }
 
 impl From<&StreamingCompletionResponse> for crate::completion::Usage {
@@ -711,7 +721,7 @@ impl RawChoiceAccumulator {
                     .minted_reasoning_ids
                     .remove(&output_index)
                     .unwrap_or(crate::streaming::StreamPartId::wire(id));
-                immediate.extend(reasoning_choices_from_done_item(
+                immediate.extend(reasoning_end_from_done_item(
                     &key,
                     provider_id.as_ref(),
                     &summary,
@@ -1505,7 +1515,7 @@ mod tests {
     use super::{
         ContentPartChunkPart, ItemChunk, ItemChunkKind, RawChoiceAccumulator,
         ResponsesStreamOptions, StreamingCompletionChunk, classify_responses_frame,
-        raw_choices_from_sse_body, reasoning_choices_from_done_item,
+        raw_choices_from_sse_body, reasoning_end_from_done_item,
     };
     use crate::completion::CompletionModel;
     use crate::message::ReasoningContent;
@@ -1851,7 +1861,7 @@ mod tests {
     }
 
     #[test]
-    fn reasoning_done_item_emits_summary_then_encrypted() {
+    fn reasoning_done_item_fuses_summary_content_and_encrypted_into_one_end() {
         let summary = vec![
             ReasoningSummary::SummaryText {
                 text: "step 1".to_string(),
@@ -1861,7 +1871,7 @@ mod tests {
             },
         ];
         let content = vec!["private reasoning".to_string()];
-        let choices = reasoning_choices_from_done_item(
+        let end = reasoning_end_from_done_item(
             &crate::streaming::StreamPartId::wire("rs_1"),
             crate::streaming::WireId::new("rs_1").as_ref(),
             &summary,
@@ -1869,35 +1879,31 @@ mod tests {
             Some("enc_blob"),
         );
 
-        assert_eq!(choices.len(), 4);
-        assert!(matches!(
-            choices.first(),
-            Some(RawStreamingChoice::Reasoning {                id,
-                provider_id: _,
-                content: ReasoningContent::Summary(text),
-            }) if id == &crate::streaming::StreamPartId::wire("rs_1") && text == "step 1"
-        ));
-        assert!(matches!(
-            choices.get(1),
-            Some(RawStreamingChoice::Reasoning {                id,
-                provider_id: _,
-                content: ReasoningContent::Summary(text),
-            }) if id == &crate::streaming::StreamPartId::wire("rs_1") && text == "step 2"
-        ));
-        assert!(matches!(
-            choices.get(2),
-            Some(RawStreamingChoice::Reasoning {                id,
-                provider_id: _,
-                content: ReasoningContent::Text { text, signature: None },
-            }) if id == &crate::streaming::StreamPartId::wire("rs_1") && text == "private reasoning"
-        ));
-        assert!(matches!(
-            choices.get(3),
-            Some(RawStreamingChoice::Reasoning {                id,
-                provider_id: _,
-                content: ReasoningContent::Encrypted(data),
-            }) if id == &crate::streaming::StreamPartId::wire("rs_1") && data == "enc_blob"
-        ));
+        // ONE end event carrying every block in wire field order — never a
+        // choice per block, which made siblings under one `rs_*` id.
+        let Some(RawStreamingChoice::ReasoningEnd {
+            id,
+            reasoning: Some(reasoning),
+            signature: None,
+            wire_sent: true,
+        }) = end
+        else {
+            panic!("expected one wire-sent ReasoningEnd restatement");
+        };
+        assert_eq!(id, crate::streaming::StreamPartId::wire("rs_1"));
+        assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+        assert_eq!(
+            reasoning.content,
+            vec![
+                ReasoningContent::Summary("step 1".to_string()),
+                ReasoningContent::Summary("step 2".to_string()),
+                ReasoningContent::Text {
+                    text: "private reasoning".to_string(),
+                    signature: None,
+                },
+                ReasoningContent::Encrypted("enc_blob".to_string()),
+            ]
+        );
     }
 
     #[test]
@@ -1921,12 +1927,21 @@ mod tests {
         let choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
             .expect("sse body should decode");
 
+        // The done item arrives as one wire-sent end restatement whose
+        // single block is the reasoning text.
         assert!(matches!(
             choices.first(),
-            Some(RawStreamingChoice::Reasoning {                id,
-                provider_id: _,
-                content: ReasoningContent::Text { text, signature: None },
-            }) if id == &crate::streaming::StreamPartId::wire("rs_text_1") && text == "visible reasoning"
+            Some(RawStreamingChoice::ReasoningEnd {
+                id,
+                reasoning: Some(reasoning),
+                wire_sent: true,
+                ..
+            }) if id == &crate::streaming::StreamPartId::wire("rs_text_1")
+                && reasoning.content
+                    == vec![ReasoningContent::Text {
+                        text: "visible reasoning".to_string(),
+                        signature: None,
+                    }]
         ));
     }
 
@@ -2040,7 +2055,7 @@ mod tests {
         let summary = vec![ReasoningSummary::SummaryText {
             text: "only summary".to_string(),
         }];
-        let choices = reasoning_choices_from_done_item(
+        let end = reasoning_end_from_done_item(
             &crate::streaming::StreamPartId::wire("rs_2"),
             crate::streaming::WireId::new("rs_2").as_ref(),
             &summary,
@@ -2048,21 +2063,26 @@ mod tests {
             None,
         );
 
-        assert_eq!(choices.len(), 1);
-        assert!(matches!(
-            choices.first(),
-            Some(RawStreamingChoice::Reasoning {                id,
-                provider_id: _,
-                content: ReasoningContent::Summary(text),
-            }) if id == &crate::streaming::StreamPartId::wire("rs_2") && text == "only summary"
-        ));
+        let Some(RawStreamingChoice::ReasoningEnd {
+            id,
+            reasoning: Some(reasoning),
+            ..
+        }) = end
+        else {
+            panic!("expected one ReasoningEnd restatement");
+        };
+        assert_eq!(id, crate::streaming::StreamPartId::wire("rs_2"));
+        assert_eq!(
+            reasoning.content,
+            vec![ReasoningContent::Summary("only summary".to_string())]
+        );
     }
 
     #[test]
     fn empty_encrypted_reasoning_is_not_emitted() {
         let content = vec!["visible reasoning".to_string()];
 
-        let choices = reasoning_choices_from_done_item(
+        let end = reasoning_end_from_done_item(
             &crate::streaming::StreamPartId::wire("rs_1"),
             crate::streaming::WireId::new("rs_1").as_ref(),
             &[],
@@ -2070,13 +2090,33 @@ mod tests {
             Some(""),
         );
 
-        assert_eq!(choices.len(), 1);
-        assert!(matches!(
-            choices.first(),
-            Some(RawStreamingChoice::Reasoning {                content: ReasoningContent::Text { text, .. },
-                ..
-            }) if text == "visible reasoning"
-        ));
+        let Some(RawStreamingChoice::ReasoningEnd {
+            reasoning: Some(reasoning),
+            ..
+        }) = end
+        else {
+            panic!("expected one ReasoningEnd restatement");
+        };
+        assert_eq!(
+            reasoning.content,
+            vec![ReasoningContent::Text {
+                text: "visible reasoning".to_string(),
+                signature: None,
+            }],
+            "an empty encrypted payload contributes no block"
+        );
+
+        // An entirely empty done item says nothing at the boundary.
+        assert!(
+            reasoning_end_from_done_item(
+                &crate::streaming::StreamPartId::wire("rs_1"),
+                crate::streaming::WireId::new("rs_1").as_ref(),
+                &[],
+                &[],
+                Some(""),
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -2296,6 +2336,83 @@ mod tests {
         assert_eq!(final_response.usage.input_tokens, 10);
         assert_eq!(final_response.usage.output_tokens, 5);
         assert_eq!(final_response.usage.total_tokens, 15);
+    }
+
+    /// A multi-block reasoning done item (summaries + `encrypted_content`)
+    /// aggregates as exactly ONE reasoning part carrying every block in wire
+    /// order — never sibling parts sharing one `rs_*` id, which would replay
+    /// as duplicate reasoning input items carrying the identical id on the
+    /// next request.
+    #[tokio::test]
+    async fn multi_block_reasoning_done_item_yields_one_part() {
+        let reasoning_done = json!({
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "sequence_number": 1,
+            "item": {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [
+                    {"type": "summary_text", "text": "step 1"},
+                    {"type": "summary_text", "text": "step 2"}
+                ],
+                "content": [],
+                "encrypted_content": "enc_blob"
+            }
+        });
+        let completed = json!({
+            "type": "response.completed",
+            "sequence_number": 2,
+            "response": sample_response(ResponseStatus::Completed),
+        });
+
+        let client = openai::Client::builder()
+            .http_client(MockStreamingClient {
+                sse_bytes: sse_bytes_from_json_events(&[reasoning_done, completed]),
+            })
+            .api_key("test-key")
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("gpt-5.4");
+        let request = model.completion_request("hello").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut completed_reasoning = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let StreamedAssistantContent::Reasoning { reasoning, .. } =
+                item.expect("stream items should be ok")
+            {
+                completed_reasoning.push(reasoning);
+            }
+        }
+
+        assert_eq!(
+            completed_reasoning.len(),
+            1,
+            "one done item must complete exactly one reasoning part, got {completed_reasoning:?}"
+        );
+        let reasoning = completed_reasoning.first().expect("one part");
+        assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+        assert_eq!(
+            reasoning.content,
+            vec![
+                ReasoningContent::Summary("step 1".to_string()),
+                ReasoningContent::Summary("step 2".to_string()),
+                ReasoningContent::Encrypted("enc_blob".to_string()),
+            ],
+            "every block survives, in wire order, inside the one part"
+        );
+
+        // The aggregated choice replays as exactly one reasoning input item.
+        let choice = stream.choice;
+        let reasoning_parts = choice
+            .iter()
+            .filter(|content| matches!(content, crate::message::AssistantContent::Reasoning(_)))
+            .count();
+        assert_eq!(
+            reasoning_parts, 1,
+            "history must carry one reasoning part per rs_* id, got {choice:?}"
+        );
     }
 
     /// A `response.failed` after a fully-delivered tool call: the tool call is
@@ -2882,10 +2999,11 @@ mod tests {
 
         let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
             .expect("the envelope-less reasoning replay must decode");
-        // The done item's full block shares the minted per-slot identity.
+        // The done item's restatement shares the minted per-slot identity.
         assert!(raw_choices.iter().any(|choice| matches!(
             choice,
-            RawStreamingChoice::Reasoning { id, .. } if id == &crate::streaming::MintKind::Output.for_wire_index(0)
+            RawStreamingChoice::ReasoningEnd { id, reasoning: Some(_), .. }
+                if id == &crate::streaming::MintKind::Output.for_wire_index(0)
         )));
 
         let raw_response = sample_response(ResponseStatus::Completed);
