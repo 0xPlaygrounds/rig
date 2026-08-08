@@ -559,8 +559,12 @@ fn function_step_end(step: OpenFunctionStep) -> streaming::ToolInputEnd {
         announce_arguments,
         saw_arguments_delta,
     } = step;
+    // Interactions is a single-identifier wire: its id travels as
+    // `tool_id` only. Filling `call_id` too made the accumulator take the
+    // dual-wire arm and store ProviderCallId{item_id: Some(fc_…)} — a
+    // fabricated Responses-shaped identity that slips past the foreign-id
+    // guard on cross-provider replay.
     let mut end = streaming::ToolInputEnd::new(key, streaming::UnparseableToolInput::Error);
-    end.call_id = wire_id.as_ref().map(|id| id.as_str().to_owned());
     end.tool_id = wire_id;
     if !saw_arguments_delta {
         end.arguments = announce_arguments;
@@ -892,6 +896,43 @@ mod tests {
         assert_eq!(
             tool_calls.first().expect("one call").function.arguments,
             serde_json::json!({"x": 7})
+        );
+    }
+
+    /// Interactions is a single-identifier wire: its `fc_…` id must land
+    /// in `provider.call_id` with `item_id` empty. Filling both slots
+    /// fabricated a Responses-shaped dual identity whose fake item id
+    /// passed the foreign-id guard on cross-provider replay.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_streamed_call_carries_a_single_wire_identity() {
+        use crate::streaming::StreamedAssistantContent;
+
+        let (items, _stream) = drive_frames(&[
+            r#"{"event_type":"step.start","index":1,"step":{"arguments":{},"id":"fc_1","name":"add","type":"function_call"}}"#,
+            r#"{"delta":{"arguments":"{\"x\":1}","type":"arguments_delta"},"event_type":"step.delta","index":1}"#,
+            r#"{"event_type":"step.stop","index":1}"#,
+            r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
+        ])
+        .await;
+
+        let tool_calls: Vec<_> = items
+            .iter()
+            .filter_map(|item| match item {
+                Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => Some(tool_call),
+                _ => None,
+            })
+            .collect();
+        let provider = tool_calls
+            .first()
+            .expect("one call")
+            .provider
+            .as_ref()
+            .expect("the wire issued an id");
+        assert_eq!(provider.call_id, "fc_1");
+        assert_eq!(
+            provider.item_id, None,
+            "a single-identifier wire must not fabricate a dual identity"
         );
     }
 
