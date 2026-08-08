@@ -1461,7 +1461,7 @@ impl TryFrom<Message> for message::Message {
                             tool_use_id,
                             content,
                             ..
-                        } => message::UserContent::tool_result(
+                        } => message::UserContent::tool_result_from_wire(
                             tool_use_id,
                             // Anthropic's wire correlates results by id only
                             // and never carries the tool name; this

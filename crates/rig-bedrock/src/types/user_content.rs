@@ -34,7 +34,7 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigUserContent {
                 // Bedrock's wire correlates results by `toolUseId` only
                 // and never carries the tool name; this conversion is lossy
                 // for name-keyed wires.
-                Ok(RigUserContent(UserContent::tool_result(
+                Ok(RigUserContent(UserContent::tool_result_from_wire(
                     tool_result.tool_use_id,
                     "",
                     tool_results,

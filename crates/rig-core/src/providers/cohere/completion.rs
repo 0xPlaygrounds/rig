@@ -561,7 +561,7 @@ impl TryFrom<Message> for message::Message {
                 Ok(message::Message::User {
                     // Cohere tool messages carry no tool name; this
                     // conversion is lossy for name-keyed wires.
-                    content: OneOrMany::one(message::UserContent::tool_result(
+                    content: OneOrMany::one(message::UserContent::tool_result_from_wire(
                         tool_call_id,
                         "",
                         content,

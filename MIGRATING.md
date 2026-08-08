@@ -488,9 +488,16 @@ What this changes for you:
   paths use `ToolCall::from_wire(wire_id, function)` (empty mints) or
   `ToolCall::from_dual_wire(item_id, call_id, function)`.
   `with_call_id` is replaced by `with_provider(ProviderCallId)`.
-  `UserContent::tool_result(call_id, name, content)` takes the executed
-  tool's name (required); `tool_result_for(call, provider, name, content)`
-  is the agent-driver form; `tool_result_named` is gone.
+  `UserContent::tool_result(call, name, content)` takes the answered
+  call's correlation handle (echo `ToolCall::id`) and the executed
+  tool's name (required); the string is recorded as the handle only,
+  never as a provider-issued id — a bare string cannot prove provider
+  provenance, so echoing a minted handle no longer sends it upstream on
+  optional-id wires. When you hold provider identifiers, use
+  `tool_result_from_wire(wire_id, name, content)` (single-identifier
+  wire echo), `tool_result_with_call_id` (dual-identifier), or
+  `tool_result_for(call, provider, name, content)` — the agent-driver
+  form; `tool_result_named` is gone.
 - **Serialization to providers**: wires that require a call id (OpenAI
   chat/Responses, Anthropic, Bedrock, Gemini Interactions, xAI) receive
   `provider.call_id` when the provider issued one, else rig's minted id —

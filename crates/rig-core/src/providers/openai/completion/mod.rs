@@ -996,7 +996,7 @@ impl TryFrom<Message> for message::Message {
             } => message::Message::User {
                 // OpenAI chat tool messages carry no tool name; this
                 // conversion is lossy for name-keyed wires.
-                content: OneOrMany::one(message::UserContent::tool_result(
+                content: OneOrMany::one(message::UserContent::tool_result_from_wire(
                     tool_call_id,
                     "",
                     OneOrMany::one(message::ToolResultContent::text(content.as_text())),

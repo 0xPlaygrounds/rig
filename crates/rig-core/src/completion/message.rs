@@ -1004,16 +1004,18 @@ impl Message {
     }
 
     /// Helper constructor to make creating tool result messages easier.
-    /// `call_id` is the provider-issued identifier when one exists (empty
-    /// mints a correlation-only handle), `name` the executed tool's name.
+    /// `call` is the answered call's correlation handle — echo
+    /// [`ToolCall::id`]; it is never recorded as a provider-issued
+    /// identifier (see [`UserContent::tool_result`]). `name` is the
+    /// executed tool's name.
     pub fn tool_result(
-        call_id: impl Into<String>,
+        call: impl Into<String>,
         name: impl Into<String>,
         content: impl Into<String>,
     ) -> Self {
         Message::User {
             content: OneOrMany::one(UserContent::tool_result(
-                call_id,
+                call,
                 name,
                 OneOrMany::one(ToolResultContent::text(content)),
             )),
@@ -1154,16 +1156,40 @@ impl UserContent {
 
     /// Helper constructor to make creating user tool result content easier.
     ///
-    /// `call_id` is the provider-issued call identifier when the provider
-    /// issued one; an empty `call_id` records no provider id and mints the
-    /// correlation handle. `name` is the executed tool's name (required —
-    /// several wires key the replay on it).
+    /// `call` is the answered call's correlation handle — echo
+    /// [`ToolCall::id`] (an empty string mints a fresh handle). It is
+    /// recorded as the handle only, never as a provider-issued identifier:
+    /// a bare string cannot prove provider provenance, and stamping a
+    /// minted handle as one would send it upstream on wires whose id slot
+    /// is optional. When you hold provider identifiers, use
+    /// [`UserContent::tool_result_for`] (from an executed [`ToolCall`]) or
+    /// [`UserContent::tool_result_from_wire`] (from the provider's wire).
+    /// `name` is the executed tool's name (required — several wires key
+    /// the replay on it).
     pub fn tool_result(
-        call_id: impl Into<String>,
+        call: impl Into<String>,
         name: impl Into<String>,
         content: OneOrMany<ToolResultContent>,
     ) -> Self {
-        let provider = ProviderCallId::new(call_id);
+        UserContent::ToolResult(ToolResult {
+            call: ToolCallId::new_or_mint(call),
+            provider: None,
+            name: name.into(),
+            content,
+        })
+    }
+
+    /// Tool result content at the single-identifier provider boundary —
+    /// the inbound-converter form, mirroring [`ToolCall::from_wire`]:
+    /// `wire_id` came off the provider's wire, so it is recorded as the
+    /// provider-issued identifier (empty records none and mints the
+    /// handle).
+    pub fn tool_result_from_wire(
+        wire_id: impl Into<String>,
+        name: impl Into<String>,
+        content: OneOrMany<ToolResultContent>,
+    ) -> Self {
+        let provider = ProviderCallId::new(wire_id);
         let call = ToolCallId::for_provider(provider.as_ref());
         UserContent::ToolResult(ToolResult {
             call,

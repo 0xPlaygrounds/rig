@@ -1373,7 +1373,7 @@ impl From<Message> for crate::completion::Message {
             Message::ToolResult { name, content } => crate::completion::Message::User {
                 // Ollama tool messages carry no call id; the name is the
                 // wire's correlator and the rig-level handle is minted.
-                content: OneOrMany::one(message::UserContent::tool_result(
+                content: OneOrMany::one(message::UserContent::tool_result_from_wire(
                     "",
                     name,
                     OneOrMany::one(message::ToolResultContent::text(content)),

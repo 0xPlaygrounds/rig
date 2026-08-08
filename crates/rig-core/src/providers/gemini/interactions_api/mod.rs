@@ -2763,7 +2763,7 @@ mod tests {
                     name,
                     OneOrMany::one(ToolResultContent::text("out")),
                 ),
-                None => message::UserContent::tool_result(
+                None => message::UserContent::tool_result_from_wire(
                     call_id,
                     name,
                     OneOrMany::one(ToolResultContent::text("out")),

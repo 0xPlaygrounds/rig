@@ -3657,6 +3657,58 @@ mod tests {
         }
     }
 
+    /// A consumer echoing a minted `ToolCall::id` through
+    /// `tool_result()` must not put that handle on Gemini's wire: the
+    /// paired functionCall omitted its id (the provider issued none), and
+    /// an asymmetric functionCall/functionResponse id pair is rejected.
+    #[test]
+    fn echoed_minted_handle_never_reaches_the_function_response_id() {
+        use crate::OneOrMany;
+        use crate::message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent};
+
+        // An id-less wire minted the handle (Gemini REST issued no id).
+        let call = ToolCall::new(
+            ToolCallId::mint(),
+            ToolFunction {
+                name: "lookup".to_string(),
+                arguments: json!({}),
+            },
+        );
+
+        let message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::tool_result(
+                call.id.as_str(),
+                "lookup",
+                OneOrMany::one(ToolResultContent::text("out")),
+            )),
+        };
+        let content: Content = message.try_into().expect("tool result should convert");
+        let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+            panic!("expected a function response");
+        };
+        assert_eq!(response.id, None);
+    }
+
+    /// A wire-derived result keeps its provider-issued id on replay.
+    #[test]
+    fn wire_derived_tool_result_keeps_the_provider_id_on_the_wire() {
+        use crate::OneOrMany;
+        use crate::message::ToolResultContent;
+
+        let message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::tool_result_from_wire(
+                "gemini-issued-id",
+                "lookup",
+                OneOrMany::one(ToolResultContent::text("out")),
+            )),
+        };
+        let content: Content = message.try_into().expect("tool result should convert");
+        let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+            panic!("expected a function response");
+        };
+        assert_eq!(response.id.as_deref(), Some("gemini-issued-id"));
+    }
+
     #[test]
     fn test_markdown_document_conversion_to_text_part() {
         // Test that MARKDOWN documents are converted to plain text parts
