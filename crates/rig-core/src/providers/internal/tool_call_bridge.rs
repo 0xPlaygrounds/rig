@@ -48,6 +48,13 @@ pub struct ToolCallSlot {
     /// fragment preceded it — the buffer already holds streamed bytes, and
     /// re-emitting the restatement doubled them.
     pub saw_arguments_delta: bool,
+    /// The payload the wire announced when it opened the call (Gemini
+    /// Interactions `step.start` usually carries `"arguments": {}`, and
+    /// sometimes the whole payload). Replace-if-no-deltas, never
+    /// concatenated: fragments, when they arrive, ARE the arguments and
+    /// the announce is ignored; only a slot that fragmented nothing falls
+    /// back to what it announced.
+    pub announce_arguments: Option<serde_json::Value>,
 }
 
 impl ToolCallSlot {
@@ -66,6 +73,9 @@ impl ToolCallSlot {
         end.tool_id = crate::streaming::WireId::new(self.id.clone());
         end.signature = self.signature.clone();
         end.additional_params = self.additional_params.clone();
+        if !self.saw_arguments_delta {
+            end.arguments = self.announce_arguments.clone();
+        }
         end
     }
 }
@@ -141,6 +151,7 @@ where
             signature: None,
             additional_params: None,
             saw_arguments_delta: false,
+            announce_arguments: None,
         });
 
         if let Some(id) = wire_id
@@ -161,6 +172,19 @@ where
     /// The open slot at a wire index, if any.
     pub fn get(&self, index: I) -> Option<&ToolCallSlot> {
         self.slots.get(&index)
+    }
+
+    /// The open slot at a wire index, mutably — for fragment bookkeeping
+    /// on an already-open slot without `open`'s insert-if-absent.
+    pub fn get_mut(&mut self, index: I) -> Option<&mut ToolCallSlot> {
+        self.slots.get_mut(&index)
+    }
+
+    /// The bridge's identity minter, for adapters that also mint
+    /// *whole-call* identities: assemblies and whole calls must draw from
+    /// ONE counter so their minted keys stay disjoint.
+    pub fn minted_ids(&mut self) -> &mut SyntheticIds {
+        &mut self.minted
     }
 
     /// Close and take the slot at a wire index, if any.

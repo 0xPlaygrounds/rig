@@ -16,6 +16,8 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::gemini::streaming::shared_parts;
+use crate::providers::internal::tool_call_bridge::ToolCallBridge;
+
 use crate::providers::internal::adapter::{
     AdapterOutput, TriagedFrame, WireAdapter, WireFrame, run_wire_stream, triage_frame,
 };
@@ -210,41 +212,28 @@ struct InteractionsAdapter {
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Per-stream minter for id-less tool keys, shared by BOTH id-less
-    /// paths — fragmenting step assemblies and whole calls — so they can
-    /// never collide on one key (the step-0 assembly used to share
-    /// `Minted(Tool, 0)` with every id-less whole call, and the whole call
-    /// silently swallowed the open assembly).
-    tool_ids: crate::streaming::SyntheticIds,
     /// A provider `error` event ended the turn; later frames are dead — the
     /// provider aborted, and interpreting more output (or a terminal) would
     /// dress the failure up as a completed turn.
     failed: bool,
     /// Function-call steps whose arguments may still stream as
-    /// `arguments_delta` fragments, keyed by the wire's step index →
-    /// assembly identity. The wire announces the call in `step.start`
-    /// (usually with `"arguments": {}`), fragments the real payload across
+    /// `arguments_delta` fragments: the shared index → grammar-identity
+    /// bridge, keyed by the wire's step index. The wire announces the call
+    /// in `step.start` (usually with `"arguments": {}`, kept as the slot's
+    /// replace-if-no-deltas fallback), fragments the real payload across
     /// `step.delta` `arguments_delta` events, and closes it with
     /// `step.stop` — a genuine start/delta/end lifecycle. Recorded live in
     /// `streaming_grammar/interactions_same_tool_twice`; the pre-fix code
     /// emitted the empty-args call at `step.start` and dropped every
     /// fragment.
-    open_function_steps: std::collections::HashMap<u32, OpenFunctionStep>,
-}
-
-/// A function-call step announced by `step.start` and not yet closed.
-struct OpenFunctionStep {
-    /// Assembly identity every fragment is emitted under.
-    key: streaming::StreamPartId,
-    /// The wire's own call id, when it issued one.
-    wire_id: Option<streaming::WireId>,
-    /// The announce payload from `step.start`. Replace-if-no-deltas, never
-    /// concatenated: when `arguments_delta` fragments arrive they ARE the
-    /// arguments and the announce is ignored; only a step that fragments
-    /// nothing falls back to what it announced.
-    announce_arguments: Option<Value>,
-    /// Whether any `arguments_delta` fragment arrived for this step.
-    saw_arguments_delta: bool,
+    ///
+    /// The bridge's minter is also the whole-call minter
+    /// ([`ToolCallBridge::minted_ids`]): both id-less paths draw from ONE
+    /// counter, so a step assembly and a whole call can never collide on
+    /// one minted key (the step-0 assembly used to share
+    /// `Minted(Tool, 0)` with every id-less whole call, and the whole call
+    /// silently swallowed the open assembly).
+    open_function_steps: ToolCallBridge<u32>,
 }
 
 impl Default for InteractionsAdapter {
@@ -253,9 +242,8 @@ impl Default for InteractionsAdapter {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 shared_parts::REASONING_ID,
             ),
-            tool_ids: crate::streaming::SyntheticIds::tool(),
             failed: false,
-            open_function_steps: std::collections::HashMap::new(),
+            open_function_steps: ToolCallBridge::new(),
         }
     }
 }
@@ -277,13 +265,13 @@ impl WireAdapter for InteractionsAdapter {
         match event {
             InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
                 ContentDelta::ArgumentsDelta(arguments_delta) => {
-                    if let (Some(step), Some(fragment)) = (
-                        self.open_function_steps.get_mut(&index),
+                    if let (Some(slot), Some(fragment)) = (
+                        self.open_function_steps.get_mut(index),
                         arguments_delta.arguments,
                     ) {
-                        step.saw_arguments_delta = true;
+                        slot.saw_arguments_delta = true;
                         out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
-                            id: step.key.clone(),
+                            id: slot.key().clone(),
                             content: streaming::ToolCallDeltaContent::Delta(fragment),
                         }));
                     } else {
@@ -323,7 +311,9 @@ impl WireAdapter for InteractionsAdapter {
                     );
                 }
                 delta => {
-                    if let Some(choice) = content_delta_to_choice(delta, &mut self.tool_ids) {
+                    if let Some(choice) =
+                        content_delta_to_choice(delta, self.open_function_steps.minted_ids())
+                    {
                         // Interleaving content ends an open thought block —
                         // the shared lifecycle synthesizes the boundary end.
                         self.reasoning.emit_chunk(
@@ -349,32 +339,28 @@ impl WireAdapter for InteractionsAdapter {
                     // fragment the arguments as later `arguments_delta`
                     // events at this index, so emitting a whole call here
                     // would freeze the (usually empty) start-event payload
-                    // and drop every fragment. Key by the wire's own id
-                    // when present; never the tool name.
-                    let wire_id = id.and_then(streaming::WireId::new);
-                    let key = wire_id
-                        .as_ref()
-                        .map(|id| streaming::StreamPartId::wire(id.as_str()))
-                        // The per-stream minter, not the step index: the
-                        // wire index already keys `open_function_steps`,
-                        // and drawing assemblies and whole calls from ONE
-                        // counter is what makes their keys disjoint.
-                        .unwrap_or_else(|| self.tool_ids.mint());
-                    let tool_events = vec![streaming::RawStreamingChoice::ToolCallDelta {
-                        id: key.clone(),
-                        content: streaming::ToolCallDeltaContent::Name(name),
-                    }];
+                    // and drop every fragment. The bridge keys by the
+                    // wire's own id when present (never the tool name),
+                    // minting from the shared counter otherwise.
+                    let slot = self
+                        .open_function_steps
+                        .open(index, id.as_deref(), Some(&name));
                     // The announce payload is NOT a fragment: fragments
                     // append, and an announce that carries a partial (or
                     // full) payload alongside later `arguments_delta`
                     // events would concatenate into `{..}{..}`. It is kept
-                    // as the step's fallback, used only when no fragment
+                    // as the slot's fallback, used only when no fragment
                     // ever arrives (replace-if-no-deltas).
-                    let announce_arguments = arguments.filter(|arguments| {
+                    slot.announce_arguments = arguments.filter(|arguments| {
                         arguments
                             .as_object()
                             .is_none_or(|object| !object.is_empty())
                     });
+                    let key = slot.key().clone();
+                    let tool_events = vec![streaming::RawStreamingChoice::ToolCallDelta {
+                        id: key,
+                        content: streaming::ToolCallDeltaContent::Name(name),
+                    }];
                     // Tool content interleaving an open thought block: the
                     // shared lifecycle synthesizes the boundary end.
                     self.reasoning.emit_chunk(
@@ -386,17 +372,9 @@ impl WireAdapter for InteractionsAdapter {
                         },
                         out,
                     );
-                    self.open_function_steps.insert(
-                        index,
-                        OpenFunctionStep {
-                            key,
-                            wire_id,
-                            announce_arguments,
-                            saw_arguments_delta: false,
-                        },
-                    );
                 } else {
-                    let choices = step_start_to_choices(step, &mut self.tool_ids);
+                    let choices =
+                        step_start_to_choices(step, self.open_function_steps.minted_ids());
                     if !choices.is_empty() {
                         // Interleaving content ends an open thought block —
                         // the shared lifecycle synthesizes the boundary end.
@@ -416,9 +394,9 @@ impl WireAdapter for InteractionsAdapter {
                 // The wire promised a complete function-call step: close its
                 // assembly. Malformed accumulated input surfaces in-band
                 // (`Error` policy), matching the other complete-block wires.
-                if let Some(step) = self.open_function_steps.remove(&index) {
+                if let Some(slot) = self.open_function_steps.remove(index) {
                     out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(
-                        function_step_end(step),
+                        function_step_end(slot),
                     )));
                 }
             }
@@ -441,15 +419,13 @@ impl WireAdapter for InteractionsAdapter {
                 // accumulator's end-of-stream clear (which is reserved for
                 // genuine truncation, where the turn never finished). Wire
                 // (announcement) order keeps parallel calls deterministic.
-                let mut orphaned = self.open_function_steps.drain().collect::<Vec<_>>();
-                orphaned.sort_by_key(|(index, _)| *index);
-                for (index, step) in orphaned {
+                for (index, slot) in self.open_function_steps.drain_ordered_indexed() {
                     tracing::debug!(
                         index,
                         "closing a function-call step left open at interaction.completed"
                     );
                     out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(
-                        function_step_end(step),
+                        function_step_end(slot),
                     )));
                 }
 
@@ -551,25 +527,20 @@ where
 /// Close an announced function-call step. The shared accumulator finalizes
 /// the call from its accumulated fragments; a step that fragmented nothing
 /// falls back to the payload it announced at `step.start` (and to a
-/// parameterless `{}` when it announced none).
-fn function_step_end(step: OpenFunctionStep) -> streaming::ToolInputEnd {
-    let OpenFunctionStep {
-        key,
-        wire_id,
-        announce_arguments,
-        saw_arguments_delta,
-    } = step;
-    // Interactions is a single-identifier wire: its id travels as
-    // `tool_id` only. Filling `call_id` too made the accumulator take the
-    // dual-wire arm and store ProviderCallId{item_id: Some(fc_…)} — a
-    // fabricated Responses-shaped identity that slips past the foreign-id
-    // guard on cross-provider replay.
-    let mut end = streaming::ToolInputEnd::new(key, streaming::UnparseableToolInput::Error);
-    end.tool_id = wire_id;
-    if !saw_arguments_delta {
-        end.arguments = announce_arguments;
-    }
-    end
+/// parameterless `{}` when it announced none) — the slot's
+/// replace-if-no-deltas fallback.
+///
+/// Interactions is a single-identifier wire: its id travels as `tool_id`
+/// only (`ToolCallSlot::end_event`'s shape). Filling `call_id` too made
+/// the accumulator take the dual-wire arm and store
+/// ProviderCallId{item_id: Some(fc_…)} — a fabricated Responses-shaped
+/// identity that slips past the foreign-id guard on cross-provider replay.
+/// Malformed accumulated input surfaces in-band (`Error` policy), matching
+/// the other complete-block wires.
+fn function_step_end(
+    slot: crate::providers::internal::tool_call_bridge::ToolCallSlot,
+) -> streaming::ToolInputEnd {
+    slot.end_event(streaming::UnparseableToolInput::Error)
 }
 
 fn step_start_to_choices(
