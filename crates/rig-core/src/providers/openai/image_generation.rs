@@ -103,6 +103,10 @@ where
             );
         }
 
+        if let Some(additional_params) = generation_request.additional_params {
+            merge_inplace(&mut request, additional_params);
+        }
+
         let body = serde_json::to_vec(&request)?;
 
         let request = self
