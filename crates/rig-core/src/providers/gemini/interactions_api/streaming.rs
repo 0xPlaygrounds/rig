@@ -407,6 +407,29 @@ impl WireAdapter for InteractionsAdapter {
                     span.record_token_usage(&crate::completion::Usage::from(usage));
                 }
 
+                // A function-call step still open here was announced by
+                // `step.start` and — per this very event — belongs to a turn
+                // the provider COMPLETED: its `step.stop` was lost or
+                // reordered, not truncated away. Close each assembly with a
+                // synthesized end so the announced call finalizes from its
+                // accumulated fragments instead of vanishing in the
+                // accumulator's end-of-stream clear (which is reserved for
+                // genuine truncation, where the turn never finished). Wire
+                // (announcement) order keeps parallel calls deterministic.
+                let mut orphaned = self.open_function_steps.drain().collect::<Vec<_>>();
+                orphaned.sort_by_key(|(index, _)| *index);
+                for (index, (key, wire_id)) in orphaned {
+                    tracing::debug!(
+                        index,
+                        "closing a function-call step left open at interaction.completed"
+                    );
+                    let mut end =
+                        streaming::ToolInputEnd::new(key, streaming::UnparseableToolInput::Error);
+                    end.call_id = wire_id.as_ref().map(|id| id.as_str().to_owned());
+                    end.tool_id = wire_id;
+                    out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(end)));
+                }
+
                 // Only a genuine `interaction.completed` event counts as the
                 // provider completing the turn; the driver stops consuming
                 // after the terminal record. EOF without one is truncation and
@@ -716,6 +739,59 @@ mod tests {
             items.push(item.map_err(|error| error.to_string()));
         }
         (items, stream)
+    }
+
+    /// A `step.stop` that never arrives must not lose the call: the wire
+    /// announced it (`step.start`), streamed its full arguments
+    /// (`arguments_delta`), and proved the turn finished
+    /// (`interaction.completed`). Before this fix the assembly stayed open,
+    /// `finish` never ran (terminal return), and the accumulator's
+    /// end-of-stream clear dropped the whole call — the agent then treated
+    /// a tool-calling turn as plain text.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_missing_step_stop_does_not_lose_the_announced_call() {
+        use crate::streaming::StreamedAssistantContent;
+
+        let (items, stream) = drive_frames(&[
+            r#"{"event_type":"step.start","index":1,"step":{"arguments":{},"id":"fc_1","name":"get_weather","type":"function_call"}}"#,
+            r#"{"delta":{"arguments":"{\"city\":\"Paris\"}","type":"arguments_delta"},"event_type":"step.delta","index":1}"#,
+            r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
+        ])
+        .await;
+
+        let tool_calls: Vec<_> = items
+            .iter()
+            .filter_map(|item| match item {
+                Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => Some(tool_call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            tool_calls.len(),
+            1,
+            "the announced call must survive the missing step.stop, got {items:?}"
+        );
+        let tool_call = tool_calls.first().expect("one call");
+        assert_eq!(tool_call.function.name, "get_weather");
+        assert_eq!(
+            tool_call.function.arguments,
+            serde_json::json!({"city": "Paris"}),
+            "the streamed argument fragments finalize the call"
+        );
+        assert_eq!(tool_call.id, "fc_1");
+
+        // The turn completed normally: the terminal record survives too.
+        assert!(stream.response.is_some());
+        let aggregated_calls = stream
+            .choice
+            .iter()
+            .filter(|content| matches!(content, crate::message::AssistantContent::ToolCall(_)))
+            .count();
+        assert_eq!(
+            aggregated_calls, 1,
+            "the call reaches the aggregated choice"
+        );
     }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
