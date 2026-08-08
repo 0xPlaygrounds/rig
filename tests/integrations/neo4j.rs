@@ -50,7 +50,9 @@ async fn vector_search_test() {
     }
 
     // Setup a local Neo 4J container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("neo4j", "latest")
+    // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
+    // layer caching and lets a rerun silently test a different database version.
+    let container = GenericImage::new("neo4j", "5.26.29")
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
         })

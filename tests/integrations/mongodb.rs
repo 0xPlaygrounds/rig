@@ -152,7 +152,9 @@ async fn vector_search_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
+    // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
+    // layer caching and lets a rerun silently test a different database version.
+    let container = GenericImage::new("mongodb/mongodb-atlas-local", "8.0.5")
         .with_exposed_port(MONGODB_PORT.tcp())
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
@@ -289,7 +291,9 @@ async fn insert_documents_test() {
     let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
     // Setup MongoDB container
-    let container = GenericImage::new("mongodb/mongodb-atlas-local", "latest")
+    // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
+    // layer caching and lets a rerun silently test a different database version.
+    let container = GenericImage::new("mongodb/mongodb-atlas-local", "8.0.5")
         .with_exposed_port(MONGODB_PORT.tcp())
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),

@@ -86,11 +86,17 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         family: "bedrock",
         suite_file: "tests/providers/bedrock/streaming_conformance.rs",
         ci_step: FACADE_CI_STEP,
-        ci_selector: None,
+        // The PR gate's sweep runs `--features bedrock`, not `--all-features`,
+        // so this suite's existence now depends on that one flag: without it
+        // `tests/bedrock.rs` is `#[cfg(feature = "bedrock")]`-ed out and the
+        // whole binary — all 11 conformance tests — silently stops compiling.
+        // Asserting only the step *name* would leave that a paper claim, the
+        // exact failure mode this file's module doc describes.
+        ci_selector: Some("--features bedrock"),
         ci_package: None,
         reason: "lives in the `rig` facade but behind the `bedrock` feature, so it compiles into \
-                 the `bedrock` test binary rather than `core`; the workspace `--all-features` run \
-                 executes it",
+                 the `bedrock` test binary rather than `core`; the workspace sweep enables \
+                 `--features bedrock` specifically so this step keeps executing it",
     },
 ];
 

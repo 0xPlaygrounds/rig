@@ -11,6 +11,16 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_VERSION: 1.94.0
+  # Full debuginfo is the single largest avoidable cost in this workflow: even
+  # on a *full* rust-cache hit the `test` job spent ~4m compiling and linking
+  # test binaries, most of it emitting and linking debug sections nothing here
+  # reads. `line-tables-only` keeps what CI actually consumes — file and line
+  # numbers in a panic backtrace — and drops variable/type debuginfo. Set as
+  # env rather than a `[profile]` in Cargo.toml so local `cargo test` keeps
+  # full debuginfo for debuggers, and as `dev` + `test` because test targets
+  # build under `test` while their dependencies build under `dev`.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
 
 # ensure that the workflow is only triggered once per PR, subsequent pushes to the PR will cancel
 # and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
@@ -24,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -37,6 +47,14 @@ jobs:
 
       - name: Check immutable migration guide preamble
         run: bash .github/scripts/check-migrating-guide-preamble.sh
+
+      # rust-toolchain.toml is the pin cargo obeys; each workflow's
+      # RUST_VERSION is a copy feeding `setup-rust-toolchain`. Assert they
+      # agree so a partial bump cannot leave nightly.yaml — which is also
+      # cd.yaml's pre-release gate — building on a toolchain the PR gate no
+      # longer enforces.
+      - name: Check workflow toolchain pins match rust-toolchain.toml
+        run: bash .github/scripts/check-toolchain-pin.sh
 
       # Guard against CWD-relative test fixture paths. `cargo test` runs from the
       # crate root while `cargo nextest` (CI's runner) runs from the workspace
@@ -56,23 +74,11 @@ jobs:
       - name: Test WASM chat worker runtime
         run: node --test examples/candle_wasm_chat/www/worker-runtime.test.mjs
 
-  # Special check to make sure rig-core is compatible with the wasm target
-  check-wasm:
-    name: stable / check rig-core wasm target
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          target: wasm32-unknown-unknown
-          toolchain: ${{ env.RUST_VERSION }}
-
-      - name: Run cargo check wasm target
-        run: cargo check --package rig-core --target wasm32-unknown-unknown
-
+  # rig-core is in the matrix below rather than in a job of its own: the body
+  # was character-for-character identical, and `matrix.package` reproduces the
+  # same `stable / check rig-core wasm target` job name, so this is one fewer
+  # runner and one fewer copy to keep in sync — not a coverage change.
+  #
   # The runtime split adds wasm-sensitive code to rig-agent, feature forwarding
   # in the `rig` facade, and explicit feature wiring in the Candle runtime and
   # browser example, so check each on the wasm target too. These are plain
@@ -96,10 +102,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [rig-agent, rig, rig-candle, candle_wasm_chat]
+        package: [rig-core, rig-agent, rig, rig-candle, candle_wasm_chat]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -121,7 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -166,7 +172,7 @@ jobs:
       checks: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -183,12 +189,19 @@ jobs:
         with:
           args: --all-features --all-targets
 
+  # The PR gate's test sweep. The full `--all-features` run (companion vector
+  # stores, Docker-backed integration tests, the nested-`cargo check` facade
+  # build guard) lives in nightly.yaml: it runs on a schedule, on demand via
+  # workflow_dispatch, and — via cd.yaml's `workflow_call` — on every push to
+  # main, so nothing is released without the full suite. `--all-features`
+  # COMPILE coverage stays on the PR gate regardless: the clippy job lints
+  # `--all-features --all-targets`, and doctest/doc build all features too.
   test:
     name: stable / test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -200,30 +213,118 @@ jobs:
         with:
           tool: nextest
 
-      # Required to compile rig-lancedb
+      # Required here, and NOT only for the `lancedb` feature: the `rig`
+      # facade lists `lancedb` as an unconditional dev-dependency
+      # (Cargo.toml's `[dev-dependencies]`), so building its test targets —
+      # which both steps below do — compiles lance-encoding/-file/-table/
+      # -index and lance. Each of those build scripts calls
+      # `prost_build::compile_protos`, which shells out to a *system* protoc:
+      # the vendoring `protoc` feature that would pull `protobuf-src` is not
+      # enabled anywhere in Cargo.lock, and rig-gemini-grpc's
+      # protoc-bin-vendored is its own private build-dependency.
+      #
+      # ubuntu-latest does not ship protoc (this apt step reports
+      # `Selecting previously unselected package protobuf-compiler`), so
+      # dropping this install does not fail loudly — it fails only once the
+      # rust-cache entry for this job is invalidated and lance rebuilds,
+      # turning a Cargo.lock or toolchain bump into an unrelated-looking
+      # build-script error. Verify the dependency edge with:
+      #   cargo tree -i lance-encoding -e normal,dev --target all
       - name: Install Protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-      # `nextest` below runs with `--all-features`, which does not compile the
-      # default-feature test graph. Build the root integration tests with the
-      # default feature set so feature-gated test modules cannot accidentally
-      # depend on APIs that only exist under optional features.
+      # `nextest` below runs with `--features bedrock`, which does not compile
+      # the pure default-feature test graph. Build the root integration tests
+      # with the default feature set so feature-gated test modules cannot
+      # accidentally depend on APIs that only exist under optional features.
       - name: Compile default-feature root test targets
-        run: cargo test -p rig --tests --no-run
+        run: cargo test --locked -p rig --tests --no-run
+
+      # The workspace sweep over the default members' default features, plus
+      # the facade's `bedrock` feature. `bedrock` rides along because the
+      # bedrock wire-conformance suite compiles into the facade's `bedrock`
+      # test binary and this step is the one
+      # `tests/core/streaming_conformance_registry.rs` names as executing it
+      # (rig-bedrock itself is already a default member, so the extra compile
+      # cost is marginal). Everything that needs the remaining optional
+      # features executes in nightly.yaml's identical-command full run.
+      #
+      # The provider keys stay here even though the cassette suites replay
+      # recorded traffic without them: the few live tests that check for keys
+      # at runtime keep running on same-repo PRs exactly as they did before
+      # the fast/full split (fork PRs never received secrets either way).
+      #
+      # A plain `run:` rather than `actions-rs/cargo@v1`: that action was
+      # archived in 2023 and pins Node 20, which this workflow's own log
+      # already reports as force-upgraded to Node 24. It added nothing over
+      # invoking cargo directly.
+      - name: Test with latest nextest release
+        run: cargo nextest run --locked --features bedrock --retries 2
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+
+  # The cross-crate contract tripwires, split from `test` so the two halves
+  # run in parallel: each step deliberately compiles a package set with its
+  # own feature configuration (see the comments below), which serializes
+  # poorly behind the default-feature sweep above.
+  test-guards:
+    name: stable / test guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      # No protoc here, and unlike the `test` job that is genuinely true: the
+      # lance chain enters the graph through the `rig` facade's
+      # dev-dependencies, and every step below names `-p` packages
+      # (rig-agent, rig-core, rig-candle, rig-gemini-grpc) rather than the
+      # facade, so no lance build script runs. rig-gemini-grpc vendors its own
+      # protoc via protoc-bin-vendored. Adding a facade step here means adding
+      # the apt install back.
 
       - name: Test rig-agent agent unit tests with all features
-        run: cargo nextest run -p rig-agent --all-features -E 'test(agent::)' --retries 2
+        run: cargo nextest run --locked -p rig-agent --all-features -E 'test(agent::)' --retries 2
 
-      # `cargo nextest run` (below) selects the workspace's *default members*,
-      # and this workspace's root manifest is itself the `rig` package with no
-      # `default-members` — so that run covers `rig` alone and a `crates/*` unit
-      # test executes in CI only when its package is named explicitly. The
+      # The full rig-core and rig-agent lib test sets under `--all-features`.
+      # Before the fast/full split, the workspace-wide `--all-features` sweep
+      # ran these on every PR; that sweep now lives in nightly.yaml, and this
+      # step keeps the feature-gated unit tests (the rmcp tool registry, the
+      # pdf/epub loaders, audio generation, …) from silently demoting to
+      # nightly-only coverage. It reuses the compile artifacts of the
+      # telemetry step below (same packages, same `--all-features`), so the
+      # cost is execution time only. The telemetry:: tests also run here with
+      # retries — harmless duplication: their no-retries discipline is
+      # enforced by the dedicated step below, exactly as it was when the
+      # workspace sweep ran them with `--retries 2` alongside it.
+      - name: Test rig-core and rig-agent unit tests with all features
+        run: cargo nextest run --locked -p rig-core -p rig-agent --all-features --lib --retries 2
+
+      # `cargo nextest run` (in the `test` job) selects the workspace's
+      # *default members* — historically just the `rig` facade, which is why a
+      # `crates/*` unit test executed in CI only when its package was named
+      # explicitly; `default-members` now lists the core crates, but that
+      # sweep compiles them with *default* features and `--retries 2`. The
       # rig-agent half of the completion-parent contract rides along on the
-      # `agent::` filter above, but rig-core's `telemetry::` tests match nothing
-      # and would otherwise never run. They are the drift tripwires for the
-      # marker and the required `gen_ai.*` field set: unrun, the three forms of
-      # the contract can silently desync, which is the exact failure the
-      # `completion_parent_span!` macro exists to prevent.
+      # `agent::` filter above; this step is what runs rig-core's
+      # `telemetry::` tests under `--all-features` and without retries. They
+      # are the drift tripwires for the marker and the required `gen_ai.*`
+      # field set: unrun, the three forms of the contract can silently
+      # desync, which is the exact failure the `completion_parent_span!`
+      # macro exists to prevent.
       #
       # rig-agent is named explicitly even though `test(agent::)` above already
       # matches `span_safety_net::`, so the cross-crate tripwire keeps running
@@ -236,35 +337,35 @@ jobs:
       # concealing nondeterminism rather than tolerating a flaky network.
       #
       # This resolves rig-core with its own `--all-features` set, a different
-      # configuration from both the `-p rig-agent` step above and the root
-      # `-p rig` run below, so rig-core is compiled here rather than reused.
+      # configuration from both the `-p rig-agent` step above and the `test`
+      # job's facade sweep, so rig-core is compiled here rather than reused.
       # That cost is accepted deliberately: folding these tests into the
       # `agent::` step would share one build but hand them its `--retries 2`,
       # and a drift tripwire that passes on the second attempt conceals exactly
       # the nondeterminism it exists to catch.
       - name: Test telemetry completion-parent contract
-        run: cargo nextest run -p rig-core -p rig-agent --all-features -E 'test(telemetry::) + test(span_safety_net::)'
+        run: cargo nextest run --locked -p rig-core -p rig-agent --all-features -E 'test(telemetry::) + test(span_safety_net::)'
 
       # This compiles a standalone downstream consumer that renames rig-core
       # and has no direct tracing dependency. Keep it outside the workspace so
       # release tooling cannot discover it as a publishable package.
       - name: Test telemetry macro hygiene
-        run: cargo test -p rig-core --test macro_hygiene
+        run: cargo test --locked -p rig-core --test macro_hygiene
 
       # Same default-members problem as the telemetry step above, with two
       # distinct casualties:
       #
       #   * `crates/rig-core/tests/driver_adoption.rs` is a rig-core *package*
       #     target, so the single-policy-driver guard and the serde policy wall
-      #     never built in the `-p rig` run below. The mechanism that keeps
-      #     "one triage policy site" true over time was itself unrun.
+      #     never built in the facade-only `-p rig` run. The mechanism that
+      #     keeps "one triage policy site" true over time was itself unrun.
       #   * three wire-conformance families live in test binaries outside the
       #     `rig` facade — `openai_responses_websocket`
       #     (`rig-core/tests/streaming_conformance_websocket.rs`), `candle`
       #     (`rig-candle`) and `gemini_grpc` (`rig-gemini-grpc`) — so the
       #     registry reported them covered while nothing executed them.
-      #     (`bedrock`'s suite is feature-gated inside `rig`, so the run below
-      #     already covers it.)
+      #     (`bedrock`'s suite is feature-gated inside `rig`, so the `test`
+      #     job's `--features bedrock` sweep covers it.)
       #
       # `binary(...)`, not `test(...)`: nextest's `test()` predicate matches the
       # test's own name (`suite_is_complete`, …), never the binary it lives in,
@@ -281,19 +382,7 @@ jobs:
       # the second attempt would conceal nondeterminism rather than tolerate a
       # flaky network.
       - name: Test out-of-facade streaming conformance and structural guards
-        run: cargo nextest run -p rig-core -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
-
-      - name: Test with latest nextest release
-        uses: actions-rs/cargo@v1
-        with:
-          command: nextest
-          args: run --all-features --retries 2
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+        run: cargo nextest run --locked -p rig-core -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
 
   # `cargo nextest` (used by the `test` job) does NOT run doctests, and the
   # `doc` job only builds documentation — so without this job nothing executes
@@ -303,7 +392,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -318,14 +407,14 @@ jobs:
       # provider examples are all `no_run`/compile-only), so this job stays
       # hermetic and non-flaky.
       - name: Run doctests
-        run: cargo test --doc --workspace --all-features
+        run: cargo test --locked --doc --workspace --all-features
 
   doc:
     name: stable / doc
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -338,6 +427,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Run cargo doc
-        run: cargo doc --no-deps --all-features
+        run: cargo doc --locked --no-deps --all-features
         env:
           RUSTDOCFLAGS: -D warnings

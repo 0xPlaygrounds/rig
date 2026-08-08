@@ -1,0 +1,119 @@
+# The full `--all-features` test suite, split out of the PR gate (ci.yaml).
+#
+# What runs only here and not on the PR gate:
+#   * the Docker-backed vector-store integration tests in `tests/integrations/`
+#     (lancedb, mongodb, neo4j, postgres, qdrant, scylladb — plus the
+#     no-container sqlite and vectorize suites), the only runtime coverage the
+#     companion crates' `VectorStoreIndex` implementations have;
+#   * `tests/tool_facade_features.rs` (`facade-build-tests`), the slow
+#     nested-`cargo check` facade build guard;
+#   * the `image`-feature generation smoke tests (gemini nano-banana, xai);
+#   * every root test binary's `--all-features` configuration — the PR gate
+#     runs the default feature set plus `bedrock`.
+#
+# The PR gate still COMPILES all of the above on every PR: ci.yaml's clippy
+# job lints `--all-features --all-targets`, and doctest/doc build all
+# features, so a nightly failure is a runtime regression, never a stale
+# compile break discovered at 06:00.
+#
+# When it runs:
+#   * nightly at 06:00 UTC;
+#   * on any PR that touches a companion crate or the integration tests —
+#     without this, a PR editing `crates/rig-qdrant/` merges with zero runtime
+#     coverage of the code it changed, and the breakage surfaces either at
+#     06:00 or, worse, in cd.yaml's `run-full-ci`, where it blocks release-plz
+#     on an already-merged commit. These PRs are rare and share the scheduled
+#     run's rust-cache entry, so the common PR pays nothing;
+#   * on demand via `gh workflow run nightly.yaml`;
+#   * via `workflow_call` from cd.yaml on every push to main, so release-plz
+#     never publishes a commit the full suite has not passed.
+name: Nightly Full Test
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  # Exactly the crates that `tests/integrations/` actually exercises. Other
+  # companion crates (rig-milvus, rig-surrealdb, rig-helixdb, …) are omitted
+  # deliberately: they have no suite here, so triggering this lane on them
+  # would cost 20+ minutes and run nothing that covers the changed code.
+  pull_request:
+    paths:
+      - "crates/rig-lancedb/**"
+      - "crates/rig-mongodb/**"
+      - "crates/rig-neo4j/**"
+      - "crates/rig-postgres/**"
+      - "crates/rig-qdrant/**"
+      - "crates/rig-scylladb/**"
+      - "crates/rig-sqlite/**"
+      - "crates/rig-vectorize/**"
+      - "tests/integrations/**"
+      - "tests/integrations.rs"
+      - ".github/workflows/nightly.yaml"
+  workflow_dispatch: # cd.yaml already uses this; match it
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: 1.94.0
+  # See ci.yaml for the rationale; kept identical so the two lanes share build
+  # fingerprints rather than invalidating each other's caches.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
+
+# The `full-` prefix keeps this group disjoint from ci.yaml's when both are
+# invoked from the same cd.yaml run (inside a called workflow,
+# `github.workflow` resolves to the CALLER's name).
+concurrency:
+  group: full-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test-all-features:
+    name: stable / test all features
+    runs-on: ubuntu-latest
+    # `schedule` fires on any fork whose owner has enabled Actions, against the
+    # fork's default branch, where the provider secrets are empty — so without
+    # this guard every fork owner gets a failing run and a failure email at
+    # 06:00 daily for a suite they did not ask to run. Fork *PRs* into this
+    # repo are unaffected: `github.repository` is the upstream repo there, and
+    # the vector-store tests stub their embeddings with `api_key("TEST")`
+    # rather than calling a provider.
+    #
+    # This also covers the `workflow_call` path, where `github.repository` is
+    # still the caller's repo — a fork's own cd.yaml skips this job and, with
+    # it, its release-plz step, which is the correct outcome on a fork.
+    if: github.repository == '0xPlaygrounds/rig'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+
+      # Required to compile rig-lancedb — and also the `lancedb` crate itself,
+      # which the `rig` facade carries as an unconditional dev-dependency. See
+      # the longer note on ci.yaml's `test` job.
+      - name: Install Protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      # The workspace-wide sweep over every feature. This is the step that
+      # was ci.yaml's `Test with latest nextest release` before the fast/full
+      # split narrowed that one to `--features bedrock`.
+      #
+      # A plain `run:` rather than `actions-rs/cargo@v1`: that action was
+      # archived in 2023 and pins Node 20.
+      - name: Test with all features
+        run: cargo nextest run --locked --all-features --retries 2
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
