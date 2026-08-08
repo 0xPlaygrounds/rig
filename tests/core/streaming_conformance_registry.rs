@@ -86,11 +86,21 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         family: "bedrock",
         suite_file: "tests/providers/bedrock/streaming_conformance.rs",
         ci_step: FACADE_CI_STEP,
-        ci_selector: None,
+        // The PR gate's sweep runs `--features bedrock`, not `--all-features`,
+        // so this suite's existence now depends on that one flag: without it
+        // the `#[cfg(feature = "bedrock")] mod bedrock` in `tests/bedrock.rs`
+        // is cfg-ed out and all 11 conformance tests silently stop compiling.
+        // (The binary itself still builds — its cassette-safety scan is
+        // deliberately ungated — so do NOT "fix" this by gating the whole
+        // file: that would drop the bedrock cassette secret scan from every
+        // default-feature run.) Asserting only the step *name* would leave
+        // the suite a paper claim, the exact failure mode this file's module
+        // doc describes.
+        ci_selector: Some("--features bedrock"),
         ci_package: None,
         reason: "lives in the `rig` facade but behind the `bedrock` feature, so it compiles into \
-                 the `bedrock` test binary rather than `core`; the workspace `--all-features` run \
-                 executes it",
+                 the `bedrock` test binary rather than `core`; the workspace sweep enables \
+                 `--features bedrock` specifically so this step keeps executing it",
     },
 ];
 
@@ -171,7 +181,16 @@ fn out_of_binary_families_name_a_live_ci_step() {
     // non-comment lines whose content (after the `- ` list marker) begins
     // with `name:` — a `# - name: …` comment cannot satisfy the check — and
     // each step's selector/`-p` package list is looked for INSIDE that
-    // step's own block (up to the next step), not anywhere in the file.
+    // step's own block, not anywhere in the file. Two boundaries matter:
+    //
+    //   * the block ends at the next step OR at the job seam (any non-blank
+    //     line indented less than a step line, e.g. the next job's key) — a
+    //     job-final step must not absorb the following job's header;
+    //   * comment lines are dropped from the block BEFORE matching, so a
+    //     comment that merely *mentions* `--features bedrock` cannot keep
+    //     this check green after the actual flag is removed from the `run:`
+    //     command — that would be the paper-claim failure mode all over
+    //     again, hidden one level down.
     let step_block = |step: &str| -> Option<String> {
         let lines: Vec<&str> = text.lines().collect();
         let is_step_line = |line: &str| {
@@ -181,15 +200,27 @@ fn out_of_binary_families_name_a_live_ci_step() {
                     .strip_prefix("- ")
                     .is_some_and(|rest| rest.trim_start().starts_with("name:"))
         };
+        let step_indent = |line: &str| line.len() - line.trim_start().len();
         let start = lines.iter().position(|line| {
             is_step_line(line)
                 && line
                     .split_once("name:")
                     .is_some_and(|(_, value)| value.trim() == step)
         })?;
+        let job_seam = step_indent(lines[start]);
         let block: Vec<&str> = lines[start + 1..]
             .iter()
-            .take_while(|line| !is_step_line(line))
+            .take_while(|line| {
+                // Comment lines pass the seam test unconditionally: comments
+                // are legal at any indentation, so a low-indent comment
+                // inside a step's span must not truncate the block (it is
+                // dropped by the filter below either way).
+                !is_step_line(line)
+                    && (line.trim().is_empty()
+                        || line.trim_start().starts_with('#')
+                        || step_indent(line) >= job_seam)
+            })
+            .filter(|line| !line.trim_start().starts_with('#'))
             .copied()
             .collect();
         Some(block.join("\n"))
@@ -206,13 +237,18 @@ fn out_of_binary_families_name_a_live_ci_step() {
             )
         });
         if let Some(selector) = entry.ci_selector {
+            // A `--features X` selector asserts an *outcome* — the feature is
+            // enabled in that step — not a spelling: `--all-features` enables
+            // strictly more, so a step that broadens its sweep must not fail
+            // this check for gaining coverage.
+            let satisfied = block.contains(selector)
+                || (selector.starts_with("--features ") && block.contains("--all-features"));
             assert!(
-                block.contains(selector),
+                satisfied,
                 "{}'s CI step no longer carries the {:?} predicate INSIDE its own block, so its \
                  binary is selected by nothing — a nextest filter matching zero tests still \
                  exits 0",
-                entry.family,
-                selector,
+                entry.family, selector,
             );
         }
         if let Some(package) = entry.ci_package {
