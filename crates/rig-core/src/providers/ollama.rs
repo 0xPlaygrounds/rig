@@ -476,6 +476,9 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         // Build up the order of messages.
         let mut partial_history = vec![];
         partial_history.extend(chat_history);
+        // Ollama tool messages are name-keyed: cross-provider ingested
+        // results arrive with an empty name and their call carries it.
+        crate::providers::internal::resolve_empty_tool_result_names(&mut partial_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -1373,7 +1376,7 @@ impl From<Message> for crate::completion::Message {
             Message::ToolResult { name, content } => crate::completion::Message::User {
                 // Ollama tool messages carry no call id; the name is the
                 // wire's correlator and the rig-level handle is minted.
-                content: OneOrMany::one(message::UserContent::tool_result(
+                content: OneOrMany::one(message::UserContent::tool_result_from_wire(
                     "",
                     name,
                     OneOrMany::one(message::ToolResultContent::text(content)),

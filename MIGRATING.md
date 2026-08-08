@@ -488,9 +488,16 @@ What this changes for you:
   paths use `ToolCall::from_wire(wire_id, function)` (empty mints) or
   `ToolCall::from_dual_wire(item_id, call_id, function)`.
   `with_call_id` is replaced by `with_provider(ProviderCallId)`.
-  `UserContent::tool_result(call_id, name, content)` takes the executed
-  tool's name (required); `tool_result_for(call, provider, name, content)`
-  is the agent-driver form; `tool_result_named` is gone.
+  `UserContent::tool_result(call, name, content)` takes the answered
+  call's correlation handle (echo `ToolCall::id`) and the executed
+  tool's name (required); the string is recorded as the handle only,
+  never as a provider-issued id — a bare string cannot prove provider
+  provenance, so echoing a minted handle no longer sends it upstream on
+  optional-id wires. When you hold provider identifiers, use
+  `tool_result_from_wire(wire_id, name, content)` (single-identifier
+  wire echo), `tool_result_with_call_id` (dual-identifier), or
+  `tool_result_for(call, provider, name, content)` — the agent-driver
+  form; `tool_result_named` is gone.
 - **Serialization to providers**: wires that require a call id (OpenAI
   chat/Responses, Anthropic, Bedrock, Gemini Interactions, xAI) receive
   `provider.call_id` when the provider issued one, else rig's minted id —
@@ -500,8 +507,12 @@ What this changes for you:
   minted handles never travel upstream there.
 - **Persisted histories**: the canonical serde shape changed (`ToolCall`
   gains `provider`, loses `call_id`; `ToolResult` renames `id` → `call`,
-  requires `name`). Histories persisted by earlier versions do **not**
-  deserialize; re-run the conversation or migrate the JSON by hand
+  requires `name`). Legacy `ToolCall` JSON still loads: the old `call_id`
+  key is lifted into `provider` (dual-identifier payloads keep the
+  correlator and the `fc_…` item handle; single-identifier payloads keep
+  the provider-supplied `id` as `provider.call_id`), never silently
+  dropped. Legacy `ToolResult` JSON does **not** deserialize (no `call`,
+  no `name`); re-run the conversation or migrate the JSON by hand
   (`id`/`call_id` → `call` + `provider.call_id`, add the executed tool's
   `name`). Empty-string ids in old JSON are rejected by construction.
 - **The back-compat pairing shim is deleted**:
@@ -509,7 +520,12 @@ What this changes for you:
   legacy encodings it supported) no longer exist — `ToolResult::name` is
   required data, and every name-keyed serializer (Gemini
   `functionResponse.name`, Ollama, Vertex AI, gemini-grpc) reads it
-  directly.
+  directly. One typed-id descendant remains: rig's own inbound converters
+  cannot supply a name (Anthropic/OpenAI-chat/Cohere/Bedrock wires carry
+  none), so name-keyed request assembly fills an *empty* name from the
+  result's paired call, matched by identifier only
+  (`providers::internal::resolve_empty_tool_result_names`). Established
+  names are never overwritten, and nothing pairs by position or name.
 - **Hooks and telemetry**: tool-call ids surfaced to hooks
   (`ToolCallEvent`/`ToolResultEvent`/`InvalidToolCallContext.tool_call_id`)
   and telemetry are now the durable id — the provider's when issued, else

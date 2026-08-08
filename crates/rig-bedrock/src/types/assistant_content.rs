@@ -198,10 +198,16 @@ impl RigAssistantContent {
         match self.0 {
             AssistantContent::Text(text) => Ok(Some(aws_bedrock::ContentBlock::Text(text.text))),
             AssistantContent::ToolCall(tool_call) => {
+                // Both Converse legs must agree on `toolUseId`: the result
+                // leg (user_content.rs) sends the provider-issued call id
+                // when one exists, so the assistant echo does too — a bare
+                // minted handle here would orphan the paired toolResult
+                // whenever the two diverge.
+                let tool_use_id = tool_call.wire_call_id().to_owned();
                 let doc: AwsDocument = tool_call.function.arguments.into();
                 Ok(Some(aws_bedrock::ContentBlock::ToolUse(
                     aws_bedrock::ToolUseBlock::builder()
-                        .tool_use_id(tool_call.id)
+                        .tool_use_id(tool_use_id)
                         .name(tool_call.function.name)
                         .input(doc.0)
                         .build()
@@ -559,6 +565,51 @@ mod tests {
         assert_eq!(second_tool.id, "call_2");
         assert_eq!(second_tool.function.name, "subtract");
         assert_eq!(second_tool.function.arguments, json!({"x": 4, "y": 3}));
+    }
+
+    #[test]
+    fn tool_use_echo_prefers_provider_call_id_like_the_result_leg() {
+        // Both Converse legs must send the same toolUseId. The result leg
+        // (user_content.rs) sends provider-else-handle; a diverged history
+        // (e.g. JSON-restored with independent id/provider fields) must not
+        // orphan the pair.
+        let tool_call = rig_core::message::ToolCall::new(
+            rig_core::message::ToolCallId::new("minted-handle").unwrap(),
+            rig_core::message::ToolFunction {
+                name: "add".into(),
+                arguments: json!({"x": 1}),
+            },
+        )
+        .with_provider(rig_core::message::ProviderCallId::new("call_abc").unwrap());
+
+        let block = RigAssistantContent(AssistantContent::ToolCall(tool_call))
+            .into_content_block()
+            .unwrap()
+            .expect("tool calls never degrade away");
+        let aws_bedrock::ContentBlock::ToolUse(tool_use) = block else {
+            panic!("expected a toolUse block");
+        };
+        assert_eq!(tool_use.tool_use_id(), "call_abc");
+    }
+
+    #[test]
+    fn tool_use_echo_falls_back_to_minted_handle_without_provider_id() {
+        let tool_call = rig_core::message::ToolCall::new(
+            rig_core::message::ToolCallId::new("minted-handle").unwrap(),
+            rig_core::message::ToolFunction {
+                name: "add".into(),
+                arguments: json!({"x": 1}),
+            },
+        );
+
+        let block = RigAssistantContent(AssistantContent::ToolCall(tool_call))
+            .into_content_block()
+            .unwrap()
+            .expect("tool calls never degrade away");
+        let aws_bedrock::ContentBlock::ToolUse(tool_use) = block else {
+            panic!("expected a toolUse block");
+        };
+        assert_eq!(tool_use.tool_use_id(), "minted-handle");
     }
 
     #[test]

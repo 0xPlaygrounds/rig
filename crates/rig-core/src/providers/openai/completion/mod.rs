@@ -601,6 +601,11 @@ impl TryFrom<message::ToolResult> for Message {
     type Error = message::MessageError;
 
     fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
+        // The wire requires a non-empty correlator: the provider-issued
+        // call id when one exists, else rig's minted handle — which is
+        // unique and non-empty by construction, unlike the old empty-
+        // string sentinel.
+        let tool_call_id = value.wire_call_id().to_owned();
         let parts = value
             .content
             .into_iter()
@@ -620,14 +625,7 @@ impl TryFrom<message::ToolResult> for Message {
         };
 
         Ok(Message::ToolResult {
-            // The wire requires a non-empty correlator: the provider-issued
-            // call id when one exists, else rig's minted handle — which is
-            // unique and non-empty by construction, unlike the old empty-
-            // string sentinel.
-            tool_call_id: value
-                .provider
-                .map(|provider| provider.call_id)
-                .unwrap_or_else(|| value.call.into_string()),
+            tool_call_id,
             content,
         })
     }
@@ -923,10 +921,7 @@ impl From<message::ToolCall> for ToolCall {
             // the provider-issued call id when one exists (e.g. a
             // Responses-API history replayed via chat completions), else
             // rig's minted handle — never empty.
-            id: tool_call
-                .provider
-                .map(|provider| provider.call_id)
-                .unwrap_or_else(|| tool_call.id.into_string()),
+            id: tool_call.wire_call_id().to_owned(),
             r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name,
@@ -1001,7 +996,7 @@ impl TryFrom<Message> for message::Message {
             } => message::Message::User {
                 // OpenAI chat tool messages carry no tool name; this
                 // conversion is lossy for name-keyed wires.
-                content: OneOrMany::one(message::UserContent::tool_result(
+                content: OneOrMany::one(message::UserContent::tool_result_from_wire(
                     tool_call_id,
                     "",
                     OneOrMany::one(message::ToolResultContent::text(content.as_text())),

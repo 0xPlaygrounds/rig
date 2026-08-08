@@ -230,6 +230,21 @@ pub struct ToolResult {
     pub content: OneOrMany<ToolResultContent>,
 }
 
+impl ToolResult {
+    /// The identifier for a wire whose call-id slot is *required*: the
+    /// provider-issued `call_id` when the provider issued one, else rig's
+    /// minted handle — always non-empty.
+    ///
+    /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
+    /// [`ToolResult::provider`] directly instead: minted handles never
+    /// travel upstream there.
+    pub fn wire_call_id(&self) -> &str {
+        self.provider
+            .as_ref()
+            .map_or(self.call.as_str(), |provider| provider.call_id.as_str())
+    }
+}
+
 /// Describes one typed item in a tool result.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -319,6 +334,21 @@ impl ToolCallId {
     /// wires that may omit the identifier.
     pub fn new_or_mint(id: impl Into<String>) -> Self {
         Self::new(id).unwrap_or_else(Self::mint)
+    }
+
+    /// The correlation handle for the given provider identity: the
+    /// provider's `call_id` when the provider issued one, minted when it
+    /// did not. The single derivation the message and streaming layers
+    /// share — a result correlates with its call because both derive the
+    /// handle from the same provider identity.
+    ///
+    /// (`ProviderCallId`'s constructors reject the empty string, but its
+    /// fields are public, so an empty `call_id` from a literal
+    /// construction still mints rather than producing an empty handle.)
+    pub fn for_provider(provider: Option<&ProviderCallId>) -> Self {
+        provider
+            .and_then(|provider| Self::new(provider.call_id.clone()))
+            .unwrap_or_else(Self::mint)
     }
 
     /// Borrow the identifier.
@@ -448,8 +478,71 @@ impl TryFrom<ProviderCallIdWire> for ProviderCallId {
     }
 }
 
+/// Wire shape for [`ToolCall`]: the current schema plus the legacy
+/// (pre-provider-split) `call_id` key, lifted into [`ToolCall::provider`]
+/// rather than silently discarded — dropping it would strip the Responses
+/// correlator from persisted histories with no error.
+#[derive(Deserialize)]
+struct ToolCallWire {
+    id: ToolCallId,
+    #[serde(default)]
+    provider: Option<ProviderCallId>,
+    /// Legacy schema marker. Old payloads always wrote `call_id` (it was
+    /// never skipped), so the key's presence identifies them:
+    /// `Some(Some(_))` is the old dual-identifier shape, `Some(None)` the
+    /// old single-identifier shape, `None` the current schema.
+    #[serde(default, deserialize_with = "deserialize_present")]
+    call_id: Option<Option<String>>,
+    function: ToolFunction,
+    #[serde(default)]
+    signature: Option<String>,
+    #[serde(default)]
+    additional_params: Option<serde_json::Value>,
+}
+
+/// Distinguish an absent key (`None`) from an explicit `null`
+/// (`Some(None)`): serde only calls this when the key is present.
+fn deserialize_present<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(Some)
+}
+
+impl From<ToolCallWire> for ToolCall {
+    fn from(wire: ToolCallWire) -> Self {
+        let (id, provider) = match (wire.provider, wire.call_id) {
+            // Current schema — and `provider` stays authoritative even
+            // next to a stray legacy key.
+            (provider @ Some(_), _) | (provider @ None, None) => (wire.id, provider),
+            // Legacy dual-identifier payload (OpenAI Responses): `call_id`
+            // was the correlator, `id` the output-item handle.
+            (None, Some(Some(call_id))) if !call_id.is_empty() => {
+                let provider = ProviderCallId::new(call_id)
+                    .map(|provider| provider.with_item_id(wire.id.as_str()));
+                (ToolCallId::for_provider(provider.as_ref()), provider)
+            }
+            // Legacy single-identifier payload: `id` was documented as
+            // "provider-supplied", so it is the provider's id, not a
+            // minted handle.
+            (None, Some(_)) => {
+                let provider = ProviderCallId::new(wire.id.as_str());
+                (wire.id, provider)
+            }
+        };
+        Self {
+            id,
+            provider,
+            function: wire.function,
+            signature: wire.signature,
+            additional_params: wire.additional_params,
+        }
+    }
+}
+
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(from = "ToolCallWire")]
 pub struct ToolCall {
     /// Rig's correlation handle. Always present; minted when the provider
     /// issued none.
@@ -492,10 +585,7 @@ impl ToolCall {
     /// issued one, mint when it did not (empty or absent ids mint).
     pub fn from_wire(wire_id: impl Into<String>, function: ToolFunction) -> Self {
         let provider = ProviderCallId::new(wire_id);
-        let id = provider
-            .as_ref()
-            .and_then(|provider| ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(ToolCallId::mint);
+        let id = ToolCallId::for_provider(provider.as_ref());
         Self {
             id,
             provider,
@@ -517,10 +607,7 @@ impl ToolCall {
             let item_id = item_id.into();
             provider.with_item_id(item_id)
         });
-        let id = provider
-            .as_ref()
-            .and_then(|provider| ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(ToolCallId::mint);
+        let id = ToolCallId::for_provider(provider.as_ref());
         Self {
             id,
             provider,
@@ -534,6 +621,19 @@ impl ToolCall {
     pub fn with_provider(mut self, provider: ProviderCallId) -> Self {
         self.provider = Some(provider);
         self
+    }
+
+    /// The identifier for a wire whose call-id slot is *required*: the
+    /// provider-issued `call_id` when the provider issued one, else rig's
+    /// minted handle — always non-empty.
+    ///
+    /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
+    /// [`ToolCall::provider`] directly instead: minted handles never travel
+    /// upstream there.
+    pub fn wire_call_id(&self) -> &str {
+        self.provider
+            .as_ref()
+            .map_or(self.id.as_str(), |provider| provider.call_id.as_str())
     }
 
     pub fn with_signature(mut self, signature: Option<String>) -> Self {
@@ -904,16 +1004,18 @@ impl Message {
     }
 
     /// Helper constructor to make creating tool result messages easier.
-    /// `call_id` is the provider-issued identifier when one exists (empty
-    /// mints a correlation-only handle), `name` the executed tool's name.
+    /// `call` is the answered call's correlation handle — echo
+    /// [`ToolCall::id`]; it is never recorded as a provider-issued
+    /// identifier (see [`UserContent::tool_result`]). `name` is the
+    /// executed tool's name.
     pub fn tool_result(
-        call_id: impl Into<String>,
+        call: impl Into<String>,
         name: impl Into<String>,
         content: impl Into<String>,
     ) -> Self {
         Message::User {
             content: OneOrMany::one(UserContent::tool_result(
-                call_id,
+                call,
                 name,
                 OneOrMany::one(ToolResultContent::text(content)),
             )),
@@ -1054,20 +1156,41 @@ impl UserContent {
 
     /// Helper constructor to make creating user tool result content easier.
     ///
-    /// `call_id` is the provider-issued call identifier when the provider
-    /// issued one; an empty `call_id` records no provider id and mints the
-    /// correlation handle. `name` is the executed tool's name (required —
-    /// several wires key the replay on it).
+    /// `call` is the answered call's correlation handle — echo
+    /// [`ToolCall::id`] (an empty string mints a fresh handle). It is
+    /// recorded as the handle only, never as a provider-issued identifier:
+    /// a bare string cannot prove provider provenance, and stamping a
+    /// minted handle as one would send it upstream on wires whose id slot
+    /// is optional. When you hold provider identifiers, use
+    /// [`UserContent::tool_result_for`] (from an executed [`ToolCall`]) or
+    /// [`UserContent::tool_result_from_wire`] (from the provider's wire).
+    /// `name` is the executed tool's name (required — several wires key
+    /// the replay on it).
     pub fn tool_result(
-        call_id: impl Into<String>,
+        call: impl Into<String>,
         name: impl Into<String>,
         content: OneOrMany<ToolResultContent>,
     ) -> Self {
-        let provider = ProviderCallId::new(call_id);
-        let call = provider
-            .as_ref()
-            .and_then(|provider| ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(ToolCallId::mint);
+        UserContent::ToolResult(ToolResult {
+            call: ToolCallId::new_or_mint(call),
+            provider: None,
+            name: name.into(),
+            content,
+        })
+    }
+
+    /// Tool result content at the single-identifier provider boundary —
+    /// the inbound-converter form, mirroring [`ToolCall::from_wire`]:
+    /// `wire_id` came off the provider's wire, so it is recorded as the
+    /// provider-issued identifier (empty records none and mints the
+    /// handle).
+    pub fn tool_result_from_wire(
+        wire_id: impl Into<String>,
+        name: impl Into<String>,
+        content: OneOrMany<ToolResultContent>,
+    ) -> Self {
+        let provider = ProviderCallId::new(wire_id);
+        let call = ToolCallId::for_provider(provider.as_ref());
         UserContent::ToolResult(ToolResult {
             call,
             provider,
@@ -1104,10 +1227,7 @@ impl UserContent {
         content: OneOrMany<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
-        let call = provider
-            .as_ref()
-            .and_then(|provider| ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(ToolCallId::mint);
+        let call = ToolCallId::for_provider(provider.as_ref());
         UserContent::ToolResult(ToolResult {
             call,
             provider,
@@ -1664,6 +1784,68 @@ mod tests {
         let json = serde_json::to_string(&message).expect("serialize");
         let roundtrip: Message = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(roundtrip, message);
+    }
+
+    #[test]
+    fn legacy_dual_identifier_tool_call_json_lifts_call_id_into_provider() {
+        // Pre-provider-split payload (OpenAI Responses): `call_id` was the
+        // correlator, `id` the output-item handle. Dropping `call_id`
+        // silently would replay the `fc_` item id in the call_id slot.
+        let legacy = serde_json::json!({
+            "id": "fc_123",
+            "call_id": "call_abc",
+            "function": {"name": "add", "arguments": {"x": 1}},
+            "signature": null,
+            "additional_params": null,
+        });
+
+        let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
+        let provider = call
+            .provider
+            .expect("legacy call_id is lifted, not dropped");
+        assert_eq!(provider.call_id, "call_abc");
+        assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
+        assert_eq!(call.id, "call_abc");
+    }
+
+    #[test]
+    fn legacy_single_identifier_tool_call_json_promotes_id_to_provider() {
+        // Old payloads always wrote `call_id` (never skipped), so an
+        // explicit null still marks the legacy schema — where `id` was
+        // documented as provider-supplied.
+        let legacy = serde_json::json!({
+            "id": "toolu_xyz",
+            "call_id": null,
+            "function": {"name": "add", "arguments": {}},
+        });
+
+        let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
+        let provider = call
+            .provider
+            .expect("legacy provider-supplied id is kept as one");
+        assert_eq!(provider.call_id, "toolu_xyz");
+        assert_eq!(provider.item_id, None);
+        assert_eq!(call.id, "toolu_xyz");
+    }
+
+    #[test]
+    fn current_schema_tool_call_json_round_trips_without_provider_promotion() {
+        // A minted handle with no provider must stay provider-less: the
+        // absence of the `call_id` key is what separates the current
+        // schema from the legacy one.
+        let call = super::ToolCall::new(
+            super::ToolCallId::new("minted-handle").expect("non-empty"),
+            super::ToolFunction {
+                name: "add".to_string(),
+                arguments: serde_json::json!({}),
+            },
+        );
+
+        let json = serde_json::to_value(&call).expect("serialize");
+        assert!(json.get("call_id").is_none());
+        let roundtrip: super::ToolCall = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(roundtrip.provider, None);
+        assert_eq!(roundtrip, call);
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
