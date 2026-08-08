@@ -229,8 +229,22 @@ struct InteractionsAdapter {
     /// `streaming_grammar/interactions_same_tool_twice`; the pre-fix code
     /// emitted the empty-args call at `step.start` and dropped every
     /// fragment.
-    open_function_steps:
-        std::collections::HashMap<u32, (streaming::StreamPartId, Option<streaming::WireId>)>,
+    open_function_steps: std::collections::HashMap<u32, OpenFunctionStep>,
+}
+
+/// A function-call step announced by `step.start` and not yet closed.
+struct OpenFunctionStep {
+    /// Assembly identity every fragment is emitted under.
+    key: streaming::StreamPartId,
+    /// The wire's own call id, when it issued one.
+    wire_id: Option<streaming::WireId>,
+    /// The announce payload from `step.start`. Replace-if-no-deltas, never
+    /// concatenated: when `arguments_delta` fragments arrive they ARE the
+    /// arguments and the announce is ignored; only a step that fragments
+    /// nothing falls back to what it announced.
+    announce_arguments: Option<Value>,
+    /// Whether any `arguments_delta` fragment arrived for this step.
+    saw_arguments_delta: bool,
 }
 
 impl Default for InteractionsAdapter {
@@ -263,12 +277,13 @@ impl WireAdapter for InteractionsAdapter {
         match event {
             InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
                 ContentDelta::ArgumentsDelta(arguments_delta) => {
-                    if let (Some((key, _)), Some(fragment)) = (
-                        self.open_function_steps.get(&index),
+                    if let (Some(step), Some(fragment)) = (
+                        self.open_function_steps.get_mut(&index),
                         arguments_delta.arguments,
                     ) {
+                        step.saw_arguments_delta = true;
                         out.push(Ok(streaming::RawStreamingChoice::ToolCallDelta {
-                            id: key.clone(),
+                            id: step.key.clone(),
                             content: streaming::ToolCallDeltaContent::Delta(fragment),
                         }));
                     } else {
@@ -345,20 +360,21 @@ impl WireAdapter for InteractionsAdapter {
                         // and drawing assemblies and whole calls from ONE
                         // counter is what makes their keys disjoint.
                         .unwrap_or_else(|| self.tool_ids.mint());
-                    let mut tool_events = vec![streaming::RawStreamingChoice::ToolCallDelta {
+                    let tool_events = vec![streaming::RawStreamingChoice::ToolCallDelta {
                         id: key.clone(),
                         content: streaming::ToolCallDeltaContent::Name(name),
                     }];
-                    if let Some(arguments) = arguments
-                        && arguments
+                    // The announce payload is NOT a fragment: fragments
+                    // append, and an announce that carries a partial (or
+                    // full) payload alongside later `arguments_delta`
+                    // events would concatenate into `{..}{..}`. It is kept
+                    // as the step's fallback, used only when no fragment
+                    // ever arrives (replace-if-no-deltas).
+                    let announce_arguments = arguments.filter(|arguments| {
+                        arguments
                             .as_object()
                             .is_none_or(|object| !object.is_empty())
-                    {
-                        tool_events.push(streaming::RawStreamingChoice::ToolCallDelta {
-                            id: key.clone(),
-                            content: streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
-                        });
-                    }
+                    });
                     // Tool content interleaving an open thought block: the
                     // shared lifecycle synthesizes the boundary end.
                     self.reasoning.emit_chunk(
@@ -370,7 +386,15 @@ impl WireAdapter for InteractionsAdapter {
                         },
                         out,
                     );
-                    self.open_function_steps.insert(index, (key, wire_id));
+                    self.open_function_steps.insert(
+                        index,
+                        OpenFunctionStep {
+                            key,
+                            wire_id,
+                            announce_arguments,
+                            saw_arguments_delta: false,
+                        },
+                    );
                 } else if let Some(choice) = step_start_to_choice(step, &mut self.tool_ids) {
                     // Interleaving content ends an open thought block — the
                     // shared lifecycle synthesizes the boundary end.
@@ -389,12 +413,10 @@ impl WireAdapter for InteractionsAdapter {
                 // The wire promised a complete function-call step: close its
                 // assembly. Malformed accumulated input surfaces in-band
                 // (`Error` policy), matching the other complete-block wires.
-                if let Some((key, wire_id)) = self.open_function_steps.remove(&index) {
-                    let mut end =
-                        streaming::ToolInputEnd::new(key, streaming::UnparseableToolInput::Error);
-                    end.call_id = wire_id.as_ref().map(|id| id.as_str().to_owned());
-                    end.tool_id = wire_id;
-                    out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(end)));
+                if let Some(step) = self.open_function_steps.remove(&index) {
+                    out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(
+                        function_step_end(step),
+                    )));
                 }
             }
             InteractionSseEvent::InteractionCompleted { interaction, .. } => {
@@ -418,16 +440,14 @@ impl WireAdapter for InteractionsAdapter {
                 // (announcement) order keeps parallel calls deterministic.
                 let mut orphaned = self.open_function_steps.drain().collect::<Vec<_>>();
                 orphaned.sort_by_key(|(index, _)| *index);
-                for (index, (key, wire_id)) in orphaned {
+                for (index, step) in orphaned {
                     tracing::debug!(
                         index,
                         "closing a function-call step left open at interaction.completed"
                     );
-                    let mut end =
-                        streaming::ToolInputEnd::new(key, streaming::UnparseableToolInput::Error);
-                    end.call_id = wire_id.as_ref().map(|id| id.as_str().to_owned());
-                    end.tool_id = wire_id;
-                    out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(end)));
+                    out.push(Ok(streaming::RawStreamingChoice::ToolInputEnd(
+                        function_step_end(step),
+                    )));
                 }
 
                 // Only a genuine `interaction.completed` event counts as the
@@ -523,6 +543,26 @@ where
     };
 
     Box::pin(stream)
+}
+
+/// Close an announced function-call step. The shared accumulator finalizes
+/// the call from its accumulated fragments; a step that fragmented nothing
+/// falls back to the payload it announced at `step.start` (and to a
+/// parameterless `{}` when it announced none).
+fn function_step_end(step: OpenFunctionStep) -> streaming::ToolInputEnd {
+    let OpenFunctionStep {
+        key,
+        wire_id,
+        announce_arguments,
+        saw_arguments_delta,
+    } = step;
+    let mut end = streaming::ToolInputEnd::new(key, streaming::UnparseableToolInput::Error);
+    end.call_id = wire_id.as_ref().map(|id| id.as_str().to_owned());
+    end.tool_id = wire_id;
+    if !saw_arguments_delta {
+        end.arguments = announce_arguments;
+    }
+    end
 }
 
 fn step_start_to_choice(
@@ -739,6 +779,72 @@ mod tests {
             items.push(item.map_err(|error| error.to_string()));
         }
         (items, stream)
+    }
+
+    /// A `step.start` that announces non-empty arguments AND fragments the
+    /// real payload across `arguments_delta` events: the deltas are the
+    /// arguments. Concatenating the announce payload with the fragments
+    /// yields `{..}{..}` — unparseable under the step's Error policy, so
+    /// the call was lost outright.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn announce_arguments_never_concatenate_with_fragments() {
+        use crate::streaming::StreamedAssistantContent;
+
+        let (items, _stream) = drive_frames(&[
+            r#"{"event_type":"step.start","index":1,"step":{"arguments":{"x":1},"id":"fc_1","name":"add","type":"function_call"}}"#,
+            r#"{"delta":{"arguments":"{\"x\":1}","type":"arguments_delta"},"event_type":"step.delta","index":1}"#,
+            r#"{"event_type":"step.stop","index":1}"#,
+            r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
+        ])
+        .await;
+
+        let tool_calls: Vec<_> = items
+            .iter()
+            .filter_map(|item| match item {
+                Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => Some(tool_call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            tool_calls.len(),
+            1,
+            "the announced-then-fragmented call must survive, got {items:?}"
+        );
+        assert_eq!(
+            tool_calls.first().expect("one call").function.arguments,
+            serde_json::json!({"x": 1}),
+            "streamed fragments are the arguments; the announce payload is not prepended"
+        );
+    }
+
+    /// A partial announce with NO fragments: the announce payload is the
+    /// only arguments the wire sent, so it finalizes the call
+    /// (replace-if-no-deltas).
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn announce_arguments_finalize_a_call_with_no_fragments() {
+        use crate::streaming::StreamedAssistantContent;
+
+        let (items, _stream) = drive_frames(&[
+            r#"{"event_type":"step.start","index":1,"step":{"arguments":{"x":7},"id":"fc_1","name":"add","type":"function_call"}}"#,
+            r#"{"event_type":"step.stop","index":1}"#,
+            r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
+        ])
+        .await;
+
+        let tool_calls: Vec<_> = items
+            .iter()
+            .filter_map(|item| match item {
+                Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => Some(tool_call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tool_calls.len(), 1, "got {items:?}");
+        assert_eq!(
+            tool_calls.first().expect("one call").function.arguments,
+            serde_json::json!({"x": 7})
+        );
     }
 
     /// A `step.stop` that never arrives must not lose the call: the wire
