@@ -11,7 +11,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     let client = cohere::Client::from_env().expect("client should build");
     let agent = client
-        .agent(cohere::COMMAND_R)
+        .agent(cohere::COMMAND_A_03_2025)
         .preamble(BASIC_PREAMBLE)
         .build();
 

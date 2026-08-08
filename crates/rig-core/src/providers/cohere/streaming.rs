@@ -500,7 +500,7 @@ mod tests {
         );
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
         let request = model.completion_request("hello").build();
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -551,7 +551,7 @@ mod tests {
         );
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
         let request = model.completion_request("hello").build();
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -600,7 +600,7 @@ mod tests {
         );
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
         let request = model.completion_request("hello").build();
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -650,7 +650,7 @@ mod tests {
         );
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
         let request = model.completion_request("hello").build();
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -706,7 +706,7 @@ mod tests {
         );
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
         let request = model.completion_request("hello").build();
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -750,7 +750,7 @@ mod tests {
         );
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
         let request = model.completion_request("hello").build();
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -801,7 +801,7 @@ mod tests {
         );
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
         let request = model.completion_request("hello").build();
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -847,7 +847,7 @@ mod tests {
             http::StatusCode::TOO_MANY_REQUESTS,
             r#"{"message":"slow down"}"#,
         ));
-        let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+        let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
         let request = model.completion_request("hello").build();
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)

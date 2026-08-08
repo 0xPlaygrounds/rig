@@ -73,6 +73,7 @@ cargo test -p rig --all-features --test anthropic anthropic::cassette -- --nocap
 cargo test -p rig --all-features --test gemini gemini::cassette -- --nocapture --test-threads=1
 cargo test -p rig --all-features --test chatgpt chatgpt::cassette -- --nocapture --test-threads=1
 cargo test -p rig --all-features --test bedrock bedrock::cassette -- --nocapture --test-threads=1
+cargo test -p rig --all-features --test cohere cohere::cassette -- --nocapture --test-threads=1
 cargo test -p rig --all-features --test doubleword doubleword::cassette -- --nocapture --test-threads=1
 ```
 
@@ -99,6 +100,11 @@ cargo test -p rig --all-features --test anthropic anthropic::cassette -- --nocap
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
 cargo test -p rig --all-features --test gemini gemini::cassette -- --nocapture --test-threads=1
+```
+
+```bash
+RIG_PROVIDER_TEST_MODE=record \
+cargo test -p rig --all-features --test cohere cohere::cassette -- --nocapture --test-threads=1
 ```
 
 ```bash

@@ -2809,7 +2809,7 @@ pub mod fixtures {
                         .api_key("test-key")
                         .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?;
-                    let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+                    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
                     let request = model.completion_request("hello").build();
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)

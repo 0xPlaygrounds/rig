@@ -6,6 +6,8 @@
     clippy::unreachable
 )]
 
+#[path = "common/cassette_safety.rs"]
+mod cassette_safety;
 #[path = "common/cassettes.rs"]
 mod cassettes;
 #[path = "common/reasoning.rs"]
