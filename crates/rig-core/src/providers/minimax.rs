@@ -30,6 +30,10 @@ use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
 };
 
+#[cfg(feature = "audio")]
+#[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
+pub mod audio_generation;
+
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.minimax.io/v1";
 /// China OpenAI-compatible base URL.
@@ -38,6 +42,9 @@ pub const CHINA_API_BASE_URL: &str = "https://api.minimaxi.com/v1";
 pub const GLOBAL_ANTHROPIC_API_BASE_URL: &str = "https://api.minimax.io/anthropic";
 /// China Anthropic-compatible base URL.
 pub const CHINA_ANTHROPIC_API_BASE_URL: &str = "https://api.minimaxi.com/anthropic";
+
+#[cfg(feature = "audio")]
+pub use audio_generation::{AudioGenerationModel, SPEECH_2_8_HD, SPEECH_2_8_TURBO};
 
 /// `MiniMax-M2.7`
 pub const MINIMAX_M2_7: &str = "MiniMax-M2.7";
@@ -98,7 +105,7 @@ impl<H> Capabilities<H> for MiniMaxExt {
     #[cfg(feature = "image")]
     type ImageGeneration = Nothing;
     #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
+    type AudioGeneration = Capable<audio_generation::AudioGenerationModel<H>>;
     type Rerank = Nothing;
 }
 
