@@ -455,8 +455,13 @@ impl PartsAccumulator {
                 // A wire that fragmented under a minted key and restates the
                 // call under its late-arriving wire key: minted-vs-wire is
                 // not a veto — with exactly one minted assembly open, the
-                // restatement is that assembly completed. More than one is
-                // ambiguous; don't guess.
+                // restatement CAN be that assembly completed. More than one
+                // is ambiguous; don't guess. And cardinality alone is not
+                // evidence: adoption also demands the whole call restate the
+                // assembly — same tool name, arguments covering whatever
+                // fragments streamed. An unrelated id-bearing call adopting
+                // the assembly marked it finished and silently dropped its
+                // streamed arguments when its own end arrived.
                 if id.is_minted() {
                     return None;
                 }
@@ -465,10 +470,14 @@ impl PartsAccumulator {
                     .iter()
                     .enumerate()
                     .filter(|(_, input)| input.id.is_minted());
-                match (minted.next(), minted.next()) {
-                    (Some((index, _)), None) => Some(index),
-                    _ => None,
-                }
+                let candidate = match (minted.next(), minted.next()) {
+                    (Some(candidate), None) => candidate,
+                    _ => return None,
+                };
+                let (index, input) = candidate;
+                let restates = input.name == tool_call.function.name
+                    && fragments_covered_by(input.buffer.as_deref(), &tool_call.function.arguments);
+                restates.then_some(index)
             });
         let adopted = position.map(|index| {
             let input = self.open_tool_inputs.remove(index);
@@ -788,6 +797,36 @@ impl PartsAccumulator {
 
 /// Attach a signature to a reasoning part's last text content (pushing a
 /// signature-only content item when the part has no text slot).
+/// Whether an assembly's streamed argument fragments are covered by a whole
+/// call's parsed arguments: no fragments at all, or a lenient parse of the
+/// buffer that the arguments subsume (equal, or an object whose entries all
+/// appear). Unparseable partial fragments are not evidence of restatement.
+fn fragments_covered_by(buffer: Option<&str>, arguments: &serde_json::Value) -> bool {
+    let Some(buffer) = buffer else {
+        return true;
+    };
+    if buffer.trim().is_empty() {
+        return true;
+    }
+    let Ok(partial) = crate::json_utils::parse_tool_arguments(buffer) else {
+        return false;
+    };
+    json_subsumes(arguments, &partial)
+}
+
+fn json_subsumes(outer: &serde_json::Value, inner: &serde_json::Value) -> bool {
+    match (outer, inner) {
+        (serde_json::Value::Object(outer), serde_json::Value::Object(inner)) => {
+            inner.iter().all(|(key, value)| {
+                outer
+                    .get(key)
+                    .is_some_and(|outer| json_subsumes(outer, value))
+            })
+        }
+        (outer, inner) => outer == inner,
+    }
+}
+
 fn attach_signature(part: Option<&mut AssistantContent>, signature: String) {
     if let Some(AssistantContent::Reasoning(reasoning)) = part {
         attach_reasoning_signature(reasoning, signature);
@@ -1734,17 +1773,98 @@ mod tests {
         let mut accumulator = PartsAccumulator::new();
         let published = accumulator.tool_name_delta(&pid("tool-0"), "add");
         accumulator.tool_args_delta(&pid("tool-0"), "{\"x\":1}");
-        let adopted = accumulator.tool_call(
-            &pid("call_late"),
-            call_named("call_late", "add"),
-            "freshly-minted".to_owned(),
+        // A genuine restatement: same tool, arguments covering the
+        // streamed fragments.
+        let restated = ToolCall::from_wire(
+            "call_late",
+            crate::message::ToolFunction {
+                name: "add".to_owned(),
+                arguments: serde_json::json!({"x": 1}),
+            },
         );
+        let adopted =
+            accumulator.tool_call(&pid("call_late"), restated, "freshly-minted".to_owned());
         assert_eq!(adopted, published);
         assert!(
             accumulator
                 .tool_input_end(end("tool-0", UnparseableToolInput::Drop))
                 .expect("no error")
                 .is_none()
+        );
+    }
+
+    /// A wire-keyed whole call must not steal an open minted assembly it
+    /// doesn't evidently restate: a different tool name (or arguments that
+    /// don't cover the streamed fragments) is an UNRELATED call. The
+    /// assembly stays open for its own end — its streamed arguments were
+    /// silently lost when adoption keyed on cardinality alone.
+    #[test]
+    fn an_unrelated_wire_keyed_call_does_not_steal_the_open_assembly() {
+        let mut accumulator = PartsAccumulator::new();
+        let published = accumulator.tool_name_delta(&pid("tool-0"), "get_weather");
+        accumulator.tool_args_delta(&pid("tool-0"), "{\"city\":\"Paris\"}");
+
+        let unrelated = ToolCall::from_wire(
+            "call_other",
+            crate::message::ToolFunction {
+                name: "get_time".to_owned(),
+                arguments: serde_json::json!({"zone": "UTC"}),
+            },
+        );
+        let adopted =
+            accumulator.tool_call(&pid("call_other"), unrelated, "fresh-internal".to_owned());
+        assert_eq!(
+            adopted, "fresh-internal",
+            "an unrelated call has nothing to adopt"
+        );
+
+        // The assembly still finalizes from its own end, streamed args intact.
+        let (weather, internal) = accumulator
+            .tool_input_end(end("tool-0", UnparseableToolInput::Error))
+            .expect("no error")
+            .expect("the open assembly must finalize");
+        assert_eq!(internal, published);
+        assert_eq!(weather.function.name, "get_weather");
+        assert_eq!(
+            weather.function.arguments,
+            serde_json::json!({"city": "Paris"})
+        );
+
+        let calls = accumulator
+            .finish()
+            .iter()
+            .filter(|part| matches!(part, AssistantContent::ToolCall(_)))
+            .count();
+        assert_eq!(calls, 2, "both calls survive as distinct parts");
+    }
+
+    /// Same-name adoption still demands the arguments cover the fragments:
+    /// a same-tool call whose args contradict what streamed is a second
+    /// invocation of that tool, not a restatement.
+    #[test]
+    fn a_same_name_call_with_foreign_arguments_does_not_adopt() {
+        let mut accumulator = PartsAccumulator::new();
+        accumulator.tool_name_delta(&pid("tool-0"), "add");
+        accumulator.tool_args_delta(&pid("tool-0"), "{\"x\":1}");
+        let second_invocation = ToolCall::from_wire(
+            "call_other",
+            crate::message::ToolFunction {
+                name: "add".to_owned(),
+                arguments: serde_json::json!({"x": 99}),
+            },
+        );
+        let adopted = accumulator.tool_call(
+            &pid("call_other"),
+            second_invocation,
+            "fresh-internal".to_owned(),
+        );
+        assert_eq!(adopted, "fresh-internal");
+        assert!(
+            accumulator
+                .tool_input_end(end("tool-0", UnparseableToolInput::Error))
+                .expect("no error")
+                .is_some(),
+            "the assembly still finalizes separately"
         );
     }
 
