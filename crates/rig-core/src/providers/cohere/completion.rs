@@ -185,32 +185,47 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
         let (content, _, tool_calls) = response.message()?;
 
+        // Each arm keeps its own diagnostic. Emptiness means something
+        // different on each side: the tool-call arm can only be reached when
+        // the wire sent tool-call envelopes, so "no message or tool call" would
+        // misdescribe it — the envelopes were there, they just carried no
+        // callable function.
         let model_response = if !tool_calls.is_empty() {
-            tool_calls
-                .into_iter()
-                .filter_map(|tool_call| {
-                    let ToolCallFunction { name, arguments } = tool_call.function?;
-                    let id = tool_call.id.unwrap_or_else(|| name.clone());
+            crate::message::require_non_empty(
+                tool_calls
+                    .into_iter()
+                    .filter_map(|tool_call| {
+                        let ToolCallFunction { name, arguments } = tool_call.function?;
+                        let id = tool_call.id.unwrap_or_else(|| name.clone());
 
-                    Some(completion::AssistantContent::tool_call(id, name, arguments))
-                })
-                .collect::<Vec<_>>()
+                        Some(completion::AssistantContent::tool_call(id, name, arguments))
+                    })
+                    .collect::<Vec<_>>(),
+                || {
+                    CompletionError::ResponseError(
+                        "response contained tool call metadata without any callable tool content"
+                            .to_owned(),
+                    )
+                },
+            )?
         } else {
-            content
-                .into_iter()
-                .map(|content| match content {
-                    AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                    AssistantContent::Thinking { thinking } => {
-                        completion::AssistantContent::Reasoning(Reasoning::new(&thinking))
-                    }
-                })
-                .collect::<Vec<_>>()
+            crate::message::require_non_empty(
+                content
+                    .into_iter()
+                    .map(|content| match content {
+                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
+                        AssistantContent::Thinking { thinking } => {
+                            completion::AssistantContent::Reasoning(Reasoning::new(&thinking))
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+                || {
+                    CompletionError::ResponseError(
+                        "Response contained no message or tool call (empty)".to_owned(),
+                    )
+                },
+            )?
         };
-        let model_response = crate::message::require_non_empty(model_response, || {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
 
         let usage = response
             .usage
@@ -772,6 +787,33 @@ where
 mod tests {
     use super::*;
     use serde_path_to_error::deserialize;
+
+    /// Emptiness means something different on each arm of the normalization,
+    /// and each keeps its own diagnostic. A response whose `tool_calls`
+    /// entries all lack a `function` payload did contain tool-call metadata,
+    /// so the generic "no message or tool call" wording would be wrong.
+    #[test]
+    fn tool_call_metadata_without_a_function_keeps_its_own_diagnostic() {
+        let json_data = r#"
+        {
+            "id": "abc123",
+            "finish_reason": "TOOL_CALL",
+            "message": {
+                "role": "assistant",
+                "tool_calls": [{ "id": "call_1", "type": "function" }]
+            }
+        }
+        "#;
+        let response: CompletionResponse =
+            serde_json::from_str(json_data).expect("cohere response should deserialize");
+
+        let error = completion::CompletionResponse::try_from(response)
+            .expect_err("tool-call envelopes with no callable function are a defect");
+        assert!(
+            error.to_string().contains("tool call metadata"),
+            "the tool-call arm must not report the generic empty-content error, got {error}"
+        );
+    }
 
     #[test]
     fn test_deserialize_completion_response() {

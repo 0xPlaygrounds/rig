@@ -1155,13 +1155,10 @@ impl AgentRun {
             )));
         }
 
-        // `results` is non-empty (checked above), so construction succeeds.
+        // `results` was rejected as empty at the top of this function, and
+        // nothing below removes from it, so no further emptiness check is
+        // reachable here.
         let content = results;
-        if content.is_empty() {
-            return Err(
-                self.protocol_violation("internal: tool results vanished during validation")
-            );
-        };
 
         self.new_messages.push(Message::User { content });
         self.state = RunState::PreparingRequest;

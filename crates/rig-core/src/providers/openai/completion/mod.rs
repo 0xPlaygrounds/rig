@@ -805,7 +805,9 @@ impl TryFrom<message::UserContent> for UserContent {
 /// type now `Vec`, both sides of that impl are foreign and the orphan rule
 /// rejects it. The conversion was never `Vec`-generic anyway — it is this
 /// wire's turn-splitting rule.
-pub(crate) fn user_content_to_messages(
+///
+/// Replaces the former `TryFrom<_> for Vec<Message>` impl; see MIGRATING.
+pub fn user_content_to_messages(
     value: Vec<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
     {
@@ -850,7 +852,9 @@ pub(crate) fn user_content_to_messages(
 /// Convert an assistant turn's content blocks into the wire's message sequence.
 /// Free function for the same orphan-rule reason as
 /// [`user_content_to_messages`].
-pub(crate) fn assistant_content_to_messages(
+///
+/// Replaces the former `TryFrom<_> for Vec<Message>` impl; see MIGRATING.
+pub fn assistant_content_to_messages(
     value: Vec<message::AssistantContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
     {

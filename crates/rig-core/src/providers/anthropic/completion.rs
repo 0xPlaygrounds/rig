@@ -255,9 +255,11 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .collect::<Result<Vec<_>, _>>()?;
 
         let choice = if content.is_empty() {
-            // Anthropic documents empty `end_turn` responses after tool-result round trips.
-            // The generic completion response still requires at least one assistant item, so
-            // normalize that terminal no-op into the same empty-text sentinel used by streaming.
+            // Anthropic documents empty `end_turn` responses after tool-result
+            // round trips. That terminal no-op is now carried as it is — an
+            // empty choice — rather than as the empty-text part the non-empty
+            // container used to force. Empty under any other stop reason is
+            // still a defect.
             if response.stop_reason.as_deref() == Some("end_turn") {
                 Vec::new()
             } else {
@@ -266,9 +268,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 ));
             }
         } else {
-            crate::message::require_non_empty(content, || {
-                CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned())
-            })?
+            content
         };
 
         let finish_reason = response.stop_reason.as_deref().map(map_finish_reason);

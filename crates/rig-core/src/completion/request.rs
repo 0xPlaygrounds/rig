@@ -677,7 +677,12 @@ pub struct CompletionRequest {
     /// in `chat_history` as the canonical representation of system instructions.
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
-    /// The very last message will always be the prompt (hence why there is *always* one)
+    ///
+    /// [`CompletionRequestBuilder`] always appends the prompt as the last
+    /// message, so anything it builds is non-empty. The field itself no longer
+    /// enforces that — it is a plain `Vec` — so a hand-built request can carry
+    /// an empty history; [`CompletionRequest::validate_message_content`]
+    /// rejects one before it reaches a provider.
     pub chat_history: Vec<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
@@ -739,6 +744,15 @@ impl CompletionRequest {
     /// enforcement point, and would break histories carrying a conditionally
     /// built preamble that resolved to `""`.
     pub fn validate_message_content(&self) -> Result<(), CompletionError> {
+        // The history itself was non-empty by construction until the container
+        // was removed; every wire rejects a request with no messages, so the
+        // check belongs here rather than as a 400 from each provider.
+        if self.chat_history.is_empty() {
+            return Err(CompletionError::RequestError(
+                "request has an empty chat history; providers require at least one message".into(),
+            ));
+        }
+
         for (index, message) in self.chat_history.iter().enumerate() {
             let (role, empty) = match message {
                 Message::User { content } => ("user", content.is_empty()),
@@ -1163,11 +1177,11 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             chat_history.insert(0, Message::system(preamble));
         }
 
-        chat_history.push(prompt.clone());
+        // Pushing the prompt is what makes the built history non-empty; the
+        // old single-item fallback below was therefore unreachable, and its
+        // removal is why `prompt` need not be cloned here.
+        chat_history.push(prompt);
 
-        // `prompt` was pushed above, so the history is non-empty by
-        // construction; the old empty fallback was unreachable.
-        let chat_history = chat_history;
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,
@@ -1300,6 +1314,35 @@ mod tests {
         request
             .validate_message_content()
             .expect("a normal history is valid");
+    }
+
+    /// `chat_history` was non-empty by construction until the container came
+    /// out. The builder still guarantees it, but the public field no longer
+    /// does, so a hand-built request must fail here rather than as a provider
+    /// 400.
+    #[test]
+    fn an_empty_chat_history_is_rejected() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: Vec::new(),
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let error = request
+            .validate_message_content()
+            .expect_err("a request with no messages must not reach a provider");
+        assert!(
+            error.to_string().contains("empty chat history"),
+            "got {error}"
+        );
     }
 
     /// The check relocates the removed container's enforcement; it does not

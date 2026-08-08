@@ -382,6 +382,14 @@ Mechanical replacements:
 | `content.rest()` | `content.get(1..).unwrap_or_default()` |
 | `content.map(f)` / `.try_map(f)` | `.into_iter().map(f).collect()` |
 | `OneOrMany::merge`, `string_or_one_or_many`, `string_or_option_one_or_many` | removed (see below) |
+| `TryFrom<OneOrMany<UserContent>> for Vec<openai::Message>` | `openai::completion::user_content_to_messages(v)` |
+| `TryFrom<OneOrMany<AssistantContent>> for Vec<openai::Message>` | `openai::completion::assistant_content_to_messages(v)` |
+
+Those two conversions are free functions rather than trait impls because with
+`Vec` on both sides the orphan rule rejects the impl. A third,
+`From<OneOrMany<String>> for Vec<responses_api::ReasoningSummary>`, had no
+callers and is deleted outright; build the summaries with
+`ReasoningSummary::new` if you were relying on it.
 
 `OneOrMany::merge`, `string_or_option_one_or_many` and `first_mut` had no callers
 and are simply gone. `string_or_one_or_many` is superseded by
