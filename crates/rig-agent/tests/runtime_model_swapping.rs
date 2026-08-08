@@ -170,7 +170,7 @@ impl Turn {
                 name,
                 arguments,
                 ..
-            } => OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+            } => OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
                 id.clone(),
                 ToolFunction::new(name.clone(), arguments.clone()),
             ))),

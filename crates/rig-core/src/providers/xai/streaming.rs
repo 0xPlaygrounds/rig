@@ -264,8 +264,12 @@ mod tests {
             .expect("first stream item should be ok")
         {
             StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                assert_eq!(tool_call.id, "fc_123");
-                assert_eq!(tool_call.call_id.as_deref(), Some("call_123"));
+                // The correlator (`call_…`) drives rig's id; the dual-wire
+                // item handle (`fc_…`) rides along as the provider item id.
+                assert_eq!(tool_call.id, "call_123");
+                let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+                assert_eq!(provider.call_id, "call_123");
+                assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
                 assert_eq!(tool_call.function.name, "example_tool");
                 assert_eq!(tool_call.function.arguments, serde_json::json!({}));
             }

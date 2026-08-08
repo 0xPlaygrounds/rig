@@ -3,7 +3,7 @@
 use rig::OneOrMany;
 use rig::completion::CompletionModel;
 use rig::message::ToolChoice;
-use rig::message::{AssistantContent, Message};
+use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::xai;
 use rig::streaming::StreamingPrompt;
@@ -141,11 +141,14 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 id: None,
                 content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
             };
-            let tool_result_message = Message::tool_result_with_call_id(
-                tool_call.id,
-                tool_call.call_id,
-                XAI_STATUS_TOOL_OUTPUT,
-            );
+            let tool_result_message = Message::User {
+                content: OneOrMany::one(UserContent::tool_result_for(
+                    tool_call.id.clone(),
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
+                    OneOrMany::one(ToolResultContent::text(XAI_STATUS_TOOL_OUTPUT)),
+                )),
+            };
             let followup_request = model
                 .completion_request(
                     "Now reply in one short sentence using the provided tool result only.",

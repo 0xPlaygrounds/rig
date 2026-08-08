@@ -51,8 +51,8 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
         "migration_pain_points/tool_exchange_history_is_stripped_and_remerged",
         |client| async move {
             let model = client.completion_model(perplexity::SONAR);
-            let tool_call = ToolCall::new(
-                "call_amber".to_string(),
+            let tool_call = ToolCall::from_wire(
+                "call_amber",
                 ToolFunction::new("lookup_code_word".to_string(), json!({})),
             );
 
@@ -64,7 +64,11 @@ async fn tool_exchange_history_is_stripped_and_remerged() {
                     id: None,
                     content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
                 })
-                .message(Message::tool_result("call_amber", "tool result: amber-rig"))
+                .message(Message::tool_result(
+                    "call_amber",
+                    "lookup_code_word",
+                    "tool result: amber-rig",
+                ))
                 .message(Message::user(
                     "Use the history, not web search, if possible.",
                 ))

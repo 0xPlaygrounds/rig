@@ -584,10 +584,9 @@ impl PartsAccumulator {
         };
         let overflowed = open.as_ref().is_some_and(|input| input.overflowed);
         // The assembly key is opaque; a wire-derived key doubles as the
-        // legacy durable fallback when the end event carries no
-        // authoritative tool id. Minted keys yield the absent (empty)
-        // sentinel serializers omit.
-        let opened_id = opened_id.wire_str().map(str::to_owned).unwrap_or_default();
+        // durable fallback when the end event carries no authoritative tool
+        // id — the wire issued that key, so it is a provider handle.
+        let opened_wire_id = opened_id.wire_str().map(str::to_owned);
         // An authoritative end-event name supersedes assembly, but an
         // *empty* one is filtered like the fragment path: it must not erase
         // an established name and turn a real call into a nameless drop.
@@ -664,9 +663,30 @@ impl PartsAccumulator {
             },
         };
 
+        // Provider identifiers: a dual wire carries (call_id, item id); a
+        // single wire's id arrives as `tool_id` (or as the wire-derived
+        // assembly key). With none, the correlation handle is minted and
+        // `provider` stays `None` — the empty-string sentinel is
+        // unrepresentable here.
+        let wire_tool_id = end.tool_id.map(WireId::into_string).or(opened_wire_id);
+        let call_id = end.call_id.filter(|call_id| !call_id.is_empty());
+        let provider = match (call_id, wire_tool_id) {
+            (Some(call_id), tool_id) => {
+                crate::message::ProviderCallId::new(call_id).map(|provider| match tool_id {
+                    Some(tool_id) => provider.with_item_id(tool_id),
+                    None => provider,
+                })
+            }
+            (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id),
+            (None, None) => None,
+        };
+        let id = provider
+            .as_ref()
+            .and_then(|provider| crate::message::ToolCallId::new(provider.call_id.clone()))
+            .unwrap_or_else(crate::message::ToolCallId::mint);
         let tool_call = ToolCall {
-            id: end.tool_id.map(WireId::into_string).unwrap_or(opened_id),
-            call_id: end.call_id,
+            id,
+            provider,
             function: ToolFunction { name, arguments },
             signature: end.signature,
             additional_params: end.additional_params,
@@ -864,16 +884,13 @@ mod tests {
     }
 
     fn call_named(id: &str, name: &str) -> ToolCall {
-        ToolCall {
-            id: id.to_owned(),
-            call_id: None,
-            function: crate::message::ToolFunction {
+        ToolCall::from_wire(
+            id,
+            crate::message::ToolFunction {
                 name: name.to_owned(),
                 arguments: serde_json::json!({}),
             },
-            signature: None,
-            additional_params: None,
-        }
+        )
     }
 
     // --- reasoning lifecycle ---
@@ -1321,8 +1338,12 @@ mod tests {
             .expect("no error")
             .expect("authoritative payload finalizes");
         assert_eq!(internal_after, internal);
-        assert_eq!(tool_call.id, "fc_1");
-        assert_eq!(tool_call.call_id.as_deref(), Some("call_abc"));
+        // The authoritative correlator drives rig's id; the wire-derived
+        // assembly key rides along as the provider item id.
+        assert_eq!(tool_call.id, "call_abc");
+        let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+        assert_eq!(provider.call_id, "call_abc");
+        assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
         assert_eq!(tool_call.function.name, "final_name");
     }
 
@@ -1521,8 +1542,13 @@ mod tests {
             .tool_input_end(end("tool-1", UnparseableToolInput::Drop))
             .expect("no error")
             .expect("finalizes");
-        assert_eq!(first.id, "");
-        assert_eq!(second.id, "");
+        // Id-less calls mint distinct correlation handles and record that
+        // the provider issued nothing — never a shared empty sentinel.
+        assert!(!first.id.as_str().is_empty());
+        assert!(!second.id.as_str().is_empty());
+        assert_ne!(first.id, second.id);
+        assert!(first.provider.is_none());
+        assert!(second.provider.is_none());
         assert_eq!(
             first.function.arguments,
             serde_json::json!({"city": "Tokyo"})

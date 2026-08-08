@@ -270,12 +270,12 @@ impl TryFrom<RigMessage> for Vec<Message> {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?
                                 .join("\n");
-                            let call_id = tr.call_id.ok_or_else(|| {
-                                CompletionError::RequestError(
-                                    "Tool result `call_id` is required for xAI Responses API"
-                                        .into(),
-                                )
-                            })?;
+                            // Provider-issued call id when one exists,
+                            // else rig's minted handle — always present.
+                            let call_id = tr
+                                .provider
+                                .map(|provider| provider.call_id)
+                                .unwrap_or_else(|| tr.call.into_string());
                             items.push(Message::function_call_output(call_id, output));
                         }
                         UserContent::Document(doc) => {
@@ -327,12 +327,10 @@ impl TryFrom<RigMessage> for Vec<Message> {
                         AssistantContent::Text(t) => text_parts.push(t.text),
                         AssistantContent::ToolCall(tc) => {
                             flush_assistant_text(&mut items, &mut text_parts);
-                            let call_id = tc.call_id.ok_or_else(|| {
-                                CompletionError::RequestError(
-                                    "Assistant tool call `call_id` is required for xAI Responses API"
-                                        .into(),
-                                )
-                            })?;
+                            let call_id = tc
+                                .provider
+                                .map(|provider| provider.call_id)
+                                .unwrap_or_else(|| tc.id.into_string());
                             items.push(Message::function_call(
                                 call_id,
                                 tc.function.name,
@@ -401,7 +399,6 @@ impl ApiError {
 mod tests {
     use super::{Content, Message, Role};
     use crate::OneOrMany;
-    use crate::completion::CompletionError;
     use crate::message::{
         AssistantContent, Message as RigMessage, Reasoning, ReasoningContent, ToolResultContent,
         UserContent,
@@ -416,6 +413,7 @@ mod tests {
                 UserContent::tool_result_with_call_id(
                     "result-id",
                     "call-id".to_string(),
+                    "tool",
                     OneOrMany::one(ToolResultContent::json(serde_json::json!({ "ok": true }))),
                 ),
                 UserContent::text("after"),
@@ -581,37 +579,37 @@ mod tests {
     }
 
     #[test]
-    fn user_tool_result_without_call_id_returns_request_error() {
-        let message = RigMessage::tool_result("tool_1", "result payload");
+    fn user_tool_result_without_call_id_replays_the_minted_handle() {
+        // An empty wire id records no provider id and mints the correlation
+        // handle; the minted handle (never an empty string) goes on the wire.
+        let message = RigMessage::tool_result("", "tool_1", "result payload");
 
-        let converted = Vec::<Message>::try_from(message);
+        let converted = Vec::<Message>::try_from(message).expect("id-less tool results convert");
         assert!(matches!(
-            converted,
-            Err(CompletionError::RequestError(error))
-                if error
-                    .to_string()
-                    .contains("Tool result `call_id` is required")
+            converted.as_slice(),
+            [Message::FunctionCallOutput { call_id, output }]
+                if !call_id.is_empty() && output == "result payload"
         ));
     }
 
     #[test]
-    fn assistant_tool_call_without_call_id_returns_request_error() {
+    fn assistant_tool_call_without_call_id_replays_the_minted_handle() {
+        // An empty wire id records no provider id and mints the correlation
+        // handle; the minted handle (never an empty string) goes on the wire.
         let message = RigMessage::Assistant {
             id: Some("assistant_3".to_string()),
             content: OneOrMany::one(AssistantContent::tool_call(
-                "tool_1",
+                "",
                 "my_tool",
                 serde_json::json!({"arg":"value"}),
             )),
         };
 
-        let converted = Vec::<Message>::try_from(message);
+        let converted = Vec::<Message>::try_from(message).expect("id-less tool calls convert");
         assert!(matches!(
-            converted,
-            Err(CompletionError::RequestError(error))
-                if error
-                    .to_string()
-                    .contains("Assistant tool call `call_id` is required")
+            converted.as_slice(),
+            [Message::FunctionCall { call_id, name, .. }]
+                if !call_id.is_empty() && name == "my_tool"
         ));
     }
 }

@@ -147,10 +147,16 @@ async fn thinking_and_tool_call_in_one_stream() {
                 .expect("aggregated choice should keep the tool call");
             assert_eq!(aggregated.id, streamed.id, "id should aggregate unchanged");
             // Modern Ollama daemons issue a call id (`"id":"call_..."`);
-            // rig preserves it as the durable id instead of discarding it.
-            assert!(
-                !streamed.id.is_empty(),
-                "the daemon-issued call id must be preserved"
+            // rig records it as the provider id and adopts it as the
+            // durable id instead of discarding it.
+            let provider = streamed
+                .provider
+                .as_ref()
+                .expect("the daemon-issued call id must be preserved");
+            assert_eq!(
+                streamed.id,
+                provider.call_id.as_str(),
+                "the durable id adopts the daemon's call id"
             );
         },
     )
@@ -203,7 +209,7 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                     "{name} id should aggregate"
                 );
                 assert!(
-                    !streamed.id.is_empty(),
+                    streamed.provider.is_some(),
                     "{name} must keep its daemon-issued call id"
                 );
                 assert!(
@@ -282,7 +288,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
         // its daemon-issued id — nothing fabricated, nothing collapsed.
         for call in &add_calls {
             assert!(
-                !call.id.is_empty(),
+                call.provider.is_some(),
                 "the daemon-issued call id must be preserved"
             );
             assert!(
@@ -320,11 +326,12 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
     .await;
 }
 
-/// Cross-provider replay, recorded live (84a43e9e finding #5): an
-/// OpenAI-Chat-shaped history (`ToolResult { id: "call_abc123", name: None }`)
-/// replayed to Ollama must name the tool message with the resolved tool
-/// *name*, never the identifier. The recording is the evidence: the model
-/// answers from the replayed result.
+/// Cross-provider replay, recorded live (84a43e9e finding #5): a history
+/// sourced from another provider's wire carries `call_abc123` only as rig's
+/// correlation handle — no Ollama provider id. Replayed to Ollama, the tool
+/// message must be named with the required `ToolResult::name` — never the
+/// identifier — and the correlation-only handle must stay off the wire. The
+/// recording is the evidence: the model answers from the replayed result.
 ///
 /// Re-record with (local Ollama daemon with `qwen3:4b` pulled):
 /// `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama chat_sourced_history_replays -- --test-threads=1`
@@ -342,8 +349,12 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                     id: None,
                     content: rig::OneOrMany::one(AssistantContent::ToolCall(
                         rig::message::ToolCall {
-                            id: "call_abc123".to_owned(),
-                            call_id: None,
+                            // The cross-provider shape: the other wire's
+                            // identifier survives as rig's correlation
+                            // handle, with no provider id for Ollama's wire.
+                            id: rig::message::ToolCallId::new("call_abc123")
+                                .expect("the chat-sourced identifier is non-empty"),
+                            provider: None,
                             function: rig::message::ToolFunction {
                                 name: "add".to_owned(),
                                 arguments: serde_json::json!({"x": 2, "y": 3}),
@@ -356,9 +367,10 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::User {
                     content: rig::OneOrMany::one(rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {
-                            id: "call_abc123".to_owned(),
-                            call_id: None,
-                            name: None,
+                            call: rig::message::ToolCallId::new("call_abc123")
+                                .expect("the chat-sourced identifier is non-empty"),
+                            provider: None,
+                            name: "add".to_owned(),
                             content: rig::OneOrMany::one(rig::message::ToolResultContent::text(
                                 "5",
                             )),

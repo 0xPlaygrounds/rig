@@ -145,7 +145,10 @@ async fn parallel_tool_calls_stay_distinct() {
                     aggregated_call.id, streamed.id,
                     "{name} id should aggregate"
                 );
-                assert!(!streamed.id.is_empty(), "{name} should carry a wire id");
+                assert!(
+                    streamed.provider.is_some(),
+                    "{name} should carry the wire-issued call id"
+                );
                 assert!(
                     streamed.function.arguments.is_object(),
                     "{name} arguments must assemble into an object, got {:?}",

@@ -363,7 +363,87 @@ Public stream items change accordingly (breaking):
   correlator never enters replayable history. Matchers change from
   `Reasoning(reasoning)` to `Reasoning { reasoning, .. }`.
 
+### Tool-call identity is typed: `ToolCallId` + `ProviderCallId`
+
+The message layer receives the same identity decomposition the streaming
+layer already has (`StreamPartId` vs `WireId`): rig's correlation handle and
+the provider's wire handles are now different types, and the empty-string
+sentinel is unrepresentable.
+
+```rust
+pub struct ToolCall {
+    /// Rig's correlation handle. Always present; minted when the provider issued none.
+    pub id: ToolCallId,
+    /// What the provider issued, if anything — the only ids that go back on its wire.
+    pub provider: Option<ProviderCallId>,
+    pub function: ToolFunction,
+    pub signature: Option<String>,
+    pub additional_params: Option<serde_json::Value>,
+}
+
+/// Dual-identifier wires need both: OpenAI Responses issues an item id
+/// (`fc_…`) *and* a `call_id` (`call_…`).
+pub struct ProviderCallId {
+    pub call_id: String,
+    pub item_id: Option<String>,
+}
+
+pub struct ToolResult {
+    /// Which call this answers — correlation, always present.
+    pub call: ToolCallId,
+    pub provider: Option<ProviderCallId>,
+    /// The *executed* tool's name. Required, not `Option`.
+    pub name: String,
+    pub content: OneOrMany<ToolResultContent>,
+}
+```
+
+`ToolCallId` is non-empty by construction (`new` returns `None` for `""`;
+`mint()` generates a fresh 21-character handle; `new_or_mint` is the
+boundary guard). Every provider decode path adopts the wire's id when one
+was issued (`ToolCall::from_wire`, `ToolCall::from_dual_wire`) and mints
+when none was — so comparing or keying by `ToolCall::id` is now correct on
+id-less wires (older Ollama daemons, Gemini REST), where every call
+previously carried `id: ""` and collided.
+
+What this changes for you:
+
+- **Construction**: `ToolCall::new` takes a `ToolCallId`; provider decode
+  paths use `ToolCall::from_wire(wire_id, function)` (empty mints) or
+  `ToolCall::from_dual_wire(item_id, call_id, function)`.
+  `with_call_id` is replaced by `with_provider(ProviderCallId)`.
+  `UserContent::tool_result(call_id, name, content)` takes the executed
+  tool's name (required); `tool_result_for(call, provider, name, content)`
+  is the agent-driver form; `tool_result_named` is gone.
+- **Serialization to providers**: wires that require a call id (OpenAI
+  chat/Responses, Anthropic, Bedrock, Gemini Interactions, xAI) receive
+  `provider.call_id` when the provider issued one, else rig's minted id —
+  never an empty string, and the Interactions/Responses "requires
+  `call_id`" request errors are gone (unrepresentable). Wires with optional
+  ids (Gemini REST/gRPC) omit the id unless the provider issued one:
+  minted handles never travel upstream there.
+- **Persisted histories**: the canonical serde shape changed (`ToolCall`
+  gains `provider`, loses `call_id`; `ToolResult` renames `id` → `call`,
+  requires `name`). Histories persisted by earlier versions do **not**
+  deserialize; re-run the conversation or migrate the JSON by hand
+  (`id`/`call_id` → `call` + `provider.call_id`, add the executed tool's
+  `name`). Empty-string ids in old JSON are rejected by construction.
+- **The back-compat pairing shim is deleted**:
+  `providers::internal::resolve_tool_result_names` (and the name-in-id
+  legacy encodings it supported) no longer exist — `ToolResult::name` is
+  required data, and every name-keyed serializer (Gemini
+  `functionResponse.name`, Ollama, Vertex AI, gemini-grpc) reads it
+  directly.
+- **Hooks and telemetry**: tool-call ids surfaced to hooks
+  (`ToolCallEvent`/`ToolResultEvent`/`InvalidToolCallContext.tool_call_id`)
+  and telemetry are now the durable id — the provider's when issued, else
+  rig's minted handle — never `Some("")` and never absent for a real call.
+
 ### `ToolResult` carries the executed tool's name
+
+> **Superseded in this release**: `name` is now **required** (`String`, not
+> `Option<String>`) and the `resolve_tool_result_names` shim is deleted —
+> see the `ToolCallId` section above.
 
 `rig::message::ToolResult` gains `name: Option<String>` — the name of the
 tool that actually executed (which can differ from the model's call when a

@@ -3,7 +3,7 @@ use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::{
     OneOrMany,
     completion::CompletionError,
-    message::{Text, ToolResult, ToolResultContent, UserContent},
+    message::{Text, ToolResultContent, UserContent},
 };
 
 use super::{document::RigDocument, image::RigImage, tool::RigToolResultContent};
@@ -31,12 +31,14 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigUserContent {
                 let tool_results = OneOrMany::many(tool_result_contents).map_err(|_| {
                     CompletionError::ProviderError("ToolResult returned invalid response".into())
                 })?;
-                Ok(RigUserContent(UserContent::ToolResult(ToolResult {
-                    id: tool_result.tool_use_id,
-                    call_id: None,
-                    name: None,
-                    content: tool_results,
-                })))
+                // Bedrock's wire correlates results by `toolUseId` only
+                // and never carries the tool name; this conversion is lossy
+                // for name-keyed wires.
+                Ok(RigUserContent(UserContent::tool_result(
+                    tool_result.tool_use_id,
+                    "",
+                    tool_results,
+                )))
             }
             aws_bedrock::ContentBlock::Document(document) => {
                 let doc: RigDocument = document.try_into()?;
@@ -61,7 +63,12 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
             UserContent::Text(text) => Ok(vec![aws_bedrock::ContentBlock::Text(text.text)]),
             UserContent::ToolResult(tool_result) => {
                 let builder = aws_bedrock::ToolResultBlock::builder()
-                    .tool_use_id(tool_result.id)
+                    .tool_use_id(
+                        tool_result
+                            .provider
+                            .map(|provider| provider.call_id)
+                            .unwrap_or_else(|| tool_result.call.into_string()),
+                    )
                     .set_content(Some(
                         tool_result
                             .content
@@ -136,7 +143,14 @@ mod tests {
         };
         assert!(content.is_ok());
         let content = content.unwrap();
-        assert_eq!(content.id, "123");
+        // Bedrock's wire id becomes the provider call id (and rig's id adopts
+        // it); the wire carries no tool name, so the conversion is lossy there.
+        assert_eq!(content.call, "123");
+        assert_eq!(
+            content.provider.as_ref().map(|p| p.call_id.as_str()),
+            Some("123")
+        );
+        assert_eq!(content.name, "");
         assert_eq!(
             content.content,
             OneOrMany::one(ToolResultContent::Text("content".into()))

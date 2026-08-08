@@ -10,17 +10,17 @@ use crate::reasoning::collect_stream_stats;
 #[tokio::test]
 async fn collect_stream_stats_tracks_only_final_turn_text() {
     let internal_call_id = "call_internal_1".to_string();
-    let tool_call = ToolCall::new(
-        "tool_1".to_string(),
+    let tool_call = ToolCall::from_wire(
+        "tool_1",
         ToolFunction::new(
             "get_weather".to_string(),
             serde_json::json!({ "city": "Tokyo" }),
         ),
     );
     let tool_result = ToolResult {
-        id: "tool_1".to_string(),
-        call_id: None,
-        name: None,
+        call: tool_call.id.clone(),
+        provider: tool_call.provider.clone(),
+        name: tool_call.function.name.clone(),
         content: OneOrMany::one(ToolResultContent::text("72F and sunny")),
     };
 

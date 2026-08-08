@@ -764,15 +764,28 @@ impl RawStreamingToolCall {
 
 impl From<RawStreamingToolCall> for ToolCall {
     fn from(tool_call: RawStreamingToolCall) -> Self {
+        // Only provider-issued handles populate `provider`: a dual wire
+        // carries (call_id, item id), a single wire carries its id in
+        // `call_id`. With none, the correlation handle is minted and
+        // `provider` records the absence — never an empty sentinel.
+        let call_id = tool_call.call_id.filter(|call_id| !call_id.is_empty());
+        let provider = match (call_id, tool_call.tool_id) {
+            (Some(call_id), tool_id) => {
+                crate::message::ProviderCallId::new(call_id).map(|provider| match tool_id {
+                    Some(tool_id) => provider.with_item_id(tool_id.into_string()),
+                    None => provider,
+                })
+            }
+            (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id.into_string()),
+            (None, None) => None,
+        };
+        let id = provider
+            .as_ref()
+            .and_then(|provider| crate::message::ToolCallId::new(provider.call_id.clone()))
+            .unwrap_or_else(crate::message::ToolCallId::mint);
         ToolCall {
-            // Only the provider-issued handle becomes the durable id; with
-            // none, the empty string is the absent sentinel every serializer
-            // omits — rig never replays a fabricated tool-call id upstream.
-            id: tool_call
-                .tool_id
-                .map(WireId::into_string)
-                .unwrap_or_default(),
-            call_id: tool_call.call_id,
+            id,
+            provider,
             function: ToolFunction {
                 name: tool_call.name,
                 arguments: tool_call.arguments,

@@ -1291,7 +1291,7 @@ impl TurnSource for StreamingTurnSource {
                                     if let Some(tool_result) = skipped_tool_result {
                                         yield Ok(MultiTurnStreamItem::StreamUserItem(
                                             StreamedUserContent::ToolResult {
-                                                tool_result,
+                                                tool_result: *tool_result,
                                                 internal_call_id: invalid.internal_call_id.clone(),
                                             },
                                         ));
@@ -1781,8 +1781,8 @@ mod migrated_tests {
     fn finalize_streamed_choice_surfaces_output_over_tool_call_and_prose() {
         use rig_core::message::{ToolCall, ToolFunction};
 
-        let output_call = AssistantContent::ToolCall(ToolCall::new(
-            "c1".to_string(),
+        let output_call = AssistantContent::ToolCall(ToolCall::from_wire(
+            "c1",
             ToolFunction::new(
                 "final_result".to_string(),
                 serde_json::json!({"city": "Tokyo"}),
@@ -1835,8 +1835,8 @@ mod migrated_tests {
             None,
         ));
         let user_content = tool_result_output(
-            "tool_call_1".to_string(),
-            Some("call_1".to_string()),
+            rig_core::message::ToolCallId::new_or_mint("tool_call_1"),
+            rig_core::message::ProviderCallId::new("call_1"),
             "render_reference_image".to_string(),
             crate::tool::ToolOutput::content(content),
         );
@@ -1846,8 +1846,14 @@ mod migrated_tests {
             other => panic!("expected tool result content, got {other:?}"),
         };
 
-        assert_eq!(tool_result.id, "tool_call_1");
-        assert_eq!(tool_result.call_id.as_deref(), Some("call_1"));
+        assert_eq!(tool_result.call, "tool_call_1");
+        assert_eq!(
+            tool_result
+                .provider
+                .as_ref()
+                .map(|provider| provider.call_id.as_str()),
+            Some("call_1")
+        );
         assert_eq!(tool_result.content.len(), 2);
 
         let mut items = tool_result.content.iter();
@@ -1891,14 +1897,20 @@ mod migrated_tests {
             ));
         }
 
+        // The stream issued both an item id ("tool_call_1") and a correlator
+        // ("call_1"): the correlator drives rig's durable id, and both travel
+        // on `provider` as the dual-wire identifiers.
         if !matches!(
             history.get(1),
             Some(Message::Assistant { content, .. })
                 if matches!(
                     content.first(),
                     AssistantContent::ToolCall(tool_call)
-                        if tool_call.id == "tool_call_1"
-                            && tool_call.call_id.as_deref() == Some("call_1")
+                        if tool_call.id == "call_1"
+                            && tool_call.provider.as_ref().is_some_and(|provider| {
+                                provider.call_id == "call_1"
+                                    && provider.item_id.as_deref() == Some("tool_call_1")
+                            })
                 )
         ) {
             return Err(format!(
@@ -1912,8 +1924,11 @@ mod migrated_tests {
                 if matches!(
                     content.first(),
                     UserContent::ToolResult(tool_result)
-                        if tool_result.id == "tool_call_1"
-                            && tool_result.call_id.as_deref() == Some("call_1")
+                        if tool_result.call == "call_1"
+                            && tool_result.provider.as_ref().is_some_and(|provider| {
+                                provider.call_id == "call_1"
+                                    && provider.item_id.as_deref() == Some("tool_call_1")
+                            })
                 )
         ) {
             return Err(format!(
@@ -1936,6 +1951,53 @@ mod migrated_tests {
                     ))
             )
         })
+    }
+
+    /// The invalid-call retry transcript pairs 1:1 by construction: every tool
+    /// call in the assistant turn carries a unique non-empty id (minted at the
+    /// provider boundary when the wire issued none), and the retry results
+    /// answer exactly those ids.
+    fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
+        let Message::Assistant { content, .. } = assistant else {
+            panic!("expected the assistant tool-call turn, got {assistant:?}");
+        };
+        let call_ids: Vec<&str> = content
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::ToolCall(tool_call) => Some(tool_call.id.as_str()),
+                _ => None,
+            })
+            .collect();
+        let Message::User { content } = results else {
+            panic!("expected the user retry-result turn, got {results:?}");
+        };
+        let result_ids: Vec<&str> = content
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some(result.call.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            call_ids.iter().all(|id| !id.is_empty()),
+            "every tool call carries a non-empty id: {call_ids:?}"
+        );
+        let unique_calls: BTreeSet<&str> = call_ids.iter().copied().collect();
+        assert_eq!(
+            unique_calls.len(),
+            call_ids.len(),
+            "tool-call ids must be unique: {call_ids:?}"
+        );
+        let unique_results: BTreeSet<&str> = result_ids.iter().copied().collect();
+        assert_eq!(
+            unique_results.len(),
+            result_ids.len(),
+            "retry-result ids must be unique: {result_ids:?}"
+        );
+        assert_eq!(
+            unique_calls, unique_results,
+            "retry results must answer exactly the turn's tool calls"
+        );
     }
 
     fn history_contains_text(history: &[Message], expected: &str) -> bool {
@@ -2191,7 +2253,7 @@ mod migrated_tests {
             None,
             OneOrMany::one(AssistantContent::ToolCall(
                 rig_core::message::ToolCall::new(
-                    "expected_call".to_string(),
+                    rig_core::message::ToolCallId::new_or_mint("expected_call"),
                     rig_core::message::ToolFunction::new(tool_name, serde_json::json!({})),
                 ),
             )),
@@ -2211,7 +2273,7 @@ mod migrated_tests {
         };
         // Corrupt only the driver's copy so execution settles successfully but
         // `AgentRun` rejects the result before any commit-labelled item escapes.
-        calls[0].tool_call.id = "mismatched_call".to_string();
+        calls[0].tool_call.id = rig_core::message::ToolCallId::new_or_mint("mismatched_call");
 
         let hook_context = HookContext::new(true, None);
         hook_context.set_turn(1);
@@ -3849,9 +3911,10 @@ mod migrated_tests {
         assert_eq!(contexts.len(), 1);
         let context = &contexts[0];
         assert_eq!(context.tool_name, "default_api");
-        // The call COMPLETED with the wire's own id, which is the durable
-        // provider handle the context reports.
-        assert_eq!(context.tool_call_id.as_deref(), Some("tool_call_1"));
+        // The call COMPLETED with provider identifiers: the correlator
+        // ("provider_call_1") drives rig's durable id, which is what the
+        // context reports; the wire's item id travels on `provider`.
+        assert_eq!(context.tool_call_id.as_deref(), Some("provider_call_1"));
         assert!(context.internal_call_id.is_some());
         assert!(context.is_streaming);
     }
@@ -3910,8 +3973,18 @@ mod migrated_tests {
 
         let skipped_tool_result =
             skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
-        assert_eq!(skipped_tool_result.id, "tool_call_1");
-        assert_eq!(skipped_tool_result.call_id.as_deref(), Some("call_1"));
+        // The correlator ("call_1") is the durable id; the wire's item id
+        // ("tool_call_1") travels on `provider`.
+        assert_eq!(skipped_tool_result.call, "call_1");
+        assert!(
+            skipped_tool_result
+                .provider
+                .as_ref()
+                .is_some_and(|provider| {
+                    provider.call_id == "call_1"
+                        && provider.item_id.as_deref() == Some("tool_call_1")
+                })
+        );
         assert!(skipped_tool_result.content.iter().any(|content| matches!(
             content,
             ToolResultContent::Text(text) if text.text == "default_api was skipped"
@@ -3928,7 +4001,7 @@ mod migrated_tests {
                 if content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.id == "tool_call_1"
+                        if result.call == "call_1"
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -4026,13 +4099,13 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         AssistantContent::ToolCall(tool_call)
-                            if tool_call.id == "tool_call_1"
+                            if tool_call.id == "call_1"
                                 && tool_call.function.name == "add"
                     ))
                     && content.iter().any(|item| matches!(
                         item,
                         AssistantContent::ToolCall(tool_call)
-                            if tool_call.id == "tool_call_2"
+                            if tool_call.id == "call_2"
                                 && tool_call.function.name == "default_api"
                     ))
         ));
@@ -4043,7 +4116,7 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_1"
+                            if result.call == "call_1"
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     ToolResultContent::Text(text)
@@ -4053,7 +4126,7 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_2"
+                            if result.call == "call_2"
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     ToolResultContent::Text(text)
@@ -4061,6 +4134,10 @@ mod migrated_tests {
                                 ))
                     ))
         ));
+        assert_retry_transcript_ids_pair(
+            retry_history.get(1).expect("assistant tool-call turn"),
+            retry_history.get(2).expect("retry-result turn"),
+        );
     }
 
     #[tokio::test]
@@ -4123,8 +4200,18 @@ mod migrated_tests {
 
         let skipped_tool_result =
             skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
-        assert_eq!(skipped_tool_result.id, "tool_call_2");
-        assert_eq!(skipped_tool_result.call_id.as_deref(), Some("call_2"));
+        // The correlator ("call_2") is the durable id; the wire's item id
+        // ("tool_call_2") travels on `provider`.
+        assert_eq!(skipped_tool_result.call, "call_2");
+        assert!(
+            skipped_tool_result
+                .provider
+                .as_ref()
+                .is_some_and(|provider| {
+                    provider.call_id == "call_2"
+                        && provider.item_id.as_deref() == Some("tool_call_2")
+                })
+        );
         assert_eq!(final_response_text.as_deref(), Some("continued"));
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
 
@@ -4142,13 +4229,13 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         AssistantContent::ToolCall(tool_call)
-                            if tool_call.id == "tool_call_1"
+                            if tool_call.id == "call_1"
                                 && tool_call.function.name == "add"
                     ))
                     && content.iter().any(|item| matches!(
                         item,
                         AssistantContent::ToolCall(tool_call)
-                            if tool_call.id == "tool_call_2"
+                            if tool_call.id == "call_2"
                                 && tool_call.function.name == "default_api"
                     ))
         ));
@@ -4159,8 +4246,10 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_1"
-                                && result.call_id.as_deref() == Some("call_1")
+                            if result.call == "call_1"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_1"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     ToolResultContent::Text(text)
@@ -4170,8 +4259,10 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_2"
-                                && result.call_id.as_deref() == Some("call_2")
+                            if result.call == "call_2"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_2"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     ToolResultContent::Text(text)
@@ -4179,6 +4270,10 @@ mod migrated_tests {
                                 ))
             ))
         ));
+        assert_retry_transcript_ids_pair(
+            follow_up_history.get(1).expect("assistant tool-call turn"),
+            follow_up_history.get(2).expect("skip-result turn"),
+        );
     }
 
     #[tokio::test]
@@ -4417,17 +4512,18 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         AssistantContent::ToolCall(tool_call)
-                            if tool_call.id == "tool_call_0"
+                            if tool_call.id == "call_0"
                                 && tool_call.function.name == "add"
                     ))
                     && content.iter().any(|item| matches!(
                     item,
                     // An invalid NAME DELTA never completed, so no provider
-                    // id exists — the transcript pair carries a rig-minted
-                    // id instead (wire schemas require a non-empty
-                    // tool_call_id; stream keys never surface).
+                    // id exists — the diagnostic call mints its correlation
+                    // handle at the boundary (wire schemas require a
+                    // non-empty tool_call_id; stream keys never surface).
                     AssistantContent::ToolCall(tool_call)
                         if !tool_call.id.is_empty()
+                            && tool_call.provider.is_none()
                             && tool_call.function.name == "default_api"
                             && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
                 ))
@@ -4439,8 +4535,10 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_0"
-                                && result.call_id.as_deref() == Some("call_0")
+                            if result.call == "call_0"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_0"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     ToolResultContent::Text(text)
@@ -4450,8 +4548,8 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if !result.id.is_empty()
-                            && result.name.as_deref() == Some("default_api")
+                        if !result.call.is_empty()
+                            && result.name == "default_api"
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -4459,6 +4557,10 @@ mod migrated_tests {
                             ))
                 ))
         ));
+        assert_retry_transcript_ids_pair(
+            retry_history.get(1).expect("assistant tool-call turn"),
+            retry_history.get(2).expect("retry-result turn"),
+        );
     }
 
     #[tokio::test]
@@ -4506,14 +4608,16 @@ mod migrated_tests {
         assert_eq!(contexts.len(), 1);
         let context = &contexts[0];
         assert_eq!(context.tool_name, "default_api");
-        // The invalid name delta never completed, so no provider tool id
-        // exists; correlation is by internal_call_id.
+        // The invalid name delta never completed, so no PROVIDER id exists —
+        // the durable id the context reports is rig's minted handle (always
+        // present and non-empty, never an empty sentinel), and correlation
+        // with stream events is by internal_call_id.
         assert!(
             context
                 .tool_call_id
                 .as_deref()
-                .is_none_or(|id| id.is_empty()),
-            "no durable id may be fabricated for an unfinished call, got {:?}",
+                .is_some_and(|id| !id.is_empty()),
+            "an unfinished call still carries a non-empty minted durable id, got {:?}",
             context.tool_call_id
         );
         assert!(
@@ -4651,13 +4755,13 @@ mod migrated_tests {
 
         let skipped_tool_result =
             skipped_tool_result.expect("skip recovery should emit a synthetic tool result");
-        // The invalid name delta never completed, so no provider id exists;
-        // the CONSUMER-visible synthetic result faithfully carries none (the
-        // executed-name field identifies it). Only the retry TRANSCRIPT
-        // mints an id, at the rollback_messages boundary.
-        assert_eq!(skipped_tool_result.id, "");
-        assert_eq!(skipped_tool_result.name.as_deref(), Some("default_api"));
-        assert!(skipped_tool_result.call_id.is_none());
+        // The invalid name delta never completed, so no provider id exists:
+        // `provider` faithfully records that absence, while the diagnostic
+        // call mints rig's correlation handle at the boundary — the synthetic
+        // result carries that non-empty minted id, never an empty sentinel.
+        assert!(!skipped_tool_result.call.is_empty());
+        assert_eq!(skipped_tool_result.name, "default_api");
+        assert!(skipped_tool_result.provider.is_none());
         assert!(skipped_tool_result.content.iter().any(|content| matches!(
             content,
             ToolResultContent::Text(text) if text.text == "default_api was skipped"
@@ -4679,17 +4783,18 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         AssistantContent::ToolCall(tool_call)
-                            if tool_call.id == "tool_call_0"
+                            if tool_call.id == "call_0"
                                 && tool_call.function.name == "add"
                     ))
                     && content.iter().any(|item| matches!(
                     item,
                     // An invalid NAME DELTA never completed, so no provider
-                    // id exists — the transcript pair carries a rig-minted
-                    // id instead (wire schemas require a non-empty
-                    // tool_call_id; stream keys never surface).
+                    // id exists — the diagnostic call mints its correlation
+                    // handle at the boundary (wire schemas require a
+                    // non-empty tool_call_id; stream keys never surface).
                     AssistantContent::ToolCall(tool_call)
                         if !tool_call.id.is_empty()
+                            && tool_call.provider.is_none()
                             && tool_call.function.name == "default_api"
                             && tool_call.function.arguments == serde_json::json!({"x": 2, "y": 3})
                 ))
@@ -4701,8 +4806,10 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_0"
-                                && result.call_id.as_deref() == Some("call_0")
+                            if result.call == "call_0"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_0"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     ToolResultContent::Text(text)
@@ -4712,8 +4819,8 @@ mod migrated_tests {
                     && content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if !result.id.is_empty()
-                            && result.name.as_deref() == Some("default_api")
+                        if !result.call.is_empty()
+                            && result.name == "default_api"
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 ToolResultContent::Text(text)
@@ -4721,6 +4828,10 @@ mod migrated_tests {
                             ))
                 ))
         ));
+        assert_retry_transcript_ids_pair(
+            follow_up_history.get(1).expect("assistant tool-call turn"),
+            follow_up_history.get(2).expect("skip-result turn"),
+        );
     }
 
     #[tokio::test]
@@ -5068,7 +5179,7 @@ mod migrated_tests {
                     tool_result,
                     ..
                 })) => {
-                    tool_result_ids.push(tool_result.id);
+                    tool_result_ids.push(tool_result.call.into_string());
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
                     final_response_text = Some(response.output().to_owned());
@@ -5083,9 +5194,10 @@ mod migrated_tests {
             tool_call_names,
             vec!["add".to_string(), "subtract".to_string()]
         );
+        // The correlators drive the durable ids the results answer with.
         assert_eq!(
             tool_result_ids,
-            vec!["tool_call_1".to_string(), "tool_call_2".to_string()]
+            vec!["call_1".to_string(), "call_2".to_string()]
         );
         assert_eq!(add_calls.load(Ordering::SeqCst), 1);
         assert_eq!(subtract_calls.load(Ordering::SeqCst), 1);

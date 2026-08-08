@@ -216,7 +216,7 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
                 .expect("aggregated choice should keep the tool call");
             // IDs derived from the recorded turn, never minted literally.
             assert_eq!(aggregated.id, streamed.id);
-            assert_eq!(aggregated.call_id, streamed.call_id);
+            assert_eq!(aggregated.provider, streamed.provider);
         },
     )
     .await;
@@ -423,7 +423,7 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
                 })
                 .expect("aggregated choice should keep the tool call");
             assert_eq!(aggregated_call.id, streamed.id);
-            assert_eq!(aggregated_call.call_id, streamed.call_id);
+            assert_eq!(aggregated_call.provider, streamed.provider);
             assert!(
                 !aggregated_reasoning_text(&run.choice).is_empty(),
                 "reasoning text must survive alongside the tool call"
@@ -494,11 +494,18 @@ async fn parallel_function_calls_stay_distinct() {
                 "aggregated choice should contain exactly the two parallel calls"
             );
             // The recorded turn carries no wire ids, and rig no longer
-            // fabricates durable identifiers (not from an index, not from the
-            // tool name): both calls replay with the id absent, and stay
-            // distinct as parts — two calls, in wire order, uncorrupted.
-            assert_eq!(aggregated[0].id, "");
-            assert_eq!(aggregated[1].id, "");
+            // fabricates durable identifiers from the wire (not from an
+            // index, not from the tool name): both calls surface with a
+            // minted id and no provider id, and stay distinct as parts —
+            // two calls, in wire order, uncorrupted.
+            assert!(aggregated[0].provider.is_none());
+            assert!(aggregated[1].provider.is_none());
+            assert!(!aggregated[0].id.as_str().is_empty());
+            assert!(!aggregated[1].id.as_str().is_empty());
+            assert_ne!(
+                aggregated[0].id, aggregated[1].id,
+                "each id-less call mints a unique durable id"
+            );
             assert_ne!(
                 aggregated[0].function.name, aggregated[1].function.name,
                 "the two parallel calls stay distinct parts"
@@ -760,18 +767,18 @@ async fn interactions_requires_action_roundtrip() {
                 })
                 .expect("normalized choice should carry the client tool call");
             // The call id comes from the recorded turn, never minted literally.
-            let call_id = tool_call
-                .call_id
-                .clone()
-                .unwrap_or_else(|| tool_call.id.clone());
-            assert!(!call_id.is_empty(), "tool call should carry an id");
+            assert!(
+                tool_call.provider.is_some(),
+                "the recorded interactions turn should carry a provider-issued call id"
+            );
 
             let followup = model
                 .completion(
                     model
-                        .completion_request(Message::from(UserContent::tool_result_with_call_id(
-                            tool_call.function.name,
-                            call_id,
+                        .completion_request(Message::from(UserContent::tool_result_for(
+                            tool_call.id.clone(),
+                            tool_call.provider.clone(),
+                            tool_call.function.name.clone(),
                             OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
                         )))
                         .additional_params(
@@ -856,10 +863,11 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                     call.id, "add",
                     "the tool name must never be fabricated into the durable id"
                 );
-                assert_ne!(
-                    call.call_id.as_deref(),
-                    Some("add"),
-                    "the tool name must never be fabricated into the correlation id"
+                assert!(
+                    call.provider
+                        .as_ref()
+                        .is_none_or(|provider| provider.call_id != "add"),
+                    "the tool name must never be fabricated into the provider call id"
                 );
                 assert!(
                     call.function.arguments.is_object(),
@@ -867,6 +875,15 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                     call.function.arguments
                 );
             }
+            let distinct_ids: std::collections::HashSet<&str> = add_calls
+                .iter()
+                .map(|call| call.id.as_str())
+                .collect();
+            assert_eq!(
+                distinct_ids.len(),
+                add_calls.len(),
+                "same-name calls must keep distinct durable ids (minted when the wire gave none)"
+            );
             let argument_sets: std::collections::HashSet<String> = add_calls
                 .iter()
                 .map(|call| call.function.arguments.to_string())
@@ -982,12 +999,14 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
 }
 
 /// Cross-provider replay, recorded live (84a43e9e finding #5): a history
-/// sourced from an OpenAI-Chat-shaped provider carries
-/// `ToolResult { id: "call_abc", name: None }`. Replayed to Gemini, the
-/// request's `functionResponse.name` must be the tool's *name* resolved
-/// from the paired call — never the identifier `call_abc`, which the
-/// pre-fix heuristic kept verbatim. The recording is the evidence: Gemini
-/// accepts the request and answers from the tool result.
+/// sourced from an OpenAI-Chat-shaped provider carries the other wire's
+/// identifier `call_abc` only as rig's correlation handle — no Gemini
+/// provider id. Replayed to Gemini, the request's `functionResponse.name`
+/// must be the tool's *name*, read from the required `ToolResult::name` —
+/// never the identifier `call_abc`, which the pre-fix name-as-id heuristic
+/// kept verbatim — and the correlation-only handle must stay off the wire
+/// (no `functionCall.id`/`functionResponse.id`). The recording is the
+/// evidence: Gemini accepts the request and answers from the tool result.
 ///
 /// Re-record with:
 /// `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test --test gemini chat_sourced_history_replays -- --test-threads=1`
@@ -997,6 +1016,8 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
         "streaming_grammar/chat_sourced_history_replay",
         |client| async move {
             let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let cross_provider_handle = rig::message::ToolCallId::new("call_abc123")
+                .expect("the chat-sourced identifier is non-empty");
             let history = vec![
                 rig::message::Message::user(
                     "Use the add tool to compute 2 + 3, then state the result.",
@@ -1004,11 +1025,11 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 rig::message::Message::Assistant {
                     id: None,
                     content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
-                        // The OpenAI-Chat shape: the identifier fills `id`,
-                        // no separate call_id, and (pre-field histories) no
-                        // result name.
-                        id: "call_abc123".to_owned(),
-                        call_id: None,
+                        // The cross-provider shape: the other wire's
+                        // identifier survives as rig's correlation handle,
+                        // with no provider id for Gemini's wire.
+                        id: cross_provider_handle.clone(),
+                        provider: None,
                         function: rig::message::ToolFunction {
                             name: "add".to_owned(),
                             arguments: serde_json::json!({"x": 2, "y": 3}),
@@ -1019,9 +1040,9 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 },
                 rig::message::Message::User {
                     content: OneOrMany::one(UserContent::ToolResult(rig::message::ToolResult {
-                        id: "call_abc123".to_owned(),
-                        call_id: None,
-                        name: None,
+                        call: cross_provider_handle,
+                        provider: None,
+                        name: "add".to_owned(),
                         content: OneOrMany::one(ToolResultContent::text("5")),
                     })),
                 },

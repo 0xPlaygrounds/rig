@@ -14,7 +14,10 @@
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::completion::{CompletionModel, FinishReason};
-use rig::message::{AssistantContent, Message, Reasoning, ReasoningContent, ToolCall};
+use rig::message::{
+    AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolResultContent,
+    UserContent,
+};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
@@ -352,8 +355,8 @@ async fn parallel_tool_calls_both_survive_aggregation() {
                 // IDs derived from the recorded turn, never minted literally.
                 assert_eq!(aggregated.id, streamed.id, "{name} id should aggregate");
                 assert_eq!(
-                    aggregated.call_id, streamed.call_id,
-                    "{name} call_id should aggregate"
+                    aggregated.provider, streamed.provider,
+                    "{name} provider ids should aggregate"
                 );
             }
             assert_eq!(
@@ -402,11 +405,12 @@ async fn tool_call_then_followup_text_across_turns() {
                 id: first.message_id.clone(),
                 content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
             };
-            let tool_result = Message::tool_result_with_call_id(
+            let tool_result = Message::from(UserContent::tool_result_for(
                 tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                ALPHA_SIGNAL_OUTPUT,
-            );
+                tool_call.provider.clone(),
+                tool_call.function.name.clone(),
+                OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+            ));
             let followup_request = model
                 .completion_request(
                     "Now reply in one short sentence using the provided tool result. \
@@ -520,11 +524,12 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 id: first.message_id.clone(),
                 content: first.choice.clone(),
             };
-            let tool_result = Message::tool_result_with_call_id(
+            let tool_result = Message::from(UserContent::tool_result_for(
                 tool_call.id.clone(),
-                tool_call.call_id.clone(),
-                ALPHA_SIGNAL_OUTPUT,
-            );
+                tool_call.provider.clone(),
+                tool_call.function.name.clone(),
+                OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+            ));
             let second_request = model
                 .completion_request(
                     "Answer in one short sentence that includes the exact tool output. \

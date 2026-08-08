@@ -112,7 +112,7 @@ async fn run_streamed_turn(
                                         );
                                     }
                                     return Ok(TurnEnd::Abandoned {
-                                        skipped_tool_result: skipped_tool_result.map(Box::new),
+                                        skipped_tool_result,
                                     });
                                 }
                             }
@@ -435,9 +435,11 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                                     .expect("a skipped call surfaces its synthetic tool result");
                                 // Gemini's wire supplies no tool-call id, and
                                 // rig no longer fabricates one from the tool
-                                // name — the synthetic result carries the
-                                // absent (empty) id, like the call it answers.
-                                assert!(tool_result.id.is_empty());
+                                // name — the synthetic result answers the
+                                // call's minted correlation handle and
+                                // records no provider-issued id.
+                                assert!(!tool_result.call.as_str().is_empty());
+                                assert!(tool_result.provider.is_none());
                                 abandoned = true;
                             }
                             TurnEnd::Finished => {

@@ -2349,7 +2349,11 @@ mod tests {
             StreamedAssistantContent::ToolCall { tool_call, .. } => tool_call,
             other => panic!("expected the flushed tool call first, got {other:?}"),
         };
-        assert_eq!(tool_call.id, "fc_123");
+        // The correlator drives rig's id; the item id rides on `provider`.
+        assert_eq!(tool_call.id, "call_123");
+        let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+        assert_eq!(provider.call_id, "call_123");
+        assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
         assert_eq!(tool_call.function.name, "example_tool");
 
         let err = stream
@@ -2418,7 +2422,9 @@ mod tests {
             .expect("the flushed tool call must precede the transport error")
         {
             StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                assert_eq!(tool_call.id, "fc_123");
+                assert_eq!(tool_call.id, "call_123");
+                let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+                assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
             }
             other => panic!("expected the flushed tool call first, got {other:?}"),
         }

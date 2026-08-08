@@ -601,7 +601,7 @@ impl AgentRun {
 
         Some(InvalidToolCallContext {
             tool_name: tool_call.function.name.clone(),
-            tool_call_id: Some(tool_call.id.clone()),
+            tool_call_id: Some(tool_call.id.as_str().to_owned()),
             internal_call_id: None,
             args: Some(json_utils::serialize_json_value(
                 &tool_call.function.arguments,
@@ -769,7 +769,7 @@ impl AgentRun {
                                 // distinguishable.
                                 let internal_call_id = internal_call_ids
                                     .iter()
-                                    .position(|(id, _)| *id == tool_call.id)
+                                    .position(|(id, _)| tool_call.id == id.as_str())
                                     .map(|pair| internal_call_ids.remove(pair).1);
                                 Some(PendingToolCall {
                                     tool_call: tool_call.clone(),
@@ -1041,9 +1041,9 @@ impl AgentRun {
                         diagnostic_history,
                     ));
                 }
-                let user_content = UserContent::tool_result_named(
+                let user_content = UserContent::tool_result_for(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
+                    tool_call.provider.clone(),
                     tool_call.function.name.clone(),
                     OneOrMany::one(reason.into()),
                 );
@@ -1121,7 +1121,7 @@ impl AgentRun {
         // so duplicate provider IDs within one turn stay answerable.
         let mut unanswered: Vec<String> = pending
             .iter()
-            .map(|call| call.tool_call.id.clone())
+            .map(|call| call.tool_call.id.as_str().to_owned())
             .collect();
 
         if results.is_empty() {
@@ -1137,10 +1137,13 @@ impl AgentRun {
                     "tool_results received content that is not a tool result",
                 ));
             };
-            let Some(index) = unanswered.iter().position(|id| *id == tool_result.id) else {
+            let Some(index) = unanswered
+                .iter()
+                .position(|id| tool_result.call == id.as_str())
+            else {
                 return Err(self.protocol_violation(&format!(
                     "tool_results received a result for unknown or already-answered tool call id `{}`",
-                    tool_result.id
+                    tool_result.call
                 )));
             };
             unanswered.swap_remove(index);
@@ -1216,7 +1219,7 @@ impl AgentRun {
                     skipped.entry(index).or_insert_with(|| {
                         tool_result_message(
                             tool_call.id.clone(),
-                            tool_call.call_id.clone(),
+                            tool_call.provider.clone(),
                             tool_call.function.name.clone(),
                             TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                         )
@@ -1274,7 +1277,7 @@ impl AgentRun {
     ) -> InvalidToolCallContext {
         InvalidToolCallContext {
             tool_name: invalid.tool_call.function.name.clone(),
-            tool_call_id: Some(invalid.tool_call.id.clone()),
+            tool_call_id: Some(invalid.tool_call.id.as_str().to_owned()),
             internal_call_id: Some(invalid.internal_call_id.clone()),
             args: invalid.args.clone(),
             available_tools: invalid.executable_tool_names.iter().cloned().collect(),
@@ -1381,9 +1384,9 @@ impl AgentRun {
                 // non-streamed `resolve_invalid_tool_call` skip path (parity) and
                 // avoiding re-parsing a rejection message as structured output.
                 let skipped_tool_result = ToolResult {
-                    id: invalid.tool_call.id.clone(),
-                    call_id: invalid.tool_call.call_id.clone(),
-                    name: Some(invalid.tool_call.function.name.clone()),
+                    call: invalid.tool_call.id.clone(),
+                    provider: invalid.tool_call.provider.clone(),
+                    name: invalid.tool_call.function.name.clone(),
                     content: OneOrMany::one(ToolResultContent::text(reason.clone())),
                 };
                 let Some((assistant_message, user_message)) =
@@ -1400,7 +1403,7 @@ impl AgentRun {
                 self.rollback_pending = true;
                 self.state = RunState::PreparingRequest;
                 Ok(StreamedResolution::TurnAbandoned {
-                    skipped_tool_result: Some(skipped_tool_result),
+                    skipped_tool_result: Some(Box::new(skipped_tool_result)),
                 })
             }
         }
@@ -1532,8 +1535,11 @@ mod tests {
     }
 
     fn tool_call(id: &str, name: &str) -> AssistantContent {
-        AssistantContent::ToolCall(ToolCall::new(
-            id.to_string(),
+        // The provider-boundary shape: a non-empty wire id becomes both the
+        // durable id and the provider correlator; an empty wire id mints a
+        // fresh unique handle (`provider` records the absence).
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
             ToolFunction::new(name.to_string(), json!({"x": 1})),
         ))
     }
@@ -1549,10 +1555,9 @@ mod tests {
     }
 
     fn tool_result(id: &str, output: &str) -> UserContent {
-        UserContent::tool_result(
-            id.to_string(),
-            OneOrMany::one(ToolResultContent::text(output)),
-        )
+        // Every result in these tests answers a call to the `add` tool; the
+        // executed tool's name is required data on a result.
+        UserContent::tool_result(id, "add", OneOrMany::one(ToolResultContent::text(output)))
     }
 
     fn expect_call_model(run: &mut AgentRun) -> (Message, Vec<Message>, usize) {
@@ -2077,8 +2082,9 @@ mod tests {
     }
 
     /// Two ID-LESS calls (older ollama daemons issue no tool-call id) must
-    /// not collide in the skipped map: skipping the invalid one leaves the
-    /// valid peer with its own "not executed" result, and each call reads
+    /// not collide in the skipped map: each mints its own unique correlation
+    /// handle at the provider boundary, so skipping the invalid one leaves
+    /// the valid peer with its own "not executed" result, and each call reads
     /// back its OWN preresolved result — position, not id, is the key.
     #[test]
     fn id_less_calls_keep_distinct_skip_results() {
@@ -2105,6 +2111,16 @@ mod tests {
 
         let calls = expect_call_tools(&mut run);
         assert_eq!(calls.len(), 2);
+        assert_ne!(
+            calls[0].tool_call.id, calls[1].tool_call.id,
+            "id-less calls mint distinct correlation handles, never a shared sentinel"
+        );
+        assert!(
+            calls
+                .iter()
+                .all(|call| !call.tool_call.id.is_empty() && call.tool_call.provider.is_none()),
+            "minted handles are non-empty and record the provider's absence"
+        );
         let results: Vec<String> = calls
             .iter()
             .map(|call| match call.preresolved_result.as_ref() {
@@ -2426,8 +2442,8 @@ mod tests {
     fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value) -> ModelTurn {
         ModelTurn::new(
             None,
-            OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
-                id.to_string(),
+            OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+                id,
                 ToolFunction::new(name.to_string(), arguments),
             ))),
             Usage::new(),
@@ -2444,7 +2460,7 @@ mod tests {
             if let Message::User { content } = message {
                 for item in content.iter() {
                     if let UserContent::ToolResult(result) = item {
-                        answered.insert(result.id.clone());
+                        answered.insert(result.call.to_string());
                     }
                 }
             }
@@ -2454,7 +2470,7 @@ mod tests {
                 for item in content.iter() {
                     if let AssistantContent::ToolCall(call) = item {
                         assert!(
-                            answered.contains(&call.id),
+                            answered.contains(call.id.as_str()),
                             "assistant tool_call {:?} has no matching tool_result in history",
                             call.id
                         );

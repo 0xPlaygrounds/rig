@@ -368,7 +368,8 @@ impl HookContext {
 pub struct InvalidToolCallContext {
     /// Name emitted by the model.
     pub tool_name: String,
-    /// Provider tool-call id, when present.
+    /// Durable tool-call id: the provider's when it issued one, else rig's
+    /// minted handle. Absent only when no call object exists at all.
     pub tool_call_id: Option<String>,
     /// Rig correlation id, when present.
     pub internal_call_id: Option<String>,
@@ -564,7 +565,8 @@ impl ModelTurnAction {
 pub struct ToolCall<'a> {
     /// Tool name.
     pub tool_name: &'a str,
-    /// Provider tool-call id.
+    /// Durable tool-call id: the provider's when it issued one, else rig's
+    /// minted handle.
     pub tool_call_id: Option<&'a str>,
     /// Rig correlation id.
     pub internal_call_id: &'a str,
@@ -580,7 +582,8 @@ pub struct ToolCall<'a> {
 pub struct ToolResultEvent<'a> {
     /// Tool name.
     pub tool_name: &'a str,
-    /// Provider tool-call id.
+    /// Durable tool-call id: the provider's when it issued one, else rig's
+    /// minted handle.
     pub tool_call_id: Option<&'a str>,
     /// Rig correlation id.
     pub internal_call_id: &'a str,

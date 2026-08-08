@@ -425,28 +425,32 @@ mod grammar_guards {
                 _ => None,
             })
             .collect();
-        let shape: Vec<(&str, &str, &serde_json::Value)> = calls
+        let shape: Vec<(&str, &serde_json::Value)> = calls
             .iter()
-            .map(|call| {
-                (
-                    call.id.as_str(),
-                    call.function.name.as_str(),
-                    &call.function.arguments,
-                )
-            })
+            .map(|call| (call.function.name.as_str(), &call.function.arguments))
             .collect();
         assert_eq!(
             shape,
             vec![
-                // A minted assembly identity keeps the interleaved fragments
-                // distinct but never becomes a durable provider id: the
-                // finalized calls carry the absent (empty) id serializers
-                // omit — rig does not invent identifiers the provider never
-                // issued.
-                ("", "get_weather", &json!({"city": "Tokyo"})),
-                ("", "get_time", &json!({"zone": "UTC"})),
+                ("get_weather", &json!({"city": "Tokyo"})),
+                ("get_time", &json!({"zone": "UTC"})),
             ],
             "two id-less indexed calls must assemble distinct and uncorrupted"
+        );
+        // A minted assembly identity keeps the interleaved fragments
+        // distinct: the finalized calls surface the minted durable id with
+        // `provider: None` — rig never invents a *provider* identifier the
+        // provider did not issue, and never leaves the id empty.
+        for call in &calls {
+            assert!(
+                !call.id.as_str().is_empty(),
+                "id-less calls surface a minted durable id"
+            );
+            assert!(call.provider.is_none(), "no provider id was issued");
+        }
+        assert_ne!(
+            calls[0].id, calls[1].id,
+            "each id-less call mints a unique durable id"
         );
     }
 
@@ -705,6 +709,7 @@ mod interleaved_constant_id_reasoning {
         assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
 
         let mut internal_ids = Vec::new();
+        let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
             if let StreamedAssistantContent::ToolCall {
@@ -713,8 +718,13 @@ mod interleaved_constant_id_reasoning {
             } = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
-                assert_eq!(tool_call.id, "", "no fabricated durable id");
+                assert!(
+                    !tool_call.id.as_str().is_empty(),
+                    "id-less calls surface a minted durable id"
+                );
+                assert_eq!(tool_call.provider, None, "no fabricated provider id");
                 internal_ids.push(internal_call_id.clone());
+                minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }
         }
@@ -725,6 +735,8 @@ mod interleaved_constant_id_reasoning {
             2,
             "same-name calls must stay correlatable via distinct internal ids"
         );
+        minted_ids.dedup();
+        assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
         assert_eq!(
             drained
                 .choice
@@ -832,6 +844,7 @@ mod interleaved_constant_id_reasoning {
         assert_eq!(drained.error_count(), 0, "{:?}", drained.items);
 
         let mut internal_ids = Vec::new();
+        let mut minted_ids = Vec::new();
         let mut cities = Vec::new();
         for item in drained.items.iter().flatten() {
             if let StreamedAssistantContent::ToolCall {
@@ -840,15 +853,24 @@ mod interleaved_constant_id_reasoning {
             } = item
             {
                 assert_eq!(tool_call.function.name, "get_weather");
-                assert_eq!(tool_call.id, "", "no fabricated durable id");
-                assert_eq!(tool_call.call_id, None, "no name-as-id call_id fallback");
+                assert!(
+                    !tool_call.id.as_str().is_empty(),
+                    "id-less calls surface with a minted durable id"
+                );
+                assert_eq!(
+                    tool_call.provider, None,
+                    "no name-as-id provider-id fallback"
+                );
                 internal_ids.push(internal_call_id.clone());
+                minted_ids.push(tool_call.id.clone());
                 cities.push(tool_call.function.arguments["city"].clone());
             }
         }
         assert_eq!(cities, vec![json!("Tokyo"), json!("Paris")]);
         internal_ids.dedup();
         assert_eq!(internal_ids.len(), 2, "distinct internal correlation ids");
+        minted_ids.dedup();
+        assert_eq!(minted_ids.len(), 2, "each id-less call mints a unique id");
         assert_eq!(
             drained
                 .choice

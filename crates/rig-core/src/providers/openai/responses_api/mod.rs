@@ -449,7 +449,8 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         }
                         crate::message::UserContent::ToolResult(
                             crate::completion::message::ToolResult {
-                                call_id,
+                                call,
+                                provider,
                                 content: tool_content,
                                 ..
                             },
@@ -461,7 +462,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCallOutput(ToolResult {
-                                    call_id: require_call_id(call_id, "Tool result")?,
+                                    // Provider-issued call id when one
+                                    // exists, else rig's minted handle —
+                                    // always present and non-empty.
+                                    call_id: provider
+                                        .map(|provider| provider.call_id)
+                                        .unwrap_or_else(|| call.into_string()),
                                     output,
                                     status: ToolStatus::Completed,
                                 }),
@@ -612,17 +618,24 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             });
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                            id: tool_id,
-                            call_id,
+                            id,
+                            provider,
                             function,
                             ..
                         }) => {
+                            let (call_id, item_id) = match provider {
+                                Some(provider) => {
+                                    let item_id = provider.item_id.clone().unwrap_or_default();
+                                    (provider.call_id, item_id)
+                                }
+                                None => (id.into_string(), String::new()),
+                            };
                             other_items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCall(OutputFunctionCall {
                                     arguments: function.arguments.into(),
-                                    call_id: require_call_id(call_id, "Assistant tool call")?,
-                                    id: tool_id,
+                                    call_id,
+                                    id: item_id,
                                     name: function.name,
                                     status: ToolStatus::Completed,
                                 }),
@@ -659,14 +672,6 @@ impl From<OneOrMany<String>> for Vec<ReasoningSummary> {
     fn from(value: OneOrMany<String>) -> Self {
         value.iter().map(|x| ReasoningSummary::new(x)).collect()
     }
-}
-
-fn require_call_id(call_id: Option<String>, context: &str) -> Result<String, CompletionError> {
-    call_id.ok_or_else(|| {
-        CompletionError::RequestError(
-            format!("{context} `call_id` is required for OpenAI Responses API").into(),
-        )
-    })
 }
 
 fn openai_reasoning_from_core(
@@ -2832,11 +2837,10 @@ fn responses_tool_result(tool_result: message::ToolResult) -> Result<Message, Me
     let output = responses_tool_result_output(tool_result.content)?;
 
     Ok(Message::ToolResult {
-        tool_call_id: tool_result.call_id.ok_or_else(|| {
-            MessageError::ConversionError(
-                "Tool result `call_id` is required for OpenAI Responses API".into(),
-            )
-        })?,
+        tool_call_id: tool_result
+            .provider
+            .map(|provider| provider.call_id)
+            .unwrap_or_else(|| tool_result.call.into_string()),
         output,
     })
 }
@@ -2896,22 +2900,24 @@ impl TryFrom<message::Message> for Vec<Message> {
                             }
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                            id: tool_id,
-                            call_id,
+                            id,
+                            provider,
                             function,
                             ..
                         }) => {
+                            let (call_id, item_id) = match provider {
+                                Some(provider) => {
+                                    let item_id = provider.item_id.clone().unwrap_or_default();
+                                    (provider.call_id, item_id)
+                                }
+                                None => (id.into_string(), String::new()),
+                            };
                             messages.push(Message::Assistant {
                                 content: OneOrMany::one(AssistantContentType::ToolCall(
                                     OutputFunctionCall {
-                                        call_id: call_id.ok_or_else(|| {
-                                            MessageError::ConversionError(
-                                                "Tool call `call_id` is required for OpenAI Responses API"
-                                                    .into(),
-                                            )
-                                        })?,
+                                        call_id,
                                         arguments: function.arguments.into(),
-                                        id: tool_id,
+                                        id: item_id,
                                         name: function.name,
                                         status: ToolStatus::Completed,
                                     },
@@ -2994,9 +3000,10 @@ mod tests {
     fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
         message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
-                id: "result-id".to_string(),
-                call_id: Some("call-id".to_string()),
-                name: None,
+                call: message::ToolCallId::new_or_mint("call-id"),
+                provider: message::ProviderCallId::new("call-id")
+                    .map(|provider| provider.with_item_id("result-id")),
+                name: "tool".to_string(),
                 content: OneOrMany::one(content),
             })),
         }
@@ -3010,6 +3017,7 @@ mod tests {
                 message::UserContent::tool_result_with_call_id(
                     "result-id",
                     "call-id".to_string(),
+                    "tool",
                     OneOrMany::one(message::ToolResultContent::text("tool output")),
                 ),
                 message::UserContent::text("after"),
@@ -3208,9 +3216,10 @@ mod tests {
 
         let input = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
-                id: "result-id".to_string(),
-                call_id: Some("call-id".to_string()),
-                name: None,
+                call: message::ToolCallId::new_or_mint("call-id"),
+                provider: message::ProviderCallId::new("call-id")
+                    .map(|provider| provider.with_item_id("result-id")),
+                name: "tool".to_string(),
                 content,
             })),
         };
@@ -3313,9 +3322,10 @@ mod tests {
         .expect("mixed tool output is non-empty");
         let input = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
-                id: "result-id".to_string(),
-                call_id: Some("call-id".to_string()),
-                name: None,
+                call: message::ToolCallId::new_or_mint("call-id"),
+                provider: message::ProviderCallId::new("call-id")
+                    .map(|provider| provider.with_item_id("result-id")),
+                name: "tool".to_string(),
                 content,
             })),
         };

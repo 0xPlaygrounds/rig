@@ -150,20 +150,14 @@ impl PartialStreamedTurn {
     /// call and a synthetic "not executed" result for each validated peer.
     pub(crate) fn rollback_messages(
         &self,
-        mut invalid_tool_call: ToolCall,
+        invalid_tool_call: ToolCall,
         feedback: String,
     ) -> Option<(Message, Message)> {
-        // The transcript pair is rig-fabricated conversational fiction, and
-        // wire schemas require a non-empty `tool_call_id` on both sides —
-        // two retries in one conversation must also stay distinguishable.
-        // Rig is this id's legitimate author (pydantic-ai's generated
-        // tool-call-id posture): mint one here, at the transcript boundary,
-        // so hooks upstream still observe that the provider issued none.
-        // Never a provider handle (`call_id` stays None) and never a
-        // stream key.
-        if invalid_tool_call.id.is_empty() {
-            invalid_tool_call.id = rig_core::id::generate();
-        }
+        // Every call — the invalid one and each validated peer — already
+        // carries a unique, non-empty `ToolCallId` (minted at the provider
+        // boundary when the wire issued none), so both sides of this
+        // fabricated transcript pair correlate by id with no local minting
+        // and no peer left holding an empty sentinel.
         let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
 
         let mut retry_results = self
@@ -172,7 +166,7 @@ impl PartialStreamedTurn {
             .map(|tool_call| {
                 tool_result_message(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
+                    tool_call.provider.clone(),
                     tool_call.function.name.clone(),
                     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                 )
@@ -180,7 +174,7 @@ impl PartialStreamedTurn {
             .collect::<Vec<_>>();
         retry_results.push(tool_result_message(
             invalid_tool_call.id,
-            invalid_tool_call.call_id,
+            invalid_tool_call.provider,
             invalid_tool_call.function.name,
             feedback,
         ));
@@ -234,8 +228,8 @@ pub enum StreamedResolution {
     /// [`AgentRun::next_step`](super::AgentRun::next_step).
     TurnAbandoned {
         /// For a skipped call, the synthetic tool result to surface to the
-        /// consumer stream.
-        skipped_tool_result: Option<ToolResult>,
+        /// consumer stream. Boxed: the result dwarfs the other variant.
+        skipped_tool_result: Option<Box<ToolResult>>,
     },
 }
 
@@ -699,7 +693,9 @@ impl StreamedTurnAssembler {
         let internal_call_ids: Vec<(String, String)> = self
             .pending_tool_calls
             .iter()
-            .map(|(tool_call, internal_call_id)| (tool_call.id.clone(), internal_call_id.clone()))
+            .map(|(tool_call, internal_call_id)| {
+                (tool_call.id.as_str().to_owned(), internal_call_id.clone())
+            })
             .collect();
 
         StreamedTurn {
@@ -717,13 +713,13 @@ impl StreamedTurnAssembler {
         } else {
             serde_json::from_str(buffered_args).unwrap_or(serde_json::Value::Null)
         };
-        // Diagnostic only: the durable id is unknown at delta time, and no
-        // stream-internal key may surface, so the IN-MEMORY call is id-less
-        // (hooks faithfully observe that no provider id exists; correlation
-        // is by internal_call_id). The retry TRANSCRIPT mints an id at
-        // serialization time — see `rollback_messages`.
+        // Diagnostic only: the durable provider id is unknown at delta
+        // time, and no stream-internal key may surface — so the call mints
+        // its correlation handle and `provider` stays `None` (hooks
+        // faithfully observe that no provider id exists). The same minted
+        // id correlates the retry transcript pair in `rollback_messages`.
         ToolCall::new(
-            String::new(),
+            rig_core::message::ToolCallId::mint(),
             ToolFunction::new(name.to_string(), diagnostic_args),
         )
     }
@@ -770,10 +766,9 @@ mod tests {
     }
 
     fn tool_call(id: &str, name: &str) -> ToolCall {
-        ToolCall::new(
-            id.to_string(),
-            ToolFunction::new(name.to_string(), json!({"x": 1})),
-        )
+        // The provider-boundary shape: the wire id becomes both the durable
+        // id and the provider correlator.
+        ToolCall::from_wire(id, ToolFunction::new(name.to_string(), json!({"x": 1})))
     }
 
     fn tool_call_item(id: &str, name: &str) -> StreamedAssistantContent {
@@ -1243,7 +1238,8 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].internal_call_id.as_deref(), Some("internal_tc_1"));
         run.tool_results(vec![UserContent::tool_result(
-            "tc_1".to_string(),
+            "tc_1",
+            "add",
             OneOrMany::one(ToolResultContent::text("2")),
         )])
         .expect("tool_results should succeed");
@@ -1424,7 +1420,7 @@ mod tests {
         else {
             panic!("expected skipped tool result");
         };
-        assert_eq!(tool_result.id, "tc_1");
+        assert_eq!(tool_result.call, "tc_1");
     }
 
     #[test]
@@ -1597,7 +1593,8 @@ mod tests {
             serde_json::from_str(&serialized).expect("deserialize mid-run");
         restored
             .tool_results(vec![UserContent::tool_result(
-                "tc_1".to_string(),
+                "tc_1",
+                "add",
                 OneOrMany::one(ToolResultContent::text("2")),
             )])
             .expect("tool_results should succeed");

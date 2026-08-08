@@ -190,11 +190,7 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
-    let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
-    // `FunctionResponse.name` is a *function name* wire: resolve legacy
-    // name-less tool results by pairing them with their calls, exactly as
-    // the REST-Gemini and Ollama serializers do.
-    rig_core::providers::internal::resolve_tool_result_names(&mut chat_history);
+    let (history_system, chat_history) = split_system_messages_from_history(chat_history);
     let mut contents = Vec::new();
 
     // Convert chat history to gRPC Content messages
@@ -358,18 +354,17 @@ fn rig_user_content_to_grpc_part(
                 json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
 
             // `FunctionResponse.name` is the executed function's name —
-            // data the result carries in `name`; `id` is a fallback for
-            // legacy shapes the resolver could not pair.
-            let function_name = result
-                .name
-                .filter(|name| !name.is_empty())
-                .unwrap_or(result.id);
+            // required data on the result. Only a provider-issued id may
+            // travel back on the wire (the proto field is optional-empty).
             Ok(proto::Part {
                 data: Some(proto::part::Data::FunctionResponse(
                     proto::FunctionResponse {
-                        name: function_name,
+                        name: result.name,
                         response: Some(response_struct),
-                        id: result.call_id.unwrap_or_default(),
+                        id: result
+                            .provider
+                            .map(|provider| provider.call_id)
+                            .unwrap_or_default(),
                     },
                 )),
                 thought: false,
@@ -460,7 +455,12 @@ fn rig_assistant_content_to_grpc_part(
                 data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
                     name: tool_call.function.name,
                     args: Some(args),
-                    id: tool_call.call_id.unwrap_or(tool_call.id),
+                    // Only a provider-issued id may travel back on the
+                    // wire; minted correlation handles stay internal.
+                    id: tool_call
+                        .provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_default(),
                 })),
                 thought: false,
                 thought_signature: decode_optional_base64(tool_call.signature)?,
@@ -546,21 +546,13 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                         .map(prost_struct_to_json)
                         .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
-                    let mut tool_call = message::ToolCall::new(
-                        if function_call.id.is_empty() {
-                            function_call.name.clone()
-                        } else {
-                            function_call.id.clone()
-                        },
+                    // An id-less call mints its correlation handle —
+                    // never name-as-id, which collides two same-tool calls.
+                    let tool_call = message::ToolCall::from_wire(
+                        function_call.id.clone(),
                         message::ToolFunction::new(function_call.name.clone(), args),
-                    );
-
-                    if !function_call.id.is_empty() {
-                        tool_call = tool_call.with_call_id(function_call.id.clone());
-                    }
-
-                    tool_call =
-                        tool_call.with_signature(encode_optional_base64(&part.thought_signature));
+                    )
+                    .with_signature(encode_optional_base64(&part.thought_signature));
 
                     completion::AssistantContent::ToolCall(tool_call)
                 }
@@ -1061,32 +1053,30 @@ mod tests {
     }
 
     /// `FunctionResponse.name` is the executed function's name: read from
-    /// `ToolResult::name` when the driver carried it, resolved by pairing
-    /// for legacy name-less histories — never an identifier.
+    /// the required `ToolResult::name` — never an identifier, no matter how
+    /// identifier-shaped the correlation handles are.
     #[test]
     fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
         use rig_core::message::{
-            AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent,
+            AssistantContent, ProviderCallId, ToolCall, ToolCallId, ToolFunction, ToolResult,
+            ToolResultContent,
         };
 
-        let call = |id: &str, call_id: Option<&str>, name: &str| message::Message::Assistant {
+        let call = |wire_id: &str, name: &str| message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
-                id: id.to_owned(),
-                call_id: call_id.map(str::to_owned),
-                function: ToolFunction {
+            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+                wire_id,
+                ToolFunction {
                     name: name.to_owned(),
                     arguments: serde_json::json!({}),
                 },
-                signature: None,
-                additional_params: None,
-            })),
+            ))),
         };
-        let result = |id: &str, call_id: Option<&str>, name: Option<&str>| message::Message::User {
+        let result = |wire_id: &str, name: &str| message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
-                id: id.to_owned(),
-                call_id: call_id.map(str::to_owned),
-                name: name.map(str::to_owned),
+                call: ToolCallId::new_or_mint(wire_id),
+                provider: ProviderCallId::new(wire_id),
+                name: name.to_owned(),
                 content: OneOrMany::one(ToolResultContent::text("out")),
             })),
         };
@@ -1097,13 +1087,14 @@ mod tests {
                 model: None,
                 preamble: None,
                 chat_history: OneOrMany::many(vec![
-                    // Driver-built: the executed name travels as data.
-                    call("add", Some("call_1"), "sum"),
-                    result("add", Some("call_1"), Some("sum")),
-                    // Legacy cross-provider: name-less, OpenAI-shaped id —
-                    // resolved by pairing, never sent as the name.
-                    call("call_abc", Some("call_abc"), "get_weather"),
-                    result("call_abc", Some("call_abc"), None),
+                    // Driver-built: the executed name travels as data (a
+                    // repair hook renamed the call: `sum` ran, not `add`).
+                    call("call_1", "add"),
+                    result("call_1", "sum"),
+                    // Cross-provider history with an OpenAI-shaped id —
+                    // `call_abc` must never travel as the name.
+                    call("call_abc", "get_weather"),
+                    result("call_abc", "get_weather"),
                 ])
                 .expect("non-empty history"),
                 documents: Vec::new(),
@@ -1118,16 +1109,23 @@ mod tests {
         )
         .expect("request build");
 
-        let response_names: Vec<&str> = req
+        // The name is the executed tool's name; the proto `id` is the
+        // provider-issued call id (never rig's minted handle).
+        let responses: Vec<(&str, &str)> = req
             .contents
             .iter()
             .flat_map(|content| content.parts.iter())
             .filter_map(|part| match &part.data {
-                Some(proto::part::Data::FunctionResponse(fr)) => Some(fr.name.as_str()),
+                Some(proto::part::Data::FunctionResponse(fr)) => {
+                    Some((fr.id.as_str(), fr.name.as_str()))
+                }
                 _ => None,
             })
             .collect();
-        assert_eq!(response_names, vec!["sum", "get_weather"]);
+        assert_eq!(
+            responses,
+            vec![("call_1", "sum"), ("call_abc", "get_weather")]
+        );
     }
 
     #[test]

@@ -1095,8 +1095,13 @@ fn user_contents_to_messages(
                     .join("\n");
                 messages.push(Message::ToolResult {
                     // Prefer the provider-issued call id, matching the
-                    // assistant echo (shared From<message::ToolCall>).
-                    tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
+                    // assistant echo (shared From<message::ToolCall>);
+                    // provider-less results fall back to rig's minted
+                    // handle — never empty.
+                    tool_call_id: tool_result
+                        .provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_else(|| tool_result.call.into_string()),
                     content: openai::completion::ToolResultContentValue::String(content),
                 });
             }
@@ -1165,10 +1170,16 @@ fn assistant_contents_to_messages(
                         }
                         ToolCallAdditionalParams::Minimal { id, format } => {
                             // Correlate with the id the wire tool call will
-                            // carry (call_id when present, else id).
+                            // carry (provider call id when present, else
+                            // rig's handle).
                             let id = id
-                                .or_else(|| tool_call.call_id.clone())
-                                .unwrap_or_else(|| tool_call.id.clone());
+                                .or_else(|| {
+                                    tool_call
+                                        .provider
+                                        .as_ref()
+                                        .map(|provider| provider.call_id.clone())
+                                })
+                                .unwrap_or_else(|| tool_call.id.as_str().to_owned());
                             if let Some(signature) = &tool_call.signature {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
                                     id: Some(id),
@@ -1183,9 +1194,10 @@ fn assistant_contents_to_messages(
                     reasoning_details.push(ReasoningDetails::Encrypted {
                         id: Some(
                             tool_call
-                                .call_id
-                                .clone()
-                                .unwrap_or_else(|| tool_call.id.clone()),
+                                .provider
+                                .as_ref()
+                                .map(|provider| provider.call_id.clone())
+                                .unwrap_or_else(|| tool_call.id.as_str().to_owned()),
                         ),
                         format: None,
                         index: None,
@@ -1613,6 +1625,7 @@ mod tests {
             message::UserContent::tool_result_with_call_id(
                 "result-id",
                 "call-id".to_string(),
+                "tool",
                 OneOrMany::one(message::ToolResultContent::text("tool output")),
             ),
             message::UserContent::text("after"),
@@ -3271,16 +3284,14 @@ mod tests {
 
     #[test]
     fn test_tool_call_signature_without_params_uses_wire_id_for_encrypted_detail() {
-        let tool_call = message::ToolCall {
-            id: "call_wire".to_string(),
-            call_id: None,
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call_wire",
+            message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
             },
-            signature: Some("sig-data".to_string()),
-            additional_params: None,
-        };
+        )
+        .with_signature(Some("sig-data".to_string()));
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::ToolCall(tool_call),
@@ -3306,18 +3317,17 @@ mod tests {
 
     #[test]
     fn test_tool_call_minimal_params_fall_back_to_wire_id() {
-        let tool_call = message::ToolCall {
-            id: "call_wire".to_string(),
-            call_id: None,
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call_wire",
+            message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
             },
-            signature: Some("sig-data".to_string()),
-            // Minimal params carrying only a format: the detail id must
-            // still correlate with the wire tool-call id.
-            additional_params: Some(json!({"format": "anthropic"})),
-        };
+        )
+        .with_signature(Some("sig-data".to_string()))
+        // Minimal params carrying only a format: the detail id must
+        // still correlate with the wire tool-call id.
+        .with_additional_params(Some(json!({"format": "anthropic"})));
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::ToolCall(tool_call),

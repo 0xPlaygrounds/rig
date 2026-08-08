@@ -321,11 +321,7 @@ pub(crate) fn create_request_body(
 
     let mut history = Vec::new();
     history.extend(chat_history);
-    let (history_system, mut history) = split_system_messages_from_history(history);
-    // `functionResponse.name` is a *function name* wire: resolve legacy
-    // name-less tool results by pairing them with their calls, exactly as
-    // the REST-Gemini, gRPC, Vertex, and Ollama serializers do.
-    crate::providers::internal::resolve_tool_result_names(&mut history);
+    let (history_system, history) = split_system_messages_from_history(history);
 
     let steps = history
         .into_iter()
@@ -557,10 +553,10 @@ fn assistant_content_from_output(
             let Some(name) = name else {
                 return Ok(None);
             };
-            let call_id = id.unwrap_or_else(|| name.clone());
-            Ok(Some(completion::AssistantContent::tool_call_with_call_id(
-                name.clone(),
-                call_id,
+            // An id-less call mints its correlation handle — never
+            // name-as-id, which collides two same-tool calls in one turn.
+            Ok(Some(completion::AssistantContent::tool_call(
+                id.unwrap_or_default(),
                 name,
                 arguments.unwrap_or(Value::Object(Map::new())),
             )))
@@ -1934,16 +1930,18 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::UserContent::ToolResult(message::ToolResult {
-                    id,
-                    call_id,
+                    call,
+                    provider,
                     name,
                     content,
                 }) => {
-                    let Some(call_id) = call_id else {
-                        return Err(message::MessageError::ConversionError(
-                            "Tool results require call_id for Gemini Interactions API".to_string(),
-                        ));
-                    };
+                    // The wire requires a call id: the provider-issued one
+                    // when it exists, else rig's minted handle — always
+                    // present, so the old "results require call_id" error
+                    // is unrepresentable.
+                    let call_id = provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_else(|| call.into_string());
 
                     let mut contents = content.into_iter().collect::<Vec<_>>();
                     let result = if contents.len() == 1 {
@@ -1975,9 +1973,8 @@ pub mod interactions_api_types {
                     };
 
                     Ok(Self::FunctionResult(FunctionResultContent {
-                        // The executed tool's name travels as data; the id
-                        // is the legacy name-in-id fallback.
-                        name: Some(name.filter(|name| !name.is_empty()).unwrap_or(id)),
+                        // The executed tool's name travels as required data.
+                        name: Some(name),
                         is_error: None,
                         result: Some(result),
                         call_id: Some(call_id),
@@ -2109,7 +2106,10 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
-                    let call_id = tool_call.call_id.unwrap_or_else(|| tool_call.id.clone());
+                    let call_id = tool_call
+                        .provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_else(|| tool_call.id.into_string());
                     Ok(Self::FunctionCall(FunctionCallContent {
                         name: Some(tool_call.function.name),
                         arguments: Some(tool_call.function.arguments),
@@ -2745,32 +2745,39 @@ mod tests {
     }
 
     /// `functionResponse.name` is the executed function's name: read from
-    /// `ToolResult::name` when the driver carried it, resolved by pairing
-    /// for legacy name-less histories — never an identifier.
+    /// the required `ToolResult::name` — never an identifier.
     #[test]
     fn tool_result_serializes_the_executed_name_not_an_identifier() {
-        use message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
+        use message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
 
-        let call = |id: &str, call_id: Option<&str>, name: &str| Message::Assistant {
-            id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
-                id: id.to_owned(),
-                call_id: call_id.map(str::to_owned),
-                function: ToolFunction {
-                    name: name.to_owned(),
-                    arguments: json!({}),
-                },
-                signature: None,
-                additional_params: None,
-            })),
+        let call = |item_id: Option<&str>, call_id: &str, name: &str| {
+            let function = ToolFunction {
+                name: name.to_owned(),
+                arguments: json!({}),
+            };
+            let tool_call = match item_id {
+                Some(item_id) => ToolCall::from_dual_wire(item_id, call_id, function),
+                None => ToolCall::from_wire(call_id, function),
+            };
+            Message::Assistant {
+                id: None,
+                content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+            }
         };
-        let result = |id: &str, call_id: Option<&str>, name: Option<&str>| Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
-                id: id.to_owned(),
-                call_id: call_id.map(str::to_owned),
-                name: name.map(str::to_owned),
-                content: OneOrMany::one(ToolResultContent::text("out")),
-            })),
+        let result = |item_id: Option<&str>, call_id: &str, name: &str| Message::User {
+            content: OneOrMany::one(match item_id {
+                Some(item_id) => message::UserContent::tool_result_with_call_id(
+                    item_id,
+                    call_id,
+                    name,
+                    OneOrMany::one(ToolResultContent::text("out")),
+                ),
+                None => message::UserContent::tool_result(
+                    call_id,
+                    name,
+                    OneOrMany::one(ToolResultContent::text("out")),
+                ),
+            }),
         };
 
         let request = CompletionRequest {
@@ -2780,18 +2787,19 @@ mod tests {
             chat_history: OneOrMany::many(vec![
                 // A driver-built result carries the executed name (a repair
                 // hook renamed the call: `sum` ran, not `add`).
-                call("add", Some("call_1"), "sum"),
-                result("add", Some("call_1"), Some("sum")),
-                // A legacy cross-provider result is name-less with an
-                // OpenAI-shaped identifier: the resolver pairs it with its
-                // call — `call_abc` must never reach the wire as a name.
-                call("call_abc", Some("call_abc"), "get_weather"),
-                result("call_abc", Some("call_abc"), None),
-                // A dual-identifier legacy result (OpenAI Responses: item id
-                // `fc_…` + `call_id` `call_…`, both mirrored) resolves to the
-                // call's name — `fc_1` must never reach the wire as a name.
-                call("fc_1", Some("call_9"), "get_time"),
-                result("fc_1", Some("call_9"), None),
+                call(None, "call_1", "sum"),
+                result(None, "call_1", "sum"),
+                // An OpenAI-shaped correlator travels as the call id while
+                // the required `name` field carries the executed name —
+                // `call_abc` must never reach the wire as a name.
+                call(None, "call_abc", "get_weather"),
+                result(None, "call_abc", "get_weather"),
+                // A dual-identifier result (OpenAI Responses: item id `fc_…`
+                // + `call_id` `call_…`) keeps the correlator on the wire and
+                // the executed name in `name` — `fc_1` must never reach the
+                // wire as a name.
+                call(Some("fc_1"), "call_9", "get_time"),
+                result(Some("fc_1"), "call_9", "get_time"),
             ])
             .expect("non-empty history"),
             documents: vec![],
@@ -2852,24 +2860,32 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_result_requires_call_id() {
+    fn test_tool_result_without_provider_id_sends_minted_call_id() {
+        // A call id is always available now: the wire gets the
+        // provider-issued id when one exists, else rig's minted handle —
+        // the old "Tool results require call_id" error is unrepresentable.
+        let call = message::ToolCallId::mint();
         let content = message::UserContent::ToolResult(message::ToolResult {
-            id: "get_weather".to_string(),
-            call_id: None,
-            name: None,
+            call: call.clone(),
+            provider: None,
+            name: "get_weather".to_string(),
             content: OneOrMany::one(message::ToolResultContent::text("ok")),
         });
 
-        let err = Content::try_from(content).expect_err("should require call_id");
-        assert!(format!("{err}").contains("call_id"));
+        let converted = Content::try_from(content).expect("tool result should convert");
+        let Content::FunctionResult(result) = converted else {
+            panic!("expected function result");
+        };
+        assert_eq!(result.call_id.as_deref(), Some(call.as_str()));
+        assert_eq!(result.name.as_deref(), Some("get_weather"));
     }
 
     #[test]
     fn test_tool_result_preserves_text_and_json_types() {
         let content = message::UserContent::ToolResult(message::ToolResult {
-            id: "get_weather".to_string(),
-            name: None,
-            call_id: Some("call-123".to_string()),
+            call: message::ToolCallId::new_or_mint("call-123"),
+            provider: message::ProviderCallId::new("call-123"),
+            name: "get_weather".to_string(),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text(r#"{"status":"literal"}"#),
                 message::ToolResultContent::json(json!({ "status": "structured" })),
@@ -2923,9 +2939,9 @@ mod tests {
 
         for (tool_content, expected) in cases {
             let content = message::UserContent::ToolResult(message::ToolResult {
-                id: "get_weather".to_string(),
-                call_id: Some("call-123".to_string()),
-                name: None,
+                call: message::ToolCallId::new_or_mint("call-123"),
+                provider: message::ProviderCallId::new("call-123"),
+                name: "get_weather".to_string(),
                 content: OneOrMany::one(tool_content),
             });
 
@@ -2964,9 +2980,9 @@ mod tests {
 
         for (tool_content, expected) in cases {
             let content = message::UserContent::ToolResult(message::ToolResult {
-                id: "get_weather".to_string(),
-                call_id: Some("call-123".to_string()),
-                name: None,
+                call: message::ToolCallId::new_or_mint("call-123"),
+                provider: message::ProviderCallId::new("call-123"),
+                name: "get_weather".to_string(),
                 content: OneOrMany::one(tool_content),
             });
 
@@ -2982,9 +2998,9 @@ mod tests {
     #[test]
     fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
         let tool_result = message::UserContent::ToolResult(message::ToolResult {
-            id: "render".to_string(),
-            name: None,
-            call_id: Some("call-image".to_string()),
+            call: message::ToolCallId::new_or_mint("call-image"),
+            provider: message::ProviderCallId::new("call-image"),
+            name: "render".to_string(),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::image_base64(
                     "first-image",
@@ -3073,7 +3089,11 @@ mod tests {
         match choice {
             completion::AssistantContent::ToolCall(tool_call) => {
                 assert_eq!(tool_call.function.name, "get_weather");
-                assert_eq!(tool_call.call_id.as_deref(), Some("call-123"));
+                assert_eq!(tool_call.id, "call-123");
+                assert_eq!(
+                    tool_call.provider.as_ref().expect("wire id").call_id,
+                    "call-123"
+                );
             }
             other => panic!("unexpected content: {other:?}"),
         }

@@ -397,10 +397,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         }
         // Process tool_calls following Ollama's chat response definition.
         // Modern daemons issue a call id (`"id":"call_..."`); it is read as
-        // the durable id when present. An absent id stays absent (empty)
-        // rather than fabricating one from the tool name — a name-as-id
-        // would collide two same-tool calls in one turn. Replay drops the
-        // id either way (Ollama tool messages correlate by `tool_name`).
+        // the provider id when present. An absent id mints the correlation
+        // handle and records no provider id — never a name-as-id (which
+        // would collide two same-tool calls) and never an empty sentinel.
+        // Replay drops the id either way (Ollama tool messages correlate
+        // by `tool_name`).
         for tc in tool_calls.iter() {
             assistant_contents.push(completion::AssistantContent::tool_call(
                 tc.id.as_deref().unwrap_or(""),
@@ -475,10 +476,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
         // Build up the order of messages.
         let mut partial_history = vec![];
         partial_history.extend(chat_history);
-        // Ollama's tool messages carry the *function name*; resolve it from
-        // each result's paired assistant call (rig no longer smuggles the
-        // name through the tool-call id).
-        crate::providers::internal::resolve_tool_result_names(&mut partial_history);
 
         // Add preamble to chat history (if available)
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -1235,15 +1232,12 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                 for content in content {
                     match content {
                         crate::message::UserContent::ToolResult(crate::message::ToolResult {
-                            id,
                             name,
                             content,
                             ..
                         }) => {
-                            // The executed tool's name travels as data; the
-                            // id is a legacy fallback for pre-field
-                            // histories the shim could not pair.
-                            let function_name = name.filter(|name| !name.is_empty()).unwrap_or(id);
+                            // The executed tool's name travels as required data.
+                            let function_name = name;
                             if !pending_user_content.is_empty() {
                                 messages.push(user_message_from_content(std::mem::take(
                                     &mut pending_user_content,
@@ -1351,7 +1345,7 @@ impl From<Message> for crate::completion::Message {
                     Text::new(content),
                 ));
                 // Same id policy as the unary decode above: a daemon-issued
-                // id is preserved, an absent one stays absent (empty).
+                // id is preserved, an absent one mints (provider id: none).
                 for tc in tool_calls {
                     assistant_contents.push(
                         crate::completion::message::AssistantContent::tool_call(
@@ -1377,7 +1371,10 @@ impl From<Message> for crate::completion::Message {
                 ))),
             },
             Message::ToolResult { name, content } => crate::completion::Message::User {
+                // Ollama tool messages carry no call id; the name is the
+                // wire's correlator and the rig-level handle is minted.
                 content: OneOrMany::one(message::UserContent::tool_result(
+                    "",
                     name,
                     OneOrMany::one(message::ToolResultContent::text(content)),
                 )),
@@ -1726,6 +1723,7 @@ mod tests {
             content: OneOrMany::many(vec![
                 UserContent::text("before"),
                 UserContent::tool_result(
+                    "",
                     "lookup",
                     OneOrMany::one(ToolResultContent::json(json!({ "ok": true }))),
                 ),
@@ -1944,8 +1942,7 @@ mod tests {
 
     /// A user-supplied ollama-format assistant message carrying a
     /// daemon-issued call id keeps it through conversion — the same id
-    /// policy as the unary decode (preserve when present, absent stays
-    /// empty).
+    /// policy as the unary decode (preserve when present, absent mints).
     #[test]
     fn wire_message_conversion_preserves_the_daemon_tool_call_id() {
         let wire = Message::Assistant {
@@ -1970,7 +1967,9 @@ mod tests {
         let ids: Vec<String> = content
             .iter()
             .filter_map(|item| match item {
-                crate::message::AssistantContent::ToolCall(call) => Some(call.id.clone()),
+                crate::message::AssistantContent::ToolCall(call) => {
+                    Some(call.id.as_str().to_owned())
+                }
                 _ => None,
             })
             .collect();

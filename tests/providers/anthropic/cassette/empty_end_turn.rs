@@ -162,11 +162,14 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 .expect("first Anthropic turn should emit a notify tool call");
 
             let followup = model
-                .completion_request(Message::tool_result_with_call_id(
+                .completion_request(Message::from(UserContent::tool_result_for(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    "sent: deploy finished",
-                ))
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
+                    rig::OneOrMany::one(rig::message::ToolResultContent::text(
+                        "sent: deploy finished",
+                    )),
+                )))
                 .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
                 .max_tokens(1024)
                 .message(Message::Assistant {
