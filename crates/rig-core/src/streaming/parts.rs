@@ -325,8 +325,34 @@ impl PartsAccumulator {
             match (restatement, signature) {
                 // Trailing lifecycle metadata for the finished block: the
                 // signature lands on the part that holds the chain-of-
-                // thought, wherever its arrival position was (#2258 B4).
+                // thought, wherever its arrival position was (#2258 B4) —
+                // unless that part already carries a signature. Signatures
+                // cannot merge ("Don't combine two Parts that both contain
+                // signatures" — Google's own doctrine), so a second
+                // signature under a per-stream constant key records a
+                // DISTINCT sibling part and repoints the key, instead of
+                // overwriting the first signature and losing it from the
+                // replayed history.
                 (None, Some(signature)) => {
+                    let part_already_signed = matches!(
+                        self.parts.get(index),
+                        Some(AssistantContent::Reasoning(reasoning))
+                            if reasoning.content.iter().any(|content| matches!(
+                                content,
+                                ReasoningContent::Text { signature: Some(_), .. }
+                            ))
+                    );
+                    if part_already_signed {
+                        let index = self.push_reasoning_part(Reasoning {
+                            id: None,
+                            content: vec![ReasoningContent::Text {
+                                text: String::new(),
+                                signature: Some(signature),
+                            }],
+                        });
+                        self.finished_reasoning.insert(id.clone(), index);
+                        return self.reasoning_at(index);
+                    }
                     attach_signature(self.parts.get_mut(index), signature);
                     return self.reasoning_at(index);
                 }
@@ -769,12 +795,19 @@ fn attach_signature(part: Option<&mut AssistantContent>, signature: String) {
 }
 
 fn attach_reasoning_signature(reasoning: &mut Reasoning, signature: String) {
+    // Target the last UNSIGNED text slot: a signature never overwrites one
+    // already recorded (signature strings cannot be merged, and replay
+    // needs every one). With no unsigned slot — all signed, or no text at
+    // all — the signature records on its own empty-text slot.
     match reasoning
         .content
         .iter_mut()
         .rev()
         .find_map(|content| match content {
-            ReasoningContent::Text { signature, .. } => Some(signature),
+            ReasoningContent::Text {
+                signature: slot @ None,
+                ..
+            } => Some(slot),
             _ => None,
         }) {
         Some(slot) => *slot = Some(signature),
@@ -981,6 +1014,50 @@ mod tests {
             parts.first(),
             Some(AssistantContent::Reasoning(_))
         ));
+    }
+
+    /// Two signature-bearing segments under a per-stream constant key
+    /// (gemini REST/Interactions, cohere, ollama all key reasoning by one
+    /// minted constant): the second signature must land on a DISTINCT part.
+    /// Signatures cannot merge — overwriting the first would replay with
+    /// only the last signature and fail `MISSING_THOUGHT_SIGNATURE`.
+    #[test]
+    fn a_second_signature_under_a_constant_key_records_a_distinct_part() {
+        let mut accumulator = PartsAccumulator::new();
+        let key = pid("reasoning-0");
+        accumulator.reasoning_delta(&key, None, "thought A");
+        accumulator.reasoning_end(&key, None, Some("sig_A".to_string()));
+        // A signature-only end for the already-finished constant key: the
+        // wire signed a second segment with nothing new streamed to sign.
+        accumulator.reasoning_end(&key, None, Some("sig_B".to_string()));
+
+        let parts = accumulator.finish();
+        let signed: Vec<(String, Option<String>)> = parts
+            .iter()
+            .filter_map(|part| match part {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning),
+                _ => None,
+            })
+            .flat_map(|reasoning| {
+                reasoning.content.iter().map(|content| match content {
+                    ReasoningContent::Text { text, signature } => (text.clone(), signature.clone()),
+                    other => (format!("{other:?}"), None),
+                })
+            })
+            .collect();
+        assert_eq!(
+            signed,
+            vec![
+                ("thought A".to_string(), Some("sig_A".to_string())),
+                (String::new(), Some("sig_B".to_string())),
+            ],
+            "both signatures survive, each on its own slot in its own part"
+        );
+        let reasoning_parts = parts
+            .iter()
+            .filter(|part| matches!(part, AssistantContent::Reasoning(_)))
+            .count();
+        assert_eq!(reasoning_parts, 2, "the second signature is a sibling part");
     }
 
     /// A synthesized end splits a constant-key wire's blocks: a delta after
