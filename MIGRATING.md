@@ -406,6 +406,192 @@ non-success response moves from `Instance(..)` to
 
 ## 0.41 → next
 
+### The raw grammar is a part lifecycle: Start / Delta / End per content kind
+
+Every streamed part is now an **entity with a lifecycle** — open, mutate in
+place, close — instead of an id-keyed event sequence (review 84a43e9e root
+cause A; vercel's stream-part triples and pydantic-ai's
+`_stop_tracking_vendor_id` are the reference designs):
+
+- `RawStreamingChoice` gains `ReasoningStart { id, provider_id }`,
+  `ReasoningEnd { id, reasoning, signature }` and `TextEnd { id }`. The
+  whole-block `Reasoning` event remains as shorthand for
+  open + authoritative restatement + close. `ReasoningSignature` (added
+  earlier in this PR's lineage) is **deleted** — a trailing signature is
+  just an `End` arriving late, and one end primitive covers a signature
+  closing an open block, a trailing signature after interleaved output, and
+  a signature-only stream, with no per-case branch for an adapter to
+  forget.
+- The accumulator reduces to open-maps into an arrival-ordered part list:
+  open registers the part once (fixing order), deltas mutate through the
+  handle, end applies the authoritative payload and moves the key to a
+  finished-set. **Idempotence belongs to the entity**: the finished-set is
+  populated by every finalization route (fragment ends,
+  authoritative-payload ends, whole-call adoption), so a repeated
+  `ToolInputEnd` — even one carrying an authoritative name and arguments —
+  finalizes nothing. Key reuse after finishing opens a new part; that
+  lenient rule replaces the ordinal machinery.
+- Wires that never announce boundaries (gemini thought parts, ollama and
+  chat-compat reasoning, cohere thinking) have their adapters *synthesize*
+  the end events at the boundaries they already detect — one grammar
+  instead of per-wire lifecycle re-derivation. Deleted with the old
+  machinery: `close_minted_reasoning`, the ordinal maps, the
+  `DeltaBuilt`/`Complete` part tags, `closed_by_full_call`, and every
+  adapter-side thought/restatement buffer (gemini REST/interactions/gRPC,
+  anthropic's thinking-text buffer).
+- Consumers: `StreamedAssistantContent::Reasoning` now fires when the
+  **wire said something at the block's end** — an end carrying an
+  authoritative payload (a restatement or a signature), or a bare end frame
+  the wire itself sent (`ReasoningEnd { wire_sent: true }`, e.g. anthropic's
+  `content_block_stop` on an *unsigned* thinking block, which keeps firing a
+  completed event exactly as before this refactor). Only a bare end a rig
+  adapter *synthesized* at an interleaving boundary stays silent: consumers
+  already received every delta, and no fabricated completion event changes
+  what history builders observe.
+
+### Stream keys are opaque; durable ids and correlators are separate values
+
+The raw-event identity type is now `rig_core::streaming::StreamPartId` — an
+**opaque accumulation key**: `Eq + Hash + Clone + Debug` and nothing else. It
+has no serialization, no rendering, and no accessor into the durable id
+space — and its representation is private, so pattern-matching cannot
+extract the wire string either (the `identity_leak` compile-fail suite pins
+all four). Construction goes through `StreamPartId::wire` /
+`StreamPartId::minted` / `MintKind::for_wire_index`. The durable provider handle
+travels separately as `WireId` (`Reasoning`/`ReasoningDelta` gain
+`provider_id: Option<WireId>`; `RawStreamingToolCall` gains
+`tool_id: Option<WireId>`; `ToolInputEnd::tool_id` is `Option<WireId>`).
+`WireId::new` rejects the empty string, so an absent handle is `None` by
+construction — the fabricated-empty-id class (and every per-serializer
+`.filter(|id| !id.is_empty())` compensating for it) is gone.
+
+Public stream items change accordingly (breaking):
+
+- `StreamedAssistantContent::ReasoningDelta.id` is now a **rig-generated
+  correlator** — stable per reasoning part, unique per run — plus a new
+  `provider_id: Option<String>` carrying the provider-issued item id when
+  one exists. The previous `rig:reasoning:0`-style renderings (and their
+  one-stream uniqueness caveat) are gone; the caveat documented for
+  `0.41 → next` is superseded.
+- `StreamedAssistantContent::ToolCallDelta` loses its `id` field:
+  `internal_call_id` is the correlator, and provider ids arrive on the
+  completed `ToolCall`. The agent hook payload `ToolCallDelta` loses
+  `tool_call_id` for the same reason.
+- Consumers reconstructing durable ids from delta ids must use
+  `provider_id`: the assembled `Reasoning::id` carries only provider-issued
+  values (this closes a latent leak where a minted rendering could enter
+  history through the agent's delta-only assembly path).
+- `StreamedAssistantContent::Reasoning` becomes a struct variant
+  `Reasoning { reasoning, id }`: the completed block restates the
+  rig-generated correlator its deltas carried, mirroring the completed
+  `ToolCall`'s `internal_call_id`. On wires with no provider handle
+  (anthropic unsigned thinking, gemini signature-only ends) the correlator
+  is the *only* way to associate the completed replacement with its prior
+  deltas — `reasoning.id` stays the durable provider handle and the
+  correlator never enters replayable history. Matchers change from
+  `Reasoning(reasoning)` to `Reasoning { reasoning, .. }`.
+
+### Tool-call identity is typed: `ToolCallId` + `ProviderCallId`
+
+The message layer receives the same identity decomposition the streaming
+layer already has (`StreamPartId` vs `WireId`): rig's correlation handle and
+the provider's wire handles are now different types, and the empty-string
+sentinel is unrepresentable.
+
+```rust
+pub struct ToolCall {
+    /// Rig's correlation handle. Always present; minted when the provider issued none.
+    pub id: ToolCallId,
+    /// What the provider issued, if anything — the only ids that go back on its wire.
+    pub provider: Option<ProviderCallId>,
+    pub function: ToolFunction,
+    pub signature: Option<String>,
+    pub additional_params: Option<serde_json::Value>,
+}
+
+/// Dual-identifier wires need both: OpenAI Responses issues an item id
+/// (`fc_…`) *and* a `call_id` (`call_…`).
+pub struct ProviderCallId {
+    pub call_id: String,
+    pub item_id: Option<String>,
+}
+
+pub struct ToolResult {
+    /// Which call this answers — correlation, always present.
+    pub call: ToolCallId,
+    pub provider: Option<ProviderCallId>,
+    /// The *executed* tool's name. Required, not `Option`.
+    pub name: String,
+    pub content: OneOrMany<ToolResultContent>,
+}
+```
+
+`ToolCallId` is non-empty by construction (`new` returns `None` for `""`;
+`mint()` generates a fresh 21-character handle; `new_or_mint` is the
+boundary guard). Every provider decode path adopts the wire's id when one
+was issued (`ToolCall::from_wire`, `ToolCall::from_dual_wire`) and mints
+when none was — so comparing or keying by `ToolCall::id` is now correct on
+id-less wires (older Ollama daemons, Gemini REST), where every call
+previously carried `id: ""` and collided.
+
+What this changes for you:
+
+- **Construction**: `ToolCall::new` takes a `ToolCallId`; provider decode
+  paths use `ToolCall::from_wire(wire_id, function)` (empty mints) or
+  `ToolCall::from_dual_wire(item_id, call_id, function)`.
+  `with_call_id` is replaced by `with_provider(ProviderCallId)`.
+  `UserContent::tool_result(call_id, name, content)` takes the executed
+  tool's name (required); `tool_result_for(call, provider, name, content)`
+  is the agent-driver form; `tool_result_named` is gone.
+- **Serialization to providers**: wires that require a call id (OpenAI
+  chat/Responses, Anthropic, Bedrock, Gemini Interactions, xAI) receive
+  `provider.call_id` when the provider issued one, else rig's minted id —
+  never an empty string, and the Interactions/Responses "requires
+  `call_id`" request errors are gone (unrepresentable). Wires with optional
+  ids (Gemini REST/gRPC) omit the id unless the provider issued one:
+  minted handles never travel upstream there.
+- **Persisted histories**: the canonical serde shape changed (`ToolCall`
+  gains `provider`, loses `call_id`; `ToolResult` renames `id` → `call`,
+  requires `name`). Histories persisted by earlier versions do **not**
+  deserialize; re-run the conversation or migrate the JSON by hand
+  (`id`/`call_id` → `call` + `provider.call_id`, add the executed tool's
+  `name`). Empty-string ids in old JSON are rejected by construction.
+- **The back-compat pairing shim is deleted**:
+  `providers::internal::resolve_tool_result_names` (and the name-in-id
+  legacy encodings it supported) no longer exist — `ToolResult::name` is
+  required data, and every name-keyed serializer (Gemini
+  `functionResponse.name`, Ollama, Vertex AI, gemini-grpc) reads it
+  directly.
+- **Hooks and telemetry**: tool-call ids surfaced to hooks
+  (`ToolCallEvent`/`ToolResultEvent`/`InvalidToolCallContext.tool_call_id`)
+  and telemetry are now the durable id — the provider's when issued, else
+  rig's minted handle — never `Some("")` and never absent for a real call.
+
+### `ToolResult` carries the executed tool's name
+
+> **Superseded in this release**: `name` is now **required** (`String`, not
+> `Option<String>`) and the `resolve_tool_result_names` shim is deleted —
+> see the `ToolCallId` section above.
+
+`rig::message::ToolResult` gains `name: Option<String>` — the name of the
+tool that actually executed (which can differ from the model's call when a
+hook repaired it). Struct-literal constructions need the new field
+(`name: None` preserves the old shape); `UserContent::tool_result_named` is
+the constructor the agent drivers use, and serde skips the field when
+absent, so persisted histories round-trip unchanged.
+
+Why: several wires require the function *name* on a replayed tool result
+(Gemini's `functionResponse.name`, Ollama's tool messages), and rig used to
+smuggle it through the tool-call id — which collided two calls to the same
+tool and, for histories sourced from OpenAI-Chat-shaped providers, replayed
+the literal identifier (`call_abc`) as the function name. The name is now
+data on the result; the history-pairing heuristic
+(`resolve_tool_result_names`) survives only as a back-compat shim for
+results with `name: None`, and an id that matches a paired call's identity
+now resolves to that call's *name* instead of leaking the identifier.
+
+
+
 ### Stream parse policy and aggregation are centralized
 
 Choice aggregation is one component (`PartsAccumulator`); a full reasoning
@@ -577,8 +763,18 @@ implementation must uphold:
   the operation), transport errors end the stream with truncation semantics.
   Adapters contain no `match WireEvent`; `interpret` maps `Known` events
   only. (For websocket consumers: `ResponsesWebSocketEvent` gained an
-  `Unknown(serde_json::Value)` variant carrying the same raw passthrough —
-  exhaustive `match`es over that enum need a new arm.)
+  `Unknown` variant carrying the same raw passthrough — exhaustive `match`es
+  over that enum need a new arm.)
+- **The unknown payload is `UnknownPayload`, not a bare `Value`.**
+  `RawStreamingChoice::Unknown` and `StreamedAssistantContent::Unknown` carry
+  `streaming::UnknownPayload` — a transparent-serde wrapper whose `Debug`
+  is **redacted** (structural metadata only). Unmodeled frames can carry
+  model output, and `warn!(?value)`-style Debug captures were a recurring
+  leak class; with the payload unable to Debug-print its content, the class
+  is closed by the type rather than policed by review. Consumers who want
+  the content call `.value()` (serialization is unchanged
+  — the wrapper is `#[serde(transparent)]`); construct one with
+  `UnknownPayload::new(value)` or `value.into()`.
 - **Behavioral note — `Unknown` events can now occur on every network
   provider.** `StreamedAssistantContent::Unknown` is not a new variant (it
   has carried unmodeled Responses output items since #1950), but it

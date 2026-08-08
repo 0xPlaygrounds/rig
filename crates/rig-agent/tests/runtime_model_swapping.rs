@@ -170,7 +170,7 @@ impl Turn {
                 name,
                 arguments,
                 ..
-            } => OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+            } => OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
                 id.clone(),
                 ToolFunction::new(name.clone(), arguments.clone()),
             ))),
@@ -285,11 +285,11 @@ fn stream_from_script(
             // a tool-input end; the shared accumulator assembles the call and
             // mints the correlation id at the first fragment.
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: rig_agent::streaming::PartId::wire(id.clone()),
+                id: rig_agent::streaming::StreamPartId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Name(name.clone()),
             }));
             events.push(Ok(RawStreamingChoice::ToolCallDelta {
-                id: rig_agent::streaming::PartId::wire(id.clone()),
+                id: rig_agent::streaming::StreamPartId::wire(id.clone()),
                 content: rig_agent::streaming::ToolCallDeltaContent::Delta(arguments.to_string()),
             }));
             events.push(Ok(RawStreamingChoice::ToolInputEnd(
@@ -302,16 +302,21 @@ fn stream_from_script(
         Turn::Rich { text, .. } => {
             events.push(Ok(RawStreamingChoice::Reasoning {
                 id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(1),
+                provider_id: None,
                 content: ReasoningContent::Summary("summary".to_owned()),
             }));
             events.push(Ok(RawStreamingChoice::ReasoningDelta {
                 id: rig_agent::streaming::MintKind::Reasoning.for_wire_index(2),
+                provider_id: None,
                 reasoning: "reasoning delta".to_owned(),
             }));
-            events.push(Ok(RawStreamingChoice::Unknown(serde_json::json!({
-                "type": "provider_native_event",
-                "provider": script.provider,
-            }))));
+            events.push(Ok(RawStreamingChoice::Unknown(
+                serde_json::json!({
+                    "type": "provider_native_event",
+                    "provider": script.provider,
+                })
+                .into(),
+            )));
             events.push(Ok(RawStreamingChoice::Message(text.clone())));
         }
         // Handled by the early return above.
@@ -1220,7 +1225,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     while let Some(item) = stream.next().await {
         match item.expect("normalized stream item") {
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
-                StreamedAssistantContent::Reasoning(_),
+                StreamedAssistantContent::Reasoning { .. },
             ) => saw_reasoning = true,
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::ReasoningDelta { .. },
@@ -1228,7 +1233,7 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::Unknown(value),
             ) => {
-                saw_unknown = value["type"] == "provider_native_event";
+                saw_unknown = value.value()["type"] == "provider_native_event";
             }
             rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(
                 StreamedAssistantContent::Final(final_),

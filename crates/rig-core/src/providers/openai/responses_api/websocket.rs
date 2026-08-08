@@ -167,7 +167,7 @@ pub enum ResponsesWebSocketEvent {
     /// An unrecognized event's raw payload — warned and skipped on the
     /// semantic path, forwarded verbatim so the streaming surface can carry
     /// it on the `RawStreamingChoice::Unknown` passthrough channel.
-    Unknown(serde_json::Value),
+    Unknown(crate::streaming::UnknownPayload),
 }
 
 impl ResponsesWebSocketEvent {
@@ -2275,7 +2275,7 @@ mod tests {
         // Semantically skipped, but carried verbatim so the streaming surface
         // can yield it on the `RawStreamingChoice::Unknown` passthrough.
         match result {
-            Some(ResponsesWebSocketEvent::Unknown(value)) => assert_eq!(value, payload),
+            Some(ResponsesWebSocketEvent::Unknown(value)) => assert_eq!(value, payload.into()),
             other => panic!("expected the raw Unknown passthrough event, got {other:?}"),
         }
     }

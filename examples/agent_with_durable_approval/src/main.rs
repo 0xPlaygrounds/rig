@@ -222,6 +222,7 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     let id = call.tool_call.id.clone();
+                    let provider = call.tool_call.provider.clone();
                     let name = call.tool_call.function.name.clone();
                     let args = call.tool_call.function.arguments.to_string();
 
@@ -234,8 +235,10 @@ async fn main() -> Result<()> {
                             let execution = tools
                                 .execute(&name, args, &mut rig::tool::ToolContext::new())
                                 .await;
-                            results.push(UserContent::tool_result(
+                            results.push(UserContent::tool_result_for(
                                 id,
+                                provider,
+                                name,
                                 execution.output().clone().into_content(),
                             ));
                         }
@@ -253,15 +256,19 @@ async fn main() -> Result<()> {
                                             &mut rig::tool::ToolContext::new(),
                                         )
                                         .await;
-                                    results.push(UserContent::tool_result(
+                                    results.push(UserContent::tool_result_for(
                                         id,
+                                        provider,
+                                        name,
                                         execution.output().clone().into_content(),
                                     ));
                                 }
                                 _ => {
                                     println!("     ! no valid JSON; denying instead");
-                                    results.push(UserContent::tool_result(
+                                    results.push(UserContent::tool_result_for(
                                         id,
+                                        provider,
+                                        name,
                                         rig::OneOrMany::one(ToolResultContent::text(
                                             "denied: the reviewer supplied no valid JSON to edit with",
                                         )),
@@ -284,8 +291,10 @@ async fn main() -> Result<()> {
                             } else {
                                 "denied: no clear approval given".to_string()
                             };
-                            results.push(UserContent::tool_result(
+                            results.push(UserContent::tool_result_for(
                                 id,
+                                provider,
+                                name,
                                 rig::OneOrMany::one(ToolResultContent::text(reason)),
                             ));
                         }

@@ -2311,7 +2311,7 @@ mod tests {
         assert_eq!(text, "hello");
         assert_eq!(
             unknown,
-            Some(serde_json::json!({"type": "copilot.heartbeat", "payload": {}})),
+            Some(serde_json::json!({"type": "copilot.heartbeat", "payload": {}}).into()),
             "the unrecognized frame must surface verbatim on the raw channel"
         );
         let terminal = terminal.expect("stream should still emit its terminal record");

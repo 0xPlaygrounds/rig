@@ -1,12 +1,12 @@
-error[E0277]: the trait bound `PartId: serde::Serialize` is not satisfied
- --> tests/identity_leak/serialize_part_id.rs:6:35
+error[E0277]: the trait bound `StreamPartId: serde::Serialize` is not satisfied
+ --> tests/identity_leak/serialize_part_id.rs:7:35
   |
-6 |     let _ = serde_json::to_string(&id);
-  |             --------------------- ^^^ the trait `rig_core::serde::Serialize` is not implemented for `PartId`
+7 |     let _ = serde_json::to_string(&id);
+  |             --------------------- ^^^ the trait `rig_core::serde::Serialize` is not implemented for `StreamPartId`
   |             |
   |             required by a bound introduced by this call
   |
-  = note: for local types consider adding `#[derive(serde::Serialize)]` to your `PartId` type
+  = note: for local types consider adding `#[derive(serde::Serialize)]` to your `StreamPartId` type
   = note: for types from other crates check whether the crate offers a `serde` feature flag
   = help: the following other types implement trait `rig_core::serde::Serialize`:
             &'a T

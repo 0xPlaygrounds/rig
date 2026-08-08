@@ -82,9 +82,12 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                     .map(|s| serde_json::Value::Object(s.clone()))
                     .unwrap_or_else(|| serde_json::json!({}));
 
+                // Vertex function calls carry no identifier: mint the
+                // correlation handle — never name-as-id, which collides two
+                // same-tool calls in one turn.
                 assistant_contents.push(AssistantContent::ToolCall(
-                    ToolCall::new(
-                        function_call.name.clone(),
+                    ToolCall::from_wire(
+                        "",
                         ToolFunction::new(function_call.name.clone(), args_json),
                     )
                     .with_signature(signature),
@@ -345,8 +348,18 @@ mod tests {
         let response = completion_response.unwrap();
 
         match response.choice.first() {
-            AssistantContent::ToolCall(ToolCall { id, function, .. }) => {
-                assert_eq!(id, "add");
+            AssistantContent::ToolCall(ToolCall {
+                id,
+                provider,
+                function,
+                ..
+            }) => {
+                // Vertex issues no call ids: the decode mints a unique
+                // non-empty handle (never the function name) and records
+                // that the provider issued nothing.
+                assert!(!id.as_str().is_empty());
+                assert_ne!(id, "add");
+                assert_eq!(provider, None);
                 assert_eq!(function.name, "add");
                 assert_eq!(function.arguments, args);
             }

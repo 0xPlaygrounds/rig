@@ -199,17 +199,14 @@ async fn tool_result_roundtrip() {
                 initial.try_into().expect("response should normalize");
 
             let tool_call = first_tool_call(&initial.choice).expect("expected a tool call");
-            let call_id = tool_call
-                .call_id
-                .clone()
-                .unwrap_or_else(|| tool_call.id.clone());
 
             let followup = model
                 .completion(
                     model
-                        .completion_request(Message::from(UserContent::tool_result_with_call_id(
-                            tool_call.function.name,
-                            call_id,
+                        .completion_request(Message::from(UserContent::tool_result_for(
+                            tool_call.id.clone(),
+                            tool_call.provider.clone(),
+                            tool_call.function.name.clone(),
                             OneOrMany::one(ToolResultContent::json(
                                 serde_json::json!({ "sum": 18.0 }),
                             )),

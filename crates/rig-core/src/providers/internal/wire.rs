@@ -23,8 +23,8 @@ pub enum WireEvent<T> {
         /// The unmodeled discriminator value.
         event_type: String,
         /// The full frame payload, for the driver's raw passthrough channel
-        /// (never for its warn log).
-        value: serde_json::Value,
+        /// (never for its warn log — and its Debug is redacted by type).
+        value: crate::streaming::UnknownPayload,
     },
     /// Not valid JSON, or a modeled discriminator whose payload failed the
     /// typed decode — a data-level defect in a known event, which must never
@@ -91,7 +91,10 @@ where
 /// parsed lazily here — the hot Known path never pays for it.
 fn unknown_with_value<T>(data: &str, event_type: String) -> WireEvent<T> {
     match serde_json::from_str::<serde_json::Value>(data) {
-        Ok(value) => WireEvent::Unknown { event_type, value },
+        Ok(value) => WireEvent::Unknown {
+            event_type,
+            value: value.into(),
+        },
         // Unreachable in practice: the scan already tokenized this text.
         Err(error) => WireEvent::Corrupt(error),
     }
@@ -166,7 +169,10 @@ where
             .as_object()
             .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
             .unwrap_or_default();
-        return WireEvent::Unknown { event_type, value };
+        return WireEvent::Unknown {
+            event_type,
+            value: value.into(),
+        };
     }
 
     decode_known(data)
@@ -221,7 +227,7 @@ pub fn classify_typed_event<T>(event: TypedEvent<T>) -> WireEvent<T> {
         TypedEvent::Modeled(event) => WireEvent::Known(event),
         TypedEvent::Unrecognized { event_type, detail } => WireEvent::Unknown {
             event_type,
-            value: serde_json::Value::String(detail),
+            value: serde_json::Value::String(detail).into(),
         },
         TypedEvent::Malformed(message) => {
             WireEvent::Corrupt(<serde_json::Error as serde::de::Error>::custom(message))
@@ -693,7 +699,7 @@ mod tests {
         assert!(matches!(
             event,
             WireEvent::Unknown { event_type, value }
-                if event_type == "unknown" && value == serde_json::Value::String("FutureEvent".into())
+                if event_type == "unknown" && value.value() == &serde_json::Value::String("FutureEvent".into())
         ));
 
         // An SDK decode error for a modeled event is Corrupt, never Unknown.

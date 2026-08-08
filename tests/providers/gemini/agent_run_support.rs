@@ -202,14 +202,12 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
                 &call.tool_call.function.arguments,
             );
             let content = rig::OneOrMany::one(ToolResultContent::json(serde_json::json!(output)));
-            match call.tool_call.call_id.clone() {
-                Some(call_id) => UserContent::tool_result_with_call_id(
-                    call.tool_call.id.clone(),
-                    call_id,
-                    content,
-                ),
-                None => UserContent::tool_result(call.tool_call.id.clone(), content),
-            }
+            UserContent::tool_result_for(
+                call.tool_call.id.clone(),
+                call.tool_call.provider.clone(),
+                call.tool_call.function.name.clone(),
+                content,
+            )
         })
         .collect()
 }

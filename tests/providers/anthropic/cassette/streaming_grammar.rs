@@ -51,7 +51,9 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         raw_items.push(Ok(item.clone()));
         match item {
             StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
-            StreamedAssistantContent::Reasoning(reasoning) => run.reasoning_blocks.push(reasoning),
+            StreamedAssistantContent::Reasoning { reasoning, .. } => {
+                run.reasoning_blocks.push(reasoning)
+            }
             StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
                 run.reasoning_delta.push_str(&reasoning);
             }
@@ -206,7 +208,7 @@ async fn parallel_tool_use_stays_distinct() {
                 "{name} id should aggregate"
             );
             assert!(
-                streamed.id.starts_with("toolu_"),
+                streamed.id.as_str().starts_with("toolu_"),
                 "{name} should carry the wire's toolu_* id, got {}",
                 streamed.id
             );

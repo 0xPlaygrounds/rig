@@ -754,9 +754,9 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                         json!({}),
                     )),
                 })
-                .message(Message::tool_result_with_call_id(
+                .message(Message::tool_result(
+                    tool_call_id,
                     AlphaSignal::NAME,
-                    Some(tool_call_id.to_string()),
                     ALPHA_SIGNAL_OUTPUT,
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))

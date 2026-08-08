@@ -235,8 +235,7 @@ pub(crate) fn create_request_body(
 
     let mut full_history = Vec::new();
     full_history.extend(chat_history);
-    let (history_system, mut full_history) = split_system_messages_from_history(full_history);
-    crate::providers::internal::resolve_tool_result_names(&mut full_history);
+    let (history_system, full_history) = split_system_messages_from_history(full_history);
 
     let mut additional_params_payload = additional_params
         .take()
@@ -511,19 +510,14 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                             }
                         }
                         PartKind::FunctionCall(function_call) => {
-                            let tool_call = message::ToolCall::new(
-                                function_call.name.clone(),
+                            let tool_call = message::ToolCall::from_wire(
+                                function_call.id.clone().unwrap_or_default(),
                                 message::ToolFunction::new(
                                     function_call.name.clone(),
                                     function_call.args.clone(),
                                 ),
                             )
                             .with_signature(thought_signature.clone());
-                            let tool_call = if let Some(id) = &function_call.id {
-                                tool_call.with_call_id(id.clone())
-                            } else {
-                                tool_call
-                            };
                             completion::AssistantContent::ToolCall(tool_call)
                         }
                         _ => {
@@ -874,10 +868,13 @@ pub mod gemini_api_types {
                     additional_params: None,
                 }),
                 message::UserContent::ToolResult(message::ToolResult {
-                    id,
-                    call_id,
+                    call: _,
+                    provider,
+                    name,
                     content,
                 }) => {
+                    // The executed tool's name travels as required data.
+                    let function_name = name;
                     let mut response_values = Vec::new();
                     let mut parts: Vec<FunctionResponsePart> = Vec::new();
 
@@ -944,8 +941,8 @@ pub mod gemini_api_types {
                         thought: Some(false),
                         thought_signature: None,
                         part: PartKind::FunctionResponse(FunctionResponse {
-                            name: id,
-                            id: call_id,
+                            name: function_name,
+                            id: provider.map(|provider| provider.call_id),
                             response: response_json,
                             parts: if parts.is_empty() { None } else { Some(parts) },
                         }),
@@ -1254,7 +1251,9 @@ pub mod gemini_api_types {
                 part: PartKind::FunctionCall(FunctionCall {
                     name: tool_call.function.name,
                     args: tool_call.function.arguments,
-                    id: tool_call.call_id,
+                    // Only a provider-issued id may travel back on the wire;
+                    // minted correlation handles stay internal.
+                    id: tool_call.provider.map(|provider| provider.call_id),
                 }),
                 additional_params: None,
             }
@@ -1292,7 +1291,7 @@ pub mod gemini_api_types {
             Self {
                 name: tool_call.function.name,
                 args: tool_call.function.arguments,
-                id: tool_call.call_id,
+                id: tool_call.provider.map(|provider| provider.call_id),
             }
         }
     }
@@ -3062,16 +3061,13 @@ mod tests {
 
     #[test]
     fn test_message_conversion_tool_call() {
-        let tool_call = message::ToolCall {
-            id: "test_tool".to_string(),
-            call_id: Some("call-123".to_string()),
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call-123",
+            message::ToolFunction {
                 name: "test_function".to_string(),
                 arguments: json!({"arg1": "value1"}),
             },
-            signature: None,
-            additional_params: None,
-        };
+        );
 
         let msg = message::Message::Assistant {
             id: None,
@@ -3122,8 +3118,11 @@ mod tests {
         let message::AssistantContent::ToolCall(tool_call) = converted.choice.first() else {
             panic!("expected a tool call");
         };
-        assert_eq!(tool_call.id, "test_function");
-        assert_eq!(tool_call.call_id.as_deref(), Some("call-123"));
+        assert_eq!(tool_call.id, "call-123");
+        assert_eq!(
+            tool_call.provider.as_ref().expect("wire id").call_id,
+            "call-123"
+        );
     }
 
     #[test]
@@ -3364,8 +3363,9 @@ mod tests {
 
         // Create a tool result with both text and image content
         let tool_result = ToolResult {
-            id: "test_tool".to_string(),
-            call_id: Some("call-123".to_string()),
+            call: message::ToolCallId::new_or_mint("call-123"),
+            provider: message::ProviderCallId::new("call-123"),
+            name: "test_tool".to_string(),
             content: OneOrMany::many(vec![
                 ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
                 ToolResultContent::Image(Image {
@@ -3429,8 +3429,9 @@ mod tests {
 
         let message = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
-                id: "ordered_tool".to_string(),
-                call_id: None,
+                call: message::ToolCallId::mint(),
+                provider: None,
+                name: "ordered_tool".to_string(),
                 content: OneOrMany::many(vec![
                     ToolResultContent::image_base64("first-image", Some(ImageMediaType::PNG), None),
                     ToolResultContent::text("between-images"),
@@ -3476,8 +3477,9 @@ mod tests {
 
         let message = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
-                id: "ordered_tool".to_string(),
-                call_id: None,
+                call: message::ToolCallId::mint(),
+                provider: None,
+                name: "ordered_tool".to_string(),
                 content: OneOrMany::many(vec![
                     ToolResultContent::json(json!({ "status": "ok" })),
                     ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
@@ -3512,8 +3514,9 @@ mod tests {
 
         let tool_result = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
-                id: "url_tool".to_string(),
-                call_id: None,
+                call: message::ToolCallId::mint(),
+                provider: None,
+                name: "url_tool".to_string(),
                 content: OneOrMany::many(vec![
                     ToolResultContent::Image(Image {
                         data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
@@ -3550,8 +3553,9 @@ mod tests {
         ] {
             let message = message::Message::User {
                 content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
-                    id: "image_tool".to_string(),
-                    call_id: None,
+                    call: message::ToolCallId::mint(),
+                    provider: None,
+                    name: "image_tool".to_string(),
                     content: OneOrMany::one(ToolResultContent::image_base64(
                         "image-data",
                         Some(media_type),
@@ -3578,8 +3582,9 @@ mod tests {
 
         let message = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
-                id: "collision_tool".to_string(),
-                call_id: None,
+                call: message::ToolCallId::mint(),
+                provider: None,
+                name: "collision_tool".to_string(),
                 content: OneOrMany::many(vec![
                     ToolResultContent::json(json!({
                         "literal": {
@@ -3637,8 +3642,9 @@ mod tests {
         for (tool_content, expected) in cases {
             let message = message::Message::User {
                 content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
-                    id: "test_tool".to_string(),
-                    call_id: None,
+                    call: message::ToolCallId::mint(),
+                    provider: None,
+                    name: "test_tool".to_string(),
                     content: OneOrMany::one(tool_content),
                 })),
             };
@@ -3726,8 +3732,9 @@ mod tests {
         };
 
         let tool_result = ToolResult {
-            id: "screenshot_tool".to_string(),
-            call_id: None,
+            call: message::ToolCallId::mint(),
+            provider: None,
+            name: "screenshot_tool".to_string(),
             content: OneOrMany::one(ToolResultContent::Image(Image {
                 data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
                 media_type: Some(ImageMediaType::PNG),

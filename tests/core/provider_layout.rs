@@ -83,9 +83,24 @@ enum WireCoverage {
     /// is mandatory: "reuses another provider's wire" and "has no streaming
     /// wire at all" are very different claims and both must be written down.
     Exempt(&'static str),
+    /// The provider shares another family's *wire* but layers its own
+    /// streaming *semantics* on it through a non-trivial
+    /// `CompatibleStreamProfile` / `OpenAICompatibleProvider` hook
+    /// (`detail_reasoning`, `should_evict`, ...). "Shares the wire" and
+    /// "shares the wire and the semantics" are different claims: the shared
+    /// suite exercises the grammar, so the entry must name where the
+    /// profile-level semantics are covered.
+    SharedWireOwnSemantics {
+        /// Why the base wire is someone else's.
+        wire: &'static str,
+        /// Where the provider-specific streaming semantics are pinned
+        /// (cassette suite / test module) — mandatory, so profile hooks
+        /// cannot hide behind a wire-verbatim exemption.
+        semantics_coverage: &'static str,
+    },
 }
 
-use WireCoverage::{Exempt, Families};
+use WireCoverage::{Exempt, Families, SharedWireOwnSemantics};
 
 /// Wire shared by every `OpenAICompatibleProvider` implementor: the gateway
 /// swaps the base URL and request tweaks, not the SSE grammar.
@@ -137,7 +152,19 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ("mira", Exempt(OPENAI_CHAT_GATEWAY)),
     ("mistral", Exempt(OPENAI_CHAT_GATEWAY)),
     ("moonshot", Exempt(OPENAI_CHAT_GATEWAY)),
-    ("openrouter", Exempt(OPENAI_CHAT_GATEWAY)),
+    (
+        "openrouter",
+        SharedWireOwnSemantics {
+            wire: OPENAI_CHAT_GATEWAY,
+            semantics_coverage: "`streaming_detail_reasoning` maps `reasoning_details` \
+                 (`reasoning.encrypted` → `ReasoningContent::Encrypted`, tool-call \
+                 decorations) — pinned by the recorded openrouter cassettes \
+                 (`tests/providers/openrouter/cassette/streaming_tools.rs`, \
+                 `reasoning_roundtrip`/`reasoning_tool_roundtrip`) and the \
+                 `streaming_detail_reasoning` unit tests in \
+                 `providers/openrouter/completion.rs`",
+        },
+    ),
     ("perplexity", Exempt(OPENAI_CHAT_GATEWAY)),
     ("together", Exempt(OPENAI_CHAT_GATEWAY)),
     ("xiaomimimo", Exempt(OPENAI_CHAT_GATEWAY)),
@@ -284,6 +311,21 @@ fn every_provider_maps_to_a_wire_family_or_a_justified_exemption() {
                 !reason.trim().is_empty(),
                 "{name}'s exemption carries no justification",
             ),
+            SharedWireOwnSemantics {
+                wire,
+                semantics_coverage,
+            } => {
+                assert!(
+                    !wire.trim().is_empty(),
+                    "{name}'s shared-wire claim carries no justification",
+                );
+                assert!(
+                    semantics_coverage.contains("tests/")
+                        || semantics_coverage.contains("providers/"),
+                    "{name}'s semantics coverage must point at real test locations, got: \
+                     {semantics_coverage}",
+                );
+            }
         }
     }
 }
@@ -296,7 +338,7 @@ fn every_wire_family_is_claimed_by_a_provider() {
         .iter()
         .filter_map(|(_, coverage)| match coverage {
             Families(families) => Some(*families),
-            Exempt(_) => None,
+            Exempt(_) | SharedWireOwnSemantics { .. } => None,
         })
         .flatten()
         .copied()

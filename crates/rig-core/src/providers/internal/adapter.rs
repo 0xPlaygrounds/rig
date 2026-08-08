@@ -81,10 +81,10 @@ pub type AdapterOutput<R> = Vec<Result<RawStreamingChoice<R>, CompletionError>>;
 ///   driver (module policy table); adapters contain no `match WireEvent`.
 /// - **Mandatory identity**: every `Reasoning`/`ReasoningDelta`,
 ///   `ToolCallDelta`, and `TextStart` event carries a
-///   [`PartId`](crate::streaming::PartId) — the wire's own identity
-///   ([`PartId::Wire`](crate::streaming::PartId::Wire)) when it exists, else
+///   [`StreamPartId`](crate::streaming::StreamPartId) — the wire's own identity
+///   (`StreamPartId::Wire`) when it exists, else
 ///   an identity minted via [`SyntheticIds`]
-///   ([`PartId::Minted`](crate::streaming::PartId::Minted)). Provenance
+///   (`StreamPartId::Minted`). Provenance
 ///   travels in the type: a minted identity keys stream accumulation and
 ///   structurally cannot become a durable provider handle or reach a request
 ///   serializer, so no per-provider gate exists or is needed.
@@ -162,7 +162,7 @@ pub enum TriagedFrame<T> {
     /// as [`RawStreamingChoice::Unknown`] where the surface has a raw channel
     /// (openai-agents' raw-event precedent), and never interprets it — the
     /// semantic path skips it.
-    Unknown(serde_json::Value),
+    Unknown(crate::streaming::UnknownPayload),
 }
 
 /// Triage one classified frame under the shared policy table (see the module
@@ -178,25 +178,35 @@ pub fn triage_frame<T>(event: WireEvent<T>) -> Result<TriagedFrame<T>, Completio
     match event {
         WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
         WireEvent::Unknown { event_type, value } => {
-            // Structural metadata only: an unknown future event can carry
-            // model output or other sensitive provider data, which must not
-            // leak into production WARN logs. The full payload survives on
-            // the `Unknown` raw passthrough channel — that channel IS the
-            // opt-in for consumers who want the content.
-            tracing::warn!(
-                event_type,
-                payload_bytes = unknown_payload_bytes(&value),
-                "skipping unrecognized stream event"
-            );
+            // Structural metadata only — see `warn_unmodeled`. The full
+            // payload survives on the `Unknown` raw passthrough channel;
+            // that channel IS the opt-in for consumers who want the content.
+            warn_unmodeled(&event_type, &value);
             Ok(TriagedFrame::Unknown(value))
         }
         WireEvent::Corrupt(error) => Err(CompletionError::JsonError(error)),
     }
 }
 
+/// Warn about an unmodeled wire payload with **structural metadata only** —
+/// its kind and serialized byte size, never the payload itself. Unmodeled
+/// frames and parts can carry model output or other sensitive provider
+/// data, which must not leak into production WARN logs; the one redaction
+/// policy lives here, used by the driver's Unknown arm and by adapters that
+/// skip an unmodeled part kind. `driver_adoption.rs` scans streaming
+/// modules for direct `warn!(?...)` payload captures, so bypassing this
+/// helper fails CI.
+pub fn warn_unmodeled(kind: &str, payload: &impl serde::Serialize) {
+    tracing::warn!(
+        kind,
+        payload_bytes = unknown_payload_bytes(payload),
+        "skipping unmodeled wire payload"
+    );
+}
+
 /// Serialized byte size of an unknown frame's payload, for the structural
 /// warn log (the log never carries the payload itself).
-fn unknown_payload_bytes(value: &serde_json::Value) -> u64 {
+fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
     /// Counter sink: measures how many bytes serialization would write
     /// without buffering them.
     struct CountingWriter(u64);
@@ -233,6 +243,12 @@ where
     Box::pin(async_stream::stream! {
         let mut transport = Box::pin(transport);
         let mut out: AdapterOutput<A::Response> = Vec::new();
+        // Debug-mode sequence laws over the raw adapter output: every
+        // conformance fixture and cassette replay checks what the adapter
+        // ACTUALLY emits, not just what accumulator fixtures spell.
+        // Compiled out of release builds.
+        #[cfg(any(test, debug_assertions))]
+        let mut sequence_laws = super::sequence_law::SequenceLaws::default();
 
         while let Some(frame) = transport.next().await {
             let frame = match frame {
@@ -266,6 +282,9 @@ where
                 }
             }
 
+            #[cfg(any(test, debug_assertions))]
+            sequence_laws.check_batch(&out);
+
             let saw_terminal = out
                 .iter()
                 .any(|item| matches!(item, Ok(RawStreamingChoice::FinalResponse(_))));
@@ -278,6 +297,8 @@ where
         }
 
         adapter.finish(&mut out);
+        #[cfg(any(test, debug_assertions))]
+        sequence_laws.check_batch(&out);
         for item in out.drain(..) {
             yield item;
         }
@@ -314,6 +335,9 @@ where
 {
     let mut out: AdapterOutput<A::Response> = Vec::new();
     let mut choices = Vec::new();
+    // Same debug-mode sequence laws as `run_wire_stream` (see there).
+    #[cfg(any(test, debug_assertions))]
+    let mut sequence_laws = super::sequence_law::SequenceLaws::default();
 
     for frame in frames {
         match adapter.classify(frame) {
@@ -336,6 +360,9 @@ where
             }
         }
 
+        #[cfg(any(test, debug_assertions))]
+        sequence_laws.check_batch(&out);
+
         let saw_terminal = drain_buffered(&mut out, &mut choices)?;
         if saw_terminal || adapter.is_finished() {
             return Ok(choices);
@@ -343,6 +370,8 @@ where
     }
 
     adapter.finish(&mut out);
+    #[cfg(any(test, debug_assertions))]
+    sequence_laws.check_batch(&out);
     drain_buffered(&mut out, &mut choices)?;
     Ok(choices)
 }

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- *(bedrock)* foreign encrypted reasoning (`ReasoningContent::Encrypted` — OpenAI Responses `encrypted_content`, OpenRouter `reasoning.encrypted`, Anthropic) is never shipped as Bedrock's own `redactedContent` and never fails the request: it degrades away with a warning, in every position including the all-encrypted block. Only Bedrock-native `Redacted` blobs (base64 applied by this crate's inbound legs) decode back onto the wire, and one that no longer decodes also degrades instead of erroring the request
 - *(bedrock)* redacted reasoning survives all three legs — streaming no longer drops `RedactedContent`, the non-streaming path no longer fails the whole response, and it is replayed as `redactedContent` instead of being flattened into unsigned plaintext
 - *(bedrock)* an unmodeled `ContentBlockStart` variant warns and skips instead of failing the stream with "Stream is empty", matching its sibling arms and the classify layer's Unknown policy
 - *(bedrock)* a reasoning block mixing text with opaque (redacted/encrypted) content — the exact shape OpenAI Responses histories carry when `encrypted_content` is requested — degrades by dropping the un-representable opaque part instead of failing the whole request locally

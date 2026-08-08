@@ -7,14 +7,13 @@
 //! Re-record with (local Ollama daemon with `qwen3:4b` pulled, no key needed):
 //! `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama streaming_grammar -- --test-threads=1`
 //!
-//! Ollama's native wire ships tool calls without ids — its `ToolCall` type has
-//! no id field at all — and this provider derives each call's identity from
-//! the function name rather than minting a `tool-{index}` identity (the mint
-//! is the chat-compat adapter's fallback and is pinned by the synthetic
-//! `id_less_parallel_tool_calls_assemble_distinct_on_the_chat_wire` corpus
-//! scenario). What these recordings pin against real traffic is the property
-//! that matters downstream: parallel calls on an id-less wire stay distinct
-//! and assemble with uncorrupted arguments.
+//! Modern Ollama daemons issue tool-call ids (`"id":"call_..."`); rig reads
+//! them as the durable id and falls back to a minted `tool-{index}` identity
+//! only when a daemon omits them (the id-less mint stays pinned by the
+//! synthetic `id_less_parallel_tool_calls_assemble_distinct_on_the_chat_wire`
+//! corpus scenario). What these recordings pin against real traffic is the
+//! property that matters downstream: parallel calls stay distinct — by
+//! daemon id and by structure — and assemble with uncorrupted arguments.
 
 use futures::StreamExt;
 use rig::OneOrMany;
@@ -25,7 +24,7 @@ use rig::streaming::{StreamFinal, StreamedAssistantContent};
 
 use super::super::support::with_ollama_cassette;
 use crate::support::{
-    AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
+    Adder, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
     TWO_TOOL_STREAM_PREAMBLE,
 };
 
@@ -58,7 +57,9 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         raw_items.push(Ok(item.clone()));
         match item {
             StreamedAssistantContent::Text(text) => run.text.push_str(&text.text),
-            StreamedAssistantContent::Reasoning(reasoning) => run.reasoning_blocks.push(reasoning),
+            StreamedAssistantContent::Reasoning { reasoning, .. } => {
+                run.reasoning_blocks.push(reasoning)
+            }
             StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
                 run.reasoning_delta.push_str(&reasoning);
             }
@@ -145,21 +146,26 @@ async fn thinking_and_tool_call_in_one_stream() {
                 })
                 .expect("aggregated choice should keep the tool call");
             assert_eq!(aggregated.id, streamed.id, "id should aggregate unchanged");
-            // Ollama's wire carries no tool-call id and rig fabricates none:
-            // the durable id is absent (empty), and serializers omit it.
-            assert!(
-                streamed.id.is_empty(),
-                "an id-less wire call must not carry a fabricated durable id"
+            // Modern Ollama daemons issue a call id (`"id":"call_..."`);
+            // rig records it as the provider id and adopts it as the
+            // durable id instead of discarding it.
+            let provider = streamed
+                .provider
+                .as_ref()
+                .expect("the daemon-issued call id must be preserved");
+            assert_eq!(
+                streamed.id,
+                provider.call_id.as_str(),
+                "the durable id adopts the daemon's call id"
             );
         },
     )
     .await;
 }
 
-/// Parallel tool calls on an **id-less** wire: both calls survive as
+/// Parallel tool calls on real recorded traffic: both calls survive as
 /// distinct parts with uncorrupted arguments — the 2258 item-0 collapse pin
-/// against real traffic. Stream-side distinctness comes from minted
-/// accumulation identities; durably, neither call carries a fabricated id.
+/// against real traffic — and each keeps its daemon-issued call id.
 #[tokio::test]
 async fn parallel_id_less_tool_calls_stay_distinct() {
     with_ollama_cassette(
@@ -203,8 +209,8 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                     "{name} id should aggregate"
                 );
                 assert!(
-                    streamed.id.is_empty(),
-                    "{name} must not carry a fabricated durable id"
+                    streamed.provider.is_some(),
+                    "{name} must keep its daemon-issued call id"
                 );
                 assert!(
                     streamed.function.arguments.is_object(),
@@ -221,14 +227,171 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                 run.tool_calls.len(),
                 "every streamed call should survive as its own aggregated part"
             );
-            // Distinctness is structural — every streamed call is its own
-            // aggregated part (asserted above) — not fabricated: all durable
-            // ids are absent, so nothing invented can collide or leak
-            // upstream. Cross-referencing streamed and aggregated calls
-            // happens by internal correlation ids on the public stream.
+            // Distinctness is doubly guaranteed: structurally (every
+            // streamed call is its own aggregated part, asserted above) and
+            // by the daemon-issued ids, which are preserved and pairwise
+            // distinct — nothing is fabricated, nothing collides.
+            let distinct_ids: std::collections::HashSet<&str> =
+                run.tool_calls.iter().map(|call| call.id.as_str()).collect();
+            assert_eq!(
+                distinct_ids.len(),
+                run.tool_calls.len(),
+                "daemon-issued call ids must be preserved distinct"
+            );
+        },
+    )
+    .await;
+}
+
+/// Two calls to the SAME tool in one turn, on real recorded traffic — the
+/// live twin of the corpus pin (#2258 A2 / review 84a43e9e). Modern Ollama
+/// daemons issue distinct call ids; rig preserves them, and both calls
+/// survive as distinct aggregated parts with their own uncorrupted
+/// arguments. The old name-as-id scheme collapsed exactly this shape.
+///
+/// Re-record with (local Ollama daemon with `qwen3:4b` pulled, no key
+/// needed):
+/// `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama same_tool_called_twice -- --test-threads=1`
+#[tokio::test]
+async fn same_tool_called_twice_in_one_turn_stays_distinct() {
+    with_ollama_cassette("streaming_grammar/same_tool_twice", |client| async move {
+        let model = client.completion_model(MODEL);
+        let request = model
+            .completion_request(
+                "/no_think Use the `add` tool twice in this single reply, before any text: \
+                 first add 2 and 3, then add 10 and 20. Emit both tool calls together in \
+                 this one turn — do not wait for results between them, and do not compute \
+                 the sums yourself.",
+            )
+            .preamble(
+                "You are a calculator assistant. You MUST use the provided tools for every \
+                 arithmetic operation instead of computing results yourself."
+                    .to_string(),
+            )
+            .tool(rig::tool::tool_definition(&Adder))
+            .additional_params(serde_json::json!({ "think": false }))
+            .build();
+        let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+        assert_terminal(&run, FinishReason::ToolCalls);
+        let add_calls: Vec<&ToolCall> = run
+            .tool_calls
+            .iter()
+            .filter(|call| call.function.name == "add")
+            .collect();
+        assert!(
+            add_calls.len() >= 2,
+            "the turn should stream (at least) two `add` calls, got {:?}",
+            run.tool_calls
+        );
+        // Same name, distinct calls: every call keeps its own arguments and
+        // its daemon-issued id — nothing fabricated, nothing collapsed.
+        for call in &add_calls {
             assert!(
-                run.tool_calls.iter().all(|call| call.id.is_empty()),
-                "no id-less call may carry a fabricated durable id"
+                call.provider.is_some(),
+                "the daemon-issued call id must be preserved"
+            );
+            assert!(
+                call.function.arguments.is_object(),
+                "each call's arguments must assemble uncorrupted, got {:?}",
+                call.function.arguments
+            );
+        }
+        let argument_sets: std::collections::HashSet<String> = add_calls
+            .iter()
+            .map(|call| call.function.arguments.to_string())
+            .collect();
+        assert!(
+            argument_sets.len() >= 2,
+            "the two same-name calls must keep distinct argument payloads, got {argument_sets:?}"
+        );
+        let distinct_ids: std::collections::HashSet<&str> =
+            add_calls.iter().map(|call| call.id.as_str()).collect();
+        assert_eq!(
+            distinct_ids.len(),
+            add_calls.len(),
+            "same-name calls must keep their distinct daemon-issued ids"
+        );
+        let aggregated_adds = run
+            .choice
+            .iter()
+            .filter(|content| matches!(content, AssistantContent::ToolCall(call) if call.function.name == "add"))
+            .count();
+        assert_eq!(
+            aggregated_adds,
+            add_calls.len(),
+            "every streamed same-name call must survive as its own aggregated part"
+        );
+    })
+    .await;
+}
+
+/// Cross-provider replay, recorded live (84a43e9e finding #5): a history
+/// sourced from another provider's wire carries `call_abc123` only as rig's
+/// correlation handle — no Ollama provider id. Replayed to Ollama, the tool
+/// message must be named with the required `ToolResult::name` — never the
+/// identifier — and the correlation-only handle must stay off the wire. The
+/// recording is the evidence: the model answers from the replayed result.
+///
+/// Re-record with (local Ollama daemon with `qwen3:4b` pulled):
+/// `RIG_PROVIDER_TEST_MODE=record cargo test --test ollama chat_sourced_history_replays -- --test-threads=1`
+#[tokio::test]
+async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
+    with_ollama_cassette(
+        "streaming_grammar/chat_sourced_history_replay",
+        |client| async move {
+            let model = client.completion_model(MODEL);
+            let history = vec![
+                rig::message::Message::user(
+                    "/no_think Use the add tool to compute 2 + 3, then state the result.",
+                ),
+                rig::message::Message::Assistant {
+                    id: None,
+                    content: rig::OneOrMany::one(AssistantContent::ToolCall(
+                        rig::message::ToolCall {
+                            // The cross-provider shape: the other wire's
+                            // identifier survives as rig's correlation
+                            // handle, with no provider id for Ollama's wire.
+                            id: rig::message::ToolCallId::new("call_abc123")
+                                .expect("the chat-sourced identifier is non-empty"),
+                            provider: None,
+                            function: rig::message::ToolFunction {
+                                name: "add".to_owned(),
+                                arguments: serde_json::json!({"x": 2, "y": 3}),
+                            },
+                            signature: None,
+                            additional_params: None,
+                        },
+                    )),
+                },
+                rig::message::Message::User {
+                    content: rig::OneOrMany::one(rig::message::UserContent::ToolResult(
+                        rig::message::ToolResult {
+                            call: rig::message::ToolCallId::new("call_abc123")
+                                .expect("the chat-sourced identifier is non-empty"),
+                            provider: None,
+                            name: "add".to_owned(),
+                            content: rig::OneOrMany::one(rig::message::ToolResultContent::text(
+                                "5",
+                            )),
+                        },
+                    )),
+                },
+            ];
+            let request = model
+                .completion_request("/no_think State the final result in one short sentence.")
+                .preamble(
+                    "You are a calculator assistant. Report tool results faithfully.".to_string(),
+                )
+                .tool(rig::tool::tool_definition(&Adder))
+                .messages(history)
+                .additional_params(serde_json::json!({ "think": false }))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+            assert!(
+                run.text.contains('5'),
+                "the model should answer from the replayed tool result, got {:?}",
+                run.text
             );
         },
     )

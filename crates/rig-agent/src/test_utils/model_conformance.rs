@@ -378,19 +378,30 @@ fn validate_tool_correlation(
     for message in messages {
         match message {
             Message::Assistant { content, .. } => {
-                calls.extend(content.iter().filter_map(|item| match item {
-                    AssistantContent::ToolCall(call) => {
-                        Some((call.id.as_str(), call.call_id.as_deref()))
+                calls.extend(content.iter().filter_map(|item| {
+                    match item {
+                        AssistantContent::ToolCall(call) => Some((
+                            call.id.as_str(),
+                            call.provider
+                                .as_ref()
+                                .map(|provider| provider.call_id.as_str()),
+                        )),
+                        _ => None,
                     }
-                    _ => None,
                 }));
             }
             Message::User { content } => {
-                results.extend(content.iter().filter_map(|item| match item {
-                    UserContent::ToolResult(result) => {
-                        Some((result.id.as_str(), result.call_id.as_deref()))
+                results.extend(content.iter().filter_map(|item| {
+                    match item {
+                        UserContent::ToolResult(result) => Some((
+                            result.call.as_str(),
+                            result
+                                .provider
+                                .as_ref()
+                                .map(|provider| provider.call_id.as_str()),
+                        )),
+                        _ => None,
                     }
-                    _ => None,
                 }));
             }
             Message::System { .. } => {}
@@ -1260,7 +1271,7 @@ where
             }
             crate::streaming::StreamedAssistantContent::ToolCall { .. }
             | crate::streaming::StreamedAssistantContent::ToolCallDelta { .. }
-            | crate::streaming::StreamedAssistantContent::Reasoning(_)
+            | crate::streaming::StreamedAssistantContent::Reasoning { .. }
             | crate::streaming::StreamedAssistantContent::ReasoningDelta { .. }
             | crate::streaming::StreamedAssistantContent::Unknown(_) => {}
         }
@@ -2103,8 +2114,8 @@ mod tests {
     };
 
     fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
-        AssistantContent::ToolCall(ToolCall::new(
-            id.to_string(),
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
             ToolFunction::new(name.to_string(), arguments),
         ))
     }

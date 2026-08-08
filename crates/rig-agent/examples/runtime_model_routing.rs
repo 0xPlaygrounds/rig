@@ -50,8 +50,8 @@ impl CompletionModel for FastResearchModel {
     ) -> Result<CompletionResponse, CompletionError> {
         Ok(response(
             "fast",
-            AssistantContent::ToolCall(ToolCall::new(
-                "search-1".to_owned(),
+            AssistantContent::ToolCall(ToolCall::from_wire(
+                "search-1",
                 ToolFunction::new(
                     "search".to_owned(),
                     serde_json::json!({"query": "runtime model routing"}),

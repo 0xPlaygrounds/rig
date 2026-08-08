@@ -3,7 +3,7 @@ pub mod streaming;
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use rig_core::{
     OneOrMany,
-    message::{AssistantContent, ToolResultContent, UserContent},
+    message::{AssistantContent, ProviderCallId, ToolCallId, ToolResultContent, UserContent},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 
@@ -597,23 +597,25 @@ pub(crate) fn build_full_history(
 /// Wrap already-shaped tool-result content for the model (see
 /// [`tool_result_output`] / [`tool_result_message`]).
 fn tool_result_with(
-    id: String,
-    call_id: Option<String>,
+    call: ToolCallId,
+    provider: Option<ProviderCallId>,
+    name: String,
     content: OneOrMany<ToolResultContent>,
 ) -> UserContent {
-    match call_id {
-        Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
-        None => UserContent::tool_result(id, content),
-    }
+    // The *executed* tool's name travels as data on the result: several
+    // wires require it on replay (Gemini `functionResponse.name`, Ollama
+    // tool messages), and an identifier is not a name.
+    UserContent::tool_result_for(call, provider, name, content)
 }
 
 /// Shape a canonical real tool output as a tool result without reparsing text.
 pub(crate) fn tool_result_output(
-    id: String,
-    call_id: Option<String>,
+    call: ToolCallId,
+    provider: Option<ProviderCallId>,
+    name: String,
     output: ToolOutput,
 ) -> UserContent {
-    tool_result_with(id, call_id, output.into_content())
+    tool_result_with(call, provider, name, output.into_content())
 }
 
 /// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
@@ -622,35 +624,43 @@ pub(crate) fn tool_result_output(
 /// silently reinterpreted as an image/multimodal result. Used identically by the
 /// blocking and streaming drivers so synthetic results match across both.
 pub(crate) fn tool_result_message(
-    id: String,
-    call_id: Option<String>,
+    call: ToolCallId,
+    provider: Option<ProviderCallId>,
+    name: String,
     message: String,
 ) -> UserContent {
     tool_result_with(
-        id,
-        call_id,
+        call,
+        provider,
+        name,
         OneOrMany::one(ToolResultContent::text(message)),
     )
 }
 
 pub(crate) fn invalid_tool_retry_user_message(
     assistant_content: &OneOrMany<AssistantContent>,
-    invalid_tool_call_id: &str,
+    invalid_tool_call_id: &ToolCallId,
     feedback: String,
 ) -> Option<Message> {
+    // Selecting the invalid call by id is correct by construction:
+    // `ToolCallId` is unique and non-empty (minted at the provider boundary
+    // when the wire issued none), so id-less wires can no longer collapse
+    // every peer onto the first match arm.
     let retry_results = assistant_content
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::ToolCall(tool_call) if tool_call.id == invalid_tool_call_id => {
+            AssistantContent::ToolCall(tool_call) if tool_call.id == *invalid_tool_call_id => {
                 Some(tool_result_message(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
                     feedback.clone(),
                 ))
             }
             AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
                 tool_call.id.clone(),
-                tool_call.call_id.clone(),
+                tool_call.provider.clone(),
+                tool_call.function.name.clone(),
                 TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
             )),
             _ => None,
@@ -887,6 +897,7 @@ mod tests {
         },
         tool::{Tool, ToolContext},
     };
+    use rig_core::message::ProviderCallId;
     use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -1401,6 +1412,9 @@ mod tests {
                 )
         ));
 
+        // The wire issued "tool_call_1" (adopted as rig's durable id) and the
+        // provider-specific correlator was overridden to "call_1"; the result
+        // answers the durable id and echoes the provider correlator.
         assert!(matches!(
             history.get(1),
             Some(Message::Assistant { content, .. })
@@ -1408,7 +1422,9 @@ mod tests {
                     content.first(),
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "tool_call_1"
-                            && tool_call.call_id.as_deref() == Some("call_1")
+                            && tool_call.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         ));
 
@@ -1418,8 +1434,10 @@ mod tests {
                 if matches!(
                     content.first(),
                     UserContent::ToolResult(tool_result)
-                        if tool_result.id == "tool_call_1"
-                            && tool_result.call_id.as_deref() == Some("call_1")
+                        if tool_result.call == "tool_call_1"
+                            && tool_result.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         ));
     }
@@ -1436,6 +1454,55 @@ mod tests {
                     ))
             )
         })
+    }
+
+    /// The invalid-call retry transcript pairs 1:1 by construction: every tool
+    /// call in the assistant turn carries a unique non-empty id (minted at the
+    /// provider boundary when the wire issued none), and the retry results
+    /// answer exactly those ids.
+    fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
+        use std::collections::BTreeSet;
+
+        let Message::Assistant { content, .. } = assistant else {
+            panic!("expected the assistant tool-call turn, got {assistant:?}");
+        };
+        let call_ids: Vec<&str> = content
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::ToolCall(tool_call) => Some(tool_call.id.as_str()),
+                _ => None,
+            })
+            .collect();
+        let Message::User { content } = results else {
+            panic!("expected the user retry-result turn, got {results:?}");
+        };
+        let result_ids: Vec<&str> = content
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some(result.call.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            call_ids.iter().all(|id| !id.is_empty()),
+            "every tool call carries a non-empty id: {call_ids:?}"
+        );
+        let unique_calls: BTreeSet<&str> = call_ids.iter().copied().collect();
+        assert_eq!(
+            unique_calls.len(),
+            call_ids.len(),
+            "tool-call ids must be unique: {call_ids:?}"
+        );
+        let unique_results: BTreeSet<&str> = result_ids.iter().copied().collect();
+        assert_eq!(
+            unique_results.len(),
+            result_ids.len(),
+            "retry-result ids must be unique: {result_ids:?}"
+        );
+        assert_eq!(
+            unique_calls, unique_results,
+            "retry results must answer exactly the turn's tool calls"
+        );
     }
 
     #[tokio::test]
@@ -1754,16 +1821,16 @@ mod tests {
     async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executing_valid_call()
     {
         let add_calls = Arc::new(AtomicU32::new(0));
-        let mut valid_tool_call = ToolCall::new(
-            "tool_call_1".to_string(),
+        let valid_tool_call = ToolCall::from_wire(
+            "tool_call_1",
             ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
-        );
-        valid_tool_call.call_id = Some("call_1".to_string());
-        let mut invalid_tool_call = ToolCall::new(
-            "tool_call_2".to_string(),
+        )
+        .with_provider(ProviderCallId::new("call_1").expect("non-empty provider id"));
+        let invalid_tool_call = ToolCall::from_wire(
+            "tool_call_2",
             ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
-        );
-        invalid_tool_call.call_id = Some("call_2".to_string());
+        )
+        .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
         let model = MockCompletionModel::new([
             MockTurn::from_contents([
                 AssistantContent::ToolCall(valid_tool_call),
@@ -1817,8 +1884,10 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_1"
-                                && result.call_id.as_deref() == Some("call_1")
+                            if result.call == "tool_call_1"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_1"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1828,8 +1897,10 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_2"
-                                && result.call_id.as_deref() == Some("call_2")
+                            if result.call == "tool_call_2"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_2"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1837,21 +1908,25 @@ mod tests {
                                 ))
             ))
         ));
+        assert_retry_transcript_ids_pair(
+            retry_history.get(1).expect("assistant tool-call turn"),
+            retry_history.get(2).expect("retry-result turn"),
+        );
     }
 
     #[tokio::test]
     async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing_valid_call() {
         let add_calls = Arc::new(AtomicU32::new(0));
-        let mut valid_tool_call = ToolCall::new(
-            "tool_call_1".to_string(),
+        let valid_tool_call = ToolCall::from_wire(
+            "tool_call_1",
             ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
-        );
-        valid_tool_call.call_id = Some("call_1".to_string());
-        let mut invalid_tool_call = ToolCall::new(
-            "tool_call_2".to_string(),
+        )
+        .with_provider(ProviderCallId::new("call_1").expect("non-empty provider id"));
+        let invalid_tool_call = ToolCall::from_wire(
+            "tool_call_2",
             ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
-        );
-        invalid_tool_call.call_id = Some("call_2".to_string());
+        )
+        .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
         let model = MockCompletionModel::new([
             MockTurn::from_contents([
                 AssistantContent::ToolCall(valid_tool_call),
@@ -1886,8 +1961,10 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_1"
-                                && result.call_id.as_deref() == Some("call_1")
+                            if result.call == "tool_call_1"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_1"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1897,8 +1974,10 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_2"
-                                && result.call_id.as_deref() == Some("call_2")
+                            if result.call == "tool_call_2"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_2"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1906,6 +1985,10 @@ mod tests {
                                 ))
                     ))
         ));
+        assert_retry_transcript_ids_pair(
+            messages.get(1).expect("assistant tool-call turn"),
+            messages.get(2).expect("skip-result turn"),
+        );
     }
 
     #[tokio::test]
@@ -2011,7 +2094,7 @@ mod tests {
                         matches!(
                             content,
                             UserContent::ToolResult(result)
-                                if result.id == "tool_call_1"
+                                if result.call == "tool_call_1"
                                     && result.content.iter().any(|content| {
                                         matches!(
                                             content,
@@ -2344,7 +2427,9 @@ mod tests {
                     content.first(),
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "tool_call_1"
-                            && tool_call.call_id.as_deref() == Some("call_1")
+                            && tool_call.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         )));
         assert!(history.iter().any(|message| matches!(
@@ -2353,8 +2438,10 @@ mod tests {
                 if matches!(
                     content.first(),
                     UserContent::ToolResult(tool_result)
-                        if tool_result.id == "tool_call_1"
-                            && tool_result.call_id.as_deref() == Some("call_1")
+                        if tool_result.call == "tool_call_1"
+                            && tool_result.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         )));
         assert!(!history.iter().any(|message| matches!(

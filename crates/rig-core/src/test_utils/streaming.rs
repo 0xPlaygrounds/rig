@@ -68,11 +68,11 @@ use super::completion::MockError;
 ///
 /// Corpus fixtures are plain data and spell identities as strings; the
 /// legacy minted renderings (`reasoning-0`, `block-3`, `output-1`, `tool-2`,
-/// `text-0`) are the fixture syntax for a [`PartId::Minted`] of that kind
+/// `text-0`) are the fixture syntax for a `StreamPartId::Minted` of that kind
 /// and index, and anything else is a wire id. This is *fixture encoding*,
 /// not provenance recovery: production code never parses an id string —
-/// provenance travels in [`PartId`] itself.
-fn fixture_part_id(id: String) -> crate::streaming::PartId {
+/// provenance travels in [`StreamPartId`] itself.
+fn fixture_part_id(id: String) -> crate::streaming::StreamPartId {
     use crate::streaming::MintKind;
     for (namespace, kind) in [
         ("reasoning-", MintKind::Reasoning),
@@ -87,7 +87,7 @@ fn fixture_part_id(id: String) -> crate::streaming::PartId {
             return kind.for_wire_index(index);
         }
     }
-    crate::streaming::PartId::wire(id)
+    crate::streaming::StreamPartId::wire(id)
 }
 
 impl MockStreamEvent {
@@ -242,16 +242,38 @@ impl MockStreamEvent {
                 id: fixture_part_id(id),
                 content,
             }),
-            Self::Reasoning { id, content } => Ok(RawStreamingChoice::Reasoning {
-                id: fixture_part_id(id),
-                content,
-            }),
-            Self::ReasoningDelta { id, reasoning } => Ok(RawStreamingChoice::ReasoningDelta {
-                id: fixture_part_id(id),
-                reasoning,
-            }),
+            Self::Reasoning { id, content } => {
+                // Fixture syntax: a wire-shaped id is both the key and the
+                // durable handle; a legacy minted rendering is a key only.
+                let key = fixture_part_id(id.clone());
+                let provider_id = match &key {
+                    key_is_wire if key_is_wire.wire_str().is_some() => {
+                        crate::streaming::WireId::new(id)
+                    }
+                    _ => None,
+                };
+                Ok(RawStreamingChoice::Reasoning {
+                    id: key,
+                    provider_id,
+                    content,
+                })
+            }
+            Self::ReasoningDelta { id, reasoning } => {
+                let key = fixture_part_id(id.clone());
+                let provider_id = match &key {
+                    key_is_wire if key_is_wire.wire_str().is_some() => {
+                        crate::streaming::WireId::new(id)
+                    }
+                    _ => None,
+                };
+                Ok(RawStreamingChoice::ReasoningDelta {
+                    id: key,
+                    provider_id,
+                    reasoning,
+                })
+            }
             Self::MessageId(id) => Ok(RawStreamingChoice::MessageId(id)),
-            Self::Unknown(value) => Ok(RawStreamingChoice::Unknown(value)),
+            Self::Unknown(value) => Ok(RawStreamingChoice::Unknown(value.into())),
             Self::FinalResponse(response) => Ok(RawStreamingChoice::FinalResponse(response)),
             Self::Error(error) => Err(error.into_completion_error()),
         }

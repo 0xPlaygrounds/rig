@@ -31,6 +31,12 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+# Harness signal: rig-core's sequence laws panic (not just log) in this
+# crate's own tests.
+rig-core = { path = "../rig-core", version = "0.41.0", default-features = false, features = [
+    "image",
+    "test-utils",
+] }
 rig-agent.workspace = true
 reqwest = { workspace = true, features = ["json", "stream"] }
 tracing-subscriber = { workspace = true }

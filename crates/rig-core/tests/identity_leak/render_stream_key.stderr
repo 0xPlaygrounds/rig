@@ -1,0 +1,15 @@
+error[E0599]: no method named `render` found for struct `StreamPartId` in the current scope
+ --> tests/identity_leak/render_stream_key.rs:8:16
+  |
+8 |     let _ = id.render();
+  |                ^^^^^^ method not found in `StreamPartId`
+
+error[E0277]: `StreamPartId` doesn't implement `std::fmt::Display`
+ --> tests/identity_leak/render_stream_key.rs:9:22
+  |
+9 |     let _ = format!("{id}");
+  |                      ^^^^ `StreamPartId` cannot be formatted with the default formatter
+  |
+  = help: the trait `std::fmt::Display` is not implemented for `StreamPartId`
+  = note: in format strings you may be able to use `{:?}` (or {:#?} for pretty-print) instead
+  = note: this error originates in the macro `$crate::__export::format_args` which comes from the expansion of the macro `format` (in Nightly builds, run with -Z macro-backtrace for more info)

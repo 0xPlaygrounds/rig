@@ -122,7 +122,7 @@ async fn redacted_thinking_streaming() {
 
             while let Some(item) = stream.next().await {
                 match item.expect("stream item should be ok") {
-                    StreamedAssistantContent::Reasoning(reasoning) => {
+                    StreamedAssistantContent::Reasoning { reasoning, .. } => {
                         if reasoning
                             .content
                             .iter()

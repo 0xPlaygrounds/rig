@@ -625,7 +625,7 @@ pub(crate) async fn collect_stream_observation(stream: &mut StreamingResult) -> 
                 StreamedAssistantContent::ToolCallDelta { .. } => {
                     observation.events.push("tool_call_delta");
                 }
-                StreamedAssistantContent::Reasoning(_) => {
+                StreamedAssistantContent::Reasoning { .. } => {
                     observation.events.push("reasoning");
                 }
                 StreamedAssistantContent::ReasoningDelta { .. } => {
@@ -684,7 +684,7 @@ where
             Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(StreamedAssistantContent::Reasoning(_)) => {
+            Ok(StreamedAssistantContent::Reasoning { .. }) => {
                 observation.events.push("reasoning");
             }
             Ok(StreamedAssistantContent::ReasoningDelta { .. }) => {

@@ -159,7 +159,9 @@ fn visible_len(item: &StreamedAssistantContent) -> usize {
     match item {
         StreamedAssistantContent::Text(t) => t.text.chars().count(),
         StreamedAssistantContent::ReasoningDelta { reasoning, .. } => reasoning.chars().count(),
-        StreamedAssistantContent::Reasoning(r) => r.display_text().chars().count(),
+        StreamedAssistantContent::Reasoning { reasoning: r, .. } => {
+            r.display_text().chars().count()
+        }
         _ => 0,
     }
 }
@@ -224,7 +226,9 @@ where
                 StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
                     output.push_str(&reasoning)
                 }
-                StreamedAssistantContent::Reasoning(r) => output.push_str(&r.display_text()),
+                StreamedAssistantContent::Reasoning { reasoning: r, .. } => {
+                    output.push_str(&r.display_text())
+                }
                 StreamedAssistantContent::Final(resp) => {
                     // Authoritative usage. A premature clean close (shape #3)
                     // never emits a Final at all — the absence of a terminal

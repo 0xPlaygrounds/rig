@@ -8,17 +8,14 @@ use crate::providers::cohere::completion::{
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
 use crate::providers::internal::wire;
 use crate::streaming::{
-    MintKind, PartId, RawStreamingChoice, RawStreamingResult, StreamFinal, ToolCallDeltaContent,
-    ToolInputEnd, UnparseableToolInput,
+    MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
+    ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 
 /// Cohere thinking deltas carry no id; a per-stream constant minted identity
 /// keys their accumulation and can never reach a request.
-const REASONING_ID: PartId = PartId::Minted {
-    kind: MintKind::Reasoning,
-    index: 0,
-};
+const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
 use crate::{json_utils, streaming};
 use async_stream::stream;
 use futures::StreamExt;
@@ -144,13 +141,27 @@ impl From<StreamingCompletionResponse> for StreamFinal {
 /// policy (warn-skip `Unknown` for forward compatibility, in-band `Err` on
 /// `Corrupt` so a later genuine `message-end` can still complete the stream)
 /// lives in [`run_wire_stream`], not here.
-#[derive(Default)]
 struct CohereAdapter {
     /// Wire id of the open tool call, when one is streaming. Only the wire
     /// identity is tracked here; fragment assembly, internal-id minting, and
     /// finalize policy live in the shared accumulator.
     current_tool_call: Option<String>,
     message_id: Option<String>,
+    /// Owns the constant-key reasoning lifecycle — the boundary end this
+    /// wire never announces is derived, not hand-rolled here.
+    reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
+}
+
+impl Default for CohereAdapter {
+    fn default() -> Self {
+        Self {
+            current_tool_call: None,
+            message_id: None,
+            reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
+                REASONING_ID,
+            ),
+        }
+    }
 }
 
 impl WireAdapter for CohereAdapter {
@@ -178,24 +189,18 @@ impl WireAdapter for CohereAdapter {
                     return;
                 };
 
-                // Thinking deltas carry no wire id and never interleave with
-                // other output mid-item; the per-stream constant lives in the
-                // minted namespace so the accumulator's boundary bump and the
-                // upstream-serialization guard both apply.
-                if let Some(thinking) = &content.thinking
-                    && !thinking.is_empty()
-                {
-                    out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                        id: REASONING_ID,
-                        reasoning: thinking.clone(),
-                    }));
-                }
-
-                if let Some(text) = &content.text
-                    && !text.is_empty()
-                {
-                    out.push(Ok(RawStreamingChoice::Message(text.clone())));
-                }
+                // Declare what the delta carried (thinking merges under the
+                // per-stream constant minted key); the shared lifecycle
+                // derives the canonical sequence, boundary end included.
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: content.thinking.clone(),
+                        reasoning_signature: None,
+                        text: content.text.clone(),
+                        tool_events: Vec::new(),
+                    },
+                    out,
+                );
             }
 
             StreamingEvent::MessageEnd { delta } => {
@@ -243,18 +248,29 @@ impl WireAdapter for CohereAdapter {
 
                 self.current_tool_call = Some(id.clone());
 
-                out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: PartId::wire(id.clone()),
+                let mut tool_events = vec![RawStreamingChoice::ToolCallDelta {
+                    id: StreamPartId::wire(id.clone()),
                     content: ToolCallDeltaContent::Name(name),
-                }));
+                }];
                 // `tool-call-start` may carry initial argument text; on the
                 // wire it is empty, but any payload must still enter assembly.
                 if !arguments.is_empty() {
-                    out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                        id: PartId::wire(id),
+                    tool_events.push(RawStreamingChoice::ToolCallDelta {
+                        id: StreamPartId::wire(id),
                         content: ToolCallDeltaContent::Delta(arguments),
-                    }));
+                    });
                 }
+                // Tool content interleaving an open thinking block: the
+                // shared lifecycle synthesizes the boundary end.
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: None,
+                        reasoning_signature: None,
+                        text: None,
+                        tool_events,
+                    },
+                    out,
+                );
             }
 
             StreamingEvent::ToolCallDelta { delta: Some(delta) } => {
@@ -279,7 +295,7 @@ impl WireAdapter for CohereAdapter {
 
                 // Emit the delta so UI can show progress
                 out.push(Ok(RawStreamingChoice::ToolCallDelta {
-                    id: PartId::wire(id),
+                    id: StreamPartId::wire(id),
                     content: ToolCallDeltaContent::Delta(arguments),
                 }));
             }

@@ -73,8 +73,11 @@ impl TryFrom<RigMessage> for vertexai::model::Content {
                             let mut response_struct = serde_json::Map::new();
                             response_struct.insert("output".to_string(), output_value);
 
+                            // `functionResponse.name` is the executed
+                            // function's name — required data on the result.
+                            let function_name = tool_result.name.clone();
                             let function_response = vertexai::model::FunctionResponse::new()
-                                .set_name(tool_result.id.clone())
+                                .set_name(function_name)
                                 .set_response(response_struct)
                                 .set_parts(response_parts);
 
@@ -288,7 +291,7 @@ mod tests {
     use google_cloud_aiplatform_v1 as vertexai;
     use rig_core::OneOrMany;
     use rig_core::completion::CompletionResponse;
-    use rig_core::message::{Message, Text, ToolResult, ToolResultContent};
+    use rig_core::message::{Message, Text, ToolCallId, ToolResult, ToolResultContent};
 
     #[test]
     fn test_user_text_message_conversion() {
@@ -400,8 +403,10 @@ mod tests {
     #[test]
     fn test_assistant_tool_call_message_conversion() {
         use rig_core::message::{ToolCall, ToolFunction};
+        // Vertex issues no call ids, so decoded calls carry a minted id and
+        // no provider id; neither reaches the outbound wire.
         let tool_call = ToolCall::new(
-            "add".to_string(),
+            ToolCallId::mint(),
             ToolFunction::new(
                 "add".to_string(),
                 serde_json::json!({
@@ -435,7 +440,7 @@ mod tests {
         use rig_core::message::{ToolCall, ToolFunction};
         let raw = b"\x00\x01\x02thinking-sig\xff";
         let tool_call = ToolCall::new(
-            "add".to_string(),
+            ToolCallId::mint(),
             ToolFunction::new("add".to_string(), serde_json::json!({"x": 5})),
         )
         .with_signature(Some(BASE64.encode(raw)));
@@ -453,7 +458,7 @@ mod tests {
         // A malformed signature must not abort the whole turn — it is dropped with a warning.
         use rig_core::message::{ToolCall, ToolFunction};
         let tool_call = ToolCall::new(
-            "add".to_string(),
+            ToolCallId::mint(),
             ToolFunction::new("add".to_string(), serde_json::json!({"x": 5})),
         )
         .with_signature(Some("!!! not base64 !!!".to_string()));
@@ -513,9 +518,13 @@ mod tests {
 
     #[test]
     fn test_user_tool_result_message_conversion() {
+        // Vertex results are id-less on the wire: a minted correlation
+        // handle, no provider id, and the required executed-tool name that
+        // becomes `functionResponse.name`.
         let tool_result = ToolResult {
-            id: "add".to_string(),
-            call_id: None,
+            call: ToolCallId::mint(),
+            provider: None,
+            name: "add".to_string(),
             content: OneOrMany::one(ToolResultContent::Text(Text::new("8".to_string()))),
         };
 
@@ -549,8 +558,9 @@ mod tests {
         let value = serde_json::json!({ "answer": 8 });
         let message = Message::User {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
-                id: "lookup".to_string(),
-                call_id: None,
+                call: ToolCallId::mint(),
+                provider: None,
+                name: "lookup".to_string(),
                 content: OneOrMany::one(ToolResultContent::json(value.clone())),
             })),
         };
@@ -575,8 +585,9 @@ mod tests {
         let raw = vec![0, 1, 2, 255];
         let message = Message::User {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
-                id: "inspect".to_string(),
-                call_id: None,
+                call: ToolCallId::mint(),
+                provider: None,
+                name: "inspect".to_string(),
                 content: OneOrMany::one(ToolResultContent::image_base64(
                     BASE64.encode(&raw),
                     Some(ImageMediaType::PNG),
@@ -616,8 +627,9 @@ mod tests {
         .expect("mixed output is non-empty");
         let message = Message::User {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
-                id: "inspect".to_string(),
-                call_id: None,
+                call: ToolCallId::mint(),
+                provider: None,
+                name: "inspect".to_string(),
                 content,
             })),
         };
@@ -683,8 +695,9 @@ mod tests {
         .expect("mixed output is non-empty");
         let message = Message::User {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
-                id: "inspect".to_string(),
-                call_id: None,
+                call: ToolCallId::mint(),
+                provider: None,
+                name: "inspect".to_string(),
                 content,
             })),
         };
@@ -718,8 +731,9 @@ mod tests {
     fn unsupported_tool_result_image_media_type_is_rejected_locally() {
         let message = Message::User {
             content: OneOrMany::one(rig_core::message::UserContent::ToolResult(ToolResult {
-                id: "inspect".to_string(),
-                call_id: None,
+                call: ToolCallId::mint(),
+                provider: None,
+                name: "inspect".to_string(),
                 content: OneOrMany::one(ToolResultContent::image_raw(
                     vec![1, 2, 3],
                     Some(ImageMediaType::GIF),

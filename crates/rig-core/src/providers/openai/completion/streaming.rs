@@ -410,7 +410,11 @@ where
     fn detail_reasoning(
         &self,
         detail: &Self::Detail,
-    ) -> Option<(crate::streaming::PartId, crate::message::ReasoningContent)> {
+    ) -> Option<(
+        crate::streaming::StreamPartId,
+        Option<crate::streaming::WireId>,
+        crate::message::ReasoningContent,
+    )> {
         self.provider.streaming_detail_reasoning(detail)
     }
 
@@ -1249,7 +1253,7 @@ mod tests {
                 Err(_) => error_count += 1,
             }
         }
-        assert_eq!(unknown, Some(serde_json::json!({"type": "ping"})));
+        assert_eq!(unknown, Some(serde_json::json!({"type": "ping"}).into()));
 
         assert_eq!(
             error_count, 2,

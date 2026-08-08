@@ -620,9 +620,14 @@ impl TryFrom<message::ToolResult> for Message {
         };
 
         Ok(Message::ToolResult {
-            // `call_id` carries the provider-issued call id when it differs
-            // from the rig-level tool-result id (e.g. Mistral, llama.cpp).
-            tool_call_id: value.call_id.unwrap_or(value.id),
+            // The wire requires a non-empty correlator: the provider-issued
+            // call id when one exists, else rig's minted handle — which is
+            // unique and non-empty by construction, unlike the old empty-
+            // string sentinel.
+            tool_call_id: value
+                .provider
+                .map(|provider| provider.call_id)
+                .unwrap_or_else(|| value.call.into_string()),
             content,
         })
     }
@@ -914,10 +919,14 @@ impl TryFrom<message::Message> for Vec<Message> {
 impl From<message::ToolCall> for ToolCall {
     fn from(tool_call: message::ToolCall) -> Self {
         Self {
-            // Keep the assistant echo consistent with the tool-result side,
-            // which prefers the provider-issued `call_id` over the rig-level
-            // id (e.g. Responses-API history replayed via chat completions).
-            id: tool_call.call_id.unwrap_or(tool_call.id),
+            // Keep the assistant echo consistent with the tool-result side:
+            // the provider-issued call id when one exists (e.g. a
+            // Responses-API history replayed via chat completions), else
+            // rig's minted handle — never empty.
+            id: tool_call
+                .provider
+                .map(|provider| provider.call_id)
+                .unwrap_or_else(|| tool_call.id.into_string()),
             r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name,
@@ -929,16 +938,13 @@ impl From<message::ToolCall> for ToolCall {
 
 impl From<ToolCall> for message::ToolCall {
     fn from(tool_call: ToolCall) -> Self {
-        Self {
-            id: tool_call.id,
-            call_id: None,
-            function: message::ToolFunction {
+        message::ToolCall::from_wire(
+            tool_call.id,
+            message::ToolFunction {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
             },
-            signature: None,
-            additional_params: None,
-        }
+        )
     }
 }
 
@@ -993,8 +999,11 @@ impl TryFrom<Message> for message::Message {
                 tool_call_id,
                 content,
             } => message::Message::User {
+                // OpenAI chat tool messages carry no tool name; this
+                // conversion is lossy for name-keyed wires.
                 content: OneOrMany::one(message::UserContent::tool_result(
                     tool_call_id,
+                    "",
                     OneOrMany::one(message::ToolResultContent::text(content.as_text())),
                 )),
             },
@@ -1550,7 +1559,11 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     fn streaming_detail_reasoning(
         &self,
         detail: &serde_json::Value,
-    ) -> Option<(crate::streaming::PartId, crate::message::ReasoningContent)> {
+    ) -> Option<(
+        crate::streaming::StreamPartId,
+        Option<crate::streaming::WireId>,
+        crate::message::ReasoningContent,
+    )> {
         let _ = detail;
         None
     }
@@ -2149,6 +2162,7 @@ mod tests {
         let tool_result = crate::message::Message::User {
             content: crate::OneOrMany::one(crate::message::UserContent::tool_result(
                 "tool-0",
+                "get_weather",
                 crate::OneOrMany::one(crate::message::ToolResultContent::text("22C")),
             )),
         };
@@ -2197,8 +2211,9 @@ mod tests {
 
     fn request_with_multi_block_tool_result() -> CoreCompletionRequest {
         let tool_result = message::ToolResult {
-            id: "result-id".to_string(),
-            call_id: Some("call-id".to_string()),
+            call: message::ToolCallId::new_or_mint("call-id"),
+            provider: message::ProviderCallId::new("call-id"),
+            name: "tool".to_string(),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text("first"),
                 message::ToolResultContent::text("second"),
@@ -2230,6 +2245,7 @@ mod tests {
             message::UserContent::tool_result_with_call_id(
                 "result-id",
                 "call-id".to_string(),
+                "tool",
                 OneOrMany::one(message::ToolResultContent::text("tool output")),
             ),
             message::UserContent::text("after"),
@@ -2432,8 +2448,9 @@ mod tests {
     #[test]
     fn multiple_tool_result_blocks_convert_to_distinct_content_parts() {
         let result = message::ToolResult {
-            id: "result-id".to_string(),
-            call_id: Some("call-id".to_string()),
+            call: message::ToolCallId::new_or_mint("call-id"),
+            name: "tool".to_string(),
+            provider: message::ProviderCallId::new("call-id"),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text("first"),
                 message::ToolResultContent::json(serde_json::json!({
@@ -2954,6 +2971,7 @@ mod tests {
                 },
                 message::Message::tool_result(
                     "call_1",
+                    "weather",
                     "The weather in London is all fire and brimstone",
                 ),
             ])
