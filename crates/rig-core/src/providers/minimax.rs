@@ -39,6 +39,8 @@ pub const GLOBAL_ANTHROPIC_API_BASE_URL: &str = "https://api.minimax.io/anthropi
 /// China Anthropic-compatible base URL.
 pub const CHINA_ANTHROPIC_API_BASE_URL: &str = "https://api.minimaxi.com/anthropic";
 
+/// `MiniMax-M3`
+pub const MINIMAX_M3: &str = "MiniMax-M3";
 /// `MiniMax-M2.7`
 pub const MINIMAX_M2_7: &str = "MiniMax-M2.7";
 /// `MiniMax-M2.7-highspeed`
@@ -309,7 +311,8 @@ impl<H> AnthropicClientBuilder<H> {
 mod tests {
     use super::{
         CHINA_ANTHROPIC_API_BASE_URL, CHINA_API_BASE_URL, GLOBAL_ANTHROPIC_API_BASE_URL,
-        GLOBAL_API_BASE_URL, normalize_anthropic_base_url, resolve_anthropic_base_override,
+        GLOBAL_API_BASE_URL, MINIMAX_M3, normalize_anthropic_base_url,
+        resolve_anthropic_base_override,
     };
 
     #[test]
@@ -325,6 +328,11 @@ mod tests {
             .api_key("dummy-key")
             .build()
             .expect("AnthropicClient::builder()");
+    }
+
+    #[test]
+    fn exposes_current_model_constants() {
+        assert_eq!(MINIMAX_M3, "MiniMax-M3");
     }
 
     #[test]
