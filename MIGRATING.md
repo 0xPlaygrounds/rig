@@ -500,8 +500,12 @@ What this changes for you:
   minted handles never travel upstream there.
 - **Persisted histories**: the canonical serde shape changed (`ToolCall`
   gains `provider`, loses `call_id`; `ToolResult` renames `id` → `call`,
-  requires `name`). Histories persisted by earlier versions do **not**
-  deserialize; re-run the conversation or migrate the JSON by hand
+  requires `name`). Legacy `ToolCall` JSON still loads: the old `call_id`
+  key is lifted into `provider` (dual-identifier payloads keep the
+  correlator and the `fc_…` item handle; single-identifier payloads keep
+  the provider-supplied `id` as `provider.call_id`), never silently
+  dropped. Legacy `ToolResult` JSON does **not** deserialize (no `call`,
+  no `name`); re-run the conversation or migrate the JSON by hand
   (`id`/`call_id` → `call` + `provider.call_id`, add the executed tool's
   `name`). Empty-string ids in old JSON are rejected by construction.
 - **The back-compat pairing shim is deleted**:

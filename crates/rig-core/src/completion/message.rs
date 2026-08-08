@@ -478,8 +478,71 @@ impl TryFrom<ProviderCallIdWire> for ProviderCallId {
     }
 }
 
+/// Wire shape for [`ToolCall`]: the current schema plus the legacy
+/// (pre-provider-split) `call_id` key, lifted into [`ToolCall::provider`]
+/// rather than silently discarded — dropping it would strip the Responses
+/// correlator from persisted histories with no error.
+#[derive(Deserialize)]
+struct ToolCallWire {
+    id: ToolCallId,
+    #[serde(default)]
+    provider: Option<ProviderCallId>,
+    /// Legacy schema marker. Old payloads always wrote `call_id` (it was
+    /// never skipped), so the key's presence identifies them:
+    /// `Some(Some(_))` is the old dual-identifier shape, `Some(None)` the
+    /// old single-identifier shape, `None` the current schema.
+    #[serde(default, deserialize_with = "deserialize_present")]
+    call_id: Option<Option<String>>,
+    function: ToolFunction,
+    #[serde(default)]
+    signature: Option<String>,
+    #[serde(default)]
+    additional_params: Option<serde_json::Value>,
+}
+
+/// Distinguish an absent key (`None`) from an explicit `null`
+/// (`Some(None)`): serde only calls this when the key is present.
+fn deserialize_present<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer).map(Some)
+}
+
+impl From<ToolCallWire> for ToolCall {
+    fn from(wire: ToolCallWire) -> Self {
+        let (id, provider) = match (wire.provider, wire.call_id) {
+            // Current schema — and `provider` stays authoritative even
+            // next to a stray legacy key.
+            (provider @ Some(_), _) | (provider @ None, None) => (wire.id, provider),
+            // Legacy dual-identifier payload (OpenAI Responses): `call_id`
+            // was the correlator, `id` the output-item handle.
+            (None, Some(Some(call_id))) if !call_id.is_empty() => {
+                let provider = ProviderCallId::new(call_id)
+                    .map(|provider| provider.with_item_id(wire.id.as_str()));
+                (ToolCallId::for_provider(provider.as_ref()), provider)
+            }
+            // Legacy single-identifier payload: `id` was documented as
+            // "provider-supplied", so it is the provider's id, not a
+            // minted handle.
+            (None, Some(_)) => {
+                let provider = ProviderCallId::new(wire.id.as_str());
+                (wire.id, provider)
+            }
+        };
+        Self {
+            id,
+            provider,
+            function: wire.function,
+            signature: wire.signature,
+            additional_params: wire.additional_params,
+        }
+    }
+}
+
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(from = "ToolCallWire")]
 pub struct ToolCall {
     /// Rig's correlation handle. Always present; minted when the provider
     /// issued none.
@@ -1695,6 +1758,68 @@ mod tests {
         let json = serde_json::to_string(&message).expect("serialize");
         let roundtrip: Message = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(roundtrip, message);
+    }
+
+    #[test]
+    fn legacy_dual_identifier_tool_call_json_lifts_call_id_into_provider() {
+        // Pre-provider-split payload (OpenAI Responses): `call_id` was the
+        // correlator, `id` the output-item handle. Dropping `call_id`
+        // silently would replay the `fc_` item id in the call_id slot.
+        let legacy = serde_json::json!({
+            "id": "fc_123",
+            "call_id": "call_abc",
+            "function": {"name": "add", "arguments": {"x": 1}},
+            "signature": null,
+            "additional_params": null,
+        });
+
+        let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
+        let provider = call
+            .provider
+            .expect("legacy call_id is lifted, not dropped");
+        assert_eq!(provider.call_id, "call_abc");
+        assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
+        assert_eq!(call.id, "call_abc");
+    }
+
+    #[test]
+    fn legacy_single_identifier_tool_call_json_promotes_id_to_provider() {
+        // Old payloads always wrote `call_id` (never skipped), so an
+        // explicit null still marks the legacy schema — where `id` was
+        // documented as provider-supplied.
+        let legacy = serde_json::json!({
+            "id": "toolu_xyz",
+            "call_id": null,
+            "function": {"name": "add", "arguments": {}},
+        });
+
+        let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
+        let provider = call
+            .provider
+            .expect("legacy provider-supplied id is kept as one");
+        assert_eq!(provider.call_id, "toolu_xyz");
+        assert_eq!(provider.item_id, None);
+        assert_eq!(call.id, "toolu_xyz");
+    }
+
+    #[test]
+    fn current_schema_tool_call_json_round_trips_without_provider_promotion() {
+        // A minted handle with no provider must stay provider-less: the
+        // absence of the `call_id` key is what separates the current
+        // schema from the legacy one.
+        let call = super::ToolCall::new(
+            super::ToolCallId::new("minted-handle").expect("non-empty"),
+            super::ToolFunction {
+                name: "add".to_string(),
+                arguments: serde_json::json!({}),
+            },
+        );
+
+        let json = serde_json::to_value(&call).expect("serialize");
+        assert!(json.get("call_id").is_none());
+        let roundtrip: super::ToolCall = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(roundtrip.provider, None);
+        assert_eq!(roundtrip, call);
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
