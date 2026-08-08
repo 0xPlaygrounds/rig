@@ -395,18 +395,21 @@ impl WireAdapter for InteractionsAdapter {
                             saw_arguments_delta: false,
                         },
                     );
-                } else if let Some(choice) = step_start_to_choice(step, &mut self.tool_ids) {
-                    // Interleaving content ends an open thought block — the
-                    // shared lifecycle synthesizes the boundary end.
-                    self.reasoning.emit_chunk(
-                        crate::providers::internal::chunk_lifecycle::ChunkParts {
-                            reasoning: None,
-                            reasoning_signature: None,
-                            text: None,
-                            tool_events: vec![choice],
-                        },
-                        out,
-                    );
+                } else {
+                    let choices = step_start_to_choices(step, &mut self.tool_ids);
+                    if !choices.is_empty() {
+                        // Interleaving content ends an open thought block —
+                        // the shared lifecycle synthesizes the boundary end.
+                        self.reasoning.emit_chunk(
+                            crate::providers::internal::chunk_lifecycle::ChunkParts {
+                                reasoning: None,
+                                reasoning_signature: None,
+                                text: None,
+                                tool_events: choices,
+                            },
+                            out,
+                        );
+                    }
                 }
             }
             InteractionSseEvent::StepStop { index, .. } => {
@@ -565,31 +568,37 @@ fn function_step_end(step: OpenFunctionStep) -> streaming::ToolInputEnd {
     end
 }
 
-fn step_start_to_choice(
+fn step_start_to_choices(
     step: Step,
     tool_ids: &mut streaming::SyntheticIds,
-) -> Option<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
+) -> Vec<streaming::RawStreamingChoice<StreamingCompletionResponse>> {
     match step {
+        // Every convertible item, in wire order: a `model_output` step can
+        // interleave text and function calls in one `content` list, and
+        // keeping only the first silently dropped the rest.
         Step::ModelOutput { content } => content
             .into_iter()
-            .find_map(|content| content_to_choice(content, tool_ids)),
+            .filter_map(|content| content_to_choice(content, tool_ids))
+            .collect(),
         Step::FunctionCall(FunctionCallContent {
             name,
             arguments,
             id,
         }) => {
-            let name = name?;
+            let Some(name) = name else {
+                return Vec::new();
+            };
             // The wire's id when present; never the tool name — a
             // name-as-id fallback collides two same-tool calls in one turn.
-            Some(shared_parts::function_call(
+            vec![shared_parts::function_call(
                 name,
                 arguments.unwrap_or(Value::Object(Map::new())),
                 id,
                 None,
                 tool_ids,
-            ))
+            )]
         }
-        _ => None,
+        _ => Vec::new(),
     }
 }
 
@@ -602,7 +611,9 @@ fn content_to_choice(
             Some(streaming::RawStreamingChoice::Message(text.text))
         }
         Content::FunctionCall(content) => {
-            step_start_to_choice(Step::FunctionCall(content), tool_ids)
+            step_start_to_choices(Step::FunctionCall(content), tool_ids)
+                .into_iter()
+                .next()
         }
         _ => None,
     }
@@ -779,6 +790,43 @@ mod tests {
             items.push(item.map_err(|error| error.to_string()));
         }
         (items, stream)
+    }
+
+    /// A `model_output` step interleaving text and a function call in one
+    /// step's `content`: every convertible item must surface, in wire
+    /// order. `find_map` kept only the first — a `function_call` following
+    /// text in the same step silently vanished.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_model_output_step_yields_every_convertible_item() {
+        use crate::streaming::StreamedAssistantContent;
+
+        let (items, _stream) = drive_frames(&[
+            r#"{"event_type":"step.start","index":0,"step":{"type":"model_output","content":[{"type":"text","text":"answer: "},{"type":"function_call","name":"add","arguments":{"x":1},"id":"fc_9"}]}}"#,
+            r#"{"event_type":"interaction.completed","interaction":{"id":"int_1","status":"completed"}}"#,
+        ])
+        .await;
+
+        let mut texts = Vec::new();
+        let mut calls = Vec::new();
+        for item in &items {
+            match item {
+                Ok(StreamedAssistantContent::Text(text)) => texts.push(text.text.clone()),
+                Ok(StreamedAssistantContent::ToolCall { tool_call, .. }) => {
+                    calls.push(tool_call.clone())
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(texts, ["answer: "], "the text survives, got {items:?}");
+        assert_eq!(
+            calls.len(),
+            1,
+            "the function_call after text must also survive, got {items:?}"
+        );
+        let call = calls.first().expect("one call");
+        assert_eq!(call.function.name, "add");
+        assert_eq!(call.function.arguments, serde_json::json!({"x": 1}));
     }
 
     /// A `step.start` that announces non-empty arguments AND fragments the
