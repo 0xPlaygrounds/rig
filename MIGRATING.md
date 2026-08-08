@@ -520,7 +520,12 @@ What this changes for you:
   legacy encodings it supported) no longer exist — `ToolResult::name` is
   required data, and every name-keyed serializer (Gemini
   `functionResponse.name`, Ollama, Vertex AI, gemini-grpc) reads it
-  directly.
+  directly. One typed-id descendant remains: rig's own inbound converters
+  cannot supply a name (Anthropic/OpenAI-chat/Cohere/Bedrock wires carry
+  none), so name-keyed request assembly fills an *empty* name from the
+  result's paired call, matched by identifier only
+  (`providers::internal::resolve_empty_tool_result_names`). Established
+  names are never overwritten, and nothing pairs by position or name.
 - **Hooks and telemetry**: tool-call ids surfaced to hooks
   (`ToolCallEvent`/`ToolResultEvent`/`InvalidToolCallContext.tool_call_id`)
   and telemetry are now the durable id — the provider's when issued, else

@@ -321,6 +321,9 @@ pub(crate) fn create_request_body(
 
     let mut history = Vec::new();
     history.extend(chat_history);
+    // functionResponse.name keys the replay: cross-provider ingested
+    // results arrive with an empty name and their call carries it.
+    crate::providers::internal::resolve_empty_tool_result_names(&mut history);
     let (history_system, history) = split_system_messages_from_history(history);
 
     let steps = history

@@ -190,7 +190,10 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
-    let (history_system, chat_history) = split_system_messages_from_history(chat_history);
+    let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
+    // functionResponse.name keys the replay: cross-provider ingested
+    // results arrive with an empty name and their call carries it.
+    rig_core::providers::internal::resolve_empty_tool_result_names(&mut chat_history);
     let mut contents = Vec::new();
 
     // Convert chat history to gRPC Content messages
