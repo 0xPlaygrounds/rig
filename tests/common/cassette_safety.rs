@@ -139,8 +139,65 @@ fn cassettes_do_not_contain_obvious_secrets() {
         return;
     }
 
+    // Each provider binary scans only its own `tests/cassettes/<provider>`
+    // directory. This module compiles into every provider test binary, and
+    // the scan (YAML parse + scrub + re-serialize + base64 decode + several
+    // regex families per file) is expensive — when every binary scanned the
+    // whole tree, CI ran the identical full-tree scan once per binary, and
+    // that duplication alone was the single largest execution cost in the PR
+    // gate's test sweep (~16s × 16 binaries per run).
+    //
+    // Scoping is safe because the partition below is asserted, in every
+    // binary, before anything is skipped:
+    //
+    //   * every top-level entry under `tests/cassettes` must be a directory
+    //     named after a suite registered in `PROVIDER_CASSETTE_SUITES` — a
+    //     stray file or an unregistered provider directory fails everywhere
+    //     rather than silently escaping the scan;
+    //   * every registered suite's `tests/<provider>.rs` must include this
+    //     module — so each registered directory is provably scanned by
+    //     exactly the binary that owns it, and adding a suite without wiring
+    //     the scan into its binary fails everywhere too.
     let mut failures = Vec::new();
-    scan_dir(root, &mut failures);
+
+    let registered: BTreeSet<&str> = PROVIDER_CASSETTE_SUITES
+        .iter()
+        .map(|suite| suite.provider)
+        .collect();
+    for entry in fs::read_dir(root).expect("cassette root should be readable") {
+        let entry = entry.expect("cassette root entry should be readable");
+        let name = entry.file_name();
+        let name = name.to_string_lossy().into_owned();
+        if !entry.path().is_dir() {
+            failures.push(format!(
+                "tests/cassettes/{name} is not a provider directory; loose files under the \
+                 cassette root are scanned by no binary"
+            ));
+        } else if !registered.contains(name.as_str()) {
+            failures.push(format!(
+                "tests/cassettes/{name} has no PROVIDER_CASSETTE_SUITES entry, so no test \
+                 binary scans it for secrets — register it in \
+                 tests/common/cassette_safety.rs"
+            ));
+        }
+    }
+    for suite in PROVIDER_CASSETTE_SUITES {
+        let binary_source = repo_path(&format!("tests/{}.rs", suite.provider));
+        let includes_scan = fs::read_to_string(&binary_source)
+            .is_ok_and(|contents| contents.contains("common/cassette_safety.rs"));
+        if !includes_scan {
+            failures.push(format!(
+                "tests/{}.rs does not include common/cassette_safety.rs, so \
+                 tests/cassettes/{} is scanned for secrets by no binary",
+                suite.provider, suite.provider
+            ));
+        }
+    }
+
+    let own_dir = root.join(env!("CARGO_CRATE_NAME"));
+    if own_dir.is_dir() {
+        scan_dir(&own_dir, &mut failures);
+    }
 
     assert!(
         failures.is_empty(),

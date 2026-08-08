@@ -13,17 +13,26 @@
 #
 # The PR gate still COMPILES all of the above on every PR: ci.yaml's clippy
 # job lints `--all-features --all-targets`, and doctest/doc build all
-# features, so a nightly failure is a runtime regression, never a stale
-# compile break discovered at 06:00.
+# features, so a nightly failure is almost always a runtime regression rather
+# than a stale compile break discovered at 06:00 — with one deliberate
+# exception. `tests/tool_facade_features.rs` nested-checks the facade in
+# *individual* feature configurations, and feature-unification means no
+# `--all-features` build on the gate can catch a facade feature that forgets
+# to forward a sub-feature, so that one class of compile break is caught only
+# here (it costs ~4 minutes, which is exactly why it is not on the gate).
 #
 # When it runs:
 #   * nightly at 06:00 UTC;
-#   * on any PR that touches a companion crate or the integration tests —
-#     without this, a PR editing `crates/rig-qdrant/` merges with zero runtime
-#     coverage of the code it changed, and the breakage surfaces either at
-#     06:00 or, worse, in cd.yaml's `run-full-ci`, where it blocks release-plz
-#     on an already-merged commit. These PRs are rare and share the scheduled
+#   * on any PR that touches a companion crate, the integration tests, or the
+#     root manifest/lockfile (where the companion crates' `workspace = true`
+#     dependency versions actually resolve) — without this, a PR editing
+#     `crates/rig-qdrant/` or bumping its driver in Cargo.toml merges with
+#     zero runtime coverage of the code it changed, and the breakage surfaces
+#     either at 06:00 or, worse, in cd.yaml's `run-full-ci`, where it blocks
+#     release-plz on an already-merged commit. These PRs share the scheduled
 #     run's rust-cache entry, so the common PR pays nothing;
+#   * in the merge queue (`merge_group`), because the squashed batch that
+#     actually lands on main is not any PR head the filters above validated;
 #   * on demand via `gh workflow run nightly.yaml`;
 #   * via `workflow_call` from cd.yaml on every push to main, so release-plz
 #     never publishes a commit the full suite has not passed.
@@ -49,6 +58,33 @@ on:
       - "tests/integrations/**"
       - "tests/integrations.rs"
       - ".github/workflows/nightly.yaml"
+      # The companion crates' dependency versions do not live under
+      # `crates/rig-*/`: they are `workspace = true` references resolved in
+      # the root manifest and lockfile. Without these two entries, a
+      # dependabot PR bumping mongodb/neo4rs/qdrant-client/lancedb touches
+      # only Cargo.toml + Cargo.lock, matches none of the globs above, and
+      # merges with zero integration-test coverage of the driver it changed —
+      # the exact failure mode this trigger exists to prevent. The cost is
+      # accepted: any PR that touches the root manifest or lockfile runs the
+      # full lane, because dependency changes are precisely the risk class
+      # this suite covers. (`crates/rig-core/**` is deliberately NOT listed:
+      # most PRs touch rig-core, and triggering the full lane on all of them
+      # would undo the fast/full split; a rig-core change that breaks a
+      # vector-store contract is caught by merge_group below at the latest.)
+      - "Cargo.toml"
+      - "Cargo.lock"
+  # The repo merges through a merge queue (ALLGREEN, squash, batches up to
+  # 5), so the commit that actually lands on main is the merge-group commit —
+  # not the PR head that the `pull_request` triggers above validated. Without
+  # this trigger, a companion-crate PR could go green on its head, get
+  # batched with other queued PRs, and land a combination the full suite
+  # never ran on, surfacing post-merge in cd.yaml where it blocks release-plz
+  # (the pre-split workflow ran the full sweep under merge_group, so this
+  # restores that guarantee). GitHub does not support `paths` filters on
+  # merge_group events, so every queued merge pays the full lane — accepted:
+  # the queue batches PRs, which amortizes the cost across everything in the
+  # batch.
+  merge_group:
   workflow_dispatch: # cd.yaml already uses this; match it
   workflow_call:
 
@@ -59,6 +95,9 @@ env:
   # fingerprints rather than invalidating each other's caches.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  CARGO_INCREMENTAL: 0
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: sccache
 
 # The `full-` prefix keeps this group disjoint from ci.yaml's when both are
 # invoked from the same cd.yaml run (inside a called workflow,
@@ -91,6 +130,11 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ env.RUST_VERSION }}
+
+      # See ci.yaml's `test` job note: caches workspace-member rustc
+      # invocations, which rust-cache cannot.
+      - name: Run sccache
+        uses: mozilla/sccache-action@v0.0.11
 
       - name: Install nextest
         uses: taiki-e/install-action@v2

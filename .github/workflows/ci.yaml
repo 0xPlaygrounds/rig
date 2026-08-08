@@ -21,6 +21,10 @@ env:
   # build under `test` while their dependencies build under `dev`.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
+  # sccache (enabled per-job below) cannot cache incremental compilation, and
+  # CI never benefits from incremental anyway — every run starts from a fresh
+  # checkout — so pin it off for every job.
+  CARGO_INCREMENTAL: 0
 
 # ensure that the workflow is only triggered once per PR, subsequent pushes to the PR will cancel
 # and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
@@ -101,6 +105,11 @@ jobs:
     name: stable / check ${{ matrix.package }} wasm target
     runs-on: ubuntu-latest
     strategy:
+      # The legs are independent packages, and the pre-fold standalone
+      # rig-core job always ran to completion: without `fail-fast: false`,
+      # one broken package would cancel the sibling legs mid-run and hide
+      # independent wasm breaks behind an extra CI round-trip.
+      fail-fast: false
       matrix:
         package: [rig-core, rig-agent, rig, rig-candle, candle_wasm_chat]
     steps:
@@ -195,10 +204,18 @@ jobs:
   # workflow_dispatch, and — via cd.yaml's `workflow_call` — on every push to
   # main, so nothing is released without the full suite. `--all-features`
   # COMPILE coverage stays on the PR gate regardless: the clippy job lints
-  # `--all-features --all-targets`, and doctest/doc build all features too.
+  # `--all-features --all-targets`, and doctest/doc build all features too —
+  # with one deliberate exception: feature-unification means no
+  # `--all-features` build can catch a facade feature that forgets to forward
+  # a sub-feature, so that class of compile break is caught only by
+  # nightly.yaml's nested-`cargo check` guard (`tests/tool_facade_features.rs`,
+  # ~4 minutes, which is exactly why it is not on the gate).
   test:
     name: stable / test
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: sccache
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -207,6 +224,17 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ env.RUST_VERSION }}
+
+      # rust-cache (inside setup-rust-toolchain above) persists *dependency*
+      # artifacts but always recompiles the workspace's own crates; sccache
+      # caches individual rustc invocations in the GitHub Actions cache, so
+      # unchanged workspace members stop recompiling too. That workspace-member
+      # compile is this job's residual floor, which is why the compile-heavy
+      # jobs (test, test guards, doctest, nightly) opt in via the job-level
+      # env above — a workflow-wide RUSTC_WRAPPER would instead break every
+      # job that skips this install step.
+      - name: Run sccache
+        uses: mozilla/sccache-action@v0.0.11
 
       - name: Install nextest
         uses: taiki-e/install-action@v2
@@ -234,11 +262,20 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       # `nextest` below runs with `--features bedrock`, which does not compile
-      # the pure default-feature test graph. Build the root integration tests
+      # the pure default-feature test graph. Check the root integration tests
       # with the default feature set so feature-gated test modules cannot
       # accidentally depend on APIs that only exist under optional features.
-      - name: Compile default-feature root test targets
-        run: cargo test --locked -p rig --tests --no-run
+      #
+      # `cargo check`, not `cargo test --no-run`: the guarded failure class is
+      # purely type-level, and `--no-run` additionally pays codegen + linking
+      # of every lance-heavy test binary under a default-feature hash the
+      # `--features bedrock` step below never reuses (~1-2 wasted minutes even
+      # warm, since rust-cache never persists workspace-member artifacts).
+      # `check` still runs build scripts, so the protoc requirement above is
+      # unchanged; link errors stay covered by the bedrock run below and by
+      # nightly's full sweep.
+      - name: Check default-feature root test targets
+        run: cargo check --locked -p rig --tests
 
       # The workspace sweep over the default members' default features, plus
       # the facade's `bedrock` feature. `bedrock` rides along because the
@@ -274,6 +311,9 @@ jobs:
   test-guards:
     name: stable / test guards
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: sccache
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -282,6 +322,11 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ env.RUST_VERSION }}
+
+      # See the `test` job's note: caches workspace-member rustc invocations,
+      # which rust-cache cannot.
+      - name: Run sccache
+        uses: mozilla/sccache-action@v0.0.11
 
       - name: Install nextest
         uses: taiki-e/install-action@v2
@@ -296,13 +341,10 @@ jobs:
       # protoc via protoc-bin-vendored. Adding a facade step here means adding
       # the apt install back.
 
-      - name: Test rig-agent agent unit tests with all features
-        run: cargo nextest run --locked -p rig-agent --all-features -E 'test(agent::)' --retries 2
-
-      # The full rig-core and rig-agent lib test sets under `--all-features`.
+      # The full rig-core and rig-agent test suites under `--all-features`.
       # Before the fast/full split, the workspace-wide `--all-features` sweep
       # ran these on every PR; that sweep now lives in nightly.yaml, and this
-      # step keeps the feature-gated unit tests (the rmcp tool registry, the
+      # step keeps the feature-gated tests (the rmcp tool registry, the
       # pdf/epub loaders, audio generation, …) from silently demoting to
       # nightly-only coverage. It reuses the compile artifacts of the
       # telemetry step below (same packages, same `--all-features`), so the
@@ -310,39 +352,40 @@ jobs:
       # retries — harmless duplication: their no-retries discipline is
       # enforced by the dedicated step below, exactly as it was when the
       # workspace sweep ran them with `--retries 2` alongside it.
-      - name: Test rig-core and rig-agent unit tests with all features
-        run: cargo nextest run --locked -p rig-core -p rig-agent --all-features --lib --retries 2
+      #
+      # All test targets, NOT `--lib`: rig-core's `identity_leak` trybuild
+      # suite is an *integration* test whose compile-fail proof (no `Serialize`
+      # path for `PartId`/`StreamPartId`) is only load-bearing under
+      # `--all-features`, because trybuild propagates the outer binary's
+      # enabled features into its scratch builds. `--lib` here would demote
+      # that proof — and rig-agent's non-lib targets such as
+      # `runtime_model_swapping` — to nightly-only coverage, exactly the
+      # silent narrowing this step exists to prevent.
+      - name: Test rig-core and rig-agent with all features
+        run: cargo nextest run --locked -p rig-core -p rig-agent --all-features --retries 2
 
       # `cargo nextest run` (in the `test` job) selects the workspace's
       # *default members* — historically just the `rig` facade, which is why a
       # `crates/*` unit test executed in CI only when its package was named
       # explicitly; `default-members` now lists the core crates, but that
-      # sweep compiles them with *default* features and `--retries 2`. The
-      # rig-agent half of the completion-parent contract rides along on the
-      # `agent::` filter above; this step is what runs rig-core's
-      # `telemetry::` tests under `--all-features` and without retries. They
-      # are the drift tripwires for the marker and the required `gen_ai.*`
-      # field set: unrun, the three forms of the contract can silently
-      # desync, which is the exact failure the `completion_parent_span!`
-      # macro exists to prevent.
+      # sweep compiles them with *default* features and `--retries 2`. This
+      # step re-runs the `telemetry::` and `span_safety_net::` tests under
+      # `--all-features` and without retries. They are the drift tripwires
+      # for the marker and the required `gen_ai.*` field set: unrun, the
+      # three forms of the contract can silently desync, which is the exact
+      # failure the `completion_parent_span!` macro exists to prevent.
       #
-      # rig-agent is named explicitly even though `test(agent::)` above already
-      # matches `span_safety_net::`, so the cross-crate tripwire keeps running
-      # if that filter is ever narrowed. The tests are cheap and the duplicate
-      # run is the price of not depending on an unrelated filter.
+      # The sweep above already *executes* these tests (same packages, same
+      # `--all-features`, so this step reuses its compile artifacts and costs
+      # execution time only) — but it runs them with `--retries 2`, and a
+      # drift tripwire that passes on the second attempt conceals exactly the
+      # nondeterminism it exists to catch. The dedicated no-retries run is
+      # the point of this step, not redundancy.
       #
-      # No `--retries`, deliberately, unlike the steps around it: these are
-      # static-metadata assertions (set equality against a `const`, field
-      # counts, callsite dedup), so a pass on the second attempt would be
-      # concealing nondeterminism rather than tolerating a flaky network.
-      #
-      # This resolves rig-core with its own `--all-features` set, a different
-      # configuration from both the `-p rig-agent` step above and the `test`
-      # job's facade sweep, so rig-core is compiled here rather than reused.
-      # That cost is accepted deliberately: folding these tests into the
-      # `agent::` step would share one build but hand them its `--retries 2`,
-      # and a drift tripwire that passes on the second attempt conceals exactly
-      # the nondeterminism it exists to catch.
+      # No `--retries`, deliberately: these are static-metadata assertions
+      # (set equality against a `const`, field counts, callsite dedup), so a
+      # pass on the second attempt would be concealing nondeterminism rather
+      # than tolerating a flaky network.
       - name: Test telemetry completion-parent contract
         run: cargo nextest run --locked -p rig-core -p rig-agent --all-features -E 'test(telemetry::) + test(span_safety_net::)'
 
@@ -390,6 +433,9 @@ jobs:
   doctest:
     name: stable / doctest
     runs-on: ubuntu-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: sccache
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -398,6 +444,12 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: ${{ env.RUST_VERSION }}
+
+      # See the `test` job's note: caches workspace-member rustc invocations,
+      # which rust-cache cannot. (rustdoc itself is not cached, which is why
+      # the `doc` job does not bother.)
+      - name: Run sccache
+        uses: mozilla/sccache-action@v0.0.11
 
       # Required to compile rig-lancedb
       - name: Install Protoc

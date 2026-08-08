@@ -9,6 +9,16 @@
 # Assert the copies agree. This is a text check on purpose: it must fail on a
 # workflow nobody remembered to update, which a parser keyed off the workflows
 # that *do* declare the variable would not do.
+#
+# Why the copies exist at all: omitting the `toolchain` input would make
+# `setup-rust-toolchain` read rust-toolchain.toml directly — no copies, no
+# desync, no script. But rust-toolchain.toml also pins components
+# (rust-analyzer, rust-src) and the wasm target for local development, and
+# honoring it in CI would download those in every job. Until that trade is
+# taken, this guard keeps the existing copies honest. A workflow with no
+# RUST_VERSION needs no checking (it takes its toolchain from
+# rust-toolchain.toml), so a repo that deletes every copy passes vacuously —
+# that is the desired end state, not an error to steer people away from.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -20,26 +30,22 @@ if [ -z "$channel" ]; then
 fi
 
 status=0
-found=0
 for workflow in .github/workflows/*.yaml .github/workflows/*.yml; do
   [ -e "$workflow" ] || continue
-  # Only workflows that declare the variable are checked; a workflow with no
-  # `RUST_VERSION` takes its toolchain from rust-toolchain.toml already.
+  # Extract the scalar value only: strip a CR from a CRLF checkout, any
+  # trailing comment, surrounding quotes, and whitespace — a cosmetic edit
+  # like `RUST_VERSION: 1.94.0 # keep in sync` must not fail the gate by
+  # comparing a value with the comment text embedded in it.
   while IFS= read -r pinned; do
-    found=1
     if [ "$pinned" != "$channel" ]; then
       echo "::error file=$workflow::RUST_VERSION is $pinned but rust-toolchain.toml pins $channel"
       status=1
     fi
-  done < <(grep -E '^\s*RUST_VERSION:' "$workflow" | sed -E 's/.*RUST_VERSION:[[:space:]]*//' | tr -d '"'"'"'')
+  done < <(grep -E '^\s*RUST_VERSION:' "$workflow" \
+    | sed -E 's/\r$//; s/^[[:space:]]*RUST_VERSION:[[:space:]]*//; s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^"([^"]*)"$/\1/; s/^'"'"'([^'"'"']*)'"'"'$/\1/')
 done
 
-if [ "$found" -eq 0 ]; then
-  echo "::error::no workflow declares RUST_VERSION — this guard is checking nothing, so either restore the pins or delete the guard"
-  exit 1
-fi
-
 if [ "$status" -eq 0 ]; then
-  echo "ok: every workflow RUST_VERSION matches rust-toolchain.toml ($channel)"
+  echo "ok: every declared RUST_VERSION matches rust-toolchain.toml ($channel)"
 fi
 exit "$status"
