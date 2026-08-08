@@ -732,12 +732,18 @@ impl CompletionRequest {
     ///
     /// An *assistant* turn that carried nothing is a real provider outcome and
     /// is dropped from history rather than sent, so it never reaches here.
+    ///
+    /// `System` content is deliberately not checked. It is a `String` and
+    /// always has been — the removed type never constrained it — so rejecting
+    /// an empty one would be a new restriction rather than a relocated
+    /// enforcement point, and would break histories carrying a conditionally
+    /// built preamble that resolved to `""`.
     pub fn validate_message_content(&self) -> Result<(), CompletionError> {
         for (index, message) in self.chat_history.iter().enumerate() {
             let (role, empty) = match message {
                 Message::User { content } => ("user", content.is_empty()),
                 Message::Assistant { content, .. } => ("assistant", content.is_empty()),
-                Message::System { content } => ("system", content.is_empty()),
+                Message::System { .. } => continue,
             };
             if empty {
                 return Err(CompletionError::RequestError(
@@ -1294,6 +1300,31 @@ mod tests {
         request
             .validate_message_content()
             .expect("a normal history is valid");
+    }
+
+    /// The check relocates the removed container's enforcement; it does not
+    /// invent a new one. `System` content is a `String` and was never
+    /// constrained, so a preamble that resolved to `""` must still send —
+    /// rejecting it would break histories that worked before the migration.
+    #[test]
+    fn an_empty_system_message_is_not_rejected() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec![Message::system(""), Message::user("hello")],
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        request
+            .validate_message_content()
+            .expect("system content was never constrained by the removed type");
     }
 
     /// Serde must not be a back door around `reconcile_with_output`: a

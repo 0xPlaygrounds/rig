@@ -1095,8 +1095,9 @@ impl Stream for StreamingCompletionResponse {
                 Poll::Pending => Poll::Pending,
                 Poll::Ready(None) => {
                     // This is run at the end of the inner stream to collect all tokens into
-                    // a single unified `Message`. `finish` is never empty, so the
-                    // conversion cannot fail.
+                    // a single unified `Message`. `finish` may be empty — a stream
+                    // that produced no content yields no parts — and an empty choice
+                    // is a representable outcome here, not a failure.
                     stream.choice = stream.parts.finish();
                     stream.finished = true;
 

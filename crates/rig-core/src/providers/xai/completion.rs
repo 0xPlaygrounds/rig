@@ -193,7 +193,12 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             .flat_map(<Vec<completion::AssistantContent>>::from)
             .collect();
 
-        let choice = content;
+        // Response validation, not dead plumbing: a completion carrying zero
+        // content blocks is a defect on this wire, matching every sibling
+        // provider's guard.
+        let choice = crate::message::require_non_empty(content, || {
+            CompletionError::ResponseError("Response contained no output".to_owned())
+        })?;
 
         let usage = response
             .usage
@@ -358,6 +363,28 @@ mod tests {
     use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message, ToolDefinition};
     use crate::message::ToolChoice;
     use crate::test_utils::MockCompletionModel;
+
+    /// A completion carrying zero content blocks is a defect on this wire, not
+    /// a representable outcome — the same judgment every sibling provider
+    /// makes. The non-empty container used to be the delivery mechanism for
+    /// this error; removing it must not remove the guard.
+    #[test]
+    fn a_response_with_no_output_is_rejected() {
+        let response = super::CompletionResponse {
+            id: "resp_1".to_string(),
+            model: "grok-4-0709".to_string(),
+            output: Vec::new(),
+            created: 0,
+            object: "response".to_string(),
+            status: None,
+            incomplete_details: None,
+            usage: None,
+        };
+
+        let error = crate::completion::CompletionResponse::try_from(response)
+            .expect_err("an output-less xAI response must not normalize to an empty choice");
+        assert!(error.to_string().contains("no output"), "got {error}");
+    }
 
     #[test]
     fn xai_request_includes_normalized_documents() {

@@ -566,9 +566,13 @@ pub(crate) fn infer(
         loaded.profile.definition.protocol,
     )?;
     raw_response.text = parsed.visible_text;
-    let choice = rig_core::message::require_non_empty(parsed.items, || {
-        CandleError::Inference("output protocol produced no assistant content".to_string())
-    })?;
+    // No emptiness guard: a local model that emits EOS immediately — or only
+    // whitespace, which `push_text` trims away — produced an empty turn, which
+    // is a real (if degenerate) outcome rather than a protocol defect. This
+    // check was unreachable while the parser fabricated an empty-text part;
+    // making it live would turn a case that used to succeed into a hard error,
+    // which is backwards from how every other empty turn is now handled.
+    let choice = parsed.items;
 
     Ok(InferredCompletion {
         response: raw_response,

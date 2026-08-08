@@ -408,6 +408,11 @@ builder's `send`/`stream` and on every agent model call, and fails with the
 offending message's role and index instead of the old context-free "cannot
 create with an empty vector". Per-wire conversions keep their own guards.
 
+The check covers `User` and `Assistant` content only. `System` content is a
+`String` and always has been, so the removed type never constrained it —
+validating it would be a new restriction rather than a relocated one, and an
+empty preamble still sends exactly as before.
+
 ### The raw grammar is a part lifecycle: Start / Delta / End per content kind
 
 Every streamed part is now an **entity with a lifecycle** — open, mutate in

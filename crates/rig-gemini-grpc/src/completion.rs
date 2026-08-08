@@ -568,7 +568,15 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             assistant_contents.push(assistant_content);
         }
 
-        let choice = assistant_contents;
+        // Response validation, not dead plumbing: Gemini emits a candidate
+        // with no parts on truncation, and the REST transport rejects it the
+        // same way (`providers::gemini::completion`). The two transports must
+        // not disagree on identical wire conditions.
+        let choice = rig_core::message::require_non_empty(assistant_contents, || {
+            CompletionError::ResponseError(
+                "Response contained no message or tool call (empty)".to_owned(),
+            )
+        })?;
 
         let usage = response
             .usage_metadata
@@ -822,6 +830,32 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 #[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    /// Gemini emits a candidate whose `content.parts` is empty on truncation.
+    /// The REST transport rejects that (`providers::gemini::completion`), and
+    /// this one must agree — two transports for one provider cannot disagree
+    /// on an identical wire condition. The non-empty container used to be the
+    /// delivery mechanism for the error; removing it must not remove the guard.
+    #[test]
+    fn a_candidate_with_no_parts_is_rejected() {
+        let response = GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: Vec::new(),
+                    role: "model".to_string(),
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let error = completion::CompletionResponse::try_from(response)
+            .expect_err("a part-less candidate must not normalize to an empty choice");
+        assert!(
+            error.to_string().contains("no message or tool call"),
+            "got {error}"
+        );
+    }
 
     // ============================================================
     // rpc_error — pins the from_provider_body usage on the RPC error path

@@ -917,6 +917,32 @@ mod tests {
         }
     }
 
+    /// A model that emits EOS immediately — or only whitespace, which
+    /// `push_text` trims away — produced an empty turn. That is a real, if
+    /// degenerate, outcome and must parse successfully: the parser used to
+    /// fabricate an empty-text part here purely because the choice could not
+    /// be empty, and `generation.rs` would otherwise turn the case into a hard
+    /// `CandleError::Inference`.
+    #[test]
+    fn qwen_parse_of_a_contentless_generation_yields_no_items() {
+        let request = request(vec![Message::user("hi")]);
+
+        for raw in ["", "   \n  "] {
+            let parsed =
+                parse_qwen3_assistant(raw, &request).expect("an empty turn is not a parse failure");
+            assert!(
+                parsed.items.is_empty(),
+                "expected no items for {raw:?}, got {:?}",
+                parsed.items
+            );
+            assert!(
+                parsed.visible_text.is_empty(),
+                "got {:?}",
+                parsed.visible_text
+            );
+        }
+    }
+
     #[test]
     fn qwen_renderer_preserves_schemas_and_tool_history() {
         let call = ToolCall::new(
