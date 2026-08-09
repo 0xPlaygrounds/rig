@@ -668,6 +668,7 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "CompletionRequestParts")]
 pub struct CompletionRequest {
     /// Optional model override for this request.
     pub model: Option<String>,
@@ -722,11 +723,21 @@ pub struct CompletionRequest {
 
 /// The plain-data fields of a [`CompletionRequest`], with no invariant attached.
 ///
-/// This is the output of [`CompletionRequest::into_parts`]: a request is
-/// taken apart into parts for by-value consumption (provider wire
-/// conversions). Field meanings are documented on the accessors of
-/// [`CompletionRequest`], which mirror these fields one-for-one.
-#[derive(Debug, Clone, Default)]
+/// This is both the input to [`CompletionRequest::new`] and the output of
+/// [`CompletionRequest::into_parts`]: a request is taken apart into parts for
+/// by-value consumption (provider wire conversions), and parts are validated
+/// back into a request by the constructor. Field meanings are documented on
+/// the accessors of [`CompletionRequest`], which mirror these fields
+/// one-for-one.
+///
+/// It is also the serde mirror for [`CompletionRequest`]: a derived
+/// `Deserialize` on a struct with private fields would still be built
+/// field-by-field inside the defining module, silently bypassing the
+/// constructor, so `CompletionRequest` instead deserializes through this type
+/// and `#[serde(try_from = "CompletionRequestParts")]` — a persisted request
+/// with empty content fails to deserialize instead of reconstituting a value
+/// that cannot otherwise exist.
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct CompletionRequestParts {
     /// Optional model override for this request.
     pub model: Option<String>,
@@ -749,10 +760,50 @@ pub struct CompletionRequestParts {
     /// Optional JSON Schema for structured output.
     pub output_schema: Option<schemars::Schema>,
     /// Whether to record sensitive content on GenAI telemetry spans.
+    ///
+    /// `#[serde(skip)]` mirrors the request's own serialization contract: this
+    /// is local observability policy, never part of a persisted request, so
+    /// deserializing through the mirror leaves it at the safe default.
+    #[serde(skip)]
     pub record_telemetry_content: bool,
 }
 
+impl TryFrom<CompletionRequestParts> for CompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from(parts: CompletionRequestParts) -> Result<Self, Self::Error> {
+        Self::new(parts)
+    }
+}
+
 impl CompletionRequest {
+    /// The only way to obtain a `CompletionRequest`. Rejects an empty chat
+    /// history and empty user or assistant message content, naming the
+    /// offending role and index; see
+    /// [`CompletionRequest::validate_message_content`] for the full rule and
+    /// its rationale.
+    ///
+    /// [`CompletionRequestBuilder`] is the ergonomic path and funnels through
+    /// this constructor; deserialization does too, via
+    /// `#[serde(try_from = "CompletionRequestParts")]`.
+    pub fn new(parts: CompletionRequestParts) -> Result<Self, CompletionError> {
+        let request = Self {
+            model: parts.model,
+            preamble: parts.preamble,
+            chat_history: parts.chat_history,
+            documents: parts.documents,
+            tools: parts.tools,
+            temperature: parts.temperature,
+            max_tokens: parts.max_tokens,
+            tool_choice: parts.tool_choice,
+            additional_params: parts.additional_params,
+            output_schema: parts.output_schema,
+            record_telemetry_content: parts.record_telemetry_content,
+        };
+        request.validate_message_content()?;
+        Ok(request)
+    }
+
     /// Optional model override for this request.
     pub fn model(&self) -> &Option<String> {
         &self.model
@@ -1385,28 +1436,16 @@ mod tests {
     /// "cannot create with an empty vector" was the thing worth losing.
     #[test]
     fn empty_message_content_is_rejected_with_the_offending_index() {
-        let request = CompletionRequest {
-            model: None,
-            preamble: None,
+        let error = CompletionRequest::new(CompletionRequestParts {
             chat_history: vec![
                 Message::user("fine"),
                 Message::User {
                     content: Vec::new(),
                 },
             ],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
-
-        let error = request
-            .validate_message_content()
-            .expect_err("an empty user message must not reach a provider");
+            ..CompletionRequestParts::default()
+        })
+        .expect_err("an empty user message must not reach a provider");
         let message = error.to_string();
         assert!(message.contains("index 1"), "got {message}");
         assert!(message.contains("user"), "got {message}");
@@ -1416,23 +1455,11 @@ mod tests {
     /// anything the container used to forbid.
     #[test]
     fn non_empty_message_content_passes_validation() {
-        let request = CompletionRequest {
-            model: None,
-            preamble: None,
+        CompletionRequest::new(CompletionRequestParts {
             chat_history: vec![Message::user("hello")],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
-
-        request
-            .validate_message_content()
-            .expect("a normal history is valid");
+            ..CompletionRequestParts::default()
+        })
+        .expect("a normal history is valid");
     }
 
     /// `chat_history` was non-empty by construction until the container came
@@ -1441,22 +1468,7 @@ mod tests {
     /// 400.
     #[test]
     fn an_empty_chat_history_is_rejected() {
-        let request = CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: Vec::new(),
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
-
-        let error = request
-            .validate_message_content()
+        let error = CompletionRequest::new(CompletionRequestParts::default())
             .expect_err("a request with no messages must not reach a provider");
         assert!(
             error.to_string().contains("empty chat history"),
@@ -1470,23 +1482,129 @@ mod tests {
     /// rejecting it would break histories that worked before the migration.
     #[test]
     fn an_empty_system_message_is_not_rejected() {
-        let request = CompletionRequest {
-            model: None,
-            preamble: None,
+        CompletionRequest::new(CompletionRequestParts {
             chat_history: vec![Message::system(""), Message::user("hello")],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
+            ..CompletionRequestParts::default()
+        })
+        .expect("system content was never constrained by the removed type");
+    }
+
+    /// Deserialization is the same door as construction. A derived
+    /// `Deserialize` on the private-field struct would be built field-by-field
+    /// inside the defining module and skip `new` entirely — the serde mirror
+    /// (`#[serde(try_from = "CompletionRequestParts")]`) closes that back
+    /// door, so a persisted request with an empty-content user message must
+    /// fail to deserialize instead of reconstituting an unrepresentable value.
+    #[test]
+    fn deserializing_an_empty_content_user_message_fails() {
+        let mut encoded = serde_json::to_value(valid_two_turn_request()).expect("serialize");
+        encoded["chat_history"][0]["content"] = serde_json::json!([]);
+
+        let error = serde_json::from_value::<CompletionRequest>(encoded)
+            .expect_err("an empty user message must not deserialize");
+        let message = error.to_string();
+        assert!(message.contains("user"), "got {message}");
+        assert!(message.contains("index 0"), "got {message}");
+    }
+
+    /// The assistant arm of the same rule: a persisted history holding a
+    /// genuinely content-less assistant turn does not reconstitute.
+    #[test]
+    fn deserializing_an_empty_content_assistant_message_fails() {
+        let mut encoded = serde_json::to_value(valid_two_turn_request()).expect("serialize");
+        encoded["chat_history"][1]["content"] = serde_json::json!([]);
+
+        let error = serde_json::from_value::<CompletionRequest>(encoded)
+            .expect_err("an empty assistant message must not deserialize");
+        let message = error.to_string();
+        assert!(message.contains("assistant"), "got {message}");
+        assert!(message.contains("index 1"), "got {message}");
+    }
+
+    /// The shape that motivated the empty-history check: with a public field,
+    /// `chat_history: vec![]` reached providers as `messages: []` and earned a
+    /// remote 400. Now it cannot even be deserialized.
+    #[test]
+    fn deserializing_an_empty_chat_history_fails() {
+        let mut encoded = serde_json::to_value(valid_two_turn_request()).expect("serialize");
+        encoded["chat_history"] = serde_json::json!([]);
+
+        let error = serde_json::from_value::<CompletionRequest>(encoded)
+            .expect_err("a request with no messages must not deserialize");
+        assert!(
+            error.to_string().contains("empty chat history"),
+            "got {error}"
+        );
+    }
+
+    /// Empty `System` content stays legal through the serde door too.
+    #[test]
+    fn deserializing_an_empty_system_message_succeeds() {
+        let mut encoded = serde_json::to_value(valid_two_turn_request()).expect("serialize");
+        encoded["chat_history"]
+            .as_array_mut()
+            .expect("history is an array")
+            .insert(0, serde_json::json!({"role": "system", "content": ""}));
+
+        serde_json::from_value::<CompletionRequest>(encoded)
+            .expect("system content was never constrained by the removed type");
+    }
+
+    /// A persisted history carrying the legacy fabricated sentinel —
+    /// `AssistantContent::text("")` minted purely to satisfy the removed
+    /// container — has a one-element content vec, so it passes the emptiness
+    /// check by construction and must keep deserializing. The agent layer
+    /// neutralizes the sentinel downstream (`is_empty_assistant_turn`); the
+    /// constructor's job is only not to strand persisted histories.
+    #[test]
+    fn deserializing_the_legacy_empty_text_sentinel_succeeds() {
+        let mut encoded = serde_json::to_value(valid_two_turn_request()).expect("serialize");
+        encoded["chat_history"][1]["content"] = serde_json::json!([{"type": "text", "text": ""}]);
+
+        let request = serde_json::from_value::<CompletionRequest>(encoded)
+            .expect("the legacy text(\"\") sentinel must keep deserializing");
+        assert!(matches!(
+            request.chat_history()[1].clone(),
+            Message::Assistant { content, .. }
+                if matches!(content.first(), Some(AssistantContent::Text(text)) if text.text.is_empty())
+        ));
+    }
+
+    /// The serde mirror must be format-transparent: serialize -> deserialize
+    /// -> serialize is byte-identical, so no persisted request or recorded
+    /// cassette changes shape because validation moved into construction.
+    #[test]
+    fn a_valid_request_round_trips_byte_identically() {
+        let request = CompletionRequest::new(CompletionRequestParts {
+            model: Some("test-model".to_string()),
+            preamble: Some("be brief".to_string()),
+            chat_history: vec![Message::user("hello"), Message::assistant("hi")],
+            documents: vec![],
+            tools: vec![],
+            temperature: Some(0.5),
+            max_tokens: Some(64),
             tool_choice: None,
-            additional_params: None,
+            additional_params: Some(serde_json::json!({"stream": false})),
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
-        request
-            .validate_message_content()
-            .expect("system content was never constrained by the removed type");
+        let first = serde_json::to_string(&request).expect("serialize");
+        let reparsed: CompletionRequest = serde_json::from_str(&first).expect("deserialize");
+        let second = serde_json::to_string(&reparsed).expect("serialize again");
+        assert_eq!(
+            first, second,
+            "the serde mirror must not change the wire shape"
+        );
+    }
+
+    fn valid_two_turn_request() -> CompletionRequest {
+        CompletionRequest::new(CompletionRequestParts {
+            chat_history: vec![Message::user("hello"), Message::assistant("hi")],
+            ..CompletionRequestParts::default()
+        })
+        .expect("request should build")
     }
 
     /// Serde must not be a back door around `reconcile_with_output`: a
