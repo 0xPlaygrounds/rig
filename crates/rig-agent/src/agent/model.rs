@@ -160,7 +160,15 @@ impl CompletionModel for ModelHandle {
         request: CompletionRequest,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        self.inner.model.completion(request)
+        // Every agent model call funnels through this handle, so it is where
+        // the agent path gets the same content pre-flight the builder
+        // terminals apply — failing with a message that names the offending
+        // turn instead of a provider 400.
+        let inner = self.inner.clone();
+        async move {
+            request.validate_message_content()?;
+            inner.model.completion(request).await
+        }
     }
 
     fn stream(
@@ -168,7 +176,11 @@ impl CompletionModel for ModelHandle {
         request: CompletionRequest,
     ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        self.inner.model.stream(request)
+        let inner = self.inner.clone();
+        async move {
+            request.validate_message_content()?;
+            inner.model.stream(request).await
+        }
     }
 
     fn capabilities(&self) -> ProviderCapabilities {

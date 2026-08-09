@@ -677,7 +677,13 @@ pub struct CompletionRequest {
     /// in `chat_history` as the canonical representation of system instructions.
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
-    /// The very last message will always be the prompt (hence why there is *always* one)
+    ///
+    /// [`CompletionRequestBuilder`] always appends the prompt as the last
+    /// message, so anything it builds is non-empty. The field itself no
+    /// longer enforces that — it is a plain `Vec` — so a hand-built request
+    /// can carry an empty history;
+    /// [`CompletionRequest::validate_message_content`] rejects one before it
+    /// reaches a provider.
     pub chat_history: Vec<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
@@ -716,6 +722,90 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
+    /// Reject request content that no wire will accept.
+    ///
+    /// Message content is a `Vec`, so "no content" is representable. Providers
+    /// are not so permissive — an empty `content` array is a 400 on most wires,
+    /// and every wire rejects a request with no messages at all — and until
+    /// this type stopped enforcing non-emptiness in its constructor, neither
+    /// shape could be built.
+    ///
+    /// This is the enforcement point that replaces the removed container's,
+    /// and it is strictly better placed: it names the offending message
+    /// instead of failing with a context-free "cannot create with an empty
+    /// vector", and it fails before the network round trip. Per-wire
+    /// conversions keep their own guards for the shapes only they can judge;
+    /// this one covers the providers that never had one.
+    ///
+    /// The rule covers a **tool result's own block list** too. That was
+    /// non-empty by construction under the removed container and is
+    /// request-direction data like the message content around it, so its rule
+    /// moves here rather than being dropped — an empty block list reaches the
+    /// wire as `"content": []` inside the tool-result envelope. An empty
+    /// *string* result is unaffected: that is one block, not zero.
+    ///
+    /// An *assistant* turn that carried nothing is a real provider outcome and
+    /// is dropped from history rather than sent, so it never reaches here.
+    ///
+    /// `System` content is deliberately not checked. It is a `String` and
+    /// always has been — the removed type never constrained it — so rejecting
+    /// an empty one would be a new restriction rather than a relocated
+    /// enforcement point, and would break histories carrying a conditionally
+    /// built preamble that resolved to `""`.
+    pub fn validate_message_content(&self) -> Result<(), CompletionError> {
+        // The history itself was non-empty by construction until the container
+        // was removed; every wire rejects a request with no messages, so the
+        // check belongs here rather than as a 400 from each provider.
+        if self.chat_history.is_empty() {
+            return Err(CompletionError::RequestError(
+                "request has an empty chat history; providers require at least one message".into(),
+            ));
+        }
+
+        for (index, message) in self.chat_history.iter().enumerate() {
+            let (role, empty) = match message {
+                Message::User { content } => ("user", content.is_empty()),
+                Message::Assistant { content, .. } => ("assistant", content.is_empty()),
+                Message::System { .. } => continue,
+            };
+            if empty {
+                return Err(CompletionError::RequestError(
+                    format!(
+                        "{role} message at index {index} has no content; \
+                         providers reject empty content blocks"
+                    )
+                    .into(),
+                ));
+            }
+
+            if let Message::User { content } = message
+                && let Some((position, result)) =
+                    content
+                        .iter()
+                        .enumerate()
+                        .find_map(|(position, item)| match item {
+                            UserContent::ToolResult(result) if result.content.is_empty() => {
+                                Some((position, result))
+                            }
+                            _ => None,
+                        })
+            {
+                // Name the tool: the only way to reach this in production is a
+                // tool whose `Output` is an empty `Vec<ToolResultContent>`, and
+                // the author needs to know which one.
+                let name = &result.name;
+                return Err(CompletionError::RequestError(
+                    format!(
+                        "tool result for `{name}` at index {position} of the user message at \
+                         index {index} has no content; providers reject empty content blocks"
+                    )
+                    .into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
     /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
     pub fn output_schema_name(&self) -> Option<String> {
@@ -1150,13 +1240,128 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();
+        request.validate_message_content()?;
         model.completion(request).await
     }
 
     /// Stream the completion request
     pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();
+        request.validate_message_content()?;
         model.stream(request).await
+    }
+}
+
+#[cfg(test)]
+mod validate_message_content_tests {
+    use super::*;
+    use crate::message::{Message, ToolCallId, ToolResultContent, UserContent};
+
+    fn request_with(chat_history: Vec<Message>) -> CompletionRequest {
+        CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history,
+            documents: Vec::new(),
+            tools: Vec::new(),
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        }
+    }
+
+    /// The relocated rule must name the offending message — a context-free
+    /// "cannot create with an empty vector" was the thing worth losing.
+    #[test]
+    fn an_empty_user_message_is_rejected_with_its_index() {
+        let error = request_with(vec![
+            Message::user("fine"),
+            Message::User {
+                content: Vec::new(),
+            },
+        ])
+        .validate_message_content()
+        .expect_err("an empty user message must not reach a provider");
+        let message = error.to_string();
+        assert!(message.contains("index 1"), "got {message}");
+        assert!(message.contains("user"), "got {message}");
+    }
+
+    /// `chat_history` was non-empty by construction until the container came
+    /// out. The builder still guarantees it, but the public field no longer
+    /// does, so a hand-built request must fail here rather than as a 400.
+    #[test]
+    fn an_empty_chat_history_is_rejected() {
+        let error = request_with(Vec::new())
+            .validate_message_content()
+            .expect_err("a request with no messages must not reach a provider");
+        assert!(
+            error.to_string().contains("empty chat history"),
+            "got {error}"
+        );
+    }
+
+    /// A tool result's block list was non-empty by construction too, and it
+    /// is request-direction data like the message content around it — so the
+    /// rule moved here rather than being dropped with the container.
+    #[test]
+    fn an_empty_tool_result_is_rejected_naming_the_tool() {
+        let empty = UserContent::tool_result_for(
+            ToolCallId::new("call_1").expect("non-empty id"),
+            None,
+            "lookup".to_string(),
+            Vec::new(),
+        );
+        let error = request_with(vec![
+            Message::user("hi"),
+            Message::User {
+                content: vec![empty],
+            },
+        ])
+        .validate_message_content()
+        .expect_err("a block-less tool result must not reach a provider");
+        let message = error.to_string();
+        assert!(message.contains("`lookup`"), "got {message}");
+        assert!(message.contains("index 1"), "got {message}");
+    }
+
+    /// The rule is emptiness of the block list, not of the blocks: a tool
+    /// that legitimately returned an empty string still has one block.
+    #[test]
+    fn a_tool_result_with_one_empty_text_block_is_accepted() {
+        let blank = UserContent::tool_result_for(
+            ToolCallId::new("call_1").expect("non-empty id"),
+            None,
+            "lookup".to_string(),
+            vec![ToolResultContent::text("")],
+        );
+        request_with(vec![Message::User {
+            content: vec![blank],
+        }])
+        .validate_message_content()
+        .expect("an empty string is a block; a block-less result is the defect");
+    }
+
+    /// The check relocates the removed container's enforcement; it does not
+    /// invent a new one. `System` content is a `String` and was never
+    /// constrained, so a preamble that resolved to `""` must still send.
+    #[test]
+    fn an_empty_system_message_is_not_rejected() {
+        request_with(vec![Message::system(""), Message::user("hello")])
+            .validate_message_content()
+            .expect("system content was never constrained by the removed type");
+    }
+
+    /// A well-formed history passes; the check is not a blanket rejection of
+    /// anything the container used to forbid.
+    #[test]
+    fn a_normal_history_passes() {
+        request_with(vec![Message::user("hello"), Message::assistant("hi")])
+            .validate_message_content()
+            .expect("a normal history is valid");
     }
 }
 
