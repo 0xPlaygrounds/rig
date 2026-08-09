@@ -135,10 +135,14 @@ jobs:
       # protoc: required to compile rig-lancedb — and the `lancedb` crate
       # itself, which the `rig` facade carries as an unconditional
       # dev-dependency. See the longer note on ci.yaml's `test` job.
+      #
+      # No sccache: the all-features sweep mints by far the most
+      # per-compilation-unit cache entries, this lane is not
+      # latency-critical, and the repo's 10GB Actions cache quota is
+      # contended — see the sccache input's note in the rust-setup action.
       - name: Install Rust stable
         uses: ./.github/actions/rust-setup
         with:
-          sccache: "true"
           nextest: "true"
           protoc: "true"
 

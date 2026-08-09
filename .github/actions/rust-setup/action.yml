@@ -29,8 +29,17 @@ inputs:
   target:
     description: Additional compilation target (e.g. wasm32-unknown-unknown)
     default: ""
+  cache:
+    description: Enable rust-cache (disable for jobs that compile nothing)
+    default: "true"
   sccache:
-    description: Enable sccache with the GitHub Actions cache backend
+    description: >-
+      Enable sccache with the GitHub Actions cache backend. Reserved for the
+      critical-path jobs: every enabled job adds thousands of small
+      per-compilation-unit cache entries, and the repo's 10GB Actions cache
+      quota is contended — exceeding it evicts rust-cache blobs LRU-style
+      and randomly re-colds whole jobs, which costs far more than sccache
+      saves.
     default: "false"
   nextest:
     description: Install cargo-nextest
@@ -76,6 +85,7 @@ runs:
         toolchain: ${{ env.RIG_CI_TOOLCHAIN }}
         components: ${{ inputs.components }}
         target: ${{ inputs.target }}
+        cache: ${{ inputs.cache }}
 
     # rust-cache (inside setup-rust-toolchain above) persists *dependency*
     # artifacts but always recompiles the workspace's own crates; sccache

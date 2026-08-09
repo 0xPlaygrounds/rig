@@ -31,10 +31,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # cache: false — this job runs rustfmt and shell scripts, compiles
+      # nothing, and its rust-cache entry was 200MB of pure quota pressure.
       - name: Install Rust stable
         uses: ./.github/actions/rust-setup
         with:
           components: rustfmt
+          cache: "false"
 
       - name: Run cargo fmt
         run: cargo fmt -- --check
@@ -392,11 +395,12 @@ jobs:
         uses: actions/checkout@v5
 
       # protoc: required to compile rig-lancedb (and the facade's lance
-      # dev-dependency chain).
+      # dev-dependency chain). No sccache: this job is off the critical path
+      # and rustdoc's doctest execution is not cacheable anyway — see the
+      # quota note on the sccache input in the rust-setup action.
       - name: Install Rust stable
         uses: ./.github/actions/rust-setup
         with:
-          sccache: "true"
           protoc: "true"
 
       # No API keys needed: the doctests that actually execute are pure (the
