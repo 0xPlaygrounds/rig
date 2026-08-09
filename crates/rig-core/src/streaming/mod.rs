@@ -1097,13 +1097,14 @@ impl Stream for StreamingCompletionResponse {
             return match Pin::new(&mut stream.inner).poll_next(cx) {
                 Poll::Pending => Poll::Pending,
                 Poll::Ready(None) => {
-                    // This is run at the end of the inner stream to collect all tokens into
-                    // a single unified `Message`. `finish` is never empty, so the
-                    // conversion cannot fail.
-                    if let Some(choice) =
-                        Some(stream.parts.finish()).filter(|items| !items.is_empty())
-                    {
-                        stream.choice = choice;
+                    // Run at the end of the inner stream to collect all tokens
+                    // into a single unified `Message`. `finish` can now be
+                    // empty — a turn that streamed nothing is no longer padded
+                    // with a fabricated empty-text part — and an empty result
+                    // leaves the already-empty `choice` alone.
+                    let finished = stream.parts.finish();
+                    if !finished.is_empty() {
+                        stream.choice = finished;
                     }
                     stream.finished = true;
 

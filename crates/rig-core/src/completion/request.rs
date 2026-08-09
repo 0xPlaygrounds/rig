@@ -724,7 +724,7 @@ impl CompletionRequest {
     /// Reject a request with no messages, or a message that carries no content.
     ///
     /// Removing the non-empty container removed two guarantees at once, and this
-    /// is where both are restated as a check that runs before the network:
+    /// is where both are restated:
     ///
     /// - `chat_history` was non-empty by construction. As a `Vec` it is not, and
     ///   the field is public, so `CompletionRequest { chat_history: vec![], .. }`
@@ -747,6 +747,13 @@ impl CompletionRequest {
     /// empty one would be a new restriction rather than a relocated enforcement
     /// point, and would break a history carrying a conditionally built preamble
     /// that resolved to `""`.
+    ///
+    /// **Where this runs.** Both request entry points call it:
+    /// [`CompletionRequestBuilder::send`]/[`CompletionRequestBuilder::stream`]
+    /// for a direct call, and `ModelHandle::completion`/`stream` for everything
+    /// the agent loop drives — which does not go through the builder, and is
+    /// most traffic. Handing a request straight to a provider model bypasses
+    /// both; call this yourself there.
     pub fn validate_message_content(&self) -> Result<(), CompletionError> {
         if self.chat_history.is_empty() {
             return Err(CompletionError::RequestError(
@@ -1184,11 +1191,10 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             chat_history.insert(0, Message::system(preamble));
         }
 
-        chat_history.push(prompt.clone());
-
-        let chat_history = Some(chat_history)
-            .filter(|items| !items.is_empty())
-            .unwrap_or_else(|| vec![prompt]);
+        // The push is what makes the history non-empty, so the fallback that
+        // used to follow could never be taken — and it forced a clone of the
+        // prompt to feed it.
+        chat_history.push(prompt);
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,

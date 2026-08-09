@@ -810,43 +810,41 @@ impl TryFrom<message::UserContent> for UserContent {
 pub fn user_content_to_messages(
     value: Vec<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
-    {
-        fn flush_user_content(
-            messages: &mut Vec<Message>,
-            pending: &mut Vec<UserContent>,
-        ) -> Result<(), message::MessageError> {
-            if pending.is_empty() {
-                return Ok(());
-            }
-
-            let content = crate::message::require_non_empty(std::mem::take(pending), || {
-                message::MessageError::ConversionError(
-                    "OpenAI user message did not contain any non-tool content".into(),
-                )
-            })?;
-            messages.push(Message::User {
-                content,
-                name: None,
-            });
-            Ok(())
+    fn flush_user_content(
+        messages: &mut Vec<Message>,
+        pending: &mut Vec<UserContent>,
+    ) -> Result<(), message::MessageError> {
+        if pending.is_empty() {
+            return Ok(());
         }
 
-        let mut messages = Vec::new();
-        let mut pending = Vec::new();
-
-        for content in value {
-            match content {
-                message::UserContent::ToolResult(tool_result) => {
-                    flush_user_content(&mut messages, &mut pending)?;
-                    messages.push(tool_result.try_into()?);
-                }
-                content => pending.push(content.try_into()?),
-            }
-        }
-
-        flush_user_content(&mut messages, &mut pending)?;
-        Ok(messages)
+        let content = crate::message::require_non_empty(std::mem::take(pending), || {
+            message::MessageError::ConversionError(
+                "OpenAI user message did not contain any non-tool content".into(),
+            )
+        })?;
+        messages.push(Message::User {
+            content,
+            name: None,
+        });
+        Ok(())
     }
+
+    let mut messages = Vec::new();
+    let mut pending = Vec::new();
+
+    for content in value {
+        match content {
+            message::UserContent::ToolResult(tool_result) => {
+                flush_user_content(&mut messages, &mut pending)?;
+                messages.push(tool_result.try_into()?);
+            }
+            content => pending.push(content.try_into()?),
+        }
+    }
+
+    flush_user_content(&mut messages, &mut pending)?;
+    Ok(messages)
 }
 
 /// Convert rig assistant content into OpenAI chat messages.
@@ -856,58 +854,56 @@ pub fn user_content_to_messages(
 pub fn assistant_content_to_messages(
     value: Vec<message::AssistantContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
-    {
-        let mut text_content = Vec::new();
-        let mut tool_calls = Vec::new();
-        // Distinct reasoning blocks are joined with a newline (matching
-        // `display_text()`'s own inter-block separator) rather than glued
-        // together, so replayed multi-block reasoning keeps its boundaries.
-        let mut reasoning_parts: Vec<String> = Vec::new();
+    let mut text_content = Vec::new();
+    let mut tool_calls = Vec::new();
+    // Distinct reasoning blocks are joined with a newline (matching
+    // `display_text()`'s own inter-block separator) rather than glued
+    // together, so replayed multi-block reasoning keeps its boundaries.
+    let mut reasoning_parts: Vec<String> = Vec::new();
 
-        for content in value {
-            match content {
-                message::AssistantContent::Text(text) => text_content.push(text),
-                message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
-                message::AssistantContent::Reasoning(reasoning) => {
-                    let display = reasoning.display_text();
-                    if !display.is_empty() {
-                        reasoning_parts.push(display);
-                    }
-                }
-                message::AssistantContent::Image(_) => {
-                    return Err(message::MessageError::ConversionError(
-                        "OpenAI assistant messages do not support image content in chat completions"
-                            .into(),
-                    ));
+    for content in value {
+        match content {
+            message::AssistantContent::Text(text) => text_content.push(text),
+            message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
+            message::AssistantContent::Reasoning(reasoning) => {
+                let display = reasoning.display_text();
+                if !display.is_empty() {
+                    reasoning_parts.push(display);
                 }
             }
+            message::AssistantContent::Image(_) => {
+                return Err(message::MessageError::ConversionError(
+                    "OpenAI assistant messages do not support image content in chat completions"
+                        .into(),
+                ));
+            }
         }
-
-        if text_content.is_empty() && tool_calls.is_empty() {
-            return Ok(vec![]);
-        }
-
-        Ok(vec![Message::Assistant {
-            content: text_content
-                .into_iter()
-                .map(|content| content.text.into())
-                .collect::<Vec<_>>(),
-            reasoning: if reasoning_parts.is_empty() {
-                None
-            } else {
-                Some(reasoning_parts.join("\n"))
-            },
-            refusal: None,
-            audio: None,
-            name: None,
-            tool_calls: tool_calls
-                .into_iter()
-                .map(|tool_call| tool_call.into())
-                .collect::<Vec<_>>(),
-            reasoning_details: Vec::new(),
-            images: Vec::new(),
-        }])
     }
+
+    if text_content.is_empty() && tool_calls.is_empty() {
+        return Ok(vec![]);
+    }
+
+    Ok(vec![Message::Assistant {
+        content: text_content
+            .into_iter()
+            .map(|content| content.text.into())
+            .collect::<Vec<_>>(),
+        reasoning: if reasoning_parts.is_empty() {
+            None
+        } else {
+            Some(reasoning_parts.join("\n"))
+        },
+        refusal: None,
+        audio: None,
+        name: None,
+        tool_calls: tool_calls
+            .into_iter()
+            .map(|tool_call| tool_call.into())
+            .collect::<Vec<_>>(),
+        reasoning_details: Vec::new(),
+        images: Vec::new(),
+    }])
 }
 
 impl TryFrom<message::Message> for Vec<Message> {

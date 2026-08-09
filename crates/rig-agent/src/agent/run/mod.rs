@@ -1102,9 +1102,10 @@ impl AgentRun {
             .items
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
-        if resolving.items.is_empty() {
-            resolving.items.push(AssistantContent::text(""));
-        }
+        // Dropping the last item leaves the turn empty, which is now
+        // representable. This used to push a fabricated empty-text part so the
+        // content type stayed satisfied; `is_empty_assistant_turn` keeps such a
+        // turn out of history further along.
         self.state = RunState::ResolvingToolCalls(resolving);
         self.advance_resolution()
     }

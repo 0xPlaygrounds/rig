@@ -1030,7 +1030,11 @@ impl StreamingTurnSource {
         record_telemetry_content: bool,
     ) -> Self {
         Self {
-            last_final_choice: vec![AssistantContent::text("")],
+            // Nothing has streamed yet, so the last final choice is nothing.
+            // This was a fabricated empty-text part for want of an empty
+            // representation; `is_empty_assistant_turn` treated it as empty
+            // anyway, so the two are equivalent — this one is just honest.
+            last_final_choice: Vec::new(),
             last_message_id: None,
             agent_name,
             created_agent_span,

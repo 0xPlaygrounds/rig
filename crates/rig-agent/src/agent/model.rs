@@ -154,13 +154,24 @@ impl ModelHandle {
 
 /// A handle behaves exactly like the model it erased, with capabilities served
 /// from the snapshot captured at erasure time.
+///
+/// Both entry points validate message content first. Message content and
+/// `chat_history` were non-empty by construction until they became `Vec`s;
+/// [`CompletionRequest::validate_message_content`] is where that guarantee now
+/// lives, and this is the choke point the agent loop converges on — validating
+/// only in `CompletionRequestBuilder::send`/`stream` would leave every
+/// agent-driven request unchecked, which is most of them.
 impl CompletionModel for ModelHandle {
     fn completion(
         &self,
         request: CompletionRequest,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        self.inner.model.completion(request)
+        let inner = Arc::clone(&self.inner);
+        async move {
+            request.validate_message_content()?;
+            inner.model.completion(request).await
+        }
     }
 
     fn stream(
@@ -168,7 +179,11 @@ impl CompletionModel for ModelHandle {
         request: CompletionRequest,
     ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        self.inner.model.stream(request)
+        let inner = Arc::clone(&self.inner);
+        async move {
+            request.validate_message_content()?;
+            inner.model.stream(request).await
+        }
     }
 
     fn capabilities(&self) -> ProviderCapabilities {

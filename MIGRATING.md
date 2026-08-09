@@ -357,10 +357,12 @@ association.
 Message content was a non-empty container, so a turn the model ended without
 text and without tool calls — a tool-call-only turn whose calls were all
 dropped, a content-filtered turn, a truncated stream, a local model emitting
-EOS immediately — could not be represented. Seven production sites papered over
+EOS immediately — could not be represented. Six production sites papered over
 that by pushing an `AssistantContent::text("")` the model never produced, and
 that fabricated part reached history and the wire indistinguishably from a real
-empty text block.
+empty text block. (A seventh `text("")`, in the streaming accumulator's
+`ensure_text_block`, is not a sentinel: it opens a slot that deltas fill, and
+`finish` drops it if nothing ever arrives. That one stays.)
 
 Content is a `Vec` now, so the honest representation exists and the fabrication
 is gone. What changes for you:
@@ -373,18 +375,63 @@ is gone. What changes for you:
 - rig keeps reading the old shape. `is_empty_assistant_turn` recognises both a
   genuinely empty turn and the legacy sentinel, so stored conversations keep
   round-tripping; nothing produces the sentinel any more.
-- Two internal guards that cancelled a run on "lost assistant content" no longer
-  fire. They were unreachable while the padding existed, and reachable they
-  would have failed runs that previously succeeded.
+- Three internal guards no longer fire: two that cancelled a run on "lost
+  assistant content" and one in `rig-candle`. All three were unreachable while
+  the padding existed, and reachable they would have failed runs that previously
+  succeeded.
+- Anthropic's empty `end_turn` follow-up — documented by Anthropic, and the
+  reason the sentinel existed on that path — now normalizes to an empty choice
+  rather than one empty-text part. The recorded provider response is unchanged;
+  only rig's spelling of it is.
 
-#### An empty content array now deserializes instead of erroring
+#### Decoding accepts two shapes it used to reject: `[]` and `null`
 
-The removed container's `Deserialize` implemented only `visit_seq` and rejected
-`[]`. Its JSON was otherwise byte-identical to `Vec`'s, which is why no recorded
-provider fixture changes in this release. The one input that behaved differently
-is the empty array: it was an error, and it is now an empty list. If you relied
-on deserialization to reject `"content": []`, that rejection now happens at the
-request boundary (see below) rather than in serde.
+The removed container's `Deserialize` implemented only `visit_seq`. Its JSON was
+otherwise byte-identical to `Vec`'s, which is why no recorded provider fixture
+changes in this release — but two inputs that used to raise a local parse error
+now decode to an empty `Vec`:
+
+- an **empty array** (`[]`), which the container rejected outright;
+- **`null`**, on the fields that moved from the deleted `string_or_one_or_many`
+  onto `json_utils::string_or_vec` — anthropic `Message.content` and
+  `Content::ToolResult.content`, plus the OpenAI chat and Responses-API
+  system/user content. `string_or_vec` carries `visit_none`/`visit_unit` arms
+  its predecessor did not, and those arms cannot simply be dropped: the OpenAI
+  assistant-content field that already used this helper depends on them, because
+  OpenAI sends `"content": null` for a message whose only payload is tool calls.
+
+If you fed rig a history with a null or empty content field and relied on the
+decode to reject it, that check is now yours. The value survives as an empty
+content list; on the request path it is caught by
+`CompletionRequest::validate_message_content` before the network, but a value
+you hand straight to a provider is re-emitted as `"content": []`, which
+providers generally reject at the API.
+
+#### A tool whose `Output` is `Vec<ToolResultContent>` now sends rich content
+
+This is the change in this release that alters a wire payload with no compile
+error to announce it, so check any tool that returns a list of
+`ToolResultContent`.
+
+`IntoToolOutput` preserves the canonical rich-content types ahead of its
+`Serialize` fallback, so returning an image does not silently become a JSON
+object. That guard used to name `OneOrMany<ToolResultContent>`; it now names
+`Vec<ToolResultContent>`. Three consequences:
+
+- `type Output = OneOrMany<ToolResultContent>` no longer compiles. Change it to
+  `Vec<ToolResultContent>` and the behaviour you had is preserved.
+- `type Output = Vec<ToolResultContent>` **compiles unchanged and behaves
+  differently.** It used to miss the guard and fall through to serialization,
+  reaching the model as a single JSON tool result
+  (`[{"type":"text",...}, ...]`). It now takes the rich path and reaches the
+  model as N ordered content blocks, with images sent as image parts. For nearly
+  every tool that is the intended result — it is what the `OneOrMany` guard
+  always did — but it is a payload change, and a prompt that parsed that JSON
+  array out of the tool result needs updating.
+- An **empty** `Vec<ToolResultContent>` now produces a content-less `ToolOutput`
+  (`content: []`, with `as_text()` and `as_json()` both `None`) where it used to
+  produce `json([])`. Return an explicit `serde_json::json!([])` for the old
+  shape.
 
 #### Two provider guards became reachable, and one stopped rejecting a real outcome
 
@@ -433,7 +480,7 @@ The migration at your call sites:
 | `OneOrMany<T>` | `Vec<T>` |
 | `OneOrMany::one(x)` | `vec![x]` |
 | `OneOrMany::many(xs)` → `Result<_, EmptyListError>` | the `Vec` itself; use `message::require_non_empty` where you were relying on the rejection |
-| `OneOrMany::merge(xs)` | `xs.into_iter().flatten().collect()` |
+| `OneOrMany::merge(xs)` → `Result<_, EmptyListError>` | `xs.into_iter().flatten().collect()` — the `?` is gone: `merge` returned `Err(EmptyListError)` when the flattened result was empty, this yields an empty `Vec`. Add your own check if you relied on the rejection |
 | `OneOrMany::from_iter_optional(xs)` | `Some(xs).filter(\|items\| !items.is_empty())` |
 | `.first()` / `.last()` → owned `T` | `.first()` / `.last()` → `Option<&T>` |
 | `.first_ref()` / `.last_ref()` → `&T` | `.first()` / `.last()` → `Option<&T>` |
@@ -463,8 +510,12 @@ The container was doing two jobs in opposite directions, and they separate:
 
 - **Outbound (request path).** `CompletionRequest::validate_message_content`
   rejects an empty `chat_history` and any user or assistant message with no
-  content, once, before the request is sent. `CompletionRequestBuilder::send`
-  and `::stream` call it for you.
+  content, before the request is sent. It runs at both entry points a request
+  can take: `CompletionRequestBuilder::send`/`::stream` for a direct call, and
+  `ModelHandle::completion`/`::stream` for everything the agent loop drives —
+  which is most traffic, and which does not go through the builder. If you call
+  a provider model directly, neither runs; call it yourself, or go through one
+  of those two.
 - **Inbound (response path).** Per-wire guards route through the new
   `message::require_non_empty(items, || error)`, each keeping the error message
   it already had. These reject a provider that returned nothing where its
