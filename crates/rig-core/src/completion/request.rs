@@ -686,11 +686,10 @@ pub struct CompletionRequest {
     preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     ///
-    /// [`CompletionRequestBuilder`] always appends the prompt as the last
-    /// message, so anything it builds is non-empty. The field itself no longer
-    /// enforces that — it is a plain `Vec` — so a hand-built request can carry
-    /// an empty history; [`CompletionRequest::validate_message_content`]
-    /// rejects one before it reaches a provider.
+    /// Non-empty by construction: [`CompletionRequest::new`] rejects an empty
+    /// history, and it is the only way to obtain a `CompletionRequest`.
+    /// ([`CompletionRequestBuilder`] guarantees it structurally by always
+    /// appending the prompt as the last message.)
     chat_history: Vec<Message>,
     /// The documents to be sent to the completion model provider
     documents: Vec<Document>,
@@ -786,13 +785,28 @@ impl TryFrom<CompletionRequestParts> for CompletionRequest {
 impl CompletionRequest {
     /// The only way to obtain a `CompletionRequest`. Rejects an empty chat
     /// history and empty user or assistant message content, naming the
-    /// offending role and index; see
-    /// [`CompletionRequest::validate_message_content`] for the full rule and
-    /// its rationale.
+    /// offending role and index.
     ///
-    /// [`CompletionRequestBuilder`] is the ergonomic path and funnels through
-    /// this constructor; deserialization does too, via
-    /// `#[serde(try_from = "CompletionRequestParts")]`.
+    /// Message content is a `Vec`, so "no content" is representable. Providers
+    /// are not so permissive — an empty `content` array is a 400 on most
+    /// wires, and every wire rejects a request with no messages at all — so
+    /// both are rejected here, locally and by name, instead of as a remote
+    /// provider error. Because construction is the only entry point (the
+    /// builder funnels through it, and deserialization does too via
+    /// `#[serde(try_from = "CompletionRequestParts")]`), an invalid request
+    /// does not exist: possession of a `CompletionRequest` is itself proof
+    /// the checks passed, and nothing downstream needs to re-run them.
+    ///
+    /// An *assistant* turn that carried nothing is a real provider outcome
+    /// and is dropped from history by the agent layer rather than sent, so it
+    /// never reaches here on the driven paths; a caller-supplied history
+    /// containing one is rejected like any other empty content.
+    ///
+    /// `System` content is deliberately not checked. It is a `String` and
+    /// always has been — the removed non-empty container never constrained
+    /// it — so rejecting an empty one would be a new restriction rather than
+    /// a relocated enforcement point, and would break histories carrying a
+    /// conditionally built preamble that resolved to `""`.
     pub fn new(parts: CompletionRequestParts) -> Result<Self, CompletionError> {
         let request = Self {
             model: parts.model,
@@ -898,29 +912,11 @@ impl CompletionRequest {
         }
     }
 
-    /// Reject request messages that carry no content.
-    ///
-    /// Message content is a `Vec`, so "no content" is representable. Providers
-    /// are not so permissive — an empty `content` array is a 400 on most wires —
-    /// and until this type stopped enforcing non-emptiness in its constructor,
-    /// such a message could not be built at all.
-    ///
-    /// This is the enforcement point that replaces the constructor's, and it is
-    /// strictly better placed: it names the offending message instead of
-    /// failing with a context-free "cannot create with an empty vector", and it
-    /// fails before the network round-trip. Per-wire conversions keep their own
-    /// guards for the shapes only they can judge; this one covers the providers
-    /// that never had one.
-    ///
-    /// An *assistant* turn that carried nothing is a real provider outcome and
-    /// is dropped from history rather than sent, so it never reaches here.
-    ///
-    /// `System` content is deliberately not checked. It is a `String` and
-    /// always has been — the removed type never constrained it — so rejecting
-    /// an empty one would be a new restriction rather than a relocated
-    /// enforcement point, and would break histories carrying a conditionally
-    /// built preamble that resolved to `""`.
-    pub fn validate_message_content(&self) -> Result<(), CompletionError> {
+    /// The content rule enforced by [`CompletionRequest::new`], which carries
+    /// the full rationale. Private on purpose: with construction as the only
+    /// entry point, a public validate method would only invite re-checking an
+    /// invariant the type already guarantees.
+    fn validate_message_content(&self) -> Result<(), CompletionError> {
         // The history itself was non-empty by construction until the container
         // was removed; every wire rejects a request with no messages, so the
         // check belongs here rather than as a 400 from each provider.

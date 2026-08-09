@@ -160,17 +160,11 @@ impl CompletionModel for ModelHandle {
         request: CompletionRequest,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        // Every agent model call funnels through this handle, so it is where
-        // the agent path gets the same empty-content pre-flight the builder
-        // terminals apply — failing with a message that names the offending
-        // turn instead of a provider 400. Sibling precedent: `prepare` already
-        // rejects impossible tool_choice/tool-set combinations here rather than
-        // paying for a round trip.
+        // No content pre-flight here: `CompletionRequest::new` is the only way
+        // to obtain a request, so possession of one is proof its content
+        // already passed the empty-history and empty-message checks.
         let inner = self.inner.clone();
-        async move {
-            request.validate_message_content()?;
-            inner.model.completion(request).await
-        }
+        async move { inner.model.completion(request).await }
     }
 
     fn stream(
@@ -179,10 +173,7 @@ impl CompletionModel for ModelHandle {
     ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
         let inner = self.inner.clone();
-        async move {
-            request.validate_message_content()?;
-            inner.model.stream(request).await
-        }
+        async move { inner.model.stream(request).await }
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
