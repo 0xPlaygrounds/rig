@@ -2510,7 +2510,7 @@ where
     /// request either way.
     pub async fn raw_completion(
         &self,
-        mut completion_request: completion::CompletionRequest,
+        completion_request: completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
         let request_model = completion_request
             .model()
@@ -2527,16 +2527,22 @@ where
         )
         .build();
 
-        // Check if max_tokens is set, required for Anthropic
-        if completion_request.max_tokens().is_none() {
+        // Anthropic requires `max_tokens`; a request that lacks it takes the
+        // model default. A built request is immutable, so the default is
+        // applied by re-construction rather than assignment.
+        let completion_request = if completion_request.max_tokens().is_none() {
             if let Some(tokens) = self.default_max_tokens {
-                completion_request.max_tokens = Some(tokens);
+                let mut parts = completion_request.into_parts();
+                parts.max_tokens = Some(tokens);
+                completion::CompletionRequest::new(parts)?
             } else {
                 return Err(CompletionError::RequestError(
                     "`max_tokens` must be set for Anthropic".into(),
                 ));
             }
-        }
+        } else {
+            completion_request
+        };
 
         let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
             model: &request_model,
@@ -3141,7 +3147,7 @@ mod tests {
         tools: Vec<completion::ToolDefinition>,
         additional_params: Option<serde_json::Value>,
     ) -> CompletionRequest {
-        CompletionRequest {
+        CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: Some("System prompt".to_string()),
             chat_history: vec![message::Message::from("Hello")],
@@ -3153,14 +3159,15 @@ mod tests {
             additional_params,
             output_schema: None,
             record_telemetry_content: false,
-        }
+        })
+        .expect("request should build")
     }
 
     fn completion_request_with_history(
         chat_history: Vec<message::Message>,
         preamble: Option<String>,
     ) -> CompletionRequest {
-        CompletionRequest {
+        CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble,
             chat_history,
@@ -3172,7 +3179,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        }
+        })
+        .expect("request should build")
     }
 
     fn system_has_cache_control(value: &serde_json::Value) -> bool {
@@ -3264,7 +3272,7 @@ mod tests {
 
     #[test]
     fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
-        let mut request = completion_request_with_history(
+        let mut parts = completion_request_with_history(
             vec![
                 message::Message::System {
                     content: "Global history instruction.".to_string(),
@@ -3276,12 +3284,14 @@ mod tests {
                 message::Message::user("Answer from the document."),
             ],
             None,
-        );
-        request.documents = vec![completion::Document {
+        )
+        .into_parts();
+        parts.documents = vec![completion::Document {
             id: "doc".to_string(),
             text: "Document context.".to_string(),
             additional_props: Default::default(),
         }];
+        let request = completion::CompletionRequest::new(parts).expect("request should build");
 
         let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
             model: CLAUDE_OPUS_4_8,
@@ -6041,7 +6051,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)
@@ -6075,7 +6088,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)
@@ -6110,7 +6126,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = model.stream(request).await.expect("stream should start");
 

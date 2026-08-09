@@ -397,7 +397,8 @@ mod tests {
                     text: "Definition of glarb-glarb: an ancient tool.".to_string(),
                     additional_props: Default::default(),
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
         let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))
             .expect("request conversion should succeed");
@@ -416,7 +417,7 @@ mod tests {
 
     #[test]
     fn xai_direct_request_keeps_documents_after_system_messages() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![
@@ -437,7 +438,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let xai_request = XAICompletionRequest::try_from(("grok-4-0709", request))
             .expect("request conversion should succeed");
@@ -490,7 +492,8 @@ mod tests {
             .tool_choice(ToolChoice::Specific {
                 function_names: vec!["beta".to_string()],
             })
-            .build();
+            .build()
+            .expect("request should build");
 
         let xai_request = XAICompletionRequest::try_from(("grok-4.3", request))
             .expect("xAI Responses API should support specific tool choice");
@@ -670,7 +673,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(crate::providers::xai::completion::GROK_4);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)
@@ -700,7 +706,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(crate::providers::xai::completion::GROK_4);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)

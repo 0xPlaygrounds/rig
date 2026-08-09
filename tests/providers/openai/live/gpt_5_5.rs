@@ -427,7 +427,7 @@ async fn responses_websocket_smoke() -> anyhow::Result<()> {
 
     let request = model
         .completion_request("Explain one benefit of websocket mode in one sentence.")
-        .build();
+        .build()?;
     session.send(request).await?;
 
     let mut streamed_text = String::new();

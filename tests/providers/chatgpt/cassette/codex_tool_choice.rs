@@ -38,7 +38,8 @@ async fn required_forces_a_tool_call() {
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -71,7 +72,8 @@ async fn none_suppresses_tool_calls() {
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::None)
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -114,7 +116,8 @@ async fn specific_single_function_targets_named_tool() {
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -174,7 +177,8 @@ async fn specific_multiple_functions_use_allowed_tools() {
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Adder::NAME.to_string(), Subtract::NAME.to_string()],
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)

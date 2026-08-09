@@ -315,7 +315,8 @@ async fn long_history_replay_nonstreaming() {
                 .completion_request("Look up the harbor label with the tool.")
                 .preamble(preamble.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .build()
+                .expect("request should build");
             let first_response = model
                 .completion(first_request)
                 .await
@@ -366,7 +367,8 @@ async fn long_history_replay_nonstreaming() {
                 )))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)

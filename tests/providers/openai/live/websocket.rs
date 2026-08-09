@@ -32,13 +32,13 @@ async fn websocket_session_roundtrip() -> Result<()> {
     let warmup_request = model
         .completion_request("You will answer a follow-up question about websocket mode.")
         .preamble("Be precise and concise.".to_string())
-        .build();
+        .build()?;
     let warmup_id = session.warmup(warmup_request).await?;
     anyhow::ensure!(!warmup_id.is_empty(), "warmup should return a response id");
 
     let request = model
         .completion_request("Explain the benefit of websocket mode in one sentence.")
-        .build();
+        .build()?;
     session.send(request).await?;
 
     let mut streamed_text = String::new();
@@ -70,7 +70,7 @@ async fn websocket_session_roundtrip() -> Result<()> {
 
     let chained_request = model
         .completion_request("Now restate that as three very short bullet points.")
-        .build();
+        .build()?;
     let response = session.completion(chained_request).await?;
     let text = extract_text(&response.choice);
     assert_nonempty_response(&text);

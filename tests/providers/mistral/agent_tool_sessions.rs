@@ -707,7 +707,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .preamble("Use the requested tool call and no prose before it.".to_string())
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()?;
 
             let observation = collect_raw_stream_observation(model.stream(request).await?).await;
 
@@ -761,7 +761,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
-                .build();
+                .build()?;
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -789,7 +789,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
                         .completion_request("Call lookup_harbor_label exactly once with an empty object.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Auto)
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             anyhow::ensure!(
@@ -808,7 +808,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
                         .completion_request("Call lookup_harbor_label exactly once with an empty object and do not answer in prose.")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             anyhow::ensure!(
@@ -830,7 +830,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             let specific_calls = specific
@@ -853,7 +853,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
                         .completion_request("Do not call tools. Reply with exactly this phrase: no-tool-answer")
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             let none_text = assistant_text_response(&none.choice)
@@ -884,7 +884,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 )
                 .preamble("Return only valid JSON. No markdown.".to_string())
                 .additional_params(json!({"response_format": { "type": "json_object" }}))
-                .build();
+                .build()?;
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -926,7 +926,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
                 )
                 .preamble("Return only the requested structured object.".to_string())
                 .output_schema(schemars::schema_for!(StructuredReleasePlan))
-                .build();
+                .build()?;
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)

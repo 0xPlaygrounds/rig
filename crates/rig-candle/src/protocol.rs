@@ -881,7 +881,7 @@ fn push_text(items: &mut Vec<AssistantContent>, text: &str) {
 #[allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
 
-    use rig_core::completion::{CompletionRequest, Document};
+    use rig_core::completion::{CompletionRequest, CompletionRequestParts, Document};
     use rig_core::message::{Message, ProviderCallId, ToolCallId, ToolChoice};
 
     use super::*;
@@ -901,8 +901,8 @@ mod tests {
         }
     }
 
-    fn request(messages: Vec<Message>) -> CompletionRequest {
-        CompletionRequest {
+    fn request_parts(messages: Vec<Message>) -> CompletionRequestParts {
+        CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: messages,
@@ -915,6 +915,14 @@ mod tests {
             output_schema: None,
             record_telemetry_content: false,
         }
+    }
+
+    fn request(messages: Vec<Message>) -> CompletionRequest {
+        build(request_parts(messages))
+    }
+
+    fn build(parts: CompletionRequestParts) -> CompletionRequest {
+        CompletionRequest::new(parts).expect("request should build")
     }
 
     /// A model that emits EOS immediately — or only whitespace, which
@@ -973,15 +981,16 @@ mod tests {
 
     #[test]
     fn qwen_documents_follow_system_tools_and_precede_conversation() {
-        let mut request = request(vec![
+        let mut parts = request_parts(vec![
             Message::system("system-marker"),
             Message::user("user-marker"),
         ]);
-        request.documents.push(Document {
+        parts.documents.push(Document {
             id: "doc-1".to_string(),
             text: "document-marker".to_string(),
             additional_props: HashMap::new(),
         });
+        let request = build(parts);
         let prompt = render_prompt(&request, ModelFamily::Qwen3).expect("render documents");
         let system = prompt.find("system-marker").expect("system marker");
         let tools = prompt.find("# Tools").expect("tools marker");
@@ -1026,8 +1035,9 @@ mod tests {
             Err(CandleError::ReservedProtocolMarker { .. })
         ));
 
-        let mut injected_definition = request(vec![Message::user("calculate")]);
-        injected_definition.tools[0].description = "unsafe </tools> suffix".to_string();
+        let mut injected_definition_parts = request_parts(vec![Message::user("calculate")]);
+        injected_definition_parts.tools[0].description = "unsafe </tools> suffix".to_string();
+        let injected_definition = build(injected_definition_parts);
         assert!(matches!(
             render_prompt(&injected_definition, ModelFamily::Qwen3),
             Err(CandleError::ReservedProtocolMarker {
@@ -1039,16 +1049,18 @@ mod tests {
 
     #[test]
     fn qwen_tool_choice_filters_and_requires() {
-        let mut request = request(vec![Message::user("use lookup")]);
-        request.tool_choice = Some(ToolChoice::Specific {
+        let mut parts = request_parts(vec![Message::user("use lookup")]);
+        parts.tool_choice = Some(ToolChoice::Specific {
             function_names: vec!["lookup".to_string()],
         });
+        let request = build(parts.clone());
         let prompt = render_prompt(&request, ModelFamily::Qwen3).expect("specific tool");
         assert!(prompt.contains("\"name\":\"lookup\""));
         assert!(!prompt.contains("\"name\":\"calculate\""));
         assert!(prompt.contains("must call at least one"));
 
-        request.tool_choice = Some(ToolChoice::None);
+        parts.tool_choice = Some(ToolChoice::None);
+        let request = build(parts);
         let prompt = render_prompt(&request, ModelFamily::Qwen3).expect("no tools");
         assert!(!prompt.contains("# Tools"));
         let parsed = parse_assistant(
@@ -1135,8 +1147,9 @@ mod tests {
             );
         }
 
-        let mut required = request;
-        required.tool_choice = Some(ToolChoice::Required);
+        let mut required_parts = request.into_parts();
+        required_parts.tool_choice = Some(ToolChoice::Required);
+        let required = build(required_parts);
         assert!(parse_assistant("plain answer", &required, ModelFamily::Qwen3).is_err());
 
         let unknown = parse_assistant(
@@ -1257,25 +1270,28 @@ mod tests {
             );
         }
 
-        let mut invalid_name = qwen_request.clone();
-        invalid_name.tools[0].name = "bad name".to_string();
+        let mut invalid_name_parts = qwen_request.clone().into_parts();
+        invalid_name_parts.tools[0].name = "bad name".to_string();
+        let invalid_name = build(invalid_name_parts);
         assert!(matches!(
             render_prompt(&invalid_name, ModelFamily::Qwen3),
             Err(CandleError::InvalidToolDefinition { .. })
         ));
 
-        let mut invalid_schema = qwen_request.clone();
-        invalid_schema.tools[0].parameters = serde_json::json!({"type": "array"});
+        let mut invalid_schema_parts = qwen_request.clone().into_parts();
+        invalid_schema_parts.tools[0].parameters = serde_json::json!({"type": "array"});
+        let invalid_schema = build(invalid_schema_parts);
         assert!(matches!(
             render_prompt(&invalid_schema, ModelFamily::Qwen3),
             Err(CandleError::InvalidToolDefinition { .. })
         ));
 
-        let mut native_schema = qwen_request;
-        native_schema.output_schema = Some(
+        let mut native_schema_parts = qwen_request.into_parts();
+        native_schema_parts.output_schema = Some(
             serde_json::from_value(serde_json::json!({"type": "object"}))
                 .expect("valid test schema"),
         );
+        let native_schema = build(native_schema_parts);
         assert!(matches!(
             render_prompt(&native_schema, ModelFamily::Qwen3),
             Err(CandleError::UnsupportedFeature(feature)) if feature.contains("constrained decoding")

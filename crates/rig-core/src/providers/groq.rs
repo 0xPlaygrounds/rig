@@ -382,7 +382,8 @@ mod tests {
                 function_names: vec!["choose_beta".to_string()],
             })
             .output_schema(schemars::schema_for!(serde_json::Value))
-            .build();
+            .build()
+            .expect("request should build");
 
         let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
@@ -407,7 +408,8 @@ mod tests {
         let no_tools_request =
             CompletionRequestBuilder::new(MockCompletionModel::default(), "Return JSON")
                 .output_schema(schemars::schema_for!(serde_json::Value))
-                .build();
+                .build()
+                .expect("request should build");
         let no_tools_request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
             request: no_tools_request,
@@ -433,7 +435,8 @@ mod tests {
             .additional_params(serde_json::json!({
                 "tools": [{"type": "browser_search"}, {"type": "browser_search"}],
             }))
-            .build();
+            .build()
+            .expect("request should build");
 
         let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
@@ -469,7 +472,8 @@ mod tests {
         let request =
             CompletionRequestBuilder::new(MockCompletionModel::default(), "Think about it")
                 .additional_params(additional_params)
-                .build();
+                .build()
+                .expect("request should build");
 
         let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "llama-3.3-70b-versatile".to_string(),
@@ -510,7 +514,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("llama-3.3-70b-versatile");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)
@@ -547,7 +554,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("llama-3.3-70b-versatile");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)

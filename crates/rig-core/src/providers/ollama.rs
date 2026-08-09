@@ -2124,25 +2124,27 @@ mod tests {
         use crate::message::{Text, UserContent};
 
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: Some(0.7),
-            max_tokens: Some(1024),
-            tool_choice: None,
-            additional_params: Some(json!({
-                "think": true,
-                "keep_alive": "-1m",
-                "num_ctx": 4096
-            })),
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: Some("You are a helpful assistant.".to_string()),
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: Some(0.7),
+                max_tokens: Some(1024),
+                tool_choice: None,
+                additional_params: Some(json!({
+                    "think": true,
+                    "keep_alive": "-1m",
+                    "num_ctx": 4096
+                })),
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         // Convert to OllamaCompletionRequest
         let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
@@ -2189,25 +2191,27 @@ mod tests {
         use crate::message::{Text, UserContent};
 
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: Some(0.7),
-            max_tokens: Some(1024),
-            tool_choice: None,
-            additional_params: Some(json!({
-                "think": "low",
-                "keep_alive": "-1m",
-                "num_ctx": 4096
-            })),
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: Some("You are a helpful assistant.".to_string()),
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: Some(0.7),
+                max_tokens: Some(1024),
+                tool_choice: None,
+                additional_params: Some(json!({
+                    "think": "low",
+                    "keep_alive": "-1m",
+                    "num_ctx": 4096
+                })),
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         // Convert to OllamaCompletionRequest
         let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
@@ -2254,25 +2258,27 @@ mod tests {
         use crate::message::{Text, UserContent};
 
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: Some(0.7),
-            max_tokens: Some(1024),
-            tool_choice: None,
-            additional_params: Some(json!({
-                "think": "medium",
-                "keep_alive": "-1m",
-                "num_ctx": 4096
-            })),
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: Some("You are a helpful assistant.".to_string()),
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: Some(0.7),
+                max_tokens: Some(1024),
+                tool_choice: None,
+                additional_params: Some(json!({
+                    "think": "medium",
+                    "keep_alive": "-1m",
+                    "num_ctx": 4096
+                })),
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         // Convert to OllamaCompletionRequest
         let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
@@ -2319,25 +2325,27 @@ mod tests {
         use crate::message::{Text, UserContent};
 
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: Some(0.7),
-            max_tokens: Some(1024),
-            tool_choice: None,
-            additional_params: Some(json!({
-                "think": "high",
-                "keep_alive": "-1m",
-                "num_ctx": 4096
-            })),
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: Some("You are a helpful assistant.".to_string()),
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: Some(0.7),
+                max_tokens: Some(1024),
+                tool_choice: None,
+                additional_params: Some(json!({
+                    "think": "high",
+                    "keep_alive": "-1m",
+                    "num_ctx": 4096
+                })),
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         // Convert to OllamaCompletionRequest
         let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request))
@@ -2384,25 +2392,27 @@ mod tests {
         use crate::message::{Text, UserContent};
 
         // Create a CompletionRequest with "think": true, "keep_alive", and "num_ctx" in additional_params
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: Some(0.7),
-            max_tokens: Some(1024),
-            tool_choice: None,
-            additional_params: Some(json!({
-                "think": "invalid",
-                "keep_alive": "-1m",
-                "num_ctx": 4096
-            })),
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: Some("You are a helpful assistant.".to_string()),
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: Some(0.7),
+                max_tokens: Some(1024),
+                tool_choice: None,
+                additional_params: Some(json!({
+                    "think": "invalid",
+                    "keep_alive": "-1m",
+                    "num_ctx": 4096
+                })),
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         // Convert to OllamaCompletionRequest
         let ollama_request = OllamaCompletionRequest::try_from(("qwen3:8b", completion_request));
@@ -2418,21 +2428,23 @@ mod tests {
         use crate::message::{Text, UserContent};
 
         // Create a CompletionRequest WITHOUT "think" in additional_params
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: Some(0.5),
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: Some("You are a helpful assistant.".to_string()),
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: Some(0.5),
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         // Convert to OllamaCompletionRequest
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -2473,21 +2485,23 @@ mod tests {
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: Some(1024),
-            tool_choice: None,
-            additional_params: Some(json!({ "num_predict": 42 })),
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: Some(1024),
+                tool_choice: None,
+                additional_params: Some(json!({ "num_predict": 42 })),
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
             .expect("Failed to create Ollama request");
@@ -2507,21 +2521,23 @@ mod tests {
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: Some(0.7),
-            max_tokens: Some(1024),
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: Some(0.7),
+                max_tokens: Some(1024),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
             .expect("Failed to create Ollama request");
@@ -2545,21 +2561,23 @@ mod tests {
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
-        let completion_request = CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
             .expect("Failed to create Ollama request");
@@ -2584,23 +2602,25 @@ mod tests {
         }))
         .expect("Failed to parse schema");
 
-        let completion_request = CompletionRequest {
-            model: Some("llama3.1".to_string()),
-            preamble: None,
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new(
-                    "How old is Ollama?".to_string(),
-                ))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: Some(schema),
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: Some("llama3.1".to_string()),
+                preamble: None,
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new(
+                        "How old is Ollama?".to_string(),
+                    ))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: Some(schema),
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
             .expect("Failed to create Ollama request");
@@ -2629,21 +2649,23 @@ mod tests {
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
-        let completion_request = CompletionRequest {
-            model: Some("llama3.1".to_string()),
-            preamble: None,
-            chat_history: vec![CompletionMessage::User {
-                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let completion_request =
+            CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: Some("llama3.1".to_string()),
+                preamble: None,
+                chat_history: vec![CompletionMessage::User {
+                    content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
             .expect("Failed to create Ollama request");
@@ -2782,7 +2804,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(LLAMA3_2);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = model.stream(request).await.expect("stream should open");
 
@@ -2832,7 +2857,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(LLAMA3_2);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = model.stream(request).await.expect("stream should open");
 
@@ -2884,7 +2912,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(LLAMA3_2);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = model.stream(request).await.expect("stream should open");
 
@@ -2932,7 +2963,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(LLAMA3_2);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)

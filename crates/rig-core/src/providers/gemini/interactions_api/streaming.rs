@@ -704,7 +704,10 @@ mod tests {
             .expect("build client")
             .interactions_api();
         let model = client.completion_model("gemini-2.5-pro");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
             .expect("stream should open");
@@ -755,7 +758,10 @@ mod tests {
             .expect("build client")
             .interactions_api();
         let model = client.completion_model("gemini-2.5-pro");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
             .expect("stream should open");

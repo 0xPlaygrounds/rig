@@ -49,7 +49,8 @@ async fn system_messages_are_lifted_into_instructions() {
     let request = model
         .completion_request("Reply with the exact word from the system message.")
         .message(Message::system("Always answer with the single word maple."))
-        .build();
+        .build()
+        .expect("request should build");
     let mut stream = model
         .stream(request)
         .await

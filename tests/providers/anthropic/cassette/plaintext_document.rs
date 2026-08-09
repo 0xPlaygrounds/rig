@@ -177,7 +177,8 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 )
                 .max_tokens(256)
                 .temperature(0.0)
-                .build();
+                .build()
+                .expect("request should build");
             // Raw-vs-normalized parity on a single recorded interaction: take
             // Anthropic's own response once, then normalize that same value.
             let first_turn_raw = model

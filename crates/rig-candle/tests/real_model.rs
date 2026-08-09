@@ -36,7 +36,7 @@ async fn loads_and_generates_with_a_real_local_model()
     } else {
         "Reply with one short greeting."
     };
-    let request = model.completion_request(prompt).build();
+    let request = model.completion_request(prompt).build()?;
     // The raw path carries Candle's own generated text and counters; the
     // normalized `completion()`/`stream()` surfaces are exercised further
     // below against the same request.

@@ -21,8 +21,8 @@ use rig_agent::{
         ToolCallAction, ToolResultAction, ToolResultEvent,
     },
     completion::{
-        CompletionError, CompletionModel, CompletionRequest, CompletionResponse, Message, Prompt,
-        PromptError, ProviderCapabilities, TypedPrompt, Usage,
+        CompletionError, CompletionModel, CompletionRequest, CompletionRequestParts,
+        CompletionResponse, Message, Prompt, PromptError, ProviderCapabilities, TypedPrompt, Usage,
     },
     extractor::{Extractor, ExtractorBuilder},
     streaming::{
@@ -375,7 +375,7 @@ fn beta_static(text: &str) -> BetaModel {
 }
 
 fn request(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
+    CompletionRequest::new(CompletionRequestParts {
         model: None,
         preamble: None,
         chat_history: vec![Message::user(prompt)],
@@ -387,7 +387,8 @@ fn request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
-    }
+    })
+    .expect("request should build")
 }
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
@@ -850,7 +851,7 @@ fn routing_models() -> (AlphaModel, BetaModel) {
 }
 
 fn history_has_tool_result(request: &CompletionRequest) -> bool {
-    request.chat_history.iter().any(|message| {
+    request.chat_history().iter().any(|message| {
         matches!(
             message,
             Message::User { content }
@@ -1137,7 +1138,7 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
         .into_iter()
         .next()
         .expect("beta request");
-    assert!(!beta_request.chat_history.iter().any(|message| {
+    assert!(!beta_request.chat_history().iter().any(|message| {
         matches!(
             message,
             Message::Assistant { content, .. }
@@ -1303,10 +1304,10 @@ async fn selected_model_capability_is_used_for_each_prepared_attempt() {
         .into_iter()
         .next()
         .expect("composing request");
-    assert!(composing_request.output_schema.is_some());
+    assert!(composing_request.output_schema().is_some());
     assert!(
         !composing_request
-            .tools
+            .tools()
             .iter()
             .any(|tool| tool.name.starts_with("final_result"))
     );
@@ -1316,10 +1317,10 @@ async fn selected_model_capability_is_used_for_each_prepared_attempt() {
         .into_iter()
         .next()
         .expect("noncomposing request");
-    assert!(noncomposing_request.output_schema.is_none());
+    assert!(noncomposing_request.output_schema().is_none());
     assert!(
         noncomposing_request
-            .tools
+            .tools()
             .iter()
             .any(|tool| tool.name.starts_with("final_result"))
     );
@@ -1654,7 +1655,7 @@ async fn model_selection_hooks_observe_the_merged_request_patch_on_both_surfaces
         // The merged patch reached the issued request too.
         let requests = script.requests();
         assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].temperature, Some(0.25));
+        assert_eq!(requests[0].temperature(), Some(0.25));
     }
 }
 

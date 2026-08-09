@@ -1365,31 +1365,34 @@ mod tests {
 
         let requests = model.requests();
         let request = requests.first().expect("one request");
-        assert!(request.chat_history.iter().any(
+        assert!(request.chat_history().iter().any(
             |message| matches!(message, crate::completion::Message::System { content } if content == "run preamble")
         ));
         assert!(
             request
-                .documents
+                .documents()
                 .iter()
                 .any(|document| document.text == "baseline document")
         );
         assert!(
             request
-                .documents
+                .documents()
                 .iter()
                 .any(|document| document.id == "run-one")
         );
         assert!(
             request
-                .documents
+                .documents()
                 .iter()
                 .any(|document| document.id == "run-two")
         );
-        assert_eq!(request.temperature, Some(0.7));
-        assert_eq!(request.max_tokens, Some(42));
-        assert_eq!(request.additional_params, Some(json!({"override": true})));
-        assert_eq!(request.tool_choice, Some(ToolChoice::None));
+        assert_eq!(request.temperature(), Some(0.7));
+        assert_eq!(request.max_tokens(), Some(42));
+        assert_eq!(
+            *request.additional_params(),
+            Some(json!({"override": true}))
+        );
+        assert_eq!(*request.tool_choice(), Some(ToolChoice::None));
     }
 
     #[tokio::test]
@@ -1410,11 +1413,11 @@ mod tests {
             .expect("runner request should succeed");
 
         assert_eq!(
-            model
+            *model
                 .requests()
                 .first()
                 .expect("one request")
-                .additional_params,
+                .additional_params(),
             Some(json!({"baseline": true, "override": true, "winner": "runner"}))
         );
     }
@@ -1434,7 +1437,7 @@ mod tests {
         let requests = model.requests();
         let request = requests.first().expect("one request");
         assert_eq!(
-            request.additional_params,
+            *request.additional_params(),
             Some(json!({"replacement": true}))
         );
     }
@@ -1463,14 +1466,14 @@ mod tests {
         let request = requests.first().expect("one request");
         assert!(
             !request
-                .chat_history
+                .chat_history()
                 .iter()
                 .any(|message| matches!(message, crate::completion::Message::System { .. }))
         );
-        assert_eq!(request.temperature, None);
-        assert_eq!(request.max_tokens, None);
-        assert_eq!(request.additional_params, None);
-        assert_eq!(request.tool_choice, None);
+        assert_eq!(request.temperature(), None);
+        assert_eq!(request.max_tokens(), None);
+        assert_eq!(*request.additional_params(), None);
+        assert_eq!(*request.tool_choice(), None);
     }
 
     #[tokio::test]
@@ -1558,19 +1561,19 @@ mod tests {
         );
 
         let blocking_history = serde_json::to_value(
-            &blocking_model
+            blocking_model
                 .requests()
                 .get(1)
                 .expect("second blocking request")
-                .chat_history,
+                .chat_history(),
         )
         .unwrap();
         let streaming_history = serde_json::to_value(
-            &streaming_model
+            streaming_model
                 .requests()
                 .get(1)
                 .expect("second streaming request")
-                .chat_history,
+                .chat_history(),
         )
         .unwrap();
         assert_eq!(blocking_history, streaming_history);
@@ -6874,7 +6877,7 @@ mod migrated_tests {
         async fn inspect_and_pause(&self, request: &crate::completion::CompletionRequest) {
             let request_index = self.requests.fetch_add(1, SeqCst);
             let definition = request
-                .tools
+                .tools()
                 .iter()
                 .find(|definition| definition.name == FirstGenerationTool::NAME)
                 .expect("generation tool must be advertised");
@@ -7411,17 +7414,17 @@ mod migrated_tests {
     async fn patch_request_parity_across_run_and_stream() {
         fn assert_request(req: &crate::completion::CompletionRequest) {
             assert_eq!(
-                req.temperature,
+                req.temperature(),
                 Some(0.25),
                 "override temperature wins over the agent's 0.9"
             );
             assert_eq!(
-                req.max_tokens,
+                req.max_tokens(),
                 Some(OVERRIDE_MAX_TOKENS),
                 "override max_tokens wins over the agent's 64"
             );
             // The override preamble wins and is sent as the leading system message.
-            let system = req.chat_history.iter().find_map(|m| match m {
+            let system = req.chat_history().iter().find_map(|m| match m {
                 Message::System { content } => Some(content.as_str()),
                 _ => None,
             });
@@ -7430,8 +7433,8 @@ mod migrated_tests {
                 Some(OVERRIDE_PREAMBLE),
                 "override preamble wins over the agent's baseline and is the leading system message"
             );
-            assert!(matches!(req.tool_choice, Some(ToolChoice::Required)));
-            let tool_names: Vec<&str> = req.tools.iter().map(|t| t.name.as_str()).collect();
+            assert!(matches!(req.tool_choice(), Some(ToolChoice::Required)));
+            let tool_names: Vec<&str> = req.tools().iter().map(|t| t.name.as_str()).collect();
             assert_eq!(
                 tool_names,
                 ["add"],
@@ -7439,7 +7442,7 @@ mod migrated_tests {
             );
             // The runner replaces the agent baseline, then the hook shallow-merges
             // last and therefore wins conflicts.
-            let params = req.additional_params.as_ref().expect("additional_params");
+            let params = req.additional_params().as_ref().expect("additional_params");
             assert_eq!(params.get("runner").and_then(|v| v.as_str()), Some("keep"));
             assert_eq!(params.get("injected").and_then(|v| v.as_bool()), Some(true));
             assert!(params.get("baseline").is_none());
@@ -7637,7 +7640,7 @@ mod migrated_tests {
     #[tokio::test]
     async fn extra_context_appears_after_static_context_on_both_surfaces() {
         fn assert_docs(req: &crate::completion::CompletionRequest) {
-            let ids: Vec<&str> = req.documents.iter().map(|d| d.id.as_str()).collect();
+            let ids: Vec<&str> = req.documents().iter().map(|d| d.id.as_str()).collect();
             let static_pos = ids
                 .iter()
                 .position(|id| id.starts_with("static_doc"))
@@ -7651,7 +7654,7 @@ mod migrated_tests {
                 "static context precedes hook extras: {ids:?}"
             );
             assert!(
-                req.documents.iter().any(|d| d.text == "injected"),
+                req.documents().iter().any(|d| d.text == "injected"),
                 "the hook document's text is present"
             );
         }
@@ -7711,7 +7714,7 @@ mod migrated_tests {
             .expect("run should succeed");
         let requests = probe.requests();
         let req = requests.first().expect("one request");
-        let ids: Vec<&str> = req.documents.iter().map(|d| d.id.as_str()).collect();
+        let ids: Vec<&str> = req.documents().iter().map(|d| d.id.as_str()).collect();
         assert_eq!(
             ids,
             vec!["first", "second"],
@@ -7723,7 +7726,7 @@ mod migrated_tests {
     async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_surfaces() {
         fn assert_documents(request: &crate::completion::CompletionRequest) {
             let documents = request
-                .documents
+                .documents()
                 .iter()
                 .map(|document| (document.id.as_str(), document.text.as_str()))
                 .collect::<Vec<_>>();
@@ -7795,10 +7798,10 @@ mod migrated_tests {
         );
         let streaming_requests = streaming_probe.requests();
         let request = streaming_requests.first().expect("one request");
-        assert_eq!(request.documents.len(), 1);
-        assert_eq!(request.documents[0].id, "streaming");
+        assert_eq!(request.documents().len(), 1);
+        assert_eq!(request.documents()[0].id, "streaming");
         assert_eq!(
-            request.documents[0].text,
+            request.documents()[0].text,
             "{\n  \"source\": \"streaming\"\n}"
         );
     }
@@ -7844,7 +7847,7 @@ mod migrated_tests {
 
         assert_eq!(
             probe.requests()[0]
-                .documents
+                .documents()
                 .iter()
                 .map(|document| document.id.as_str())
                 .collect::<Vec<_>>(),
@@ -8034,11 +8037,11 @@ mod migrated_tests {
             let turn1 = requests.first().expect("turn 1");
             let turn2 = requests.get(1).expect("turn 2");
             assert!(
-                turn1.documents.iter().any(|d| d.id == "turn-one"),
+                turn1.documents().iter().any(|d| d.id == "turn-one"),
                 "turn 1 carries the injected document"
             );
             assert!(
-                turn2.documents.iter().all(|d| d.id != "turn-one"),
+                turn2.documents().iter().all(|d| d.id != "turn-one"),
                 "turn 2 does not inherit turn 1's per-turn document"
             );
         }
@@ -8096,7 +8099,7 @@ mod migrated_tests {
         }
 
         fn request_has_sentinel(req: &crate::completion::CompletionRequest) -> bool {
-            req.chat_history.iter().any(|m| match m {
+            req.chat_history().iter().any(|m| match m {
                 Message::User { content } => content
                     .iter()
                     .any(|c| matches!(c, UserContent::Text(text) if text.text.contains(SENTINEL))),
@@ -8543,7 +8546,7 @@ mod migrated_tests {
             "real-tool dispatch must continue to a second model turn"
         );
         let tool_names = requests[0]
-            .tools
+            .tools()
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>();
@@ -8557,7 +8560,7 @@ mod migrated_tests {
         }
 
         assert!(
-            requests[1].chat_history.iter().any(|message| matches!(
+            requests[1].chat_history().iter().any(|message| matches!(
                 message,
                 Message::User { content }
                     if content.iter().any(|item| matches!(
@@ -8748,7 +8751,7 @@ mod migrated_tests {
         );
         let requests = probe.requests();
         let second_turn_names = requests[1]
-            .tools
+            .tools()
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>();
@@ -8873,7 +8876,11 @@ mod migrated_tests {
             !requests.is_empty(),
             "the first model request should be captured"
         );
-        let tool_names: Vec<&str> = requests[0].tools.iter().map(|t| t.name.as_str()).collect();
+        let tool_names: Vec<&str> = requests[0]
+            .tools()
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
         assert!(
             tool_names.contains(&"add"),
             "active_tools keeps `add` advertised, saw {tool_names:?}"
@@ -9534,15 +9541,15 @@ mod migrated_tests {
 
         let requests = model.requests();
         assert_eq!(requests.len(), 2);
-        let first = requests[0].chat_history.to_vec();
-        let second = requests[1].chat_history.to_vec();
+        let first = requests[0].chat_history().to_vec();
+        let second = requests[1].chat_history().to_vec();
         assert_eq!(first, vec![Message::user("question")]);
         assert_eq!(
             second, first,
             "Repeat must preserve the prompt and preceding history"
         );
-        assert_eq!(requests[0].temperature, Some(0.1));
-        assert_eq!(requests[1].temperature, Some(0.9));
+        assert_eq!(requests[0].temperature(), Some(0.1));
+        assert_eq!(requests[1].temperature(), Some(0.9));
         assert_eq!(completion_patch.calls(), 2);
     }
 
@@ -9577,7 +9584,7 @@ mod migrated_tests {
         );
         let second_request = &model.requests()[1];
         assert_eq!(
-            second_request.chat_history.to_vec(),
+            second_request.chat_history().to_vec(),
             vec![
                 Message::user("question"),
                 Message::assistant("rejected"),
@@ -9619,7 +9626,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1].chat_history.to_vec(),
+            model.requests()[1].chat_history().to_vec(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),
@@ -9806,7 +9813,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1].chat_history.to_vec(),
+            model.requests()[1].chat_history().to_vec(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),

@@ -106,7 +106,7 @@ fn driver() -> conformance::WireDriver {
             let model = client.completion_model("gpt-5.4");
             let mut session = client.responses_websocket("gpt-5.4").await?;
             session
-                .send(model.completion_request("hello").build())
+                .send(model.completion_request("hello").build()?)
                 .await?;
 
             // Collect the turn exactly as the production session loop does:

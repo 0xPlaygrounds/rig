@@ -639,7 +639,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .preamble("Use the requested tool call and no prose before it.".to_string())
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()?;
 
             let observation = collect_raw_stream_observation(model.stream(request).await?).await;
 
@@ -698,7 +698,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
-                .build();
+                .build()?;
 
             let raw = model.raw_completion(request).await?;
             assert_raw_response_metadata(&raw);
@@ -735,7 +735,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             anyhow::ensure!(
@@ -759,7 +759,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             let specific_calls = specific
@@ -784,7 +784,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             let none_text = assistant_text_response(&none.choice)
@@ -817,7 +817,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 .additional_params(json!({
                     "reasoning": { "effort": "low", "summary": "detailed" }
                 }))
-                .build();
+                .build()?;
 
             let raw = model.raw_completion(request).await?;
 
@@ -909,7 +909,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                         }
                     }
                 }))
-                .build();
+                .build()?;
 
             let raw = model.raw_completion(request).await?;
             assert_raw_response_metadata(&raw);

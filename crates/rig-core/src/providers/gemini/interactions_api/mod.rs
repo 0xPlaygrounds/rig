@@ -2694,7 +2694,7 @@ mod tests {
             content: vec![message::UserContent::text("Hello")],
         };
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             record_telemetry_content: false,
             model: None,
             preamble: Some("Be precise.".to_string()),
@@ -2706,7 +2706,8 @@ mod tests {
             tool_choice: Some(MessageToolChoice::Required),
             additional_params: None,
             output_schema: None,
-        };
+        })
+        .expect("request should build");
 
         let result = create_request_body("gemini-2.5-flash".to_string(), request, Some(false))
             .expect("request should build");
@@ -2774,7 +2775,7 @@ mod tests {
             }],
         };
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             record_telemetry_content: false,
             model: None,
             preamble: None,
@@ -2802,7 +2803,8 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
-        };
+        })
+        .expect("request should build");
 
         let body = create_request_body("gemini-2.5-flash".to_string(), request, None)
             .expect("request should build");
@@ -3010,7 +3012,7 @@ mod tests {
                 }),
             ],
         });
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             record_telemetry_content: false,
             model: None,
             preamble: None,
@@ -3024,7 +3026,8 @@ mod tests {
             tool_choice: None,
             additional_params: None,
             output_schema: None,
-        };
+        })
+        .expect("request should build");
 
         let request = create_request_body("gemini-2.5-flash".to_string(), request, None)
             .expect("request should build");

@@ -1903,7 +1903,7 @@ pub mod fixtures {
                         .build()?
                         .completions_api();
                     let model = client.completion_model("gpt-4o");
-                    let request = model.completion_request("hello").build();
+                    let request = model.completion_request("hello").build()?;
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)
                 })
@@ -2011,7 +2011,7 @@ pub mod fixtures {
                         .api_key("test-key")
                         .build()?;
                     let model = client.completion_model("gpt-5.4");
-                    let request = model.completion_request("hello").build();
+                    let request = model.completion_request("hello").build()?;
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)
                 })
@@ -2270,7 +2270,7 @@ pub mod fixtures {
                         .http_client(crate::test_utils::RecordingHttpClient::new(body))
                         .build()?;
                     let model = client.completion_model("gpt-5.4");
-                    let request = model.completion_request("hello").build();
+                    let request = model.completion_request("hello").build()?;
                     let response = model.completion(request).await?;
                     Ok(response.choice)
                 })
@@ -2413,7 +2413,7 @@ pub mod fixtures {
                     let model = client.completion_model(
                         crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
                     );
-                    let request = model.completion_request("hello").build();
+                    let request = model.completion_request("hello").build()?;
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)
                 })
@@ -2551,7 +2551,7 @@ pub mod fixtures {
                         .build()?
                         .interactions_api();
                     let model = client.completion_model("gemini-2.5-pro");
-                    let request = model.completion_request("hello").build();
+                    let request = model.completion_request("hello").build()?;
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)
                 })
@@ -2682,7 +2682,7 @@ pub mod fixtures {
                     let model = client.completion_model(
                         crate::providers::anthropic::completion::CLAUDE_SONNET_4_6,
                     );
-                    let request = model.completion_request("hello").build();
+                    let request = model.completion_request("hello").build()?;
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)
                 })
@@ -2803,7 +2803,7 @@ pub mod fixtures {
                         .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?;
                     let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-                    let request = model.completion_request("hello").build();
+                    let request = model.completion_request("hello").build()?;
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)
                 })
@@ -2920,7 +2920,7 @@ pub mod fixtures {
                         .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?;
                     let model = client.completion_model("llama3.2");
-                    let request = model.completion_request("hello").build();
+                    let request = model.completion_request("hello").build()?;
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)
                 })

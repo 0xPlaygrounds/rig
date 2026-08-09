@@ -1816,7 +1816,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let _response = model.completion(request).await.expect("chat completion");
 
@@ -1841,7 +1844,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let _response = model.completion(request).await.expect("chat completion");
 
@@ -1863,7 +1869,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o").with_edits_intent();
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let _response = model.completion(request).await.expect("chat completion");
 
@@ -1887,7 +1896,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let _response = model.completion(request).await.expect("chat completion");
 
@@ -1906,7 +1918,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let _response = model
             .completion(request)
@@ -1995,7 +2010,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         // The fully-delivered tool call is content, so it is flushed *before*
@@ -2086,7 +2104,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let err = match stream.next().await.expect("stream should yield an item") {
@@ -2149,7 +2170,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut text = String::new();
@@ -2189,7 +2213,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut text = String::new();
@@ -2241,7 +2268,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut saw_error = false;
@@ -2293,7 +2323,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut text = String::new();
@@ -2357,7 +2390,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-5.3-codex");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         // Reasoning metadata is Copilot's own terminal payload, not part of
         // the normalized `StreamFinal`, so this reads it through `raw_stream`.
         let mut stream = model
@@ -2397,7 +2433,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         // The fully-delivered tool call is content, so it is flushed *before*

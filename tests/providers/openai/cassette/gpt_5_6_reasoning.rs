@@ -75,7 +75,8 @@ async fn prompt_with_reasoning(
     let request = model
         .completion_request(PROMPT)
         .additional_params(json!({ "reasoning": reasoning }))
-        .build();
+        .build()
+        .expect("request should build");
 
     let raw_response = model
         .raw_completion(request)
@@ -237,7 +238,8 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                             "mode": "pro"
                         }
                     }))
-                    .build();
+                    .build()
+                    .expect("request should build");
                 // One request per turn: the raw wire response carries the
                 // reasoning metadata under test, and the normalized response is
                 // derived from it rather than re-requested.
@@ -348,7 +350,8 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                             "mode": "pro"
                         }
                     }))
-                    .build();
+                    .build()
+                    .expect("request should build");
                 // The terminal record under test is the Responses API's own
                 // streaming response, so the turn is driven off `raw_stream`;
                 // the normalized stream would hand back `StreamFinal`, which
@@ -485,7 +488,8 @@ async fn streaming_reasoning_metadata() {
                         "context": "current_turn"
                     }
                 }))
-                .build();
+                .build()
+                .expect("request should build");
             // `raw_stream` keeps the terminal record provider-native; the
             // normalized `StreamFinal` carries no reasoning metadata.
             let mut stream = model

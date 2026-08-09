@@ -169,7 +169,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .build().expect("request should build");
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -207,7 +207,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 .preamble("Use the provided tool result and answer directly.".to_string())
                 .message(assistant_message)
                 .message(tool_result_message)
-                .build();
+                .build().expect("request should build");
 
             let second_turn = collect_raw_stream_observation(
                 model

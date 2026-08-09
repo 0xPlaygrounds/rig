@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
         .preamble("You are a concise and helpful assistant.".to_string())
         .temperature(0.0)
         .max_tokens(64)
-        .build();
+        .build()?;
 
     // The local generation metrics printed below (throughput, prefill time,
     // time-to-first-token) are Candle's own — Rig's normalized `StreamFinal`

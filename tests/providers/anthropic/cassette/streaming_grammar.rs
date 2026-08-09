@@ -119,7 +119,8 @@ async fn thinking_multi_block_turn_keeps_discrete_parts() {
                 .additional_params(serde_json::json!({
                     "thinking": { "type": "enabled", "budget_tokens": 1536 }
                 }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -178,7 +179,8 @@ async fn parallel_tool_use_stays_distinct() {
             .tool(rig::tool::tool_definition(&AlphaSignal))
             .tool(rig::tool::tool_definition(&BetaSignal))
             .max_tokens(1024)
-            .build();
+            .build()
+            .expect("request should build");
         let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);

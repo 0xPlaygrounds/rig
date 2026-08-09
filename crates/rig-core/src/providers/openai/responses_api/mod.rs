@@ -3054,7 +3054,9 @@ mod tests {
             MockStreamEvent::text("answer"),
             MockStreamEvent::final_response_with_default_usage(),
         ]]);
-        let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
+        let request = CompletionRequestBuilder::new(model.clone(), "hi")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("mock stream");
         while stream.next().await.is_some() {}
         let choice = stream.choice.clone();
@@ -3375,7 +3377,7 @@ mod tests {
     }
 
     fn weather_tool_request() -> completion::CompletionRequest {
-        completion::CompletionRequest {
+        completion::CompletionRequest::new(completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![message::Message::user("what's the weather?")],
@@ -3387,7 +3389,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        }
+        })
+        .expect("request should build")
     }
 
     #[test]
@@ -3453,10 +3456,11 @@ mod tests {
 
     #[test]
     fn responses_request_with_specific_tool_choice_serializes_named_function() {
-        let mut request = weather_tool_request();
-        request.tool_choice = Some(message::ToolChoice::Specific {
+        let mut parts = weather_tool_request().into_parts();
+        parts.tool_choice = Some(message::ToolChoice::Specific {
             function_names: vec!["get_weather".to_string()],
         });
+        let request = completion::CompletionRequest::new(parts).expect("request should build");
 
         let request =
             CompletionRequest::try_from(("gpt-test".to_string(), request)).expect("convert");
@@ -3545,7 +3549,7 @@ mod tests {
     }
 
     fn request_with_preamble(preamble: &str) -> completion::CompletionRequest {
-        completion::CompletionRequest {
+        completion::CompletionRequest::new(completion::CompletionRequestParts {
             model: None,
             preamble: Some(preamble.to_string()),
             chat_history: vec![message::Message::user("Hello")],
@@ -3557,11 +3561,12 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        }
+        })
+        .expect("request should build")
     }
 
     fn system_only_request(system_text: &str) -> completion::CompletionRequest {
-        completion::CompletionRequest {
+        completion::CompletionRequest::new(completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![completion::Message::system(system_text)],
@@ -3573,7 +3578,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        }
+        })
+        .expect("request should build")
     }
 
     #[test]
@@ -3618,7 +3624,8 @@ mod tests {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello")
             .preamble("System one".to_string())
             .message(completion::Message::system("System two"))
-            .build();
+            .build()
+            .expect("request should build");
 
         let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
             .expect("request should convert");
@@ -3711,7 +3718,8 @@ mod tests {
             .preamble("System one".to_string())
             .message(completion::Message::user("hi"))
             .message(completion::Message::system("Mid-conversation instruction"))
-            .build();
+            .build()
+            .expect("request should build");
 
         let req = model
             .create_completion_request(request)
@@ -3810,8 +3818,8 @@ mod tests {
                 }),
             });
 
-        let mut request = weather_tool_request();
-        request.additional_params = Some(json!({
+        let mut parts = weather_tool_request().into_parts();
+        parts.additional_params = Some(json!({
             "tools": [{
                 "type": "function",
                 "name": "extra",
@@ -3819,6 +3827,7 @@ mod tests {
                 "parameters": {"type": "object", "properties": {"x": {"type": "string"}}}
             }]
         }));
+        let request = completion::CompletionRequest::new(parts).expect("request should build");
 
         let req = model
             .create_completion_request(request)
@@ -3837,8 +3846,8 @@ mod tests {
         let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
             .with_tool(weather_tool_definition());
 
-        let mut request = weather_tool_request();
-        request.additional_params = Some(json!({
+        let mut parts = weather_tool_request().into_parts();
+        parts.additional_params = Some(json!({
             "tools": [{
                 "type": "function",
                 "name": "extra",
@@ -3846,6 +3855,7 @@ mod tests {
                 "parameters": {"type": "object", "properties": {"x": {"type": "string"}}}
             }]
         }));
+        let request = completion::CompletionRequest::new(parts).expect("request should build");
 
         let req = model
             .create_completion_request(request)
@@ -3939,7 +3949,8 @@ mod tests {
             .message(completion::Message::user("Earlier user turn"))
             .message(completion::Message::assistant("Earlier assistant turn"))
             .document(test_document("doc1", "Document text."))
-            .build();
+            .build()
+            .expect("request should build");
 
         let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
             .expect("request conversion should succeed");
@@ -3976,24 +3987,26 @@ mod tests {
 
     #[test]
     fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
-        let request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec![
-                completion::Message::system("System prompt"),
-                completion::Message::assistant("Earlier assistant turn"),
-                completion::Message::system("Mid-conversation instruction"),
-                completion::Message::user("Prompt"),
-            ],
-            documents: vec![test_document("doc1", "Document text.")],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec![
+                    completion::Message::system("System prompt"),
+                    completion::Message::assistant("Earlier assistant turn"),
+                    completion::Message::system("Mid-conversation instruction"),
+                    completion::Message::user("Prompt"),
+                ],
+                documents: vec![test_document("doc1", "Document text.")],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
             .expect("request conversion should succeed");
@@ -4591,8 +4604,9 @@ mod tests {
     }
 
     fn request_with_reasoning_params(reasoning: Value) -> CompletionRequest {
-        let mut request = request_with_preamble("You are concise.");
-        request.additional_params = Some(json!({ "reasoning": reasoning }));
+        let mut parts = request_with_preamble("You are concise.").into_parts();
+        parts.additional_params = Some(json!({ "reasoning": reasoning }));
+        let request = completion::CompletionRequest::new(parts).expect("request should build");
 
         CompletionRequest::try_from(("gpt-5.6".to_string(), request))
             .expect("request with reasoning params should convert")
@@ -4946,48 +4960,50 @@ mod tests {
 
     #[test]
     fn mocked_second_turn_request_omits_unreplayable_reasoning() {
-        let request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: Some("You are concise.".to_string()),
-            chat_history: vec![
-                completion::Message::User {
-                    content: vec![message::UserContent::Text(Text::new(
-                        "Think briefly, then answer.",
-                    ))],
-                },
-                completion::Message::Assistant {
-                    id: Some("msg_123".to_string()),
-                    content: vec![
-                        message::AssistantContent::Reasoning(message::Reasoning::new(
-                            "provider reasoning",
-                        )),
-                        message::AssistantContent::Text(Text::new("final answer")),
-                    ],
-                },
-                completion::Message::Assistant {
-                    id: None,
-                    content: vec![
-                        message::AssistantContent::Reasoning(message::Reasoning::new(
-                            "provider reasoning only",
-                        )),
-                        message::AssistantContent::Text(Text::new("")),
-                    ],
-                },
-                completion::Message::User {
-                    content: vec![message::UserContent::Text(Text::new(
-                        "/no_think Reply with exactly: OK",
-                    ))],
-                },
-            ],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: Some(64),
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: Some("You are concise.".to_string()),
+                chat_history: vec![
+                    completion::Message::User {
+                        content: vec![message::UserContent::Text(Text::new(
+                            "Think briefly, then answer.",
+                        ))],
+                    },
+                    completion::Message::Assistant {
+                        id: Some("msg_123".to_string()),
+                        content: vec![
+                            message::AssistantContent::Reasoning(message::Reasoning::new(
+                                "provider reasoning",
+                            )),
+                            message::AssistantContent::Text(Text::new("final answer")),
+                        ],
+                    },
+                    completion::Message::Assistant {
+                        id: None,
+                        content: vec![
+                            message::AssistantContent::Reasoning(message::Reasoning::new(
+                                "provider reasoning only",
+                            )),
+                            message::AssistantContent::Text(Text::new("")),
+                        ],
+                    },
+                    completion::Message::User {
+                        content: vec![message::UserContent::Text(Text::new(
+                            "/no_think Reply with exactly: OK",
+                        ))],
+                    },
+                ],
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: Some(64),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))
             .expect("request should convert");
@@ -5106,7 +5122,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o-mini");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)
@@ -5474,19 +5493,21 @@ mod tests {
 
     #[test]
     fn url_pdf_in_full_completion_request_omits_filename() {
-        let core_request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec![url_pdf_message()],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let core_request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec![url_pdf_message()],
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))
             .expect("request should convert");

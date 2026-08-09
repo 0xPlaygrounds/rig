@@ -257,7 +257,10 @@ mod tests {
         };
 
         let handle = ModelHandle::new(model);
-        let request = handle.completion_request("go").build();
+        let request = handle
+            .completion_request("go")
+            .build()
+            .expect("request should build");
         CompletionModel::completion(&handle, request.clone())
             .await
             .expect("first scripted turn");
@@ -283,7 +286,10 @@ mod tests {
             clones: Arc::clone(&stream_clones),
         };
         let stream_handle = ModelHandle::new(stream_model);
-        let stream_request = stream_handle.completion_request("go").build();
+        let stream_request = stream_handle
+            .completion_request("go")
+            .build()
+            .expect("request should build");
         CompletionModel::stream(&stream_handle, stream_request.clone())
             .await
             .expect("first scripted stream turn");

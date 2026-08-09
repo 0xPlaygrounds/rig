@@ -396,7 +396,7 @@ mod tests {
             ],
         };
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: Some("kimi-k2-thinking".to_string()),
             preamble: None,
             chat_history: vec![assistant],
@@ -408,7 +408,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let body = prepared_body(request, "kimi-k2-thinking");
         assert_eq!(
@@ -430,7 +431,7 @@ mod tests {
             ],
         };
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: Some("kimi-k2-thinking".to_string()),
             preamble: None,
             chat_history: vec![assistant],
@@ -442,7 +443,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let body = prepared_body(request, "kimi-k2-thinking");
         assert_eq!(
@@ -453,7 +455,7 @@ mod tests {
 
     #[test]
     fn moonshot_specific_tool_choice_is_rejected() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: Some("kimi-k2.5".to_string()),
             preamble: None,
             chat_history: vec![Message::user("Use a tool.")],
@@ -467,7 +469,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "kimi-k2.5".to_string(),
@@ -487,7 +490,7 @@ mod tests {
 
     #[test]
     fn moonshot_required_tool_choice_is_coerced() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: Some("kimi-k2.5".to_string()),
             preamble: None,
             chat_history: vec![Message::user("Use a tool.")],
@@ -499,7 +502,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let body = prepared_body(request, "kimi-k2.5");
         assert_eq!(body["tool_choice"], "auto");

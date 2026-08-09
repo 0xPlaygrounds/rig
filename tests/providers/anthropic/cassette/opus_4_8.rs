@@ -39,7 +39,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
                         .with_config("name", json!("web_search")),
                 )
                 .max_tokens(1024)
-                .build();
+                .build().expect("request should build");
             // One request, two views: `raw_completion` returns Anthropic's own
             // response and the same value normalizes into rig's, so the
             // provider-text fallback below still costs a single interaction.
@@ -84,7 +84,8 @@ async fn messages_preserve_mid_conversation_system_role() {
                     Message::assistant("Entendido."),
                 ])
                 .max_tokens(64)
-                .build();
+                .build()
+                .expect("request should build");
             let raw = model
                 .raw_completion(request)
                 .await
@@ -139,7 +140,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                     Message::assistant("Entendido."),
                 ])
                 .max_tokens(64)
-                .build();
+                .build().expect("request should build");
             let raw = model.raw_completion(request).await.expect(
                 "Opus 4.8 request with system role after server tool result should succeed",
             );
@@ -182,7 +183,8 @@ async fn documents_keep_leading_system_message_top_level() {
                     additional_props: Default::default(),
                 })
                 .max_tokens(64)
-                .build();
+                .build()
+                .expect("request should build");
             let raw = model.raw_completion(request).await.expect(
                 "Opus 4.8 request with documents and a leading system message should succeed",
             );

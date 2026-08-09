@@ -244,12 +244,13 @@ impl AwsCompletionRequest {
 mod tests {
     use super::*;
 
-    use rig_core::completion::{CompletionRequest, ToolDefinition};
+    use rig_core::completion::{CompletionRequest, CompletionRequestParts, ToolDefinition};
     use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
-    // Helper to create a minimal CompletionRequest for testing
-    fn minimal_request() -> CompletionRequest {
-        CompletionRequest {
+    // Helpers to create a minimal CompletionRequest for testing. The parts
+    // form is the functional-update base for tests that override fields.
+    fn minimal_parts() -> CompletionRequestParts {
+        CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![Message::User {
@@ -266,6 +267,10 @@ mod tests {
         }
     }
 
+    fn minimal_request() -> CompletionRequest {
+        CompletionRequest::new(minimal_parts()).expect("request should build")
+    }
+
     fn aws_request(request: CompletionRequest, prompt_caching: bool) -> AwsCompletionRequest {
         AwsCompletionRequest {
             inner: request,
@@ -276,7 +281,7 @@ mod tests {
     #[test]
     fn test_tool_choice_auto_conversion() {
         // Test that rig's ToolChoice::Auto converts to AWS Auto
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             tool_choice: Some(ToolChoice::Auto),
             tools: vec![ToolDefinition {
@@ -287,8 +292,9 @@ mod tests {
                     "properties": {}
                 }),
             }],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let tool_config = aws_request
@@ -309,7 +315,7 @@ mod tests {
     #[test]
     fn test_tool_choice_required_conversion() {
         // Test that rig's ToolChoice::Required converts to AWS Any
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             tool_choice: Some(ToolChoice::Required),
             tools: vec![ToolDefinition {
@@ -320,8 +326,9 @@ mod tests {
                     "properties": {}
                 }),
             }],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let tool_config = aws_request
@@ -342,7 +349,7 @@ mod tests {
     #[test]
     fn test_tool_choice_none_conversion() {
         // Test that rig's ToolChoice::None disables Bedrock tool configuration entirely.
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             tool_choice: Some(ToolChoice::None),
             tools: vec![ToolDefinition {
@@ -353,8 +360,9 @@ mod tests {
                     "properties": {}
                 }),
             }],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let tool_config = aws_request
@@ -367,7 +375,7 @@ mod tests {
     #[test]
     fn test_tool_choice_specific_conversion() {
         // Test that rig's ToolChoice::Specific converts to AWS Tool
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             tool_choice: Some(ToolChoice::Specific {
                 function_names: vec!["specific_tool".to_string()],
@@ -380,8 +388,9 @@ mod tests {
                     "properties": {}
                 }),
             }],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let tool_config = aws_request
@@ -402,7 +411,7 @@ mod tests {
     #[test]
     fn test_no_tool_choice_when_not_specified() {
         // Test that when tool_choice is None (not set), it defaults to None in AWS
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             tool_choice: None, // Not set
             tools: vec![ToolDefinition {
@@ -413,8 +422,9 @@ mod tests {
                     "properties": {}
                 }),
             }],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let tool_config = aws_request
@@ -430,7 +440,7 @@ mod tests {
     #[test]
     fn test_tool_with_empty_parameters() {
         // Test that tools with empty parameters (like document_list) work correctly
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             tools: vec![ToolDefinition {
                 name: "document_list".to_string(),
@@ -440,8 +450,9 @@ mod tests {
                     "properties": {}
                 }),
             }],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let tool_config = aws_request
@@ -465,7 +476,7 @@ mod tests {
     #[test]
     fn test_tool_with_parameters() {
         // Test that tools with parameters work correctly
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             tools: vec![ToolDefinition {
                 name: "get_weather".to_string(),
@@ -485,8 +496,9 @@ mod tests {
                     "required": ["location"]
                 }),
             }],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let tool_config = aws_request
@@ -508,7 +520,7 @@ mod tests {
 
     #[test]
     fn test_system_prompt_includes_system_history() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![
@@ -517,8 +529,9 @@ mod tests {
                     content: vec![UserContent::Text(Text::new("test".to_string()))],
                 },
             ],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let system_prompt = aws_request
@@ -537,10 +550,11 @@ mod tests {
 
     #[test]
     fn test_system_prompt_appends_cache_point_when_prompt_caching_enabled() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             preamble: Some("System prompt".to_string()),
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, true);
         let system_prompt = aws_request
@@ -563,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_messages_exclude_system_history() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![
@@ -572,8 +586,9 @@ mod tests {
                     content: vec![UserContent::Text(Text::new("test".to_string()))],
                 },
             ],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let messages = aws_request.messages().expect("messages should convert");
@@ -604,7 +619,7 @@ mod tests {
         // Verify the message-level checkpoint is suppressed in that case.
         let reasoning =
             rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             chat_history: vec![
                 Message::User {
                     content: vec![UserContent::Text(Text::new("user prompt".to_string()))],
@@ -617,8 +632,9 @@ mod tests {
                     content: vec![UserContent::Text(Text::new("follow up".to_string()))],
                 },
             ],
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, true);
         let messages = aws_request.messages().expect("messages should convert");
@@ -662,10 +678,11 @@ mod tests {
         }))
         .expect("valid schema");
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             output_schema: Some(schema),
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let output_config = aws_request.output_config().expect("output config builds");
@@ -700,10 +717,11 @@ mod tests {
         }))
         .expect("valid schema");
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             output_schema: Some(schema),
-            ..minimal_request()
-        };
+            ..minimal_parts()
+        })
+        .expect("request should build");
 
         let aws_request = aws_request(request, false);
         let config = aws_request

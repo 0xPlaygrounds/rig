@@ -640,7 +640,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gemini-2.5-flash");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
             .expect("stream should open");
@@ -1140,7 +1143,10 @@ mod tests {
             let model = client.completion_model(
                 crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
             );
-            let request = model.completion_request("hello").build();
+            let request = model
+                .completion_request("hello")
+                .build()
+                .expect("request should build");
             let mut stream = crate::completion::CompletionModel::stream(&model, request)
                 .await
                 .expect("stream should open");
@@ -1176,7 +1182,10 @@ mod tests {
             let model = client.completion_model(
                 crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
             );
-            let request = model.completion_request("hello").build();
+            let request = model
+                .completion_request("hello")
+                .build()
+                .expect("request should build");
             let mut stream = crate::completion::CompletionModel::stream(&model, request)
                 .await
                 .expect("stream should open");
@@ -1229,7 +1238,10 @@ mod tests {
             let model = client.completion_model(
                 crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
             );
-            let request = model.completion_request("hello").build();
+            let request = model
+                .completion_request("hello")
+                .build()
+                .expect("request should build");
             let mut stream = crate::completion::CompletionModel::stream(&model, request)
                 .await
                 .expect("stream should open");

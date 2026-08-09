@@ -81,7 +81,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
-    let request = completion::CompletionRequest {
+    let request = completion::CompletionRequest::new(completion::CompletionRequestParts {
         preamble: Some(agent.preamble.clone()),
         chat_history: vec![turn1_prompt.clone()],
         documents: vec![],
@@ -93,7 +93,8 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-    };
+    })
+    .expect("request should build");
 
     let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
 
@@ -163,7 +164,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
-    let request2 = completion::CompletionRequest {
+    let request2 = completion::CompletionRequest::new(completion::CompletionRequestParts {
         preamble: Some(agent.preamble.clone()),
         chat_history: vec![turn1_prompt, turn1_assistant, turn2_prompt],
         documents: vec![],
@@ -175,7 +176,8 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-    };
+    })
+    .expect("request should build");
 
     let mut stream2 = agent.model.stream(request2).await.expect("Turn 2 stream");
     let mut turn2_text = String::new();
@@ -214,7 +216,7 @@ where
         content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
-    let request = completion::CompletionRequest {
+    let request = completion::CompletionRequest::new(completion::CompletionRequestParts {
         preamble: Some(agent.preamble.clone()),
         chat_history: vec![turn1_prompt.clone()],
         documents: vec![],
@@ -226,7 +228,8 @@ where
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-    };
+    })
+    .expect("request should build");
 
     let response = agent
         .model
@@ -260,7 +263,7 @@ where
         content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
-    let request2 = completion::CompletionRequest {
+    let request2 = completion::CompletionRequest::new(completion::CompletionRequestParts {
         preamble: Some(agent.preamble.clone()),
         chat_history: vec![turn1_prompt, turn1_assistant, turn2_prompt],
         documents: vec![],
@@ -272,7 +275,8 @@ where
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-    };
+    })
+    .expect("request should build");
 
     let response2 = agent
         .model

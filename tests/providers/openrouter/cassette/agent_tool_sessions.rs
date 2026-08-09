@@ -591,7 +591,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .preamble("Use the requested tool call and no prose before it.".to_string())
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()?;
 
             let observation = collect_raw_stream_observation(model.stream(request).await?).await;
 
@@ -649,7 +649,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
-                .build();
+                .build()?;
 
             // The per-choice finish reasons live on OpenRouter's own wire
             // response, so this reads them from `raw_completion` and applies

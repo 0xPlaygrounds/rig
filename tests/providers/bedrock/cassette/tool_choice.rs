@@ -59,7 +59,8 @@ async fn required_forces_function_call() {
                 .temperature(0.0)
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -153,7 +154,8 @@ async fn specific_add_raw_streaming_allows_only_add() {
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool(rig::tool::tool_definition(&Subtract))
                 .tool_choice(specific_add_choice())
-                .build();
+                .build()
+                .expect("request should build");
             let stream = model.stream(request).await.expect("stream should start");
             let observation = collect_raw_stream_observation(stream).await;
 

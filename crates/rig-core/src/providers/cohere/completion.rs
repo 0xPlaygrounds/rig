@@ -1000,7 +1000,8 @@ mod tests {
             text: "Definition of glarb-glarb: an ancient tool.".to_string(),
             additional_props: Default::default(),
         })
-        .build();
+        .build()
+        .expect("request should build");
 
         let request = CohereCompletionRequest::try_from(("command-r", request))
             .expect("request conversion should succeed");
@@ -1024,7 +1025,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)

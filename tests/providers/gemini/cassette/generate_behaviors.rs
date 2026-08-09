@@ -52,7 +52,8 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
                         "thinkingConfig": { "thinkingBudget": 0 }
                     }
                 }))
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)

@@ -660,7 +660,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
                 .tool(rig::tool::tool_definition(&tool))
                 .tool_choice(ToolChoice::Required)
                 .additional_params(non_thinking_params())
-                .build();
+                .build()?;
 
             let observation = collect_raw_stream_observation(model.stream(request).await?).await;
 
@@ -719,7 +719,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool_choice(ToolChoice::None)
                 .additional_params(non_thinking_params())
-                .build();
+                .build()?;
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)
@@ -750,7 +750,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
                         .additional_params(non_thinking_params())
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             anyhow::ensure!(
@@ -775,7 +775,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                             function_names: vec![BetaSignal::NAME.to_string()],
                         })
                         .additional_params(non_thinking_params())
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             let specific_calls = specific
@@ -801,7 +801,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
                         .additional_params(non_thinking_params())
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             let none_text = assistant_text_response(&none.choice)
@@ -832,7 +832,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 )
                 .preamble("You are a concise reliability engineer.".to_string())
                 .additional_params(thinking_params())
-                .build();
+                .build()?;
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
 
@@ -863,7 +863,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
             let stream_request = model
                 .completion_request("Briefly solve 2 + 2, then answer with the number.")
                 .additional_params(thinking_params())
-                .build();
+                .build()?;
             let observation = collect_raw_stream_observation(model.stream(stream_request).await?).await;
             anyhow::ensure!(
                 observation.events.contains(&"reasoning_delta"),
@@ -902,7 +902,7 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
                 .completion(
                     chat_model
                         .completion_request("Reply with exactly: chat-mode-ok")
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             let chat_text = assistant_text_response(&chat.choice)
@@ -920,7 +920,7 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
                 .completion(
                     reasoner_model
                         .completion_request("Reply with exactly: reasoner-mode-ok")
-                        .build(),
+                        .build()?,
                 )
                 .await?;
             let reasoner_text = assistant_text_response(&reasoner.choice)
@@ -958,7 +958,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 .additional_params(json_utils_merge(non_thinking_params(), json!({
                     "response_format": { "type": "json_object" }
                 })))
-                .build();
+                .build()?;
 
             let (raw, response) = raw_and_normalized_completion(&model, request).await?;
             let text = assistant_text_response(&response.choice)

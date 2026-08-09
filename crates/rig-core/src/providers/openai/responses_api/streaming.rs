@@ -1807,7 +1807,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         stream
@@ -1829,7 +1832,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model
             .raw_stream(request)
             .await
@@ -1856,7 +1862,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         while let Some(item) = stream.next().await {
@@ -2360,7 +2369,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut text = String::new();
@@ -2422,7 +2434,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut completed_reasoning = Vec::new();
@@ -2502,7 +2517,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let tool_call = match stream
@@ -2631,7 +2649,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut saw_error = false;
@@ -2680,7 +2701,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut saw_final = false;
@@ -2756,7 +2780,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut texts = Vec::new();
@@ -2806,7 +2833,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut texts = Vec::new();
@@ -2849,7 +2879,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let err = stream
@@ -3928,7 +3961,10 @@ data: {completed}
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut final_response = None;
@@ -4038,7 +4074,10 @@ data: {completed}
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut final_usage = None;
@@ -4097,7 +4136,10 @@ data: {completed}
             .build()
             .expect("client should build");
         let model = client.completion_model("gpt-5.4");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut text = String::new();

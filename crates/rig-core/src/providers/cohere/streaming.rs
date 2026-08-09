@@ -501,7 +501,10 @@ mod tests {
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
@@ -552,7 +555,10 @@ mod tests {
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
@@ -601,7 +607,10 @@ mod tests {
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
@@ -651,7 +660,10 @@ mod tests {
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
@@ -707,7 +719,10 @@ mod tests {
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
@@ -751,7 +766,10 @@ mod tests {
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
@@ -802,7 +820,10 @@ mod tests {
 
         let client = cohere_client(MockStreamingClient { sse_bytes });
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await
@@ -848,7 +869,10 @@ mod tests {
             r#"{"message":"slow down"}"#,
         ));
         let model = client.completion_model(crate::providers::cohere::COMMAND_R);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let mut stream = crate::completion::CompletionModel::stream(&model, request)
             .await

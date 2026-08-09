@@ -124,7 +124,8 @@ async fn parallel_tool_calls_stay_distinct() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .additional_params(json!({ "parallel_tool_calls": true }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -185,7 +186,8 @@ async fn tool_call_and_content_in_same_turn() {
                         .to_string(),
                 )
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -230,7 +232,8 @@ async fn logprobs_chunks_are_forward_compatible() {
             let request = model
                 .completion_request("Reply with one short sentence about tides.")
                 .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
@@ -259,7 +262,8 @@ async fn long_text_stream_preserves_order() {
                      Number them 1. through 12.",
                 )
                 .max_tokens(400)
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);

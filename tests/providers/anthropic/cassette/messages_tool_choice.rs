@@ -38,7 +38,8 @@ async fn required_maps_to_any_and_forces_tool_use() {
                 .max_tokens(1024)
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -81,7 +82,8 @@ async fn none_suppresses_tool_use() {
                 .max_tokens(1024)
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::None)
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -130,7 +132,8 @@ async fn specific_tool_targets_named_tool() {
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec![Subtract::NAME.to_string()],
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)

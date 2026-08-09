@@ -19,7 +19,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
                 )
                 .preamble(SYSTEM_PROMPT.to_string())
                 .max_tokens(256)
-                .build();
+                .build().expect("request should build");
             // A single cassette interaction: take mistral.rs's own wire response
             // and still exercise the normalization the completion path applies.
             let wire_response = model

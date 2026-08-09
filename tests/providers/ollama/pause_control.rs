@@ -17,7 +17,8 @@ async fn streaming_pause_and_resume() {
         .completion_request("Explain backpropagation in neural networks.")
         .preamble("You are a helpful AI assistant. Provide concise explanations.".to_string())
         .temperature(0.7)
-        .build();
+        .build()
+        .expect("request should build");
     let mut stream = model.stream(request).await.expect("stream should start");
 
     let mut chunk_count = 0usize;

@@ -61,7 +61,7 @@ mod xai {
                         rig_core::completion::CompletionError::ProviderError(error.to_string())
                     })?;
                 let model = client.completion_model(rig_core::providers::xai::completion::GROK_4);
-                let request = model.completion_request("hello").build();
+                let request = model.completion_request("hello").build()?;
                 let stream = rig_core::completion::CompletionModel::stream(&model, request).await?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
@@ -97,7 +97,7 @@ mod copilot {
                         rig_core::completion::CompletionError::ProviderError(error.to_string())
                     })?;
                 let model = client.completion_model(model_name);
-                let request = model.completion_request("hello").build();
+                let request = model.completion_request("hello").build()?;
                 let stream = model.stream(request).await?;
                 Ok(conformance::fixtures::drain(stream).await)
             })
@@ -146,7 +146,7 @@ mod chatgpt {
                         rig_core::completion::CompletionError::ProviderError(error.to_string())
                     })?;
                 let model = client.completion_model("gpt-5.4");
-                let request = model.completion_request("hello").build();
+                let request = model.completion_request("hello").build()?;
                 let stream = model.stream(request).await?;
                 Ok(conformance::fixtures::drain(stream).await)
             })

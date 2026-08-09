@@ -111,7 +111,8 @@ async fn thinking_and_tool_call_in_one_stream() {
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(serde_json::json!({ "think": true }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -181,7 +182,8 @@ async fn parallel_id_less_tool_calls_stay_distinct() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .additional_params(serde_json::json!({ "think": false }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -269,7 +271,7 @@ async fn same_tool_called_twice_in_one_turn_stays_distinct() {
             )
             .tool(rig::tool::tool_definition(&Adder))
             .additional_params(serde_json::json!({ "think": false }))
-            .build();
+            .build().expect("request should build");
         let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
         assert_terminal(&run, FinishReason::ToolCalls);
@@ -381,7 +383,8 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 .tool(rig::tool::tool_definition(&Adder))
                 .messages(history)
                 .additional_params(serde_json::json!({ "think": false }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),

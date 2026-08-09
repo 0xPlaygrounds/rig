@@ -167,7 +167,8 @@ async fn reasoning_summary_stream_aggregates_each_part_once() {
                 .additional_params(json!({
                     "reasoning": { "effort": "high", "summary": "detailed" }
                 }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -263,7 +264,7 @@ async fn encrypted_reasoning_keeps_summary_parts_and_encrypted_payload() {
                     "include": ["reasoning.encrypted_content"],
                     "store": false
                 }))
-                .build();
+                .build().expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -343,7 +344,8 @@ async fn parallel_tool_calls_both_survive_aggregation() {
                     "reasoning": { "effort": "low" },
                     "parallel_tool_calls": true
                 }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -397,7 +399,8 @@ async fn tool_call_then_followup_text_across_turns() {
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(json!({ "reasoning": { "effort": "low" } }))
-                .build();
+                .build()
+                .expect("request should build");
             let first =
                 drain_stream(model.stream(request).await.expect("stream should start")).await;
 
@@ -437,7 +440,8 @@ async fn tool_call_then_followup_text_across_turns() {
                     tool_result,
                 ])
                 .additional_params(json!({ "reasoning": { "effort": "low" } }))
-                .build();
+                .build()
+                .expect("request should build");
             let second = drain_stream(
                 model
                     .stream(followup_request)
@@ -492,7 +496,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(params.clone())
-                .build();
+                .build().expect("request should build");
             let first =
                 drain_stream(model.stream(request).await.expect("stream should start")).await;
             assert_terminal(&first, FinishReason::ToolCalls);
@@ -556,7 +560,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                     tool_result.clone(),
                 ])
                 .additional_params(params.clone())
-                .build();
+                .build().expect("request should build");
             let second = drain_stream(
                 model
                     .stream(second_request)
@@ -592,7 +596,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                     second_assistant,
                 ])
                 .additional_params(params)
-                .build();
+                .build().expect("request should build");
             let third = drain_stream(
                 model
                     .stream(third_request)
@@ -641,7 +645,8 @@ async fn incomplete_mid_tool_call_normalizes_to_length() {
                 .tool_choice(rig::message::ToolChoice::Required)
                 .max_tokens(16)
                 .additional_params(json!({ "reasoning": { "effort": "low" } }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -700,7 +705,8 @@ async fn structured_output_stream_yields_schema_conformant_text() {
                         }
                     }
                 }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
@@ -750,7 +756,8 @@ async fn previous_response_id_chains_server_side_state() {
                     "reasoning": { "effort": "low" },
                     "store": true
                 }))
-                .build();
+                .build()
+                .expect("request should build");
             let first =
                 drain_stream(model.stream(request).await.expect("stream should start")).await;
             assert_terminal(&first, FinishReason::Stop);
@@ -774,7 +781,8 @@ async fn previous_response_id_chains_server_side_state() {
                     "store": true,
                     "previous_response_id": previous_response_id
                 }))
-                .build();
+                .build()
+                .expect("request should build");
             let second = drain_stream(
                 model
                     .stream(second_request)
@@ -820,7 +828,8 @@ async fn incomplete_max_output_tokens_normalizes_to_length() {
                 .completion_request("Write a 300-word essay about the history of lighthouses.")
                 .max_tokens(32)
                 .additional_params(json!({ "reasoning": { "effort": "low" } }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -871,7 +880,8 @@ async fn reasoning_and_answer_text_aggregate_as_discrete_parts() {
                 .additional_params(json!({
                     "reasoning": { "effort": "high", "summary": "detailed" }
                 }))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);

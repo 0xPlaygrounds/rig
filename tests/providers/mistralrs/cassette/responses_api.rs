@@ -46,7 +46,7 @@ async fn responses_api_reasoning_plus_answer_completes() {
                 )
                 .preamble(SYSTEM_PROMPT.to_owned())
                 .max_tokens(512)
-                .build();
+                .build().expect("request should build");
             // One cassette interaction: `raw_completion` yields the Responses API
             // wire response (whose reasoning fields are provider-specific and not
             // normalized), and the provider-local conversion yields exactly what

@@ -62,7 +62,8 @@ async fn raw_streaming_tool_call_smoke() {
         .tool_choice(ToolChoice::Specific {
             function_names: vec![AlphaSignal::NAME.to_string()],
         })
-        .build();
+        .build()
+        .expect("request should build");
 
     let observation = collect_raw_stream_observation(
         model

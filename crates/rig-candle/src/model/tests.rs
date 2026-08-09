@@ -3,7 +3,7 @@ use candle_transformers::generation::Sampling;
 use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
 use futures::StreamExt;
-use rig_core::completion::{CompletionModel, Document, ToolDefinition};
+use rig_core::completion::{CompletionModel, CompletionRequestParts, Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
 use safetensors::tensor::{Dtype, View, serialize};
@@ -226,8 +226,8 @@ fn config_with(
     Ok(serde_json::to_vec(&config)?)
 }
 
-fn request(messages: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
+fn request_parts(messages: Vec<Message>) -> CompletionRequestParts {
+    CompletionRequestParts {
         model: None,
         preamble: None,
         chat_history: messages,
@@ -240,6 +240,17 @@ fn request(messages: Vec<Message>) -> CompletionRequest {
         output_schema: None,
         record_telemetry_content: false,
     }
+}
+
+fn request(messages: Vec<Message>) -> CompletionRequest {
+    build(request_parts(messages))
+}
+
+// Test-parts are non-empty by construction, so the expect cannot fire; the
+// scoped allow matches the sibling `protocol.rs` test module's.
+#[allow(clippy::expect_used)]
+fn build(parts: CompletionRequestParts) -> CompletionRequest {
+    CompletionRequest::new(parts).expect("request should build")
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -879,9 +890,10 @@ async fn streaming_reports_eos_and_excludes_the_stop_token()
 async fn streaming_clamps_context_and_rejects_bad_request_options()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
-    let mut completion_request = request(vec![Message::user("hello")]);
-    completion_request.max_tokens = Some(10);
-    completion_request.temperature = Some(0.0);
+    let mut parts = request_parts(vec![Message::user("hello")]);
+    parts.max_tokens = Some(10);
+    parts.temperature = Some(0.0);
+    let completion_request = build(parts);
     let prompt = render_prompt(&completion_request)?;
     let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
     loaded.profile.context_limit = prompt_tokens + 2;
@@ -897,8 +909,9 @@ async fn streaming_clamps_context_and_rejects_bad_request_options()
         serde_json::json!({"unknown": true}),
         serde_json::json!({"top_k": "four"}),
     ] {
-        let mut bad_request = request(vec![Message::user("hello")]);
-        bad_request.additional_params = Some(additional_params);
+        let mut bad_parts = request_parts(vec![Message::user("hello")]);
+        bad_parts.additional_params = Some(additional_params);
+        let bad_request = build(bad_parts);
         let mut stream = model.raw_stream(bad_request).await?;
         let item = stream
             .next()
@@ -977,9 +990,10 @@ fn incremental_decoder_waits_for_complete_unicode_bytes()
 fn inference_clamps_context_and_uses_fresh_generation_state()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
-    let mut completion_request = request(vec![Message::user("hello")]);
-    completion_request.max_tokens = Some(10);
-    completion_request.temperature = Some(0.0);
+    let mut parts = request_parts(vec![Message::user("hello")]);
+    parts.max_tokens = Some(10);
+    parts.temperature = Some(0.0);
+    let completion_request = build(parts);
     let prompt = render_prompt(&completion_request)?;
     let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
     loaded.profile.context_limit = prompt_tokens + 2;
@@ -1006,8 +1020,9 @@ fn eos_is_counted_but_excluded_from_decoded_text()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
     loaded.profile.stop_tokens.insert(0);
-    let mut completion_request = request(vec![Message::user("hello")]);
-    completion_request.temperature = Some(0.0);
+    let mut parts = request_parts(vec![Message::user("hello")]);
+    parts.temperature = Some(0.0);
+    let completion_request = build(parts);
     let response = infer(&loaded, completion_request, &CancellationSignal::default())?.response;
     assert_eq!(response.finish_reason, FinishReason::Eos);
     assert_eq!(response.generated_tokens, 1);
@@ -1367,12 +1382,13 @@ fn renders_llama3_history_and_documents() -> Result<(), Box<dyn std::error::Erro
         "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nrules<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nquestion<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nanswer<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nfollow-up<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
     );
 
-    let mut request = request(vec![Message::system("rules"), Message::user("question")]);
-    request.documents.push(Document {
+    let mut parts = request_parts(vec![Message::system("rules"), Message::user("question")]);
+    parts.documents.push(Document {
         id: "doc-1".to_string(),
         text: "context".to_string(),
         additional_props: HashMap::new(),
     });
+    let request = build(parts);
     let rendered = render_prompt(&request)?;
     assert!(rendered.contains("<file id: doc-1>\ncontext\n</file>"));
     assert!(rendered.find("<file id: doc-1>") < rendered.find("question"));
@@ -1403,28 +1419,32 @@ fn renders_smollm2_history_default_system_and_generation_suffix()
 
 #[test]
 fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut tools = request(vec![Message::user("hello")]);
-    tools.tools.push(ToolDefinition {
+    let mut tool_parts = request_parts(vec![Message::user("hello")]);
+    tool_parts.tools.push(ToolDefinition {
         name: "tool".to_string(),
         description: "tool".to_string(),
         parameters: serde_json::json!({}),
     });
+    let tools = build(tool_parts);
     assert!(
         matches!(render_prompt(&tools), Err(CandleError::UnsupportedFeature(feature)) if feature.contains("Qwen3"))
     );
 
-    let mut choice = request(vec![Message::user("hello")]);
-    choice.tool_choice = Some(ToolChoice::Auto);
+    let mut choice_parts = request_parts(vec![Message::user("hello")]);
+    choice_parts.tool_choice = Some(ToolChoice::Auto);
+    let choice = build(choice_parts);
     assert!(render_prompt(&choice).is_err());
 
-    let mut schema = request(vec![Message::user("hello")]);
-    schema.output_schema = Some(serde_json::from_value(
+    let mut schema_parts = request_parts(vec![Message::user("hello")]);
+    schema_parts.output_schema = Some(serde_json::from_value(
         serde_json::json!({"type": "string"}),
     )?);
+    let schema = build(schema_parts);
     assert!(render_prompt(&schema).is_err());
 
-    let mut override_request = request(vec![Message::user("hello")]);
-    override_request.model = Some("other".to_string());
+    let mut override_parts = request_parts(vec![Message::user("hello")]);
+    override_parts.model = Some("other".to_string());
+    let override_request = build(override_parts);
     assert!(render_prompt(&override_request).is_err());
 
     let tool_result = request(vec![Message::tool_result("id", "tool", "result")]);
@@ -1449,48 +1469,48 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
 #[test]
 fn request_generation_overrides_defaults_and_validates() -> Result<(), CandleError> {
     let defaults = GenerationConfig::default();
-    let mut request = request(vec![Message::user("hello")]);
-    request.max_tokens = Some(12);
-    request.temperature = Some(0.0);
-    request.additional_params = Some(serde_json::json!({
+    let mut parts = request_parts(vec![Message::user("hello")]);
+    parts.max_tokens = Some(12);
+    parts.temperature = Some(0.0);
+    parts.additional_params = Some(serde_json::json!({
         "top_k": 4,
         "top_p": 0.7,
         "seed": 7,
         "repeat_penalty": 1.2,
         "repeat_last_n": 9
     }));
-    let effective = effective_generation(&request, &defaults, 8)?;
+    let effective = effective_generation(&build(parts.clone()), &defaults, 8)?;
     assert_eq!(effective.max_tokens, 12);
     assert_eq!(effective.temperature, 0.0);
     assert_eq!(effective.top_k, Some(4));
     assert_eq!(effective.top_p, Some(0.7));
     assert_eq!(effective.seed, 7);
 
-    request.additional_params = Some(serde_json::json!({
+    parts.additional_params = Some(serde_json::json!({
         "top_k": null,
         "top_p": null
     }));
-    let effective = effective_generation(&request, &defaults, 8)?;
+    let effective = effective_generation(&build(parts.clone()), &defaults, 8)?;
     assert_eq!(effective.top_k, None);
     assert_eq!(effective.top_p, None);
 
     let mut inherited_defaults = defaults.clone();
     inherited_defaults.top_k = Some(5);
-    request.additional_params = Some(serde_json::json!({}));
-    let effective = effective_generation(&request, &inherited_defaults, 8)?;
+    parts.additional_params = Some(serde_json::json!({}));
+    let effective = effective_generation(&build(parts.clone()), &inherited_defaults, 8)?;
     assert_eq!(effective.top_k, Some(5));
     assert_eq!(effective.top_p, defaults.top_p);
 
-    request.additional_params = Some(serde_json::json!({"unknown": true}));
-    assert!(effective_generation(&request, &defaults, 8).is_err());
-    request.additional_params = Some(serde_json::json!({"top_k": "four"}));
-    assert!(effective_generation(&request, &defaults, 8).is_err());
-    request.additional_params = None;
-    request.max_tokens = Some(0);
-    assert!(effective_generation(&request, &defaults, 8).is_err());
-    request.max_tokens = Some(1);
-    request.temperature = Some(f64::NAN);
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    parts.additional_params = Some(serde_json::json!({"unknown": true}));
+    assert!(effective_generation(&build(parts.clone()), &defaults, 8).is_err());
+    parts.additional_params = Some(serde_json::json!({"top_k": "four"}));
+    assert!(effective_generation(&build(parts.clone()), &defaults, 8).is_err());
+    parts.additional_params = None;
+    parts.max_tokens = Some(0);
+    assert!(effective_generation(&build(parts.clone()), &defaults, 8).is_err());
+    parts.max_tokens = Some(1);
+    parts.temperature = Some(f64::NAN);
+    assert!(effective_generation(&build(parts), &defaults, 8).is_err());
     Ok(())
 }
 

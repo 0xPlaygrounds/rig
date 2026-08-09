@@ -630,7 +630,8 @@ mod tests {
                 function_names: vec!["beta".to_string()],
             })
             .additional_params(serde_json::json!({"thinking": {"type": "disabled"}}))
-            .build();
+            .build()
+            .expect("request should build");
 
         let body = finalized_body(request);
 
@@ -653,7 +654,8 @@ mod tests {
                 }),
             })
             .tool_choice(RigToolChoice::Required)
-            .build();
+            .build()
+            .expect("request should build");
 
         let body = finalized_body(request);
 
@@ -670,7 +672,8 @@ mod tests {
     fn deepseek_request_flattens_message_content_to_strings() {
         let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Hello!")
             .preamble("You are helpful.".to_string())
-            .build();
+            .build()
+            .expect("request should build");
 
         let body = finalized_body(request);
 

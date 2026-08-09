@@ -37,7 +37,8 @@ async fn assistant_reasoning_content_roundtrips_in_history() {
                 .completion_request("What color was I asked to remember? Reply with one word.")
                 .message(Message::user("Remember the secret color is teal."))
                 .message(assistant)
-                .build(),
+                .build()
+                .expect("request should build"),
         )
         .await
         .expect("reasoning-history completion should succeed");

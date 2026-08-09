@@ -207,7 +207,8 @@ async fn nested_arguments_streaming() {
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .temperature(0.0)
                 .tool(rig::tool::tool_definition(&PlanTrip))
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model
@@ -261,7 +262,8 @@ async fn unicode_arguments_streaming() {
                         "required": ["message"]
                     }),
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model
@@ -331,7 +333,8 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
                         "required": ["name"]
                     }),
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)

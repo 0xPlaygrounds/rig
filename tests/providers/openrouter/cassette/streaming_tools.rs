@@ -141,7 +141,7 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                     "reasoning": { "effort": "high" },
                     "include_reasoning": true
                 }))
-                .build();
+                .build().expect("request should build");
 
             let mut stream = model.stream(request).await.expect("stream should start");
             let observation = observe_stream(&mut stream).await;
@@ -214,7 +214,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 .max_tokens(4096)
                 .tool(tool_definition.clone())
                 .additional_params(reasoning_params.clone())
-                .build();
+                .build().expect("request should build");
 
             let mut stream = model.stream(request).await.expect("stream should start");
             let first_turn = observe_stream(&mut stream).await;
@@ -260,7 +260,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 .additional_params(reasoning_params)
                 .message(assistant_message)
                 .message(tool_result_message)
-                .build();
+                .build().expect("request should build");
 
             let mut followup_stream = model
                 .stream(followup)
@@ -293,7 +293,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model
@@ -322,7 +323,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .build().expect("request should build");
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -359,7 +360,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .preamble("Use the provided tool result and answer directly.".to_string())
                 .message(assistant_message)
                 .message(tool_result_message)
-                .build();
+                .build().expect("request should build");
 
             let second_turn = collect_raw_stream_observation(
                 model

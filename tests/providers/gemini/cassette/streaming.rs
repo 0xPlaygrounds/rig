@@ -92,7 +92,8 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
             let request = model
                 .completion_request("Reply with exactly: final metadata ok")
                 .temperature(0.0)
-                .build();
+                .build()
+                .expect("request should build");
             let mut stream = model.stream(request).await.expect("stream should start");
 
             let mut text = String::new();
@@ -143,7 +144,8 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
             let request = model
                 .completion_request("Reply with exactly: contentless final metadata ok")
                 .temperature(0.0)
-                .build();
+                .build()
+                .expect("request should build");
             let mut stream = model.stream(request).await.expect("stream should start");
 
             let mut text = String::new();

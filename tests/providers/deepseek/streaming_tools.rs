@@ -64,7 +64,8 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
                 .additional_params(non_thinking_params())
-                .build();
+                .build()
+                .expect("request should build");
             let stream = model.stream(request).await.expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -85,7 +86,8 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .additional_params(non_thinking_params())
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model
@@ -123,7 +125,8 @@ async fn raw_stream_tool_call_arguments_are_objects() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .additional_params(non_thinking_params())
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model
@@ -212,7 +215,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(non_thinking_params())
-                .build();
+                .build().expect("request should build");
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -250,7 +253,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .message(assistant_message)
                 .message(tool_result_message)
                 .additional_params(non_thinking_params())
-                .build();
+                .build().expect("request should build");
 
             let second_turn = collect_raw_stream_observation(
                 model

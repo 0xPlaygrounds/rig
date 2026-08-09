@@ -1241,14 +1241,12 @@ where
     const SCENARIO: &str = "buffered_streaming_text_parity";
     const PROMPT: &str = "Answer with exactly the single word Paris.";
     let started = Instant::now();
-    let request = || {
-        model
-            .completion_request(PROMPT)
-            .temperature(0.0)
-            .max_tokens(32)
-            .build()
-    };
-    let buffered = model.completion(request()).await?;
+    let request = model
+        .completion_request(PROMPT)
+        .temperature(0.0)
+        .max_tokens(32)
+        .build()?;
+    let buffered = model.completion(request.clone()).await?;
     let buffered_text = buffered
         .choice
         .iter()
@@ -1258,7 +1256,7 @@ where
         })
         .collect::<String>();
 
-    let mut stream = model.stream(request()).await?;
+    let mut stream = model.stream(request).await?;
     let mut streamed_text = String::new();
     let mut streamed_usage = None;
     while let Some(item) = stream.next().await {
@@ -1954,7 +1952,7 @@ where
                 .tool_choice(ToolChoice::None)
                 .temperature(0.0)
                 .max_tokens(64)
-                .build(),
+                .build()?,
         )
         .await?;
     if none
@@ -1976,7 +1974,7 @@ where
                 .tool_choice(ToolChoice::Required)
                 .temperature(0.0)
                 .max_tokens(96)
-                .build(),
+                .build()?,
         )
         .await?;
     let required_calls = required
@@ -2001,7 +1999,7 @@ where
                 })
                 .temperature(0.0)
                 .max_tokens(96)
-                .build(),
+                .build()?,
         )
         .await?;
     let specific_calls = specific

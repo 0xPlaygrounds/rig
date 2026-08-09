@@ -21,7 +21,8 @@ async fn raw_response_text_matches_normalized_choice_text() {
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .temperature(0.0)
-                .build();
+                .build()
+                .expect("request should build");
 
             // `completion` is `raw_completion` followed by exactly this
             // conversion, so raw-vs-normalized parity is still checked against

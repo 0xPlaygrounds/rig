@@ -45,7 +45,7 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
                 )
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build().expect("request should build");
 
             // The premise of the scenario: the terminal `response.completed`
             // event carries no output items, so the non-streaming path has to
@@ -95,7 +95,7 @@ async fn stream_tool_call_completed_response_without_output() {
                 )
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build().expect("request should build");
 
             let mut stream = model.stream(request).await.expect("stream should start");
             let mut saw_ping_tool_call = false;

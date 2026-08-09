@@ -52,7 +52,8 @@ async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
         .completion_request("What is 2 + 2? Answer with only the number.")
         .max_tokens(2048)
         .additional_params(adaptive_thinking_params())
-        .build();
+        .build()
+        .expect("request should build");
     let mut stream = model
         .stream(request)
         .await

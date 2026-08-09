@@ -72,7 +72,8 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()
+                .expect("request should build");
             let stream = model.stream(request).await.expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -118,7 +119,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 .completion_request(XAI_STATUS_TOOL_PROMPT)
                 .preamble(XAI_STATUS_TOOL_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&StatusWordTool))
-                .build();
+                .build()
+                .expect("request should build");
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -155,7 +157,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 .preamble("Use the provided tool result and answer directly.".to_string())
                 .message(assistant_message)
                 .message(tool_result_message)
-                .build();
+                .build()
+                .expect("request should build");
 
             let second_turn = collect_raw_stream_observation(
                 model

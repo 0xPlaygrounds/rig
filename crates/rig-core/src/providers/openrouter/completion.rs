@@ -1641,7 +1641,7 @@ mod tests {
 
     #[test]
     fn test_openrouter_request_uses_request_model_override() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: Some("google/gemini-2.5-flash".to_string()),
             preamble: None,
             chat_history: vec!["Hello".into()],
@@ -1653,7 +1653,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let openrouter_request =
             OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
@@ -1666,7 +1667,7 @@ mod tests {
 
     #[test]
     fn openrouter_params_include_direct_request_documents() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![crate::message::Message::user("What is glarb-glarb?")],
@@ -1682,7 +1683,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
             model: "openai/gpt-4o-mini",
@@ -1700,7 +1702,7 @@ mod tests {
 
     #[test]
     fn test_openrouter_request_uses_default_model_when_override_unset() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec!["Hello".into()],
@@ -1712,7 +1714,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let openrouter_request =
             OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
@@ -1771,7 +1774,7 @@ mod tests {
         }))
         .expect("schema should deserialize");
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec!["Hello".into()],
@@ -1783,7 +1786,8 @@ mod tests {
             additional_params: None,
             output_schema: Some(schema),
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let openrouter_request =
             OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
@@ -1823,7 +1827,7 @@ mod tests {
         }))
         .expect("schema should deserialize");
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec!["Hello".into()],
@@ -1839,7 +1843,8 @@ mod tests {
             ),
             output_schema: Some(schema),
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let openrouter_request =
             OpenrouterCompletionRequest::try_from(("openai/gpt-4o-mini", request))
@@ -3045,7 +3050,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("openai/o4-mini");
-        let request = model.completion_request("weather?").build();
+        let request = model
+            .completion_request("weather?")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
 
         let mut events: Vec<&'static str> = Vec::new();
@@ -3147,7 +3155,10 @@ mod tests {
             .build()
             .expect("client should build");
         let model = client.completion_model("openai/o4-mini");
-        let request = model.completion_request("weather?").build();
+        let request = model
+            .completion_request("weather?")
+            .build()
+            .expect("request should build");
         let mut stream = model.stream(request).await.expect("stream should start");
         while stream.next().await.is_some() {}
 
@@ -3902,7 +3913,7 @@ mod tests {
     }
 
     fn prompt_caching_completion_request() -> CompletionRequest {
-        CompletionRequest {
+        CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
             chat_history: vec![crate::message::Message::user("Hello")],
@@ -3914,7 +3925,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        }
+        })
+        .expect("request should build")
     }
 
     #[test]

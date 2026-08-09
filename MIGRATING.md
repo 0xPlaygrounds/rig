@@ -409,17 +409,32 @@ aggregate to an **empty** choice. If you match on the single empty-text part to
 detect an empty turn, check `is_empty()` instead. Histories persisted by earlier
 versions still contain the sentinel, and rig still recognises it.
 
-**Empty content is rejected at the request boundary, not by a constructor.**
-Building a message with no content is now expressible, so it is checked before it
-reaches a provider: `CompletionRequest::validate_message_content` runs on the
-builder's `send`/`stream` and on every agent model call, and fails with the
-offending message's role and index instead of the old context-free "cannot
-create with an empty vector". Per-wire conversions keep their own guards.
+**An invalid `CompletionRequest` is now unconstructible.** The struct's fields
+are private; `CompletionRequest::new(CompletionRequestParts)` is the one way to
+build one, and it rejects an empty `chat_history` and empty `User`/`Assistant`
+message content, naming the offending message's role and index instead of the
+old context-free "cannot create with an empty vector".
+`CompletionRequestBuilder` funnels through it — `build()` now returns
+`Result<CompletionRequest, CompletionError>` — and deserialization routes
+through the same constructor via `#[serde(try_from = "CompletionRequestParts")]`,
+so a persisted request with empty content fails to deserialize instead of
+resurrecting a value that cannot otherwise exist. Serialization is unchanged.
+
+Migration is mechanical:
+
+| before | after |
+| --- | --- |
+| `request.tools` (any field read) | `request.tools()` — accessors are named for the fields |
+| moving fields out of a request | `request.into_parts()` → `CompletionRequestParts` (all-public fields, `Default`) |
+| `CompletionRequest { .. }` literal | `CompletionRequest::new(CompletionRequestParts { .. })?` |
+| `builder.build()` | `builder.build()?` |
 
 The check covers `User` and `Assistant` content only. `System` content is a
 `String` and always has been, so the removed type never constrained it —
 validating it would be a new restriction rather than a relocated one, and an
-empty preamble still sends exactly as before.
+empty preamble still sends exactly as before. Histories persisted with the
+legacy fabricated empty-text sentinel also still deserialize: a one-element
+content list passes the emptiness check by construction.
 
 ### The raw grammar is a part lifecycle: Start / Delta / End per content kind
 

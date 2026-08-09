@@ -30,7 +30,8 @@ async fn strict_tools_opt_in_roundtrip() {
                 .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -91,7 +92,8 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
                     model
                         .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
                         .preamble("Return only the requested marker.".to_string())
-                        .build(),
+                        .build()
+                        .expect("request should build"),
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");

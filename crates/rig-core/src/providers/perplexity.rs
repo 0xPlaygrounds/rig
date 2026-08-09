@@ -199,26 +199,27 @@ mod tests {
     fn perplexity_drops_tool_choice_instead_of_erroring() {
         // Multi-name Specific errors on tool-supporting providers; with
         // SUPPORTS_TOOLS = false it must be dropped before that validation.
-        let mut request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec!["Hello!".into()],
-            documents: vec![],
-            max_tokens: None,
-            temperature: None,
-            tools: vec![],
-            tool_choice: Some(crate::message::ToolChoice::Specific {
-                function_names: vec!["a".to_string(), "b".to_string()],
-            }),
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
-        request.tools = vec![crate::completion::ToolDefinition {
-            name: "lookup".to_string(),
-            description: String::new(),
-            parameters: serde_json::json!({}),
-        }];
+        let request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec!["Hello!".into()],
+                documents: vec![],
+                max_tokens: None,
+                temperature: None,
+                tools: vec![crate::completion::ToolDefinition {
+                    name: "lookup".to_string(),
+                    description: String::new(),
+                    parameters: serde_json::json!({}),
+                }],
+                tool_choice: Some(crate::message::ToolChoice::Specific {
+                    function_names: vec!["a".to_string(), "b".to_string()],
+                }),
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let converted = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: SONAR.to_string(),
@@ -280,7 +281,8 @@ mod tests {
             parameters: serde_json::json!({"type":"object","properties":{},"required":[]}),
         })
         .tool_choice(crate::message::ToolChoice::Required)
-        .build();
+        .build()
+        .expect("request should build");
 
         let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: SONAR.to_string(),

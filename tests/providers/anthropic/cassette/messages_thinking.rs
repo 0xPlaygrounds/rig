@@ -53,7 +53,8 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                 .completion_request(redacted_thinking_prompt())
                 .max_tokens(4096)
                 .additional_params(thinking_params())
-                .build();
+                .build()
+                .expect("request should build");
             let first_response = model
                 .completion(first_request)
                 .await
@@ -76,7 +77,8 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                     id: first_response.message_id.clone(),
                     content: first_response.choice.clone(),
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
             let second_response = model
                 .completion(second_request)
@@ -110,7 +112,8 @@ async fn redacted_thinking_streaming() {
                 .completion_request(redacted_thinking_prompt())
                 .max_tokens(4096)
                 .additional_params(thinking_params())
-                .build();
+                .build()
+                .expect("request should build");
 
             let mut stream = model
                 .stream(request)

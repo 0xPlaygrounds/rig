@@ -70,7 +70,7 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
                     .completion_request("Answer with only the capital of France.")
                     .temperature(0.0)
                     .max_tokens(32)
-                    .build(),
+                    .build()?,
             )
             .await
     })

@@ -584,7 +584,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("deepseek-r1");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)

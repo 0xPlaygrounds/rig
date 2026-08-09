@@ -30,7 +30,8 @@ async fn strict_tools_opt_in_roundtrip() {
                 .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&Adder))
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -83,7 +84,8 @@ async fn incomplete_response_surfaces_partial_output() {
                 )
                 .preamble("You are a storyteller.".to_string())
                 .max_tokens(16)
-                .build();
+                .build()
+                .expect("request should build");
 
             // `status` and `incomplete_details` are Responses-API wire fields, so
             // they are read off the provider's own response type. The cassette

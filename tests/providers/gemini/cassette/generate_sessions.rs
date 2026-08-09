@@ -228,7 +228,8 @@ async fn long_history_replay_nonstreaming() {
                 ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -286,7 +287,8 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
                         "thinkingConfig": { "thinkingBudget": 1024, "includeThoughts": true }
                     }
                 }))
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)

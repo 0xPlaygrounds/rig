@@ -17,7 +17,8 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
                 .completion_request("/no_think Explain usage accounting in one sentence.")
                 .preamble(SYSTEM_PROMPT.to_string())
                 .max_tokens(64)
-                .build();
+                .build()
+                .expect("request should build");
             // A single cassette interaction: keep mistral.rs's own wire response
             // for the usage-shape assertions, and still check that the
             // normalization the completion path applies accepts it.

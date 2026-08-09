@@ -2417,7 +2417,7 @@ mod tests {
 
     #[test]
     fn test_resolve_request_model_uses_override() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: Some("gemini-2.5-flash".to_string()),
             preamble: None,
             chat_history: vec!["Hello".into()],
@@ -2429,7 +2429,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let request_model = resolve_request_model("gemini-2.0-flash", &request);
         assert_eq!(request_model, "gemini-2.5-flash");
@@ -2445,7 +2446,7 @@ mod tests {
 
     #[test]
     fn test_resolve_request_model_uses_default_when_unset() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec!["Hello".into()],
@@ -2457,7 +2458,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         assert_eq!(
             resolve_request_model("gemini-2.0-flash", &request),
@@ -3683,7 +3685,7 @@ mod tests {
         use crate::completion::request::CompletionRequest;
         use crate::message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             preamble: None,
             chat_history: vec![
                 message::Message::user("weather?"),
@@ -3714,7 +3716,8 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
-        };
+        })
+        .expect("request should build");
 
         let body = create_request_body(request).expect("request should build");
         let response_names: Vec<_> = body
@@ -3864,7 +3867,7 @@ mod tests {
             },
         ];
 
-        let documents_message = CompletionRequest {
+        let documents_message = CompletionRequest::new(CompletionRequestParts {
             preamble: None,
             chat_history: vec![Message::user("placeholder")],
             documents,
@@ -3876,11 +3879,12 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
-        }
+        })
+        .expect("request should build")
         .normalized_documents()
         .unwrap();
 
-        let completion_request = CompletionRequest {
+        let completion_request = CompletionRequest::new(CompletionRequestParts {
             preamble: Some("You are a helpful assistant".to_string()),
             chat_history: vec![documents_message, Message::user("What are my notes about?")],
             documents: vec![],
@@ -3892,7 +3896,8 @@ mod tests {
             max_tokens: None,
             tool_choice: None,
             additional_params: None,
-        };
+        })
+        .expect("request should build");
 
         let request = create_request_body(completion_request).unwrap();
 
@@ -3947,7 +3952,7 @@ mod tests {
         use crate::completion::request::CompletionRequest;
         use crate::message::Message;
 
-        let completion_request = CompletionRequest {
+        let completion_request = CompletionRequest::new(CompletionRequestParts {
             preamble: Some("You are a helpful assistant".to_string()),
             chat_history: vec![Message::user("Hello")],
             documents: vec![], // No documents
@@ -3959,7 +3964,8 @@ mod tests {
             output_schema: None,
             record_telemetry_content: false,
             additional_params: None,
-        };
+        })
+        .expect("request should build");
 
         let request = create_request_body(completion_request).unwrap();
 
@@ -3994,7 +4000,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(super::GEMINI_3_FLASH_PREVIEW);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)

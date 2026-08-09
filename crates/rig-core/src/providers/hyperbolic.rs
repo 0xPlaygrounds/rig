@@ -449,7 +449,8 @@ mod tests {
         })
         .tool_choice(crate::message::ToolChoice::Required)
         .output_schema(schemars::schema_for!(serde_json::Value))
-        .build();
+        .build()
+        .expect("request should build");
 
         let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "meta-llama/Meta-Llama-3.1-8B-Instruct".to_string(),
@@ -494,7 +495,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(super::LLAMA_3_1_8B);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)
@@ -523,7 +527,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model(super::LLAMA_3_1_8B);
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)

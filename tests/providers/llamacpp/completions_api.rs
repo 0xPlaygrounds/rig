@@ -39,7 +39,8 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     let request = model
         .completion_request(RAW_TEXT_RESPONSE_PROMPT)
         .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-        .build();
+        .build()
+        .expect("request should build");
     // One request, two views: `raw_completion` returns llama.cpp's own wire
     // response and the provider-local conversion produces exactly what
     // `CompletionModel::completion` would have returned for it.

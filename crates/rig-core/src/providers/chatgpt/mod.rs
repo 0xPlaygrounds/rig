@@ -785,19 +785,22 @@ data: [DONE]"#;
 
         model
             .openai_model()
-            .create_completion_request(completion::CompletionRequest {
-                model: Some("gpt-5.4".to_string()),
-                preamble: Some("System one".to_string()),
-                chat_history,
-                documents: Vec::new(),
-                tools: Vec::new(),
-                temperature: None,
-                max_tokens: None,
-                tool_choice: None,
-                additional_params: None,
-                output_schema: None,
-                record_telemetry_content: false,
-            })
+            .create_completion_request(
+                completion::CompletionRequest::new(completion::CompletionRequestParts {
+                    model: Some("gpt-5.4".to_string()),
+                    preamble: Some("System one".to_string()),
+                    chat_history,
+                    documents: Vec::new(),
+                    tools: Vec::new(),
+                    temperature: None,
+                    max_tokens: None,
+                    tool_choice: None,
+                    additional_params: None,
+                    output_schema: None,
+                    record_telemetry_content: false,
+                })
+                .expect("request should build"),
+            )
             .expect("request")
     }
 
@@ -839,19 +842,22 @@ data: [DONE]"#;
         let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
 
         let request = model
-            .create_request(completion::CompletionRequest {
-                record_telemetry_content: false,
-                model: None,
-                preamble: Some("Respond tersely.".to_string()),
-                chat_history: vec![completion::Message::user("hello")],
-                documents: Vec::new(),
-                tools: Vec::new(),
-                temperature: None,
-                max_tokens: None,
-                tool_choice: None,
-                additional_params: None,
-                output_schema: None,
-            })
+            .create_request(
+                completion::CompletionRequest::new(completion::CompletionRequestParts {
+                    record_telemetry_content: false,
+                    model: None,
+                    preamble: Some("Respond tersely.".to_string()),
+                    chat_history: vec![completion::Message::user("hello")],
+                    documents: Vec::new(),
+                    tools: Vec::new(),
+                    temperature: None,
+                    max_tokens: None,
+                    tool_choice: None,
+                    additional_params: None,
+                    output_schema: None,
+                })
+                .expect("request should build"),
+            )
             .expect("request");
 
         let expected = format!("{DEFAULT_INSTRUCTIONS}\n\nRespond tersely.");
@@ -867,19 +873,22 @@ data: [DONE]"#;
         let model = ResponsesCompletionModel::new(client, GPT_5_3_CODEX);
 
         let request = model
-            .create_request(completion::CompletionRequest {
-                model: None,
-                preamble: None,
-                chat_history: vec![completion::Message::user("hello")],
-                documents: Vec::new(),
-                tools: Vec::new(),
-                temperature: Some(0.5),
-                max_tokens: None,
-                tool_choice: None,
-                additional_params: None,
-                output_schema: None,
-                record_telemetry_content: false,
-            })
+            .create_request(
+                completion::CompletionRequest::new(completion::CompletionRequestParts {
+                    model: None,
+                    preamble: None,
+                    chat_history: vec![completion::Message::user("hello")],
+                    documents: Vec::new(),
+                    tools: Vec::new(),
+                    temperature: Some(0.5),
+                    max_tokens: None,
+                    tool_choice: None,
+                    additional_params: None,
+                    output_schema: None,
+                    record_telemetry_content: false,
+                })
+                .expect("request should build"),
+            )
             .expect("request");
 
         assert!(request.temperature.is_none());
@@ -944,7 +953,10 @@ data: [DONE]"#;
                 .build()
                 .expect("client should build");
             let model = client.completion_model(GPT_5_4);
-            let request = model.completion_request("hello").build();
+            let request = model
+                .completion_request("hello")
+                .build()
+                .expect("request should build");
 
             let error = model
                 .completion(request)

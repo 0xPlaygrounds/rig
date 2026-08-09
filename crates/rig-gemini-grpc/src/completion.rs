@@ -1115,7 +1115,7 @@ mod tests {
 
         let req = create_grpc_request(
             "gemini-2.5-flash".to_string(),
-            CompletionRequest {
+            CompletionRequest::new(CompletionRequestParts {
                 model: None,
                 preamble: None,
                 chat_history: vec![
@@ -1136,7 +1136,8 @@ mod tests {
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
-            },
+            })
+            .expect("request should build"),
         )
         .expect("request build");
 
@@ -1177,7 +1178,7 @@ mod tests {
 
         let req = create_grpc_request(
             "gemini-2.5-flash".to_string(),
-            CompletionRequest {
+            CompletionRequest::new(CompletionRequestParts {
                 model: None,
                 preamble: None,
                 chat_history: vec![message::Message::user("forecast in Berlin?")],
@@ -1189,7 +1190,8 @@ mod tests {
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
-            },
+            })
+            .expect("request should build"),
         )
         .expect("request build");
 

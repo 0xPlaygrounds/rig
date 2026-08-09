@@ -163,7 +163,8 @@ async fn zero_argument_tool_call_streaming() {
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
                 .tool(zero_arg_tool_definition("ping"))
-                .build();
+                .build()
+                .expect("request should build");
 
             let stream = model
                 .stream(request)
@@ -186,7 +187,8 @@ async fn zero_argument_tool_call_nonstreaming() {
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
                 .tool(zero_arg_tool_definition("ping"))
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)
@@ -267,7 +269,8 @@ async fn nested_arguments_streaming() {
                 .completion_request(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&PlanTrip))
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model
@@ -320,7 +323,8 @@ async fn unicode_arguments_streaming() {
                         "required": ["message"]
                     }),
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model

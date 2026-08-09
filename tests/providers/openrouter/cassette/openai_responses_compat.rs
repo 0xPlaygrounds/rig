@@ -23,7 +23,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
                 .preamble(
                     "Return the requested text exactly, with no extra commentary.".to_string(),
                 )
-                .build();
+                .build().expect("request should build");
 
             // `service_tier` is Responses-API metadata rig does not normalize,
             // so it is read off the provider's own wire response. `completion`

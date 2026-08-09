@@ -29,7 +29,10 @@ async fn assert_nonstreaming_http_error(
     expected_message: &str,
 ) {
     let model = client.completion_model(chatgpt::GPT_5_4);
-    let request = model.completion_request("hello").build();
+    let request = model
+        .completion_request("hello")
+        .build()
+        .expect("request should build");
 
     let error = model
         .completion(request)

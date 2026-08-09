@@ -35,7 +35,7 @@ use std::collections::HashMap;
 /// streaming request bytes stay stable.
 fn create_streaming_request_body(
     request_model: String,
-    mut completion_request: CompletionRequest,
+    completion_request: CompletionRequest,
     max_tokens: u64,
     prompt_caching: bool,
     automatic_caching: bool,
@@ -43,7 +43,10 @@ fn create_streaming_request_body(
 ) -> Result<Value, CompletionError> {
     // The typed request's `TryFrom` requires `max_tokens`; feed it the value the
     // caller already resolved (the request's own value, else the model default).
-    completion_request.max_tokens = Some(max_tokens);
+    // A built request is immutable, so it is applied by re-construction.
+    let mut parts = completion_request.into_parts();
+    parts.max_tokens = Some(max_tokens);
+    let completion_request = CompletionRequest::new(parts)?;
 
     let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
         model: &request_model,
@@ -885,7 +888,7 @@ mod tests {
 
     #[test]
     fn streaming_request_keeps_documents_after_leading_system_messages() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![
@@ -906,7 +909,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let body = create_streaming_request_body(
             CLAUDE_OPUS_4_8.to_string(),
@@ -950,7 +954,7 @@ mod tests {
         }))
         .expect("schema should deserialize");
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: Some("You are helpful".to_string()),
             chat_history: vec![RigMessage::user("What's the weather?")],
@@ -962,7 +966,8 @@ mod tests {
             additional_params: None,
             output_schema: Some(schema),
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let streaming_body = create_streaming_request_body(
             CLAUDE_OPUS_4_8.to_string(),
@@ -1011,7 +1016,7 @@ mod tests {
 
     #[test]
     fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset() {
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![RigMessage::user("Add 2 and 3")],
@@ -1030,7 +1035,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let body = create_streaming_request_body(
             CLAUDE_OPUS_4_8.to_string(),
@@ -1055,7 +1061,7 @@ mod tests {
         // whether tools are present, but the streaming path has always emitted
         // `tool_choice` *only* alongside a non-empty tool set (Anthropic rejects it
         // otherwise). A `tool_choice` set with no tools must not reach the wire.
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![RigMessage::user("Hi")],
@@ -1067,7 +1073,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let body = create_streaming_request_body(
             CLAUDE_OPUS_4_8.to_string(),
@@ -2491,7 +2498,10 @@ mod tests {
                 .build()
                 .expect("build client");
             let model = client.completion_model(CLAUDE_SONNET_4_6);
-            let request = model.completion_request("hello").build();
+            let request = model
+                .completion_request("hello")
+                .build()
+                .expect("request should build");
             let mut stream = crate::completion::CompletionModel::stream(&model, request)
                 .await
                 .expect("stream should open");
@@ -2543,7 +2553,10 @@ mod tests {
                 .build()
                 .expect("build client");
             let model = client.completion_model(CLAUDE_SONNET_4_6);
-            let request = model.completion_request("hello").build();
+            let request = model
+                .completion_request("hello")
+                .build()
+                .expect("request should build");
             let mut stream = crate::completion::CompletionModel::stream(&model, request)
                 .await
                 .expect("stream should open");

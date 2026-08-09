@@ -315,7 +315,7 @@ mod tests {
     use futures::StreamExt;
 
     fn request(prompt: &str) -> CompletionRequest {
-        CompletionRequest {
+        CompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![Message::user(prompt)],
@@ -327,7 +327,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        }
+        })
+        .expect("request should build")
     }
 
     #[tokio::test]

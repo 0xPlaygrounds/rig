@@ -772,7 +772,7 @@ mod tests {
         let request = requests.first().expect("one extractor request");
         assert!(
             request
-                .documents
+                .documents()
                 .iter()
                 .any(|document| document.id == "extractor-context"
                     && document.text == "{\n  \"question\": \"retrieved\"\n}")

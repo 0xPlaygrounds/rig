@@ -28,7 +28,8 @@ async fn required_maps_to_any_and_forces_function_call() {
                 .temperature(0.0)
                 .tool(rig::tool::tool_definition(&Adder))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)

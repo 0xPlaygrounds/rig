@@ -89,7 +89,7 @@ impl CompletionModel for StrongSynthesisModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let saw_tool_result = request.chat_history.iter().any(|message| {
+        let saw_tool_result = request.chat_history().iter().any(|message| {
             matches!(message, rig_core::message::Message::User { content }
                 if content.iter().any(|item| matches!(item, rig_core::message::UserContent::ToolResult(_))))
         });

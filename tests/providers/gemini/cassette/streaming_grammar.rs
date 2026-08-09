@@ -162,7 +162,8 @@ async fn max_tokens_truncation_normalizes_to_length() {
                 .completion_request("Write a 200-word story about a lighthouse keeper.")
                 .max_tokens(24)
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -192,7 +193,8 @@ async fn streaming_tool_call_aggregates_with_tool_calls_finish() {
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -258,7 +260,7 @@ async fn thinking_stream_aggregates_all_reasoning_text() {
                 .additional_params(
                     serde_json::to_value(params).expect("params should serialize"),
                 )
-                .build();
+                .build().expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -383,7 +385,8 @@ async fn thinking_and_tool_call_interleave_as_discrete_parts() {
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -459,7 +462,8 @@ async fn parallel_function_calls_stay_distinct() {
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -535,7 +539,8 @@ async fn stop_finish_reason_normalizes_on_text_turn() {
             let request = model
                 .completion_request("Reply with one short sentence about volcanoes.")
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);
@@ -576,7 +581,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                     })
                     .expect("params should serialize"),
                 )
-                .build();
+                .build().expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -723,7 +728,8 @@ async fn interactions_requires_action_roundtrip() {
                             })
                             .expect("params should serialize"),
                         )
-                        .build(),
+                        .build()
+                        .expect("request should build"),
                 )
                 .await
                 .expect("tool-required interaction should succeed");
@@ -787,7 +793,8 @@ async fn interactions_requires_action_roundtrip() {
                             })
                             .expect("params should serialize"),
                         )
-                        .build(),
+                        .build()
+                        .expect("request should build"),
                 )
                 .await
                 .expect("tool-result follow-up should succeed");
@@ -843,7 +850,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
                     })
                     .expect("params should serialize"),
                 )
-                .build();
+                .build().expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -947,7 +954,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                     })
                     .expect("params should serialize"),
                 )
-                .build();
+                .build().expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -1053,7 +1060,8 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 )
                 .tool(rig::tool::tool_definition(&crate::support::Adder))
                 .messages(history)
-                .build();
+                .build()
+                .expect("request should build");
             let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
             assert!(
                 run.text.contains('5'),

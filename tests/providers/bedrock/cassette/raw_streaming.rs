@@ -23,7 +23,8 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
-                .build();
+                .build()
+                .expect("request should build");
             let stream = model.stream(request).await.expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", false).await;
@@ -42,7 +43,8 @@ async fn raw_stream_text_response_smoke() {
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble("Reply with exactly the requested text.".to_string())
                 .temperature(0.0)
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model
@@ -76,7 +78,8 @@ async fn raw_stream_emits_tool_call_before_text() {
                 .tool_choice(ToolChoice::Specific {
                     function_names: vec!["lookup_harbor_label".to_string()],
                 })
-                .build();
+                .build()
+                .expect("request should build");
 
             let observation = collect_raw_stream_observation(
                 model

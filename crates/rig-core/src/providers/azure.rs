@@ -1009,19 +1009,22 @@ mod azure_tests {
         let model = super::CompletionModel::new(client, GPT_4O_MINI);
 
         let _ = model
-            .completion(CompletionRequest {
-                model: Some("other-deployment".to_string()),
-                preamble: None,
-                chat_history: vec!["Hello!".into()],
-                documents: vec![],
-                max_tokens: None,
-                temperature: None,
-                tools: vec![],
-                tool_choice: None,
-                additional_params: None,
-                output_schema: None,
-                record_telemetry_content: false,
-            })
+            .completion(
+                CompletionRequest::new(crate::completion::CompletionRequestParts {
+                    model: Some("other-deployment".to_string()),
+                    preamble: None,
+                    chat_history: vec!["Hello!".into()],
+                    documents: vec![],
+                    max_tokens: None,
+                    temperature: None,
+                    tools: vec![],
+                    tool_choice: None,
+                    additional_params: None,
+                    output_schema: None,
+                    record_telemetry_content: false,
+                })
+                .expect("request should build"),
+            )
             .await;
 
         let requests = http_client.requests();
@@ -1057,19 +1060,22 @@ mod azure_tests {
         let model = super::CompletionModel::new(client, GPT_4O_MINI);
 
         let error = match model
-            .completion(CompletionRequest {
-                model: None,
-                preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: vec!["Hello!".into()],
-                documents: vec![],
-                max_tokens: Some(100),
-                temperature: Some(0.0),
-                tools: vec![],
-                tool_choice: None,
-                additional_params: None,
-                output_schema: None,
-                record_telemetry_content: false,
-            })
+            .completion(
+                CompletionRequest::new(crate::completion::CompletionRequestParts {
+                    model: None,
+                    preamble: Some("You are a helpful assistant.".to_string()),
+                    chat_history: vec!["Hello!".into()],
+                    documents: vec![],
+                    max_tokens: Some(100),
+                    temperature: Some(0.0),
+                    tools: vec![],
+                    tool_choice: None,
+                    additional_params: None,
+                    output_schema: None,
+                    record_telemetry_content: false,
+                })
+                .expect("request should build"),
+            )
             .await
         {
             Err(error) => error,
@@ -1125,19 +1131,22 @@ mod azure_tests {
         let client = Client::from_env()?;
         let model = client.completion_model(GPT_4O_MINI);
         let completion = model
-            .completion(CompletionRequest {
-                model: None,
-                preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: vec!["Hello!".into()],
-                documents: vec![],
-                max_tokens: Some(100),
-                temperature: Some(0.0),
-                tools: vec![],
-                tool_choice: None,
-                additional_params: None,
-                output_schema: None,
-                record_telemetry_content: false,
-            })
+            .completion(
+                CompletionRequest::new(crate::completion::CompletionRequestParts {
+                    model: None,
+                    preamble: Some("You are a helpful assistant.".to_string()),
+                    chat_history: vec!["Hello!".into()],
+                    documents: vec![],
+                    max_tokens: Some(100),
+                    temperature: Some(0.0),
+                    tools: vec![],
+                    tool_choice: None,
+                    additional_params: None,
+                    output_schema: None,
+                    record_telemetry_content: false,
+                })
+                .expect("request should build"),
+            )
             .await?;
 
         tracing::info!("Azure completion: {:?}", completion);

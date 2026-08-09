@@ -147,7 +147,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("meta-llama/Meta-Llama-3-70B-Instruct-Turbo");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)
@@ -176,22 +179,24 @@ mod tests {
 
     #[test]
     fn together_request_conversion_errors_when_all_messages_are_filtered() {
-        let request = crate::completion::CompletionRequest {
-            preamble: None,
-            chat_history: vec![message::Message::Assistant {
-                id: None,
-                content: vec![message::AssistantContent::reasoning("hidden")],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            model: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                preamble: None,
+                chat_history: vec![message::Message::Assistant {
+                    id: None,
+                    content: vec![message::AssistantContent::reasoning("hidden")],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                model: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let result = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "meta-llama/test-model".to_string(),

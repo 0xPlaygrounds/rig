@@ -78,7 +78,8 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
                  Think it through, then answer with just the number.",
             )
             .max_tokens(1024)
-            .build();
+            .build()
+            .expect("request should build");
         let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
 
         assert!(!run.text.trim().is_empty(), "turn should produce text");

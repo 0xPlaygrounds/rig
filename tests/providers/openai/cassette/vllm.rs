@@ -37,7 +37,7 @@ async fn responses_api_accepts_null_metadata() {
             let request = model
                 .completion_request("Reply with a short acknowledgement.")
                 .max_tokens(8)
-                .build();
+                .build().expect("request should build");
 
             // `metadata` is a provider-native wire field, so it is read off the
             // Responses API's own response type. The cassette records a single

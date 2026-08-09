@@ -14,7 +14,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let request = model
         .completion_request("What is the capital of France?")
         .max_tokens(1024)
-        .build();
+        .build()?;
 
     let response = model
         .completion(request)

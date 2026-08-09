@@ -667,16 +667,23 @@ impl<M: CompletionModel + ?Sized> CompletionModel for std::sync::Arc<M> {
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
+///
+/// A value of this type is proof that its content is valid: the only ways to
+/// obtain one — [`CompletionRequest::new`], [`CompletionRequestBuilder`], and
+/// deserialization (which routes through the same constructor via
+/// `#[serde(try_from = "CompletionRequestParts")]`) — all reject an empty
+/// chat history and empty message content. Holding a `CompletionRequest`
+/// means those checks already ran.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "CompletionRequestParts")]
 pub struct CompletionRequest {
     /// Optional model override for this request.
-    pub model: Option<String>,
+    model: Option<String>,
     /// Legacy preamble field preserved for backwards compatibility.
     ///
     /// New code should prefer a leading [`Message::System`]
     /// in `chat_history` as the canonical representation of system instructions.
-    pub preamble: Option<String>,
+    preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     ///
     /// [`CompletionRequestBuilder`] always appends the prompt as the last
@@ -684,22 +691,22 @@ pub struct CompletionRequest {
     /// enforces that — it is a plain `Vec` — so a hand-built request can carry
     /// an empty history; [`CompletionRequest::validate_message_content`]
     /// rejects one before it reaches a provider.
-    pub chat_history: Vec<Message>,
+    chat_history: Vec<Message>,
     /// The documents to be sent to the completion model provider
-    pub documents: Vec<Document>,
+    documents: Vec<Document>,
     /// The tools to be sent to the completion model provider
-    pub tools: Vec<ToolDefinition>,
+    tools: Vec<ToolDefinition>,
     /// The temperature to be sent to the completion model provider
-    pub temperature: Option<f64>,
+    temperature: Option<f64>,
     /// The max tokens to be sent to the completion model provider
-    pub max_tokens: Option<u64>,
+    max_tokens: Option<u64>,
     /// Whether tools are required to be used by the model provider or not before providing a response.
-    pub tool_choice: Option<ToolChoice>,
+    tool_choice: Option<ToolChoice>,
     /// Additional provider-specific parameters to be sent to the completion model provider
-    pub additional_params: Option<serde_json::Value>,
+    additional_params: Option<serde_json::Value>,
     /// Optional JSON Schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
-    pub output_schema: Option<schemars::Schema>,
+    output_schema: Option<schemars::Schema>,
     /// Whether to record sensitive request, response, and tool content on GenAI
     /// telemetry spans.
     ///
@@ -718,7 +725,7 @@ pub struct CompletionRequest {
     /// This is local observability policy and is never serialized into provider
     /// request payloads.
     #[serde(skip)]
-    pub record_telemetry_content: bool,
+    record_telemetry_content: bool,
 }
 
 /// The plain-data fields of a [`CompletionRequest`], with no invariant attached.
@@ -1329,16 +1336,22 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     }
 
     /// Builds the completion request.
-    pub fn build(self) -> CompletionRequest {
-        self.into_model_and_request().1
+    ///
+    /// Fails when the built request would be invalid — the one way that can
+    /// happen on this path is a prompt whose own content is empty, since the
+    /// builder always appends the prompt to the history.
+    pub fn build(self) -> Result<CompletionRequest, CompletionError> {
+        Ok(self.into_model_and_request()?.1)
     }
 
     /// Moves the model out and builds the request from the remaining fields.
     ///
     /// `build`, `send`, and `stream` all funnel through this single
     /// destructuring, so the built request cannot drift between them and the
-    /// terminal methods need no model clone.
-    fn into_model_and_request(self) -> (M, CompletionRequest) {
+    /// terminal methods need no model clone. Construction goes through
+    /// [`CompletionRequest::new`], which is where the content invariant is
+    /// enforced.
+    fn into_model_and_request(self) -> Result<(M, CompletionRequest), CompletionError> {
         let model = self.model;
         // Build the final message list, prepending preamble if present
         let mut chat_history = self.chat_history;
@@ -1357,7 +1370,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             self.provider_tools,
         );
 
-        let request = CompletionRequest {
+        let request = CompletionRequest::new(CompletionRequestParts {
             model: self.request_model,
             preamble: None,
             chat_history,
@@ -1369,21 +1382,19 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             additional_params,
             output_schema: self.output_schema,
             record_telemetry_content: self.record_telemetry_content,
-        };
-        (model, request)
+        })?;
+        Ok((model, request))
     }
 
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
-        let (model, request) = self.into_model_and_request();
-        request.validate_message_content()?;
+        let (model, request) = self.into_model_and_request()?;
         model.completion(request).await
     }
 
     /// Stream the completion request
     pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
-        let (model, request) = self.into_model_and_request();
-        request.validate_message_content()?;
+        let (model, request) = self.into_model_and_request()?;
         model.stream(request).await
     }
 }
@@ -1599,6 +1610,23 @@ mod tests {
         );
     }
 
+    /// The builder cannot hand out an invalid request either: its history is
+    /// non-empty by construction (it appends the prompt), so the one failure
+    /// left on that path is a prompt whose own content is empty — an error,
+    /// not a panic.
+    #[test]
+    fn builder_with_an_empty_prompt_propagates_the_construction_error() {
+        let error = CompletionRequestBuilder::new(
+            MockCompletionModel::default(),
+            Message::User {
+                content: Vec::new(),
+            },
+        )
+        .build()
+        .expect_err("an empty prompt must fail construction, not reach a provider");
+        assert!(error.to_string().contains("no content"), "got {error}");
+    }
+
     fn valid_two_turn_request() -> CompletionRequest {
         CompletionRequest::new(CompletionRequestParts {
             chat_history: vec![Message::user("hello"), Message::assistant("hi")],
@@ -1735,7 +1763,8 @@ mod tests {
     fn completion_request_content_telemetry_is_opt_in_and_not_serialized() {
         let default_request =
             CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
-                .build();
+                .build()
+                .expect("request should build");
         assert!(!default_request.record_telemetry_content);
 
         let default_json = serde_json::to_value(&default_request).expect("serialize request");
@@ -1750,7 +1779,8 @@ mod tests {
         let opt_in_request =
             CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
                 .record_content_telemetry(true)
-                .build();
+                .build()
+                .expect("request should build");
         assert!(opt_in_request.record_telemetry_content);
 
         let opt_in_json = serde_json::to_value(&opt_in_request).expect("serialize opt-in request");
@@ -1796,7 +1826,7 @@ mod tests {
                 if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "prompt")
         ));
 
-        let request = builder.build();
+        let request = builder.build().expect("request should build");
         assert_eq!(messages, request.chat_history_with_documents());
     }
 
@@ -1916,7 +1946,8 @@ mod tests {
             CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
                 .preamble("System prompt".to_string())
                 .message(Message::user("History"))
-                .build();
+                .build()
+                .expect("request should build");
 
         assert_eq!(request.preamble, None);
 
@@ -1936,7 +1967,8 @@ mod tests {
             CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
                 .preamble("System prompt".to_string())
                 .without_preamble()
-                .build();
+                .build()
+                .expect("request should build");
 
         assert_eq!(request.preamble, None);
         let history = request.chat_history.into_iter().collect::<Vec<_>>();
@@ -1950,7 +1982,8 @@ mod tests {
             CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
                 .preamble("System prompt".to_string())
                 .document(test_document("doc1", "Document text."))
-                .build();
+                .build()
+                .expect("request should build");
 
         assert_eq!(request.documents.len(), 1);
 
@@ -1974,7 +2007,8 @@ mod tests {
                 .message(Message::user("Earlier user turn"))
                 .message(Message::assistant("Earlier assistant turn"))
                 .document(test_document("doc1", "Document text."))
-                .build();
+                .build()
+                .expect("request should build");
 
         let history = request.chat_history_with_documents();
         let history = history.iter().collect::<Vec<_>>();
@@ -1999,7 +2033,8 @@ mod tests {
             CompletionRequestBuilder::new(MockCompletionModel::default(), Message::user("Prompt"))
                 .message(Message::system("System prompt"))
                 .message(Message::user("Earlier user turn"))
-                .build();
+                .build()
+                .expect("request should build");
 
         let history = request.chat_history.iter().collect::<Vec<_>>();
         assert_eq!(history.len(), 3);

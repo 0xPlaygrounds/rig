@@ -2238,7 +2238,7 @@ mod tests {
             ],
         };
 
-        CoreCompletionRequest {
+        CoreCompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![message::Message::User {
@@ -2252,7 +2252,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        }
+        })
+        .expect("request should build")
     }
 
     #[test]
@@ -2493,19 +2494,21 @@ mod tests {
 
     #[test]
     fn test_openai_request_uses_request_model_override() {
-        let request = crate::completion::CompletionRequest {
-            model: Some("gpt-4.1".to_string()),
-            preamble: None,
-            chat_history: vec!["Hello".into()],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: Some("gpt-4.1".to_string()),
+                preamble: None,
+                chat_history: vec!["Hello".into()],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -2524,19 +2527,21 @@ mod tests {
 
     #[test]
     fn test_openai_request_uses_default_model_when_override_unset() {
-        let request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec!["Hello".into()],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec!["Hello".into()],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -2562,7 +2567,8 @@ mod tests {
                 "Earlier assistant turn",
             ))
             .document(test_document("doc1", "Document text."))
-            .build();
+            .build()
+            .expect("request should build");
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -2604,7 +2610,7 @@ mod tests {
 
     #[test]
     fn openai_chat_direct_request_keeps_documents_after_system_messages() {
-        let request = CoreCompletionRequest {
+        let request = CoreCompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![
@@ -2621,7 +2627,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -2816,19 +2823,21 @@ mod tests {
 
     #[test]
     fn test_max_tokens_is_forwarded_to_request() {
-        let request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec!["Hello".into()],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: Some(4096),
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec!["Hello".into()],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: Some(4096),
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -2847,19 +2856,21 @@ mod tests {
 
     #[test]
     fn test_max_tokens_omitted_when_none() {
-        let request = crate::completion::CompletionRequest {
-            model: None,
-            preamble: None,
-            chat_history: vec!["Hello".into()],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                model: None,
+                preamble: None,
+                chat_history: vec!["Hello".into()],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -2878,7 +2889,7 @@ mod tests {
 
     #[test]
     fn request_conversion_errors_when_all_messages_are_filtered() {
-        let request = CoreCompletionRequest {
+        let request = CoreCompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![message::Message::Assistant {
@@ -2893,7 +2904,8 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let result = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -2909,7 +2921,7 @@ mod tests {
 
     #[test]
     fn request_conversion_omits_response_format_on_initial_tool_turn() {
-        let request = CoreCompletionRequest {
+        let request = CoreCompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![message::Message::user(
@@ -2944,7 +2956,8 @@ mod tests {
                 .expect("schema should deserialize"),
             ),
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -2967,7 +2980,7 @@ mod tests {
 
     #[test]
     fn request_conversion_restores_response_format_after_tool_result() {
-        let request = CoreCompletionRequest {
+        let request = CoreCompletionRequest::new(crate::completion::CompletionRequestParts {
             model: None,
             preamble: None,
             chat_history: vec![
@@ -3015,7 +3028,8 @@ mod tests {
                 .expect("schema should deserialize"),
             ),
             record_telemetry_content: false,
-        };
+        })
+        .expect("request should build");
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
             model: "gpt-4o-mini".to_string(),
@@ -3370,7 +3384,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o-mini");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)
@@ -3413,7 +3430,10 @@ mod tests {
             .build()
             .expect("build client");
         let model = client.completion_model("gpt-4o-mini");
-        let request = model.completion_request("hello").build();
+        let request = model
+            .completion_request("hello")
+            .build()
+            .expect("request should build");
 
         let error = model
             .completion(request)

@@ -129,21 +129,23 @@ fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
 
 #[test]
 fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
-    let core_request = rig::completion::CompletionRequest {
-        preamble: None,
-        chat_history: vec![CompletionMessage::user("hello")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: Some(serde_json::json!({
-            "reasoning": { "effort": "low" }
-        })),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let core_request =
+        rig::completion::CompletionRequest::new(rig::completion::CompletionRequestParts {
+            preamble: None,
+            chat_history: vec![CompletionMessage::user("hello")],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "reasoning": { "effort": "low" }
+            })),
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+        .expect("request should build");
 
     let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), core_request))
         .expect("convert request");
@@ -303,22 +305,24 @@ fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
 #[test]
 fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
-        let request = rig::completion::CompletionRequest {
-            preamble: None,
-            chat_history: vec![CompletionMessage::Assistant {
-                id: Some("assistant_message_id".to_string()),
-                content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
-            }],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            model: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            rig::completion::CompletionRequest::new(rig::completion::CompletionRequestParts {
+                preamble: None,
+                chat_history: vec![CompletionMessage::Assistant {
+                    id: Some("assistant_message_id".to_string()),
+                    content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                model: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
         OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
     }));
 
@@ -470,19 +474,21 @@ fn user_tool_result_without_provider_id_serializes_the_minted_call_id() {
 #[test]
 fn openai_responses_invalid_additional_params_returns_error_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
-        let request = rig::completion::CompletionRequest {
-            preamble: None,
-            chat_history: vec![CompletionMessage::user("hello")],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: Some(serde_json::json!("not_a_valid_object")),
-            model: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        };
+        let request =
+            rig::completion::CompletionRequest::new(rig::completion::CompletionRequestParts {
+                preamble: None,
+                chat_history: vec![CompletionMessage::user("hello")],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: Some(serde_json::json!("not_a_valid_object")),
+                model: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            })
+            .expect("request should build");
         OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
     }));
 
@@ -498,22 +504,24 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
 
 #[test]
 fn openai_responses_request_preserves_prompt_cache_parameters() {
-    let request = rig::completion::CompletionRequest {
-        preamble: None,
-        chat_history: vec![CompletionMessage::user("hello")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: Some(serde_json::json!({
-            "prompt_cache_key": "tenant-agent-scaffold",
-            "prompt_cache_retention": "24h"
-        })),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request =
+        rig::completion::CompletionRequest::new(rig::completion::CompletionRequestParts {
+            preamble: None,
+            chat_history: vec![CompletionMessage::user("hello")],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "prompt_cache_key": "tenant-agent-scaffold",
+                "prompt_cache_retention": "24h"
+            })),
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        })
+        .expect("request should build");
 
     let request = OpenAIResponsesRequest::try_from(("gpt-test".to_string(), request))
         .expect("convert request");

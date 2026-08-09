@@ -26,7 +26,8 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
                 )
                 .preamble("You are a storyteller.".to_string())
                 .max_tokens(64)
-                .build();
+                .build()
+                .expect("request should build");
 
             let response = model
                 .completion(request)

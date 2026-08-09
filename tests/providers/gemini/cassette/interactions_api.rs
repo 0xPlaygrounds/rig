@@ -43,7 +43,8 @@ async fn basic_interaction_returns_id() {
                 .completion_request("Give me two fun facts about hummingbirds.")
                 .preamble("Be concise.".to_string())
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
-                .build();
+                .build()
+                .expect("request should build");
             // The interaction id is Gemini's continuation handle (fed back as
             // `previous_interaction_id`), not an assistant message id, so it
             // lives on the provider's own response rather than on the
@@ -82,7 +83,8 @@ async fn followup_with_previous_interaction_id() {
                             })
                             .expect("params should serialize"),
                         )
-                        .build(),
+                        .build()
+                        .expect("request should build"),
                 )
                 .await
                 .expect("initial completion should succeed");
@@ -102,7 +104,8 @@ async fn followup_with_previous_interaction_id() {
                             })
                             .expect("params should serialize"),
                         )
-                        .build(),
+                        .build()
+                        .expect("request should build"),
                 )
                 .await
                 .expect("followup completion should succeed");
@@ -133,7 +136,8 @@ async fn google_search_tool_interaction() {
                             })
                             .expect("params should serialize"),
                         )
-                        .build(),
+                        .build()
+                        .expect("request should build"),
                 )
                 .await
                 .expect("search completion should succeed");
@@ -184,7 +188,8 @@ async fn tool_result_roundtrip() {
                             })
                             .expect("params should serialize"),
                         )
-                        .build(),
+                        .build()
+                        .expect("request should build"),
                 )
                 .await
                 .expect("tool call completion should succeed");
@@ -215,7 +220,8 @@ async fn tool_result_roundtrip() {
                             })
                             .expect("params should serialize"),
                         )
-                        .build(),
+                        .build()
+                        .expect("request should build"),
                 )
                 .await
                 .expect("tool result followup should succeed");
@@ -235,7 +241,8 @@ async fn streaming_interaction() {
             let request = model
                 .completion_request("Write a 3-line poem about rust and rivers.")
                 .temperature(0.4)
-                .build();
+                .build()
+                .expect("request should build");
             let mut stream = model.stream(request).await.expect("stream should start");
 
             let mut text = String::new();
@@ -269,7 +276,8 @@ async fn streaming_final_metadata_exposes_model_version() {
             let request = model
                 .completion_request("Reply with exactly: interaction metadata ok")
                 .temperature(0.0)
-                .build();
+                .build()
+                .expect("request should build");
             let mut stream = model.stream(request).await.expect("stream should start");
 
             let mut text = String::new();
