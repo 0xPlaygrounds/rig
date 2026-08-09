@@ -1099,7 +1099,7 @@ Method translation, including the traps:
 | --- | --- |
 | `OneOrMany::one(x)` | `vec![x]` |
 | `OneOrMany::many(items)?` | `items` (add your own emptiness check if you need one) |
-| `OneOrMany::merge(iters)?` | `iters.into_iter().flatten().collect()` |
+| `OneOrMany::merge(iters)?` | `iters.into_iter().flatten().collect()` (the `?` is gone: `merge` returned `Err(EmptyListError)` on an empty result, this yields an empty `Vec` — add your own check if you relied on the rejection) |
 | `OneOrMany::from_iter_optional(i)` | collect, then map the empty case to `None` yourself |
 | `.first()` → owned `T` | `.first()` → `Option<&T>`; use `.first().cloned()` or `v[0].clone()` |
 | `.first_ref()` → `&T` | `.first()` → `Option<&T>` |
@@ -1125,17 +1125,59 @@ let content = require_non_empty(parts, || {
 module) to `rig::message::EmptyListError`; the re-export at the crate root
 still resolves.
 
-**The wire format does not change.** `OneOrMany<T>` already serialized as a
-JSON array, exactly like `Vec<T>`, so persisted histories and provider request
-bodies are byte-identical across this change. The one deserialization
-difference: an empty array used to be rejected by the type and now decodes to
-an empty `Vec`.
+**The wire format does not change on the way out.** `OneOrMany<T>` already
+serialized as a JSON array, exactly like `Vec<T>`, so persisted histories and
+provider request bodies are byte-identical across this change.
+
+Decoding accepts two shapes it used to reject, both of which previously
+raised a local parse error and now produce an empty `Vec`:
+
+- an **empty array** (`[]`), which the type itself rejected;
+- **`null`**, on the fields that moved from the deleted
+  `string_or_one_or_many` onto `json_utils::string_or_vec` (anthropic
+  `Message.content` and `Content::ToolResult.content`; the openai chat and
+  Responses-API `System`/`User` content). `string_or_vec` carries
+  `visit_none`/`visit_unit` arms that its predecessor did not, because the
+  openai assistant-content field that already used it relies on them —
+  OpenAI sends `"content": null` for a message whose only payload is tool
+  calls.
+
+If you were feeding rig a history with a null content field and depending on
+the decode to reject it, that check is now yours to make: the value survives
+as an empty content list and is re-emitted as `"content": []`, which
+providers generally reject at the API instead.
 
 **Provider behavior does not change either.** Providers that previously had to
 fabricate a single empty text part to satisfy the non-empty container still
 produce that part today — the migration preserves it verbatim. Replacing those
 placeholders with a genuinely empty choice is a follow-up change, kept separate
 so that this one is a pure type substitution you can review mechanically.
+
+#### A tool whose `Output` is `Vec<ToolResultContent>` now sends rich content
+
+This is the one change in this PR that alters a wire payload without a
+compile error to announce it, so check your tools if any of them return a
+list of `ToolResultContent`.
+
+`IntoToolOutput` preserves the canonical rich-content types ahead of its
+`Serialize` fallback, so that returning an image does not silently become a
+JSON object. That guard used to name `OneOrMany<ToolResultContent>`; it now
+names `Vec<ToolResultContent>`. Consequences:
+
+- `type Output = OneOrMany<ToolResultContent>` no longer compiles — change
+  it to `Vec<ToolResultContent>` and the behaviour you had is preserved.
+- `type Output = Vec<ToolResultContent>` **compiles unchanged but behaves
+  differently**. It previously missed the guard and fell through to
+  serialization, reaching the model as a single JSON tool result
+  (`[{"type":"text",...}, ...]`). It now takes the rich path and reaches
+  the model as N ordered content blocks, with images sent as image parts.
+  For nearly every tool this is the intended result — it is what the
+  `OneOrMany` guard always did — but it is a payload change, and a prompt
+  that parsed that JSON array out of the tool result will need updating.
+- An **empty** `Vec<ToolResultContent>` now produces a contentless
+  `ToolOutput` (`content: []`, with `as_text()` and `as_json()` both
+  `None`) where it used to produce `json([])`. Return an explicit
+  `serde_json::json!([])` if you want the old shape.
 
 #### Three OpenAI conversions are inherent methods now, not `From`/`TryFrom`
 
