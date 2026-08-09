@@ -733,6 +733,14 @@ impl CompletionRequest {
     /// - Message content was likewise non-empty by construction, and every wire
     ///   rejects an empty content block.
     ///
+    /// The rule also covers the block list *inside* a tool result. A user
+    /// message carrying one `UserContent::ToolResult` is itself non-empty, but
+    /// `ToolResult::content` was non-empty by construction under the removed
+    /// container and is request-direction data just like the message content
+    /// around it — so its check is relocated here rather than dropped. Only a
+    /// tool result with *zero* blocks is rejected; a tool that legitimately
+    /// returned an empty string produces one block and still sends.
+    ///
     /// This is the **request** direction only, and the asymmetry is deliberate.
     /// Empty *assistant* content is a real provider outcome on the response path
     /// — a tool-call-only turn, a content-filtered turn, a truncated stream — and
@@ -774,6 +782,28 @@ impl CompletionRequest {
                     format!(
                         "{role} message at index {index} has no content; \
                          providers reject empty content blocks"
+                    )
+                    .into(),
+                ));
+            }
+
+            if let Message::User { content } = message
+                && let Some((position, result)) =
+                    content
+                        .iter()
+                        .enumerate()
+                        .find_map(|(position, item)| match item {
+                            UserContent::ToolResult(result) if result.content.is_empty() => {
+                                Some((position, result))
+                            }
+                            _ => None,
+                        })
+            {
+                let name = &result.name;
+                return Err(CompletionError::RequestError(
+                    format!(
+                        "tool result for `{name}` at index {position} of the user message at \
+                         index {index} has no content; providers reject empty content blocks"
                     )
                     .into(),
                 ));
@@ -1315,6 +1345,51 @@ mod tests {
                 },
                 Message::user("hello"),
             ]);
+            assert!(request.validate_message_content().is_ok());
+        }
+
+        #[test]
+        fn a_block_less_tool_result_is_rejected_naming_the_tool() {
+            use crate::message::{ToolCallId, ToolResult, ToolResultContent};
+            // `ToolResult::content` was non-empty by construction until the
+            // container was removed; the message around it has one item, so the
+            // message-level check alone would let this reach the wire as
+            // `"content": []`.
+            let error = request(vec![
+                Message::user("hello"),
+                Message::User {
+                    content: vec![UserContent::ToolResult(ToolResult {
+                        call: ToolCallId::new_or_mint("call_1"),
+                        provider: None,
+                        name: "lookup".to_owned(),
+                        content: Vec::<ToolResultContent>::new(),
+                    })],
+                },
+            ])
+            .validate_message_content()
+            .expect_err("a block-less tool result must not reach a provider");
+            let message = error.to_string();
+            assert!(message.contains("`lookup`"), "{message}");
+            assert!(message.contains("index 0"), "{message}");
+            assert!(message.contains("user message at index 1"), "{message}");
+        }
+
+        #[test]
+        fn a_tool_result_with_one_empty_string_block_is_accepted() {
+            use crate::message::{ToolCallId, ToolResult, ToolResultContent};
+            // The guard is on the cardinality of the block list, not on the
+            // blocks' content. A tool that legitimately returned an empty
+            // string produces one block and must still send — this pins the
+            // "no blocks" / "no content" distinction so a future tightening
+            // pass cannot collapse it.
+            let request = request(vec![Message::User {
+                content: vec![UserContent::ToolResult(ToolResult {
+                    call: ToolCallId::new_or_mint("call_1"),
+                    provider: None,
+                    name: "lookup".to_owned(),
+                    content: vec![ToolResultContent::text("")],
+                })],
+            }]);
             assert!(request.validate_message_content().is_ok());
         }
 

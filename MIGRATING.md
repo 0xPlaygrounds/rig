@@ -403,8 +403,10 @@ now decode to an empty `Vec`:
 If you fed rig a history with a null or empty content field and relied on the
 decode to reject it, that check is now yours. The value survives as an empty
 content list; on the request path it is caught by
-`CompletionRequest::validate_message_content` before the network, but a value
-you hand straight to a provider is re-emitted as `"content": []`, which
+`CompletionRequest::validate_message_content` before the network — including a
+tool result whose own block list decoded to empty, which the validator rejects
+by tool name even though the user message carrying it is non-empty — but a
+value you hand straight to a provider is re-emitted as `"content": []`, which
 providers generally reject at the API.
 
 #### A tool whose `Output` is `Vec<ToolResultContent>` now sends rich content
