@@ -748,12 +748,11 @@ impl CompletionRequest {
     /// point, and would break a history carrying a conditionally built preamble
     /// that resolved to `""`.
     ///
-    /// **Where this runs.** Both request entry points call it:
-    /// [`CompletionRequestBuilder::send`]/[`CompletionRequestBuilder::stream`]
-    /// for a direct call, and `ModelHandle::completion`/`stream` for everything
-    /// the agent loop drives — which does not go through the builder, and is
-    /// most traffic. Handing a request straight to a provider model bypasses
-    /// both; call this yourself there.
+    /// **Where this runs.** [`CompletionRequestBuilder::send`] and
+    /// [`CompletionRequestBuilder::stream`] call it, which covers both agent
+    /// surfaces too — the blocking and streaming turn drivers both issue their
+    /// request through the builder. Handing a request straight to a
+    /// [`CompletionModel`] bypasses it; call this yourself there.
     pub fn validate_message_content(&self) -> Result<(), CompletionError> {
         if self.chat_history.is_empty() {
             return Err(CompletionError::RequestError(

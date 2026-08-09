@@ -409,29 +409,73 @@ mod tests {
 
     mod string_or_vec_shapes {
         use serde::Deserialize;
+        use std::convert::Infallible;
+        use std::str::FromStr;
+
+        /// A content block that can arrive in every shape the helper accepts.
+        ///
+        /// The suite deliberately does not use `Vec<String>`: a bare object
+        /// cannot deserialize into a `String`, so a string element type makes
+        /// the `visit_map` arm structurally untestable — and that is the arm
+        /// whose loss would be a silent wire break, since several providers
+        /// spell single-block content as a bare object.
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct Block {
+            text: String,
+        }
+
+        impl FromStr for Block {
+            type Err = Infallible;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                Ok(Block {
+                    text: value.to_owned(),
+                })
+            }
+        }
 
         #[derive(Debug, Deserialize, PartialEq)]
         struct Holder {
             #[serde(deserialize_with = "super::super::string_or_vec")]
-            content: Vec<String>,
+            content: Vec<Block>,
         }
 
-        fn decode(json: serde_json::Value) -> Vec<String> {
+        fn decode(json: serde_json::Value) -> Vec<Block> {
             serde_json::from_value::<Holder>(json)
                 .expect("shape should decode")
                 .content
         }
 
+        fn block(text: &str) -> Block {
+            Block {
+                text: text.to_owned(),
+            }
+        }
+
         #[test]
-        fn a_bare_string_becomes_one_item() {
-            assert_eq!(decode(serde_json::json!({"content": "hi"})), vec!["hi"]);
+        fn a_bare_object_is_one_element() {
+            // `visit_map`. Carried over from the removed container's
+            // `string_or_one_or_many`, which had this arm where the helper it
+            // merged into did not.
+            assert_eq!(
+                decode(serde_json::json!({"content": {"text": "hi"}})),
+                vec![block("hi")]
+            );
+        }
+
+        #[test]
+        fn a_bare_string_becomes_one_element_via_from_str() {
+            assert_eq!(
+                decode(serde_json::json!({"content": "hi"})),
+                vec![block("hi")]
+            );
         }
 
         #[test]
         fn a_sequence_decodes_elementwise() {
             assert_eq!(
-                decode(serde_json::json!({"content": ["a", "b"]})),
-                vec!["a", "b"]
+                decode(serde_json::json!({"content": [{"text": "a"}, {"text": "b"}]})),
+                vec![block("a"), block("b")]
             );
         }
 

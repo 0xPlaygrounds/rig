@@ -371,6 +371,15 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 
                 let content = match message {
                     Message::Assistant { content, .. } => {
+                        // Unreachable today, and not for the reason it looks
+                        // like: `TryFrom<RawMessage>` builds the assistant arm
+                        // as `vec![one]` unconditionally, so this is never
+                        // empty even when the wire sent an empty string. It
+                        // was equally unreachable before message content became
+                        // a `Vec` — the container's `is_empty` returned a
+                        // hardcoded `false` — so the type change did not
+                        // revive it. Kept as a guard against a future
+                        // conversion that can produce nothing.
                         if content.is_empty() {
                             return Err(CompletionError::ResponseError(
                                 "Response contained empty content".to_owned(),

@@ -433,12 +433,8 @@ object. That guard used to name `OneOrMany<ToolResultContent>`; it now names
   produce `json([])`. Return an explicit `serde_json::json!([])` for the old
   shape.
 
-#### Two provider guards became reachable, and one stopped rejecting a real outcome
+#### A local generation that produces nothing keeps succeeding
 
-- Mira's `"Response contained empty content"` error was **dead code**: it was
-  guarded by `OneOrMany::is_empty()`, which was hardcoded to return `false`.
-  A defective Mira response that previously surfaced as an empty completion now
-  returns that error.
 - A degenerate local generation on `rig-candle` — a model that emits EOS
   immediately, or only whitespace, which the parser trims — used to be padded to
   non-empty and succeed. Removing the padding exposed an emptiness check that
@@ -510,15 +506,17 @@ The container was doing two jobs in opposite directions, and they separate:
 
 - **Outbound (request path).** `CompletionRequest::validate_message_content`
   rejects an empty `chat_history` and any user or assistant message with no
-  content, before the request is sent. It runs at both entry points a request
-  can take: `CompletionRequestBuilder::send`/`::stream` for a direct call, and
-  `ModelHandle::completion`/`::stream` for everything the agent loop drives —
-  which is most traffic, and which does not go through the builder. If you call
-  a provider model directly, neither runs; call it yourself, or go through one
-  of those two.
+  content, before the request is sent. `CompletionRequestBuilder::send`/`::stream`
+  call it, which is also how both agent surfaces issue their requests, so agent
+  traffic is covered without a second check. Handing a request straight to a
+  `CompletionModel` bypasses it — call it yourself there.
 - **Inbound (response path).** Per-wire guards route through the new
-  `message::require_non_empty(items, || error)`, each keeping the error message
-  it already had. These reject a provider that returned nothing where its
+  `message::require_non_empty(items, || error)`, each naming its own error
+  rather than sharing the constructor's context-free one. Most keep the message
+  they already had verbatim; the exception is bedrock, whose guards previously
+  surfaced `EmptyListError` — a message naming the deleted container — and now
+  say which message came back empty, as `ResponseError` rather than
+  `RequestError`. These reject a provider that returned nothing where its
   protocol promises content — a provider defect, which is a different claim from
   "empty assistant content is illegal". It is not: on the response path an empty
   turn is legal, which is the whole reason the container had to go.

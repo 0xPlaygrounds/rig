@@ -155,23 +155,19 @@ impl ModelHandle {
 /// A handle behaves exactly like the model it erased, with capabilities served
 /// from the snapshot captured at erasure time.
 ///
-/// Both entry points validate message content first. Message content and
-/// `chat_history` were non-empty by construction until they became `Vec`s;
-/// [`CompletionRequest::validate_message_content`] is where that guarantee now
-/// lives, and this is the choke point the agent loop converges on — validating
-/// only in `CompletionRequestBuilder::send`/`stream` would leave every
-/// agent-driven request unchecked, which is most of them.
+/// It deliberately adds no request validation of its own. Both agent surfaces
+/// reach a model through `CompletionRequestBuilder` — `runner.rs`'s blocking
+/// turn calls `builder.send()`, the streaming turn calls `builder.stream()` —
+/// and the builder already runs
+/// [`CompletionRequest::validate_message_content`]. Repeating it here would
+/// scan the whole history a second time on every model call and buy nothing.
 impl CompletionModel for ModelHandle {
     fn completion(
         &self,
         request: CompletionRequest,
     ) -> impl Future<Output = Result<CompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        let inner = Arc::clone(&self.inner);
-        async move {
-            request.validate_message_content()?;
-            inner.model.completion(request).await
-        }
+        self.inner.model.completion(request)
     }
 
     fn stream(
@@ -179,11 +175,7 @@ impl CompletionModel for ModelHandle {
         request: CompletionRequest,
     ) -> impl Future<Output = Result<StreamingCompletionResponse, CompletionError>>
     + rig_core::wasm_compat::WasmCompatSend {
-        let inner = Arc::clone(&self.inner);
-        async move {
-            request.validate_message_content()?;
-            inner.model.stream(request).await
-        }
+        self.inner.model.stream(request)
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
