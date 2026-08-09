@@ -163,7 +163,6 @@ pub mod loaders;
 pub mod markers;
 pub mod memory;
 pub mod model;
-pub mod one_or_many;
 pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
@@ -181,7 +180,6 @@ pub mod wasm_compat;
 // Re-export commonly used types and traits
 pub use completion::message;
 pub use embeddings::Embed;
-pub use one_or_many::{EmptyListError, OneOrMany};
 pub use provider_response::ProviderResponseError;
 // `schemars`, `serde`, and `serde_json` are re-exported so macro-generated
 // code (and downstream crates) can resolve them through Rig instead of

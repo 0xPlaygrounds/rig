@@ -1,7 +1,6 @@
 //! Migrated from `examples/gemini_interactions_api.rs`.
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
@@ -12,7 +11,7 @@ use rig::streaming::StreamedAssistantContent;
 
 use crate::support::assert_nonempty_response;
 
-fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
+fn extract_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -23,7 +22,7 @@ fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
         .join("")
 }
 
-fn first_tool_call(choice: &OneOrMany<AssistantContent>) -> Option<ToolCall> {
+fn first_tool_call(choice: &[AssistantContent]) -> Option<ToolCall> {
     choice.iter().find_map(|content| match content {
         AssistantContent::ToolCall(tool_call) => Some(tool_call.clone()),
         _ => None,
@@ -207,9 +206,7 @@ async fn tool_result_roundtrip() {
                             tool_call.id.clone(),
                             tool_call.provider.clone(),
                             tool_call.function.name.clone(),
-                            OneOrMany::one(ToolResultContent::json(
-                                serde_json::json!({ "sum": 18.0 }),
-                            )),
+                            vec![ToolResultContent::json(serde_json::json!({ "sum": 18.0 }))],
                         )))
                         .additional_params(
                             serde_json::to_value(AdditionalParameters {

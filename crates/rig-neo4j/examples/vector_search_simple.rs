@@ -57,7 +57,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?;
 
     futures::stream::iter(embeddings)
-        .map(|(doc, embeddings)| {
+        // Only the first embedding is stored, and a document always has one —
+        // `filter_map` states that without asserting it.
+        .filter_map(|(doc, embeddings)| async move {
+            embeddings
+                .first()
+                .map(|embedding| (doc, embedding.vec.clone()))
+        })
+        .map(|(doc, embedding)| {
             neo4j_client.graph.run(
                 neo4rs::query(
                     "
@@ -71,7 +78,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 .param("id", doc.id)
                 // Here we use the first embedding but we could use any of them.
                 // Neo4j only takes primitive types or arrays as properties.
-                .param("embedding", embeddings.first().vec.clone())
+                .param("embedding", embedding)
                 .param("document", doc.definition.to_bolt_type()),
             )
         })

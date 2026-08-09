@@ -565,7 +565,7 @@ mod tests {
         ) -> ObservationAction {
             *self.snapshot.lock().expect("extractor response snapshot") = Some((
                 event.prompt.clone(),
-                event.content.iter().cloned().collect(),
+                event.content.to_vec(),
                 event.usage,
                 event.message_id.map(str::to_owned),
             ));
@@ -929,8 +929,7 @@ mod tests {
         let turn = MockTurn::from_contents([
             tool_call("unknown", "unexpected", json!({})),
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-        ])
-        .expect("two tool calls");
+        ]);
         let model = MockCompletionModel::new([turn]);
 
         let response = ExtractorBuilder::<Person>::new(model)
@@ -949,7 +948,6 @@ mod tests {
             tool_call("unknown", "unexpected", json!({})),
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
         ])
-        .expect("two tool calls")
         .with_usage(usage(7));
         let model = MockCompletionModel::new([turn]);
 
@@ -967,8 +965,7 @@ mod tests {
         let turn = MockTurn::from_contents([
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
             tool_call("unknown", "unexpected", json!({})),
-        ])
-        .expect("two tool calls");
+        ]);
 
         let response = extractor(MockCompletionModel::new([turn]), 0)
             .extract("John")
@@ -984,8 +981,7 @@ mod tests {
             tool_call("unknown-before", "unexpected_before", json!({})),
             tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
             tool_call("unknown-after", "unexpected_after", json!({})),
-        ])
-        .expect("three tool calls");
+        ]);
 
         let response = extractor(MockCompletionModel::new([turn]), 0)
             .extract("John")

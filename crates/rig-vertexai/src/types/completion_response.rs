@@ -1,7 +1,6 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, CompletionResponse, Usage};
 use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
@@ -158,9 +157,10 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             ));
         }
 
-        let choice = OneOrMany::many(assistant_contents).map_err(|e| {
-            CompletionError::ProviderError(format!("Failed to create OneOrMany: {e}"))
-        })?;
+        // No emptiness guard here: the explicit check above already returned,
+        // so a second one could never fire. Its old message named the removed
+        // container anyway.
+        let choice = assistant_contents;
 
         let usage = response
             .usage_metadata
@@ -192,7 +192,6 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
 mod tests {
     use super::*;
     use google_cloud_aiplatform_v1 as vertexai;
-    use rig_core::OneOrMany;
     use rig_core::message::{
         AssistantContent, DocumentSourceKind, ImageDetail, ImageMediaType, Text, ToolCall,
     };
@@ -275,7 +274,9 @@ mod tests {
             .try_into()
             .unwrap();
         match response.choice.first() {
-            AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, Some(BASE64.encode(raw))),
+            Some(AssistantContent::ToolCall(tc)) => {
+                assert_eq!(tc.signature, Some(BASE64.encode(raw)))
+            }
             _ => panic!("Expected ToolCall"),
         }
     }
@@ -287,7 +288,7 @@ mod tests {
                 .try_into()
                 .unwrap();
         match response.choice.first() {
-            AssistantContent::ToolCall(tc) => assert_eq!(tc.signature, None),
+            Some(AssistantContent::ToolCall(tc)) => assert_eq!(tc.signature, None),
             _ => panic!("Expected ToolCall"),
         }
     }
@@ -309,7 +310,7 @@ mod tests {
             VertexGenerateContentOutput(response).try_into().unwrap();
 
         match response.choice.first() {
-            AssistantContent::Reasoning(reasoning) => {
+            Some(AssistantContent::Reasoning(reasoning)) => {
                 assert_eq!(reasoning.display_text(), "thinking text");
                 assert_eq!(
                     reasoning.first_signature(),
@@ -329,9 +330,9 @@ mod tests {
         let response = completion_response.unwrap();
         assert_eq!(
             response.choice,
-            OneOrMany::one(AssistantContent::Text(Text::new(
+            vec![AssistantContent::Text(Text::new(
                 "Hello, world!".to_string()
-            )))
+            ))]
         );
     }
 
@@ -348,18 +349,18 @@ mod tests {
         let response = completion_response.unwrap();
 
         match response.choice.first() {
-            AssistantContent::ToolCall(ToolCall {
+            Some(AssistantContent::ToolCall(ToolCall {
                 id,
                 provider,
                 function,
                 ..
-            }) => {
+            })) => {
                 // Vertex issues no call ids: the decode mints a unique
                 // non-empty handle (never the function name) and records
                 // that the provider issued nothing.
                 assert!(!id.as_str().is_empty());
                 assert_ne!(id, "add");
-                assert_eq!(provider, None);
+                assert_eq!(*provider, None);
                 assert_eq!(function.name, "add");
                 assert_eq!(function.arguments, args);
             }
@@ -376,7 +377,7 @@ mod tests {
                 .expect("image response should convert");
 
         match response.choice.first() {
-            AssistantContent::Image(image) => {
+            Some(AssistantContent::Image(image)) => {
                 assert_eq!(image.data, DocumentSourceKind::Base64(BASE64.encode(raw)));
                 assert_eq!(image.media_type, Some(ImageMediaType::PNG));
                 assert_eq!(image.detail, Some(ImageDetail::default()));

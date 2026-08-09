@@ -316,7 +316,7 @@ async fn insert_documents_test() {
         },
     ];
 
-    // Generate embeddings using EmbeddingsBuilder (returns Vec<(Word, OneOrMany<Embedding>)>)
+    // Generate embeddings using EmbeddingsBuilder (returns Vec<(Word, Vec<Embedding>)>)
     let documents_with_embeddings = EmbeddingsBuilder::new(model.clone())
         .documents(test_words)
         .unwrap()
@@ -506,7 +506,10 @@ async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document>
             doc! {
                 "_id": id.clone(),
                 "definition": definition.clone(),
-                "embedding": embedding.first().vec.clone(),
+                "embedding": embedding.first()
+            .expect("embedding builder yields at least one embedding")
+            .vec
+            .clone(),
             }
         })
         .collect()

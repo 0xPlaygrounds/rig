@@ -225,7 +225,13 @@ async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
     documents
         .into_iter()
         .map(|(d, embeddings)| {
-            let vec: Vec<f32> = embeddings.first().vec.iter().map(|&x| x as f32).collect();
+            let vec: Vec<f32> = embeddings
+                .first()
+                .expect("embedding builder yields at least one embedding")
+                .vec
+                .iter()
+                .map(|&x| x as f32)
+                .collect();
             PointStruct::new(
                 d.id.clone(),
                 vec,

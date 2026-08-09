@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde::de::{self, Deserializer, SeqAccess, Visitor};
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
@@ -156,6 +156,19 @@ where
             A: SeqAccess<'de>,
         {
             Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+
+        // A bare object is one item. Ported from the removed
+        // `one_or_many::string_or_one_or_many`, which this function now
+        // supersedes: it accepted every shape this one does, and this one
+        // additionally maps `null` to an empty list — a value the non-empty
+        // container could not represent and therefore had to reject.
+        fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+            Ok(vec![item])
         }
 
         fn visit_none<E>(self) -> Result<Vec<T>, E>

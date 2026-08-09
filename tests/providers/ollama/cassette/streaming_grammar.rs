@@ -16,7 +16,6 @@
 //! daemon id and by structure — and assemble with uncorrupted arguments.
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ToolCall};
 use rig::prelude::*;
@@ -36,7 +35,7 @@ struct StreamRun {
     reasoning_delta: String,
     tool_calls: Vec<ToolCall>,
     finals: Vec<StreamFinal>,
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
 }
 
@@ -47,7 +46,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         reasoning_delta: String::new(),
         tool_calls: Vec::new(),
         finals: Vec::new(),
-        choice: OneOrMany::one(AssistantContent::text("")),
+        choice: vec![AssistantContent::text("")],
         response: None,
     };
 
@@ -347,35 +346,31 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: rig::OneOrMany::one(AssistantContent::ToolCall(
-                        rig::message::ToolCall {
-                            // The cross-provider shape: the other wire's
-                            // identifier survives as rig's correlation
-                            // handle, with no provider id for Ollama's wire.
-                            id: rig::message::ToolCallId::new("call_abc123")
-                                .expect("the chat-sourced identifier is non-empty"),
-                            provider: None,
-                            function: rig::message::ToolFunction {
-                                name: "add".to_owned(),
-                                arguments: serde_json::json!({"x": 2, "y": 3}),
-                            },
-                            signature: None,
-                            additional_params: None,
+                    content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
+                        // The cross-provider shape: the other wire's
+                        // identifier survives as rig's correlation
+                        // handle, with no provider id for Ollama's wire.
+                        id: rig::message::ToolCallId::new("call_abc123")
+                            .expect("the chat-sourced identifier is non-empty"),
+                        provider: None,
+                        function: rig::message::ToolFunction {
+                            name: "add".to_owned(),
+                            arguments: serde_json::json!({"x": 2, "y": 3}),
                         },
-                    )),
+                        signature: None,
+                        additional_params: None,
+                    })],
                 },
                 rig::message::Message::User {
-                    content: rig::OneOrMany::one(rig::message::UserContent::ToolResult(
+                    content: vec![rig::message::UserContent::ToolResult(
                         rig::message::ToolResult {
                             call: rig::message::ToolCallId::new("call_abc123")
                                 .expect("the chat-sourced identifier is non-empty"),
                             provider: None,
                             name: "add".to_owned(),
-                            content: rig::OneOrMany::one(rig::message::ToolResultContent::text(
-                                "5",
-                            )),
+                            content: vec![rig::message::ToolResultContent::text("5")],
                         },
-                    )),
+                    )],
                 },
             ];
             let request = model

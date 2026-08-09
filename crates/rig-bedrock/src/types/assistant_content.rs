@@ -392,7 +392,7 @@ mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use base64::{Engine as _, prelude::BASE64_STANDARD};
     use rig_core::{
-        OneOrMany, completion,
+        completion,
         message::{AssistantContent, ReasoningContent},
         telemetry::ProviderResponseExt,
     };
@@ -518,7 +518,7 @@ mod tests {
         let completion = completion.unwrap();
         assert_eq!(
             completion.choice,
-            OneOrMany::one(AssistantContent::Text("txt".into()))
+            vec![AssistantContent::Text("txt".into())]
         );
     }
 

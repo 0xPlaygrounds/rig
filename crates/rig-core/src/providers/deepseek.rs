@@ -24,7 +24,6 @@ use crate::providers::internal::openai_chat_completions_compatible::map_openai_f
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError},
     json_utils,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
@@ -409,7 +408,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             )),
         }?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
+        let choice = crate::message::require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )

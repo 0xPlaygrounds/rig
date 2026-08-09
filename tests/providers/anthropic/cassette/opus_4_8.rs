@@ -209,9 +209,7 @@ async fn documents_keep_leading_system_message_top_level() {
     );
 }
 
-fn server_tool_assistant_message_from_response(
-    content: rig::OneOrMany<AssistantContent>,
-) -> Message {
+fn server_tool_assistant_message_from_response(content: Vec<AssistantContent>) -> Message {
     let raw_blocks = content
         .into_iter()
         .filter_map(|content| match content {
@@ -237,8 +235,7 @@ fn server_tool_assistant_message_from_response(
 
     Message::Assistant {
         id: None,
-        content: rig::OneOrMany::many(raw_blocks)
-            .expect("server tool assistant message should be non-empty"),
+        content: raw_blocks,
     }
 }
 

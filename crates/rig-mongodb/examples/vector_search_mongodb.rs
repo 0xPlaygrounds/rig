@@ -87,14 +87,18 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .await?;
 
+    // Only the first embedding is stored, and a document always has one —
+    // `filter_map` states that without asserting it.
     let mongo_documents = embeddings
         .iter()
-        .map(|(Word { id, definition, .. }, embedding)| {
-            doc! {
-                "id": id.clone(),
-                "definition": definition.clone(),
-                "embedding": embedding.first().vec.clone(),
-            }
+        .filter_map(|(Word { id, definition, .. }, embedding)| {
+            embedding.first().map(|embedding| {
+                doc! {
+                    "id": id.clone(),
+                    "definition": definition.clone(),
+                    "embedding": embedding.vec.clone(),
+                }
+            })
         })
         .collect::<Vec<_>>();
 

@@ -19,11 +19,6 @@
 //! `assert_eq!` will spuriously fail the next re-recording.
 #![allow(dead_code)]
 
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use rig::OneOrMany;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
@@ -33,6 +28,9 @@ use rig::tool::server::ToolServerHandle;
 use rig::tool::{Tool, ToolEmbedding, ToolOutput};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub(crate) const FORCE_TOOLS_PREAMBLE: &str = "You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.";
 
@@ -388,9 +386,11 @@ impl Tool for BadgeImageTool {
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        Ok(ToolOutput::content(OneOrMany::one(
-            ToolResultContent::image_base64(RED_PIXEL_PNG_BASE64, Some(ImageMediaType::PNG), None),
-        )))
+        Ok(ToolOutput::content(vec![ToolResultContent::image_base64(
+            RED_PIXEL_PNG_BASE64,
+            Some(ImageMediaType::PNG),
+            None,
+        )]))
     }
 }
 

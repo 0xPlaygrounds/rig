@@ -8,9 +8,6 @@
 mod identity;
 mod parts;
 
-pub use identity::{MintKind, StreamPartId, SyntheticIds, WireId};
-
-use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionResponse, Usage};
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
@@ -18,6 +15,7 @@ use crate::message::{
 use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
+pub use identity::{MintKind, StreamPartId, SyntheticIds, WireId};
 use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -893,7 +891,7 @@ pub struct StreamingCompletionResponse {
     provider: String,
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     /// Whether the stream already reached its end and aggregated `choice`.
     ///
     /// [`PartsAccumulator::finish`] is destructive (it takes the accumulated
@@ -938,7 +936,7 @@ impl StreamingCompletionResponse {
             pause_control,
             parts: PartsAccumulator::new(),
             provider: provider.into(),
-            choice: OneOrMany::one(AssistantContent::text("")),
+            choice: vec![AssistantContent::text("")],
             finished: false,
             resume_wait: None,
             reasoning_correlators: std::collections::HashMap::new(),
@@ -1098,7 +1096,8 @@ impl Stream for StreamingCompletionResponse {
                     // This is run at the end of the inner stream to collect all tokens into
                     // a single unified `Message`. `finish` is never empty, so the
                     // conversion cannot fail.
-                    if let Some(choice) = OneOrMany::from_iter_optional(stream.parts.finish()) {
+                    let choice = stream.parts.finish();
+                    if !choice.is_empty() {
                         stream.choice = choice;
                     }
                     stream.finished = true;
@@ -1585,7 +1584,7 @@ mod tests {
         // ...but the content delivered before the error is preserved.
         assert_eq!(
             stream.choice.first(),
-            AssistantContent::text("partial".to_string()),
+            Some(&AssistantContent::text("partial".to_string())),
         );
     }
 
@@ -1948,7 +1947,7 @@ mod tests {
         // The content streamed before the failure is still aggregated.
         assert_eq!(
             stream.choice.first(),
-            AssistantContent::text("partial".to_string())
+            Some(&AssistantContent::text("partial".to_string()))
         );
         assert!(stream.response.is_none());
     }

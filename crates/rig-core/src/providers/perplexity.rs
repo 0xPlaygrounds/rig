@@ -202,7 +202,7 @@ mod tests {
         let mut request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello!".into()),
+            chat_history: vec!["Hello!".into()],
             documents: vec![],
             max_tokens: None,
             temperature: None,

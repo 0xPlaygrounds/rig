@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, FixedSizeListArray, RecordBatch, StringArray, types::Float64Type};
+use rig_core::Embed;
 use rig_core::embeddings::Embedding;
-use rig_core::{Embed, OneOrMany};
 use serde::Deserialize;
 
 #[derive(Embed, Clone, Deserialize, Debug)]
@@ -31,7 +31,7 @@ pub fn words() -> Vec<Word> {
 
 // Convert Word objects and their embedding to a RecordBatch.
 pub fn as_record_batch(
-    records: Vec<(Word, OneOrMany<Embedding>)>,
+    records: Vec<(Word, Vec<Embedding>)>,
     dims: usize,
 ) -> Result<RecordBatch, lancedb::arrow::arrow_schema::ArrowError> {
     let id = StringArray::from_iter_values(
@@ -51,15 +51,18 @@ pub fn as_record_batch(
     let embedding = FixedSizeListArray::from_iter_primitive::<Float64Type, _, _>(
         records
             .into_iter()
+            // Only the first embedding is stored; `map` over the `Option`
+            // states that a document without one contributes no row, rather
+            // than asserting it has one.
             .map(|(_, embeddings)| {
-                Some(
-                    embeddings
-                        .first()
+                embeddings.first().map(|embedding| {
+                    embedding
                         .vec
+                        .clone()
                         .into_iter()
                         .map(Some)
-                        .collect::<Vec<_>>(),
-                )
+                        .collect::<Vec<_>>()
+                })
             })
             .collect::<Vec<_>>(),
         dims as i32,

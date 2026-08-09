@@ -7,11 +7,11 @@
 //! The root `rig` facade re-exports this crate as `rig::sqlite` when the
 //! `sqlite` feature is enabled.
 
+use rig_core::Embed;
 use rig_core::embeddings::{Embedding, EmbeddingModel};
 use rig_core::vector_store::request::{FilterError, SearchFilter, VectorSearchRequest};
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use rig_core::{Embed, OneOrMany};
 use rusqlite::OptionalExtension;
 use rusqlite::types::{Type, Value, ValueRef};
 use serde::{Deserialize, Serialize};
@@ -638,7 +638,7 @@ where
     pub fn add_rows_with_txn(
         &self,
         txn: &rusqlite::Transaction<'_>,
-        documents: Vec<(T, OneOrMany<Embedding>)>,
+        documents: Vec<(T, Vec<Embedding>)>,
     ) -> Result<i64, tokio_rusqlite::Error> {
         info!("Adding {} documents to store", documents.len());
         let table_name = T::name();
@@ -741,7 +741,7 @@ where
 
     pub async fn add_rows(
         &self,
-        documents: Vec<(T, OneOrMany<Embedding>)>,
+        documents: Vec<(T, Vec<Embedding>)>,
     ) -> Result<i64, VectorStoreError>
     where
         T: 'static,
@@ -773,7 +773,7 @@ where
 {
     async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         if documents.is_empty() {
             return Ok(());
@@ -3306,7 +3306,7 @@ mod tests {
             .add_rows(vec![
                 (
                     multi_document.clone(),
-                    OneOrMany::many(vec![
+                    vec![
                         Embedding {
                             document: "far chunk".to_string(),
                             vec: vec![-1.0, 0.0],
@@ -3315,7 +3315,7 @@ mod tests {
                             document: "exact chunk".to_string(),
                             vec: vec![1.0, 0.0],
                         },
-                    ])?,
+                    ],
                 ),
                 row(
                     "replace",
@@ -3376,7 +3376,7 @@ mod tests {
             vec![
                 (
                     multi_document.clone(),
-                    OneOrMany::many(vec![
+                    vec![
                         Embedding {
                             document: "far chunk".to_string(),
                             vec: vec![-1.0, 0.0],
@@ -3385,7 +3385,7 @@ mod tests {
                             document: "exact chunk".to_string(),
                             vec: vec![1.0, 0.0],
                         },
-                    ])?,
+                    ],
                 ),
                 row("single", "docs", "single close chunk", vec![0.8, 0.6]),
             ],
@@ -3470,7 +3470,7 @@ mod tests {
         let index = live_test_index(
             "live_multivector_search_beyond_knn_k_cap_succeeds",
             vec![
-                (filler_document, OneOrMany::many(filler_chunks)?),
+                (filler_document, filler_chunks),
                 row("best", "docs", "best", vec![1.0, 0.0]),
                 row("mid", "docs", "mid", vec![0.5, 0.5]),
                 row("worst", "docs", "worst", vec![-1.0, 0.0]),
@@ -4508,14 +4508,14 @@ mod tests {
 
     async fn live_test_index(
         name: &str,
-        rows: Vec<(TestDocument, OneOrMany<Embedding>)>,
+        rows: Vec<(TestDocument, Vec<Embedding>)>,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
         live_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
     }
 
     async fn live_test_index_with_metric(
         name: &str,
-        rows: Vec<(TestDocument, OneOrMany<Embedding>)>,
+        rows: Vec<(TestDocument, Vec<Embedding>)>,
         distance_metric: SqliteDistanceMetric,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TestDocument>> {
         register_sqlite_vec_extension();
@@ -4532,14 +4532,14 @@ mod tests {
 
     async fn live_typed_test_index(
         name: &str,
-        rows: Vec<(TypedTestDocument, OneOrMany<Embedding>)>,
+        rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
         live_typed_test_index_with_metric(name, rows, SqliteDistanceMetric::Cosine).await
     }
 
     async fn live_typed_test_index_with_metric(
         name: &str,
-        rows: Vec<(TypedTestDocument, OneOrMany<Embedding>)>,
+        rows: Vec<(TypedTestDocument, Vec<Embedding>)>,
         distance_metric: SqliteDistanceMetric,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, TypedTestDocument>> {
         register_sqlite_vec_extension();
@@ -4556,7 +4556,7 @@ mod tests {
 
     async fn live_common_type_test_index(
         name: &str,
-        rows: Vec<(CommonTypeDocument, OneOrMany<Embedding>)>,
+        rows: Vec<(CommonTypeDocument, Vec<Embedding>)>,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, CommonTypeDocument>> {
         register_sqlite_vec_extension();
 
@@ -4572,7 +4572,7 @@ mod tests {
 
     async fn live_json_metadata_test_index(
         name: &str,
-        rows: Vec<(JsonMetadataDocument, OneOrMany<Embedding>)>,
+        rows: Vec<(JsonMetadataDocument, Vec<Embedding>)>,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, JsonMetadataDocument>> {
         register_sqlite_vec_extension();
 
@@ -4588,7 +4588,7 @@ mod tests {
 
     async fn live_structured_json_metadata_test_index(
         name: &str,
-        rows: Vec<(StructuredJsonMetadataDocument, OneOrMany<Embedding>)>,
+        rows: Vec<(StructuredJsonMetadataDocument, Vec<Embedding>)>,
     ) -> anyhow::Result<SqliteVectorIndex<TestEmbeddingModel, StructuredJsonMetadataDocument>> {
         register_sqlite_vec_extension();
 
@@ -4607,7 +4607,7 @@ mod tests {
         category: impl Into<String>,
         title: impl Into<String>,
         vec: Vec<f64>,
-    ) -> (TestDocument, OneOrMany<Embedding>) {
+    ) -> (TestDocument, Vec<Embedding>) {
         let document = TestDocument {
             id: id.into(),
             category: category.into(),
@@ -4616,10 +4616,10 @@ mod tests {
 
         (
             document.clone(),
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: document.title,
                 vec,
-            }),
+            }],
         )
     }
 
@@ -4629,7 +4629,7 @@ mod tests {
         notes: impl Into<String>,
         rank: i64,
         vec: Vec<f64>,
-    ) -> (CommonTypeDocument, OneOrMany<Embedding>) {
+    ) -> (CommonTypeDocument, Vec<Embedding>) {
         let document = CommonTypeDocument {
             id: id.into(),
             name: name.into(),
@@ -4639,10 +4639,10 @@ mod tests {
 
         (
             document.clone(),
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: document.name.clone(),
                 vec,
-            }),
+            }],
         )
     }
 
@@ -4652,7 +4652,7 @@ mod tests {
         xxx: impl AsRef<str>,
         title: impl Into<String>,
         vec: Vec<f64>,
-    ) -> (JsonMetadataDocument, OneOrMany<Embedding>) {
+    ) -> (JsonMetadataDocument, Vec<Embedding>) {
         let document = JsonMetadataDocument {
             id: id.into(),
             category: category.into(),
@@ -4662,10 +4662,10 @@ mod tests {
 
         (
             document.clone(),
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: document.title.clone(),
                 vec,
-            }),
+            }],
         )
     }
 
@@ -4674,7 +4674,7 @@ mod tests {
         metadata: StructuredMetadata,
         title: impl Into<String>,
         vec: Vec<f64>,
-    ) -> (StructuredJsonMetadataDocument, OneOrMany<Embedding>) {
+    ) -> (StructuredJsonMetadataDocument, Vec<Embedding>) {
         let document = StructuredJsonMetadataDocument {
             id: id.into(),
             metadata,
@@ -4683,10 +4683,10 @@ mod tests {
 
         (
             document.clone(),
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: document.title.clone(),
                 vec,
-            }),
+            }],
         )
     }
 
@@ -4695,7 +4695,7 @@ mod tests {
         title: impl Into<String>,
         category: impl Into<String>,
         vec: Vec<f64>,
-    ) -> (ReorderedIdDocument, OneOrMany<Embedding>) {
+    ) -> (ReorderedIdDocument, Vec<Embedding>) {
         let document = ReorderedIdDocument {
             title: title.into(),
             id: id.into(),
@@ -4704,10 +4704,10 @@ mod tests {
 
         (
             document.clone(),
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: document.title.clone(),
                 vec,
-            }),
+            }],
         )
     }
 
@@ -4717,7 +4717,7 @@ mod tests {
         rig_rank: impl Into<String>,
         title: impl Into<String>,
         vec: Vec<f64>,
-    ) -> (InternalAliasDocument, OneOrMany<Embedding>) {
+    ) -> (InternalAliasDocument, Vec<Embedding>) {
         let document = InternalAliasDocument {
             id: id.into(),
             rig_score: rig_score.into(),
@@ -4727,10 +4727,10 @@ mod tests {
 
         (
             document.clone(),
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: document.title.clone(),
                 vec,
-            }),
+            }],
         )
     }
 
@@ -4742,7 +4742,7 @@ mod tests {
         published: bool,
         title: impl Into<String>,
         vec: Vec<f64>,
-    ) -> (TypedTestDocument, OneOrMany<Embedding>) {
+    ) -> (TypedTestDocument, Vec<Embedding>) {
         let document = TypedTestDocument {
             id,
             category: category.into(),
@@ -4754,10 +4754,10 @@ mod tests {
 
         (
             document.clone(),
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: document.title,
                 vec,
-            }),
+            }],
         )
     }
 
@@ -4840,15 +4840,15 @@ mod tests {
         }
     }
 
-    fn sqlite_oracle_rows(rows: &[OracleRow]) -> Vec<(TypedTestDocument, OneOrMany<Embedding>)> {
+    fn sqlite_oracle_rows(rows: &[OracleRow]) -> Vec<(TypedTestDocument, Vec<Embedding>)> {
         rows.iter()
             .map(|row| {
                 (
                     row.document.clone(),
-                    OneOrMany::one(Embedding {
+                    vec![Embedding {
                         document: row.document.title.clone(),
                         vec: row.embedding.clone(),
-                    }),
+                    }],
                 )
             })
             .collect()

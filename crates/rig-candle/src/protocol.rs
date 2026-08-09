@@ -883,7 +883,6 @@ fn push_text(items: &mut Vec<AssistantContent>, text: &str) {
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
-    use rig_core::OneOrMany;
     use rig_core::completion::{CompletionRequest, Document};
     use rig_core::message::{Message, ProviderCallId, ToolCallId, ToolChoice};
 
@@ -908,8 +907,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(messages)
-                .unwrap_or_else(|_| OneOrMany::one(Message::user("fallback"))),
+            chat_history: messages,
             documents: Vec::new(),
             tools: vec![tool("calculate"), tool("lookup")],
             temperature: Some(0.0),
@@ -1156,12 +1154,12 @@ mod tests {
             Message::from(first),
             Message::from(second),
             Message::User {
-                content: OneOrMany::one(UserContent::tool_result_for(
+                content: vec![UserContent::tool_result_for(
                     ToolCallId::new("internal-a").expect("non-empty id"),
                     ProviderCallId::new("provider-b"),
                     "calculate",
-                    OneOrMany::one(ToolResultContent::text("wrong call")),
-                )),
+                    vec![ToolResultContent::text("wrong call")],
+                )],
             },
         ];
 

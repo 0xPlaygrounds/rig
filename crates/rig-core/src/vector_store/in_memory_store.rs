@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{IndexStrategy, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest};
 use crate::{
-    OneOrMany,
     embeddings::{Embedding, EmbeddingModel, distance::VectorDistance},
     vector_store::request::Filter,
 };
@@ -25,7 +24,7 @@ pub struct InMemoryVectorStore<D: Serialize> {
     /// The embeddings are stored in a HashMap.
     /// Hashmap key is the document id.
     /// Hashmap value is a tuple of the serializable document and its corresponding embeddings.
-    embeddings: HashMap<String, (D, OneOrMany<Embedding>)>,
+    embeddings: HashMap<String, (D, Vec<Embedding>)>,
 
     index_strategy: IndexStrategy,
 
@@ -51,7 +50,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
     /// Internal constructor used by the builder.
     pub(super) fn from_builder(
-        embeddings: HashMap<String, (D, OneOrMany<Embedding>)>,
+        embeddings: HashMap<String, (D, Vec<Embedding>)>,
         index_strategy: IndexStrategy,
     ) -> Self {
         let mut vector_store = Self {
@@ -77,7 +76,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// is the index of the document.
     ///
     /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
-    pub fn from_documents(documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>) -> Self {
+    pub fn from_documents(documents: impl IntoIterator<Item = (D, Vec<Embedding>)>) -> Self {
         let mut store = HashMap::new();
         documents
             .into_iter()
@@ -97,7 +96,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     ///
     /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
     pub fn from_documents_with_ids(
-        documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
+        documents: impl IntoIterator<Item = (impl ToString, D, Vec<Embedding>)>,
     ) -> Self {
         let mut store = HashMap::new();
         documents.into_iter().for_each(|(i, doc, embeddings)| {
@@ -116,7 +115,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     ///
     /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
     pub fn from_documents_with_id_f(
-        documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
+        documents: impl IntoIterator<Item = (D, Vec<Embedding>)>,
         f: fn(&D) -> String,
     ) -> Self {
         let mut store = HashMap::new();
@@ -158,7 +157,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// handling live in exactly one place.
     fn score_candidate<'a>(
         doc: &D,
-        embeddings: &'a OneOrMany<Embedding>,
+        embeddings: &'a [Embedding],
         prompt_embedding: &Embedding,
         filter: Option<&Filter<serde_json::Value>>,
         threshold: Option<f64>,
@@ -355,10 +354,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// Add documents and their corresponding embeddings to the store.
     /// Ids are automatically generated have will have the form `"doc{n}"` where `n`
     /// is the index of the document.
-    pub fn add_documents(
-        &mut self,
-        documents: impl IntoIterator<Item = (D, OneOrMany<Embedding>)>,
-    ) {
+    pub fn add_documents(&mut self, documents: impl IntoIterator<Item = (D, Vec<Embedding>)>) {
         let current_index = self.embeddings.len();
         documents
             .into_iter()
@@ -380,7 +376,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// Add documents and their corresponding embeddings to the store with ids.
     pub fn add_documents_with_ids(
         &mut self,
-        documents: impl IntoIterator<Item = (impl ToString, D, OneOrMany<Embedding>)>,
+        documents: impl IntoIterator<Item = (impl ToString, D, Vec<Embedding>)>,
     ) {
         documents.into_iter().for_each(|(id, doc, embeddings)| {
             let id_str = id.to_string();
@@ -400,7 +396,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// Document ids are generated using the provided function.
     pub fn add_documents_with_id_f(
         &mut self,
-        documents: Vec<(D, OneOrMany<Embedding>)>,
+        documents: Vec<(D, Vec<Embedding>)>,
         f: fn(&D) -> String,
     ) {
         for (doc, embeddings) in documents {
@@ -453,7 +449,7 @@ impl<D: Serialize> InMemoryVectorStore<D> {
         InMemoryVectorIndex::new(model, self)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
         self.embeddings.iter()
     }
 
@@ -476,7 +472,7 @@ impl<M: EmbeddingModel, D: Serialize> InMemoryVectorIndex<M, D> {
         Self { model, store }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, OneOrMany<Embedding>))> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &(D, Vec<Embedding>))> {
         self.store.iter()
     }
 
@@ -546,7 +542,7 @@ impl<M: EmbeddingModel + Sync, D: Serialize + Sync + Send + Eq> VectorStoreIndex
 mod tests {
     use std::cmp::Reverse;
 
-    use crate::{OneOrMany, embeddings::embedding::Embedding, vector_store::IndexStrategy};
+    use crate::{embeddings::embedding::Embedding, vector_store::IndexStrategy};
 
     use super::{InMemoryVectorStore, RankingItem};
 
@@ -560,24 +556,24 @@ mod tests {
             .documents(vec![
                 (
                     "glarb-garb",
-                    OneOrMany::one(Embedding {
+                    vec![Embedding {
                         document: "glarb-garb".to_string(),
                         vec: vec![0.1, 0.1, 0.5],
-                    }),
+                    }],
                 ),
                 (
                     "marble-marble",
-                    OneOrMany::one(Embedding {
+                    vec![Embedding {
                         document: "marble-marble".to_string(),
                         vec: vec![0.7, -0.3, 0.0],
-                    }),
+                    }],
                 ),
                 (
                     "flumb-flumb",
-                    OneOrMany::one(Embedding {
+                    vec![Embedding {
                         document: "flumb-flumb".to_string(),
                         vec: vec![0.3, 0.7, 0.1],
-                    }),
+                    }],
                 ),
             ])
             .build();
@@ -585,17 +581,17 @@ mod tests {
         vector_store.add_documents(vec![
             (
                 "brotato",
-                OneOrMany::one(Embedding {
+                vec![Embedding {
                     document: "brotato".to_string(),
                     vec: vec![0.3, 0.7, 0.1],
-                }),
+                }],
             ),
             (
                 "ping-pong",
-                OneOrMany::one(Embedding {
+                vec![Embedding {
                     document: "ping-pong".to_string(),
                     vec: vec![0.7, -0.3, 0.0],
-                }),
+                }],
             ),
         ]);
 
@@ -609,50 +605,50 @@ mod tests {
                     "doc0".to_string(),
                     (
                         "glarb-garb",
-                        OneOrMany::one(Embedding {
+                        vec![Embedding {
                             document: "glarb-garb".to_string(),
                             vec: vec![0.1, 0.1, 0.5],
-                        })
+                        }]
                     )
                 ),
                 (
                     "doc1".to_string(),
                     (
                         "marble-marble",
-                        OneOrMany::one(Embedding {
+                        vec![Embedding {
                             document: "marble-marble".to_string(),
                             vec: vec![0.7, -0.3, 0.0],
-                        })
+                        }]
                     )
                 ),
                 (
                     "doc2".to_string(),
                     (
                         "flumb-flumb",
-                        OneOrMany::one(Embedding {
+                        vec![Embedding {
                             document: "flumb-flumb".to_string(),
                             vec: vec![0.3, 0.7, 0.1],
-                        })
+                        }]
                     )
                 ),
                 (
                     "doc3".to_string(),
                     (
                         "brotato",
-                        OneOrMany::one(Embedding {
+                        vec![Embedding {
                             document: "brotato".to_string(),
                             vec: vec![0.3, 0.7, 0.1],
-                        })
+                        }]
                     )
                 ),
                 (
                     "doc4".to_string(),
                     (
                         "ping-pong",
-                        OneOrMany::one(Embedding {
+                        vec![Embedding {
                             document: "ping-pong".to_string(),
                             vec: vec![0.7, -0.3, 0.0],
-                        })
+                        }]
                     )
                 )
             ]
@@ -670,26 +666,26 @@ mod tests {
                 (
                     "doc1",
                     "glarb-garb",
-                    OneOrMany::one(Embedding {
+                    vec![Embedding {
                         document: "glarb-garb".to_string(),
                         vec: vec![0.1, 0.1, 0.5],
-                    }),
+                    }],
                 ),
                 (
                     "doc2",
                     "marble-marble",
-                    OneOrMany::one(Embedding {
+                    vec![Embedding {
                         document: "marble-marble".to_string(),
                         vec: vec![0.7, -0.3, 0.0],
-                    }),
+                    }],
                 ),
                 (
                     "doc3",
                     "flumb-flumb",
-                    OneOrMany::one(Embedding {
+                    vec![Embedding {
                         document: "flumb-flumb".to_string(),
                         vec: vec![0.3, 0.7, 0.1],
-                    }),
+                    }],
                 ),
             ])
             .build();
@@ -736,7 +732,7 @@ mod tests {
                 (
                     "doc1",
                     "glarb-garb",
-                    OneOrMany::many(vec![
+                    vec![
                         Embedding {
                             document: "glarb-garb".to_string(),
                             vec: vec![0.1, 0.1, 0.5],
@@ -745,13 +741,12 @@ mod tests {
                             document: "don't-choose-me".to_string(),
                             vec: vec![-0.5, 0.9, 0.1],
                         },
-                    ])
-                    .unwrap(),
+                    ],
                 ),
                 (
                     "doc2",
                     "marble-marble",
-                    OneOrMany::many(vec![
+                    vec![
                         Embedding {
                             document: "marble-marble".to_string(),
                             vec: vec![0.7, -0.3, 0.0],
@@ -760,13 +755,12 @@ mod tests {
                             document: "sandwich".to_string(),
                             vec: vec![0.5, 0.5, -0.7],
                         },
-                    ])
-                    .unwrap(),
+                    ],
                 ),
                 (
                     "doc3",
                     "flumb-flumb",
-                    OneOrMany::many(vec![
+                    vec![
                         Embedding {
                             document: "flumb-flumb".to_string(),
                             vec: vec![0.3, 0.7, 0.1],
@@ -775,8 +769,7 @@ mod tests {
                             document: "banana".to_string(),
                             vec: vec![0.1, -0.5, -0.5],
                         },
-                    ])
-                    .unwrap(),
+                    ],
                 ),
             ])
             .build();
@@ -839,10 +832,10 @@ mod tests {
         // only the filter/threshold decide the result set.
         let vec = vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
         let embedding = |doc: &str| {
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: doc.to_string(),
                 vec: vec.clone(),
-            })
+            }]
         };
 
         let index = InMemoryVectorStore::from_documents_with_ids(vec![
@@ -907,10 +900,10 @@ mod tests {
         use crate::vector_store::request::VectorSearchRequest;
 
         let embedding = |doc: &str, vec: Vec<f64>| {
-            OneOrMany::one(Embedding {
+            vec![Embedding {
                 document: doc.to_string(),
                 vec,
-            })
+            }]
         };
 
         // The zero-magnitude embedding produces a NaN cosine similarity, which
@@ -960,7 +953,7 @@ mod tests {
         let index = InMemoryVectorStore::from_documents_with_ids(vec![(
             "mixed",
             "mixed".to_string(),
-            OneOrMany::many(vec![
+            vec![
                 Embedding {
                     document: "good-chunk".to_string(),
                     vec: vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
@@ -969,8 +962,7 @@ mod tests {
                     document: "empty-chunk".to_string(),
                     vec: vec![0.0; 10],
                 },
-            ])
-            .unwrap(),
+            ],
         )])
         .index(MockEmbeddingModel);
 

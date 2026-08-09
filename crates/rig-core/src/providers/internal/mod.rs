@@ -105,7 +105,6 @@ pub(crate) fn completion_usage(
 
 #[cfg(test)]
 mod tests {
-    use crate::OneOrMany;
     use crate::message::{
         AssistantContent, Message, ToolCall, ToolFunction, ToolResultContent, UserContent,
     };
@@ -113,23 +112,23 @@ mod tests {
     fn call(wire_id: &str, name: &str) -> Message {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+            content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 wire_id,
                 ToolFunction {
                     name: name.to_owned(),
                     arguments: serde_json::json!({}),
                 },
-            ))),
+            ))],
         }
     }
 
     fn nameless_result(wire_id: &str) -> Message {
         Message::User {
-            content: OneOrMany::one(UserContent::tool_result_from_wire(
+            content: vec![UserContent::tool_result_from_wire(
                 wire_id,
                 "",
-                OneOrMany::one(ToolResultContent::text("out")),
-            )),
+                vec![ToolResultContent::text("out")],
+            )],
         }
     }
 
@@ -178,11 +177,11 @@ mod tests {
         let mut history = vec![
             call("toolu_1", "add"),
             Message::User {
-                content: OneOrMany::one(UserContent::tool_result_from_wire(
+                content: vec![UserContent::tool_result_from_wire(
                     "toolu_1",
                     "sum",
-                    OneOrMany::one(ToolResultContent::text("3")),
-                )),
+                    vec![ToolResultContent::text("3")],
+                )],
             },
         ];
         super::resolve_empty_tool_result_names(&mut history);
@@ -205,14 +204,14 @@ mod tests {
         let mut history = vec![
             Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(id_less)),
+                content: vec![AssistantContent::ToolCall(id_less)],
             },
             Message::User {
-                content: OneOrMany::one(UserContent::tool_result(
+                content: vec![UserContent::tool_result(
                     handle,
                     "",
-                    OneOrMany::one(ToolResultContent::text("out")),
-                )),
+                    vec![ToolResultContent::text("out")],
+                )],
             },
         ];
         super::resolve_empty_tool_result_names(&mut history);

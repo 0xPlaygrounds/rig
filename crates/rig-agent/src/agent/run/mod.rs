@@ -69,9 +69,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::{
-    OneOrMany,
-    message::{AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent},
+use rig_core::message::{
+    AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
 
 use crate::{
@@ -166,7 +165,7 @@ pub struct ModelTurn {
     /// Provider-assigned assistant message ID, when available.
     pub message_id: Option<String>,
     /// The assistant content returned by the model.
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     /// Token usage reported by the provider for this completion request.
     pub usage: Usage,
     /// Executable Rig tools advertised to the provider for this turn.
@@ -180,7 +179,7 @@ impl ModelTurn {
     /// for the turn.
     pub fn new(
         message_id: Option<String>,
-        choice: OneOrMany<AssistantContent>,
+        choice: Vec<AssistantContent>,
         usage: Usage,
         executable_tool_names: BTreeSet<String>,
         allowed_tool_names: BTreeSet<String>,
@@ -229,7 +228,7 @@ struct ResolvingState {
     message_id: Option<String>,
     /// The unmodified model output, used for diagnostic histories and retry
     /// messages (repairs are never reflected in those).
-    original_choice: OneOrMany<AssistantContent>,
+    original_choice: Vec<AssistantContent>,
     /// Working copy of the assistant content; repairs rename tool calls here.
     items: Vec<AssistantContent>,
     /// Index of the next item to validate.
@@ -492,12 +491,12 @@ impl AgentRun {
     }
 
     /// Canonical content for the accepted model turn awaiting advancement.
-    pub(crate) fn accepted_turn_choice(&self) -> Option<OneOrMany<AssistantContent>> {
+    pub(crate) fn accepted_turn_choice(&self) -> Option<Vec<AssistantContent>> {
         let RunState::AwaitingAdvance(turn) = &self.state else {
             return None;
         };
 
-        OneOrMany::from_iter_optional(turn.items.clone())
+        Some(turn.items.clone()).filter(|items| !items.is_empty())
     }
 
     /// Reject the accepted, tool-free model turn and prepare another model call.
@@ -534,7 +533,7 @@ impl AgentRun {
         match request {
             RetryRequest::Repeat => {}
             RetryRequest::Feedback(feedback) => {
-                let Some(content) = OneOrMany::from_iter_optional(turn.items) else {
+                let Some(content) = Some(turn.items).filter(|items| !items.is_empty()) else {
                     return Err(PromptError::prompt_cancelled(
                         self.full_history(),
                         "model-turn retry lost the rejected assistant content",
@@ -660,7 +659,7 @@ impl AgentRun {
                     skipped,
                     mut internal_call_ids,
                 } = *turn_state;
-                let Some(choice) = OneOrMany::from_iter_optional(items.clone()) else {
+                let Some(choice) = Some(items.clone()).filter(|items| !items.is_empty()) else {
                     return Err(PromptError::prompt_cancelled(
                         self.full_history(),
                         "model turn lost its assistant content",
@@ -727,7 +726,7 @@ impl AgentRun {
                         .cloned()
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
-                    let final_content = OneOrMany::from_iter_optional(final_items);
+                    let final_content = Some(final_items).filter(|items| !items.is_empty());
                     if let Some(content) = final_content.clone() {
                         self.new_messages.push(Message::Assistant {
                             id: message_id,
@@ -866,7 +865,7 @@ impl AgentRun {
 
         self.record_completion_call(turn.usage);
 
-        let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
+        let items: Vec<AssistantContent> = turn.choice.to_vec();
         let has_tool_calls = items
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
@@ -1045,7 +1044,7 @@ impl AgentRun {
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
                     tool_call.function.name.clone(),
-                    OneOrMany::one(reason.into()),
+                    vec![reason.into()],
                 );
                 // Keyed by the call's position: `next_index` is exactly the
                 // invalid call's slot in `items`, and later mutations only
@@ -1155,7 +1154,7 @@ impl AgentRun {
         }
 
         // `results` is non-empty (checked above), so construction succeeds.
-        let Some(content) = OneOrMany::from_iter_optional(results) else {
+        let Some(content) = Some(results).filter(|items| !items.is_empty()) else {
             return Err(
                 self.protocol_violation("internal: tool results vanished during validation")
             );
@@ -1387,7 +1386,7 @@ impl AgentRun {
                     call: invalid.tool_call.id.clone(),
                     provider: invalid.tool_call.provider.clone(),
                     name: invalid.tool_call.function.name.clone(),
-                    content: OneOrMany::one(ToolResultContent::text(reason.clone())),
+                    content: vec![ToolResultContent::text(reason.clone())],
                 };
                 let Some((assistant_message, user_message)) =
                     partial.rollback_messages(invalid.tool_call.clone(), reason)
@@ -1433,7 +1432,7 @@ impl AgentRun {
             self.streamed_completion_call_recorded = true;
         }
 
-        let items: Vec<AssistantContent> = turn.choice.iter().cloned().collect();
+        let items: Vec<AssistantContent> = turn.choice.to_vec();
         let has_tool_calls = items
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
@@ -1527,7 +1526,7 @@ mod tests {
     fn text_turn(text: &str) -> ModelTurn {
         ModelTurn::new(
             None,
-            OneOrMany::one(AssistantContent::text(text)),
+            vec![AssistantContent::text(text)],
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add"]),
@@ -1547,7 +1546,7 @@ mod tests {
     fn tool_call_turn(id: &str, name: &str) -> ModelTurn {
         ModelTurn::new(
             None,
-            OneOrMany::one(tool_call(id, name)),
+            vec![tool_call(id, name)],
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add"]),
@@ -1557,7 +1556,7 @@ mod tests {
     fn tool_result(id: &str, output: &str) -> UserContent {
         // Every result in these tests answers a call to the `add` tool; the
         // executed tool's name is required data on a result.
-        UserContent::tool_result(id, "add", OneOrMany::one(ToolResultContent::text(output)))
+        UserContent::tool_result(id, "add", vec![ToolResultContent::text(output)])
     }
 
     fn expect_call_model(run: &mut AgentRun) -> (Message, Vec<Message>, usize) {
@@ -1806,8 +1805,7 @@ mod tests {
         expect_call_model(&mut run);
         let turn = ModelTurn::new(
             None,
-            OneOrMany::many(vec![tool_call("call_1", "add"), tool_call("call_2", "add")])
-                .expect("two items"),
+            vec![tool_call("call_1", "add"), tool_call("call_2", "add")],
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add"]),
@@ -1970,7 +1968,7 @@ mod tests {
         assert!(matches!(
             prompt,
             Message::User { ref content }
-                if matches!(content.first(), UserContent::ToolResult(_))
+                if matches!(content.first(), Some(&UserContent::ToolResult(_)))
         ));
 
         // Budget of one: a second retry fails with UnknownToolCall.
@@ -2056,11 +2054,7 @@ mod tests {
         expect_call_model(&mut run);
         let turn = ModelTurn::new(
             None,
-            OneOrMany::many(vec![
-                tool_call("call_1", "unknown"),
-                tool_call("call_2", "add"),
-            ])
-            .expect("two items"),
+            vec![tool_call("call_1", "unknown"), tool_call("call_2", "add")],
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add"]),
@@ -2093,8 +2087,7 @@ mod tests {
         expect_call_model(&mut run);
         let turn = ModelTurn::new(
             None,
-            OneOrMany::many(vec![tool_call("", "unknown"), tool_call("", "add")])
-                .expect("two items"),
+            vec![tool_call("", "unknown"), tool_call("", "add")],
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add"]),
@@ -2153,7 +2146,7 @@ mod tests {
         expect_needs_resolution(
             run.model_response(ModelTurn::new(
                 None,
-                OneOrMany::one(tool_call("call_1", "add")),
+                vec![tool_call("call_1", "add")],
                 Usage::new(),
                 tool_names(&["add"]),
                 BTreeSet::new(),
@@ -2432,7 +2425,7 @@ mod tests {
     fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
         ModelTurn::new(
             None,
-            OneOrMany::one(tool_call(id, name)),
+            vec![tool_call(id, name)],
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add", name]),
@@ -2442,10 +2435,10 @@ mod tests {
     fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value) -> ModelTurn {
         ModelTurn::new(
             None,
-            OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+            vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 id,
                 ToolFunction::new(name.to_string(), arguments),
-            ))),
+            ))],
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add", name]),
@@ -2548,11 +2541,10 @@ mod tests {
         // the output-tool intercept wins and the real call is never executed.
         let turn = ModelTurn::new(
             None,
-            OneOrMany::many(vec![
+            vec![
                 tool_call("call_1", "add"),
                 tool_call("call_2", "final_result"),
-            ])
-            .expect("two items"),
+            ],
             Usage::new(),
             tool_names(&["add"]),
             tool_names(&["add", "final_result"]),
@@ -2753,8 +2745,7 @@ mod tests {
         assert_eq!(turn, 1);
 
         // Turn 1: the model emits two tool calls.
-        let two_calls =
-            OneOrMany::many([tool_call("c1", "add"), tool_call("c2", "add")]).expect("two calls");
+        let two_calls = vec![tool_call("c1", "add"), tool_call("c2", "add")];
         let outcome = run
             .model_response(ModelTurn::new(
                 None,

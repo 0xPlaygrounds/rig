@@ -6,7 +6,6 @@ use std::{
 };
 
 use crate::{
-    OneOrMany,
     completion::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
         Usage,
@@ -53,7 +52,7 @@ pub struct MockTurn {
 
 #[derive(Clone, Debug)]
 struct MockTurnResponse {
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
     response_id: Option<String>,
@@ -95,7 +94,7 @@ impl MockTurn {
     pub fn from_content(content: AssistantContent) -> Self {
         Self {
             response: Ok(MockTurnResponse {
-                choice: OneOrMany::one(content),
+                choice: vec![content],
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
@@ -104,17 +103,15 @@ impl MockTurn {
     }
 
     /// Create a response turn from multiple assistant content items.
-    pub fn from_contents(
-        content: impl IntoIterator<Item = AssistantContent>,
-    ) -> Result<Self, crate::one_or_many::EmptyListError> {
-        Ok(Self {
+    pub fn from_contents(content: impl IntoIterator<Item = AssistantContent>) -> Self {
+        Self {
             response: Ok(MockTurnResponse {
-                choice: OneOrMany::many(content)?,
+                choice: content.into_iter().collect(),
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
             }),
-        })
+        }
     }
 
     /// Attach a provider-specific call ID to a tool-call response turn.
@@ -318,7 +315,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::user(prompt)),
+            chat_history: vec![Message::user(prompt)],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -343,24 +340,24 @@ mod tests {
             .await
             .expect("first scripted turn should succeed");
         assert_eq!(first.message_id.as_deref(), Some("msg_1"));
-        assert!(matches!(
-            first.choice.first(),
-            AssistantContent::Text(text) if text.text == "first"
-        ));
+        assert!(
+            matches!(first.choice.first(), Some(AssistantContent::Text(text)) if text.text == "first"
+            )
+        );
 
         let second = model
             .completion(request("use a tool"))
             .await
             .expect("second scripted turn should succeed");
-        assert!(matches!(
-            second.choice.first(),
-            AssistantContent::ToolCall(tool_call)
-                if tool_call.id == "tool_1"
-                    && tool_call
-                        .provider
-                        .as_ref()
-                        .is_some_and(|provider| provider.call_id == "call_1")
-        ));
+        assert!(
+            matches!(second.choice.first(), Some(AssistantContent::ToolCall(tool_call))
+                    if tool_call.id == "tool_1"
+                        && tool_call
+                            .provider
+                            .as_ref()
+                            .is_some_and(|provider| provider.call_id == "call_1")
+            )
+        );
 
         assert_eq!(model.request_count(), 2);
         assert_eq!(model.requests().len(), 2);

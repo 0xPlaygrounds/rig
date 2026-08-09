@@ -326,9 +326,9 @@ impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
             );
             request.tool_choice = Some(openai::completion::ToolChoice::Auto);
             request.messages.push(openai::Message::User {
-                content: crate::OneOrMany::one(openai::UserContent::Text {
+                content: vec![openai::UserContent::Text {
                     text: "Please select a tool to handle the current issue.".to_string(),
-                }),
+                }],
                 name: None,
             });
         }
@@ -384,7 +384,7 @@ mod tests {
     fn moonshot_preserves_reasoning_content_in_assistant_history() {
         let assistant = Message::Assistant {
             id: None,
-            content: crate::OneOrMany::many(vec![
+            content: vec![
                 AssistantContent::Reasoning(Reasoning::new("tool planning")),
                 AssistantContent::ToolCall(ToolCall::from_wire(
                     "call_1",
@@ -393,14 +393,13 @@ mod tests {
                         arguments: serde_json::json!({}),
                     },
                 )),
-            ])
-            .expect("assistant content"),
+            ],
         };
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one(assistant),
+            chat_history: vec![assistant],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -424,18 +423,17 @@ mod tests {
         // keep them newline-separated on the wire, not glued together.
         let assistant = Message::Assistant {
             id: None,
-            content: crate::OneOrMany::many(vec![
+            content: vec![
                 AssistantContent::Reasoning(Reasoning::new("first thought")),
                 AssistantContent::Reasoning(Reasoning::new("second thought")),
                 AssistantContent::Text("done".into()),
-            ])
-            .expect("assistant content"),
+            ],
         };
 
         let request = CompletionRequest {
             model: Some("kimi-k2-thinking".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one(assistant),
+            chat_history: vec![assistant],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -458,7 +456,7 @@ mod tests {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
+            chat_history: vec![Message::user("Use a tool.")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -492,7 +490,7 @@ mod tests {
         let request = CompletionRequest {
             model: Some("kimi-k2.5".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one(Message::user("Use a tool.")),
+            chat_history: vec![Message::user("Use a tool.")],
             documents: vec![],
             tools: vec![],
             temperature: None,

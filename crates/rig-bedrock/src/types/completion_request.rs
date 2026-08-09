@@ -5,7 +5,6 @@ use aws_sdk_bedrockruntime::types::{
     CachePointBlock, CachePointType, InferenceConfiguration, SystemContentBlock, Tool,
     ToolConfiguration, ToolInputSchema, ToolSpecification,
 };
-use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, Message};
 use rig_core::message::{DocumentMediaType, UserContent};
 
@@ -183,10 +182,10 @@ impl AwsCompletionRequest {
                 .collect::<Vec<_>>()
                 .join(" | ");
 
-            let content = OneOrMany::one(UserContent::document(
+            let content = vec![UserContent::document(
                 messages,
                 Some(DocumentMediaType::TXT),
-            ));
+            )];
 
             full_history.push(Message::User { content });
         }
@@ -237,7 +236,6 @@ impl AwsCompletionRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig_core::OneOrMany;
     use rig_core::completion::{CompletionRequest, ToolDefinition};
     use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
@@ -246,9 +244,9 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
-            }),
+            chat_history: vec![Message::User {
+                content: vec![UserContent::Text(Text::new("test".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -505,13 +503,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("History system instruction"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
+                    content: vec![UserContent::Text(Text::new("test".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 
@@ -561,13 +558,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("History system instruction"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
+                    content: vec![UserContent::Text(Text::new("test".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 
@@ -601,23 +597,18 @@ mod tests {
         let reasoning =
             rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
         let request = CompletionRequest {
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new(
-                        "user prompt".to_string(),
-                    ))),
+                    content: vec![UserContent::Text(Text::new("user prompt".to_string()))],
                 },
                 Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(rig_core::completion::AssistantContent::Reasoning(
-                        reasoning,
-                    )),
+                    content: vec![rig_core::completion::AssistantContent::Reasoning(reasoning)],
                 },
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("follow up".to_string()))),
+                    content: vec![UserContent::Text(Text::new("follow up".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 

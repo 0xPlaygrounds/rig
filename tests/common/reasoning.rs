@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::agent::{MultiTurnStreamItem, StreamingError};
 use rig::completion::{self, CompletionModel};
 use rig::message::{
@@ -79,12 +78,12 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     F: FnMut(&rig::streaming::StreamFinal),
 {
     let turn1_prompt = Message::User {
-        content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
     let request = completion::CompletionRequest {
         preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::one(turn1_prompt.clone()),
+        chat_history: vec![turn1_prompt.clone()],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -157,17 +156,16 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
 
     let turn1_assistant = Message::Assistant {
         id: stream.message_id.clone(),
-        content: OneOrMany::many(assistant_content).expect("non-empty"),
+        content: assistant_content,
     };
 
     let turn2_prompt = Message::User {
-        content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
     let request2 = completion::CompletionRequest {
         preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::many(vec![turn1_prompt, turn1_assistant, turn2_prompt])
-            .expect("non-empty"),
+        chat_history: vec![turn1_prompt, turn1_assistant, turn2_prompt],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -213,12 +211,12 @@ where
     M: CompletionModel,
 {
     let turn1_prompt = Message::User {
-        content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
     let request = completion::CompletionRequest {
         preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::one(turn1_prompt.clone()),
+        chat_history: vec![turn1_prompt.clone()],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -259,13 +257,12 @@ where
     };
 
     let turn2_prompt = Message::User {
-        content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN2_TEXT)),
+        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
     let request2 = completion::CompletionRequest {
         preamble: Some(agent.preamble.clone()),
-        chat_history: OneOrMany::many(vec![turn1_prompt, turn1_assistant, turn2_prompt])
-            .expect("non-empty"),
+        chat_history: vec![turn1_prompt, turn1_assistant, turn2_prompt],
         documents: vec![],
         tools: vec![],
         temperature: None,
