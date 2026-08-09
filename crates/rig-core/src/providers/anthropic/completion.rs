@@ -2,13 +2,12 @@
 
 use crate::completion::CompletionRequest;
 use crate::completion::NormalizeCompletionResponse;
+use crate::json_utils::string_or_vec;
 use crate::{
-    OneOrMany,
     client::Provider,
     completion::{self, CompletionError},
     http_client::HttpClientExt,
     message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
-    one_or_many::string_or_one_or_many,
     telemetry::{CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
@@ -261,15 +260,16 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             // The generic completion response still requires at least one assistant item, so
             // normalize that terminal no-op into the same empty-text sentinel used by streaming.
             if response.stop_reason.as_deref() == Some("end_turn") {
-                OneOrMany::one(completion::AssistantContent::text(""))
+                vec![completion::AssistantContent::text("")]
             } else {
                 return Err(CompletionError::ResponseError(
                     EMPTY_RESPONSE_ERROR.to_owned(),
                 ));
             }
         } else {
-            OneOrMany::many(content)
-                .map_err(|_| CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned()))?
+            crate::message::require_non_empty(content, || {
+                CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned())
+            })?
         };
 
         let finish_reason = response.stop_reason.as_deref().map(map_finish_reason);
@@ -288,8 +288,8 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Message {
     pub role: Role,
-    #[serde(deserialize_with = "string_or_one_or_many")]
-    pub content: OneOrMany<Content>,
+    #[serde(deserialize_with = "string_or_vec")]
+    pub content: Vec<Content>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -343,8 +343,8 @@ pub enum Content {
     },
     ToolResult {
         tool_use_id: String,
-        #[serde(deserialize_with = "string_or_one_or_many")]
-        content: OneOrMany<ToolResultContent>,
+        #[serde(deserialize_with = "string_or_vec")]
+        content: Vec<ToolResultContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1199,7 +1199,7 @@ impl TryFrom<message::Message> for Message {
         Ok(match message {
             message::Message::User { content } => Message {
                 role: Role::User,
-                content: content.try_map(|content| match content {
+                content: content.into_iter().map(|content| match content {
                     message::UserContent::Text(message::Text { text, .. }) => Ok(Content::Text {
                         text,
                         citations: Vec::new(),
@@ -1207,7 +1207,7 @@ impl TryFrom<message::Message> for Message {
                     }),
                     message::UserContent::ToolResult(tool_result) => Ok(Content::ToolResult {
                         tool_use_id: tool_result.wire_call_id().to_owned(),
-                        content: tool_result.content.try_map(|content| match content {
+                        content: tool_result.content.into_iter().map(|content| match content {
                             message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
                             }
@@ -1234,7 +1234,7 @@ impl TryFrom<message::Message> for Message {
                                     },
                                 })
                             }
-                        })?,
+                        }).collect::<Result<Vec<_>, _>>()?,
                         is_error: None,
                         cache_control: None,
                     }),
@@ -1353,16 +1353,16 @@ impl TryFrom<message::Message> for Message {
                     message::UserContent::Video { .. } => Err(MessageError::ConversionError(
                         "Video is not supported in Anthropic".to_owned(),
                     )),
-                })?,
+                }).collect::<Result<Vec<_>, _>>()?,
             },
 
             message::Message::System { content } => Message {
                 role: Role::System,
-                content: OneOrMany::one(Content::Text {
+                content: vec![Content::Text {
                     text: content,
                     citations: Vec::new(),
                     cache_control: None,
-                }),
+                }],
             },
 
             message::Message::Assistant { content, .. } => {
@@ -1376,7 +1376,7 @@ impl TryFrom<message::Message> for Message {
                 )?;
 
                 Message {
-                    content: OneOrMany::many(converted_content).map_err(|_| {
+                    content: crate::message::require_non_empty(converted_content, || {
                         MessageError::ConversionError(
                             "Assistant message did not contain Anthropic-compatible content"
                                 .to_owned(),
@@ -1454,94 +1454,103 @@ impl TryFrom<Message> for message::Message {
     fn try_from(message: Message) -> Result<Self, Self::Error> {
         Ok(match message.role {
             Role::User => message::Message::User {
-                content: message.content.try_map(|content| {
-                    Ok(match content {
-                        Content::Text { text, .. } => message::UserContent::text(text),
-                        Content::ToolResult {
-                            tool_use_id,
-                            content,
-                            ..
-                        } => message::UserContent::tool_result_from_wire(
-                            tool_use_id,
-                            // Anthropic's wire correlates results by id only
-                            // and never carries the tool name; this
-                            // conversion is lossy for name-keyed wires.
-                            "",
-                            content.map(|content| content.into()),
-                        ),
-                        Content::Image { source, .. } => match source {
-                            ImageSource::Base64 { data, media_type } => {
-                                message::UserContent::Image(message::Image {
-                                    data: DocumentSourceKind::Base64(data),
-                                    media_type: Some(media_type.into()),
-                                    detail: None,
-                                    additional_params: None,
-                                })
-                            }
-                            ImageSource::Url { url } => {
-                                message::UserContent::Image(message::Image {
-                                    data: DocumentSourceKind::Url(url),
-                                    media_type: None,
-                                    detail: None,
-                                    additional_params: None,
-                                })
-                            }
-                        },
-                        Content::Document {
-                            source,
-                            title,
-                            context,
-                            citations,
-                            ..
-                        } => {
-                            let additional_params =
-                                anthropic_document_additional_params(title, context, citations)?;
-
-                            match source {
-                                DocumentSource::Base64 { data, media_type } => {
-                                    let rig_media_type = match media_type {
-                                        DocumentFormat::PDF => message::DocumentMediaType::PDF,
-                                    };
-                                    message::UserContent::Document(message::Document {
-                                        data: DocumentSourceKind::String(data),
-                                        media_type: Some(rig_media_type),
-                                        additional_params,
+                content: message
+                    .content
+                    .into_iter()
+                    .map(|content| {
+                        Ok(match content {
+                            Content::Text { text, .. } => message::UserContent::text(text),
+                            Content::ToolResult {
+                                tool_use_id,
+                                content,
+                                ..
+                            } => message::UserContent::tool_result_from_wire(
+                                tool_use_id,
+                                // Anthropic's wire correlates results by id only
+                                // and never carries the tool name; this
+                                // conversion is lossy for name-keyed wires.
+                                "",
+                                content.into_iter().map(|content| content.into()).collect(),
+                            ),
+                            Content::Image { source, .. } => match source {
+                                ImageSource::Base64 { data, media_type } => {
+                                    message::UserContent::Image(message::Image {
+                                        data: DocumentSourceKind::Base64(data),
+                                        media_type: Some(media_type.into()),
+                                        detail: None,
+                                        additional_params: None,
                                     })
                                 }
-                                DocumentSource::Text { data, .. } => {
-                                    message::UserContent::Document(message::Document {
-                                        data: DocumentSourceKind::String(data),
-                                        media_type: Some(message::DocumentMediaType::TXT),
-                                        additional_params,
-                                    })
-                                }
-                                DocumentSource::Url { url } => {
-                                    message::UserContent::Document(message::Document {
+                                ImageSource::Url { url } => {
+                                    message::UserContent::Image(message::Image {
                                         data: DocumentSourceKind::Url(url),
                                         media_type: None,
-                                        additional_params,
+                                        detail: None,
+                                        additional_params: None,
                                     })
                                 }
-                                DocumentSource::File { file_id } => {
-                                    message::UserContent::Document(message::Document {
-                                        data: DocumentSourceKind::FileId(file_id),
-                                        media_type: None,
-                                        additional_params,
-                                    })
+                            },
+                            Content::Document {
+                                source,
+                                title,
+                                context,
+                                citations,
+                                ..
+                            } => {
+                                let additional_params = anthropic_document_additional_params(
+                                    title, context, citations,
+                                )?;
+
+                                match source {
+                                    DocumentSource::Base64 { data, media_type } => {
+                                        let rig_media_type = match media_type {
+                                            DocumentFormat::PDF => message::DocumentMediaType::PDF,
+                                        };
+                                        message::UserContent::Document(message::Document {
+                                            data: DocumentSourceKind::String(data),
+                                            media_type: Some(rig_media_type),
+                                            additional_params,
+                                        })
+                                    }
+                                    DocumentSource::Text { data, .. } => {
+                                        message::UserContent::Document(message::Document {
+                                            data: DocumentSourceKind::String(data),
+                                            media_type: Some(message::DocumentMediaType::TXT),
+                                            additional_params,
+                                        })
+                                    }
+                                    DocumentSource::Url { url } => {
+                                        message::UserContent::Document(message::Document {
+                                            data: DocumentSourceKind::Url(url),
+                                            media_type: None,
+                                            additional_params,
+                                        })
+                                    }
+                                    DocumentSource::File { file_id } => {
+                                        message::UserContent::Document(message::Document {
+                                            data: DocumentSourceKind::FileId(file_id),
+                                            media_type: None,
+                                            additional_params,
+                                        })
+                                    }
                                 }
                             }
-                        }
-                        _ => {
-                            return Err(MessageError::ConversionError(
-                                "Unsupported content type for User role".to_owned(),
-                            ));
-                        }
+                            _ => {
+                                return Err(MessageError::ConversionError(
+                                    "Unsupported content type for User role".to_owned(),
+                                ));
+                            }
+                        })
                     })
-                })?,
+                    .collect::<Result<Vec<_>, _>>()?,
             },
             Role::Assistant => message::Message::Assistant {
                 id: None,
-                content: message.content.try_map(|content| content.try_into())?,
+                content: message
+                    .content
+                    .into_iter()
+                    .map(|content| content.try_into())
+                    .collect::<Result<Vec<_>, _>>()?,
             },
             Role::System => {
                 let content =
@@ -1926,8 +1935,10 @@ pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message
     }
 
     // Add cache_control to the last content block of the last message
-    if let Some(last_msg) = messages.last_mut() {
-        set_content_cache_control(last_msg.content.last_mut(), Some(CacheControl::ephemeral()));
+    if let Some(last_msg) = messages.last_mut()
+        && let Some(last_content) = last_msg.content.last_mut()
+    {
+        set_content_cache_control(last_content, Some(CacheControl::ephemeral()));
     }
 }
 
@@ -2146,8 +2157,10 @@ fn apply_message_cache_control(
         return;
     }
 
-    if let Some(last_msg) = messages.last_mut() {
-        set_content_cache_control(last_msg.content.last_mut(), Some(cache_control.clone()));
+    if let Some(last_msg) = messages.last_mut()
+        && let Some(last_content) = last_msg.content.last_mut()
+    {
+        set_content_cache_control(last_content, Some(cache_control.clone()));
         *remaining_cache_markers -= 1;
     }
 }
@@ -2771,11 +2784,11 @@ mod tests {
         assert_eq!(role, Role::Assistant);
         assert_eq!(
             content.first(),
-            Content::Text {
+            Some(&Content::Text {
                 text: "\n\nHello there, how may I assist you today?".to_owned(),
                 citations: Vec::new(),
                 cache_control: None,
-            }
+            })
         );
 
         let Message { role, content } = assistant_message2;
@@ -2841,9 +2854,9 @@ mod tests {
                     assert_eq!(tool_use_id, "toolu_01A09q90qw90lq917835lq9");
                     assert_eq!(
                         content.first(),
-                        ToolResultContent::Text {
+                        Some(&ToolResultContent::Text {
                             text: "15 degrees".to_owned()
-                        }
+                        })
                     );
                     assert_eq!(is_error, None);
                 }
@@ -2889,23 +2902,23 @@ mod tests {
 
         let assistant_message = Message {
             role: Role::Assistant,
-            content: OneOrMany::one(Content::ToolUse {
+            content: vec![Content::ToolUse {
                 id: "toolu_01A09q90qw90lq917835lq9".to_string(),
                 name: "get_weather".to_string(),
                 input: json!({"location": "San Francisco, CA"}),
-            }),
+            }],
         };
 
         let tool_message = Message {
             role: Role::User,
-            content: OneOrMany::one(Content::ToolResult {
+            content: vec![Content::ToolResult {
                 tool_use_id: "toolu_01A09q90qw90lq917835lq9".to_string(),
-                content: OneOrMany::one(ToolResultContent::Text {
+                content: vec![ToolResultContent::Text {
                     text: "15 degrees".to_string(),
-                }),
+                }],
                 is_error: None,
                 cache_control: None,
-            }),
+            }],
         };
 
         let converted_user_message: message::Message = user_message.clone().try_into().unwrap();
@@ -2962,7 +2975,7 @@ mod tests {
                     content,
                     ..
                 } = match content.first() {
-                    message::UserContent::ToolResult(tool_result) => tool_result,
+                    Some(message::UserContent::ToolResult(tool_result)) => tool_result,
                     _ => panic!("Expected tool result content"),
                 };
                 assert_eq!(call, "toolu_01A09q90qw90lq917835lq9");
@@ -2970,7 +2983,7 @@ mod tests {
                 // blocks, so the inbound conversion is lossy by design.
                 assert_eq!(name, "");
                 match content.first() {
-                    message::ToolResultContent::Text(message::Text { text, .. }) => {
+                    Some(message::ToolResultContent::Text(message::Text { text, .. })) => {
                         assert_eq!(text, "15 degrees");
                     }
                     _ => panic!("Expected text content"),
@@ -2984,9 +2997,11 @@ mod tests {
                 assert_eq!(content.len(), 1);
 
                 match content.first() {
-                    message::AssistantContent::ToolCall(message::ToolCall {
-                        id, function, ..
-                    }) => {
+                    Some(message::AssistantContent::ToolCall(message::ToolCall {
+                        id,
+                        function,
+                        ..
+                    })) => {
                         assert_eq!(id, "toolu_01A09q90qw90lq917835lq9");
                         assert_eq!(function.name, "get_weather");
                         assert_eq!(function.arguments, json!({"location": "San Francisco, CA"}));
@@ -3065,19 +3080,19 @@ mod tests {
         let mut messages = vec![
             Message {
                 role: Role::User,
-                content: OneOrMany::one(Content::Text {
+                content: vec![Content::Text {
                     text: "First message".to_string(),
                     citations: Vec::new(),
                     cache_control: None,
-                }),
+                }],
             },
             Message {
                 role: Role::Assistant,
-                content: OneOrMany::one(Content::Text {
+                content: vec![Content::Text {
                     text: "Response".to_string(),
                     citations: Vec::new(),
                     cache_control: None,
-                }),
+                }],
             },
         ];
 
@@ -3124,7 +3139,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: Some("System prompt".to_string()),
-            chat_history: OneOrMany::one(message::Message::from("Hello")),
+            chat_history: vec![message::Message::from("Hello")],
             documents: Vec::new(),
             tools,
             temperature: None,
@@ -3143,7 +3158,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble,
-            chat_history: OneOrMany::many(chat_history).unwrap(),
+            chat_history,
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -3306,7 +3321,7 @@ mod tests {
             vec![
                 message::Message::Assistant {
                     id: None,
-                    content: OneOrMany::many([
+                    content: vec![
                         message::AssistantContent::Text(message::Text {
                             text: String::new(),
                             additional_params: Some(json!({
@@ -3333,8 +3348,7 @@ mod tests {
                                 }
                             })),
                         }),
-                    ])
-                    .unwrap(),
+                    ],
                 },
                 message::Message::System {
                     content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -3375,7 +3389,7 @@ mod tests {
             vec![
                 message::Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(message::AssistantContent::Text(message::Text {
+                    content: vec![message::AssistantContent::Text(message::Text {
                         text: String::new(),
                         additional_params: Some(json!({
                             ANTHROPIC_RAW_CONTENT_KEY: {
@@ -3387,7 +3401,7 @@ mod tests {
                                 }
                             }
                         })),
-                    })),
+                    })],
                 },
                 message::Message::System {
                     content: "For the rest of this conversation, answer in Spanish.".to_string(),
@@ -4662,11 +4676,11 @@ mod tests {
         use crate::completion::message as msg;
 
         let rig_message = msg::Message::User {
-            content: OneOrMany::one(msg::UserContent::Document(msg::Document {
+            content: vec![msg::UserContent::Document(msg::Document {
                 data: DocumentSourceKind::FileId("file_abc".to_string()),
                 media_type: None,
                 additional_params: None,
-            })),
+            })],
         };
 
         let anthropic_message: Message = rig_message.try_into().unwrap();
@@ -4692,7 +4706,7 @@ mod tests {
 
         let anthropic_message = Message {
             role: Role::User,
-            content: OneOrMany::one(Content::Document {
+            content: vec![Content::Document {
                 source: DocumentSource::File {
                     file_id: "file_abc".to_string(),
                 },
@@ -4700,7 +4714,7 @@ mod tests {
                 context: None,
                 citations: None,
                 cache_control: None,
-            }),
+            }],
         };
 
         let rig_message: msg::Message = anthropic_message.try_into().unwrap();
@@ -4726,10 +4740,10 @@ mod tests {
         use crate::completion::message as msg;
 
         let rig_message = msg::Message::User {
-            content: OneOrMany::one(msg::UserContent::document(
+            content: vec![msg::UserContent::document(
                 "Some plain text content".to_string(),
                 Some(msg::DocumentMediaType::TXT),
-            )),
+            )],
         };
 
         let anthropic_message: Message = rig_message.try_into().unwrap();
@@ -4756,7 +4770,7 @@ mod tests {
 
         let anthropic_message = Message {
             role: Role::User,
-            content: OneOrMany::one(Content::Document {
+            content: vec![Content::Document {
                 source: DocumentSource::Text {
                     data: "Some plain text content".to_string(),
                     media_type: PlainTextMediaType::Plain,
@@ -4765,7 +4779,7 @@ mod tests {
                 context: None,
                 citations: None,
                 cache_control: None,
-            }),
+            }],
         };
 
         let rig_message: msg::Message = anthropic_message.try_into().unwrap();
@@ -4794,10 +4808,10 @@ mod tests {
         use crate::completion::message as msg;
 
         let original = msg::Message::User {
-            content: OneOrMany::one(msg::UserContent::document(
+            content: vec![msg::UserContent::document(
                 "Round trip text".to_string(),
                 Some(msg::DocumentMediaType::TXT),
-            )),
+            )],
         };
 
         let anthropic: Message = original.clone().try_into().unwrap();
@@ -4813,14 +4827,14 @@ mod tests {
                 },
             ) => match (orig_content.first(), back_content.first()) {
                 (
-                    msg::UserContent::Document(msg::Document {
+                    Some(msg::UserContent::Document(msg::Document {
                         media_type: orig_mt,
                         ..
-                    }),
-                    msg::UserContent::Document(msg::Document {
+                    })),
+                    Some(msg::UserContent::Document(msg::Document {
                         media_type: back_mt,
                         ..
-                    }),
+                    })),
                 ) => {
                     assert_eq!(orig_mt, back_mt);
                 }
@@ -4835,11 +4849,11 @@ mod tests {
         use crate::completion::message as msg;
 
         let rig_message = msg::Message::User {
-            content: OneOrMany::one(msg::UserContent::Document(msg::Document {
+            content: vec![msg::UserContent::Document(msg::Document {
                 data: DocumentSourceKind::String("data".into()),
                 media_type: Some(msg::DocumentMediaType::HTML),
                 additional_params: None,
-            })),
+            })],
         };
 
         let result: Result<Message, _> = rig_message.try_into();
@@ -4856,11 +4870,11 @@ mod tests {
         use crate::completion::message as msg;
 
         let rig_message = msg::Message::User {
-            content: OneOrMany::one(msg::UserContent::Document(msg::Document {
+            content: vec![msg::UserContent::Document(msg::Document {
                 data: DocumentSourceKind::Url("https://example.com/doc.txt".into()),
                 media_type: Some(msg::DocumentMediaType::TXT),
                 additional_params: None,
-            })),
+            })],
         };
 
         let result: Result<Message, _> = rig_message.try_into();
@@ -4962,10 +4976,10 @@ mod tests {
 
         let msg = message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::Reasoning(reasoning)),
+            content: vec![message::AssistantContent::Reasoning(reasoning)],
         };
         let converted: Message = msg.try_into().expect("convert assistant message");
-        let converted_content = converted.content.iter().cloned().collect::<Vec<_>>();
+        let converted_content = converted.content.to_vec();
 
         assert_eq!(converted.role, Role::Assistant);
         assert_eq!(converted_content.len(), 4);
@@ -5017,11 +5031,11 @@ mod tests {
         };
         let msg = message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::Reasoning(reasoning)),
+            content: vec![message::AssistantContent::Reasoning(reasoning)],
         };
 
         let converted: Message = msg.try_into().expect("convert assistant message");
-        let converted_content = converted.content.iter().cloned().collect::<Vec<_>>();
+        let converted_content = converted.content.to_vec();
 
         assert_eq!(converted_content.len(), 1);
         assert!(matches!(
@@ -5054,7 +5068,7 @@ mod tests {
         assert_eq!(parsed.choice.len(), 1);
         assert!(matches!(
             parsed.choice.first(),
-            completion::AssistantContent::Text(text) if text.text.is_empty()
+            Some(completion::AssistantContent::Text(text)) if text.text.is_empty()
         ));
         assert_eq!(parsed.provider, "anthropic");
         assert_eq!(parsed.message_id.as_deref(), Some("msg_123"));
@@ -5504,7 +5518,8 @@ mod tests {
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
         let converted = response.normalize("anthropic").unwrap();
-        let message::AssistantContent::Text(web_search_result) = converted.choice.first() else {
+        let Some(message::AssistantContent::Text(web_search_result)) = converted.choice.first()
+        else {
             panic!("expected raw web_search_tool_result metadata");
         };
 
@@ -5526,10 +5541,10 @@ mod tests {
 
         assert!(matches!(
             round_trip.content.first(),
-            Content::WebSearchToolResult {
+            Some(Content::WebSearchToolResult {
                 tool_use_id,
                 content
-            } if tool_use_id == "srvtoolu_01"
+            }) if tool_use_id == "srvtoolu_01"
                 && content["error_code"] == "max_uses_exceeded"
         ));
     }
@@ -5609,7 +5624,7 @@ mod tests {
 
         let response: CompletionResponse = serde_json::from_value(value).unwrap();
         let converted = response.normalize("anthropic").unwrap();
-        let message::AssistantContent::Text(code_execution_result) = converted.choice.first()
+        let Some(message::AssistantContent::Text(code_execution_result)) = converted.choice.first()
         else {
             panic!("expected raw code_execution_tool_result metadata");
         };
@@ -5626,10 +5641,10 @@ mod tests {
         .unwrap();
         assert!(matches!(
             round_trip.content.first(),
-            Content::CodeExecutionToolResult {
+            Some(Content::CodeExecutionToolResult {
                 tool_use_id,
                 content
-            } if tool_use_id == "srvtoolu_01"
+            }) if tool_use_id == "srvtoolu_01"
                 && content["type"] == "code_execution_result"
                 && content["stdout"] == "42\n"
         ));
@@ -5779,7 +5794,7 @@ mod tests {
     fn assistant_text_citations_survive_anthropic_request_conversion() {
         let assistant = message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::Text(message::Text {
+            content: vec![message::AssistantContent::Text(message::Text {
                 text: "the grass is green".into(),
                 additional_params: Some(json!({
                     "citations": [{
@@ -5790,13 +5805,13 @@ mod tests {
                         "end_char_index": 20
                     }]
                 })),
-            })),
+            })],
         };
 
         let converted: Message = assistant.try_into().unwrap();
-        let Content::Text {
+        let Some(Content::Text {
             citations, text, ..
-        } = converted.content.first()
+        }) = converted.content.first()
         else {
             panic!("expected assistant text content");
         };
@@ -5804,7 +5819,7 @@ mod tests {
         assert_eq!(text, "the grass is green");
         assert_eq!(
             citations,
-            vec![Citation::CharLocation {
+            &vec![Citation::CharLocation {
                 cited_text: "The grass is green.".into(),
                 document_index: 0,
                 document_title: None,
@@ -5845,23 +5860,21 @@ mod tests {
                 "citations": { "enabled": true }
             })),
         });
-        let msg = message::Message::User {
-            content: OneOrMany::one(doc),
-        };
+        let msg = message::Message::User { content: vec![doc] };
         let converted: Message = msg.try_into().unwrap();
         let block = converted.content.first();
-        let Content::Document {
+        let Some(Content::Document {
             title,
             context,
             citations,
             ..
-        } = block
+        }) = block
         else {
             panic!("expected Content::Document");
         };
         assert_eq!(title.as_deref(), Some("Doc1"));
         assert_eq!(context.as_deref(), Some("ctx"));
-        assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+        assert_eq!(citations, &Some(CitationsConfig { enabled: true }));
     }
 
     fn assert_reverse_document_metadata(
@@ -5871,20 +5884,20 @@ mod tests {
     ) -> message::Message {
         let provider_message = Message {
             role: Role::User,
-            content: OneOrMany::one(Content::Document {
+            content: vec![Content::Document {
                 source,
                 title: Some("Doc1".into()),
                 context: Some("ctx".into()),
                 citations: Some(CitationsConfig { enabled: true }),
                 cache_control: None,
-            }),
+            }],
         };
 
         let generic: message::Message = provider_message.try_into().unwrap();
         let message::Message::User { content } = &generic else {
             panic!("expected generic user message");
         };
-        let message::UserContent::Document(document) = content.first() else {
+        let Some(message::UserContent::Document(document)) = content.first() else {
             panic!("expected generic document");
         };
 
@@ -5939,7 +5952,7 @@ mod tests {
     fn anthropic_document_metadata_survives_reverse_round_trip() {
         let provider_message = Message {
             role: Role::User,
-            content: OneOrMany::one(Content::Document {
+            content: vec![Content::Document {
                 source: DocumentSource::Text {
                     data: "Hello world.".into(),
                     media_type: PlainTextMediaType::Plain,
@@ -5948,14 +5961,14 @@ mod tests {
                 context: Some("ctx".into()),
                 citations: Some(CitationsConfig { enabled: true }),
                 cache_control: None,
-            }),
+            }],
         };
 
         let generic: message::Message = provider_message.try_into().unwrap();
         let message::Message::User { content } = &generic else {
             panic!("expected generic user message");
         };
-        let message::UserContent::Document(document) = content.first() else {
+        let Some(message::UserContent::Document(document)) = content.first() else {
             panic!("expected generic document");
         };
         let additional_params = document
@@ -5967,25 +5980,25 @@ mod tests {
         assert_eq!(additional_params["citations"]["enabled"], true);
 
         let round_trip: Message = generic.try_into().unwrap();
-        let Content::Document {
+        let Some(Content::Document {
             title,
             context,
             citations,
             ..
-        } = round_trip.content.first()
+        }) = round_trip.content.first()
         else {
             panic!("expected Anthropic document");
         };
         assert_eq!(title.as_deref(), Some("Doc1"));
         assert_eq!(context.as_deref(), Some("ctx"));
-        assert_eq!(citations, Some(CitationsConfig { enabled: true }));
+        assert_eq!(citations, &Some(CitationsConfig { enabled: true }));
     }
 
     #[test]
     fn anthropic_document_empty_metadata_stays_none_on_reverse_conversion() {
         let provider_message = Message {
             role: Role::User,
-            content: OneOrMany::one(Content::Document {
+            content: vec![Content::Document {
                 source: DocumentSource::Text {
                     data: "Hello world.".into(),
                     media_type: PlainTextMediaType::Plain,
@@ -5994,14 +6007,14 @@ mod tests {
                 context: None,
                 citations: None,
                 cache_control: None,
-            }),
+            }],
         };
 
         let generic: message::Message = provider_message.try_into().unwrap();
         let message::Message::User { content } = &generic else {
             panic!("expected generic user message");
         };
-        let message::UserContent::Document(document) = content.first() else {
+        let Some(message::UserContent::Document(document)) = content.first() else {
             panic!("expected generic document");
         };
 
@@ -6165,7 +6178,7 @@ mod tests {
 
         for media_type in [Some(message::DocumentMediaType::PDF), None] {
             let msg = message::Message::User {
-                content: OneOrMany::one(message::UserContent::document_url(pdf_url, media_type)),
+                content: vec![message::UserContent::document_url(pdf_url, media_type)],
             };
 
             let converted = Message::try_from(msg).expect("URL PDF should convert");

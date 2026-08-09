@@ -3,7 +3,6 @@ use candle_transformers::generation::Sampling;
 use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
 use futures::StreamExt;
-use rig_core::OneOrMany;
 use rig_core::completion::{CompletionModel, Document, ToolDefinition};
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
@@ -231,9 +230,10 @@ fn request(messages: Vec<Message>) -> CompletionRequest {
     CompletionRequest {
         model: None,
         preamble: None,
-        chat_history: match OneOrMany::many(messages) {
-            Ok(messages) => messages,
-            Err(_) => OneOrMany::one(Message::user("hello")),
+        chat_history: if messages.is_empty() {
+            vec![Message::user("hello")]
+        } else {
+            messages
         },
         documents: Vec::new(),
         tools: Vec::new(),
@@ -1435,16 +1435,16 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     assert!(render_prompt(&tool_result).is_err());
 
     let image = Message::User {
-        content: OneOrMany::one(UserContent::image_base64(
+        content: vec![UserContent::image_base64(
             "data",
             Some(ImageMediaType::PNG),
             Some(ImageDetail::Auto),
-        )),
+        )],
     };
     assert!(render_prompt(&request(vec![image])).is_err());
 
     let audio = Message::User {
-        content: OneOrMany::one(UserContent::audio("data", Some(AudioMediaType::WAV))),
+        content: vec![UserContent::audio("data", Some(AudioMediaType::WAV))],
     };
     assert!(render_prompt(&request(vec![audio])).is_err());
     Ok(())

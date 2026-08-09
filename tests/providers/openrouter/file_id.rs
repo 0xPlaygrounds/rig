@@ -1,4 +1,3 @@
-use rig::OneOrMany;
 use rig::message::{Document, DocumentSourceKind, Message, UserContent as RigUserContent};
 use rig::providers::openai::{FileData as OpenAiFileData, UserContent as OpenAiUserContent};
 use rig::providers::openrouter::{Message as OpenRouterMessage, messages_from_rig_message};
@@ -6,11 +5,11 @@ use rig::providers::openrouter::{Message as OpenRouterMessage, messages_from_rig
 #[test]
 fn generic_document_file_id_fails_openrouter_message_conversion() {
     let message = Message::User {
-        content: OneOrMany::one(RigUserContent::Document(Document {
+        content: vec![RigUserContent::Document(Document {
             data: DocumentSourceKind::file_id("file_abc"),
             media_type: None,
             additional_params: None,
-        })),
+        })],
     };
 
     let result: Result<Vec<OpenRouterMessage>, _> = messages_from_rig_message(message);
@@ -34,7 +33,7 @@ fn openai_file_data_converts_to_openrouter_file_data() {
     };
 
     let message = Message::User {
-        content: OneOrMany::one(RigUserContent::from(openai_content)),
+        content: vec![RigUserContent::from(openai_content)],
     };
     let messages = messages_from_rig_message(message).unwrap();
     let json = serde_json::to_value(messages.first().expect("one message")).unwrap();
@@ -63,7 +62,7 @@ fn openai_file_id_only_fails_openrouter_user_content_conversion() {
     };
 
     let message = Message::User {
-        content: OneOrMany::one(RigUserContent::from(openai_content)),
+        content: vec![RigUserContent::from(openai_content)],
     };
     let result = messages_from_rig_message(message);
 

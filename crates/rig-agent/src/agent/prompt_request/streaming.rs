@@ -1,5 +1,4 @@
 use rig_core::{
-    OneOrMany,
     message::{AssistantContent, UserContent},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
@@ -130,7 +129,7 @@ pub enum MultiTurnStreamItem {
 /// Build the unified [`PromptResponse`] for the streaming surface from the
 /// final turn's structured content.
 fn final_response_from_content(
-    content: OneOrMany<AssistantContent>,
+    content: Vec<AssistantContent>,
     aggregated_usage: crate::completion::Usage,
     completion_calls: Vec<CompletionCall>,
     history: Option<Vec<Message>>,
@@ -148,7 +147,7 @@ impl MultiTurnStreamItem {
     }
 
     pub fn final_response(
-        content: OneOrMany<AssistantContent>,
+        content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
     ) -> Self {
         Self::FinalResponse(final_response_from_content(
@@ -160,7 +159,7 @@ impl MultiTurnStreamItem {
     }
 
     pub fn final_response_with_history(
-        content: OneOrMany<AssistantContent>,
+        content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
         history: Option<Vec<Message>>,
     ) -> Self {
@@ -173,7 +172,7 @@ impl MultiTurnStreamItem {
     }
 
     pub(crate) fn final_response_with_completion_calls(
-        content: OneOrMany<AssistantContent>,
+        content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
         completion_calls: Vec<CompletionCall>,
         history: Option<Vec<Message>>,
@@ -237,9 +236,9 @@ pub(crate) fn record_usage_on_span(span: &tracing::Span, usage: crate::completio
 /// this case.
 /// Otherwise returns `None` and the caller surfaces the turn's content unchanged.
 fn finalize_streamed_choice(
-    last_final_choice: &OneOrMany<AssistantContent>,
+    last_final_choice: &[AssistantContent],
     output: &str,
-) -> Option<OneOrMany<AssistantContent>> {
+) -> Option<Vec<AssistantContent>> {
     let finalized_via_output_tool = last_final_choice
         .iter()
         .any(|item| matches!(item, AssistantContent::ToolCall(_)));
@@ -258,8 +257,9 @@ fn finalize_streamed_choice(
         .collect();
     items.push(AssistantContent::text(output.to_string()));
     Some(
-        OneOrMany::from_iter_optional(items)
-            .unwrap_or_else(|| OneOrMany::one(AssistantContent::text(output.to_string()))),
+        Some(items)
+            .filter(|items| !items.is_empty())
+            .unwrap_or_else(|| vec![AssistantContent::text(output.to_string())]),
     )
 }
 
@@ -1003,7 +1003,7 @@ where
 pub(crate) struct StreamingTurnSource {
     /// The raw provider choice of the most recent turn; the final response
     /// surfaces it as-is, even when canonical reordering was recorded in history.
-    last_final_choice: OneOrMany<AssistantContent>,
+    last_final_choice: Vec<AssistantContent>,
     last_message_id: Option<String>,
     /// Resolved agent name, kept only for the empty-turn diagnostic warning.
     agent_name: String,
@@ -1030,7 +1030,7 @@ impl StreamingTurnSource {
         record_telemetry_content: bool,
     ) -> Self {
         Self {
-            last_final_choice: OneOrMany::one(AssistantContent::text("")),
+            last_final_choice: vec![AssistantContent::text("")],
             last_message_id: None,
             agent_name,
             created_agent_span,
@@ -1791,11 +1791,10 @@ mod migrated_tests {
 
         // Prose + output-tool call (#1928): the streamed response text must be
         // the structured output, not the prose, with no orphan tool_use.
-        let with_prose = OneOrMany::many(vec![
+        let with_prose = vec![
             AssistantContent::text("Sure, here is the weather:"),
             output_call.clone(),
-        ])
-        .expect("two items");
+        ];
         let final_choice = finalize_streamed_choice(&with_prose, r#"{"city":"Tokyo"}"#)
             .expect("a turn with the output-tool call is finalized via it");
         assert_eq!(
@@ -1810,7 +1809,7 @@ mod migrated_tests {
         );
 
         // Output-tool call only.
-        let only_call = OneOrMany::one(output_call);
+        let only_call = vec![output_call];
         let final_choice = finalize_streamed_choice(&only_call, r#"{"city":"Tokyo"}"#)
             .expect("finalized via output tool");
         assert_eq!(
@@ -1819,7 +1818,7 @@ mod migrated_tests {
         );
 
         // A plain-text finalize (no tool call) is left to the caller.
-        let text_only = OneOrMany::one(AssistantContent::text(r#"{"city":"Tokyo"}"#));
+        let text_only = vec![AssistantContent::text(r#"{"city":"Tokyo"}"#)];
         assert!(finalize_streamed_choice(&text_only, r#"{"city":"Tokyo"}"#).is_none());
     }
 
@@ -1828,7 +1827,7 @@ mod migrated_tests {
         let instruction = serde_json::json!({
             "instruction": "Use the image part to answer."
         });
-        let mut content = rig_core::OneOrMany::one(ToolResultContent::json(instruction.clone()));
+        let mut content = vec![ToolResultContent::json(instruction.clone())];
         content.push(ToolResultContent::image_base64(
             "base64data==",
             Some(ImageMediaType::PNG),
@@ -1877,7 +1876,7 @@ mod migrated_tests {
     }
 
     fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), String> {
-        let history = request.chat_history.iter().cloned().collect::<Vec<_>>();
+        let history = request.chat_history.to_vec();
         if history.len() != 3 {
             return Err(format!(
                 "follow-up request should contain [original user prompt, assistant tool call, user tool result]: {history:?}"
@@ -1889,7 +1888,7 @@ mod migrated_tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::Text(text) if text.text == "do tool work"
+                    Some(UserContent::Text(text)) if text.text == "do tool work"
                 )
         ) {
             return Err(format!(
@@ -1905,7 +1904,7 @@ mod migrated_tests {
             Some(Message::Assistant { content, .. })
                 if matches!(
                     content.first(),
-                    AssistantContent::ToolCall(tool_call)
+                    Some(AssistantContent::ToolCall(tool_call))
                         if tool_call.id == "call_1"
                             && tool_call.provider.as_ref().is_some_and(|provider| {
                                 provider.call_id == "call_1"
@@ -1923,7 +1922,7 @@ mod migrated_tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::ToolResult(tool_result)
+                    Some(UserContent::ToolResult(tool_result))
                         if tool_result.call == "call_1"
                             && tool_result.provider.as_ref().is_some_and(|provider| {
                                 provider.call_id == "call_1"
@@ -2251,12 +2250,12 @@ mod migrated_tests {
         let advertised = BTreeSet::from([tool_name.clone()]);
         let turn = crate::agent::run::ModelTurn::new(
             None,
-            OneOrMany::one(AssistantContent::ToolCall(
+            vec![AssistantContent::ToolCall(
                 rig_core::message::ToolCall::new(
                     rig_core::message::ToolCallId::new_or_mint("expected_call"),
                     rig_core::message::ToolFunction::new(tool_name, serde_json::json!({})),
                 ),
-            )),
+            )],
             Usage::new(),
             advertised.clone(),
             advertised,
@@ -3131,7 +3130,7 @@ mod migrated_tests {
     #[test]
     fn final_response_serializes_completion_calls_with_missing_usage() {
         let item: MultiTurnStreamItem = MultiTurnStreamItem::final_response_with_completion_calls(
-            OneOrMany::one(AssistantContent::text("done")),
+            vec![AssistantContent::text("done")],
             usage(3, 4),
             vec![
                 CompletionCall::new(0, Usage::new()),
@@ -3552,7 +3551,7 @@ mod migrated_tests {
         }
     }
 
-    fn text_metadata(content: &OneOrMany<AssistantContent>) -> Option<&serde_json::Value> {
+    fn text_metadata(content: &[AssistantContent]) -> Option<&serde_json::Value> {
         content.iter().find_map(|item| match item {
             AssistantContent::Text(text) => text.additional_params.as_ref(),
             _ => None,
@@ -3994,7 +3993,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let follow_up_history = requests[1].chat_history.to_vec();
         assert!(matches!(
             follow_up_history.get(2),
             Some(Message::User { content })
@@ -4087,7 +4086,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let retry_history = requests[1].chat_history.to_vec();
         assert_eq!(retry_history.len(), 3);
         assert!(matches!(
             retry_history.get(1),
@@ -4217,7 +4216,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let follow_up_history = requests[1].chat_history.to_vec();
         assert_eq!(follow_up_history.len(), 3);
         assert!(matches!(
             follow_up_history.get(1),
@@ -4314,7 +4313,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let follow_up_history = requests[1].chat_history.to_vec();
         assert!(history_contains_text(&follow_up_history, "checking "));
         assert!(assistant_reasoning_precedes_tool_call(
             &follow_up_history,
@@ -4367,7 +4366,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let retry_history = requests[1].chat_history.to_vec();
         assert!(assistant_reasoning_precedes_tool_call(
             &retry_history,
             "delta reason",
@@ -4501,7 +4500,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let retry_history = requests[1].chat_history.to_vec();
         assert!(matches!(
             retry_history.get(1),
             Some(Message::Assistant { content, .. })
@@ -4772,7 +4771,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let follow_up_history = requests[1].chat_history.to_vec();
         assert!(matches!(
             follow_up_history.get(1),
             Some(Message::Assistant { content, .. })
@@ -6612,7 +6611,7 @@ mod migrated_tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::Text(text) if text.text == "think before answering"
+                    Some(UserContent::Text(text)) if text.text == "think before answering"
                 )
         ));
 
@@ -6767,11 +6766,7 @@ mod migrated_tests {
             }
         }
 
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let received = recorded.requests()[0].chat_history.to_vec();
         assert_eq!(
             received.len(),
             3,

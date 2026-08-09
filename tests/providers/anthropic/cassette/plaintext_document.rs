@@ -1,6 +1,4 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
-
-use rig::OneOrMany;
 use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, Prompt};
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
@@ -50,17 +48,16 @@ fn cited_rust_document() -> Document {
 
 fn citation_prompt() -> Message {
     Message::User {
-        content: OneOrMany::many(vec![
+        content: vec![
             UserContent::Document(cited_rust_document()),
             UserContent::text(
                 "Using citations, answer in one sentence: what three goals does Rust focus on?",
             ),
-        ])
-        .expect("citation prompt content should be non-empty"),
+        ],
     }
 }
 
-fn assistant_text(choice: &OneOrMany<rig::message::AssistantContent>) -> String {
+fn assistant_text(choice: &[rig::message::AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -70,9 +67,7 @@ fn assistant_text(choice: &OneOrMany<rig::message::AssistantContent>) -> String 
         .collect()
 }
 
-fn collect_anthropic_citations(
-    choice: &OneOrMany<rig::message::AssistantContent>,
-) -> Vec<Citation> {
+fn collect_anthropic_citations(choice: &[rig::message::AssistantContent]) -> Vec<Citation> {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -127,13 +122,12 @@ async fn plaintext_document_with_instruction() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: OneOrMany::many(vec![
+                    content: vec![
                         UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
                         UserContent::text(
                             "List the three main goals of Rust mentioned in this document.",
                         ),
-                    ])
-                    .expect("content should be non-empty"),
+                    ],
                 })
                 .await
                 .expect("instruction prompt should succeed");

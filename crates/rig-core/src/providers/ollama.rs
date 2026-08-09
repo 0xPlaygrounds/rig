@@ -50,7 +50,6 @@ use crate::providers::internal;
 use crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
     json_utils, message,
@@ -409,8 +408,9 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                 tc.function.arguments.clone(),
             ));
         }
-        let choice = OneOrMany::many(assistant_contents)
-            .map_err(|_| CompletionError::ResponseError("No content provided".to_owned()))?;
+        let choice = crate::message::require_non_empty(assistant_contents, || {
+            CompletionError::ResponseError("No content provided".to_owned())
+        })?;
 
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
@@ -1304,8 +1304,11 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                     }
                 }
 
-                // `OneOrMany` ensures at least one `AssistantContent::Text` or `ToolCall` exists,
-                //  so either `content` or `tool_calls` will have some content.
+                // Both fields may be empty. This used to lean on the non-empty
+                // content type to argue that at least one of them was populated;
+                // content is a `Vec` now, so an assistant turn that carried
+                // nothing renders as an Ollama message with empty text and no
+                // tool calls, which is what such a turn actually was.
                 Ok(vec![Message::Assistant {
                     content: text_content.join(" "),
                     thinking,
@@ -1327,9 +1330,9 @@ impl From<Message> for crate::completion::Message {
     fn from(msg: Message) -> Self {
         match msg {
             Message::User { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text::new(
+                content: vec![crate::completion::message::UserContent::Text(Text::new(
                     content,
-                ))),
+                ))],
             },
             Message::Assistant {
                 content,
@@ -1358,29 +1361,30 @@ impl From<Message> for crate::completion::Message {
                         ),
                     );
                 }
-                let content =
-                    OneOrMany::from_iter_optional(assistant_contents).unwrap_or_else(|| {
-                        OneOrMany::one(crate::completion::message::AssistantContent::Text(
+                let content = Some(assistant_contents)
+                    .filter(|items| !items.is_empty())
+                    .unwrap_or_else(|| {
+                        vec![crate::completion::message::AssistantContent::Text(
                             Text::new(String::new()),
-                        ))
+                        )]
                     });
 
                 crate::completion::Message::Assistant { id: None, content }
             }
             // System and ToolResult are converted to User message as needed.
             Message::System { content, .. } => crate::completion::Message::User {
-                content: OneOrMany::one(crate::completion::message::UserContent::Text(Text::new(
+                content: vec![crate::completion::message::UserContent::Text(Text::new(
                     content,
-                ))),
+                ))],
             },
             Message::ToolResult { name, content } => crate::completion::Message::User {
                 // Ollama tool messages carry no call id; the name is the
                 // wire's correlator and the rig-level handle is minted.
-                content: OneOrMany::one(message::UserContent::tool_result_from_wire(
+                content: vec![message::UserContent::tool_result_from_wire(
                     "",
                     name,
-                    OneOrMany::one(message::ToolResultContent::text(content)),
-                )),
+                    vec![message::ToolResultContent::text(content)],
+                )],
             },
         }
     }
@@ -1703,11 +1707,11 @@ mod tests {
         let comp_msg: crate::completion::Message = provider_msg.into();
         match comp_msg {
             crate::completion::Message::User { content } => {
-                // Assume OneOrMany<T> has a method first() to access the first element.
+                // Assume Vec<T> has a method first() to access the first element.
                 let first_content = content.first();
                 // The expected type is crate::completion::message::UserContent::Text wrapping a Text struct.
                 match first_content {
-                    crate::completion::message::UserContent::Text(text_struct) => {
+                    Some(crate::completion::message::UserContent::Text(text_struct)) => {
                         assert_eq!(text_struct.text, "Test message");
                     }
                     _ => panic!("Expected text content in conversion"),
@@ -1719,20 +1723,18 @@ mod tests {
 
     #[test]
     fn mixed_user_content_preserves_message_order() {
-        use crate::OneOrMany;
         use crate::message::{Message as RigMessage, ToolResultContent, UserContent};
 
         let message = RigMessage::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::text("before"),
                 UserContent::tool_result(
                     "",
                     "lookup",
-                    OneOrMany::one(ToolResultContent::json(json!({ "ok": true }))),
+                    vec![ToolResultContent::json(json!({ "ok": true }))],
                 ),
                 UserContent::text("after"),
-            ])
-            .expect("mixed content is non-empty"),
+            ],
         };
 
         let messages = Vec::<Message>::try_from(message).expect("mixed content should convert");
@@ -1754,15 +1756,14 @@ mod tests {
 
     #[test]
     fn unsupported_user_content_returns_a_conversion_error() {
-        use crate::OneOrMany;
         use crate::message::{ImageMediaType, Message as RigMessage, UserContent};
 
         let message = RigMessage::User {
-            content: OneOrMany::one(UserContent::image_url(
+            content: vec![UserContent::image_url(
                 "https://example.com/image.png",
                 Some(ImageMediaType::PNG),
                 None,
-            )),
+            )],
         };
 
         let error = Vec::<Message>::try_from(message).expect_err("URL image should be rejected");
@@ -1919,13 +1920,12 @@ mod tests {
 
         let internal_msg = crate::message::Message::Assistant {
             id: None,
-            content: crate::OneOrMany::many(vec![
+            content: vec![
                 crate::message::AssistantContent::Reasoning(reasoning_content),
                 crate::message::AssistantContent::Text(crate::message::Text::new(
                     "The answer is X".to_string(),
                 )),
-            ])
-            .unwrap(),
+            ],
         };
 
         // Convert to provider Message
@@ -2127,7 +2127,6 @@ mod tests {
     // Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
     #[test]
     fn test_completion_request_with_think_param() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
@@ -2135,9 +2134,9 @@ mod tests {
         let completion_request = CompletionRequest {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2193,7 +2192,6 @@ mod tests {
     // Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
     #[test]
     fn test_completion_request_with_level_low_think_param() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
@@ -2201,9 +2199,9 @@ mod tests {
         let completion_request = CompletionRequest {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2259,7 +2257,6 @@ mod tests {
     // Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
     #[test]
     fn test_completion_request_with_level_medium_think_param() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
@@ -2267,9 +2264,9 @@ mod tests {
         let completion_request = CompletionRequest {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2325,7 +2322,6 @@ mod tests {
     // Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
     #[test]
     fn test_completion_request_with_level_high_think_param() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
@@ -2333,9 +2329,9 @@ mod tests {
         let completion_request = CompletionRequest {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2391,7 +2387,6 @@ mod tests {
     // Test that `think` and `keep_alive` are extracted as top-level params, not in `options`
     #[test]
     fn test_completion_request_with_level_invalid_think_param() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
@@ -2399,9 +2394,9 @@ mod tests {
         let completion_request = CompletionRequest {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("What is 2 + 2?".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("What is 2 + 2?".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2426,7 +2421,6 @@ mod tests {
     // model's default thinking behavior (issue #1970)
     #[test]
     fn test_completion_request_with_think_omitted_by_default() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
@@ -2434,9 +2428,9 @@ mod tests {
         let completion_request = CompletionRequest {
             model: None,
             preamble: Some("You are a helpful assistant.".to_string()),
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),
@@ -2483,16 +2477,15 @@ mod tests {
     // `CompletionRequest::max_tokens`.
     #[test]
     fn test_completion_request_num_predict_from_additional_params_wins() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
         let completion_request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2518,16 +2511,15 @@ mod tests {
     // branch the fix exists for is never exercised.
     #[test]
     fn test_completion_request_num_predict_without_additional_params() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
         let completion_request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2557,16 +2549,15 @@ mod tests {
     // unconditionally.
     #[test]
     fn test_completion_request_options_omit_unset_parameters() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
         let completion_request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2587,7 +2578,6 @@ mod tests {
 
     #[test]
     fn test_completion_request_with_output_schema() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
@@ -2604,11 +2594,11 @@ mod tests {
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new(
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new(
                     "How old is Ollama?".to_string(),
-                ))),
-            }),
+                ))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2643,16 +2633,15 @@ mod tests {
 
     #[test]
     fn test_completion_request_without_output_schema() {
-        use crate::OneOrMany;
         use crate::completion::Message as CompletionMessage;
         use crate::message::{Text, UserContent};
 
         let completion_request = CompletionRequest {
             model: Some("llama3.1".to_string()),
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("Hello!".to_string()))),
-            }),
+            chat_history: vec![CompletionMessage::User {
+                content: vec![UserContent::Text(Text::new("Hello!".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,

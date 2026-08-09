@@ -12,7 +12,7 @@ use crate::support::{
     assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
 };
 
-fn aggregated_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
+fn aggregated_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {

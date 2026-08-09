@@ -350,9 +350,132 @@ defined a `wasm` feature and expected it to drive these macros, you now get the
 target's answer instead. Gate on the target directly if you need the old
 association.
 
+### next
+
+#### An assistant turn that carried nothing is empty, not a fabricated empty text part
+
+Message content was a non-empty container, so a turn the model ended without
+text and without tool calls — a tool-call-only turn whose calls were all
+dropped, a content-filtered turn, a truncated stream, a local model emitting
+EOS immediately — could not be represented. Seven production sites papered over
+that by pushing an `AssistantContent::text("")` the model never produced, and
+that fabricated part reached history and the wire indistinguishably from a real
+empty text block.
+
+Content is a `Vec` now, so the honest representation exists and the fabrication
+is gone. What changes for you:
+
+- A streamed turn that produces nothing yields `choice == []` where it used to
+  yield one empty-text part. Code matching `choice.first()` for a `Text` block
+  to detect "the model said nothing" needs to check `choice.is_empty()` as
+  well — both spellings appear, because histories persisted before this release
+  still carry the fabricated part.
+- rig keeps reading the old shape. `is_empty_assistant_turn` recognises both a
+  genuinely empty turn and the legacy sentinel, so stored conversations keep
+  round-tripping; nothing produces the sentinel any more.
+- Two internal guards that cancelled a run on "lost assistant content" no longer
+  fire. They were unreachable while the padding existed, and reachable they
+  would have failed runs that previously succeeded.
+
+#### An empty content array now deserializes instead of erroring
+
+The removed container's `Deserialize` implemented only `visit_seq` and rejected
+`[]`. Its JSON was otherwise byte-identical to `Vec`'s, which is why no recorded
+provider fixture changes in this release. The one input that behaved differently
+is the empty array: it was an error, and it is now an empty list. If you relied
+on deserialization to reject `"content": []`, that rejection now happens at the
+request boundary (see below) rather than in serde.
+
+#### Two provider guards became reachable, and one stopped rejecting a real outcome
+
+- Mira's `"Response contained empty content"` error was **dead code**: it was
+  guarded by `OneOrMany::is_empty()`, which was hardcoded to return `false`.
+  A defective Mira response that previously surfaced as an empty completion now
+  returns that error.
+- A degenerate local generation on `rig-candle` — a model that emits EOS
+  immediately, or only whitespace, which the parser trims — used to be padded to
+  non-empty and succeed. Removing the padding exposed an emptiness check that
+  would have turned it into a hard `CandleError::Inference`. That check is
+  removed: an empty turn is legal here exactly as it is everywhere else, so this
+  case keeps succeeding, now with genuinely empty content.
+- Requests are validated before the network: an empty `chat_history`, or a user
+  or assistant message with no content, is rejected locally with a message
+  naming the offending index instead of becoming a provider 400. System content
+  is not checked — it is a `String` and the removed container never constrained
+  it.
+
 ---
 
 ## 0.41 → next
+
+### `OneOrMany<T>` is gone; lists are `Vec<T>`
+
+`rig_core::OneOrMany` and `rig_core::EmptyListError` are removed, along with the
+`one_or_many` module and both prelude re-exports. Every use becomes `Vec<T>`.
+There is no replacement crate and no bespoke non-empty type.
+
+The type promised something untrue. It asserted "at least one item" on a
+response path where zero items is a real outcome, so the code fabricated data to
+satisfy it (see [Silent behavior changes](#next)). Its `is_empty()` returned a
+hardcoded `false`, which meant every caller asking a list whether it was empty
+got the wrong answer with no compile error — two live defects were hiding behind
+that, one of them a provider guard that could never fire.
+
+**The serialized format is unchanged**, so persisted histories and stored
+embeddings need no migration: the container already serialized as a plain
+sequence. This is a source-only break, and it is why not one recorded provider
+fixture changes.
+
+The migration at your call sites:
+
+| Was | Now |
+| --- | --- |
+| `OneOrMany<T>` | `Vec<T>` |
+| `OneOrMany::one(x)` | `vec![x]` |
+| `OneOrMany::many(xs)` → `Result<_, EmptyListError>` | the `Vec` itself; use `message::require_non_empty` where you were relying on the rejection |
+| `OneOrMany::merge(xs)` | `xs.into_iter().flatten().collect()` |
+| `OneOrMany::from_iter_optional(xs)` | `Some(xs).filter(\|items\| !items.is_empty())` |
+| `.first()` / `.last()` → owned `T` | `.first()` / `.last()` → `Option<&T>` |
+| `.first_ref()` / `.last_ref()` → `&T` | `.first()` / `.last()` → `Option<&T>` |
+| `.rest()` → `Vec<T>` | `.iter().skip(1)` or `.get(1..)` |
+| `.is_empty()` → always `false` | `.is_empty()` → the real answer |
+| `one_or_many::string_or_one_or_many` | `json_utils::string_or_vec` |
+
+`.len()`, `.iter()`, `.iter_mut()`, `.into_iter()`, `.push()` and `.insert()`
+carry over unchanged.
+
+Two conversions could not stay trait impls: with both sides now foreign types,
+`impl TryFrom<Vec<..>> for Vec<..>` violates the orphan rule. They are `pub`
+free functions in `providers::openai::completion`, so the surface is not
+narrowed:
+
+| Was | Now |
+| --- | --- |
+| `<Vec<Message>>::try_from(v)` where `v: Vec<message::UserContent>` | `user_content_to_messages(v)` |
+| `<Vec<Message>>::try_from(v)` where `v: Vec<message::AssistantContent>` | `assistant_content_to_messages(v)` |
+| `impl From<OneOrMany<String>> for Vec<ReasoningSummary>` | `providers::openai::responses_api::reasoning_summaries(v)` |
+
+`<Vec<Message>>::try_from(m)` for a whole `message::Message` is unaffected.
+
+### Where the container's enforcement went
+
+The container was doing two jobs in opposite directions, and they separate:
+
+- **Outbound (request path).** `CompletionRequest::validate_message_content`
+  rejects an empty `chat_history` and any user or assistant message with no
+  content, once, before the request is sent. `CompletionRequestBuilder::send`
+  and `::stream` call it for you.
+- **Inbound (response path).** Per-wire guards route through the new
+  `message::require_non_empty(items, || error)`, each keeping the error message
+  it already had. These reject a provider that returned nothing where its
+  protocol promises content — a provider defect, which is a different claim from
+  "empty assistant content is illegal". It is not: on the response path an empty
+  turn is legal, which is the whole reason the container had to go.
+
+If you implement `CompletionModel` yourself, nothing is required of you. If you
+built messages by hand and relied on the constructor to reject empties, call
+`message::require_non_empty` at that point, or let the request boundary catch it.
+
 
 ### The raw grammar is a part lifecycle: Start / Delta / End per content kind
 

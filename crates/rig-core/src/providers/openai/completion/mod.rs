@@ -6,13 +6,13 @@ use super::client::ApiResponse;
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::http_client::{self, HttpClientExt};
+use crate::json_utils::string_or_vec;
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
-use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{
     CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
 };
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::{OneOrMany, completion, json_utils, message};
+use crate::{completion, json_utils, message};
 use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
@@ -24,15 +24,12 @@ pub mod streaming;
 
 /// Serializes user content as a plain string when there's a single text item,
 /// otherwise as an array of content parts.
-fn serialize_user_content<S>(
-    content: &OneOrMany<UserContent>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_user_content<S>(content: &Vec<UserContent>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
     if content.len() == 1
-        && let UserContent::Text { text, .. } = content.first_ref()
+        && let Some(UserContent::Text { text, .. }) = content.first()
     {
         return serializer.serialize_str(text);
     }
@@ -141,17 +138,17 @@ pub const GPT_4_1: &str = "gpt-4.1";
 pub enum Message {
     #[serde(alias = "developer")]
     System {
-        #[serde(deserialize_with = "string_or_one_or_many")]
-        content: OneOrMany<SystemContent>,
+        #[serde(deserialize_with = "string_or_vec")]
+        content: Vec<SystemContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
     User {
         #[serde(
-            deserialize_with = "string_or_one_or_many",
+            deserialize_with = "string_or_vec",
             serialize_with = "serialize_user_content"
         )]
-        content: OneOrMany<UserContent>,
+        content: Vec<UserContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
@@ -209,7 +206,7 @@ pub enum Message {
 impl Message {
     pub fn system(content: &str) -> Self {
         Message::System {
-            content: OneOrMany::one(content.to_owned().into()),
+            content: vec![content.to_owned().into()],
             name: None,
         }
     }
@@ -803,10 +800,17 @@ impl TryFrom<message::UserContent> for UserContent {
     }
 }
 
-impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
-    type Error = message::MessageError;
-
-    fn try_from(value: OneOrMany<message::UserContent>) -> Result<Self, Self::Error> {
+/// Convert rig user content into OpenAI chat messages.
+///
+/// This was `impl TryFrom<OneOrMany<UserContent>> for Vec<Message>`. With the
+/// container gone both sides are foreign types, so the orphan rule forbids the
+/// impl and it becomes a named function. It stays `pub`: the impl was reachable
+/// from downstream code, and quietly demoting it to a private helper would
+/// narrow the public API under cover of a type change.
+pub fn user_content_to_messages(
+    value: Vec<message::UserContent>,
+) -> Result<Vec<Message>, message::MessageError> {
+    {
         fn flush_user_content(
             messages: &mut Vec<Message>,
             pending: &mut Vec<UserContent>,
@@ -815,7 +819,7 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
                 return Ok(());
             }
 
-            let content = OneOrMany::many(std::mem::take(pending)).map_err(|_| {
+            let content = crate::message::require_non_empty(std::mem::take(pending), || {
                 message::MessageError::ConversionError(
                     "OpenAI user message did not contain any non-tool content".into(),
                 )
@@ -845,10 +849,14 @@ impl TryFrom<OneOrMany<message::UserContent>> for Vec<Message> {
     }
 }
 
-impl TryFrom<OneOrMany<message::AssistantContent>> for Vec<Message> {
-    type Error = message::MessageError;
-
-    fn try_from(value: OneOrMany<message::AssistantContent>) -> Result<Self, Self::Error> {
+/// Convert rig assistant content into OpenAI chat messages.
+///
+/// Free function for the same orphan-rule reason as
+/// [`user_content_to_messages`], and `pub` for the same API-surface reason.
+pub fn assistant_content_to_messages(
+    value: Vec<message::AssistantContent>,
+) -> Result<Vec<Message>, message::MessageError> {
+    {
         let mut text_content = Vec::new();
         let mut tool_calls = Vec::new();
         // Distinct reasoning blocks are joined with a newline (matching
@@ -908,8 +916,8 @@ impl TryFrom<message::Message> for Vec<Message> {
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
             message::Message::System { content } => Ok(vec![Message::system(&content)]),
-            message::Message::User { content } => content.try_into(),
-            message::Message::Assistant { content, .. } => content.try_into(),
+            message::Message::User { content } => user_content_to_messages(content),
+            message::Message::Assistant { content, .. } => assistant_content_to_messages(content),
         }
     }
 }
@@ -949,7 +957,7 @@ impl TryFrom<Message> for message::Message {
     fn try_from(message: Message) -> Result<Self, Self::Error> {
         Ok(match message {
             Message::User { content, .. } => message::Message::User {
-                content: content.map(|content| content.into()),
+                content: content.into_iter().map(|content| content.into()).collect(),
             },
             Message::Assistant {
                 content,
@@ -981,7 +989,7 @@ impl TryFrom<Message> for message::Message {
 
                 message::Message::Assistant {
                     id: None,
-                    content: OneOrMany::many(assistant_content).map_err(|_| {
+                    content: crate::message::require_non_empty(assistant_content, || {
                         message::MessageError::ConversionError(
                             "Neither `content` nor `tool_calls` was provided to the Message"
                                 .to_owned(),
@@ -996,17 +1004,20 @@ impl TryFrom<Message> for message::Message {
             } => message::Message::User {
                 // OpenAI chat tool messages carry no tool name; this
                 // conversion is lossy for name-keyed wires.
-                content: OneOrMany::one(message::UserContent::tool_result_from_wire(
+                content: vec![message::UserContent::tool_result_from_wire(
                     tool_call_id,
                     "",
-                    OneOrMany::one(message::ToolResultContent::text(content.as_text())),
-                )),
+                    vec![message::ToolResultContent::text(content.as_text())],
+                )],
             },
 
             // System messages should get stripped out when converting messages, this is just a
             // stop gap to avoid obnoxious error handling or panic occurring.
             Message::System { content, .. } => message::Message::User {
-                content: content.map(|content| message::UserContent::text(content.text)),
+                content: content
+                    .into_iter()
+                    .map(|content| message::UserContent::text(content.text))
+                    .collect(),
             },
         })
     }
@@ -1208,7 +1219,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             )),
         }?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
+        let choice = crate::message::require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )
@@ -2148,18 +2159,18 @@ mod tests {
     fn minted_tool_ids_replay_as_a_consistent_pair() {
         let assistant = crate::message::Message::Assistant {
             id: None,
-            content: crate::OneOrMany::one(crate::message::AssistantContent::tool_call(
+            content: vec![crate::message::AssistantContent::tool_call(
                 "tool-0",
                 "get_weather",
                 serde_json::json!({"city": "Tokyo"}),
-            )),
+            )],
         };
         let tool_result = crate::message::Message::User {
-            content: crate::OneOrMany::one(crate::message::UserContent::tool_result(
+            content: vec![crate::message::UserContent::tool_result(
                 "tool-0",
                 "get_weather",
-                crate::OneOrMany::one(crate::message::ToolResultContent::text("22C")),
-            )),
+                vec![crate::message::ToolResultContent::text("22C")],
+            )],
         };
 
         let assistant_wire: Vec<super::Message> = assistant.try_into().expect("assistant converts");
@@ -2209,19 +2220,18 @@ mod tests {
             call: message::ToolCallId::new_or_mint("call-id"),
             provider: message::ProviderCallId::new("call-id"),
             name: "tool".to_string(),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::ToolResultContent::text("first"),
                 message::ToolResultContent::text("second"),
-            ])
-            .expect("multiple tool-result blocks should be non-empty"),
+            ],
         };
 
         CoreCompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(message::Message::User {
-                content: OneOrMany::one(message::UserContent::ToolResult(tool_result)),
-            }),
+            chat_history: vec![message::Message::User {
+                content: vec![message::UserContent::ToolResult(tool_result)],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2235,19 +2245,18 @@ mod tests {
 
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {
-        let content = OneOrMany::many(vec![
+        let content = vec![
             message::UserContent::text("before"),
             message::UserContent::tool_result_with_call_id(
                 "result-id",
                 "call-id".to_string(),
                 "tool",
-                OneOrMany::one(message::ToolResultContent::text("tool output")),
+                vec![message::ToolResultContent::text("tool output")],
             ),
             message::UserContent::text("after"),
-        ])
-        .expect("mixed content should be non-empty");
+        ];
 
-        let messages = Vec::<Message>::try_from(content).expect("message conversion");
+        let messages = user_content_to_messages(content).expect("message conversion");
 
         assert!(matches!(
             messages.as_slice(),
@@ -2255,9 +2264,9 @@ mod tests {
                 Message::User { content: before, .. },
                 Message::ToolResult { tool_call_id, .. },
                 Message::User { content: after, .. },
-            ] if matches!(before.first(), UserContent::Text { text } if text == "before")
+            ] if matches!(before.first(), Some(UserContent::Text { text }) if text == "before")
                 && tool_call_id == "call-id"
-                && matches!(after.first(), UserContent::Text { text } if text == "after")
+                && matches!(after.first(), Some(UserContent::Text { text }) if text == "after")
         ));
     }
 
@@ -2446,14 +2455,13 @@ mod tests {
             call: message::ToolCallId::new_or_mint("call-id"),
             name: "tool".to_string(),
             provider: message::ProviderCallId::new("call-id"),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::ToolResultContent::text("first"),
                 message::ToolResultContent::json(serde_json::json!({
                     "status": "ok"
                 })),
                 message::ToolResultContent::text("second"),
-            ])
-            .expect("tool-result content should be non-empty"),
+            ],
         };
 
         let converted = Message::try_from(result).expect("tool result should convert");
@@ -2476,7 +2484,7 @@ mod tests {
         let request = crate::completion::CompletionRequest {
             model: Some("gpt-4.1".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2507,7 +2515,7 @@ mod tests {
         let request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2587,13 +2595,12 @@ mod tests {
         let request = CoreCompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::many(vec![
+            chat_history: vec![
                 crate::completion::Message::system("System prompt"),
                 crate::completion::Message::assistant("Earlier assistant turn"),
                 crate::completion::Message::system("Mid-conversation instruction"),
                 crate::completion::Message::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![test_document("doc1", "Document text.")],
             tools: vec![],
             temperature: None,
@@ -2640,11 +2647,10 @@ mod tests {
 
     #[test]
     fn assistant_reasoning_alone_is_dropped() {
-        let assistant_content = OneOrMany::one(message::AssistantContent::reasoning("hidden"));
+        let assistant_content = vec![message::AssistantContent::reasoning("hidden")];
 
-        let converted: Vec<Message> = assistant_content
-            .try_into()
-            .expect("conversion should work");
+        let converted: Vec<Message> =
+            assistant_content_to_messages(assistant_content).expect("conversion should work");
 
         assert!(converted.is_empty());
     }
@@ -2655,7 +2661,7 @@ mod tests {
     // turn if the prior assistant tool-call message didn't echo the reasoning.
     #[test]
     fn assistant_reasoning_is_attached_to_tool_call_message() {
-        let assistant_content = OneOrMany::many(vec![
+        let assistant_content = vec![
             message::AssistantContent::reasoning("hidden"),
             message::AssistantContent::text("visible"),
             message::AssistantContent::tool_call(
@@ -2663,12 +2669,10 @@ mod tests {
                 "subtract",
                 serde_json::json!({"x": 2, "y": 1}),
             ),
-        ])
-        .expect("non-empty assistant content");
+        ];
 
-        let converted: Vec<Message> = assistant_content
-            .try_into()
-            .expect("conversion should work");
+        let converted: Vec<Message> =
+            assistant_content_to_messages(assistant_content).expect("conversion should work");
         assert_eq!(converted.len(), 1);
 
         match &converted[0] {
@@ -2803,7 +2807,7 @@ mod tests {
         let request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2834,7 +2838,7 @@ mod tests {
         let request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2865,10 +2869,10 @@ mod tests {
         let request = CoreCompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(message::Message::Assistant {
+            chat_history: vec![message::Message::Assistant {
                 id: None,
-                content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
-            }),
+                content: vec![message::AssistantContent::reasoning("hidden")],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2896,9 +2900,9 @@ mod tests {
         let request = CoreCompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(message::Message::user(
+            chat_history: vec![message::Message::user(
                 "Hello, whats the weather in London?",
-            )),
+            )],
             documents: vec![],
             tools: vec![completion::ToolDefinition {
                 name: "weather".to_string(),
@@ -2954,23 +2958,22 @@ mod tests {
         let request = CoreCompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 message::Message::user("Hello, whats the weather in London?"),
                 message::Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(message::AssistantContent::tool_call(
+                    content: vec![message::AssistantContent::tool_call(
                         "call_1",
                         "weather",
                         serde_json::json!({ "city": "London" }),
-                    )),
+                    )],
                 },
                 message::Message::tool_result(
                     "call_1",
                     "weather",
                     "The weather in London is all fire and brimstone",
                 ),
-            ])
-            .expect("history should be non-empty"),
+            ],
             documents: vec![],
             tools: vec![completion::ToolDefinition {
                 name: "weather".to_string(),
@@ -3150,7 +3153,8 @@ mod tests {
 
         assert_eq!(response.choice.len(), 1);
 
-        let completion::message::AssistantContent::Reasoning(reasoning) = response.choice.first()
+        let Some(completion::message::AssistantContent::Reasoning(reasoning)) =
+            response.choice.first()
         else {
             panic!("expected assistant content to be reasoning");
         };
@@ -3313,20 +3317,19 @@ mod tests {
         assert!(json["file"].get("file_data").is_none());
     }
 
-    // Guards against `OneOrMany::many` flattening at the User content site:
-    // a mixed text + PDF message must produce one User message with both parts.
+    // A mixed text + PDF message must produce one User message carrying both
+    // parts, rather than being flattened or split at the User content site.
     #[test]
     fn mixed_text_and_pdf_user_message_produces_two_content_parts() {
         let user = message::Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::UserContent::text("What is in this PDF?"),
                 message::UserContent::Document(message::Document {
                     data: DocumentSourceKind::Base64("JVBERi0K".into()),
                     media_type: Some(message::DocumentMediaType::PDF),
                     additional_params: None,
                 }),
-            ])
-            .expect("non-empty content"),
+            ],
         };
         let converted: Vec<Message> = user.try_into().expect("conversion should succeed");
         assert_eq!(converted.len(), 1);

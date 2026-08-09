@@ -1653,7 +1653,6 @@ mod migrated_tests {
         Tool, ToolContext, ToolExecutionError, ToolSet,
         server::{ToolServer, ToolServerHandle},
     };
-    use rig_core::OneOrMany;
     use rig_core::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
     };
@@ -1788,7 +1787,7 @@ mod migrated_tests {
     #[derive(Clone, Debug, PartialEq)]
     struct CanonicalResponseSnapshot {
         prompt: Message,
-        content: OneOrMany<AssistantContent>,
+        content: Vec<AssistantContent>,
         usage: Usage,
         message_id: Option<String>,
     }
@@ -1797,7 +1796,7 @@ mod migrated_tests {
     struct CanonicalResponseHook {
         blocking: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
         streaming: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
-        committed: Arc<Mutex<Vec<OneOrMany<AssistantContent>>>>,
+        committed: Arc<Mutex<Vec<Vec<AssistantContent>>>>,
     }
 
     impl AgentHook for CanonicalResponseHook {
@@ -1924,7 +1923,7 @@ mod migrated_tests {
             *hook.blocking.lock().expect("blocking snapshots"),
             [CanonicalResponseSnapshot {
                 prompt,
-                content: OneOrMany::one(AssistantContent::text("canonical response")),
+                content: vec![AssistantContent::text("canonical response")],
                 usage: canonical_usage(),
                 message_id: Some("msg-canonical".to_string()),
             }]
@@ -3345,8 +3344,7 @@ mod migrated_tests {
                     "tc_flaky",
                     ToolFunction::new("flaky_tool".to_string(), json!({})),
                 )),
-            ])
-            .expect("two tool calls");
+            ]);
 
             let observer = OutcomeHook::default();
             let response = AgentBuilder::new(MockCompletionModel::from_turns([
@@ -4343,8 +4341,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 2, "y": 3})),
                 tool_call_content("tc2", json!({"x": 10, "y": 20})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let blocking = AgentBuilder::new(blocking_model)
@@ -4449,8 +4446,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 1, "y": 0})),
                 tool_call_content("tc2", json!({"x": 2, "y": 0})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let response = AgentBuilder::new(model)
@@ -4527,8 +4523,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 2, "y": 3})),
                 tool_call_content("tc2", json!({"x": 10, "y": 20})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let blocking = AgentBuilder::new(blocking_model)
@@ -4958,8 +4953,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 1, "y": 1})),
                 tool_call_content("tc2", json!({"x": 2, "y": 2})),
-            ])
-            .expect("two tool calls is non-empty"),
+            ]),
             MockTurn::text("unreachable"),
         ])
     }
@@ -5677,8 +5671,7 @@ mod migrated_tests {
                 tool_call_content("c2", json!({})),
                 tool_call_content("c3", json!({})),
                 tool_call_content("c4", json!({})),
-            ])
-            .expect("four tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
 
@@ -6211,7 +6204,6 @@ mod migrated_tests {
                             ToolFunction::new(call.name.to_string(), call.args.clone()),
                         ))
                     }))
-                    .expect("a scripted tool-call turn has at least one call")
                 }
             }
         }
@@ -6518,8 +6510,7 @@ mod migrated_tests {
                     "tc1",
                     ToolFunction::new("default_api".to_string(), json!({"x": 2, "y": 3})),
                 )),
-            ])
-            .expect("a text + tool-call turn is valid"),
+            ]),
             MockTurn::text("the answer is 5"),
         ]);
         let blocking_hook = RecordingHook::default();
@@ -7782,11 +7773,11 @@ mod migrated_tests {
             )
             .build()
             .runner(Message::User {
-                content: OneOrMany::one(UserContent::image_url(
+                content: vec![UserContent::image_url(
                     "https://example.com/prompt.png",
                     None,
                     None,
-                )),
+                )],
             })
             .history(vec![
                 Message::user("older history query"),
@@ -7961,11 +7952,11 @@ mod migrated_tests {
             )
             .build()
             .runner(Message::User {
-                content: OneOrMany::one(UserContent::image_url(
+                content: vec![UserContent::image_url(
                     "https://example.com/blocking.png",
                     None,
                     None,
-                )),
+                )],
             })
             .history(vec![
                 Message::user("older blocking history query"),
@@ -8006,11 +7997,11 @@ mod migrated_tests {
         )
         .build()
         .runner(Message::User {
-            content: OneOrMany::one(UserContent::image_url(
+            content: vec![UserContent::image_url(
                 "https://example.com/streaming.png",
                 None,
                 None,
-            )),
+            )],
         })
         .history(vec![
             Message::user("older streaming history query"),
@@ -9461,9 +9452,16 @@ mod migrated_tests {
             ctx: &HookContext,
             event: ModelTurnFinished<'_>,
         ) -> ModelTurnAction {
-            let rejected = event.content.iter().any(
+            let has_rejected_text = event.content.iter().any(
                 |content| matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text),
             );
+            // A hook watching for the empty response has to recognise both
+            // spellings of it. Blocking turns carry an explicit empty text part;
+            // a stream that produced nothing now carries no parts at all, where
+            // it used to be padded with a fabricated empty-text part that made
+            // the two look alike.
+            let rejected =
+                has_rejected_text || (self.rejected_text.is_empty() && event.content.is_empty());
             if !rejected {
                 return ModelTurnAction::continue_run();
             }
@@ -9532,8 +9530,8 @@ mod migrated_tests {
 
         let requests = model.requests();
         assert_eq!(requests.len(), 2);
-        let first = requests[0].chat_history.iter().cloned().collect::<Vec<_>>();
-        let second = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let first = requests[0].chat_history.to_vec();
+        let second = requests[1].chat_history.to_vec();
         assert_eq!(first, vec![Message::user("question")]);
         assert_eq!(
             second, first,
@@ -9575,11 +9573,7 @@ mod migrated_tests {
         );
         let second_request = &model.requests()[1];
         assert_eq!(
-            second_request
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            second_request.chat_history.to_vec(),
             vec![
                 Message::user("question"),
                 Message::assistant("rejected"),
@@ -9621,11 +9615,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1]
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            model.requests()[1].chat_history.to_vec(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),
@@ -9812,11 +9802,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1]
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            model.requests()[1].chat_history.to_vec(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),
@@ -10132,7 +10118,7 @@ mod migrated_tests {
         let shared_hook = BoundedResponseRetry::new("rejected", 1, TestRetryMode::Repeat);
         let first_ctx = HookContext::new(false, None);
         let second_ctx = HookContext::new(false, None);
-        let content = OneOrMany::one(AssistantContent::text("rejected"));
+        let content = vec![AssistantContent::text("rejected")];
         let first_event = ModelTurnFinished {
             turn: 1,
             content: &content,
@@ -10156,8 +10142,8 @@ mod migrated_tests {
         let same_run_ctx = HookContext::new(false, None);
         let first_hook = BoundedResponseRetry::new("first", 1, TestRetryMode::Repeat);
         let second_hook = BoundedResponseRetry::new("second", 1, TestRetryMode::Repeat);
-        let first_content = OneOrMany::one(AssistantContent::text("first"));
-        let second_content = OneOrMany::one(AssistantContent::text("second"));
+        let first_content = vec![AssistantContent::text("first")];
+        let second_content = vec![AssistantContent::text("second")];
         let first_action = first_hook
             .on_model_turn_finished(
                 &same_run_ctx,
@@ -10201,7 +10187,7 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn model_turn_action_short_circuits_flat_and_nested_hook_stacks() {
-        let content = OneOrMany::one(AssistantContent::text("response"));
+        let content = vec![AssistantContent::text("response")];
         let event = ModelTurnFinished {
             turn: 1,
             content: &content,

@@ -71,7 +71,13 @@ async fn main() -> Result<(), anyhow::Error> {
                 .param("id", doc.id)
                 // Here we use the first embedding but we could use any of them.
                 // Neo4j only takes primitive types or arrays as properties.
-                .param("embedding", embeddings.first().vec.clone())
+                .param(
+                    "embedding",
+                    embeddings
+                        .first()
+                        .map(|embedding| embedding.vec.clone())
+                        .unwrap_or_default(),
+                )
                 .param("document", doc.definition.to_bolt_type()),
             )
         })

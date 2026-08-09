@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde::de::{self, Deserializer, SeqAccess, Visitor};
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
@@ -156,6 +156,20 @@ where
             A: SeqAccess<'de>,
         {
             Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+
+        /// A bare object where a list is expected is one block, not a defect —
+        /// several wires spell single-block content that way. This arm comes
+        /// from the removed non-empty container's `string_or_one_or_many`,
+        /// whose callers (Anthropic `Message.content`, OpenAI system and user
+        /// content) now share this helper: the two differed only in which list
+        /// type they produced.
+        fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+            Ok(vec![item])
         }
 
         fn visit_none<E>(self) -> Result<Vec<T>, E>

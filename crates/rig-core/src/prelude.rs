@@ -40,4 +40,3 @@ pub use crate::vector_store::in_memory_store::InMemoryVectorStore;
 pub use crate::vector_store::request::VectorSearchRequest;
 
 // Common container type.
-pub use crate::OneOrMany;

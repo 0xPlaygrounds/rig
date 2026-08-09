@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingError},
     tool::PortableTool,
     vector_store::request::{Filter, FilterError, SearchFilter},
@@ -76,7 +76,7 @@ pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
     /// Insert precomputed embeddings for each document.
     fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + WasmCompatSend;
 }
 

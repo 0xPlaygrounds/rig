@@ -19,15 +19,15 @@ use crate::completion::NormalizeCompletionResponse;
 use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
+use crate::json_utils::string_or_vec;
 use crate::message::{
     AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
     MimeType, Text,
 };
-use crate::one_or_many::string_or_one_or_many;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::{OneOrMany, completion, message};
+use crate::{completion, message};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 use tracing::{Instrument, Level, enabled};
@@ -45,7 +45,7 @@ pub mod websocket;
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct CompletionRequest {
     /// Message inputs
-    pub input: OneOrMany<InputItem>,
+    pub input: Vec<InputItem>,
     /// The model name
     pub model: String,
     /// Instructions (also referred to as preamble, although in other APIs this would be the "system prompt")
@@ -150,9 +150,9 @@ impl InputItem {
         Self {
             role: Some(Role::System),
             input: InputContent::Message(Message::System {
-                content: OneOrMany::one(SystemContent::InputText {
+                content: vec![SystemContent::InputText {
                     text: content.into(),
-                }),
+                }],
                 name: None,
             }),
         }
@@ -318,7 +318,7 @@ pub enum ToolResultOutputContent {
 }
 
 fn responses_tool_result_output(
-    content: OneOrMany<message::ToolResultContent>,
+    content: Vec<message::ToolResultContent>,
 ) -> Result<ToolResultOutput, MessageError> {
     let mut rich_output = Vec::new();
 
@@ -429,7 +429,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
             crate::completion::Message::System { content } => Ok(vec![InputItem {
                 role: Some(Role::System),
                 input: InputContent::Message(Message::System {
-                    content: OneOrMany::one(content.into()),
+                    content: vec![content.into()],
                     name: None,
                 }),
             }]),
@@ -442,7 +442,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             items.push(InputItem {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
-                                    content: OneOrMany::one(UserContent::InputText { text }),
+                                    content: vec![UserContent::InputText { text }],
                                     name: None,
                                 }),
                             });
@@ -471,12 +471,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         }) => items.push(InputItem {
                             role: Some(Role::User),
                             input: InputContent::Message(Message::User {
-                                content: OneOrMany::one(UserContent::InputFile {
+                                content: vec![UserContent::InputFile {
                                     file_id: Some(file_id),
                                     file_data: None,
                                     file_url: None,
                                     filename: None,
-                                }),
+                                }],
                                 name: None,
                             }),
                         }),
@@ -508,12 +508,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             items.push(InputItem {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
-                                    content: OneOrMany::one(UserContent::InputFile {
+                                    content: vec![UserContent::InputFile {
                                         file_id: None,
                                         file_data,
                                         file_url,
                                         filename,
-                                    }),
+                                    }],
                                     name: None,
                                 }),
                             })
@@ -525,7 +525,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         }) => items.push(InputItem {
                             role: Some(Role::User),
                             input: InputContent::Message(Message::User {
-                                content: OneOrMany::one(UserContent::InputText { text }),
+                                content: vec![UserContent::InputText { text }],
                                 name: None,
                             }),
                         }),
@@ -560,10 +560,10 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             items.push(InputItem {
                                 role: Some(Role::User),
                                 input: InputContent::Message(Message::User {
-                                    content: OneOrMany::one(UserContent::InputImage {
+                                    content: vec![UserContent::InputImage {
                                         image_url: url,
                                         detail: detail.unwrap_or_default(),
-                                    }),
+                                    }],
                                     name: None,
                                 }),
                             });
@@ -590,9 +590,9 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             }
                             let message = if let Some(id) = id.clone() {
                                 Message::Assistant {
-                                    content: OneOrMany::one(AssistantContentType::Text(
+                                    content: vec![AssistantContentType::Text(
                                         AssistantContent::OutputText(Text::new(text)),
-                                    )),
+                                    )],
                                     id,
                                     name: None,
                                     status: ToolStatus::Completed,
@@ -660,10 +660,16 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
     }
 }
 
-impl From<OneOrMany<String>> for Vec<ReasoningSummary> {
-    fn from(value: OneOrMany<String>) -> Self {
-        value.iter().map(|x| ReasoningSummary::new(x)).collect()
-    }
+/// Build reasoning summaries from plain strings.
+///
+/// Free function rather than `impl From<OneOrMany<String>> for
+/// Vec<ReasoningSummary>`: without the container both sides are foreign types
+/// and the orphan rule forbids the impl.
+pub fn reasoning_summaries(value: Vec<String>) -> Vec<ReasoningSummary> {
+    value
+        .iter()
+        .map(|text| ReasoningSummary::new(text))
+        .collect()
 }
 
 fn openai_reasoning_from_core(
@@ -1298,7 +1304,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         let instructions = (!instruction_parts.is_empty()).then(|| instruction_parts.join("\n\n"));
         let lifted_system_items = input.len() < items_before_lift;
 
-        let input = OneOrMany::many(input).map_err(|_| {
+        let input = crate::message::require_non_empty(input, || {
             CompletionError::RequestError(if lifted_system_items {
                 "OpenAI Responses request input must contain at least one non-system item \
                  (system messages were lifted into the top-level `instructions` field)"
@@ -2541,7 +2547,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             })
             .unwrap_or(output_content);
 
-        let choice = OneOrMany::many(content).map_err(|_| {
+        let choice = crate::message::require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )
@@ -2570,19 +2576,19 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 pub enum Message {
     #[serde(alias = "developer")]
     System {
-        #[serde(deserialize_with = "string_or_one_or_many")]
-        content: OneOrMany<SystemContent>,
+        #[serde(deserialize_with = "string_or_vec")]
+        content: Vec<SystemContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
     User {
-        #[serde(deserialize_with = "string_or_one_or_many")]
-        content: OneOrMany<UserContent>,
+        #[serde(deserialize_with = "string_or_vec")]
+        content: Vec<UserContent>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
     Assistant {
-        content: OneOrMany<AssistantContentType>,
+        content: Vec<AssistantContentType>,
         #[serde(skip_serializing_if = "String::is_empty")]
         id: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -2613,7 +2619,7 @@ pub enum ToolResultContentType {
 impl Message {
     pub fn system(content: &str) -> Self {
         Message::System {
-            content: OneOrMany::one(content.to_owned().into()),
+            content: vec![content.to_owned().into()],
             name: None,
         }
     }
@@ -2714,7 +2720,7 @@ fn flush_responses_user_content(
         return Ok(());
     }
 
-    let content = OneOrMany::many(std::mem::take(pending)).map_err(|_| {
+    let content = crate::message::require_non_empty(std::mem::take(pending), || {
         MessageError::ConversionError(
             "User message did not contain OpenAI Responses-compatible content".to_string(),
         )
@@ -2841,7 +2847,7 @@ impl TryFrom<message::Message> for Vec<Message> {
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
             message::Message::System { content } => Ok(vec![Message::System {
-                content: OneOrMany::one(content.into()),
+                content: vec![content.into()],
                 name: None,
             }]),
             message::Message::User { content } => {
@@ -2877,9 +2883,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 messages.push(Message::Assistant {
                                     id,
                                     status: ToolStatus::Completed,
-                                    content: OneOrMany::one(AssistantContentType::Text(
+                                    content: vec![AssistantContentType::Text(
                                         AssistantContent::OutputText(Text::new(text)),
-                                    )),
+                                    )],
                                     name: None,
                                 });
                             } else {
@@ -2903,15 +2909,13 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 None => (id.into_string(), String::new()),
                             };
                             messages.push(Message::Assistant {
-                                content: OneOrMany::one(AssistantContentType::ToolCall(
-                                    OutputFunctionCall {
-                                        call_id,
-                                        arguments: function.arguments.into(),
-                                        id: item_id,
-                                        name: function.name,
-                                        status: ToolStatus::Completed,
-                                    },
-                                )),
+                                content: vec![AssistantContentType::ToolCall(OutputFunctionCall {
+                                    call_id,
+                                    arguments: function.arguments.into(),
+                                    id: item_id,
+                                    name: function.name,
+                                    status: ToolStatus::Completed,
+                                })],
                                 id: assistant_message_id.clone().unwrap_or_default(),
                                 name: None,
                                 status: ToolStatus::Completed,
@@ -2921,9 +2925,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                             if let Some(openai_reasoning) = openai_reasoning_from_core(&reasoning)?
                             {
                                 messages.push(Message::Assistant {
-                                    content: OneOrMany::one(AssistantContentType::Reasoning(
+                                    content: vec![AssistantContentType::Reasoning(
                                         openai_reasoning,
-                                    )),
+                                    )],
                                     id: assistant_message_id.clone().unwrap_or_default(),
                                     name: None,
                                     status: ToolStatus::Completed,
@@ -2989,30 +2993,29 @@ mod tests {
 
     fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
         message::Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+            content: vec![message::UserContent::ToolResult(message::ToolResult {
                 call: message::ToolCallId::new_or_mint("call-id"),
                 provider: message::ProviderCallId::new("call-id")
                     .map(|provider| provider.with_item_id("result-id")),
                 name: "tool".to_string(),
-                content: OneOrMany::one(content),
-            })),
+                content: vec![content],
+            })],
         }
     }
 
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {
         let input = message::Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::UserContent::text("before"),
                 message::UserContent::tool_result_with_call_id(
                     "result-id",
                     "call-id".to_string(),
                     "tool",
-                    OneOrMany::one(message::ToolResultContent::text("tool output")),
+                    vec![message::ToolResultContent::text("tool output")],
                 ),
                 message::UserContent::text("after"),
-            ])
-            .expect("mixed content should be non-empty"),
+            ],
         };
 
         let messages = Vec::<Message>::try_from(input).expect("message conversion");
@@ -3023,9 +3026,9 @@ mod tests {
                 Message::User { content: before, .. },
                 Message::ToolResult { tool_call_id, .. },
                 Message::User { content: after, .. },
-            ] if matches!(before.first(), UserContent::InputText { text } if text == "before")
+            ] if matches!(before.first(), Some(UserContent::InputText { text }) if text == "before")
                 && tool_call_id == "call-id"
-                && matches!(after.first(), UserContent::InputText { text } if text == "after")
+                && matches!(after.first(), Some(UserContent::InputText { text }) if text == "after")
         ));
     }
 
@@ -3084,13 +3087,13 @@ mod tests {
         // A wire-plausible id is provider-issued and must round-trip.
         let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+            content: vec![message::AssistantContent::Reasoning(message::Reasoning {
                 id: Some("rs_0123".to_string()),
                 content: vec![message::ReasoningContent::Text {
                     text: "real item".to_string(),
                     signature: None,
                 }],
-            })),
+            })],
         })
         .expect("history should convert");
         let reasoning = reasoning_input_items(&items);
@@ -3198,20 +3201,19 @@ mod tests {
 
     #[test]
     fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
-        let content = OneOrMany::many(vec![
+        let content = vec![
             message::ToolResultContent::text("first"),
             message::ToolResultContent::text("second"),
-        ])
-        .expect("multiple tool-result blocks should be non-empty");
+        ];
 
         let input = message::Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+            content: vec![message::UserContent::ToolResult(message::ToolResult {
                 call: message::ToolCallId::new_or_mint("call-id"),
                 provider: message::ProviderCallId::new("call-id")
                     .map(|provider| provider.with_item_id("result-id")),
                 name: "tool".to_string(),
                 content,
-            })),
+            })],
         };
 
         let expected = ToolResultOutput::Content(vec![
@@ -3270,14 +3272,13 @@ mod tests {
 
     #[test]
     fn multiple_text_and_json_tool_result_blocks_preserve_boundaries() {
-        let content = OneOrMany::many(vec![
+        let content = vec![
             message::ToolResultContent::text("before"),
             message::ToolResultContent::json(json!({
                 "status": "ok"
             })),
             message::ToolResultContent::text("after"),
-        ])
-        .expect("multiple tool-result blocks should be non-empty");
+        ];
 
         let output =
             responses_tool_result_output(content).expect("tool-result conversion should succeed");
@@ -3300,7 +3301,7 @@ mod tests {
 
     #[test]
     fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
-        let content = OneOrMany::many(vec![
+        let content = vec![
             message::ToolResultContent::text("before"),
             message::ToolResultContent::image_base64(
                 "aW1hZ2U=",
@@ -3308,16 +3309,15 @@ mod tests {
                 None,
             ),
             message::ToolResultContent::json(json!({ "after": true })),
-        ])
-        .expect("mixed tool output is non-empty");
+        ];
         let input = message::Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+            content: vec![message::UserContent::ToolResult(message::ToolResult {
                 call: message::ToolCallId::new_or_mint("call-id"),
                 provider: message::ProviderCallId::new("call-id")
                     .map(|provider| provider.with_item_id("result-id")),
                 name: "tool".to_string(),
                 content,
-            })),
+            })],
         };
 
         let assert_output = |output: &ToolResultOutput| {
@@ -3382,7 +3382,7 @@ mod tests {
         completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one(message::Message::user("what's the weather?")),
+            chat_history: vec![message::Message::user("what's the weather?")],
             documents: Vec::new(),
             tools: vec![weather_tool_definition()],
             temperature: None,
@@ -3552,7 +3552,7 @@ mod tests {
         completion::CompletionRequest {
             model: None,
             preamble: Some(preamble.to_string()),
-            chat_history: crate::OneOrMany::one(message::Message::user("Hello")),
+            chat_history: vec![message::Message::user("Hello")],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -3568,7 +3568,7 @@ mod tests {
         completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one(completion::Message::system(system_text)),
+            chat_history: vec![completion::Message::system(system_text)],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -3983,13 +3983,12 @@ mod tests {
         let request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::many(vec![
+            chat_history: vec![
                 completion::Message::system("System prompt"),
                 completion::Message::assistant("Earlier assistant turn"),
                 completion::Message::system("Mid-conversation instruction"),
                 completion::Message::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![test_document("doc1", "Document text.")],
             tools: vec![],
             temperature: None,
@@ -4713,9 +4712,9 @@ mod tests {
     fn idless_reasoning_is_skipped_when_converting_responses_history() {
         let assistant = message::Message::Assistant {
             id: Some("msg_123".to_string()),
-            content: OneOrMany::one(message::AssistantContent::Reasoning(
+            content: vec![message::AssistantContent::Reasoning(
                 message::Reasoning::new("provider reasoning"),
-            )),
+            )],
         };
 
         let converted = Vec::<Message>::try_from(assistant)
@@ -4728,9 +4727,9 @@ mod tests {
     fn idless_reasoning_only_is_skipped_without_empty_input_item() {
         let assistant = completion::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::Reasoning(
+            content: vec![message::AssistantContent::Reasoning(
                 message::Reasoning::new("provider reasoning"),
-            )),
+            )],
         };
 
         let converted = Vec::<InputItem>::try_from(assistant)
@@ -4743,11 +4742,10 @@ mod tests {
     fn idless_reasoning_plus_text_preserves_text_for_responses_history() {
         let assistant = message::Message::Assistant {
             id: Some("msg_123".to_string()),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::AssistantContent::Reasoning(message::Reasoning::new("provider reasoning")),
                 message::AssistantContent::Text(Text::new("final answer")),
-            ])
-            .expect("assistant content should be non-empty"),
+            ],
         };
 
         let converted =
@@ -4758,8 +4756,8 @@ mod tests {
             panic!("expected assistant message");
         };
         assert!(matches!(
-            content.first_ref(),
-            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
+            content.first(),
+            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4767,11 +4765,10 @@ mod tests {
     fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
         let assistant = completion::Message::Assistant {
             id: Some("msg_123".to_string()),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::AssistantContent::Reasoning(message::Reasoning::new("provider reasoning")),
                 message::AssistantContent::Text(Text::new("final answer")),
-            ])
-            .expect("assistant content should be non-empty"),
+            ],
         };
 
         let converted =
@@ -4783,8 +4780,8 @@ mod tests {
             panic!("expected assistant message input item");
         };
         assert!(matches!(
-            content.first_ref(),
-            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
+            content.first(),
+            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4792,7 +4789,7 @@ mod tests {
     fn assistant_text_without_idless_reasoning_replays_as_output_text() {
         let assistant = completion::Message::Assistant {
             id: Some("msg_123".to_string()),
-            content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
+            content: vec![message::AssistantContent::Text(Text::new("final answer"))],
         };
 
         let converted =
@@ -4803,8 +4800,8 @@ mod tests {
             panic!("expected assistant message input item");
         };
         assert!(matches!(
-            content.first_ref(),
-            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })) if text == "final answer"
+            content.first(),
+            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4812,7 +4809,7 @@ mod tests {
     fn idless_completion_assistant_text_replays_as_easy_input_message() {
         let assistant = completion::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
+            content: vec![message::AssistantContent::Text(Text::new("final answer"))],
         };
 
         let converted =
@@ -4839,7 +4836,7 @@ mod tests {
     fn idless_message_assistant_text_replays_as_easy_input_message() {
         let assistant = message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::Text(Text::new("final answer"))),
+            content: vec![message::AssistantContent::Text(Text::new("final answer"))],
         };
 
         let converted =
@@ -4863,12 +4860,12 @@ mod tests {
     fn structured_reasoning_with_id_still_converts_for_responses_history() {
         let assistant = message::Message::Assistant {
             id: Some("msg_123".to_string()),
-            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+            content: vec![message::AssistantContent::Reasoning(message::Reasoning {
                 id: Some("rs_123".to_string()),
                 content: vec![message::ReasoningContent::Summary(
                     "structured summary".to_string(),
                 )],
-            })),
+            })],
         };
 
         let converted =
@@ -4879,8 +4876,8 @@ mod tests {
             panic!("expected assistant message");
         };
         assert!(matches!(
-            content.first_ref(),
-            AssistantContentType::Reasoning(OpenAIReasoning { id, .. }) if id == "rs_123"
+            content.first(),
+            Some(AssistantContentType::Reasoning(OpenAIReasoning { id, .. })) if id == "rs_123"
         ));
     }
 
@@ -4888,12 +4885,12 @@ mod tests {
     fn structured_reasoning_with_id_still_converts_to_input_item() {
         let assistant = completion::Message::Assistant {
             id: Some("msg_123".to_string()),
-            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+            content: vec![message::AssistantContent::Reasoning(message::Reasoning {
                 id: Some("rs_123".to_string()),
                 content: vec![message::ReasoningContent::Summary(
                     "structured summary".to_string(),
                 )],
-            })),
+            })],
         };
 
         let converted =
@@ -4911,7 +4908,7 @@ mod tests {
     fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
         let assistant = completion::Message::Assistant {
             id: Some("msg_123".to_string()),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::AssistantContent::Reasoning(message::Reasoning {
                     id: Some("rs_123".to_string()),
                     content: vec![message::ReasoningContent::Summary(
@@ -4925,8 +4922,7 @@ mod tests {
                     "lookup",
                     json!({"query": "rig"}),
                 ),
-            ])
-            .expect("assistant content should be non-empty"),
+            ],
         };
 
         let converted =
@@ -4946,8 +4942,8 @@ mod tests {
         };
         assert_eq!(id, "msg_123");
         assert!(matches!(
-            content.first_ref(),
-            AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))
+            content.first(),
+            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })))
                 if text == "final answer"
         ));
 
@@ -4968,39 +4964,36 @@ mod tests {
         let request = crate::completion::CompletionRequest {
             model: None,
             preamble: Some("You are concise.".to_string()),
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 completion::Message::User {
-                    content: OneOrMany::one(message::UserContent::Text(Text::new(
+                    content: vec![message::UserContent::Text(Text::new(
                         "Think briefly, then answer.",
-                    ))),
+                    ))],
                 },
                 completion::Message::Assistant {
                     id: Some("msg_123".to_string()),
-                    content: OneOrMany::many(vec![
+                    content: vec![
                         message::AssistantContent::Reasoning(message::Reasoning::new(
                             "provider reasoning",
                         )),
                         message::AssistantContent::Text(Text::new("final answer")),
-                    ])
-                    .expect("assistant content should be non-empty"),
+                    ],
                 },
                 completion::Message::Assistant {
                     id: None,
-                    content: OneOrMany::many(vec![
+                    content: vec![
                         message::AssistantContent::Reasoning(message::Reasoning::new(
                             "provider reasoning only",
                         )),
                         message::AssistantContent::Text(Text::new("")),
-                    ])
-                    .expect("assistant content should be non-empty"),
+                    ],
                 },
                 completion::Message::User {
-                    content: OneOrMany::one(message::UserContent::Text(Text::new(
+                    content: vec![message::UserContent::Text(Text::new(
                         "/no_think Reply with exactly: OK",
-                    ))),
+                    ))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -5071,11 +5064,11 @@ mod tests {
     #[test]
     fn file_id_document_serializes_as_input_file_content() {
         let message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::Document(message::Document {
+            content: vec![message::UserContent::Document(message::Document {
                 data: DocumentSourceKind::FileId("file_abc".to_string()),
                 media_type: None,
                 additional_params: None,
-            })),
+            })],
         };
 
         let converted: Vec<Message> = message.try_into().expect("conversion should succeed");
@@ -5083,7 +5076,8 @@ mod tests {
             panic!("expected user message");
         };
 
-        let json = serde_json::to_value(content.first_ref()).expect("serialize content");
+        let json = serde_json::to_value(content.first().expect("first content"))
+            .expect("serialize content");
 
         assert_eq!(json["type"], "input_file");
         assert_eq!(json["file_id"], "file_abc");
@@ -5094,11 +5088,11 @@ mod tests {
     #[test]
     fn file_id_document_serializes_as_input_item_content() {
         let message = completion::Message::User {
-            content: OneOrMany::one(message::UserContent::Document(message::Document {
+            content: vec![message::UserContent::Document(message::Document {
                 data: DocumentSourceKind::FileId("file_abc".to_string()),
                 media_type: None,
                 additional_params: None,
-            })),
+            })],
         };
 
         let converted: Vec<InputItem> = message.try_into().expect("conversion should succeed");
@@ -5434,10 +5428,10 @@ mod tests {
 
     fn url_pdf_message() -> message::Message {
         message::Message::User {
-            content: OneOrMany::one(message::UserContent::document_url(
+            content: vec![message::UserContent::document_url(
                 PDF_URL,
                 Some(message::DocumentMediaType::PDF),
-            )),
+            )],
         }
     }
 
@@ -5499,7 +5493,7 @@ mod tests {
         let core_request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(url_pdf_message()),
+            chat_history: vec![url_pdf_message()],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -5527,11 +5521,11 @@ mod tests {
     #[test]
     fn base64_pdf_via_input_item_path_keeps_filename() {
         let input = message::Message::User {
-            content: OneOrMany::one(message::UserContent::Document(message::Document {
+            content: vec![message::UserContent::Document(message::Document {
                 data: DocumentSourceKind::base64("dGVzdA=="),
                 media_type: Some(message::DocumentMediaType::PDF),
                 additional_params: None,
-            })),
+            })],
         };
 
         let items =

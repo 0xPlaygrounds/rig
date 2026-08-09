@@ -10,7 +10,6 @@
 //! `tests/common/cassette_safety.rs` (`PROVIDER_CASSETTE_SUITES`).
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig::prelude::*;
@@ -27,7 +26,7 @@ struct StreamRun {
     reasoning_delta: String,
     reasoning_blocks: Vec<Reasoning>,
     finals: Vec<StreamFinal>,
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
 }
 
@@ -37,7 +36,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         reasoning_delta: String::new(),
         reasoning_blocks: Vec::new(),
         finals: Vec::new(),
-        choice: OneOrMany::one(AssistantContent::text("")),
+        choice: vec![AssistantContent::text("")],
         response: None,
     };
 

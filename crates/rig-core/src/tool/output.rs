@@ -4,7 +4,7 @@ use std::{any::Any, fmt};
 
 use serde::Serialize;
 
-use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
+use crate::{message::ToolResultContent, tool::ToolExecutionError};
 
 /// The canonical model-visible output produced by a tool.
 ///
@@ -17,7 +17,7 @@ use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
 /// guess whether it represents rich content.
 #[derive(Clone, PartialEq)]
 pub struct ToolOutput {
-    content: OneOrMany<ToolResultContent>,
+    content: Vec<ToolResultContent>,
 }
 
 impl fmt::Debug for ToolOutput {
@@ -54,13 +54,13 @@ impl ToolOutput {
     }
 
     /// Construct explicit model content.
-    pub fn content(content: OneOrMany<ToolResultContent>) -> Self {
+    pub fn content(content: Vec<ToolResultContent>) -> Self {
         Self { content }
     }
 
     /// Construct one explicit model-content block.
     pub fn one(content: ToolResultContent) -> Self {
-        Self::content(OneOrMany::one(content))
+        Self::content(vec![content])
     }
 
     /// Return literal text when this output is exactly one plain text block.
@@ -69,7 +69,7 @@ impl ToolOutput {
             return None;
         }
 
-        match self.content.first_ref() {
+        match self.content.first()? {
             ToolResultContent::Text(text) if text.additional_params.is_none() => Some(&text.text),
             ToolResultContent::Text(_)
             | ToolResultContent::Image(_)
@@ -83,19 +83,19 @@ impl ToolOutput {
             return None;
         }
 
-        match self.content.first_ref() {
+        match self.content.first()? {
             ToolResultContent::Json { value } => Some(value),
             ToolResultContent::Text(_) | ToolResultContent::Image(_) => None,
         }
     }
 
     /// Borrow the canonical ordered content blocks.
-    pub fn as_content(&self) -> &OneOrMany<ToolResultContent> {
+    pub fn as_content(&self) -> &Vec<ToolResultContent> {
         &self.content
     }
 
     /// Convert this output into the canonical message content sent to a model.
-    pub fn into_content(self) -> OneOrMany<ToolResultContent> {
+    pub fn into_content(self) -> Vec<ToolResultContent> {
         self.content
     }
 
@@ -139,8 +139,8 @@ impl From<ToolResultContent> for ToolOutput {
     }
 }
 
-impl From<OneOrMany<ToolResultContent>> for ToolOutput {
-    fn from(content: OneOrMany<ToolResultContent>) -> Self {
+impl From<Vec<ToolResultContent>> for ToolOutput {
+    fn from(content: Vec<ToolResultContent>) -> Self {
         Self::content(content)
     }
 }
@@ -166,20 +166,13 @@ mod debug_tests {
 
     #[test]
     fn debug_reports_shape_without_tool_content() {
-        let output = ToolOutput::content(
-            OneOrMany::many(vec![
-                ToolResultContent::text("Bearer secret-tool-output"),
-                ToolResultContent::json(serde_json::json!({
-                    "credential": "secret-json-output"
-                })),
-                ToolResultContent::image_base64(
-                    "secret-image-output",
-                    Some(ImageMediaType::PNG),
-                    None,
-                ),
-            ])
-            .unwrap(),
-        );
+        let output = ToolOutput::content(vec![
+            ToolResultContent::text("Bearer secret-tool-output"),
+            ToolResultContent::json(serde_json::json!({
+                "credential": "secret-json-output"
+            })),
+            ToolResultContent::image_base64("secret-image-output", Some(ImageMediaType::PNG), None),
+        ]);
 
         let debug = format!("{output:?}");
         assert!(debug.contains("content_count: 3"));
@@ -201,7 +194,7 @@ where
     T: Serialize + 'static,
 {
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
-        // `ToolResultContent` and `OneOrMany<ToolResultContent>` are serializable
+        // `ToolResultContent` and `Vec<ToolResultContent>` are serializable
         // because they also serve as transcript types. They nevertheless mean
         // explicit rich output here; serializing them through the fallback would
         // silently turn an image into a JSON object. Stable Rust cannot express
@@ -211,7 +204,7 @@ where
         if let Some(content) = value.downcast_ref::<ToolResultContent>() {
             return Ok(ToolOutput::one(content.clone()));
         }
-        if let Some(content) = value.downcast_ref::<OneOrMany<ToolResultContent>>() {
+        if let Some(content) = value.downcast_ref::<Vec<ToolResultContent>>() {
             return Ok(ToolOutput::content(content.clone()));
         }
         let is_explicit_json = value.is::<serde_json::Value>();
@@ -247,7 +240,9 @@ mod tests {
 
         assert_eq!(output, ToolOutput::text(text.clone()));
         let content = output.into_content();
-        assert!(matches!(content.first(), ToolResultContent::Text(value) if value.text == text));
+        assert!(
+            matches!(content.first(), Some(ToolResultContent::Text(value)) if value.text == text)
+        );
     }
 
     #[test]
@@ -260,7 +255,7 @@ mod tests {
         let content = output.into_content();
         assert!(matches!(
             content.first(),
-            ToolResultContent::Json { value: content_value } if content_value == value
+            Some(ToolResultContent::Json { value: content_value }) if *content_value == value
         ));
     }
 
@@ -287,7 +282,7 @@ mod tests {
         let content = output.into_content();
         assert!(matches!(
             content.first(),
-            ToolResultContent::Image(image)
+            Some(ToolResultContent::Image(image))
                 if image.media_type == Some(ImageMediaType::JPEG)
                     && matches!(&image.data, DocumentSourceKind::Base64(data) if data == "base64data==")
         ));
@@ -295,12 +290,11 @@ mod tests {
 
     #[test]
     fn direct_ordered_content_is_not_serialized_as_json() {
-        let content = OneOrMany::many(vec![
+        let content = vec![
             ToolResultContent::text("before"),
             ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
             ToolResultContent::json(serde_json::json!({"after": true})),
-        ])
-        .unwrap();
+        ];
 
         let output = content.clone().into_tool_output().unwrap();
 

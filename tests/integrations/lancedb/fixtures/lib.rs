@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, FixedSizeListArray, RecordBatch, StringArray, types::Float64Type};
+use rig::Embed;
 use rig::embeddings::Embedding;
-use rig::{Embed, OneOrMany};
 use serde::Deserialize;
 
 #[derive(Embed, Clone, Deserialize, Debug)]
@@ -31,7 +31,7 @@ pub fn words() -> Vec<Word> {
 
 // Convert Word objects and their embedding to a RecordBatch.
 pub fn as_record_batch(
-    records: Vec<(Word, OneOrMany<Embedding>)>,
+    records: Vec<(Word, Vec<Embedding>)>,
     dims: usize,
 ) -> Result<RecordBatch, lancedb::arrow::arrow_schema::ArrowError> {
     let id = StringArray::from_iter_values(
@@ -54,7 +54,9 @@ pub fn as_record_batch(
             .map(|(_, embeddings)| {
                 Some(
                     embeddings
-                        .first()
+                        .into_iter()
+                        .next()
+                        .expect("expected at least one embedding")
                         .vec
                         .into_iter()
                         .map(Some)

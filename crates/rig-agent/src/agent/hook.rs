@@ -121,7 +121,6 @@ use std::{future::Future, sync::Arc};
 
 use crate::tool::extensions::TypeMap;
 use rig_core::{
-    OneOrMany,
     message::{AssistantContent, Message, ToolChoice},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -485,7 +484,7 @@ pub struct CompletionResponse<'a> {
     /// Prompt sent for this turn.
     pub prompt: &'a Message,
     /// Canonical assistant content returned for this turn.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
     /// Provider-assigned message ID, when available.
@@ -502,7 +501,7 @@ pub struct ModelTurnFinished<'a> {
     /// One-based model-call index.
     pub turn: usize,
     /// Canonical assistant content parked for hook acceptance.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for the turn.
     pub usage: Usage,
 }
@@ -626,7 +625,7 @@ pub struct StreamResponseFinish<'a> {
     /// Prompt sent for this turn.
     pub prompt: &'a Message,
     /// Canonical assistant content aggregated for this turn.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
     /// Provider-assigned message ID, when available.

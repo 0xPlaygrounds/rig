@@ -1,4 +1,3 @@
-use rig::OneOrMany;
 use rig::completion::{CompletionError, Message as CompletionMessage};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig::providers::openai::responses_api::{
@@ -9,9 +8,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 #[test]
 fn test_input_item_serialization_avoids_duplicate_role() {
     let message = Message::User {
-        content: OneOrMany::one(UserContent::InputText {
+        content: vec![UserContent::InputText {
             text: "hello".to_string(),
-        }),
+        }],
         name: None,
     };
     let item: InputItem = message.into();
@@ -28,7 +27,7 @@ fn test_input_item_serialization_avoids_duplicate_role() {
 fn assistant_reasoning_without_id_is_omitted() {
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thought"))),
+        content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
     };
 
     let items: Vec<InputItem> = message
@@ -42,7 +41,7 @@ fn assistant_reasoning_encrypted_only_serializes_encrypted_content() {
     let reasoning = Reasoning::encrypted("encrypted_blob").with_id("rs_1".to_string());
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
     let items: Vec<InputItem> = message
@@ -91,7 +90,7 @@ fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
 
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
     let items: Vec<InputItem> = message
@@ -132,7 +131,7 @@ fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
 fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
     let core_request = rig::completion::CompletionRequest {
         preamble: None,
-        chat_history: OneOrMany::one(CompletionMessage::user("hello")),
+        chat_history: vec![CompletionMessage::user("hello")],
         documents: vec![],
         tools: vec![],
         temperature: None,
@@ -246,7 +245,7 @@ fn openai_empty_reasoning_content_roundtrips_to_request_item() {
 
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        content: vec![AssistantContent::Reasoning(reasoning)],
     };
     let items: Vec<InputItem> = message
         .try_into()
@@ -277,7 +276,7 @@ fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
     let reasoning = Reasoning::redacted("opaque-redacted").with_id("rs_redacted".to_string());
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::Reasoning(reasoning)),
+        content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
     let items: Vec<InputItem> = message
@@ -306,10 +305,10 @@ fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() 
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::Assistant {
+            chat_history: vec![CompletionMessage::Assistant {
                 id: Some("assistant_message_id".to_string()),
-                content: OneOrMany::one(AssistantContent::Reasoning(Reasoning::new("thought"))),
-            }),
+                content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -337,12 +336,12 @@ fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() 
 fn assistant_tool_call_with_local_id_omits_function_call_item_id() {
     let message = CompletionMessage::Assistant {
         id: None,
-        content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+        content: vec![AssistantContent::tool_call_with_call_id(
             "history_tool_1",
             "call_local_1".to_string(),
             "my_tool",
             serde_json::json!({}),
-        )),
+        )],
     };
 
     let items: Vec<InputItem> = message
@@ -369,12 +368,12 @@ fn assistant_tool_call_with_local_id_omits_function_call_item_id() {
 fn assistant_tool_call_with_local_fc_prefix_without_separator_omits_function_call_item_id() {
     let message = CompletionMessage::Assistant {
         id: None,
-        content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+        content: vec![AssistantContent::tool_call_with_call_id(
             "fclocal_1",
             "call_local_1".to_string(),
             "my_tool",
             serde_json::json!({}),
-        )),
+        )],
     };
 
     let items: Vec<InputItem> = message
@@ -391,12 +390,12 @@ fn assistant_tool_call_with_local_fc_prefix_without_separator_omits_function_cal
 fn assistant_tool_call_with_provider_item_id_keeps_it() {
     let message = CompletionMessage::Assistant {
         id: None,
-        content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+        content: vec![AssistantContent::tool_call_with_call_id(
             "fc_native_1",
             "call_native_1".to_string(),
             "my_tool",
             serde_json::json!({}),
-        )),
+        )],
     };
 
     let items: Vec<InputItem> = message
@@ -417,11 +416,11 @@ fn assistant_tool_call_without_provider_id_serializes_the_minted_call_id() {
     // sent instead of the old "`call_id` is required" request error.
     let message = CompletionMessage::Assistant {
         id: Some("assistant_message_id".to_string()),
-        content: OneOrMany::one(AssistantContent::tool_call(
+        content: vec![AssistantContent::tool_call(
             "",
             "my_tool",
             serde_json::json!({"arg":"value"}),
-        )),
+        )],
     };
 
     let items: Vec<InputItem> = message
@@ -473,7 +472,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
         let request = rig::completion::CompletionRequest {
             preamble: None,
-            chat_history: OneOrMany::one(CompletionMessage::user("hello")),
+            chat_history: vec![CompletionMessage::user("hello")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -501,7 +500,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
 fn openai_responses_request_preserves_prompt_cache_parameters() {
     let request = rig::completion::CompletionRequest {
         preamble: None,
-        chat_history: OneOrMany::one(CompletionMessage::user("hello")),
+        chat_history: vec![CompletionMessage::user("hello")],
         documents: vec![],
         tools: vec![],
         temperature: None,
