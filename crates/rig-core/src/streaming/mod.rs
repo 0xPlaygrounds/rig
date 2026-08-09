@@ -936,7 +936,7 @@ impl StreamingCompletionResponse {
             pause_control,
             parts: PartsAccumulator::new(),
             provider: provider.into(),
-            choice: vec![AssistantContent::text("")],
+            choice: Vec::new(),
             finished: false,
             resume_wait: None,
             reasoning_correlators: std::collections::HashMap::new(),

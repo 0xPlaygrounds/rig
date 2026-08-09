@@ -255,20 +255,21 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .collect::<Result<Vec<_>, _>>()?;
 
         let choice = if content.is_empty() {
-            // Anthropic documents empty `end_turn` responses after tool-result round trips.
-            // The generic completion response still requires at least one assistant item, so
-            // normalize that terminal no-op into the same empty-text sentinel used by streaming.
+            // Anthropic documents empty `end_turn` responses after tool-result
+            // round trips. That turn really did carry nothing, and an empty
+            // choice can now say so — the empty-text sentinel this used to
+            // fabricate existed only because the choice could not be empty.
             if response.stop_reason.as_deref() == Some("end_turn") {
-                vec![completion::AssistantContent::text("")]
+                Vec::new()
             } else {
                 return Err(CompletionError::ResponseError(
                     EMPTY_RESPONSE_ERROR.to_owned(),
                 ));
             }
         } else {
-            crate::message::require_non_empty(content, || {
-                CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned())
-            })?
+            // No emptiness guard on this arm: `content.is_empty()` above is the
+            // same condition, so a second check here could never fire.
+            content
         };
 
         let finish_reason = response.stop_reason.as_deref().map(map_finish_reason);
@@ -5053,7 +5054,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_end_turn_response_normalizes_to_empty_text_choice() {
+    fn empty_end_turn_response_normalizes_to_an_empty_choice() {
         let response = CompletionResponse {
             content: vec![],
             id: "msg_123".to_string(),
@@ -5073,11 +5074,9 @@ mod tests {
             .normalize("anthropic")
             .expect("empty end_turn should not error");
 
-        assert_eq!(parsed.choice.len(), 1);
-        assert!(
-            matches!(parsed.choice.first(), Some(completion::AssistantContent::Text(text)) if text.text.is_empty()
-            )
-        );
+        // The turn carried nothing and now says so, instead of normalizing
+        // into a fabricated empty-text part.
+        assert!(parsed.choice.is_empty(), "got {:?}", parsed.choice);
         assert_eq!(parsed.provider, "anthropic");
         assert_eq!(parsed.message_id.as_deref(), Some("msg_123"));
         assert_eq!(parsed.model.as_deref(), Some(CLAUDE_SONNET_4_6));

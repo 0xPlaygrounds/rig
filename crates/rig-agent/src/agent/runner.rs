@@ -9452,9 +9452,20 @@ mod migrated_tests {
             ctx: &HookContext,
             event: ModelTurnFinished<'_>,
         ) -> ModelTurnAction {
-            let rejected = event.content.iter().any(
-                |content| matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text),
-            );
+            // An empty turn is now an empty content list, not a fabricated
+            // empty-text part, so a hook that rejects blank responses checks
+            // emptiness rather than matching a part that no longer exists.
+            // This is the documented migration for that pattern.
+            let rejected = if self.rejected_text.is_empty() {
+                event.content.is_empty()
+                    || event.content.iter().any(|content| {
+                        matches!(content, AssistantContent::Text(text) if text.text.is_empty())
+                    })
+            } else {
+                event.content.iter().any(|content| {
+                    matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text)
+                })
+            };
             if !rejected {
                 return ModelTurnAction::continue_run();
             }

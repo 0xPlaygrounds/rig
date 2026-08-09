@@ -769,7 +769,7 @@ impl PartsAccumulator {
     /// truncation contract; reasoning still open is kept as-is (its deltas
     /// are real content).
     pub(crate) fn finish(&mut self) -> Vec<AssistantContent> {
-        let mut parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
+        let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
             .into_iter()
             .filter(|part| match part {
                 // A lazily opened block that got content survives; the
@@ -789,9 +789,6 @@ impl PartsAccumulator {
         self.open_tool_inputs.clear();
         self.finished_tools.clear();
         self.saw_tool_call = false;
-        if parts.is_empty() {
-            parts.push(AssistantContent::text(""));
-        }
         parts
     }
 }
@@ -1339,10 +1336,13 @@ mod tests {
     }
 
     #[test]
-    fn finish_on_an_empty_stream_yields_one_empty_text_part() {
+    fn finish_on_an_empty_stream_yields_no_parts() {
         let mut accumulator = PartsAccumulator::new();
         let parts = accumulator.finish();
-        assert_eq!(parts, vec![AssistantContent::text("")]);
+        // A stream that produced nothing aggregates to nothing. The single
+        // empty-text part this used to yield existed only to satisfy the
+        // removed non-empty container.
+        assert!(parts.is_empty(), "got {parts:?}");
     }
 
     // --- tool-call lifecycle (the settled semantics) ---
@@ -1688,7 +1688,8 @@ mod tests {
         accumulator.tool_name_delta(&pid("call_1"), "ping");
         accumulator.tool_args_delta(&pid("call_1"), "{\"x\":");
         let parts = accumulator.finish();
-        assert_eq!(parts, vec![AssistantContent::text("")]);
+        // The incomplete call is discarded and nothing takes its place.
+        assert!(parts.is_empty(), "got {parts:?}");
         assert!(!accumulator.saw_tool_call());
     }
 

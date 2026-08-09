@@ -1358,13 +1358,7 @@ impl From<Message> for crate::completion::Message {
                         ),
                     );
                 }
-                let content = if assistant_contents.is_empty() {
-                    vec![crate::completion::message::AssistantContent::Text(
-                        Text::new(String::new()),
-                    )]
-                } else {
-                    assistant_contents
-                };
+                let content = assistant_contents;
 
                 crate::completion::Message::Assistant { id: None, content }
             }

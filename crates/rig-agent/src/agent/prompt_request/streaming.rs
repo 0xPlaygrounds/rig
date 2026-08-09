@@ -1030,7 +1030,7 @@ impl StreamingTurnSource {
         record_telemetry_content: bool,
     ) -> Self {
         Self {
-            last_final_choice: vec![AssistantContent::text("")],
+            last_final_choice: Vec::new(),
             last_message_id: None,
             agent_name,
             created_agent_span,
