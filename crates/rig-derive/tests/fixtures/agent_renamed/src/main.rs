@@ -45,5 +45,5 @@ fn main() {
 
     // Portable core items stay reachable through the explicit `core` namespace
     // even under a renamed `rig-agent` dependency.
-    let _reachable: Option<agent_runtime::core::OneOrMany<u8>> = None;
+    let _reachable: Option<agent_runtime::core::EmptyListError> = None;
 }

@@ -2,7 +2,6 @@ pub mod streaming;
 
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use rig_core::{
-    OneOrMany,
     message::{AssistantContent, ProviderCallId, ToolCallId, ToolResultContent, UserContent},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
@@ -364,7 +363,7 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // Serialize *and* deserialize both go through `PromptResponseRepr` so the two
 // directions agree on `content`'s wire shape (an `Option`). Routing only
-// deserialize through the shadow would make serialize write a bare `OneOrMany`
+// deserialize through the shadow would make serialize write a bare `Vec`
 // while deserialize expects an `Option`, breaking round-trips for positional /
 // non-self-describing formats (e.g. bincode). The repr carries the field serde
 // attributes, so the JSON shape is unchanged.
@@ -389,7 +388,7 @@ pub struct PromptResponse {
     ///
     /// Where [`output`](Self::output) is the concatenated text, this preserves
     /// the individual content parts (text, reasoning, images, …).
-    pub content: OneOrMany<AssistantContent>,
+    pub content: Vec<AssistantContent>,
     /// Number of synthetic output-tool calls in the turn that finalized this
     /// response. Kept crate-private because it is runner bookkeeping rather
     /// than provider-facing response content.
@@ -411,7 +410,7 @@ struct PromptResponseRepr {
     completion_calls: Vec<CompletionCall>,
     messages: Option<Vec<Message>>,
     #[serde(default)]
-    content: Option<OneOrMany<AssistantContent>>,
+    content: Option<Vec<AssistantContent>>,
     #[serde(skip)]
     output_tool_calls: usize,
 }
@@ -420,7 +419,7 @@ impl From<PromptResponseRepr> for PromptResponse {
     fn from(repr: PromptResponseRepr) -> Self {
         let content = repr
             .content
-            .unwrap_or_else(|| OneOrMany::one(AssistantContent::text(repr.output.clone())));
+            .unwrap_or_else(|| vec![AssistantContent::text(repr.output.clone())]);
         Self {
             output: repr.output,
             usage: repr.usage,
@@ -455,7 +454,7 @@ impl PromptResponse {
     pub fn new(output: impl Into<String>, usage: Usage) -> Self {
         let output = output.into();
         Self {
-            content: OneOrMany::one(AssistantContent::text(output.clone())),
+            content: vec![AssistantContent::text(output.clone())],
             output,
             usage,
             completion_calls: Vec::new(),
@@ -481,7 +480,7 @@ impl PromptResponse {
     }
 
     /// Set the structured assistant content for the final turn.
-    pub fn with_content(mut self, content: OneOrMany<AssistantContent>) -> Self {
+    pub fn with_content(mut self, content: Vec<AssistantContent>) -> Self {
         self.content = content;
         self
     }
@@ -511,7 +510,7 @@ impl PromptResponse {
     }
 
     /// The structured assistant content for the final turn.
-    pub fn content(&self) -> &OneOrMany<AssistantContent> {
+    pub fn content(&self) -> &Vec<AssistantContent> {
         &self.content
     }
 
@@ -600,7 +599,7 @@ fn tool_result_with(
     call: ToolCallId,
     provider: Option<ProviderCallId>,
     name: String,
-    content: OneOrMany<ToolResultContent>,
+    content: Vec<ToolResultContent>,
 ) -> UserContent {
     // The *executed* tool's name travels as data on the result: several
     // wires require it on replay (Gemini `functionResponse.name`, Ollama
@@ -629,16 +628,11 @@ pub(crate) fn tool_result_message(
     name: String,
     message: String,
 ) -> UserContent {
-    tool_result_with(
-        call,
-        provider,
-        name,
-        OneOrMany::one(ToolResultContent::text(message)),
-    )
+    tool_result_with(call, provider, name, vec![ToolResultContent::text(message)])
 }
 
 pub(crate) fn invalid_tool_retry_user_message(
-    assistant_content: &OneOrMany<AssistantContent>,
+    assistant_content: &[AssistantContent],
     invalid_tool_call_id: &ToolCallId,
     feedback: String,
 ) -> Option<Message> {
@@ -667,20 +661,25 @@ pub(crate) fn invalid_tool_retry_user_message(
         })
         .collect::<Vec<_>>();
 
+    if retry_results.is_empty() {
+        return None;
+    }
+
     Some(Message::User {
-        content: OneOrMany::from_iter_optional(retry_results)?,
+        content: retry_results,
     })
 }
 
-pub(crate) fn is_empty_assistant_turn(choice: &OneOrMany<AssistantContent>) -> bool {
+pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
     choice.len() == 1
         && matches!(
             choice.first(),
-            AssistantContent::Text(text) if text.text.is_empty() && text.additional_params.is_none()
+            Some(AssistantContent::Text(text))
+                if text.text.is_empty() && text.additional_params.is_none()
         )
 }
 
-pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -> String {
+pub(crate) fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -1263,7 +1262,10 @@ mod tests {
 
         assert_eq!(response.output(), "hello");
         assert_eq!(response.content().iter().count(), 1);
-        assert_eq!(response.content().first(), AssistantContent::text("hello"));
+        assert_eq!(
+            response.content().first(),
+            Some(&AssistantContent::text("hello"))
+        );
     }
 
     #[test]
@@ -1279,7 +1281,10 @@ mod tests {
             .expect("legacy empty response without content should deserialize");
 
         assert_eq!(response.output(), "");
-        assert_eq!(response.content().first(), AssistantContent::text(""));
+        assert_eq!(
+            response.content().first(),
+            Some(&AssistantContent::text(""))
+        );
     }
 
     #[test]
@@ -1287,9 +1292,8 @@ mod tests {
         // An explicitly-set `content` (e.g. the streaming surface's structured
         // final turn) must survive a serialize/deserialize round-trip and is not
         // clobbered by the output-derived fallback.
-        let response = PromptResponse::new("visible text", Usage::new()).with_content(
-            rig_core::OneOrMany::one(AssistantContent::text("structured")),
-        );
+        let response = PromptResponse::new("visible text", Usage::new())
+            .with_content(vec![AssistantContent::text("structured")]);
 
         let value = serde_json::to_value(&response).expect("serialize prompt response");
         assert!(
@@ -1304,7 +1308,7 @@ mod tests {
         // output-derived fallback only fills a genuinely absent `content`. (Compare
         // the text directly to sidestep the unrelated `Text::additional_params`
         // serde round-trip asymmetry.)
-        let AssistantContent::Text(text) = round.content().first() else {
+        let Some(AssistantContent::Text(text)) = round.content().first() else {
             panic!("expected text content, got {:?}", round.content().first());
         };
         assert_eq!(text.text, "structured");
@@ -1315,7 +1319,7 @@ mod tests {
         // Serialize *and* deserialize both route through `PromptResponseRepr`, so
         // the two directions agree on `content`'s wire shape (an `Option`).
         // Routing only deserialize through the shadow would make serialize write a
-        // bare `OneOrMany` while deserialize expects an `Option`, breaking
+        // bare `Vec` while deserialize expects an `Option`, breaking
         // round-trips for positional / non-self-describing formats. Assert this
         // structurally: the message content types use `#[serde(flatten)]`, which no
         // length-prefixed binary format can encode, and self-describing formats
@@ -1396,7 +1400,7 @@ mod tests {
     }
 
     fn validate_follow_up_tool_history(request: &CompletionRequest) {
-        let history = request.chat_history.iter().cloned().collect::<Vec<_>>();
+        let history = request.chat_history.to_vec();
         assert_eq!(
             history.len(),
             3,
@@ -1408,7 +1412,7 @@ mod tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::Text(text) if text.text == "do tool work"
+                    Some(UserContent::Text(text)) if text.text == "do tool work"
                 )
         ));
 
@@ -1420,7 +1424,7 @@ mod tests {
             Some(Message::Assistant { content, .. })
                 if matches!(
                     content.first(),
-                    AssistantContent::ToolCall(tool_call)
+                    Some(AssistantContent::ToolCall(tool_call))
                         if tool_call.id == "tool_call_1"
                             && tool_call.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
@@ -1433,7 +1437,7 @@ mod tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::ToolResult(tool_result)
+                    Some(UserContent::ToolResult(tool_result))
                         if tool_result.call == "tool_call_1"
                             && tool_result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
@@ -1859,7 +1863,7 @@ mod tests {
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let retry_history = requests[1].chat_history.to_vec();
         assert_eq!(retry_history.len(), 3);
         assert!(matches!(
             retry_history.get(1),
@@ -2417,7 +2421,7 @@ mod tests {
             Some(Message::User { content })
                 if matches!(
                     content.first(),
-                    UserContent::Text(text) if text.text == "do tool work"
+                    Some(UserContent::Text(text)) if text.text == "do tool work"
                 )
         ));
         assert!(history.iter().any(|message| matches!(
@@ -2425,7 +2429,7 @@ mod tests {
             Message::Assistant { content, .. }
                 if matches!(
                     content.first(),
-                    AssistantContent::ToolCall(tool_call)
+                    Some(AssistantContent::ToolCall(tool_call))
                         if tool_call.id == "tool_call_1"
                             && tool_call.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
@@ -2437,7 +2441,7 @@ mod tests {
             Message::User { content }
                 if matches!(
                     content.first(),
-                    UserContent::ToolResult(tool_result)
+                    Some(UserContent::ToolResult(tool_result))
                         if tool_result.call == "tool_call_1"
                             && tool_result.provider.as_ref().is_some_and(
                                 |provider| provider.call_id == "call_1"
@@ -2511,7 +2515,7 @@ mod tests {
             Message::Assistant { content, .. }
                 if matches!(
                     content.first(),
-                    AssistantContent::Text(text)
+                    Some(AssistantContent::Text(text))
                         if text.text.is_empty()
                             && text.additional_params.as_ref() == Some(&metadata)
                 )
@@ -2543,11 +2547,7 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let received = recorded.requests()[0].chat_history.to_vec();
         assert_eq!(
             received.len(),
             3,
@@ -2595,16 +2595,12 @@ mod tests {
         let appends = memory.append_count();
         assert_eq!(appends, 0, "append skipped");
 
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let received = recorded.requests()[0].chat_history.to_vec();
         assert_eq!(received.len(), 2, "caller history (1) + current prompt");
         assert!(matches!(
             received.first(),
             Some(Message::User { content })
-                if matches!(content.first(), UserContent::Text(t) if t.text == "from-caller")
+                if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "from-caller")
         ));
     }
 
@@ -2708,7 +2704,7 @@ mod tests {
             matches!(
                 stored.first(),
                 Some(Message::User { content })
-                    if matches!(content.first(), UserContent::Text(t) if t.text == "old-q")
+                    if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "old-q")
             ),
             "loaded history is preserved once at the front: {stored:?}"
         );
@@ -2852,11 +2848,7 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let received = recorded.requests()[0]
-            .chat_history
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let received = recorded.requests()[0].chat_history.to_vec();
         assert_eq!(
             received.len(),
             3,

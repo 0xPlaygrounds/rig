@@ -968,7 +968,7 @@ pub(crate) async fn completion_response_from_raw_choices(
     // message text only in the terminal body while streaming other kinds as
     // deltas. A replay with no message text takes the body's message content;
     // everything replayed is kept.
-    let mut contents = stream.choice.iter().cloned().collect::<Vec<_>>();
+    let mut contents = stream.choice.to_vec();
     // Presence of ANY streamed text — even whitespace — means the deltas were
     // the content channel; merging the body then would duplicate it.
     let replay_has_message_text = contents.iter().any(|content| {
@@ -987,7 +987,11 @@ pub(crate) async fn completion_response_from_raw_choices(
                 .flat_map(<Vec<completion::AssistantContent>>::from),
         );
     }
-    let choice = crate::OneOrMany::many(contents).unwrap_or_else(|_| stream.choice.clone());
+    let choice = if contents.is_empty() {
+        stream.choice.clone()
+    } else {
+        contents
+    };
 
     let terminal = stream.response.clone();
     let usage = terminal
@@ -1027,7 +1031,7 @@ pub(crate) async fn completion_response_from_raw_choices(
     ))
 }
 
-fn choice_is_empty(choice: &crate::OneOrMany<completion::AssistantContent>) -> bool {
+fn choice_is_empty(choice: &[completion::AssistantContent]) -> bool {
     choice.iter().all(|content| match content {
         completion::AssistantContent::Text(text) => text.text.trim().is_empty(),
         completion::AssistantContent::Reasoning(reasoning) => reasoning.content.is_empty(),

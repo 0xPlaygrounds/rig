@@ -1653,7 +1653,6 @@ mod migrated_tests {
         Tool, ToolContext, ToolExecutionError, ToolSet,
         server::{ToolServer, ToolServerHandle},
     };
-    use rig_core::OneOrMany;
     use rig_core::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
     };
@@ -1788,7 +1787,7 @@ mod migrated_tests {
     #[derive(Clone, Debug, PartialEq)]
     struct CanonicalResponseSnapshot {
         prompt: Message,
-        content: OneOrMany<AssistantContent>,
+        content: Vec<AssistantContent>,
         usage: Usage,
         message_id: Option<String>,
     }
@@ -1797,7 +1796,7 @@ mod migrated_tests {
     struct CanonicalResponseHook {
         blocking: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
         streaming: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
-        committed: Arc<Mutex<Vec<OneOrMany<AssistantContent>>>>,
+        committed: Arc<Mutex<Vec<Vec<AssistantContent>>>>,
     }
 
     impl AgentHook for CanonicalResponseHook {
@@ -1924,7 +1923,7 @@ mod migrated_tests {
             *hook.blocking.lock().expect("blocking snapshots"),
             [CanonicalResponseSnapshot {
                 prompt,
-                content: OneOrMany::one(AssistantContent::text("canonical response")),
+                content: vec![AssistantContent::text("canonical response")],
                 usage: canonical_usage(),
                 message_id: Some("msg-canonical".to_string()),
             }]
@@ -7782,11 +7781,11 @@ mod migrated_tests {
             )
             .build()
             .runner(Message::User {
-                content: OneOrMany::one(UserContent::image_url(
+                content: vec![UserContent::image_url(
                     "https://example.com/prompt.png",
                     None,
                     None,
-                )),
+                )],
             })
             .history(vec![
                 Message::user("older history query"),
@@ -7961,11 +7960,11 @@ mod migrated_tests {
             )
             .build()
             .runner(Message::User {
-                content: OneOrMany::one(UserContent::image_url(
+                content: vec![UserContent::image_url(
                     "https://example.com/blocking.png",
                     None,
                     None,
-                )),
+                )],
             })
             .history(vec![
                 Message::user("older blocking history query"),
@@ -8006,11 +8005,11 @@ mod migrated_tests {
         )
         .build()
         .runner(Message::User {
-            content: OneOrMany::one(UserContent::image_url(
+            content: vec![UserContent::image_url(
                 "https://example.com/streaming.png",
                 None,
                 None,
-            )),
+            )],
         })
         .history(vec![
             Message::user("older streaming history query"),
@@ -9532,8 +9531,8 @@ mod migrated_tests {
 
         let requests = model.requests();
         assert_eq!(requests.len(), 2);
-        let first = requests[0].chat_history.iter().cloned().collect::<Vec<_>>();
-        let second = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let first = requests[0].chat_history.to_vec();
+        let second = requests[1].chat_history.to_vec();
         assert_eq!(first, vec![Message::user("question")]);
         assert_eq!(
             second, first,
@@ -9575,11 +9574,7 @@ mod migrated_tests {
         );
         let second_request = &model.requests()[1];
         assert_eq!(
-            second_request
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            second_request.chat_history.to_vec(),
             vec![
                 Message::user("question"),
                 Message::assistant("rejected"),
@@ -9621,11 +9616,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1]
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            model.requests()[1].chat_history.to_vec(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),
@@ -9812,11 +9803,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1]
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            model.requests()[1].chat_history.to_vec(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),
@@ -10132,7 +10119,7 @@ mod migrated_tests {
         let shared_hook = BoundedResponseRetry::new("rejected", 1, TestRetryMode::Repeat);
         let first_ctx = HookContext::new(false, None);
         let second_ctx = HookContext::new(false, None);
-        let content = OneOrMany::one(AssistantContent::text("rejected"));
+        let content = vec![AssistantContent::text("rejected")];
         let first_event = ModelTurnFinished {
             turn: 1,
             content: &content,
@@ -10156,8 +10143,8 @@ mod migrated_tests {
         let same_run_ctx = HookContext::new(false, None);
         let first_hook = BoundedResponseRetry::new("first", 1, TestRetryMode::Repeat);
         let second_hook = BoundedResponseRetry::new("second", 1, TestRetryMode::Repeat);
-        let first_content = OneOrMany::one(AssistantContent::text("first"));
-        let second_content = OneOrMany::one(AssistantContent::text("second"));
+        let first_content = vec![AssistantContent::text("first")];
+        let second_content = vec![AssistantContent::text("second")];
         let first_action = first_hook
             .on_model_turn_finished(
                 &same_run_ctx,
@@ -10201,7 +10188,7 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn model_turn_action_short_circuits_flat_and_nested_hook_stacks() {
-        let content = OneOrMany::one(AssistantContent::text("response"));
+        let content = vec![AssistantContent::text("response")];
         let event = ModelTurnFinished {
             turn: 1,
             content: &content,

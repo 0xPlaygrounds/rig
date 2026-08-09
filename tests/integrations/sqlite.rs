@@ -15,7 +15,7 @@ use rig::sqlite::{
 };
 use rig::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
@@ -274,7 +274,7 @@ async fn insert_documents_test() {
     assert_eq!(embedding_count, 3);
 }
 
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, OneOrMany<Embedding>)> {
+async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, Vec<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

@@ -75,7 +75,6 @@ use tokio::sync::{Mutex, RwLock};
 use crate::tool::ErasedTool;
 use crate::tool::server::{ManagedToolToken, ToolServerHandle};
 use crate::tool::{ToolContext, ToolExecutionError, ToolOutput, ToolResult};
-use rig_core::OneOrMany;
 use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
@@ -431,13 +430,8 @@ fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutio
         mapped.insert(0, ToolResultContent::json(structured.clone()));
     }
 
-    let mut mapped = mapped.into_iter();
-    if let Some(first) = mapped.next() {
-        let mut ordered = OneOrMany::one(first);
-        for block in mapped {
-            ordered.push(block);
-        }
-        return Ok(ToolOutput::content(ordered));
+    if !mapped.is_empty() {
+        return Ok(ToolOutput::content(mapped));
     }
 
     if result.is_error == Some(true) {
@@ -1108,7 +1102,7 @@ mod tests {
             .content
             .push(ContentBlock::text("human-readable note"));
 
-        let mut expected = OneOrMany::one(RigToolResultContent::json(value));
+        let mut expected = vec![RigToolResultContent::json(value)];
         expected.push(RigToolResultContent::image_base64(
             "aW1hZ2U=",
             Some(ImageMediaType::PNG),
@@ -1223,10 +1217,10 @@ mod tests {
         let mut context = ToolContext::new();
         let result = execute(&fixture, "{}", &mut context).await;
 
-        let mut expected_content = OneOrMany::one(RigToolResultContent::json(json!({
+        let mut expected_content = vec![RigToolResultContent::json(json!({
             "answer": 42,
             "source": "fixture"
-        })));
+        }))];
         expected_content.push(RigToolResultContent::text("before"));
         expected_content.push(RigToolResultContent::image_base64(
             "aGVsbG8=",

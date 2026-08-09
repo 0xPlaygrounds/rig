@@ -1215,7 +1215,7 @@ mod tests {
         assert_eq!(normalized.usage.total_tokens, 3);
         assert!(matches!(
             normalized.choice.first(),
-            crate::completion::AssistantContent::Text(text) if text.text == "partial"
+            Some(crate::completion::AssistantContent::Text(text)) if text.text == "partial"
         ));
 
         server.await.expect("server task should finish");
@@ -1397,7 +1397,7 @@ mod tests {
 
         assert!(matches!(
             normalized.choice.first(),
-            crate::completion::AssistantContent::Text(text) if text.text == "hello there"
+            Some(crate::completion::AssistantContent::Text(text)) if text.text == "hello there"
         ));
         assert_eq!(normalized.message_id.as_deref(), Some("msg_terminal_1"));
 
@@ -1479,7 +1479,7 @@ mod tests {
 
         assert!(matches!(
             normalized.choice.first(),
-            crate::completion::AssistantContent::Text(text) if text.text == "partial from body"
+            Some(crate::completion::AssistantContent::Text(text)) if text.text == "partial from body"
         ));
         assert_eq!(
             normalized.finish_reason(),

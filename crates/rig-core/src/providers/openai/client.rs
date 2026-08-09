@@ -307,11 +307,11 @@ pub(crate) enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use crate::client::{CompletionClient, EmbeddingsClient};
+    use crate::message;
     use crate::message::ImageDetail;
     use crate::providers::openai::{
         AssistantContent, Function, ImageUrl, Message, ToolCall, ToolType, UserContent,
     };
-    use crate::{OneOrMany, message};
     use serde_path_to_error::deserialize;
 
     #[test]
@@ -507,12 +507,12 @@ mod tests {
     #[test]
     fn test_message_to_message_conversion() {
         let user_message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::text("Hello")),
+            content: vec![message::UserContent::text("Hello")],
         };
 
         let assistant_message = message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::text("Hi there!")),
+            content: vec![message::AssistantContent::text("Hi there!")],
         };
 
         let converted_user_message: Vec<Message> = user_message.clone().try_into().unwrap();
@@ -522,7 +522,7 @@ mod tests {
         match converted_user_message[0].clone() {
             Message::User { content, .. } => {
                 assert_eq!(
-                    content.first(),
+                    content[0],
                     UserContent::Text {
                         text: "Hello".to_string()
                     }
@@ -555,9 +555,9 @@ mod tests {
     #[test]
     fn test_message_from_message_conversion() {
         let user_message = Message::User {
-            content: OneOrMany::one(UserContent::Text {
+            content: vec![UserContent::Text {
                 text: "Hello".to_string(),
-            }),
+            }],
             name: None,
         };
 
@@ -580,17 +580,14 @@ mod tests {
 
         match converted_user_message.clone() {
             message::Message::User { content } => {
-                assert_eq!(content.first(), message::UserContent::text("Hello"));
+                assert_eq!(content[0], message::UserContent::text("Hello"));
             }
             _ => panic!("Expected user message"),
         }
 
         match converted_assistant_message.clone() {
             message::Message::Assistant { content, .. } => {
-                assert_eq!(
-                    content.first(),
-                    message::AssistantContent::text("Hi there!")
-                );
+                assert_eq!(content[0], message::AssistantContent::text("Hi there!"));
             }
             _ => panic!("Expected assistant message"),
         }
@@ -606,9 +603,9 @@ mod tests {
     #[test]
     fn test_user_message_single_text_serializes_as_string() {
         let user_message = Message::User {
-            content: OneOrMany::one(UserContent::Text {
+            content: vec![UserContent::Text {
                 text: "Hello world".to_string(),
-            }),
+            }],
             name: None,
         };
 
@@ -621,7 +618,7 @@ mod tests {
     #[test]
     fn test_user_message_multiple_parts_serializes_as_array() {
         let user_message = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::Text {
                     text: "What's in this image?".to_string(),
                 },
@@ -631,8 +628,7 @@ mod tests {
                         detail: Some(ImageDetail::default()),
                     },
                 },
-            ])
-            .unwrap(),
+            ],
             name: None,
         };
 
@@ -646,12 +642,12 @@ mod tests {
     #[test]
     fn test_user_message_single_image_serializes_as_array() {
         let user_message = Message::User {
-            content: OneOrMany::one(UserContent::Image {
+            content: vec![UserContent::Image {
                 image_url: ImageUrl {
                     url: "https://example.com/image.jpg".to_string(),
                     detail: Some(ImageDetail::default()),
                 },
-            }),
+            }],
             name: None,
         };
 

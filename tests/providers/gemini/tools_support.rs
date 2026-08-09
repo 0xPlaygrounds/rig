@@ -23,7 +23,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::OneOrMany;
 use rig::agent::{
     AgentHook, ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
 };
@@ -388,9 +387,11 @@ impl Tool for BadgeImageTool {
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        Ok(ToolOutput::content(OneOrMany::one(
-            ToolResultContent::image_base64(RED_PIXEL_PNG_BASE64, Some(ImageMediaType::PNG), None),
-        )))
+        Ok(ToolOutput::content(vec![ToolResultContent::image_base64(
+            RED_PIXEL_PNG_BASE64,
+            Some(ImageMediaType::PNG),
+            None,
+        )]))
     }
 }
 

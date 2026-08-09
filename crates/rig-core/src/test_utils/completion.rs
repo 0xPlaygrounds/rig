@@ -6,12 +6,11 @@ use std::{
 };
 
 use crate::{
-    OneOrMany,
     completion::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
         Usage,
     },
-    message::{ToolCall, ToolFunction},
+    message::{EmptyListError, ToolCall, ToolFunction, require_non_empty},
     streaming::StreamingCompletionResponse,
 };
 
@@ -53,7 +52,7 @@ pub struct MockTurn {
 
 #[derive(Clone, Debug)]
 struct MockTurnResponse {
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
     response_id: Option<String>,
@@ -95,7 +94,7 @@ impl MockTurn {
     pub fn from_content(content: AssistantContent) -> Self {
         Self {
             response: Ok(MockTurnResponse {
-                choice: OneOrMany::one(content),
+                choice: vec![content],
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
@@ -106,10 +105,10 @@ impl MockTurn {
     /// Create a response turn from multiple assistant content items.
     pub fn from_contents(
         content: impl IntoIterator<Item = AssistantContent>,
-    ) -> Result<Self, crate::one_or_many::EmptyListError> {
+    ) -> Result<Self, EmptyListError> {
         Ok(Self {
             response: Ok(MockTurnResponse {
-                choice: OneOrMany::many(content)?,
+                choice: require_non_empty(content.into_iter().collect(), || EmptyListError)?,
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
@@ -318,7 +317,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::user(prompt)),
+            chat_history: vec![Message::user(prompt)],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -345,7 +344,7 @@ mod tests {
         assert_eq!(first.message_id.as_deref(), Some("msg_1"));
         assert!(matches!(
             first.choice.first(),
-            AssistantContent::Text(text) if text.text == "first"
+            Some(AssistantContent::Text(text)) if text.text == "first"
         ));
 
         let second = model
@@ -354,7 +353,7 @@ mod tests {
             .expect("second scripted turn should succeed");
         assert!(matches!(
             second.choice.first(),
-            AssistantContent::ToolCall(tool_call)
+            Some(AssistantContent::ToolCall(tool_call))
                 if tool_call.id == "tool_1"
                     && tool_call
                         .provider

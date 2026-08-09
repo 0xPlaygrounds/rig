@@ -3,7 +3,6 @@
 //! agents with the correct tracing style so you can emit the right traces for platforms like Langfuse,
 //! and more.
 
-use crate::OneOrMany;
 use crate::completion::{AssistantContent, Message, Usage};
 use crate::message::{
     DocumentSourceKind, Image, MimeType, Reasoning, ReasoningContent, ToolResult,
@@ -611,7 +610,7 @@ fn tool_result_response(result: &ToolResult) -> serde_json::Value {
     }
 }
 
-fn user_parts(content: &OneOrMany<UserContent>) -> Vec<TelemetryPart> {
+fn user_parts(content: &[UserContent]) -> Vec<TelemetryPart> {
     content
         .iter()
         .filter_map(|content| match content {
@@ -636,7 +635,7 @@ fn user_parts(content: &OneOrMany<UserContent>) -> Vec<TelemetryPart> {
         .collect()
 }
 
-fn assistant_parts(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryPart> {
+fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
     content
         .iter()
         .flat_map(|content| match content {
@@ -676,7 +675,7 @@ fn input_messages(messages: &[Message]) -> Vec<TelemetryChatMessage> {
         .collect()
 }
 
-fn output_messages(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryOutputMessage> {
+fn output_messages(content: &[AssistantContent]) -> Vec<TelemetryOutputMessage> {
     let finish_reason = if content
         .iter()
         .any(|content| matches!(content, AssistantContent::ToolCall(_)))
@@ -731,11 +730,7 @@ pub fn record_model_input(span: &tracing::Span, messages: &[Message], enabled: b
 /// Message content can contain model responses, tool calls, and other sensitive
 /// or high-cardinality data. Keep this disabled unless the caller has explicitly
 /// opted in for debugging/observability.
-pub fn record_model_output(
-    span: &tracing::Span,
-    content: &OneOrMany<AssistantContent>,
-    enabled: bool,
-) {
+pub fn record_model_output(span: &tracing::Span, content: &[AssistantContent], enabled: bool) {
     if !enabled || span.is_disabled() {
         return;
     }
@@ -872,11 +867,11 @@ mod tests {
             ])
         );
 
-        let output = OneOrMany::one(AssistantContent::tool_call(
+        let output = vec![AssistantContent::tool_call(
             "call_1",
             "weather",
             json!({"city": "Paris"}),
-        ));
+        )];
         assert_eq!(
             serde_json::to_value(output_messages(&output))
                 .expect("semantic-convention output DTOs serialize"),
@@ -892,7 +887,7 @@ mod tests {
             }])
         );
 
-        let text_output = OneOrMany::one(AssistantContent::text("done"));
+        let text_output = vec![AssistantContent::text("done")];
         assert_eq!(
             serde_json::to_value(output_messages(&text_output))
                 .expect("semantic-convention text output DTOs serialize"),

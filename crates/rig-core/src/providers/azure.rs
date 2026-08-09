@@ -844,7 +844,6 @@ mod azure_tests {
     use super::*;
     use crate::completion::{CompletionError, CompletionRequest};
 
-    use crate::OneOrMany;
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
     use crate::completion::CompletionModel;
     use crate::embeddings::EmbeddingModel;
@@ -1013,7 +1012,7 @@ mod azure_tests {
             .completion(CompletionRequest {
                 model: Some("other-deployment".to_string()),
                 preamble: None,
-                chat_history: OneOrMany::one("Hello!".into()),
+                chat_history: vec!["Hello!".into()],
                 documents: vec![],
                 max_tokens: None,
                 temperature: None,
@@ -1061,7 +1060,7 @@ mod azure_tests {
             .completion(CompletionRequest {
                 model: None,
                 preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: OneOrMany::one("Hello!".into()),
+                chat_history: vec!["Hello!".into()],
                 documents: vec![],
                 max_tokens: Some(100),
                 temperature: Some(0.0),
@@ -1129,7 +1128,7 @@ mod azure_tests {
             .completion(CompletionRequest {
                 model: None,
                 preamble: Some("You are a helpful assistant.".to_string()),
-                chat_history: OneOrMany::one("Hello!".into()),
+                chat_history: vec!["Hello!".into()],
                 documents: vec![],
                 max_tokens: Some(100),
                 temperature: Some(0.0),

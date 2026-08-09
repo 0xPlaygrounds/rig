@@ -18,7 +18,7 @@ use qdrant_client::{
     },
 };
 use rig_core::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
@@ -89,7 +89,7 @@ where
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         let collection_name = self.query_params.collection_name.clone();
 

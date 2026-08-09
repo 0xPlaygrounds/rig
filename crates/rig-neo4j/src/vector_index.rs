@@ -6,7 +6,7 @@
 
 use neo4rs::{Graph, Query};
 use rig_core::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
@@ -302,7 +302,7 @@ where
     /// `node_label`, defaulting to [`DEFAULT_NODE_LABEL`].
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         let node_label = self
             .index_config

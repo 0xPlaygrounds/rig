@@ -1061,6 +1061,100 @@ merged `RequestPatch` and the previous model, and may pick a different handle
 per model call). `CompletionModel::capabilities()` is captured by value when
 the handle is created.
 
+### Message content is `Vec<T>`, not `OneOrMany<T>`
+
+`OneOrMany<T>` is deleted. The three message content positions now hold a
+plain `Vec`:
+
+| Before | After |
+| --- | --- |
+| `Message::User { content: OneOrMany<UserContent> }` | `Message::User { content: Vec<UserContent> }` |
+| `Message::Assistant { content: OneOrMany<AssistantContent>, .. }` | `Message::Assistant { content: Vec<AssistantContent>, .. }` |
+| `ToolResult { content: OneOrMany<ToolResultContent>, .. }` | `ToolResult { content: Vec<ToolResultContent>, .. }` |
+
+`OneOrMany` existed to make "no content" unrepresentable, and it bought that
+guarantee at the cost of a bespoke collection that every caller had to learn:
+its own iterator family, its own constructors, and — the part that caused real
+bugs — method names that read like slice methods but did not behave like them.
+`first()` returned an owned `T` rather than `Option<&T>`, and `is_empty()`
+always returned `false`. Downstream code that reached for the familiar name got
+different semantics, and the type it was protecting could still be built empty
+one layer down.
+
+Construction becomes ordinary `vec!`:
+
+```rust
+// before
+Message::User { content: OneOrMany::one(UserContent::text("hi")) }
+let many = OneOrMany::many(items)?;
+
+// after
+Message::User { content: vec![UserContent::text("hi")] };
+let many = items;
+```
+
+Method translation, including the traps:
+
+| `OneOrMany` | `Vec` |
+| --- | --- |
+| `OneOrMany::one(x)` | `vec![x]` |
+| `OneOrMany::many(items)?` | `items` (add your own emptiness check if you need one) |
+| `OneOrMany::merge(iters)?` | `iters.into_iter().flatten().collect()` |
+| `OneOrMany::from_iter_optional(i)` | collect, then map the empty case to `None` yourself |
+| `.first()` → owned `T` | `.first()` → `Option<&T>`; use `.first().cloned()` or `v[0].clone()` |
+| `.first_ref()` → `&T` | `.first()` → `Option<&T>` |
+| `.rest()` | `v[1..].to_vec()` |
+| `.map(f)` | `.into_iter().map(f).collect()` |
+| `.try_map(f)` | `.into_iter().map(f).collect::<Result<Vec<_>, _>>()?` |
+| `.is_empty()` (always `false`) | a real emptiness check |
+| `.iter()`, `.len()`, `.push()`, `.insert()`, `.into_iter()` | unchanged |
+
+Where the type used to reject empty input, that check is now explicit. If you
+were relying on `OneOrMany::many` to reject an empty list, use
+`rig::message::require_non_empty`, which takes the error you want to raise:
+
+```rust
+use rig::message::require_non_empty;
+
+let content = require_non_empty(parts, || {
+    CompletionError::ResponseError("provider returned no content".into())
+})?;
+```
+
+`EmptyListError` moved from `rig::EmptyListError` (the deleted `one_or_many`
+module) to `rig::message::EmptyListError`; the re-export at the crate root
+still resolves.
+
+**The wire format does not change.** `OneOrMany<T>` already serialized as a
+JSON array, exactly like `Vec<T>`, so persisted histories and provider request
+bodies are byte-identical across this change. The one deserialization
+difference: an empty array used to be rejected by the type and now decodes to
+an empty `Vec`.
+
+**Provider behavior does not change either.** Providers that previously had to
+fabricate a single empty text part to satisfy the non-empty container still
+produce that part today — the migration preserves it verbatim. Replacing those
+placeholders with a genuinely empty choice is a follow-up change, kept separate
+so that this one is a pure type substitution you can review mechanically.
+
+#### Three OpenAI conversions are inherent methods now, not `From`/`TryFrom`
+
+This one is forced by the orphan rule rather than chosen. `impl
+TryFrom<OneOrMany<X>> for Vec<Y>` was only legal because `OneOrMany` was a
+rig-owned type; with `Vec<X>` as the source, neither side of the impl is local
+to the crate and rustc rejects it (E0117). The three affected conversions
+became inherent constructors with identical bodies:
+
+| Before | After |
+| --- | --- |
+| `Vec::<openai::Message>::try_from(user_content)` / `.try_into()` | `openai::Message::try_from_user_content(user_content)` |
+| `Vec::<openai::Message>::try_from(assistant_content)` / `.try_into()` | `openai::Message::try_from_assistant_content(assistant_content)` |
+| `Vec::<ReasoningSummary>::from(strings)` / `.into()` | `ReasoningSummary::many_from_strings(strings)` |
+
+Conversions whose source type is rig-owned — including `TryFrom<Message> for
+Vec<openai::Message>` and `TryFrom<Message> for Vec<InputItem>` — are
+unaffected and remain trait impls.
+
 ---
 
 ## 0.40 → 0.41
@@ -2120,6 +2214,10 @@ Renamed or relocated items, for searching.
 
 | Old | New | Version |
 | --- | --- | --- |
+| `rig_core::OneOrMany` / `rig_core::one_or_many` | `Vec<T>` | next |
+| `rig_core::EmptyListError` | `rig_core::message::EmptyListError` | next |
+| `OneOrMany::many(..)?` (rejects empty) | `rig_core::message::require_non_empty` | next |
+| `one_or_many::string_or_one_or_many` | `json_utils::string_or_vec` | next |
 | `rig_core::tool::Tool` (portable) | `rig_core::tool::PortableTool` | 0.41 |
 | `rig_agent::<item>` (portable re-export) | `rig_agent::core::<item>` | 0.41 |
 | `client.agent(...)` inherent method | `AgentClientExt::agent` (via `rig::prelude::*`) | 0.41 |

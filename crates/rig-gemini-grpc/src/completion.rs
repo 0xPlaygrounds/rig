@@ -10,12 +10,12 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use base64::Engine as _;
-use rig_core::OneOrMany;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::message::{self, MimeType, Reasoning};
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, tool_parameters_to_schema,
 };
+use rig_core::require_non_empty;
 use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
 
@@ -309,7 +309,7 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
 }
 
 fn split_system_messages_from_history(
-    history: OneOrMany<message::Message>,
+    history: Vec<message::Message>,
 ) -> (Vec<String>, Vec<message::Message>) {
     let mut system = Vec::new();
     let mut remaining = Vec::new();
@@ -569,7 +569,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             assistant_contents.push(assistant_content);
         }
 
-        let choice = OneOrMany::many(assistant_contents).map_err(|_| {
+        let choice = require_non_empty(assistant_contents, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )
@@ -1067,21 +1067,21 @@ mod tests {
 
         let call = |wire_id: &str, name: &str| message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+            content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 wire_id,
                 ToolFunction {
                     name: name.to_owned(),
                     arguments: serde_json::json!({}),
                 },
-            ))),
+            ))],
         };
         let result = |wire_id: &str, name: &str| message::Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+            content: vec![message::UserContent::ToolResult(ToolResult {
                 call: ToolCallId::new_or_mint(wire_id),
                 provider: ProviderCallId::new(wire_id),
                 name: name.to_owned(),
-                content: OneOrMany::one(ToolResultContent::text("out")),
-            })),
+                content: vec![ToolResultContent::text("out")],
+            })],
         };
 
         let req = create_grpc_request(
@@ -1089,7 +1089,7 @@ mod tests {
             CompletionRequest {
                 model: None,
                 preamble: None,
-                chat_history: OneOrMany::many(vec![
+                chat_history: vec![
                     // Driver-built: the executed name travels as data (a
                     // repair hook renamed the call: `sum` ran, not `add`).
                     call("call_1", "add"),
@@ -1098,8 +1098,7 @@ mod tests {
                     // `call_abc` must never travel as the name.
                     call("call_abc", "get_weather"),
                     result("call_abc", "get_weather"),
-                ])
-                .expect("non-empty history"),
+                ],
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: None,
@@ -1152,7 +1151,7 @@ mod tests {
             CompletionRequest {
                 model: None,
                 preamble: None,
-                chat_history: OneOrMany::one(message::Message::user("forecast in Berlin?")),
+                chat_history: vec![message::Message::user("forecast in Berlin?")],
                 documents: Vec::new(),
                 tools: vec![tool],
                 temperature: None,

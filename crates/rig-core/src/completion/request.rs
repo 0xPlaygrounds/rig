@@ -33,11 +33,11 @@
 //! ```
 
 use super::message::{AssistantContent, DocumentMediaType};
+use crate::http_client;
 use crate::message::ToolChoice;
 use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::{OneOrMany, http_client};
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -277,7 +277,7 @@ impl FinishReason {
 pub struct CompletionResponse {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
     /// The identifier the provider assigned to the *assistant message* itself,
@@ -324,11 +324,7 @@ pub struct CompletionResponse {
 impl CompletionResponse {
     /// Create a response from its required parts; optional metadata starts
     /// unset and is filled in with the `with_*` helpers.
-    pub fn new(
-        choice: OneOrMany<AssistantContent>,
-        usage: Usage,
-        provider: impl Into<String>,
-    ) -> Self {
+    pub fn new(choice: Vec<AssistantContent>, usage: Usage, provider: impl Into<String>) -> Self {
         Self {
             choice,
             usage,
@@ -426,7 +422,7 @@ impl CompletionResponse {
 /// itself, so the wire format is unchanged.
 #[derive(Deserialize)]
 struct CompletionResponseRepr {
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     usage: Usage,
     #[serde(default)]
     message_id: Option<String>,
@@ -682,7 +678,7 @@ pub struct CompletionRequest {
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
     /// The very last message will always be the prompt (hence why there is *always* one)
-    pub chat_history: OneOrMany<Message>,
+    pub chat_history: Vec<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
     /// The tools to be sent to the completion model provider
@@ -759,11 +755,15 @@ impl CompletionRequest {
             })
             .collect::<Vec<_>>();
 
-        OneOrMany::from_iter_optional(messages).map(|content| Message::User { content })
+        if messages.is_empty() {
+            None
+        } else {
+            Some(Message::User { content: messages })
+        }
     }
 
     pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
-        let mut chat_history = self.chat_history.iter().cloned().collect::<Vec<_>>();
+        let mut chat_history = self.chat_history.clone();
         if let Some(documents) = self.normalized_documents() {
             let insert_at = chat_history
                 .iter()
@@ -1125,10 +1125,8 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             chat_history.insert(0, Message::system(preamble));
         }
 
-        chat_history.push(prompt.clone());
+        chat_history.push(prompt);
 
-        let chat_history =
-            OneOrMany::from_iter_optional(chat_history).unwrap_or_else(|| OneOrMany::one(prompt));
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,
@@ -1166,21 +1164,20 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 #[cfg(test)]
 mod tests {
     use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
-    use crate::OneOrMany;
     use crate::message::AssistantContent;
 
-    fn tool_call_choice() -> OneOrMany<AssistantContent> {
-        OneOrMany::one(AssistantContent::tool_call(
+    fn tool_call_choice() -> Vec<AssistantContent> {
+        vec![AssistantContent::tool_call(
             "call_1",
             "lookup",
             serde_json::json!({"query": "rig"}),
-        ))
+        )]
     }
 
     #[test]
     fn normalized_response_round_trips_through_serde() {
         let response = CompletionResponse::new(
-            OneOrMany::one(AssistantContent::text("hello")),
+            vec![AssistantContent::text("hello")],
             Usage {
                 input_tokens: 3,
                 output_tokens: 2,
@@ -1230,7 +1227,7 @@ mod tests {
     #[test]
     fn deserializing_empty_identifiers_yields_none() {
         let mut encoded = serde_json::to_value(CompletionResponse::new(
-            OneOrMany::one(AssistantContent::text("hello")),
+            vec![AssistantContent::text("hello")],
             Usage::new(),
             "example",
         ))
@@ -1297,7 +1294,7 @@ mod tests {
     #[test]
     fn reconciliation_leaves_a_stop_without_tool_calls_alone() {
         let response = CompletionResponse::new(
-            OneOrMany::one(AssistantContent::text("done")),
+            vec![AssistantContent::text("done")],
             Usage::new(),
             "example",
         )
@@ -1387,12 +1384,12 @@ mod tests {
         assert!(matches!(
             &messages[2],
             Message::User { content }
-                if matches!(content.first(), UserContent::Text(text) if text.text == "history")
+                if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "history")
         ));
         assert!(matches!(
             &messages[3],
             Message::User { content }
-                if matches!(content.first(), UserContent::Text(text) if text.text == "prompt")
+                if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "prompt")
         ));
 
         let request = builder.build();
@@ -1463,7 +1460,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one("What is the capital of France?".into()),
+            chat_history: vec!["What is the capital of France?".into()],
             documents: vec![doc1, doc2],
             tools: Vec::new(),
             temperature: None,
@@ -1475,7 +1472,7 @@ mod tests {
         };
 
         let expected = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::document(
                     "<file id: doc1>\nDocument 1 text.\n</file>\n".to_string(),
                     Some(DocumentMediaType::TXT),
@@ -1484,8 +1481,7 @@ mod tests {
                     "<file id: doc2>\nDocument 2 text.\n</file>\n".to_string(),
                     Some(DocumentMediaType::TXT),
                 ),
-            ])
-            .expect("There will be at least one document"),
+            ],
         };
 
         assert_eq!(request.normalized_documents(), Some(expected));
@@ -1496,7 +1492,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one("What is the capital of France?".into()),
+            chat_history: vec!["What is the capital of France?".into()],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -1616,13 +1612,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),
                 Message::user("Earlier user turn"),
                 Message::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![test_document("doc1", "Document text.")],
             tools: Vec::new(),
             temperature: None,
@@ -1650,13 +1645,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("Leading system prompt"),
                 Message::assistant("Earlier assistant turn"),
                 Message::system("Mid-conversation instruction"),
                 Message::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![test_document("doc1", "Document text.")],
             tools: Vec::new(),
             temperature: None,
@@ -1688,13 +1682,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("System prompt"),
                 Message::user("Earlier user turn"),
                 Message::assistant("Earlier assistant turn"),
                 Message::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![test_document("doc1", "Document text.")],
             tools: Vec::new(),
             temperature: None,

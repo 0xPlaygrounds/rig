@@ -128,11 +128,11 @@ pub type CompletionModel<H = reqwest::Client> =
 mod tests {
     use crate::client::CompletionClient;
     use crate::completion::{CompletionError, CompletionModel};
+    use crate::message;
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAIRequestParams,
     };
     use crate::test_utils::RecordingHttpClient;
-    use crate::{OneOrMany, message};
 
     use super::super::client::Client;
 
@@ -178,10 +178,10 @@ mod tests {
     fn together_request_conversion_errors_when_all_messages_are_filtered() {
         let request = crate::completion::CompletionRequest {
             preamble: None,
-            chat_history: OneOrMany::one(message::Message::Assistant {
+            chat_history: vec![message::Message::Assistant {
                 id: None,
-                content: OneOrMany::one(message::AssistantContent::reasoning("hidden")),
-            }),
+                content: vec![message::AssistantContent::reasoning("hidden")],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,

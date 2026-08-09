@@ -683,7 +683,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse {
             )),
         }?;
 
-        let choice = crate::OneOrMany::many(content).map_err(|_| {
+        let choice = crate::require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )

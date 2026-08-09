@@ -4,9 +4,9 @@ use super::client::{MistralExt, Usage};
 use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::providers::openai;
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError},
     json_utils,
+    message::require_non_empty,
 };
 
 /// The latest version of the `codestral` Mistral model
@@ -225,7 +225,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             )),
         }?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
+        let choice = require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )

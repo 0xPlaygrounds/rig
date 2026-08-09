@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde::de::{self, Deserializer, SeqAccess, Visitor};
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
@@ -156,6 +156,24 @@ where
             A: SeqAccess<'de>,
         {
             Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+
+        /// A bare object is one element, not a malformed sequence.
+        ///
+        /// Several providers send a single structured content block unwrapped
+        /// (`"content": {"type": "text", ...}`) where the schema also permits
+        /// an array. Without this arm such a field fails to deserialize with
+        /// "invalid type: map, expected a string, sequence, or null". The
+        /// arm is load-bearing for the anthropic and openai content fields
+        /// that moved onto this helper: the deserializer they came from
+        /// accepted maps, so dropping the behaviour here would have been a
+        /// silent wire regression rather than a compile error.
+        fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+            Ok(vec![item])
         }
 
         fn visit_none<E>(self) -> Result<Vec<T>, E>

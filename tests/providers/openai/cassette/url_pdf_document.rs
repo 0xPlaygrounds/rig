@@ -6,7 +6,6 @@
 //! with 400 `mutually_exclusive_parameters`.
 //! See <https://platform.openai.com/docs/guides/pdf-files>.
 
-use rig::OneOrMany;
 use rig::client::AgentClientExt;
 use rig::completion::Prompt;
 use rig::message::{DocumentMediaType, Message, UserContent};
@@ -30,13 +29,12 @@ async fn url_pdf_document_prompt() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: OneOrMany::many(vec![
+                    content: vec![
                         UserContent::document_url(PDF_URL, Some(DocumentMediaType::PDF)),
                         UserContent::text(
                             "What is the title of this paper? Answer in one short sentence.",
                         ),
-                    ])
-                    .expect("content should be non-empty"),
+                    ],
                 })
                 .await
                 .expect("URL PDF document prompt should succeed");

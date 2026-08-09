@@ -34,7 +34,7 @@ use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
 use rig_core::embeddings::EmbeddingModel;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig_core::{Embed, OneOrMany, embeddings::Embedding};
+use rig_core::{Embed, embeddings::Embedding};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -156,7 +156,7 @@ where
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         let mut vectors: Vec<ApiVectorInput> = Vec::new();
 

@@ -10,7 +10,6 @@
 //! 5. repeats until the model returns a final text answer.
 
 use anyhow::{Result, bail};
-use rig::OneOrMany;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolCall, ToolChoice, UserContent};
 use rig::prelude::*;
@@ -95,7 +94,7 @@ impl Tool for Subtract {
     }
 }
 
-fn collect_tool_calls(choice: &OneOrMany<AssistantContent>) -> Vec<ToolCall> {
+fn collect_tool_calls(choice: &[AssistantContent]) -> Vec<ToolCall> {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -105,7 +104,7 @@ fn collect_tool_calls(choice: &OneOrMany<AssistantContent>) -> Vec<ToolCall> {
         .collect()
 }
 
-fn extract_text(choice: &OneOrMany<AssistantContent>) -> String {
+fn extract_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -125,7 +124,7 @@ fn tool_result_message(tool_call: &ToolCall, output: ToolOutput) -> Message {
         content,
     );
     Message::User {
-        content: OneOrMany::one(result),
+        content: vec![result],
     }
 }
 

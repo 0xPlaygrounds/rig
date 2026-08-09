@@ -5,7 +5,6 @@
 //! `reasoning.effort: high` + `include_reasoning: true`). Re-record them with:
 //! `RIG_PROVIDER_TEST_MODE=record OPENROUTER_API_KEY=... cargo test -p rig --all-features --test openrouter stream_encrypted_reasoning -- --test-threads=1`
 
-use rig::OneOrMany;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::prelude::*;
@@ -108,9 +107,7 @@ fn encrypted_blocks_of(reasoning: &rig::message::Reasoning) -> Vec<(Option<Strin
         .collect()
 }
 
-fn encrypted_blocks_in_choice(
-    choice: &OneOrMany<AssistantContent>,
-) -> Vec<(Option<String>, String)> {
+fn encrypted_blocks_in_choice(choice: &[AssistantContent]) -> Vec<(Option<String>, String)> {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -247,12 +244,12 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 content: stream.choice.clone(),
             };
             let tool_result_message = Message::User {
-        content: OneOrMany::one(UserContent::tool_result_for(
+        content: vec![UserContent::tool_result_for(
             tool_call.id.clone(),
             tool_call.provider.clone(),
             tool_call.function.name.clone(),
-            OneOrMany::one(ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")),
-        )),
+            vec![ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")],
+        )],
     };
 
             let followup = model
@@ -345,15 +342,15 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .expect("raw stream should yield lookup_harbor_label");
             let assistant_message = Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result_message = Message::User {
-        content: OneOrMany::one(UserContent::tool_result_for(
+        content: vec![UserContent::tool_result_for(
             tool_call.id.clone(),
             tool_call.provider.clone(),
             tool_call.function.name.clone(),
-            OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
-        )),
+            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
+        )],
     };
             let followup_request = model
                 .completion_request(

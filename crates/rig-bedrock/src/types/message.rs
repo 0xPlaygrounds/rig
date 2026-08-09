@@ -1,9 +1,8 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig_core::{
-    OneOrMany,
     completion::CompletionError,
-    message::{AssistantContent, Message, UserContent},
+    message::{AssistantContent, EmptyListError, Message, UserContent, require_non_empty},
 };
 
 use super::{assistant_content::RigAssistantContent, user_content::RigUserContent};
@@ -69,8 +68,9 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
                     .map(|rig_assistant_content| rig_assistant_content.0)
                     .collect::<Vec<AssistantContent>>();
 
-                let content = OneOrMany::many(assistant_content)
-                    .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+                let content = require_non_empty(assistant_content, || {
+                    CompletionError::RequestError(Box::new(EmptyListError))
+                })?;
 
                 Ok(RigMessage(Message::Assistant { content, id: None }))
             }
@@ -84,8 +84,9 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
                     .map(|user_content| user_content.0)
                     .collect::<Vec<UserContent>>();
 
-                let content = OneOrMany::many(user_content)
-                    .map_err(|e| CompletionError::RequestError(Box::new(e)))?;
+                let content = require_non_empty(user_content, || {
+                    CompletionError::RequestError(Box::new(EmptyListError))
+                })?;
                 Ok(RigMessage(Message::User { content }))
             }
             _ => Err(CompletionError::ProviderError(
@@ -110,15 +111,12 @@ impl TryFrom<super::converse_output::Message> for RigMessage {
 mod tests {
     use crate::types::message::RigMessage;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
-    use rig_core::{
-        OneOrMany,
-        message::{Message, UserContent},
-    };
+    use rig_core::message::{Message, UserContent};
 
     #[test]
     fn message_to_aws_message() {
         let message = Message::User {
-            content: OneOrMany::one(UserContent::Text("text".into())),
+            content: vec![UserContent::Text("text".into())],
         };
         let aws_message: Result<aws_bedrock::Message, _> = RigMessage(message).try_into();
         assert!(aws_message.is_ok());
