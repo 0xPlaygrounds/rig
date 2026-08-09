@@ -14,6 +14,7 @@ mod cassette {
     mod document_ordering;
     mod dynamic_tools;
     mod embeddings;
+    mod empty_content;
     mod extractor;
     mod generate_behaviors;
     mod generate_sessions;

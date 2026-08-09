@@ -4,6 +4,7 @@ mod cassette {
     mod agent;
     mod default_max_turns;
     mod document_file_id;
+    mod empty_content;
     mod empty_end_turn;
     mod image;
     mod messages_behaviors;

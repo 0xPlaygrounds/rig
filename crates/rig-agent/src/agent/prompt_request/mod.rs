@@ -576,12 +576,30 @@ pub(crate) const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
     "Tool not executed because another tool call in the same assistant turn was invalid.";
 
 /// Combine input history with new messages for building completion requests.
+///
+/// Empty assistant turns are dropped here, exactly as the drivers decline to
+/// record one after a model response: an empty turn is a legal provider
+/// outcome resolved by policy, and the policy is that it never reaches the
+/// wire. Without this, a caller-supplied history carrying one (a persisted
+/// conversation whose last turn was empty, or the legacy fabricated sentinel)
+/// would turn into a hard `CompletionRequest::new` error on the *next*
+/// prompt — an empty turn in history must not poison the turn after it.
 pub(crate) fn build_history_for_request(
     chat_history: Option<&[Message]>,
     new_messages: &[Message],
 ) -> Vec<Message> {
     let input = chat_history.unwrap_or(&[]);
-    input.iter().chain(new_messages.iter()).cloned().collect()
+    input
+        .iter()
+        .chain(new_messages.iter())
+        .filter(|message| {
+            !matches!(
+                message,
+                Message::Assistant { content, .. } if is_empty_assistant_turn(content)
+            )
+        })
+        .cloned()
+        .collect()
 }
 
 /// Build the full history for error reporting (input + new messages).

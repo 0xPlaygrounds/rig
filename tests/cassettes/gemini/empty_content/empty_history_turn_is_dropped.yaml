@@ -1,0 +1,39 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"For this conversation, the code word is lantern.","thought":false}],"role":"user"},{"parts":[{"text":"What is the code word? Reply with only the code word.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"lantern"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":25,"promptTokensDetails":[{"modality":"TEXT","tokenCount":25}],"serviceTier":"standard","thoughtsTokenCount":109,"totalTokenCount":135}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"For this conversation, the code word is lantern.","thought":false}],"role":"user"},{"parts":[{"text":"What is the code word? Reply with only the code word.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"lantern\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":40,\"totalTokenCount\":66}}\r\n\r\n"

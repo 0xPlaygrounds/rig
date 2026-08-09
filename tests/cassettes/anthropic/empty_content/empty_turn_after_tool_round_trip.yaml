@@ -1,0 +1,105 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"I finished the deploy.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"When the user reports their status, acknowledge it by calling the ping tool. Do not answer with any normal assistant text before or after the tool call. Once the tool result is available, the assistant turn is complete and you must end the turn with no content.","type":"text"}],"temperature":0.0,"tools":[{"description":"Return the current ping marker. Takes no arguments.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"ping"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"ping","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":607,"output_tokens":35,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"I finished the deploy.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{},"name":"ping","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"pong-crimson-7423","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"When the user reports their status, acknowledge it by calling the ping tool. Do not answer with any normal assistant text before or after the tool call. Once the tool result is available, the assistant turn is complete and you must end the turn with no content.","type":"text"}],"temperature":0.0,"tools":[{"description":"Return the current ping marker. Takes no arguments.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"ping"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":662,"output_tokens":2,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"I finished the deploy.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"When the user reports their status, acknowledge it by calling the ping tool. Do not answer with any normal assistant text before or after the tool call. Once the tool result is available, the assistant turn is complete and you must end the turn with no content.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Return the current ping marker. Takes no arguments.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"ping"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_3","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":607,"output_tokens":22,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{},"name":"ping","type":"tool_use"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":607,"output_tokens":35}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"I finished the deploy.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_2","input":{},"name":"ping","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"pong-crimson-7423","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"When the user reports their status, acknowledge it by calling the ping tool. Do not answer with any normal assistant text before or after the tool call. Once the tool result is available, the assistant turn is complete and you must end the turn with no content.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Return the current ping marker. Takes no arguments.","input_schema":{"properties":{},"required":[],"type":"object"},"name":"ping"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_4","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":662,"output_tokens":2,"service_tier":"standard"}},"type":"message_start"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":662,"output_tokens":2}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

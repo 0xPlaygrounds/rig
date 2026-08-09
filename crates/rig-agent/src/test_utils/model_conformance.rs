@@ -2099,6 +2099,336 @@ where
     )
 }
 
+// ================================================================
+// Empty-turn conformance (append to model_conformance.rs before tests/EOF)
+// ================================================================
+
+/// Records every chat history the wrapped model is asked to complete, on both
+/// surfaces, so a scenario can assert on what was actually *sent* rather than
+/// on what the driver reports back. Sits above the wire, so it behaves the
+/// same for live providers, cassette replays, and mocks.
+#[derive(Clone)]
+struct RequestRecordingModel<M> {
+    inner: M,
+    histories: Arc<Mutex<Vec<Vec<Message>>>>,
+}
+
+impl<M> RequestRecordingModel<M> {
+    fn new(inner: M) -> Self {
+        Self {
+            inner,
+            histories: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn histories(&self) -> Vec<Vec<Message>> {
+        lock_recover(&self.histories).clone()
+    }
+}
+
+impl<M: CompletionModel> CompletionModel for RequestRecordingModel<M> {
+    fn completion(
+        &self,
+        request: crate::completion::CompletionRequest,
+    ) -> impl std::future::Future<
+        Output = Result<crate::completion::CompletionResponse, CompletionError>,
+    > + rig_core::wasm_compat::WasmCompatSend {
+        lock_recover(&self.histories).push(request.chat_history().to_vec());
+        self.inner.completion(request)
+    }
+
+    fn stream(
+        &self,
+        request: crate::completion::CompletionRequest,
+    ) -> impl std::future::Future<
+        Output = Result<crate::streaming::StreamingCompletionResponse, CompletionError>,
+    > + rig_core::wasm_compat::WasmCompatSend {
+        lock_recover(&self.histories).push(request.chat_history().to_vec());
+        self.inner.stream(request)
+    }
+
+    fn capabilities(&self) -> crate::completion::ProviderCapabilities {
+        self.inner.capabilities()
+    }
+}
+
+/// A message that carries no content, in either the genuinely-empty form or
+/// the legacy fabricated empty-text sentinel form.
+fn message_has_empty_content(message: &Message) -> bool {
+    match message {
+        Message::User { content } => content.is_empty(),
+        Message::Assistant { content, .. } => {
+            crate::agent::prompt_request::is_empty_assistant_turn(content)
+        }
+        Message::System { .. } => false,
+    }
+}
+
+fn assert_no_empty_messages(
+    scenario: &'static str,
+    surface: &'static str,
+    messages: &[Message],
+) -> Result<(), ScenarioError> {
+    if messages.iter().any(message_has_empty_content) {
+        return Err(ScenarioError::contract(
+            scenario,
+            format!("{surface} surface carried a content-less message: {messages:#?}"),
+        ));
+    }
+    Ok(())
+}
+
+/// Empty-turn shape 1: a textless tool-call turn. `tool_choice: required`
+/// plus a no-prose instruction makes the model answer with a lone function
+/// call. Both surfaces must deliver the calls with no text part and no
+/// fabricated empty-text block.
+pub async fn textless_tool_call_turn<M>(model: M) -> Result<ScenarioReport, ScenarioError>
+where
+    M: CompletionModel + Clone + 'static,
+{
+    const SCENARIO: &str = "textless_tool_call_turn";
+    const PROMPT: &str = "Record the value 7 with the record_value tool. Respond with the function call only — no prose.";
+    let definition = ToolDefinition {
+        name: "record_value".to_string(),
+        description: "Record the supplied integer.".to_string(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {"value": {"type": "integer"}},
+            "required": ["value"]
+        }),
+    };
+    let started = Instant::now();
+    let request = model
+        .completion_request(PROMPT)
+        .tool(definition)
+        .tool_choice(ToolChoice::Required)
+        .temperature(0.0)
+        .max_tokens(96)
+        .build()?;
+
+    let buffered = model.completion(request.clone()).await?;
+    let buffered_calls = buffered
+        .choice
+        .iter()
+        .filter(|item| matches!(item, AssistantContent::ToolCall(_)))
+        .count();
+    let buffered_text: String = buffered
+        .choice
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    let mut stream = model.stream(request).await?;
+    let mut streamed_calls = 0_usize;
+    let mut streamed_text = String::new();
+    let mut saw_final = false;
+    while let Some(item) = stream.next().await {
+        match item? {
+            crate::streaming::StreamedAssistantContent::ToolCall { .. } => streamed_calls += 1,
+            crate::streaming::StreamedAssistantContent::Text(text) => {
+                streamed_text.push_str(&text.text);
+            }
+            crate::streaming::StreamedAssistantContent::Final(_) => saw_final = true,
+            _ => {}
+        }
+    }
+
+    if buffered.choice.is_empty()
+        || buffered_calls == 0
+        || !buffered_text.is_empty()
+        || streamed_calls == 0
+        || !streamed_text.is_empty()
+        || !saw_final
+    {
+        return Err(ScenarioError::contract(
+            SCENARIO,
+            format!(
+                "buffered_calls={buffered_calls}, buffered_text={buffered_text:?}, \
+                 streamed_calls={streamed_calls}, streamed_text={streamed_text:?}, \
+                 saw_final={saw_final}"
+            ),
+        ));
+    }
+    Ok(ScenarioReport {
+        name: SCENARIO,
+        tool_calls: buffered_calls + streamed_calls,
+        prompt_tokens: buffered.usage.input_tokens,
+        generated_tokens: buffered.usage.output_tokens,
+        history_messages: 0,
+        duration: started.elapsed(),
+        response: String::new(),
+    })
+}
+
+/// Empty-turn shape 2: a turn that ends with no content after a tool-result
+/// round trip — the shape anthropic's deleted fabrication site papered over.
+/// Both surfaces must complete the run, report an empty final output, and
+/// record no content-less message (the empty turn is dropped, not stored, and
+/// nothing fabricated takes its place).
+pub async fn empty_turn_after_tool_round_trip<M, F>(
+    model: M,
+    configure: F,
+) -> Result<ScenarioReport, ScenarioError>
+where
+    M: CompletionModel + Clone + 'static,
+    F: Fn(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
+{
+    const SCENARIO: &str = "empty_turn_after_tool_round_trip";
+    // The status-report framing is what reliably induces the silent terminal
+    // turn on live providers (established by the anthropic `empty_end_turn`
+    // recordings): a notification task has nothing left to say once the tool
+    // acknowledges it.
+    const PREAMBLE: &str = "When the user reports their status, acknowledge it by calling the \
+        ping tool. Do not answer with any normal assistant text before or after the tool call. \
+        Once the tool result is available, the assistant turn is complete and you must end the \
+        turn with no content.";
+    const PROMPT: &str = "I finished the deploy.";
+    let calls = Arc::new(AtomicUsize::new(0));
+    let started = Instant::now();
+    let recording = RequestRecordingModel::new(model);
+    let agent = configure(AgentBuilder::new(recording.clone()))
+        .preamble(PREAMBLE)
+        .temperature(0.0)
+        .tool(PingTool(calls.clone()))
+        .default_max_turns(3)
+        .build();
+
+    let blocking = agent.prompt(PROMPT).max_turns(3).extended_details().await?;
+    let blocking_messages = blocking.messages.as_deref().ok_or_else(|| {
+        ScenarioError::contract(SCENARIO, "extended run omitted accumulated message history")
+    })?;
+    assert_no_empty_messages(SCENARIO, "buffered-history", blocking_messages)?;
+
+    let mut stream = agent.stream_prompt(PROMPT).max_turns(3).await;
+    let mut streamed_final = None;
+    while let Some(item) = stream.next().await {
+        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+            streamed_final = Some(response);
+        }
+    }
+    let streamed = streamed_final
+        .ok_or_else(|| ScenarioError::contract(SCENARIO, "stream produced no final response"))?;
+    if let Some(messages) = streamed.messages.as_deref() {
+        assert_no_empty_messages(SCENARIO, "streaming-history", messages)?;
+    }
+    for sent in recording.histories() {
+        assert_no_empty_messages(SCENARIO, "wire", &sent)?;
+    }
+
+    let tool_calls = calls.load(Ordering::SeqCst);
+    if tool_calls < 2 || !blocking.output.trim().is_empty() || !streamed.output.trim().is_empty() {
+        return Err(ScenarioError::contract(
+            SCENARIO,
+            format!(
+                "tool_calls={tool_calls}, blocking_output={:?}, streamed_output={:?}",
+                blocking.output, streamed.output
+            ),
+        ));
+    }
+    Ok(ScenarioReport {
+        name: SCENARIO,
+        tool_calls,
+        prompt_tokens: blocking.usage.input_tokens,
+        generated_tokens: blocking.usage.output_tokens,
+        history_messages: blocking_messages.len(),
+        duration: started.elapsed(),
+        response: String::new(),
+    })
+}
+
+/// Empty-turn shape 3: an empty assistant turn already in caller-supplied
+/// history must not poison the next turn. The driver drops it before building
+/// the request — so `CompletionRequest::new` succeeds, nothing content-less
+/// reaches the wire, and the run completes on both surfaces with the earlier
+/// context intact.
+pub async fn empty_history_turn_is_dropped_before_send<M>(
+    model: M,
+) -> Result<ScenarioReport, ScenarioError>
+where
+    M: CompletionModel + Clone + 'static,
+{
+    const SCENARIO: &str = "empty_history_turn_is_dropped_before_send";
+    const PROMPT: &str = "What is the code word? Reply with only the code word.";
+    let poisoned = || {
+        vec![
+            Message::user("For this conversation, the code word is lantern."),
+            Message::Assistant {
+                id: None,
+                content: Vec::new(),
+            },
+        ]
+    };
+    let started = Instant::now();
+    let recording = RequestRecordingModel::new(model);
+    let agent = AgentBuilder::new(recording.clone())
+        .temperature(0.0)
+        .default_max_turns(2)
+        .build();
+
+    let blocking = agent
+        .prompt(PROMPT)
+        .history(poisoned())
+        .extended_details()
+        .await?;
+
+    let mut stream = agent
+        .stream_prompt(PROMPT)
+        .history(poisoned())
+        .max_turns(2)
+        .await;
+    let mut streamed_final = None;
+    while let Some(item) = stream.next().await {
+        if let MultiTurnStreamItem::FinalResponse(response) = item? {
+            streamed_final = Some(response);
+        }
+    }
+    let streamed = streamed_final
+        .ok_or_else(|| ScenarioError::contract(SCENARIO, "stream produced no final response"))?;
+
+    let histories = recording.histories();
+    if histories.len() != 2 {
+        return Err(ScenarioError::contract(
+            SCENARIO,
+            format!("expected one request per surface, saw {}", histories.len()),
+        ));
+    }
+    for sent in &histories {
+        assert_no_empty_messages(SCENARIO, "wire", sent)?;
+        if !sent
+            .iter()
+            .any(|message| matches!(message, Message::User { .. }))
+        {
+            return Err(ScenarioError::contract(
+                SCENARIO,
+                format!("dropping the empty turn must not drop the context: {sent:#?}"),
+            ));
+        }
+    }
+    let blocking_ok = blocking.output.to_ascii_lowercase().contains("lantern");
+    let streamed_ok = streamed.output.to_ascii_lowercase().contains("lantern");
+    if !blocking_ok || !streamed_ok {
+        return Err(ScenarioError::contract(
+            SCENARIO,
+            format!(
+                "blocking_output={:?}, streamed_output={:?}",
+                blocking.output, streamed.output
+            ),
+        ));
+    }
+    Ok(ScenarioReport {
+        name: SCENARIO,
+        tool_calls: 0,
+        prompt_tokens: blocking.usage.input_tokens,
+        generated_tokens: blocking.usage.output_tokens,
+        history_messages: histories.first().map_or(0, Vec::len),
+        duration: started.elapsed(),
+        response: blocking.output,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
