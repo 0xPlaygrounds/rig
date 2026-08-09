@@ -28,7 +28,7 @@ pub struct EmptyListError;
 /// lose the only information that makes an empty-response bug findable.
 ///
 /// ```
-/// use rig::message::{require_non_empty, EmptyListError};
+/// use rig_core::message::{require_non_empty, EmptyListError};
 ///
 /// let parts = vec!["a"];
 /// assert!(require_non_empty(parts, || EmptyListError).is_ok());
