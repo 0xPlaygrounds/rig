@@ -458,6 +458,43 @@ mod tests {
     use crate::completion::NormalizeCompletionResponse;
     use crate::providers::openai::completion::OpenAICompatibleProvider;
 
+    /// The one call site that read the removed container's `is_empty()`.
+    ///
+    /// That predicate returned a hardcoded `false`, so this guard's
+    /// "Response contained empty content" error was unreachable no matter
+    /// what the wire sent — a check that could not fail. After the swap it is
+    /// an honest question, and the answer is still `false` here, because
+    /// Mira's `RawMessage` carries `content: String` and its conversion
+    /// always yields exactly one block. So the guard is defense-in-depth
+    /// rather than dead code, and a blank answer normalizes to a one-element
+    /// blank text choice. Pinned so a future `RawMessage` change that makes
+    /// the guard live surfaces here instead of silently changing what a
+    /// blank Mira answer becomes.
+    #[test]
+    fn a_blank_answer_normalizes_to_a_one_element_blank_choice() {
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "mira-blank",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "some-model",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": ""},
+                "finish_reason": "stop"
+            }]
+        }))
+        .expect("wire response should deserialize");
+
+        let normalized = raw
+            .normalize("mira")
+            .expect("a blank structured answer still normalizes");
+        assert_eq!(normalized.choice.len(), 1);
+        assert!(matches!(
+            normalized.choice.first(),
+            Some(completion::AssistantContent::Text(text)) if text.text.is_empty()
+        ));
+    }
+
     /// Normalize a Mira wire response the way the shared completion path does,
     /// threading Mira's own descriptor name through the conversion.
     fn normalized(response: CompletionResponse) -> completion::CompletionResponse {

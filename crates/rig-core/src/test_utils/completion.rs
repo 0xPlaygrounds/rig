@@ -201,6 +201,26 @@ impl MockCompletionModel {
         }
     }
 
+    /// Create a mock model with both surfaces scripted, for tests that drive
+    /// the buffered and streaming paths against the same model.
+    pub fn from_turns_and_stream_turns(
+        turns: impl IntoIterator<Item = MockTurn>,
+        stream_turns: impl IntoIterator<Item = impl IntoIterator<Item = MockStreamEvent>>,
+    ) -> Self {
+        Self {
+            state: Arc::new(MockCompletionModelState {
+                turns: Mutex::new(turns.into_iter().collect()),
+                stream_turns: Mutex::new(
+                    stream_turns
+                        .into_iter()
+                        .map(|turn| turn.into_iter().collect())
+                        .collect(),
+                ),
+                requests: Mutex::new(Vec::new()),
+            }),
+        }
+    }
+
     /// Create a mock model from scripted streaming turns.
     pub fn from_stream_turns(
         stream_turns: impl IntoIterator<Item = impl IntoIterator<Item = MockStreamEvent>>,
