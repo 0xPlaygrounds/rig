@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- *(memory)* message content handled by the `MemoryPolicy` implementations is `Vec<T>` instead of `OneOrMany<T>`, transitively through rig-core's message-content change; behavior is unchanged
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.40.0...rig-memory-v0.41.0) - 2026-07-28
 
 ### Added
