@@ -37,7 +37,7 @@
 //!     let openai_client = openai::Client::from_env()?;
 //!     let model = openai_client.completion_model(openai::GPT_5_2);
 //!
-//!     let request = model.completion_request("Who are you?").build();
+//!     let request = model.completion_request("Who are you?").build()?;
 //!     let response = model.completion(request).await?;
 //!     for item in response.choice {
 //!         if let AssistantContent::Text(text) = item {

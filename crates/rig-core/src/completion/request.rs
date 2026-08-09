@@ -20,7 +20,7 @@
 //!     .completion_request("Who are you?")
 //!     .preamble("You are a concise assistant.".to_string())
 //!     .temperature(0.5)
-//!     .build();
+//!     .build()?;
 //!
 //! let response = model.completion(request).await?;
 //! for item in response.choice {
@@ -1068,7 +1068,7 @@ fn merge_provider_tools_into_additional_params(
 /// let request = CompletionRequestBuilder::new(model.clone(), "Who are you?".to_string())
 ///     .preamble("You are Marvin from the Hitchhiker's Guide to the Galaxy.".to_string())
 ///     .temperature(0.5)
-///     .build();
+///     .build()?;
 ///
 /// let response = model.completion(request).await?;
 /// # Ok(())

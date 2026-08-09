@@ -24,7 +24,7 @@
 //! let request = model
 //!     .completion_request("Entertain me!")
 //!     .preamble("You are a comedian here to entertain the user using humour and jokes.".to_string())
-//!     .build();
+//!     .build()?;
 //! let response = model.completion(request).await?;
 //! println!("{:?}", response.choice);
 //!

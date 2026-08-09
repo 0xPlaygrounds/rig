@@ -21,7 +21,7 @@
 //! let request = model
 //!     .completion_request("Hello!")
 //!     .preamble("You are a helpful assistant.".to_string())
-//!     .build();
+//!     .build()?;
 //! let response = model.completion(request).await?;
 //! println!("{:?}", response.choice);
 //! # Ok(())

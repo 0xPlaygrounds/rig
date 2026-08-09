@@ -96,7 +96,7 @@
 //!         You are Gandalf the white and you will be conversing with other \
 //!         powerful beings to discuss the fate of Middle Earth.\
 //!     ".to_string())
-//!     .build();
+//!     .build()?;
 //! let response = model.completion(request).await?;
 //! for item in response.choice {
 //!     if let AssistantContent::Text(text) = item {
