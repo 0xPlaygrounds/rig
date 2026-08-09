@@ -350,6 +350,56 @@ defined a `wasm` feature and expected it to drive these macros, you now get the
 target's answer instead. Gate on the target directly if you need the old
 association.
 
+### next
+
+Three consequences of replacing `OneOrMany<T>` with `Vec<T>` compile
+unchanged and behave differently. The type substitution itself is loud — the
+container is gone, so anything naming it fails to build — but these three do
+not name it. Full detail in
+[the release section below](#message-content-is-vect-not-oneormanyt).
+
+#### A tool returning `Vec<ToolResultContent>` now sends rich content
+
+`IntoToolOutput` preserves canonical rich-content types ahead of its
+`Serialize` fallback so that an image does not silently become a JSON object.
+That guard used to name `OneOrMany<ToolResultContent>`; it now names
+`Vec<ToolResultContent>`.
+
+A tool declaring `type Output = Vec<ToolResultContent>` previously *missed*
+the guard and was serialized, reaching the model as a single JSON tool result.
+It now takes the rich path and reaches the model as N ordered content blocks,
+with images sent as image parts. For nearly every tool that is the intended
+result — it is what the guard always did for `OneOrMany` — but a prompt that
+parsed the JSON array out of the tool result needs updating.
+
+An **empty** `Vec<ToolResultContent>` now yields a contentless `ToolOutput`
+(`content: []`, `as_text()` and `as_json()` both `None`) where it used to
+yield `json([])`.
+
+#### Message content decoding accepts `[]` and `null`
+
+Both used to be local parse errors and now produce an empty content list.
+
+`[]` was rejected by the removed container itself. `null` is accepted on the
+six fields that moved onto `json_utils::string_or_vec` (anthropic
+`Message.content` and `Content::ToolResult.content`; the openai chat and
+Responses-API `System`/`User` content), because that helper carries
+`visit_none`/`visit_unit` arms its predecessor lacked — they cannot be dropped,
+since the openai assistant-content field already using it depends on them for
+OpenAI's `"content": null` tool-calls-only messages.
+
+If you fed rig a history with a null or empty content field and relied on the
+decode to reject it, that check is now yours: the value survives as an empty
+list and is re-emitted as `"content": []`, which providers generally reject at
+the API instead.
+
+#### Serialization is unchanged
+
+Stated for completeness, since it is the assumption the rest rests on: the
+removed container already serialized as a bare JSON sequence, so request
+bodies, persisted histories and recorded fixtures are byte-identical. Pinned
+by tests in `completion/message.rs`.
+
 ---
 
 ## 0.41 → next
@@ -1103,7 +1153,7 @@ Method translation, including the traps:
 | `OneOrMany::from_iter_optional(i)` | collect, then map the empty case to `None` yourself |
 | `.first()` → owned `T` | `.first()` → `Option<&T>`; use `.first().cloned()` or `v[0].clone()` |
 | `.first_ref()` → `&T` | `.first()` → `Option<&T>` |
-| `.rest()` | `v[1..].to_vec()` |
+| `.rest()` | `v.get(1..).unwrap_or_default().to_vec()` — `v[1..]` panics on an empty `Vec`, which `OneOrMany` could not be |
 | `.map(f)` | `.into_iter().map(f).collect()` |
 | `.try_map(f)` | `.into_iter().map(f).collect::<Result<Vec<_>, _>>()?` |
 | `.is_empty()` (always `false`) | a real emptiness check |

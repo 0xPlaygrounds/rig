@@ -140,7 +140,7 @@ where
         type Value = Vec<T>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a string, sequence, or null")
+            formatter.write_str("a string, object, sequence, or null")
         }
 
         fn visit_str<E>(self, value: &str) -> Result<Vec<T>, E>
@@ -163,7 +163,7 @@ where
         /// Several providers send a single structured content block unwrapped
         /// (`"content": {"type": "text", ...}`) where the schema also permits
         /// an array. Without this arm such a field fails to deserialize with
-        /// "invalid type: map, expected a string, sequence, or null". The
+        /// "invalid type: map, expected a string, object, sequence, or null". The
         /// arm is load-bearing for the anthropic and openai content fields
         /// that moved onto this helper: the deserializer they came from
         /// accepted maps, so dropping the behaviour here would have been a
@@ -248,6 +248,106 @@ where
 mod tests {
     use super::*;
     use serde::{Deserialize, Serialize};
+
+    /// `string_or_vec` is what the anthropic and openai content fields
+    /// deserialize through. Each accepted shape is a wire contract with a
+    /// provider, and the `visit_map` arm in particular is the difference
+    /// between decoding a provider's bare content object and failing the
+    /// request — a runtime break with no compile error to announce it. Pin
+    /// every arm.
+    mod string_or_vec_arms {
+        use serde::Deserialize;
+
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Holder {
+            #[serde(deserialize_with = "crate::json_utils::string_or_vec")]
+            content: Vec<Block>,
+        }
+
+        #[derive(Deserialize, Debug, PartialEq, Clone)]
+        struct Block {
+            text: String,
+        }
+
+        impl std::str::FromStr for Block {
+            type Err = std::convert::Infallible;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                Ok(Self {
+                    text: value.to_owned(),
+                })
+            }
+        }
+
+        fn decode(value: serde_json::Value) -> Holder {
+            serde_json::from_value(value).expect("content should decode")
+        }
+
+        #[test]
+        fn a_bare_object_is_one_element() {
+            // Providers send a single structured content block unwrapped where
+            // the schema also permits an array. Without this arm the field
+            // fails with "invalid type: map, expected a string, sequence, or
+            // null" at runtime.
+            let holder = decode(serde_json::json!({"content": {"text": "hi"}}));
+            assert_eq!(
+                holder.content,
+                vec![Block {
+                    text: "hi".to_owned()
+                }]
+            );
+        }
+
+        #[test]
+        fn a_sequence_is_itself() {
+            let holder = decode(serde_json::json!({"content": [{"text": "a"}, {"text": "b"}]}));
+            assert_eq!(
+                holder.content,
+                vec![
+                    Block {
+                        text: "a".to_owned()
+                    },
+                    Block {
+                        text: "b".to_owned()
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn a_string_is_one_element_via_from_str() {
+            let holder = decode(serde_json::json!({"content": "hi"}));
+            assert_eq!(
+                holder.content,
+                vec![Block {
+                    text: "hi".to_owned()
+                }]
+            );
+        }
+
+        #[test]
+        fn null_is_an_empty_list() {
+            // Wider than the deleted `string_or_one_or_many`, which had no
+            // `visit_none`/`visit_unit` and rejected this. The arms stay
+            // because the openai assistant-content field that already used
+            // this helper depends on them: OpenAI sends `"content": null` for
+            // a message whose only payload is tool calls.
+            assert!(
+                decode(serde_json::json!({"content": null}))
+                    .content
+                    .is_empty()
+            );
+        }
+
+        #[test]
+        fn an_empty_sequence_is_an_empty_list() {
+            assert!(
+                decode(serde_json::json!({"content": []}))
+                    .content
+                    .is_empty()
+            );
+        }
+    }
 
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
     struct Dummy {

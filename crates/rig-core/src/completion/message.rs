@@ -1760,6 +1760,58 @@ mod tests {
 
     use super::{Message, Reasoning, ReasoningContent, Text, ToolResultContent};
 
+    /// The whole migration off the non-empty container rests on one claim:
+    /// that container already serialized as a bare sequence, so persisted
+    /// histories, provider request bodies and recorded fixtures are unchanged.
+    /// The claim was true but pinned by nothing — these pin it.
+    mod vec_content_serde {
+        use super::super::{AssistantContent, Message, UserContent};
+
+        #[test]
+        fn message_content_serializes_as_a_plain_sequence() {
+            let message = Message::User {
+                content: vec![UserContent::text("hi")],
+            };
+            let json = serde_json::to_value(&message).expect("serialize");
+            assert_eq!(
+                json,
+                serde_json::json!({
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hi"}],
+                })
+            );
+        }
+
+        #[test]
+        fn message_content_round_trips_byte_identically() {
+            let message = Message::Assistant {
+                id: Some("msg_1".to_owned()),
+                content: vec![AssistantContent::text("hello")],
+            };
+            let encoded = serde_json::to_string(&message).expect("serialize");
+            let decoded: Message = serde_json::from_str(&encoded).expect("deserialize");
+            assert_eq!(
+                serde_json::to_string(&decoded).expect("re-serialize"),
+                encoded
+            );
+        }
+
+        #[test]
+        fn an_empty_content_array_now_deserializes() {
+            // The container's `Deserialize` implemented only `visit_seq` and
+            // rejected `[]` with `invalid_length(0)`. That is the one input
+            // whose behaviour this migration changes: it was an error, and it
+            // is now an empty list.
+            let message: Message =
+                serde_json::from_value(serde_json::json!({"role": "user", "content": []}))
+                    .expect("an empty content list is representable now");
+            let Message::User { content } = message else {
+                panic!("expected a user message");
+            };
+            assert!(content.is_empty());
+        }
+    }
+
     #[test]
     fn reasoning_constructors_and_accessors_work() {
         let single = Reasoning::new("think");

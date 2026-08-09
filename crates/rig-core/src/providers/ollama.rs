@@ -1304,8 +1304,14 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                     }
                 }
 
-                // The assistant content list is non-empty, so either `content`
-                //  or `tool_calls` will have some content.
+                // Text and tool calls are emitted on one message. The content
+                // list used to be non-empty by type, so at least one of them
+                // was always populated; a `Vec` carries no such guarantee, and
+                // an empty list now yields an empty `content` string with no
+                // tool calls. That is the same empty assistant message Ollama
+                // already accepts on the way out (see the note on the outbound
+                // conversion above), so it is passed through rather than
+                // rejected here.
                 Ok(vec![Message::Assistant {
                     content: text_content.join(" "),
                     thinking,
