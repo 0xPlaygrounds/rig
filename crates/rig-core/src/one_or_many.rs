@@ -35,11 +35,6 @@ impl<T: Clone> OneOrMany<T> {
         &self.first
     }
 
-    /// Get a mutable reference to the first item in the list.
-    pub fn first_mut(&mut self) -> &mut T {
-        &mut self.first
-    }
-
     /// Get the last item in the list.
     pub fn last(&self) -> T {
         self.rest
@@ -110,19 +105,6 @@ impl<T: Clone> OneOrMany<T> {
             },
             rest: iter.collect(),
         })
-    }
-
-    /// Merge a list of OneOrMany items into a single OneOrMany item.
-    pub fn merge<I>(one_or_many_items: I) -> Result<Self, EmptyListError>
-    where
-        I: IntoIterator<Item = OneOrMany<T>>,
-    {
-        let items = one_or_many_items
-            .into_iter()
-            .flat_map(|one_or_many| one_or_many.into_iter())
-            .collect::<Vec<_>>();
-
-        OneOrMany::many(items)
     }
 
     /// Specialized map function for OneOrMany objects.
@@ -422,58 +404,6 @@ where
     deserializer.deserialize_any(StringOrOneOrMany(PhantomData))
 }
 
-// A variant of the `string_or_one_or_many` function that returns an `Option<OneOrMany<T>>`.
-//
-// Usage:
-// #[derive(Deserialize)]
-// struct MyStruct {
-//     #[serde(deserialize_with = "string_or_option_one_or_many")]
-//     field: Option<OneOrMany<String>>,
-// }
-pub fn string_or_option_one_or_many<'de, T, D>(
-    deserializer: D,
-) -> Result<Option<OneOrMany<T>>, D::Error>
-where
-    T: Deserialize<'de> + FromStr<Err = Infallible> + Clone,
-    D: Deserializer<'de>,
-{
-    struct StringOrOptionOneOrMany<T>(PhantomData<fn() -> T>);
-
-    impl<'de, T> Visitor<'de> for StringOrOptionOneOrMany<T>
-    where
-        T: Deserialize<'de> + FromStr<Err = Infallible> + Clone,
-    {
-        type Value = Option<OneOrMany<T>>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("null, a string, or a sequence")
-        }
-
-        fn visit_none<E>(self) -> Result<Option<OneOrMany<T>>, E>
-        where
-            E: de::Error,
-        {
-            Ok(None)
-        }
-
-        fn visit_unit<E>(self) -> Result<Option<OneOrMany<T>>, E>
-        where
-            E: de::Error,
-        {
-            Ok(None)
-        }
-
-        fn visit_some<D>(self, deserializer: D) -> Result<Option<OneOrMany<T>>, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            string_or_one_or_many(deserializer).map(Some)
-        }
-    }
-
-    deserializer.deserialize_option(StringOrOptionOneOrMany(PhantomData))
-}
-
 #[cfg(test)]
 mod test {
     use serde::{self, Deserialize};
@@ -559,29 +489,6 @@ mod test {
     }
 
     #[test]
-    fn test_one_or_many_merge() {
-        let one_or_many_1 = OneOrMany::many(vec!["hello".to_string(), "word".to_string()]).unwrap();
-
-        let one_or_many_2 = OneOrMany::one("sup".to_string());
-
-        let merged = OneOrMany::merge(vec![one_or_many_1, one_or_many_2]).unwrap();
-
-        assert_eq!(merged.iter().count(), 3);
-
-        merged.iter().enumerate().for_each(|(i, item)| {
-            if i == 0 {
-                assert_eq!(item, "hello");
-            }
-            if i == 1 {
-                assert_eq!(item, "word");
-            }
-            if i == 2 {
-                assert_eq!(item, "sup");
-            }
-        });
-    }
-
-    #[test]
     fn test_mut_single() {
         let mut one_or_many = OneOrMany::one("hello".to_string());
 
@@ -658,12 +565,6 @@ mod test {
         field: OneOrMany<DummyString>,
     }
 
-    #[derive(Debug, Deserialize, PartialEq)]
-    struct DummyStructOption {
-        #[serde(deserialize_with = "string_or_option_one_or_many")]
-        field: Option<OneOrMany<DummyString>>,
-    }
-
     #[derive(Debug, Clone, Deserialize, PartialEq)]
     struct DummyString {
         pub string: String,
@@ -679,28 +580,6 @@ mod test {
         }
     }
 
-    #[derive(Debug, Deserialize, PartialEq)]
-    #[serde(tag = "role", rename_all = "lowercase")]
-    enum DummyMessage {
-        Assistant {
-            #[serde(deserialize_with = "string_or_option_one_or_many")]
-            content: Option<OneOrMany<DummyString>>,
-        },
-    }
-
-    #[test]
-    fn test_deserialize_unit() {
-        let raw_json = r#"
-        {
-            "role": "assistant",
-            "content": null
-        }
-        "#;
-        let dummy: DummyMessage = serde_json::from_str(raw_json).unwrap();
-
-        assert_eq!(dummy, DummyMessage::Assistant { content: None });
-    }
-
     #[test]
     fn test_deserialize_string() {
         let json_data = json!({"field": "hello"});
@@ -708,36 +587,5 @@ mod test {
 
         assert_eq!(dummy.field.len(), 1);
         assert_eq!(dummy.field.first(), DummyString::from_str("hello").unwrap());
-    }
-
-    #[test]
-    fn test_deserialize_string_option() {
-        let json_data = json!({"field": "hello"});
-        let dummy: DummyStructOption = serde_json::from_value(json_data).unwrap();
-
-        assert!(dummy.field.is_some());
-        let field = dummy.field.unwrap();
-        assert_eq!(field.len(), 1);
-        assert_eq!(field.first(), DummyString::from_str("hello").unwrap());
-    }
-
-    #[test]
-    fn test_deserialize_list_option() {
-        let json_data = json!({"field": [{"string": "hello"}, {"string": "world"}]});
-        let dummy: DummyStructOption = serde_json::from_value(json_data).unwrap();
-
-        assert!(dummy.field.is_some());
-        let field = dummy.field.unwrap();
-        assert_eq!(field.len(), 2);
-        assert_eq!(field.first(), DummyString::from_str("hello").unwrap());
-        assert_eq!(field.rest(), vec![DummyString::from_str("world").unwrap()]);
-    }
-
-    #[test]
-    fn test_deserialize_null_option() {
-        let json_data = json!({"field": null});
-        let dummy: DummyStructOption = serde_json::from_value(json_data).unwrap();
-
-        assert!(dummy.field.is_none());
     }
 }
