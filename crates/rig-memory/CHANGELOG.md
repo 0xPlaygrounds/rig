@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- *(memory)* [**breaking**] mirrors rig-core: `MemoryPolicy` and the memory-backed wrappers deal in messages whose content is `Vec<T>`, so policies matching on message content migrate with rig-core's message types (`content.first_ref()` becomes `content.first()`, which returns `Option`)
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.40.0...rig-memory-v0.41.0) - 2026-07-28
 
 ### Added

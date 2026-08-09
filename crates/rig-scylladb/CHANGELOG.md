@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` — `OneOrMany<Embedding>` is removed from rig-core. Serialized embeddings are unchanged; this is a source-only break
 ## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-scylladb-v0.2.7...rig-scylladb-v0.38.1) - 2026-06-02
 
 ### Other

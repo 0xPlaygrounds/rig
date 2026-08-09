@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(message)* [**breaking**] mirrors rig-core: message content, tool results and assistant choices are `Vec<T>`; `OneOrMany` is removed from rig-core
 - *(streaming)* the Converse stream routes through the shared `WireAdapter` driver: frame triage (unknown-variant warn-skip) lives in the one policy site, and `streaming::stream_from_events` is the events-first conformance seam driving already-typed SDK events through the full pipeline
 
 ### Fixed

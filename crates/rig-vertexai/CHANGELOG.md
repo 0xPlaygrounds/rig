@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- *(message)* [**breaking**] mirrors rig-core: message content, tool results and assistant choices are `Vec<T>`; `OneOrMany` is removed from rig-core
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.40.0...rig-vertexai-v0.41.0) - 2026-07-28
 
 ### Added
