@@ -8,28 +8,19 @@ on:
   merge_group:
   workflow_call:
 
+# The toolchain (from rust-toolchain.toml) and the shared cargo env
+# (debuginfo trim, CARGO_INCREMENTAL) are single-sourced in
+# .github/actions/rust-setup — see its header. No RUST_VERSION copy exists
+# anymore, in any workflow.
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: 1.94.0
-  # Full debuginfo is the single largest avoidable cost in this workflow: even
-  # on a *full* rust-cache hit the `test` job spent ~4m compiling and linking
-  # test binaries, most of it emitting and linking debug sections nothing here
-  # reads. `line-tables-only` keeps what CI actually consumes — file and line
-  # numbers in a panic backtrace — and drops variable/type debuginfo. Set as
-  # env rather than a `[profile]` in Cargo.toml so local `cargo test` keeps
-  # full debuginfo for debuggers, and as `dev` + `test` because test targets
-  # build under `test` while their dependencies build under `dev`.
-  CARGO_PROFILE_DEV_DEBUG: line-tables-only
-  CARGO_PROFILE_TEST_DEBUG: line-tables-only
-  # sccache (enabled per-job below) cannot cache incremental compilation, and
-  # CI never benefits from incremental anyway — every run starts from a fresh
-  # checkout — so pin it off for every job.
-  CARGO_INCREMENTAL: 0
 
-# ensure that the workflow is only triggered once per PR, subsequent pushes to the PR will cancel
-# and restart the workflow. See https://docs.github.com/en/actions/using-jobs/using-concurrency
+# Ensure the workflow runs once per PR: a newer push cancels and restarts the
+# in-flight run. Keyed on the PR number rather than `head_ref` because two
+# forks PRing from identically-named branches share a head_ref — under the
+# old key they cancelled each other's runs.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -40,11 +31,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # cache: false — this job runs rustfmt and shell scripts, compiles
+      # nothing, and its rust-cache entry was 200MB of pure quota pressure.
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
           components: rustfmt
-          toolchain: ${{ env.RUST_VERSION }}
+          cache: "false"
 
       - name: Run cargo fmt
         run: cargo fmt -- --check
@@ -52,11 +45,12 @@ jobs:
       - name: Check immutable migration guide preamble
         run: bash .github/scripts/check-migrating-guide-preamble.sh
 
-      # rust-toolchain.toml is the pin cargo obeys; each workflow's
-      # RUST_VERSION is a copy feeding `setup-rust-toolchain`. Assert they
-      # agree so a partial bump cannot leave nightly.yaml — which is also
-      # cd.yaml's pre-release gate — building on a toolchain the PR gate no
-      # longer enforces.
+      # rust-toolchain.toml is the single toolchain source: the rust-setup
+      # composite action resolves its channel, and no workflow carries a
+      # RUST_VERSION copy anymore. This guard's remaining job is to keep it
+      # that way — it fails on any reintroduced RUST_VERSION copy or inline
+      # literal `toolchain:` pin that drifts from the channel, the bypasses
+      # that would silently build one job on a stale toolchain.
       - name: Check workflow toolchain pins match rust-toolchain.toml
         run: bash .github/scripts/check-toolchain-pin.sh
 
@@ -117,10 +111,9 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
           target: wasm32-unknown-unknown
-          toolchain: ${{ env.RUST_VERSION }}
 
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
@@ -139,10 +132,9 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
           target: wasm32-unknown-unknown
-          toolchain: ${{ env.RUST_VERSION }}
 
       - name: Assert the native-only diagnostic is the only error
         run: |
@@ -183,15 +175,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # protoc: the lance build scripts run here too (clippy compiles every
+      # dependency's build script). No sccache: it cannot cache
+      # clippy-driver invocations.
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
           components: clippy
-          toolchain: ${{ env.RUST_VERSION }}
-
-      # Required to compile rig-lancedb
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          protoc: "true"
 
       - name: Run clippy action
         uses: clechasseur/rs-clippy-check@v3
@@ -216,53 +207,25 @@ jobs:
   test:
     name: stable / test
     runs-on: ubuntu-latest
-    env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: sccache
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: ${{ env.RUST_VERSION }}
-
-      # rust-cache (inside setup-rust-toolchain above) persists *dependency*
-      # artifacts but always recompiles the workspace's own crates; sccache
-      # caches individual rustc invocations in the GitHub Actions cache, so
-      # unchanged workspace members stop recompiling too. That workspace-member
-      # compile is this job's residual floor, which is why the compile-heavy
-      # jobs (test, test guards, doctest, nightly) opt in via the job-level
-      # env above — a workflow-wide RUSTC_WRAPPER would instead break every
-      # job that skips this install step.
-      - name: Run sccache
-        uses: mozilla/sccache-action@v0.0.11
-
-      - name: Install nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
-
-      # Required here, and NOT only for the `lancedb` feature: the `rig`
-      # facade lists `lancedb` as an unconditional dev-dependency
-      # (Cargo.toml's `[dev-dependencies]`), so building its test targets —
-      # which both steps below do — compiles lance-encoding/-file/-table/
-      # -index and lance. Each of those build scripts calls
-      # `prost_build::compile_protos`, which shells out to a *system* protoc:
-      # the vendoring `protoc` feature that would pull `protobuf-src` is not
-      # enabled anywhere in Cargo.lock, and rig-gemini-grpc's
-      # protoc-bin-vendored is its own private build-dependency.
-      #
-      # ubuntu-latest does not ship protoc (this apt step reports
-      # `Selecting previously unselected package protobuf-compiler`), so
-      # dropping this install does not fail loudly — it fails only once the
-      # rust-cache entry for this job is invalidated and lance rebuilds,
-      # turning a Cargo.lock or toolchain bump into an unrelated-looking
-      # build-script error. Verify the dependency edge with:
+      # protoc is required here, and NOT only for the `lancedb` feature: the
+      # `rig` facade lists `lancedb` as an unconditional dev-dependency, so
+      # building its test targets — which both steps below do — compiles the
+      # lance chain, whose build scripts shell out to a *system* protoc.
+      # ubuntu-latest does not ship one, and dropping the install does not
+      # fail loudly — it fails only once the rust-cache entry is invalidated
+      # and lance rebuilds, turning a Cargo.lock or toolchain bump into an
+      # unrelated-looking build-script error. Verify the dependency edge with:
       #   cargo tree -i lance-encoding -e normal,dev --target all
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          sccache: "true"
+          nextest: "true"
+          protoc: "true"
 
       # `nextest` below runs with `--features bedrock`, which does not compile
       # the pure default-feature test graph. Check the root integration tests
@@ -295,10 +258,13 @@ jobs:
       # cost is marginal). Everything that needs the remaining optional
       # features executes in nightly.yaml's identical-command full run.
       #
-      # The provider keys stay here even though the cassette suites replay
-      # recorded traffic without them: the few live tests that check for keys
-      # at runtime keep running on same-repo PRs exactly as they did before
-      # the fast/full split (fork PRs never received secrets either way).
+      # No provider API keys, deliberately: the cassette suites replay
+      # recorded traffic with a dummy key, every live test is
+      # `#[ignore]`-gated (nextest never selects them), and the integration
+      # tests stub their embeddings — so nothing CI executes reads a real
+      # key. Keeping secrets in the environment of a job that runs the whole
+      # test suite is pure exfiltration surface; recording new cassettes is a
+      # local, human activity (see tests/common/cassettes.rs).
       #
       # A plain `run:` rather than `actions-rs/cargo@v1`: that action was
       # archived in 2023 and pins Node 20, which this workflow's own log
@@ -306,12 +272,6 @@ jobs:
       # invoking cargo directly.
       - name: Test with latest nextest release
         run: cargo nextest run --locked --features bedrock --retries 2
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
 
   # The cross-crate contract tripwires, split from `test` so the two halves
   # run in parallel: each step deliberately compiles a package set with its
@@ -320,27 +280,15 @@ jobs:
   test-guards:
     name: stable / test guards
     runs-on: ubuntu-latest
-    env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: sccache
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: ${{ env.RUST_VERSION }}
-
-      # See the `test` job's note: caches workspace-member rustc invocations,
-      # which rust-cache cannot.
-      - name: Run sccache
-        uses: mozilla/sccache-action@v0.0.11
-
-      - name: Install nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
+          sccache: "true"
+          nextest: "true"
 
       # No protoc here, and unlike the `test` job that is genuinely true: the
       # lance chain enters the graph through the `rig` facade's
@@ -442,27 +390,18 @@ jobs:
   doctest:
     name: stable / doctest
     runs-on: ubuntu-latest
-    env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: sccache
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # protoc: required to compile rig-lancedb (and the facade's lance
+      # dev-dependency chain). No sccache: this job is off the critical path
+      # and rustdoc's doctest execution is not cacheable anyway — see the
+      # quota note on the sccache input in the rust-setup action.
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: ${{ env.RUST_VERSION }}
-
-      # See the `test` job's note: caches workspace-member rustc invocations,
-      # which rust-cache cannot. (rustdoc itself is not cached, which is why
-      # the `doc` job does not bother.)
-      - name: Run sccache
-        uses: mozilla/sccache-action@v0.0.11
-
-      # Required to compile rig-lancedb
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          protoc: "true"
 
       # No API keys needed: the doctests that actually execute are pure (the
       # provider examples are all `no_run`/compile-only), so this job stays
@@ -477,15 +416,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # protoc: required to compile rig-lancedb. No sccache: rustdoc
+      # invocations are not cacheable by it.
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
           components: rust-docs
-          toolchain: ${{ env.RUST_VERSION }}
-
-      # Required to compile rig-lancedb
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          protoc: "true"
 
       - name: Run cargo doc
         run: cargo doc --locked --no-deps --all-features

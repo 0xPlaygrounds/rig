@@ -17,15 +17,15 @@ concurrency:
   group: release-plz-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  RUST_VERSION: 1.94.0
-
 jobs:
+  # No `secrets: inherit` on either gate call: the test lanes are hermetic
+  # (cassette replay, dummy keys, `#[ignore]`-gated live tests) and reference
+  # no secrets, so inheriting them into jobs that execute the whole test
+  # suite would be pure exfiltration surface.
   run-ci:
     permissions:
       checks: write
     uses: ./.github/workflows/ci.yaml
-    secrets: inherit
 
   # ci.yaml is the fast PR gate; the `--all-features` suite (Docker-backed
   # vector-store integrations, the facade build guard) lives in nightly.yaml.
@@ -33,7 +33,6 @@ jobs:
   # a commit the full suite has not passed.
   run-full-ci:
     uses: ./.github/workflows/nightly.yaml
-    secrets: inherit
 
   release-plz:
     name: Release-plz
@@ -48,16 +47,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      # protoc: required to compile rig-lancedb, and the `lancedb` crate that
+      # the `rig` facade carries as an unconditional dev-dependency.
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: ${{ env.RUST_VERSION }}
-          cache: true
-
-      # Required to compile rig-lancedb, and the `lancedb` crate that the
-      # `rig` facade carries as an unconditional dev-dependency.
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          protoc: "true"
 
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5
