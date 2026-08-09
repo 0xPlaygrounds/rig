@@ -2147,6 +2147,37 @@ where
 
 #[cfg(test)]
 mod tests {
+    /// A choice whose message carries only empty text and no tool calls is a
+    /// malformed response where this wire promises content; the inbound guard
+    /// must keep its own diagnostic.
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        use crate::completion::NormalizeCompletionResponse;
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl-empty",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": ""},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1}
+        }))
+        .expect("wire response should deserialize");
+
+        let error = raw
+            .normalize("openai")
+            .expect_err("an empty choice must not normalize to a blank answer");
+        assert!(
+            error
+                .to_string()
+                .contains("Response contained no message or tool call (empty)"),
+            "got {error}"
+        );
+    }
+
     /// Row-16 regression for the two deleted outbound emptiness guards in
     /// this file: the conversions now accept the empty shapes (the flush
     /// guard was unreachable behind its early return; an ingested assistant

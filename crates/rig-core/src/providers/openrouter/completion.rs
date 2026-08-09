@@ -1598,6 +1598,38 @@ mod tests {
     use crate::message::{AudioMediaType, ImageDetail, VideoMediaType};
     use serde_json::json;
 
+    /// A choice with no text, no tool calls, no reasoning and no images is a
+    /// malformed response where this wire promises content; the inbound guard
+    /// must keep its own diagnostic. (An empty *string* is different: this
+    /// wire keeps it as an empty text part, so the defect shape is a null
+    /// content with nothing else in the message.)
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        let json = json!({
+            "id": "gen-empty",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "some/gateway-model",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": null},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1}
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let error = response
+            .normalize(PROVIDER_NAME)
+            .expect_err("an empty choice must not normalize to a blank answer");
+        assert!(
+            error
+                .to_string()
+                .contains("Response contained no message or tool call (empty)"),
+            "got {error}"
+        );
+    }
+
     #[test]
     fn openrouter_client_constructs_a_completion_model() {
         // Also a compile guard: it instantiates the shared chat-completions

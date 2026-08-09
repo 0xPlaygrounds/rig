@@ -1562,6 +1562,35 @@ mod tests {
             .collect()
     }
 
+    /// A choice with no text and no tool calls is a malformed response where
+    /// this wire promises content; the inbound guard must keep its own
+    /// diagnostic.
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        let response: ChatCompletionResponse = serde_json::from_str(
+            r#"{
+            "id": "chatcmpl-empty",
+            "model": "gpt-4o",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": ""},
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "total_tokens": 1}
+        }"#,
+        )
+        .expect("wire response should deserialize");
+
+        let error = crate::completion::CompletionResponse::try_from(response)
+            .expect_err("an empty choice must not normalize to a blank answer");
+        assert!(
+            error
+                .to_string()
+                .contains("Response contained no message or tool call (empty)"),
+            "got {error}"
+        );
+    }
+
     fn minimal_chat_response() -> &'static str {
         r#"{
             "id": "chatcmpl-123",

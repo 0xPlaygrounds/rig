@@ -1487,6 +1487,28 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// A chat response whose message carries no visible text, no thinking and
+    /// no tool calls is a malformed response where this wire promises
+    /// content; the inbound guard must keep its own diagnostic.
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        let raw: CompletionResponse = serde_json::from_value(json!({
+            "model": "llama3.2",
+            "created_at": "2024-01-01T00:00:00Z",
+            "message": {"role": "assistant", "content": ""},
+            "done": true,
+            "done_reason": "stop"
+        }))
+        .expect("wire response should deserialize");
+
+        let error = crate::completion::CompletionResponse::try_from(raw)
+            .expect_err("an empty choice must not normalize to a blank answer");
+        assert!(
+            error.to_string().contains("No content provided"),
+            "got {error}"
+        );
+    }
+
     // The NDJSON wire has no discriminator, so its classify has exactly two
     // outcomes: the response shape or corrupt.
     #[test]

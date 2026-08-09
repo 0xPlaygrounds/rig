@@ -540,6 +540,40 @@ mod tests {
             .expect("DeepSeek response should convert")
     }
 
+    /// A choice with no text, no tool calls, and no reasoning is a malformed
+    /// response where this wire promises content; the inbound guard is the
+    /// only thing between it and a silent blank answer, and it must keep its
+    /// own diagnostic.
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "choices": [{
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {"role": "assistant", "content": ""}
+            }],
+            "usage": {
+                "completion_tokens": 0,
+                "prompt_tokens": 0,
+                "prompt_cache_hit_tokens": 0,
+                "prompt_cache_miss_tokens": 0,
+                "total_tokens": 0
+            }
+        }))
+        .expect("wire response should deserialize");
+
+        let error = raw
+            .normalize(DeepSeekExt::PROVIDER_NAME)
+            .expect_err("an empty choice must not normalize to a blank answer");
+        assert!(
+            error
+                .to_string()
+                .contains("Response contained no message or tool call (empty)"),
+            "got {error}"
+        );
+    }
+
     fn finalized_body(request: crate::completion::CompletionRequest) -> serde_json::Value {
         let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
             model: "deepseek-v4-flash".to_string(),

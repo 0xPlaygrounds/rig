@@ -248,6 +248,39 @@ mod tests {
     use super::*;
     use crate::providers::openai::completion::OpenAICompatibleProvider;
 
+    /// A choice with no text and no tool calls is a malformed response where
+    /// this wire promises content; the inbound guard must keep its own
+    /// diagnostic.
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        use crate::completion::NormalizeCompletionResponse;
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "cmpl-1",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "mistral-small-latest",
+            "system_fingerprint": null,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": ""},
+                "logprobs": null,
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1}
+        }))
+        .expect("wire response should deserialize");
+
+        let error = raw
+            .normalize(super::super::client::MistralExt::PROVIDER_NAME)
+            .expect_err("an empty choice must not normalize to a blank answer");
+        assert!(
+            error
+                .to_string()
+                .contains("Response contained no message or tool call (empty)"),
+            "got {error}"
+        );
+    }
+
     #[test]
     fn deserializes_response_with_array_and_null_content() {
         let data = r#"{

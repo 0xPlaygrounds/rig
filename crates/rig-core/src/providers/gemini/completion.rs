@@ -2337,6 +2337,29 @@ mod tests {
         assert!(error.to_string().contains("No response candidates"));
     }
 
+    /// A candidate whose content carries no parts is a malformed response
+    /// where this wire promises content; the inbound guard must keep its own
+    /// diagnostic (distinct from the no-candidates error above).
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "candidates": [{
+                "content": {"role": "model", "parts": []},
+                "finishReason": "STOP"
+            }]
+        }))
+        .expect("part-less candidate should deserialize");
+
+        let error = completion::CompletionResponse::try_from(response)
+            .expect_err("an empty candidate must not normalize to a blank answer");
+        assert!(
+            error
+                .to_string()
+                .contains("Response contained no message or tool call (empty)"),
+            "got {error}"
+        );
+    }
+
     #[test]
     fn test_modality_token_count_deserializes_without_zero_token_count() {
         let count: ModalityTokenCount = serde_json::from_value(json!({

@@ -3581,6 +3581,36 @@ mod tests {
         );
     }
 
+    /// An interaction whose only output is a name-less function call maps to
+    /// no assistant content at all — outputs were present, none usable. That
+    /// is a malformed response where this wire promises content; the inbound
+    /// guard must keep its own diagnostic (distinct from the no-outputs
+    /// error).
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        let interaction = Interaction {
+            id: "interaction-empty".to_string(),
+            status: Some(InteractionStatus::Completed),
+            steps: vec![Step::ModelOutput {
+                content: vec![Content::FunctionCall(FunctionCallContent {
+                    name: None,
+                    arguments: None,
+                    id: None,
+                })],
+            }],
+            ..Default::default()
+        };
+
+        let error = completion::CompletionResponse::try_from(interaction)
+            .expect_err("an unusable-output interaction must not normalize to a blank answer");
+        assert!(
+            error
+                .to_string()
+                .contains("Response contained no message or tool call (empty)"),
+            "got {error}"
+        );
+    }
+
     #[test]
     fn test_completion_response_carries_normalized_metadata() {
         let interaction = Interaction {

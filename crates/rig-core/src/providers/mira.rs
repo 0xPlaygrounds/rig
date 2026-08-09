@@ -458,6 +458,38 @@ mod tests {
     use crate::completion::NormalizeCompletionResponse;
     use crate::providers::openai::completion::OpenAICompatibleProvider;
 
+    /// Mira's `RawMessage` is `{ role, content: String }` and its conversion
+    /// always produces a one-element content list, so the two emptiness
+    /// guards downstream of it are defense-in-depth today: no deserializable
+    /// wire response can reach them, and a blank structured answer
+    /// normalizes to a one-element blank text choice. Pinned so a future
+    /// `RawMessage` change that makes the guards reachable surfaces here
+    /// instead of silently changing what a blank Mira answer becomes.
+    #[test]
+    fn a_blank_structured_answer_normalizes_to_a_one_element_blank_choice() {
+        let raw: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "mira-blank",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "some-model",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": ""},
+                "finish_reason": "stop"
+            }]
+        }))
+        .expect("wire response should deserialize");
+
+        let normalized = raw
+            .normalize("mira")
+            .expect("a blank structured answer still normalizes");
+        assert_eq!(normalized.choice.len(), 1);
+        assert!(matches!(
+            normalized.choice.first(),
+            Some(completion::AssistantContent::Text(text)) if text.text.is_empty()
+        ));
+    }
+
     /// Normalize a Mira wire response the way the shared completion path does,
     /// threading Mira's own descriptor name through the conversion.
     fn normalized(response: CompletionResponse) -> completion::CompletionResponse {

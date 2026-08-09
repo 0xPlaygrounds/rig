@@ -844,6 +844,34 @@ mod tests {
         );
     }
 
+    /// The text arm's own diagnostic: a response with no tool-call envelopes
+    /// and no content is a malformed response where this wire promises
+    /// content — distinct from the tool-call arm's message above.
+    #[test]
+    fn an_empty_assistant_choice_is_rejected_with_this_guards_diagnostic() {
+        let json_data = r#"
+        {
+            "id": "abc123",
+            "finish_reason": "COMPLETE",
+            "message": {
+                "role": "assistant",
+                "content": []
+            }
+        }
+        "#;
+        let response: CompletionResponse =
+            serde_json::from_str(json_data).expect("cohere response should deserialize");
+
+        let error = completion::CompletionResponse::try_from(response)
+            .expect_err("an empty choice must not normalize to a blank answer");
+        assert!(
+            error
+                .to_string()
+                .contains("Response contained no message or tool call (empty)"),
+            "got {error}"
+        );
+    }
+
     #[test]
     fn test_deserialize_completion_response() {
         let json_data = r#"

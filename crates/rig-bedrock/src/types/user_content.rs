@@ -109,6 +109,31 @@ mod tests {
         message::{ToolResultContent, UserContent},
     };
 
+    /// A tool result carrying no content blocks is a malformed response
+    /// where this wire promises content; the inbound guard must keep its own
+    /// diagnostic.
+    #[test]
+    fn an_empty_tool_result_is_rejected_with_this_guards_diagnostic() {
+        let cb = aws_bedrock::ContentBlock::ToolResult(
+            aws_bedrock::ToolResultBlock::builder()
+                .tool_use_id("123")
+                .set_content(Some(vec![]))
+                .build()
+                .expect("an empty content list should build"),
+        );
+
+        let user_content: Result<RigUserContent, _> = cb.try_into();
+        let error = user_content
+            .err()
+            .expect("an empty tool result must not convert to a blank result");
+        assert!(
+            error
+                .to_string()
+                .contains("ToolResult returned invalid response"),
+            "got {error}"
+        );
+    }
+
     #[test]
     fn aws_content_block_to_user_content() {
         let cb = aws_bedrock::ContentBlock::Text("42".into());

@@ -117,6 +117,48 @@ mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig_core::message::{Message, UserContent};
 
+    /// A wire message with no content blocks is a malformed response where
+    /// this wire promises content; each role's inbound guard must keep its
+    /// own diagnostic.
+    #[test]
+    fn an_empty_assistant_message_is_rejected_with_this_guards_diagnostic() {
+        let aws_message = aws_bedrock::Message::builder()
+            .role(aws_bedrock::ConversationRole::Assistant)
+            .set_content(Some(vec![]))
+            .build()
+            .expect("an empty content list should build");
+
+        let error = RigMessage::try_from(aws_message)
+            .err()
+            .expect("an empty assistant message must not convert to a blank turn");
+        assert!(
+            error
+                .to_string()
+                .contains("AWS Bedrock assistant message contained no content"),
+            "got {error}"
+        );
+    }
+
+    /// The user-role arm of the same rule.
+    #[test]
+    fn an_empty_user_message_is_rejected_with_this_guards_diagnostic() {
+        let aws_message = aws_bedrock::Message::builder()
+            .role(aws_bedrock::ConversationRole::User)
+            .set_content(Some(vec![]))
+            .build()
+            .expect("an empty content list should build");
+
+        let error = RigMessage::try_from(aws_message)
+            .err()
+            .expect("an empty user message must not convert to a blank turn");
+        assert!(
+            error
+                .to_string()
+                .contains("AWS Bedrock user message contained no content"),
+            "got {error}"
+        );
+    }
+
     #[test]
     fn message_to_aws_message() {
         let message = Message::User {
