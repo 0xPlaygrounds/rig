@@ -29,9 +29,13 @@ members = [
 # opt-in.
 # rig-derive is deliberately absent: a proc-macro crate's test binary links
 # libstd dynamically, which breaks under toolchains installed without the
-# dylib component; its macro suite runs via the dedicated
-# `cargo test -p rig-core --test macro_hygiene` CI step and rig-derive's own
-# trybuild tests.
+# dylib component. Absent from the default set is not absent from CI — its
+# own suite (trybuild cases and the dependency-rename fixtures) runs in the
+# `stable / test rig-derive` job, which names `-p rig-derive` explicitly, and
+# the macro-hygiene consumer runs in the `test guards` job's
+# `cargo test -p rig-core --test macro_hygiene` step. Both are required for
+# this exclusion to stay honest: until the first existed, every test in
+# rig-derive ran nowhere.
 default-members = [
     ".",
     "crates/rig-core",

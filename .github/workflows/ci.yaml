@@ -384,6 +384,43 @@ jobs:
       - name: Test out-of-facade streaming conformance and structural guards
         run: cargo nextest run --locked -p rig-core -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
 
+  # rig-derive's own test suite — 43 tests across 12 binaries, including 20
+  # trybuild cases and the dependency-rename fixtures. Until this job existed
+  # none of them ran anywhere in CI: rig-derive is deliberately outside
+  # `default-members` (see the note in the root Cargo.toml), so the `test`
+  # job's sweep never selects it, and no step named `-p rig-derive`. The
+  # workspace manifest asserted the coverage came from the `macro_hygiene`
+  # step "and rig-derive's own trybuild tests" — the first is real, the
+  # second ran nowhere, and that comment is corrected alongside this job.
+  #
+  # A non-compiling `tests/fixtures/*` sits on a green PR under that gap:
+  # the fixtures are separate cargo projects that only build when the test
+  # executes, so neither the workspace build nor `clippy --all-targets`
+  # touches them.
+  #
+  # Its own job rather than a step in `test-guards`: that job documents at
+  # length why it needs no protoc, and the fixtures shell out to a nested
+  # `cargo check` over the rig-agent and facade dependency graphs — a
+  # different build shape that should not silently invalidate that
+  # reasoning. It runs in parallel and finishes well inside the `test` job's
+  # critical path, so the wall-clock cost of the gate is zero.
+  #
+  # `cargo test`, not nextest: the suite is trybuild plus subprocess-driven
+  # fixture checks, and the sibling `macro_hygiene` step uses plain
+  # `cargo test` for the same reason.
+  test-derive:
+    name: stable / test rig-derive
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+
+      - name: Test rig-derive
+        run: cargo test --locked -p rig-derive
+
   # `cargo nextest` (used by the `test` job) does NOT run doctests, and the
   # `doc` job only builds documentation — so without this job nothing executes
   # the `///` code examples and a broken doctest can sail through CI.
