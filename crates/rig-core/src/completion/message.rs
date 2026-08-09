@@ -46,6 +46,22 @@ pub enum Message {
 /// constructor. With the container gone they are stated explicitly here, which
 /// is where they belonged: the check is domain validation, not a type
 /// invariant, and each site keeps its own message.
+///
+/// Every remaining call site is **inbound** — a `normalize()` or wire-response
+/// conversion judging what a provider sent back. That is not in tension with
+/// empty assistant content being legal at the rig level: empty is a legal
+/// *value*, but a specific provider returning nothing where its own protocol
+/// promises content is a *malformed response*, and that is what these guards
+/// detect. The outbound direction is enforced once instead, at
+/// [`CompletionRequest::new`](crate::completion::CompletionRequest::new) —
+/// scattering it per-adapter is how gaps appear, since a missing per-provider
+/// guard is invisible until that provider rejects the request in production.
+///
+/// The guards deliberately check **whole-choice** emptiness, never per-part
+/// emptiness: a visibly empty part can carry data that must survive the round
+/// trip (Gemini attaches thought signatures and OpenAI attaches encrypted
+/// reasoning to blocks whose visible text is empty). Do not "tighten" them to
+/// reject empty parts.
 pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Result<Vec<T>, E> {
     if items.is_empty() {
         return Err(error());

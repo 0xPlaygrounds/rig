@@ -819,11 +819,9 @@ pub fn user_content_to_messages(
                 return Ok(());
             }
 
-            let content = crate::message::require_non_empty(std::mem::take(pending), || {
-                message::MessageError::ConversionError(
-                    "OpenAI user message did not contain any non-tool content".into(),
-                )
-            })?;
+            // No emptiness guard: the early return above already skips an
+            // empty flush, so the old check here was unreachable.
+            let content = std::mem::take(pending);
             messages.push(Message::User {
                 content,
                 name: None,
@@ -991,14 +989,12 @@ impl TryFrom<Message> for message::Message {
                         .collect::<Result<Vec<_>, _>>()?,
                 );
 
+                // No emptiness guard: an ingested empty assistant message is
+                // representable, and `CompletionRequest::new` rejects it (by
+                // role and index) before any request carrying it can exist.
                 message::Message::Assistant {
                     id: None,
-                    content: crate::message::require_non_empty(assistant_content, || {
-                        message::MessageError::ConversionError(
-                            "Neither `content` nor `tool_calls` was provided to the Message"
-                                .to_owned(),
-                        )
-                    })?,
+                    content: assistant_content,
                 }
             }
 
@@ -2151,6 +2147,43 @@ where
 
 #[cfg(test)]
 mod tests {
+    /// Row-16 regression for the two deleted outbound emptiness guards in
+    /// this file: the conversions now accept the empty shapes (the flush
+    /// guard was unreachable behind its early return; an ingested assistant
+    /// message with neither `content` nor `tool_calls` converts to an empty
+    /// rig message), and the emptiness rule fires at
+    /// `CompletionRequest::new` instead — the check moved, it did not vanish.
+    #[test]
+    fn deleted_outbound_empty_guards_moved_to_request_construction() {
+        let empty_user = crate::message::Message::User {
+            content: Vec::new(),
+        };
+        let converted = <Vec<Message>>::try_from(empty_user.clone())
+            .expect("an empty user message converts to zero wire messages");
+        assert!(converted.is_empty());
+
+        let wire_assistant: Message =
+            serde_json::from_value(serde_json::json!({"role": "assistant"}))
+                .expect("a bare assistant wire message deserializes");
+        let ingested = crate::message::Message::try_from(wire_assistant)
+            .expect("ingestion no longer rejects an empty assistant message");
+        assert!(matches!(
+            &ingested,
+            crate::message::Message::Assistant { content, .. } if content.is_empty()
+        ));
+
+        for (message, role) in [(empty_user, "user"), (ingested, "assistant")] {
+            let error = crate::completion::CompletionRequest::new(
+                crate::completion::CompletionRequestParts {
+                    chat_history: vec![message],
+                    ..Default::default()
+                },
+            )
+            .expect_err("the emptiness rule lives at the request boundary now");
+            assert!(error.to_string().contains(role), "got {error}");
+        }
+    }
+
     /// Boundary-minted tool ids (`tool-{index}`, from id-less streamed calls)
     /// replay to the chat wire as a self-consistent pair: the assistant
     /// message's `tool_calls[].id` and the tool result's `tool_call_id` carry

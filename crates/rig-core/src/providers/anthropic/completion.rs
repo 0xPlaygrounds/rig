@@ -1374,13 +1374,12 @@ impl TryFrom<message::Message> for Message {
                     },
                 )?;
 
+                // No emptiness guard: every conversion arm above yields at
+                // least one block or errors, so `converted_content` is empty
+                // only when the rig-level content was — a shape
+                // `CompletionRequest::new` rejects before conversion runs.
                 Message {
-                    content: crate::message::require_non_empty(converted_content, || {
-                        MessageError::ConversionError(
-                            "Assistant message did not contain Anthropic-compatible content"
-                                .to_owned(),
-                        )
-                    })?,
+                    content: converted_content,
                     role: Role::Assistant,
                 }
             }
@@ -2673,6 +2672,33 @@ mod tests {
     use super::*;
     use serde_json::json;
     use serde_path_to_error::deserialize;
+
+    /// Row-16 regression for the deleted outbound emptiness guard: converting
+    /// an empty rig assistant message to the wire now yields an empty content
+    /// list (every conversion arm produces at least one block or errors, so
+    /// only rig-level emptiness can reach it), and the emptiness rule fires
+    /// at `CompletionRequest::new` instead — the check moved, it did not
+    /// vanish.
+    #[test]
+    fn deleted_outbound_empty_guard_moved_to_request_construction() {
+        let empty_assistant = message::Message::Assistant {
+            id: None,
+            content: Vec::new(),
+        };
+        let wire = Message::try_from(empty_assistant.clone())
+            .expect("conversion no longer rejects an empty assistant message");
+        assert!(wire.content.is_empty());
+
+        let error = completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+            chat_history: vec![empty_assistant],
+            ..Default::default()
+        })
+        .expect_err("the emptiness rule lives at the request boundary now");
+        assert!(
+            error.to_string().contains("assistant message at index 0"),
+            "got {error}"
+        );
+    }
 
     #[test]
     fn current_model_default_max_tokens_match_anthropic_limits() {

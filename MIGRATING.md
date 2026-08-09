@@ -436,6 +436,18 @@ empty preamble still sends exactly as before. Histories persisted with the
 legacy fabricated empty-text sentinel also still deserialize: a one-element
 content list passes the emptiness check by construction.
 
+**Outbound emptiness guards are gone from the message conversions.** Five
+`require_non_empty` guards on the request-direction conversions are deleted:
+the openai chat and Responses user-content flushes (both were already
+unreachable behind `is_empty` early returns), the openai and cohere
+assistant-message ingestion conversions, and anthropic's assistant
+conversion. `CompletionRequest::new` enforces the same rule once at the
+boundary, so converting an empty assistant message no longer errors at the
+conversion — the request that would carry it cannot be built in the first
+place. The inbound guards on response normalization (16 sites) are
+unchanged: a provider returning nothing where its own protocol promises
+content is still a malformed response.
+
 ### The raw grammar is a part lifecycle: Start / Delta / End per content kind
 
 Every streamed part is now an **entity with a lifecycle** — open, mutate in

@@ -2716,11 +2716,9 @@ fn flush_responses_user_content(
         return Ok(());
     }
 
-    let content = crate::message::require_non_empty(std::mem::take(pending), || {
-        MessageError::ConversionError(
-            "User message did not contain OpenAI Responses-compatible content".to_string(),
-        )
-    })?;
+    // No emptiness guard: the early return above already skips an empty
+    // flush, so the old check here was unreachable.
+    let content = std::mem::take(pending);
     messages.push(Message::User {
         content,
         name: None,
@@ -2963,6 +2961,32 @@ mod tests {
     use crate::test_utils::MockCompletionModel;
     use serde_json::json;
     use std::collections::HashMap;
+
+    /// Row-16 regression for the deleted outbound emptiness guard in
+    /// `flush_responses_user_content` (unreachable behind its early return):
+    /// an empty rig user message converts to zero input items, and the
+    /// emptiness rule fires at `CompletionRequest::new` instead — the check
+    /// moved, it did not vanish.
+    #[test]
+    fn deleted_outbound_empty_guard_moved_to_request_construction() {
+        let empty_user = message::Message::User {
+            content: Vec::new(),
+        };
+        let items = <Vec<InputItem>>::try_from(empty_user.clone())
+            .expect("an empty user message converts to zero input items");
+        assert!(items.is_empty());
+
+        let error =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                chat_history: vec![empty_user],
+                ..Default::default()
+            })
+            .expect_err("the emptiness rule lives at the request boundary now");
+        assert!(
+            error.to_string().contains("user message at index 0"),
+            "got {error}"
+        );
+    }
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
         crate::completion::Document {

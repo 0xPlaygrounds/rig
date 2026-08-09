@@ -547,12 +547,9 @@ impl TryFrom<Message> for message::Message {
                     ))
                 }));
 
-                let content = crate::message::require_non_empty(content, || {
-                    message::MessageError::ConversionError(
-                        "Expected either text content or tool calls".to_string(),
-                    )
-                })?;
-
+                // No emptiness guard: an ingested empty assistant message is
+                // representable, and `CompletionRequest::new` rejects it (by
+                // role and index) before any request carrying it can exist.
                 Ok(message::Message::Assistant { id: None, content })
             }
             Message::Tool {
@@ -787,6 +784,37 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Row-16 regression for the deleted outbound emptiness guard: ingesting
+    /// a cohere assistant message with no content and no usable tool calls
+    /// now yields an empty rig message, and the emptiness rule fires at
+    /// `CompletionRequest::new` instead — the check moved, it did not vanish.
+    #[test]
+    fn deleted_outbound_empty_guard_moved_to_request_construction() {
+        let wire = Message::Assistant {
+            content: Vec::new(),
+            citations: Vec::new(),
+            tool_calls: Vec::new(),
+            tool_plan: None,
+        };
+        let ingested = message::Message::try_from(wire)
+            .expect("ingestion no longer rejects an empty assistant message");
+        assert!(matches!(
+            &ingested,
+            message::Message::Assistant { content, .. } if content.is_empty()
+        ));
+
+        let error =
+            crate::completion::CompletionRequest::new(crate::completion::CompletionRequestParts {
+                chat_history: vec![ingested],
+                ..Default::default()
+            })
+            .expect_err("the emptiness rule lives at the request boundary now");
+        assert!(
+            error.to_string().contains("assistant message at index 0"),
+            "got {error}"
+        );
+    }
     use serde_path_to_error::deserialize;
 
     /// Emptiness means something different on each arm of the normalization,
