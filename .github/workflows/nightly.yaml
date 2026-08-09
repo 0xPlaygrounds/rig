@@ -93,35 +93,36 @@ on:
   workflow_dispatch: # cd.yaml already uses this; match it
   workflow_call:
 
+# The toolchain and the cache-fingerprint env (debuginfo trim,
+# CARGO_INCREMENTAL) come from .github/actions/rust-setup, the same single
+# source ci.yaml uses — which is what actually guarantees the two lanes
+# share build fingerprints instead of a comment asking copies to stay
+# identical.
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: 1.94.0
-  # See ci.yaml for the rationale; kept identical so the two lanes share build
-  # fingerprints rather than invalidating each other's caches.
-  CARGO_PROFILE_DEV_DEBUG: line-tables-only
-  CARGO_PROFILE_TEST_DEBUG: line-tables-only
-  CARGO_INCREMENTAL: 0
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: sccache
 
 # The `full-` prefix keeps this group disjoint from ci.yaml's when both are
 # invoked from the same cd.yaml run (inside a called workflow,
-# `github.workflow` resolves to the CALLER's name).
+# `github.workflow` resolves to the CALLER's name). Keyed on the PR number
+# rather than `head_ref` because two forks PRing from identically-named
+# branches share a head_ref — under the old key they cancelled each other's
+# runs.
 concurrency:
-  group: full-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: full-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   test-all-features:
     name: stable / test all features
     runs-on: ubuntu-latest
-    # `schedule` fires on any fork whose owner has enabled Actions, against the
-    # fork's default branch, where the provider secrets are empty — so without
-    # this guard every fork owner gets a failing run and a failure email at
-    # 06:00 daily for a suite they did not ask to run. Fork *PRs* into this
-    # repo are unaffected: `github.repository` is the upstream repo there, and
-    # the vector-store tests stub their embeddings with `api_key("TEST")`
-    # rather than calling a provider.
+    # `schedule` fires on any fork whose owner has enabled Actions, against
+    # the fork's default branch — so without this guard every fork owner gets
+    # a daily 06:00 run (Docker pulls and a full workspace build) for a suite
+    # they did not ask for. Fork *PRs* into this repo are unaffected:
+    # `github.repository` is the upstream repo there, and the suite is fully
+    # hermetic — cassettes replay with a dummy key, the vector-store tests
+    # stub their embeddings with `api_key("TEST")`, and no job receives
+    # provider secrets anywhere in CI.
     #
     # This also covers the `workflow_call` path, where `github.repository` is
     # still the caller's repo — a fork's own cd.yaml skips this job and, with
@@ -131,38 +132,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # protoc: required to compile rig-lancedb — and the `lancedb` crate
+      # itself, which the `rig` facade carries as an unconditional
+      # dev-dependency. See the longer note on ci.yaml's `test` job.
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: ./.github/actions/rust-setup
         with:
-          toolchain: ${{ env.RUST_VERSION }}
-
-      # See ci.yaml's `test` job note: caches workspace-member rustc
-      # invocations, which rust-cache cannot.
-      - name: Run sccache
-        uses: mozilla/sccache-action@v0.0.11
-
-      - name: Install nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
-
-      # Required to compile rig-lancedb — and also the `lancedb` crate itself,
-      # which the `rig` facade carries as an unconditional dev-dependency. See
-      # the longer note on ci.yaml's `test` job.
-      - name: Install Protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          sccache: "true"
+          nextest: "true"
+          protoc: "true"
 
       # The workspace-wide sweep over every feature. This is the step that
       # was ci.yaml's `Test with latest nextest release` before the fast/full
-      # split narrowed that one to `--features bedrock`.
+      # split narrowed that one to `--features bedrock`. No provider API keys
+      # here or anywhere in CI: everything that executes is hermetic (see
+      # ci.yaml's sweep-step note), and recording new cassettes is a local,
+      # human activity.
       #
       # A plain `run:` rather than `actions-rs/cargo@v1`: that action was
       # archived in 2023 and pins Node 20.
       - name: Test with all features
         run: cargo nextest run --locked --all-features --retries 2
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
-          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}

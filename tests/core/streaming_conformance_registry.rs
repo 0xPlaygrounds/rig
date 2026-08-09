@@ -177,60 +177,40 @@ fn out_of_binary_families_name_a_live_ci_step() {
     let workflow = Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/ci.yaml");
     let text = std::fs::read_to_string(&workflow).expect("ci.yaml should be readable");
 
-    // Structural, not substring: step names are matched only on
-    // non-comment lines whose content (after the `- ` list marker) begins
-    // with `name:` — a `# - name: …` comment cannot satisfy the check — and
-    // each step's selector/`-p` package list is looked for INSIDE that
-    // step's own block, not anywhere in the file. Two boundaries matter:
-    //
-    //   * the block ends at the next step OR at the job seam (any non-blank
-    //     line indented less than a step line, e.g. the next job's key) — a
-    //     job-final step must not absorb the following job's header;
-    //   * comment lines are dropped from the block BEFORE matching, so a
-    //     comment that merely *mentions* `--features bedrock` cannot keep
-    //     this check green after the actual flag is removed from the `run:`
-    //     command — that would be the paper-claim failure mode all over
-    //     again, hidden one level down.
-    let step_block = |step: &str| -> Option<String> {
-        let lines: Vec<&str> = text.lines().collect();
-        let is_step_line = |line: &str| {
-            let trimmed = line.trim_start();
-            !trimmed.starts_with('#')
-                && trimmed
-                    .strip_prefix("- ")
-                    .is_some_and(|rest| rest.trim_start().starts_with("name:"))
-        };
-        let step_indent = |line: &str| line.len() - line.trim_start().len();
-        let start = lines.iter().position(|line| {
-            is_step_line(line)
-                && line
-                    .split_once("name:")
-                    .is_some_and(|(_, value)| value.trim() == step)
-        })?;
-        let job_seam = step_indent(lines[start]);
-        let block: Vec<&str> = lines[start + 1..]
-            .iter()
-            .take_while(|line| {
-                // Comment lines pass the seam test unconditionally: comments
-                // are legal at any indentation, so a low-indent comment
-                // inside a step's span must not truncate the block (it is
-                // dropped by the filter below either way).
-                !is_step_line(line)
-                    && (line.trim().is_empty()
-                        || line.trim_start().starts_with('#')
-                        || step_indent(line) >= job_seam)
+    // A real YAML parse, not a line heuristic. Earlier versions of this
+    // check walked the raw text and accreted patches for each discovered
+    // hole — comments satisfying the match, job-final steps absorbing the
+    // next job's header, low-indent comments truncating blocks. Parsing
+    // `jobs.*.steps[]` gives exact step extents and comment-blindness by
+    // construction, and the selector/`-p` assertions run against the step's
+    // `run:` command alone — the only place where they are operative.
+    let doc: serde_yaml::Value = serde_yaml::from_str(&text).expect("ci.yaml should parse as YAML");
+    let jobs = doc
+        .get("jobs")
+        .and_then(serde_yaml::Value::as_mapping)
+        .expect("ci.yaml should have a jobs mapping");
+    let step_run = |step: &str| -> Option<String> {
+        jobs.values()
+            .filter_map(|job| job.get("steps").and_then(serde_yaml::Value::as_sequence))
+            .flatten()
+            .find(|candidate| {
+                candidate.get("name").and_then(serde_yaml::Value::as_str) == Some(step)
             })
-            .filter(|line| !line.trim_start().starts_with('#'))
-            .copied()
-            .collect();
-        Some(block.join("\n"))
+            .map(|found| {
+                found
+                    .get("run")
+                    .and_then(serde_yaml::Value::as_str)
+                    .unwrap_or_else(|| {
+                        panic!("CI step {step:?} exists but has no run: command to check")
+                    })
+                    .to_string()
+            })
     };
 
     for entry in OUT_OF_BINARY_FAMILIES {
-        let block = step_block(entry.ci_step).unwrap_or_else(|| {
+        let run = step_run(entry.ci_step).unwrap_or_else(|| {
             panic!(
-                "{} is annotated with CI step {:?}, which no longer exists in {} \
-                 (comments do not count)",
+                "{} is annotated with CI step {:?}, which no longer exists in {}",
                 entry.family,
                 entry.ci_step,
                 workflow.display(),
@@ -241,11 +221,11 @@ fn out_of_binary_families_name_a_live_ci_step() {
             // enabled in that step — not a spelling: `--all-features` enables
             // strictly more, so a step that broadens its sweep must not fail
             // this check for gaining coverage.
-            let satisfied = block.contains(selector)
-                || (selector.starts_with("--features ") && block.contains("--all-features"));
+            let satisfied = run.contains(selector)
+                || (selector.starts_with("--features ") && run.contains("--all-features"));
             assert!(
                 satisfied,
-                "{}'s CI step no longer carries the {:?} predicate INSIDE its own block, so its \
+                "{}'s CI step no longer carries the {:?} predicate in its run: command, so its \
                  binary is selected by nothing — a nextest filter matching zero tests still \
                  exits 0",
                 entry.family, selector,
@@ -253,7 +233,7 @@ fn out_of_binary_families_name_a_live_ci_step() {
         }
         if let Some(package) = entry.ci_package {
             assert!(
-                block.contains(&format!("-p {package}")),
+                run.contains(&format!("-p {package}")),
                 "{}'s CI step no longer compiles `-p {package}`, so its suite binary does not \
                  build there at all",
                 entry.family,

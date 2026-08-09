@@ -1,24 +1,22 @@
 #!/usr/bin/env bash
-# `rust-toolchain.toml` is what cargo itself obeys, but every workflow also
-# carries a `RUST_VERSION` env used as the `setup-rust-toolchain` input. That
-# is four copies of one number, and a partial bump is silent: the gate goes
-# green on the new toolchain while a workflow that was missed — nightly.yaml
-# is also cd.yaml's pre-release gate — keeps compiling on the old one, so a
-# failure there gets misread as a runtime regression rather than a stale pin.
+# `rust-toolchain.toml` is the single toolchain source: the rust-setup
+# composite action (.github/actions/rust-setup) resolves its channel at run
+# time, and no workflow carries a RUST_VERSION copy anymore. This guard
+# exists to keep it that way — it fails on the two bypasses that would
+# silently build one job on a stale toolchain:
 #
-# Assert the copies agree. This is a text check on purpose: it must fail on a
-# workflow nobody remembered to update, which a parser keyed off the workflows
-# that *do* declare the variable would not do.
+#   * a reintroduced `RUST_VERSION:` env copy that drifts from the channel
+#     (the pre-single-source failure mode: the gate goes green on the new
+#     toolchain while a missed workflow — nightly.yaml is also cd.yaml's
+#     pre-release gate — keeps compiling on the old one, misread as a
+#     runtime regression);
+#   * an inline literal `toolchain:` input in a `with:` block, which
+#     sidesteps the composite action entirely.
 #
-# Why the copies exist at all: omitting the `toolchain` input would make
-# `setup-rust-toolchain` read rust-toolchain.toml directly — no copies, no
-# desync, no script. But rust-toolchain.toml also pins components
-# (rust-analyzer, rust-src) and the wasm target for local development, and
-# honoring it in CI would download those in every job. Until that trade is
-# taken, this guard keeps the existing copies honest. A workflow with no
-# RUST_VERSION needs no checking (it takes its toolchain from
-# rust-toolchain.toml), so a repo that deletes every copy passes vacuously —
-# that is the desired end state, not an error to steer people away from.
+# This is a text check on purpose: it must fail on a workflow nobody
+# remembered to convert, which a parser keyed off the workflows that use the
+# composite action would not do. With no matches anywhere it passes
+# vacuously — that IS the desired state.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
