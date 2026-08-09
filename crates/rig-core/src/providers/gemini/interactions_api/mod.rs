@@ -4,7 +4,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 
 use crate::OneOrMany;
-use crate::completion::{self, CompletionError, CompletionRequest, GetTokenUsage};
+use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -22,6 +22,13 @@ pub use interactions_api_types::*;
 // =================================================================
 // Rig Implementation Types
 // =================================================================
+
+/// Stable descriptor name for the Gemini Interactions API.
+///
+/// The Interactions API is a second surface over the same provider, so it
+/// reports the same descriptor as GenerateContent — matching the telemetry
+/// spans, which have always shared it.
+pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
 /// Completion model wrapper for the Gemini Interactions API.
 #[derive(Clone, Debug)]
@@ -106,24 +113,24 @@ where
     }
 }
 
-impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
+impl<T> InteractionsCompletionModel<T>
 where
     T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
 {
-    type Response = Interaction;
-    type StreamingResponse = streaming::StreamingCompletionResponse;
-    type Client = InteractionsClient<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn completion(
+    /// Execute a completion and return the Interactions API's own payload.
+    ///
+    /// This is the escape hatch for interaction fields rig does not normalize —
+    /// step history, lifecycle status, hosted-tool exchanges. It shares the
+    /// request builder, transport, telemetry, and error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one network
+    /// request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Interaction>, CompletionError> {
+    ) -> Result<Interaction, CompletionError> {
         let span = CompletionSpanBuilder::new(
-            "gcp.gemini",
+            PROVIDER_NAME,
             &self.model,
             CompletionOperation::Interactions,
         )
@@ -173,7 +180,8 @@ where
 
                 let span = tracing::Span::current();
                 span.record_response_metadata(&response);
-                span.record_token_usage(&response);
+                let usage = crate::completion::Usage::from(&response);
+                span.record_token_usage(&usage);
 
                 if enabled!(Level::TRACE) {
                     tracing::trace!(
@@ -183,7 +191,7 @@ where
                     );
                 }
 
-                response.try_into()
+                Ok(response)
             } else {
                 let status = response.status();
                 let body = response
@@ -200,15 +208,34 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<T> completion::CompletionModel for InteractionsCompletionModel<T>
+where
+    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
+    }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         InteractionsCompletionModel::stream(self, request).await
+    }
+}
+
+impl<T> crate::client::ConstructCompletionModel<InteractionsClient<T>>
+    for InteractionsCompletionModel<T>
+where
+    InteractionsClient<T>: Clone,
+{
+    fn construct(client: &InteractionsClient<T>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -294,6 +321,9 @@ pub(crate) fn create_request_body(
 
     let mut history = Vec::new();
     history.extend(chat_history);
+    // functionResponse.name keys the replay: cross-provider ingested
+    // results arrive with an empty name and their call carries it.
+    crate::providers::internal::resolve_empty_tool_result_names(&mut history);
     let (history_system, history) = split_system_messages_from_history(history);
 
     let steps = history
@@ -461,7 +491,8 @@ fn build_interaction_stream_path(interaction_id: &str, last_event_id: Option<&st
     )
 }
 
-impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
+/// Normalize a Gemini Interactions API payload.
+impl TryFrom<Interaction> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: Interaction) -> Result<Self, Self::Error> {
@@ -495,15 +526,17 @@ impl TryFrom<Interaction> for completion::CompletionResponse<Interaction> {
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| usage.token_usage())
+            .map(crate::completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let finish_reason = response.status.as_ref().map(map_interaction_status);
+
+        Ok(
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                .with_optional_model(response.model.as_deref())
+                .with_optional_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -523,10 +556,10 @@ fn assistant_content_from_output(
             let Some(name) = name else {
                 return Ok(None);
             };
-            let call_id = id.unwrap_or_else(|| name.clone());
-            Ok(Some(completion::AssistantContent::tool_call_with_call_id(
-                name.clone(),
-                call_id,
+            // An id-less call mints its correlation handle — never
+            // name-as-id, which collides two same-tool calls in one turn.
+            Ok(Some(completion::AssistantContent::tool_call(
+                id.unwrap_or_default(),
                 name,
                 arguments.unwrap_or(Value::Object(Map::new())),
             )))
@@ -632,7 +665,7 @@ fn split_data_uri(
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
     use super::split_data_uri;
-    use crate::completion::{CompletionError, GetTokenUsage, Usage};
+    use crate::completion::{CompletionError, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
     use base64::{Engine, prelude::BASE64_STANDARD};
@@ -740,12 +773,15 @@ pub mod interactions_api_types {
         pub input: Option<InteractionInput>,
     }
 
-    impl GetTokenUsage for Interaction {
-        fn token_usage(&self) -> Usage {
-            self.usage
-                .as_ref()
-                .map(|usage| usage.token_usage())
-                .unwrap_or_default()
+    impl From<&Interaction> for Usage {
+        fn from(value: &Interaction) -> Usage {
+            value.usage.as_ref().map(Usage::from).unwrap_or_default()
+        }
+    }
+
+    impl From<Interaction> for Usage {
+        fn from(value: Interaction) -> Usage {
+            (&value).into()
         }
     }
 
@@ -1264,19 +1300,66 @@ pub mod interactions_api_types {
         Completed,
         Failed,
         Cancelled,
+        /// A status this crate does not know yet. Google adds wire values
+        /// without notice; carrying the spelling verbatim keeps the whole
+        /// payload deserializable instead of failing on the new value.
+        #[serde(untagged)]
+        Unknown(String),
     }
 
     impl InteractionStatus {
-        /// Returns true if the status is terminal.
+        /// Returns true when polling can stop: the status will not advance
+        /// on its own.
+        ///
+        /// The known *in-flight* statuses are the allowlist, so a status this
+        /// crate does not know yet reads as terminal: a poll loop that treated
+        /// an unknown status as in-flight would wait on it forever, whereas
+        /// surfacing it lets the caller act on the provider's own spelling.
+        ///
+        /// [`InteractionStatus::RequiresAction`] is terminal *for the poll*
+        /// even though the interaction itself is resumable: it only advances
+        /// when the caller submits tool results, so waiting on it can never
+        /// succeed. Callers must branch on it as a distinct, resumable
+        /// outcome rather than a completion.
         pub fn is_terminal(&self) -> bool {
-            matches!(
-                self,
-                InteractionStatus::Completed
-                    | InteractionStatus::Incomplete
-                    | InteractionStatus::BudgetExceeded
-                    | InteractionStatus::Failed
-                    | InteractionStatus::Cancelled
-            )
+            !matches!(self, InteractionStatus::InProgress)
+        }
+
+        /// The exact spelling the Interactions API uses for this status on the
+        /// wire.
+        ///
+        /// Spelled out rather than derived from `Debug` (which would yield
+        /// `BudgetExceeded`, not `budget_exceeded`) so the string that reaches
+        /// [`crate::completion::FinishReason::Other`] is the provider's own.
+        pub fn as_wire_str(&self) -> &str {
+            match self {
+                Self::InProgress => "in_progress",
+                Self::RequiresAction => "requires_action",
+                Self::Incomplete => "incomplete",
+                Self::BudgetExceeded => "budget_exceeded",
+                Self::Completed => "completed",
+                Self::Failed => "failed",
+                Self::Cancelled => "cancelled",
+                Self::Unknown(status) => status,
+            }
+        }
+    }
+
+    /// Map an interaction's lifecycle status onto rig's normalized finish
+    /// reasons.
+    ///
+    /// The Interactions API has no `finishReason` field — the interaction's
+    /// terminal state is the closest equivalent. Only the three statuses with a
+    /// normalized counterpart are folded in; the rest (including the
+    /// non-terminal `in_progress`) are carried verbatim rather than guessed at.
+    pub(crate) fn map_interaction_status(
+        status: &InteractionStatus,
+    ) -> crate::completion::FinishReason {
+        match status {
+            InteractionStatus::Completed => crate::completion::FinishReason::Stop,
+            InteractionStatus::RequiresAction => crate::completion::FinishReason::ToolCalls,
+            InteractionStatus::BudgetExceeded => crate::completion::FinishReason::Length,
+            other => crate::completion::FinishReason::Other(other.as_wire_str().to_owned()),
         }
     }
 
@@ -1292,15 +1375,21 @@ pub mod interactions_api_types {
         pub total_tokens: Option<u64>,
     }
 
-    impl GetTokenUsage for InteractionUsage {
-        fn token_usage(&self) -> Usage {
+    impl From<&InteractionUsage> for Usage {
+        fn from(value: &InteractionUsage) -> Usage {
             let mut usage = Usage::new();
-            usage.input_tokens = self.total_input_tokens.unwrap_or_default();
-            usage.output_tokens = self.total_output_tokens.unwrap_or_default();
-            usage.total_tokens = self
+            usage.input_tokens = value.total_input_tokens.unwrap_or_default();
+            usage.output_tokens = value.total_output_tokens.unwrap_or_default();
+            usage.total_tokens = value
                 .total_tokens
                 .unwrap_or(usage.input_tokens + usage.output_tokens);
             usage
+        }
+    }
+
+    impl From<InteractionUsage> for Usage {
+        fn from(value: InteractionUsage) -> Usage {
+            (&value).into()
         }
     }
 
@@ -1318,8 +1407,17 @@ pub mod interactions_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum Step {
-        UserInput { content: Vec<Content> },
-        ModelOutput { content: Vec<Content> },
+        // `content` is defaulted: a streaming `step.start` announces the step
+        // with the content omitted (it follows in `step.delta` events), e.g.
+        // `{"type":"model_output"}` on the recorded wire.
+        UserInput {
+            #[serde(default)]
+            content: Vec<Content>,
+        },
+        ModelOutput {
+            #[serde(default)]
+            content: Vec<Content>,
+        },
         Thought(ThoughtContent),
         FunctionCall(FunctionCallContent),
         FunctionResult(FunctionResultContent),
@@ -1834,18 +1932,15 @@ pub mod interactions_api_types {
                         annotations: None,
                     }))
                 }
-                message::UserContent::ToolResult(message::ToolResult {
-                    id,
-                    call_id,
-                    content,
-                }) => {
-                    let Some(call_id) = call_id else {
-                        return Err(message::MessageError::ConversionError(
-                            "Tool results require call_id for Gemini Interactions API".to_string(),
-                        ));
-                    };
+                message::UserContent::ToolResult(tool_result) => {
+                    // The wire requires a call id: the provider-issued one
+                    // when it exists, else rig's minted handle — always
+                    // present, so the old "results require call_id" error
+                    // is unrepresentable.
+                    let call_id = tool_result.wire_call_id().to_owned();
+                    let name = tool_result.name;
 
-                    let mut contents = content.into_iter().collect::<Vec<_>>();
+                    let mut contents = tool_result.content.into_iter().collect::<Vec<_>>();
                     let result = if contents.len() == 1 {
                         let content = contents.pop().ok_or_else(|| {
                             message::MessageError::ConversionError(
@@ -1875,7 +1970,8 @@ pub mod interactions_api_types {
                     };
 
                     Ok(Self::FunctionResult(FunctionResultContent {
-                        name: Some(id),
+                        // The executed tool's name travels as required data.
+                        name: Some(name),
                         is_error: None,
                         result: Some(result),
                         call_id: Some(call_id),
@@ -2007,7 +2103,7 @@ pub mod interactions_api_types {
                     }))
                 }
                 message::AssistantContent::ToolCall(tool_call) => {
-                    let call_id = tool_call.call_id.unwrap_or_else(|| tool_call.id.clone());
+                    let call_id = tool_call.wire_call_id().to_owned();
                     Ok(Self::FunctionCall(FunctionCallContent {
                         name: Some(tool_call.function.name),
                         arguments: Some(tool_call.function.arguments),
@@ -2321,21 +2417,21 @@ pub mod interactions_api_types {
         },
         #[serde(rename = "step.start")]
         StepStart {
-            index: i32,
+            index: u32,
             step: Step,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
         #[serde(rename = "step.delta")]
         StepDelta {
-            index: i32,
+            index: u32,
             delta: ContentDelta,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
         #[serde(rename = "step.stop")]
         StepStop {
-            index: i32,
+            index: u32,
             #[serde(skip_serializing_if = "Option::is_none")]
             event_id: Option<String>,
         },
@@ -2366,6 +2462,7 @@ pub mod interactions_api_types {
         ThoughtSummary(ThoughtSummaryDelta),
         ThoughtSignature(ThoughtSignatureDelta),
         FunctionCall(FunctionCallDelta),
+        ArgumentsDelta(ArgumentsDelta),
         FunctionResult(FunctionResultDelta),
         CodeExecutionCall(CodeExecutionCallDelta),
         CodeExecutionResult(CodeExecutionResultDelta),
@@ -2376,6 +2473,18 @@ pub mod interactions_api_types {
         McpServerToolCall(McpServerToolCallDelta),
         McpServerToolResult(McpServerToolResultDelta),
         FileSearchResult(FileSearchResultDelta),
+    }
+
+    /// Streaming function-call arguments fragment: the wire fragments a
+    /// `function_call` step's arguments as raw JSON text across
+    /// `arguments_delta` events at the step's index (recorded live in
+    /// `streaming_grammar/interactions_same_tool_twice`; the `step.start`
+    /// announces the call with `"arguments": {}` and the real payload
+    /// arrives here).
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    pub struct ArgumentsDelta {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub arguments: Option<String>,
     }
 
     /// Streaming text delta.
@@ -2629,23 +2738,148 @@ mod tests {
         }
     }
 
+    /// `functionResponse.name` is the executed function's name: read from
+    /// the required `ToolResult::name` — never an identifier.
     #[test]
-    fn test_tool_result_requires_call_id() {
+    fn tool_result_serializes_the_executed_name_not_an_identifier() {
+        use message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
+
+        let call = |item_id: Option<&str>, call_id: &str, name: &str| {
+            let function = ToolFunction {
+                name: name.to_owned(),
+                arguments: json!({}),
+            };
+            let tool_call = match item_id {
+                Some(item_id) => ToolCall::from_dual_wire(item_id, call_id, function),
+                None => ToolCall::from_wire(call_id, function),
+            };
+            Message::Assistant {
+                id: None,
+                content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+            }
+        };
+        let result = |item_id: Option<&str>, call_id: &str, name: &str| Message::User {
+            content: OneOrMany::one(match item_id {
+                Some(item_id) => message::UserContent::tool_result_with_call_id(
+                    item_id,
+                    call_id,
+                    name,
+                    OneOrMany::one(ToolResultContent::text("out")),
+                ),
+                None => message::UserContent::tool_result_from_wire(
+                    call_id,
+                    name,
+                    OneOrMany::one(ToolResultContent::text("out")),
+                ),
+            }),
+        };
+
+        let request = CompletionRequest {
+            record_telemetry_content: false,
+            model: None,
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                // A driver-built result carries the executed name (a repair
+                // hook renamed the call: `sum` ran, not `add`).
+                call(None, "call_1", "sum"),
+                result(None, "call_1", "sum"),
+                // An OpenAI-shaped correlator travels as the call id while
+                // the required `name` field carries the executed name —
+                // `call_abc` must never reach the wire as a name.
+                call(None, "call_abc", "get_weather"),
+                result(None, "call_abc", "get_weather"),
+                // A dual-identifier result (OpenAI Responses: item id `fc_…`
+                // + `call_id` `call_…`) keeps the correlator on the wire and
+                // the executed name in `name` — `fc_1` must never reach the
+                // wire as a name.
+                call(Some("fc_1"), "call_9", "get_time"),
+                result(Some("fc_1"), "call_9", "get_time"),
+            ])
+            .expect("non-empty history"),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+        };
+
+        let body = create_request_body("gemini-2.5-flash".to_string(), request, None)
+            .expect("request should build");
+        let input = serde_json::to_value(&body.input).expect("input should serialize");
+        let mut names = Vec::new();
+        let mut call_ids = Vec::new();
+        fn collect(value: &serde_json::Value, names: &mut Vec<String>, call_ids: &mut Vec<String>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    if map.get("type").and_then(|t| t.as_str()) == Some("function_result") {
+                        if let Some(name) = map.get("name").and_then(|n| n.as_str()) {
+                            names.push(name.to_owned());
+                        }
+                        if let Some(call_id) = map.get("call_id").and_then(|c| c.as_str()) {
+                            call_ids.push(call_id.to_owned());
+                        }
+                    }
+                    for nested in map.values() {
+                        collect(nested, names, call_ids);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for nested in items {
+                        collect(nested, names, call_ids);
+                    }
+                }
+                _ => {}
+            }
+        }
+        collect(&input, &mut names, &mut call_ids);
+
+        assert_eq!(
+            names,
+            vec![
+                "sum".to_owned(),
+                "get_weather".to_owned(),
+                "get_time".to_owned()
+            ]
+        );
+        assert_eq!(
+            call_ids,
+            vec![
+                "call_1".to_owned(),
+                "call_abc".to_owned(),
+                "call_9".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tool_result_without_provider_id_sends_minted_call_id() {
+        // A call id is always available now: the wire gets the
+        // provider-issued id when one exists, else rig's minted handle —
+        // the old "Tool results require call_id" error is unrepresentable.
+        let call = message::ToolCallId::mint();
         let content = message::UserContent::ToolResult(message::ToolResult {
-            id: "get_weather".to_string(),
-            call_id: None,
+            call: call.clone(),
+            provider: None,
+            name: "get_weather".to_string(),
             content: OneOrMany::one(message::ToolResultContent::text("ok")),
         });
 
-        let err = Content::try_from(content).expect_err("should require call_id");
-        assert!(format!("{err}").contains("call_id"));
+        let converted = Content::try_from(content).expect("tool result should convert");
+        let Content::FunctionResult(result) = converted else {
+            panic!("expected function result");
+        };
+        assert_eq!(result.call_id.as_deref(), Some(call.as_str()));
+        assert_eq!(result.name.as_deref(), Some("get_weather"));
     }
 
     #[test]
     fn test_tool_result_preserves_text_and_json_types() {
         let content = message::UserContent::ToolResult(message::ToolResult {
-            id: "get_weather".to_string(),
-            call_id: Some("call-123".to_string()),
+            call: message::ToolCallId::new_or_mint("call-123"),
+            provider: message::ProviderCallId::new("call-123"),
+            name: "get_weather".to_string(),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text(r#"{"status":"literal"}"#),
                 message::ToolResultContent::json(json!({ "status": "structured" })),
@@ -2699,8 +2933,9 @@ mod tests {
 
         for (tool_content, expected) in cases {
             let content = message::UserContent::ToolResult(message::ToolResult {
-                id: "get_weather".to_string(),
-                call_id: Some("call-123".to_string()),
+                call: message::ToolCallId::new_or_mint("call-123"),
+                provider: message::ProviderCallId::new("call-123"),
+                name: "get_weather".to_string(),
                 content: OneOrMany::one(tool_content),
             });
 
@@ -2739,8 +2974,9 @@ mod tests {
 
         for (tool_content, expected) in cases {
             let content = message::UserContent::ToolResult(message::ToolResult {
-                id: "get_weather".to_string(),
-                call_id: Some("call-123".to_string()),
+                call: message::ToolCallId::new_or_mint("call-123"),
+                provider: message::ProviderCallId::new("call-123"),
+                name: "get_weather".to_string(),
                 content: OneOrMany::one(tool_content),
             });
 
@@ -2756,8 +2992,9 @@ mod tests {
     #[test]
     fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
         let tool_result = message::UserContent::ToolResult(message::ToolResult {
-            id: "render".to_string(),
-            call_id: Some("call-image".to_string()),
+            call: message::ToolCallId::new_or_mint("call-image"),
+            provider: message::ProviderCallId::new("call-image"),
+            name: "render".to_string(),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::image_base64(
                     "first-image",
@@ -2839,14 +3076,18 @@ mod tests {
             ..Default::default()
         };
 
-        let response: completion::CompletionResponse<Interaction> =
+        let response: completion::CompletionResponse =
             interaction.try_into().expect("conversion should succeed");
 
         let choice = response.choice.first();
         match choice {
             completion::AssistantContent::ToolCall(tool_call) => {
                 assert_eq!(tool_call.function.name, "get_weather");
-                assert_eq!(tool_call.call_id.as_deref(), Some("call-123"));
+                assert_eq!(tool_call.id, "call-123");
+                assert_eq!(
+                    tool_call.provider.as_ref().expect("wire id").call_id,
+                    "call-123"
+                );
             }
             other => panic!("unexpected content: {other:?}"),
         }
@@ -3223,6 +3464,12 @@ mod tests {
         assert!(!interaction.is_terminal());
         assert!(!interaction.is_completed());
 
+        // RequiresAction is terminal for the poll (it never advances without
+        // the caller submitting tool results) but is not a completion.
+        interaction.status = Some(InteractionStatus::RequiresAction);
+        assert!(interaction.is_terminal());
+        assert!(!interaction.is_completed());
+
         interaction.status = Some(InteractionStatus::Completed);
         assert!(interaction.is_terminal());
         assert!(interaction.is_completed());
@@ -3234,6 +3481,157 @@ mod tests {
         interaction.status = Some(InteractionStatus::BudgetExceeded);
         assert!(interaction.is_terminal());
         assert!(!interaction.is_completed());
+    }
+
+    #[test]
+    fn test_interaction_status_maps_every_wire_variant() {
+        use crate::completion::FinishReason as Normalized;
+
+        for (status, expected) in [
+            (InteractionStatus::Completed, Normalized::Stop),
+            (InteractionStatus::RequiresAction, Normalized::ToolCalls),
+            (InteractionStatus::BudgetExceeded, Normalized::Length),
+            // Statuses rig does not model survive in the provider's own
+            // spelling rather than being guessed at.
+            (
+                InteractionStatus::InProgress,
+                Normalized::Other("in_progress".to_string()),
+            ),
+            (
+                InteractionStatus::Incomplete,
+                Normalized::Other("incomplete".to_string()),
+            ),
+            (
+                InteractionStatus::Failed,
+                Normalized::Other("failed".to_string()),
+            ),
+            (
+                InteractionStatus::Cancelled,
+                Normalized::Other("cancelled".to_string()),
+            ),
+        ] {
+            assert_eq!(
+                map_interaction_status(&status),
+                expected,
+                "status {status:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_interaction_status_wire_spelling_matches_serde() {
+        // `as_wire_str` is hand-written; keep it honest against the serde
+        // representation the same enum deserializes from.
+        for status in [
+            InteractionStatus::InProgress,
+            InteractionStatus::RequiresAction,
+            InteractionStatus::Incomplete,
+            InteractionStatus::BudgetExceeded,
+            InteractionStatus::Completed,
+            InteractionStatus::Failed,
+            InteractionStatus::Cancelled,
+        ] {
+            let serialized = serde_json::to_value(&status).expect("status should serialize");
+            assert_eq!(serialized, json!(status.as_wire_str()));
+        }
+    }
+
+    #[test]
+    fn test_unknown_interaction_status_round_trips_verbatim() {
+        // A status this crate does not know must land in `Unknown` with the
+        // provider's spelling intact — and serialize back to the same string —
+        // rather than failing the whole payload.
+        let status: InteractionStatus = serde_json::from_value(json!("status_future"))
+            .expect("unknown status should deserialize");
+        assert!(matches!(&status, InteractionStatus::Unknown(s) if s == "status_future"));
+        assert_eq!(status.as_wire_str(), "status_future");
+        assert_eq!(
+            serde_json::to_value(&status).expect("status should serialize"),
+            json!("status_future")
+        );
+        assert_eq!(
+            map_interaction_status(&status),
+            crate::completion::FinishReason::Other("status_future".to_string())
+        );
+    }
+
+    #[test]
+    fn test_interaction_with_unknown_status_stays_parseable() {
+        // A status Google ships tomorrow must not fail the interaction
+        // payload; the unknown status is conservatively *terminal* — only the
+        // known in-flight statuses keep a poll loop waiting, so a future
+        // status surfaces to the caller instead of hanging it.
+        let interaction: Interaction = serde_json::from_value(json!({
+            "id": "int-future",
+            "status": "status_future",
+            "usage": {"total_tokens": 5}
+        }))
+        .expect("unknown status should not fail the payload");
+
+        assert_eq!(interaction.id, "int-future");
+        assert!(matches!(
+            interaction.status,
+            Some(InteractionStatus::Unknown(ref s)) if s == "status_future"
+        ));
+        assert!(interaction.is_terminal());
+        assert!(!interaction.is_completed());
+        assert_eq!(
+            interaction.usage.as_ref().and_then(|u| u.total_tokens),
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn test_completion_response_carries_normalized_metadata() {
+        let interaction = Interaction {
+            id: "interaction-meta".to_string(),
+            model: Some("gemini-2.5-pro".to_string()),
+            status: Some(InteractionStatus::BudgetExceeded),
+            steps: vec![Step::ModelOutput {
+                content: vec![Content::Text(TextContent {
+                    text: "partial answer".to_string(),
+                    annotations: None,
+                })],
+            }],
+            ..Default::default()
+        };
+
+        let response: completion::CompletionResponse =
+            interaction.try_into().expect("conversion should succeed");
+
+        assert_eq!(response.provider, PROVIDER_NAME);
+        assert_eq!(response.model.as_deref(), Some("gemini-2.5-pro"));
+        assert_eq!(response.response_id.as_deref(), Some("interaction-meta"));
+        assert_eq!(response.message_id, None);
+        assert_eq!(
+            response.finish_reason(),
+            Some(crate::completion::FinishReason::Length)
+        );
+    }
+
+    #[test]
+    fn test_completion_response_upgrades_completed_to_tool_calls() {
+        // A `completed` interaction whose outputs are function calls is a tool
+        // turn; the normalized response must say so.
+        let interaction = Interaction {
+            id: "interaction-tool".to_string(),
+            status: Some(InteractionStatus::Completed),
+            steps: vec![Step::FunctionCall(FunctionCallContent {
+                name: Some("get_weather".to_string()),
+                arguments: Some(json!({"location": "Paris"})),
+                id: Some("call-123".to_string()),
+            })],
+            ..Default::default()
+        };
+
+        let response: completion::CompletionResponse =
+            interaction.try_into().expect("conversion should succeed");
+
+        assert_eq!(
+            response.finish_reason(),
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
+        assert_eq!(response.model, None);
     }
 
     #[test]

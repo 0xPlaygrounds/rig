@@ -1,0 +1,48 @@
+# Allowlist for the serde policy wall (see driver_adoption.rs,
+# `provider_streaming_modules_never_raw_parse_the_wire`).
+#
+# Format: `path suffix | line snippet | one-line justification`.
+# Every entry must justify why the raw parse is NOT wire-frame triage:
+# frame decoding belongs to the wire.rs classifiers and the adapter driver.
+# Stale entries (matching no shipped line) fail the guard — delete them
+# alongside the code they covered.
+
+# --- shared Chat Completions-compatible helper: in-band error triage -------
+providers/internal/openai_chat_completions_compatible.rs | serde_json::from_str::<serde_json::Value>(data).ok()?; | provider_response_from_compatible_sse_data deliberately runs pre-classification: compatible gateways send in-band error envelopes as data frames ("Treat the chunk as an error only when `error` is present AND carries a payload ... canonical OpenAI-compatible error event"), so it peeks for a populated `error` key (with no `choices`) to surface a CompletionError; unparseable or non-error chunks fall through to the classifier untouched.
+
+# --- anthropic: content assembly, not frame triage -------------------------
+providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.
+providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a CompletionError, no frame is triaged here.
+
+# --- openai Responses websocket: websocket-only envelope pre-dispatch ------
+# `error` and `response.done` are transport envelopes outside the modeled
+# Responses event set; parse_server_event dispatches exactly those two and
+# routes every other frame through classify_responses_frame + triage_frame.
+providers/openai/responses_api/websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to dispatch the two websocket-only envelopes; a corrupt payload errors, never skips.
+providers/openai/responses_api/websocket.rs | "error" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope (outside the modeled Responses set); decode failure is a CompletionError.
+providers/openai/responses_api/websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope (outside the modeled Responses set); decode failure is a CompletionError.
+providers/openai/responses_api/websocket.rs | serde_json::from_value(status) | Reads the optional `status` field of an already-decoded `response.done` payload for turn-state bookkeeping; absence/mismatch falls into an explicit handled arm.
+providers/openai/responses_api/websocket.rs | serde_json::from_value(self.response.clone()) | Attempts the full CompletionResponse view of an already-decoded `response.done` payload; the None case is handled with an explicit provider error, not a skip.
+
+# --- openai Responses SSE: classifier-adjacent helpers ---------------------
+providers/openai/responses_api/streaming.rs | let value = serde_json::from_str::<serde_json::Value>(data).ok()?; | provider_response_from_responses_sse_data peeks at the `type` tag to build the provider-error body; classification already happened.
+providers/openai/responses_api/streaming.rs | serde_json::from_str::<StreamingCompletionChunk>(data) | parse_sse_completion_body: unary (non-stream) replay of an SSE body into a CompletionResponse; terminal extraction, not per-frame triage.
+providers/openai/responses_api/streaming.rs | let value = match serde_json::from_str::<serde_json::Value>(data) | parse_sse_completion_body: fallback terminal extraction for envelope-less unary bodies; unmatched frames are not policy-decided here.
+providers/openai/responses_api/streaming.rs | completed = Some(serde_json::from_value(response.clone())?); | parse_sse_completion_body: decodes the terminal `response` payload of a completed/incomplete unary body; failure is an error.
+providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.
+providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.
+# Single-file providers: unary/non-stream parses sharing a file with streaming code.
+providers/ollama.rs | serde_json::from_slice(&bytes)?; | unary embedding response body, not a stream frame
+providers/ollama.rs | serde_json::from_slice(&response_body)?; | unary completion response body, not a stream frame
+providers/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame
+providers/copilot/mod.rs | ChatApiResponse<ChatCompletionResponse>>(&body)? | unary chat completion body, not a stream frame
+providers/copilot/mod.rs | responses_api::CompletionResponse>(&body)? | unary responses completion body, not a stream frame
+providers/copilot/mod.rs | CopilotEmbeddingResponse = match serde_json::from_slice | unary embedding response body, not a stream frame
+providers/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | unary error-envelope decode on a non-2xx body, not a stream frame
+providers/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame
+
+# --- #[serde(untagged)] unions that are not frame triage --------------------
+providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.
+providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.
+providers/openai/completion/streaming.rs | #[serde(untagged)] | `FinishReason::Other(String)` preserves an unrecognized finish-reason token verbatim (surfacing gateway-invented reasons instead of misreading them as a stop); a scalar vocabulary field, not frame policy.
+providers/copilot/mod.rs | #[serde(untagged)] | Two sites: `ChatApiResponse<T>` distinguishes a success body from Copilot's error envelope on a UNARY response (no stream frame involved), and `ChatFinishReason::Other(String)` is the verbatim-preserving finish-reason vocabulary, as on the shared chat path.

@@ -3,12 +3,12 @@ pub mod streaming;
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use rig_core::{
     OneOrMany,
-    message::{AssistantContent, ToolResultContent, UserContent},
+    message::{AssistantContent, ProviderCallId, ToolCallId, ToolResultContent, UserContent},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 
 use crate::{
-    completion::{CompletionModel, Message, PromptError, Usage},
+    completion::{Message, PromptError, Usage},
     tool::{ToolContext, ToolOutput},
 };
 use serde::{Deserialize, Serialize};
@@ -169,6 +169,24 @@ macro_rules! forward_prompt_setters {
             self.$recv = self.$recv.max_invalid_tool_call_retries(retries);
             self
         }
+
+        /// Set the default model candidate for this run.
+        ///
+        /// This does not suppress registered model-selection hooks, which may
+        /// replace this candidate before each model call (including retries).
+        pub fn using_model(mut self, model: $crate::agent::ModelHandle) -> Self {
+            self.$recv = self.$recv.using_model(model);
+            self
+        }
+
+        /// Erase and set a typed default model for this run.
+        pub fn using_model_value<M>(mut self, model: M) -> Self
+        where
+            M: $crate::completion::CompletionModel + 'static,
+        {
+            self.$recv = self.$recv.using_model_value(model);
+            self
+        }
     };
 }
 pub(crate) use forward_prompt_setters;
@@ -206,24 +224,20 @@ impl PromptType for Extended {}
 /// one model call. Use [`.max_turns()`](Self::max_turns) to override the agent's
 /// configured or implicit budget; a tool call followed by a model-authored final
 /// answer generally requires at least two model calls.
-pub struct PromptRequest<S, M>
+pub struct PromptRequest<S>
 where
     S: PromptType,
-    M: CompletionModel,
 {
     /// The hook-aware driver this request configures and runs.
-    pub(crate) runner: AgentRunner<M>,
+    pub(crate) runner: AgentRunner,
     /// Phantom data to track the type of the request (Standard vs Extended).
     state: PhantomData<S>,
 }
 
-impl<M> PromptRequest<Standard, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Standard> {
     /// Create a new PromptRequest from an agent, cloning the agent's data and
     /// default hook stack.
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         PromptRequest {
             runner: AgentRunner::from_agent(agent, prompt),
             state: PhantomData,
@@ -231,10 +245,9 @@ where
     }
 }
 
-impl<S, M> PromptRequest<S, M>
+impl<S> PromptRequest<S>
 where
     S: PromptType,
-    M: CompletionModel,
 {
     /// Enable returning extended details for responses (includes aggregated token usage
     /// and the full message history accumulated during the agent loop).
@@ -242,7 +255,7 @@ where
     /// Note: This changes the type of the response from `.send` to return a `PromptResponse` struct
     /// instead of a simple `String`. This is useful for tracking token usage across multiple turns
     /// of conversation and inspecting the full message exchange.
-    pub fn extended_details(self) -> PromptRequest<Extended, M> {
+    pub fn extended_details(self) -> PromptRequest<Extended> {
         PromptRequest {
             runner: self.runner,
             state: PhantomData,
@@ -260,10 +273,11 @@ where
 
     /// Append a hook for this request (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
-    /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
-    /// observe-only/recovery events use first-non-`Continue`-wins). See the
-    /// [`hook`](crate::agent::hook) module docs.
+    /// event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
+    /// chain, `CompletionCall` request patches accumulate and merge, while
+    /// model-turn steering and observe-only/recovery events use
+    /// first-non-`Continue`-wins). See the [`hook`](crate::agent::hook) module
+    /// docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,
@@ -279,10 +293,7 @@ where
 /// Due to: [RFC 2515](https://github.com/rust-lang/rust/issues/63063), we have to use a `BoxFuture`
 ///  for the `IntoFuture` implementation. In the future, we should be able to use `impl Future<...>`
 ///  directly via the associated type.
-impl<M> IntoFuture for PromptRequest<Standard, M>
-where
-    M: CompletionModel + 'static,
-{
+impl IntoFuture for PromptRequest<Standard> {
     type Output = Result<String, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
@@ -291,10 +302,7 @@ where
     }
 }
 
-impl<M> IntoFuture for PromptRequest<Extended, M>
-where
-    M: CompletionModel + 'static,
-{
+impl IntoFuture for PromptRequest<Extended> {
     type Output = Result<PromptResponse, PromptError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
 
@@ -303,10 +311,7 @@ where
     }
 }
 
-impl<M> PromptRequest<Standard, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Standard> {
     async fn send(self) -> Result<String, PromptError> {
         self.extended_details().send().await.map(|resp| resp.output)
     }
@@ -592,23 +597,25 @@ pub(crate) fn build_full_history(
 /// Wrap already-shaped tool-result content for the model (see
 /// [`tool_result_output`] / [`tool_result_message`]).
 fn tool_result_with(
-    id: String,
-    call_id: Option<String>,
+    call: ToolCallId,
+    provider: Option<ProviderCallId>,
+    name: String,
     content: OneOrMany<ToolResultContent>,
 ) -> UserContent {
-    match call_id {
-        Some(call_id) => UserContent::tool_result_with_call_id(id, call_id, content),
-        None => UserContent::tool_result(id, content),
-    }
+    // The *executed* tool's name travels as data on the result: several
+    // wires require it on replay (Gemini `functionResponse.name`, Ollama
+    // tool messages), and an identifier is not a name.
+    UserContent::tool_result_for(call, provider, name, content)
 }
 
 /// Shape a canonical real tool output as a tool result without reparsing text.
 pub(crate) fn tool_result_output(
-    id: String,
-    call_id: Option<String>,
+    call: ToolCallId,
+    provider: Option<ProviderCallId>,
+    name: String,
     output: ToolOutput,
 ) -> UserContent {
-    tool_result_with(id, call_id, output.into_content())
+    tool_result_with(call, provider, name, output.into_content())
 }
 
 /// Shape a **synthetic message** (a hook skip reason, recovery feedback, or a
@@ -617,35 +624,43 @@ pub(crate) fn tool_result_output(
 /// silently reinterpreted as an image/multimodal result. Used identically by the
 /// blocking and streaming drivers so synthetic results match across both.
 pub(crate) fn tool_result_message(
-    id: String,
-    call_id: Option<String>,
+    call: ToolCallId,
+    provider: Option<ProviderCallId>,
+    name: String,
     message: String,
 ) -> UserContent {
     tool_result_with(
-        id,
-        call_id,
+        call,
+        provider,
+        name,
         OneOrMany::one(ToolResultContent::text(message)),
     )
 }
 
 pub(crate) fn invalid_tool_retry_user_message(
     assistant_content: &OneOrMany<AssistantContent>,
-    invalid_tool_call_id: &str,
+    invalid_tool_call_id: &ToolCallId,
     feedback: String,
 ) -> Option<Message> {
+    // Selecting the invalid call by id is correct by construction:
+    // `ToolCallId` is unique and non-empty (minted at the provider boundary
+    // when the wire issued none), so id-less wires can no longer collapse
+    // every peer onto the first match arm.
     let retry_results = assistant_content
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::ToolCall(tool_call) if tool_call.id == invalid_tool_call_id => {
+            AssistantContent::ToolCall(tool_call) if tool_call.id == *invalid_tool_call_id => {
                 Some(tool_result_message(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
                     feedback.clone(),
                 ))
             }
             AssistantContent::ToolCall(tool_call) => Some(tool_result_message(
                 tool_call.id.clone(),
-                tool_call.call_id.clone(),
+                tool_call.provider.clone(),
+                tool_call.function.name.clone(),
                 TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
             )),
             _ => None,
@@ -675,10 +690,7 @@ pub(crate) fn assistant_text_from_choice(choice: &OneOrMany<AssistantContent>) -
         .collect()
 }
 
-impl<M> PromptRequest<Extended, M>
-where
-    M: CompletionModel,
-{
+impl PromptRequest<Extended> {
     async fn send(self) -> Result<PromptResponse, PromptError> {
         self.runner.run().await
     }
@@ -708,25 +720,23 @@ use serde::de::DeserializeOwned;
 ///     .max_turns(3)
 ///     .await?;
 /// ```
-pub struct TypedPromptRequest<T, S, M>
+pub struct TypedPromptRequest<T, S>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
-    M: CompletionModel,
 {
-    inner: PromptRequest<S, M>,
+    inner: PromptRequest<S>,
     _phantom: std::marker::PhantomData<T>,
 }
 
-impl<T, M> TypedPromptRequest<T, Standard, M>
+impl<T> TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Create a new TypedPromptRequest from an agent.
     ///
     /// This automatically sets the output schema based on the type parameter `T`.
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
         inner.runner.output_schema = Some(schema_for!(T));
@@ -744,18 +754,17 @@ where
     }
 }
 
-impl<T, S, M> TypedPromptRequest<T, S, M>
+impl<T, S> TypedPromptRequest<T, S>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
     S: PromptType,
-    M: CompletionModel,
 {
     /// Enable returning extended details for responses (includes aggregated token usage).
     ///
     /// Note: This changes the type of the response from `.send()` to return a `TypedPromptResponse<T>` struct
     /// instead of just `T`. This is useful for tracking token usage across multiple turns
     /// of conversation.
-    pub fn extended_details(self) -> TypedPromptRequest<T, Extended, M> {
+    pub fn extended_details(self) -> TypedPromptRequest<T, Extended> {
         TypedPromptRequest {
             inner: self.inner.extended_details(),
             _phantom: std::marker::PhantomData,
@@ -807,10 +816,9 @@ fn deserialize_structured_output<T: DeserializeOwned>(text: &str) -> Result<T, s
     }
 }
 
-impl<T, M> TypedPromptRequest<T, Standard, M>
+impl<T> TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Send the typed prompt request and deserialize the response.
     async fn send(self) -> Result<T, StructuredOutputError> {
@@ -825,10 +833,9 @@ where
     }
 }
 
-impl<T, M> TypedPromptRequest<T, Extended, M>
+impl<T> TypedPromptRequest<T, Extended>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend,
-    M: CompletionModel,
 {
     /// Send the typed prompt request with extended details and deserialize the response.
     async fn send(self) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
@@ -844,10 +851,9 @@ where
     }
 }
 
-impl<T, M> IntoFuture for TypedPromptRequest<T, Standard, M>
+impl<T> IntoFuture for TypedPromptRequest<T, Standard>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
-    M: CompletionModel + 'static,
 {
     type Output = Result<T, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -857,10 +863,9 @@ where
     }
 }
 
-impl<T, M> IntoFuture for TypedPromptRequest<T, Extended, M>
+impl<T> IntoFuture for TypedPromptRequest<T, Extended>
 where
     T: JsonSchema + DeserializeOwned + WasmCompatSend + 'static,
-    M: CompletionModel + 'static,
 {
     type Output = Result<TypedPromptResponse<T>, StructuredOutputError>;
     type IntoFuture = WasmBoxedFuture<'static, Self::Output>;
@@ -892,6 +897,7 @@ mod tests {
         },
         tool::{Tool, ToolContext},
     };
+    use rig_core::message::ProviderCallId;
     use rig_core::message::{Text, ToolCall, ToolChoice, ToolFunction, UserContent};
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
@@ -1406,6 +1412,9 @@ mod tests {
                 )
         ));
 
+        // The wire issued "tool_call_1" (adopted as rig's durable id) and the
+        // provider-specific correlator was overridden to "call_1"; the result
+        // answers the durable id and echoes the provider correlator.
         assert!(matches!(
             history.get(1),
             Some(Message::Assistant { content, .. })
@@ -1413,7 +1422,9 @@ mod tests {
                     content.first(),
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "tool_call_1"
-                            && tool_call.call_id.as_deref() == Some("call_1")
+                            && tool_call.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         ));
 
@@ -1423,8 +1434,10 @@ mod tests {
                 if matches!(
                     content.first(),
                     UserContent::ToolResult(tool_result)
-                        if tool_result.id == "tool_call_1"
-                            && tool_result.call_id.as_deref() == Some("call_1")
+                        if tool_result.call == "tool_call_1"
+                            && tool_result.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         ));
     }
@@ -1441,6 +1454,55 @@ mod tests {
                     ))
             )
         })
+    }
+
+    /// The invalid-call retry transcript pairs 1:1 by construction: every tool
+    /// call in the assistant turn carries a unique non-empty id (minted at the
+    /// provider boundary when the wire issued none), and the retry results
+    /// answer exactly those ids.
+    fn assert_retry_transcript_ids_pair(assistant: &Message, results: &Message) {
+        use std::collections::BTreeSet;
+
+        let Message::Assistant { content, .. } = assistant else {
+            panic!("expected the assistant tool-call turn, got {assistant:?}");
+        };
+        let call_ids: Vec<&str> = content
+            .iter()
+            .filter_map(|item| match item {
+                AssistantContent::ToolCall(tool_call) => Some(tool_call.id.as_str()),
+                _ => None,
+            })
+            .collect();
+        let Message::User { content } = results else {
+            panic!("expected the user retry-result turn, got {results:?}");
+        };
+        let result_ids: Vec<&str> = content
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some(result.call.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            call_ids.iter().all(|id| !id.is_empty()),
+            "every tool call carries a non-empty id: {call_ids:?}"
+        );
+        let unique_calls: BTreeSet<&str> = call_ids.iter().copied().collect();
+        assert_eq!(
+            unique_calls.len(),
+            call_ids.len(),
+            "tool-call ids must be unique: {call_ids:?}"
+        );
+        let unique_results: BTreeSet<&str> = result_ids.iter().copied().collect();
+        assert_eq!(
+            unique_results.len(),
+            result_ids.len(),
+            "retry-result ids must be unique: {result_ids:?}"
+        );
+        assert_eq!(
+            unique_calls, unique_results,
+            "retry results must answer exactly the turn's tool calls"
+        );
     }
 
     #[tokio::test]
@@ -1759,16 +1821,16 @@ mod tests {
     async fn invalid_tool_call_hook_retries_mixed_non_streaming_turn_without_executing_valid_call()
     {
         let add_calls = Arc::new(AtomicU32::new(0));
-        let mut valid_tool_call = ToolCall::new(
-            "tool_call_1".to_string(),
+        let valid_tool_call = ToolCall::from_wire(
+            "tool_call_1",
             ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
-        );
-        valid_tool_call.call_id = Some("call_1".to_string());
-        let mut invalid_tool_call = ToolCall::new(
-            "tool_call_2".to_string(),
+        )
+        .with_provider(ProviderCallId::new("call_1").expect("non-empty provider id"));
+        let invalid_tool_call = ToolCall::from_wire(
+            "tool_call_2",
             ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
-        );
-        invalid_tool_call.call_id = Some("call_2".to_string());
+        )
+        .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
         let model = MockCompletionModel::new([
             MockTurn::from_contents([
                 AssistantContent::ToolCall(valid_tool_call),
@@ -1822,8 +1884,10 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_1"
-                                && result.call_id.as_deref() == Some("call_1")
+                            if result.call == "tool_call_1"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_1"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1833,8 +1897,10 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_2"
-                                && result.call_id.as_deref() == Some("call_2")
+                            if result.call == "tool_call_2"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_2"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1842,21 +1908,25 @@ mod tests {
                                 ))
             ))
         ));
+        assert_retry_transcript_ids_pair(
+            retry_history.get(1).expect("assistant tool-call turn"),
+            retry_history.get(2).expect("retry-result turn"),
+        );
     }
 
     #[tokio::test]
     async fn invalid_tool_call_hook_skips_mixed_non_streaming_turn_without_executing_valid_call() {
         let add_calls = Arc::new(AtomicU32::new(0));
-        let mut valid_tool_call = ToolCall::new(
-            "tool_call_1".to_string(),
+        let valid_tool_call = ToolCall::from_wire(
+            "tool_call_1",
             ToolFunction::new("add".to_string(), json!({"x": 2, "y": 3})),
-        );
-        valid_tool_call.call_id = Some("call_1".to_string());
-        let mut invalid_tool_call = ToolCall::new(
-            "tool_call_2".to_string(),
+        )
+        .with_provider(ProviderCallId::new("call_1").expect("non-empty provider id"));
+        let invalid_tool_call = ToolCall::from_wire(
+            "tool_call_2",
             ToolFunction::new("default_api".to_string(), json!({"x": 4, "y": 5})),
-        );
-        invalid_tool_call.call_id = Some("call_2".to_string());
+        )
+        .with_provider(ProviderCallId::new("call_2").expect("non-empty provider id"));
         let model = MockCompletionModel::new([
             MockTurn::from_contents([
                 AssistantContent::ToolCall(valid_tool_call),
@@ -1891,8 +1961,10 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_1"
-                                && result.call_id.as_deref() == Some("call_1")
+                            if result.call == "tool_call_1"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_1"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1902,8 +1974,10 @@ mod tests {
                     && content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "tool_call_2"
-                                && result.call_id.as_deref() == Some("call_2")
+                            if result.call == "tool_call_2"
+                                && result.provider.as_ref().is_some_and(
+                                    |provider| provider.call_id == "call_2"
+                                )
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -1911,6 +1985,10 @@ mod tests {
                                 ))
                     ))
         ));
+        assert_retry_transcript_ids_pair(
+            messages.get(1).expect("assistant tool-call turn"),
+            messages.get(2).expect("skip-result turn"),
+        );
     }
 
     #[tokio::test]
@@ -2016,7 +2094,7 @@ mod tests {
                         matches!(
                             content,
                             UserContent::ToolResult(result)
-                                if result.id == "tool_call_1"
+                                if result.call == "tool_call_1"
                                     && result.content.iter().any(|content| {
                                         matches!(
                                             content,
@@ -2300,7 +2378,7 @@ mod tests {
                 .with_usage(first_call_usage),
             MockTurn::text("").with_usage(second_call_usage),
         ]);
-        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let agent = AgentBuilder::new(model.clone()).tool(MockAddTool).build();
 
         let response = agent
             .prompt("do tool work")
@@ -2349,7 +2427,9 @@ mod tests {
                     content.first(),
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.id == "tool_call_1"
-                            && tool_call.call_id.as_deref() == Some("call_1")
+                            && tool_call.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         )));
         assert!(history.iter().any(|message| matches!(
@@ -2358,8 +2438,10 @@ mod tests {
                 if matches!(
                     content.first(),
                     UserContent::ToolResult(tool_result)
-                        if tool_result.id == "tool_call_1"
-                            && tool_result.call_id.as_deref() == Some("call_1")
+                        if tool_result.call == "tool_call_1"
+                            && tool_result.provider.as_ref().is_some_and(
+                                |provider| provider.call_id == "call_1"
+                            )
                 )
         )));
         assert!(!history.iter().any(|message| matches!(
@@ -2370,7 +2452,7 @@ mod tests {
                     AssistantContent::Text(text) if text.text.is_empty()
                 ))
         )));
-        let requests = agent.model.requests();
+        let requests = model.requests();
         assert_eq!(requests.len(), 2);
         validate_follow_up_tool_history(&requests[1]);
     }

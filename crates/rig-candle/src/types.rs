@@ -1,6 +1,6 @@
 //! Public errors and response metadata.
 
-use rig_core::completion::{CompletionError, GetTokenUsage, Usage};
+use rig_core::completion::{CompletionError, Usage};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -250,13 +250,30 @@ pub struct CandleCompletionResponse {
     pub tokens_per_second: Option<f64>,
 }
 
-impl GetTokenUsage for CandleCompletionResponse {
-    fn token_usage(&self) -> Usage {
+/// Stable descriptor name reported on normalized responses from this crate.
+pub const PROVIDER_NAME: &str = "candle";
+
+impl From<&CandleCompletionResponse> for Usage {
+    fn from(response: &CandleCompletionResponse) -> Self {
         Usage {
-            input_tokens: self.prompt_tokens,
-            output_tokens: self.generated_tokens,
-            total_tokens: self.prompt_tokens.saturating_add(self.generated_tokens),
+            input_tokens: response.prompt_tokens,
+            output_tokens: response.generated_tokens,
+            total_tokens: response
+                .prompt_tokens
+                .saturating_add(response.generated_tokens),
             ..Usage::new()
+        }
+    }
+}
+
+impl From<FinishReason> for rig_core::completion::FinishReason {
+    fn from(reason: FinishReason) -> Self {
+        match reason {
+            // A sampled EOS token is the local equivalent of a natural stop;
+            // `reconcile_with_output` promotes it to `ToolCalls` when the
+            // protocol parsed tool calls out of the generated text.
+            FinishReason::Eos => rig_core::completion::FinishReason::Stop,
+            FinishReason::MaxTokens => rig_core::completion::FinishReason::Length,
         }
     }
 }

@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- *(streaming)* the Converse stream routes through the shared `WireAdapter` driver: frame triage (unknown-variant warn-skip) lives in the one policy site, and `streaming::stream_from_events` is the events-first conformance seam driving already-typed SDK events through the full pipeline
+
+### Fixed
+
+- *(bedrock)* the assistant `toolUse` echo derives its `toolUseId` exactly like the result leg (provider-issued call id when one exists, else rig's minted handle) — a history whose handle and provider id diverge no longer replays an unmatched `toolUseId` pair that Converse rejects
+- *(bedrock)* foreign encrypted reasoning (`ReasoningContent::Encrypted` — OpenAI Responses `encrypted_content`, OpenRouter `reasoning.encrypted`, Anthropic) is never shipped as Bedrock's own `redactedContent` and never fails the request: it degrades away with a warning, in every position including the all-encrypted block. Only Bedrock-native `Redacted` blobs (base64 applied by this crate's inbound legs) decode back onto the wire, and one that no longer decodes also degrades instead of erroring the request
+- *(bedrock)* redacted reasoning survives all three legs — streaming no longer drops `RedactedContent`, the non-streaming path no longer fails the whole response, and it is replayed as `redactedContent` instead of being flattened into unsigned plaintext
+- *(bedrock)* an unmodeled `ContentBlockStart` variant warns and skips instead of failing the stream with "Stream is empty", matching its sibling arms and the classify layer's Unknown policy
+- *(bedrock)* a reasoning block mixing text with opaque (redacted/encrypted) content — the exact shape OpenAI Responses histories carry when `encrypted_content` is requested — degrades by dropping the un-representable opaque part instead of failing the whole request locally
+- *(streaming)* the `MessageStop` straggler flush is gated on a `ToolUse` stop reason: a tool block truncated by `MaxTokens` is dropped with a warning instead of fabricating a `{}`-args call or a spurious error
+- *(streaming)* emit every parallel tool call (in-flight state is keyed by `content_block_index` and flushed per `ContentBlockStop`); text after a closed tool block is no longer dropped; malformed tool-call JSON surfaces an `Err` item instead of silently dropping the call under a `ToolCalls` terminal
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-bedrock-v0.40.0...rig-bedrock-v0.41.0) - 2026-07-28
 
 ### Added

@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::OneOrMany;
-use rig::completion::{CompletionModel, GetTokenUsage};
+use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
@@ -45,14 +45,20 @@ async fn basic_interaction_returns_id() {
                 .preamble("Be concise.".to_string())
                 .additional_params(serde_json::to_value(params).expect("params should serialize"))
                 .build();
-            let response = model
-                .completion(request)
+            // The interaction id is Gemini's continuation handle (fed back as
+            // `previous_interaction_id`), not an assistant message id, so it
+            // lives on the provider's own response rather than on the
+            // normalized one.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("completion should succeed");
 
+            let response: rig::completion::CompletionResponse =
+                raw.clone().try_into().expect("response should normalize");
             assert_nonempty_response(&extract_text(&response.choice));
             assert!(
-                !response.raw_response.id.is_empty(),
+                !raw.id.is_empty(),
                 "interactions api should return an interaction id"
             );
         },
@@ -67,7 +73,7 @@ async fn followup_with_previous_interaction_id() {
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
             let initial = model
-                .completion(
+                .raw_completion(
                     model
                         .completion_request("Give me one short fact about hummingbirds.")
                         .additional_params(
@@ -81,7 +87,9 @@ async fn followup_with_previous_interaction_id() {
                 )
                 .await
                 .expect("initial completion should succeed");
-            let interaction_id = initial.raw_response.id.clone();
+            // Gemini's continuation handle lives on the provider's own
+            // response; it is what `previous_interaction_id` echoes back.
+            let interaction_id = initial.id.clone();
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let followup = model
@@ -112,8 +120,11 @@ async fn google_search_tool_interaction() {
         "interactions_api/google_search_tool_interaction",
         |client| async move {
             let model = client.completion_model("gemini-3-flash-preview");
-            let response = model
-                .completion(
+            // The hosted-tool exchange log is provider-specific, so this asserts
+            // against the Interactions payload itself and then normalizes that same
+            // payload — one request, exactly as the cassette recorded it.
+            let raw = model
+                .raw_completion(
                     model
                         .completion_request("Who won the Euro 2024 tournament?")
                         .additional_params(
@@ -128,11 +139,15 @@ async fn google_search_tool_interaction() {
                 .await
                 .expect("search completion should succeed");
 
-            assert_nonempty_response(&extract_text(&response.choice));
             assert!(
-                !response.raw_response.google_search_exchanges().is_empty(),
+                !raw.google_search_exchanges().is_empty(),
                 "expected a search-backed exchange"
             );
+
+            let response: rig::completion::CompletionResponse = raw
+                .try_into()
+                .expect("interaction should normalize into a completion response");
+            assert_nonempty_response(&extract_text(&response.choice));
         },
     )
     .await;
@@ -158,7 +173,7 @@ async fn tool_result_roundtrip() {
             };
 
             let initial = model
-                .completion(
+                .raw_completion(
                     model
                         .completion_request("Use the add tool to sum 7 and 11.")
                         .tool(tool)
@@ -175,20 +190,23 @@ async fn tool_result_roundtrip() {
                 .await
                 .expect("tool call completion should succeed");
 
-            let tool_call = first_tool_call(&initial.choice).expect("expected a tool call");
-            let call_id = tool_call
-                .call_id
-                .clone()
-                .unwrap_or_else(|| tool_call.id.clone());
-            let interaction_id = initial.raw_response.id.clone();
+            // Gemini's continuation handle lives on the provider's own
+            // response; the normalized view of that same value supplies the
+            // tool call, so this still costs one interaction.
+            let interaction_id = initial.id.clone();
             assert!(!interaction_id.is_empty(), "expected an interaction id");
+            let initial: rig::completion::CompletionResponse =
+                initial.try_into().expect("response should normalize");
+
+            let tool_call = first_tool_call(&initial.choice).expect("expected a tool call");
 
             let followup = model
                 .completion(
                     model
-                        .completion_request(Message::from(UserContent::tool_result_with_call_id(
-                            tool_call.function.name,
-                            call_id,
+                        .completion_request(Message::from(UserContent::tool_result_for(
+                            tool_call.id.clone(),
+                            tool_call.provider.clone(),
+                            tool_call.function.name.clone(),
                             OneOrMany::one(ToolResultContent::json(
                                 serde_json::json!({ "sum": 18.0 }),
                             )),
@@ -229,7 +247,7 @@ async fn streaming_interaction() {
                 match chunk.expect("stream chunk should succeed") {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
-                        saw_usage = response.token_usage().has_values();
+                        saw_usage = response.usage.has_values();
                     }
                     _ => {}
                 }
@@ -266,8 +284,8 @@ async fn streaming_final_metadata_exposes_model_version() {
                     StreamedAssistantContent::Text(delta) => text.push_str(&delta.text),
                     StreamedAssistantContent::Final(response) => {
                         final_response_count += 1;
-                        saw_usage = response.token_usage().has_values();
-                        final_model_version = response.model_version.clone();
+                        saw_usage = response.usage.has_values();
+                        final_model_version = response.model.clone();
                     }
                     _ => {}
                 }

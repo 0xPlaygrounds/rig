@@ -386,16 +386,13 @@ mod tests {
             id: None,
             content: crate::OneOrMany::many(vec![
                 AssistantContent::Reasoning(Reasoning::new("tool planning")),
-                AssistantContent::ToolCall(ToolCall {
-                    id: "call_1".to_string(),
-                    call_id: None,
-                    function: ToolFunction {
+                AssistantContent::ToolCall(ToolCall::from_wire(
+                    "call_1",
+                    ToolFunction {
                         name: "lookup".to_string(),
                         arguments: serde_json::json!({}),
                     },
-                    signature: None,
-                    additional_params: None,
-                }),
+                )),
             ])
             .expect("assistant content"),
         };

@@ -233,7 +233,7 @@ use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlama
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3;
 use candle_transformers::utils::apply_repeat_penalty;
 use rig_core::OneOrMany;
-use rig_core::completion::{AssistantContent, CompletionResponse, GetTokenUsage};
+use rig_core::completion::{AssistantContent, CompletionResponse};
 use rig_core::streaming::{RawStreamingChoice, RawStreamingToolCall};
 use tokenizers::tokenizer::DecodeStream;
 use tokenizers::{
@@ -558,7 +558,7 @@ pub(crate) fn infer(
     loaded: &LoadedModel,
     request: CompletionRequest,
     cancellation: &CancellationSignal,
-) -> Result<CompletionResponse<CandleCompletionResponse>, CandleError> {
+) -> Result<InferredCompletion, CandleError> {
     let parse_request = request.clone();
     let mut raw_response = generate(loaded, request, cancellation, |_| Ok(()))?;
     let parsed = crate::protocol::parse_assistant(
@@ -570,13 +570,35 @@ pub(crate) fn infer(
     let choice = OneOrMany::many(parsed.items).map_err(|_| {
         CandleError::Inference("output protocol produced no assistant content".to_string())
     })?;
-    let usage = raw_response.token_usage();
-    Ok(CompletionResponse {
+
+    Ok(InferredCompletion {
+        response: raw_response,
         choice,
-        usage,
-        raw_response,
-        message_id: None,
     })
+}
+
+/// One local generation, kept in both the shapes callers need.
+///
+/// The assistant protocol is parsed exactly once: `response.text` is the
+/// visible text with protocol markup stripped, and `choice` holds the items
+/// that parse produced. Re-parsing `response.text` would find no tool calls,
+/// since stripping already removed them — so both the raw and the normalized
+/// path read from this single result.
+pub(crate) struct InferredCompletion {
+    /// The local model's own response record.
+    pub(crate) response: CandleCompletionResponse,
+    /// Assistant content parsed out of the generated text.
+    pub(crate) choice: OneOrMany<AssistantContent>,
+}
+
+impl InferredCompletion {
+    /// Normalize into rig's completion response.
+    pub(crate) fn into_normalized(self) -> CompletionResponse {
+        let usage = (&self.response).into();
+        let finish_reason = self.response.finish_reason.into();
+        CompletionResponse::new(self.choice, usage, crate::types::PROVIDER_NAME)
+            .with_finish_reason(finish_reason)
+    }
 }
 
 pub(crate) fn stream_generate(
@@ -606,17 +628,39 @@ pub(crate) fn stream_generate(
         match item {
             AssistantContent::Text(text) => emit(RawStreamingChoice::Message(text.text))?,
             AssistantContent::ToolCall(call) => {
-                let mut raw =
-                    RawStreamingToolCall::new(call.id, call.function.name, call.function.arguments);
-                raw.call_id = call.call_id;
+                // The envelope-parsed call always carries a wire-issued id
+                // (`from_wire` adopted it), so key the stream by it.
+                let mut raw = RawStreamingToolCall::new(
+                    call.id.as_str().to_owned(),
+                    call.function.name,
+                    call.function.arguments,
+                );
+                raw.call_id = None;
                 raw.signature = call.signature;
                 raw.additional_params = call.additional_params;
                 emit(RawStreamingChoice::ToolCall(raw))?;
             }
             AssistantContent::Reasoning(reasoning) => {
+                // Same constant-id full-block shape as the gemini adapter's
+                // signed-thinking chunk (#2258 F1), but benign here: candle
+                // never emits `ReasoningDelta`, so a full block under the
+                // shared id has no delta buffer to replace-and-discard.
                 for content in reasoning.content {
                     emit(RawStreamingChoice::Reasoning {
-                        id: reasoning.id.clone(),
+                        // Local generation has no wire id; fall back to a
+                        // per-stream constant minted identity.
+                        id: reasoning
+                            .id
+                            .clone()
+                            .map(rig_core::streaming::StreamPartId::wire)
+                            .unwrap_or(rig_core::streaming::StreamPartId::minted(
+                                rig_core::streaming::MintKind::Reasoning,
+                                0,
+                            )),
+                        provider_id: reasoning
+                            .id
+                            .clone()
+                            .and_then(rig_core::streaming::WireId::new),
                         content,
                     })?;
                 }

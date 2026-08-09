@@ -52,7 +52,22 @@
 //!   [`CompletionRequest`](crate::completion::CompletionRequest), without
 //!   inventing unsupported provider API fields;
 //! - response conversion into Rig response types, including usage and tool or
-//!   multimodal content where applicable;
+//!   multimodal content where applicable, built through the
+//!   [`CompletionResponse`](crate::completion::CompletionResponse) `new`/`with_*`
+//!   builders rather than a struct literal — the `with_*_finish_reason` setters
+//!   are what apply
+//!   [`FinishReason::reconcile_with_output`](crate::completion::FinishReason::reconcile_with_output);
+//! - a finish-reason mapping covering every value the provider can report,
+//!   with anything unrecognized preserved verbatim in
+//!   [`FinishReason::Other`](crate::completion::FinishReason::Other) rather
+//!   than guessed at;
+//! - a shared conversion (one used by several OpenAI-compatible providers)
+//!   that takes the provider descriptor name as an input instead of hardcoding
+//!   one, so a reused wire type cannot mislabel its provider;
+//! - `raw_completion` and `raw_stream` inherent methods returning the
+//!   provider's own wire types, with the normalized
+//!   [`CompletionModel`](crate::completion::CompletionModel) methods delegating
+//!   to them so there is exactly one request path either way;
 //! - streaming support when the provider supports streaming;
 //! - provider-response error preservation plus `ProviderResponseExt` and
 //!   telemetry fields consistent with nearby providers where applicable;
@@ -102,7 +117,7 @@ pub mod gemini;
 pub mod groq;
 pub mod huggingface;
 pub mod hyperbolic;
-pub(crate) mod internal;
+pub mod internal;
 pub mod llamafile;
 pub mod minimax;
 pub mod mira;

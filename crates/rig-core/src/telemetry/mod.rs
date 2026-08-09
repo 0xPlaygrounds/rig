@@ -4,7 +4,7 @@
 //! and more.
 
 use crate::OneOrMany;
-use crate::completion::{AssistantContent, GetTokenUsage, Message};
+use crate::completion::{AssistantContent, Message, Usage};
 use crate::message::{
     DocumentSourceKind, Image, MimeType, Reasoning, ReasoningContent, ToolResult,
     ToolResultContent, UserContent,
@@ -619,7 +619,7 @@ fn user_parts(content: &OneOrMany<UserContent>) -> Vec<TelemetryPart> {
                 content: text.text.clone(),
             }),
             UserContent::ToolResult(result) => Some(TelemetryPart::ToolCallResponse {
-                id: Some(result.id.clone()),
+                id: Some(result.call.as_str().to_owned()),
                 response: tool_result_response(result),
             }),
             UserContent::Image(image) => image_part(image),
@@ -644,7 +644,7 @@ fn assistant_parts(content: &OneOrMany<AssistantContent>) -> Vec<TelemetryPart> 
                 content: text.text.clone(),
             }],
             AssistantContent::ToolCall(tool_call) => vec![TelemetryPart::ToolCall {
-                id: Some(tool_call.id.clone()),
+                id: Some(tool_call.id.as_str().to_owned()),
                 name: tool_call.function.name.clone(),
                 arguments: tool_call.function.arguments.clone(),
             }],
@@ -773,9 +773,7 @@ pub trait ProviderResponseExt {
 /// Implemented for [`tracing::Span`] to record GenAI semantic convention fields.
 pub trait SpanCombinator {
     /// Record Rig-normalized token usage fields on the span.
-    fn record_token_usage<U>(&self, usage: &U)
-    where
-        U: GetTokenUsage;
+    fn record_token_usage(&self, usage: &Usage);
 
     /// Record provider response metadata such as response ID and model name.
     fn record_response_metadata<R>(&self, response: &R)
@@ -784,15 +782,11 @@ pub trait SpanCombinator {
 }
 
 impl SpanCombinator for tracing::Span {
-    fn record_token_usage<U>(&self, usage: &U)
-    where
-        U: GetTokenUsage,
-    {
+    fn record_token_usage(&self, usage: &Usage) {
         if self.is_disabled() {
             return;
         }
 
-        let usage = usage.token_usage();
         // Zero-valued usage is the documented sentinel for missing provider
         // usage metrics; leave the span fields unset.
         if usage.has_values() {
@@ -835,22 +829,13 @@ impl SpanCombinator for tracing::Span {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::completion::{AssistantContent, GetTokenUsage, Message, Usage};
+    use crate::completion::{AssistantContent, Message, Usage};
     use serde_json::json;
     use std::sync::{Arc, Mutex};
     use tracing::field::{Field, Visit};
     use tracing::{Id, Subscriber};
     use tracing_subscriber::layer::{Context, SubscriberExt};
     use tracing_subscriber::{Layer, Registry, registry::LookupSpan};
-
-    #[derive(Clone)]
-    struct TestUsage(Usage);
-
-    impl GetTokenUsage for TestUsage {
-        fn token_usage(&self) -> Usage {
-            self.0
-        }
-    }
 
     #[test]
     fn content_attributes_follow_gen_ai_semantic_convention_json_shapes() {
@@ -863,7 +848,7 @@ mod tests {
         let input = input_messages(&[
             Message::system("follow policy"),
             Message::user("hello"),
-            Message::tool_result("call_1", "sunny"),
+            Message::tool_result("call_1", "weather", "sunny"),
         ]);
         assert_eq!(
             serde_json::to_value(input).expect("semantic-convention input DTOs serialize"),
@@ -1827,7 +1812,7 @@ mod tests {
         let subscriber = Registry::default().with(FieldCaptureLayer {
             fields: fields.clone(),
         });
-        let usage = TestUsage(Usage {
+        let usage = Usage {
             input_tokens: 1,
             output_tokens: 2,
             total_tokens: 15,
@@ -1835,7 +1820,7 @@ mod tests {
             cache_creation_input_tokens: 4,
             tool_use_prompt_tokens: 12,
             reasoning_tokens: 5,
-        });
+        };
 
         // Scoped-subscriber tests must not run concurrently; see
         // `test_utils::scoped_tracing_subscriber_guard`.

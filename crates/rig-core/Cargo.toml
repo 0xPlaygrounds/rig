@@ -77,7 +77,19 @@ futures-timer = { workspace = true, features = ["wasm-bindgen"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+# Self-dependency: feature unification compiles the lib with `test-utils`
+# for every rig-core test target (unit, integration, doctest), so the
+# sequence laws panic in ALL of rig's own suites while staying log-only in
+# downstream builds.
+rig-core = { path = ".", features = ["test-utils"] }
+# identity-leak compile-fail tests (tests/identity_leak.rs)
+trybuild = "1.0"
+# streaming identity/merge law property tests
+proptest = "1"
 assert_fs = { workspace = true }
+futures = { workspace = true }
+# server side of the websocket conformance suite (tests/streaming_conformance_websocket.rs)
+tokio-tungstenite = { workspace = true, features = ["handshake"] }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }

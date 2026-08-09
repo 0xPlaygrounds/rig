@@ -1,12 +1,11 @@
 use rig_core::{
     markers::{Missing, Provided},
     message::Message,
-    wasm_compat::WasmCompatSend,
 };
 
 use crate::{
     agent::{Agent, MultiTurnStreamItem, Text},
-    completion::{Chat, CompletionError, CompletionModel, PromptError, Usage},
+    completion::{Chat, CompletionError, PromptError, Usage},
     streaming::{StreamedAssistantContent, StreamingPrompt},
 };
 use futures::StreamExt;
@@ -16,11 +15,8 @@ pub struct ChatImpl<T>(T)
 where
     T: Chat;
 
-pub struct AgentImpl<M>
-where
-    M: CompletionModel + 'static,
-{
-    agent: Agent<M>,
+pub struct AgentImpl {
+    agent: Agent,
     max_turns: usize,
     show_usage: bool,
     usage: Usage,
@@ -64,10 +60,7 @@ where
     }
 }
 
-impl<M> CliChat for AgentImpl<M>
-where
-    M: CompletionModel + WasmCompatSend + 'static,
-{
+impl CliChat for AgentImpl {
     async fn request(
         &mut self,
         prompt: &str,
@@ -141,10 +134,7 @@ impl ChatBotBuilder<Missing> {
         Self::default()
     }
 
-    pub fn agent<M: CompletionModel + 'static>(
-        self,
-        agent: Agent<M>,
-    ) -> ChatBotBuilder<Provided<AgentImpl<M>>> {
+    pub fn agent(self, agent: Agent) -> ChatBotBuilder<Provided<AgentImpl>> {
         ChatBotBuilder(Provided(AgentImpl {
             agent,
             max_turns: 1,
@@ -167,10 +157,7 @@ where
     }
 }
 
-impl<M> ChatBotBuilder<Provided<AgentImpl<M>>>
-where
-    M: CompletionModel + 'static,
-{
+impl ChatBotBuilder<Provided<AgentImpl>> {
     /// Set the total model-call budget for each prompt, including the initial
     /// call and every retry or continuation. Zero emits no model calls.
     pub fn max_turns(self, max_turns: usize) -> Self {
@@ -187,7 +174,7 @@ where
         }))
     }
 
-    pub fn build(self) -> ChatBot<AgentImpl<M>> {
+    pub fn build(self) -> ChatBot<AgentImpl> {
         ChatBot(self.0.0)
     }
 }

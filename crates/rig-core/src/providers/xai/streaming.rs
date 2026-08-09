@@ -12,20 +12,26 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::json_utils;
 use crate::providers::openai::responses_api::streaming::{
-    ResponsesStreamOptions, StreamingCompletionResponse, stream_from_event_source_with_options,
+    ResponsesStreamOptions, StreamingCompletionResponse, normalize_responses_stream,
+    raw_stream_from_event_source_with_options,
 };
-use crate::providers::xai::completion::{CompletionModel, XAICompletionRequest};
-use crate::streaming;
+use crate::providers::xai::completion::{CompletionModel, PROVIDER_NAME, XAICompletionRequest};
+use crate::streaming::{self, RawStreamingResult};
 
 impl<T> CompletionModel<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    pub(crate) async fn stream(
+    /// Open a stream whose terminal record stays xAI-native.
+    ///
+    /// This is the escape hatch for provider-specific streaming fields rig
+    /// does not normalize. The normalized
+    /// [`stream`](crate::completion::CompletionModel::stream) path calls it and
+    /// maps the terminal record once, so both paths open exactly one stream.
+    pub async fn raw_stream(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
-    {
+    ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let preamble = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let mut request =
@@ -52,29 +58,41 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let span =
-            CompletionSpanBuilder::new("xai", &request.model, CompletionOperation::ChatStreaming)
-                .system_instructions(preamble.as_deref(), record_telemetry_content)
-                .build();
+        let span = CompletionSpanBuilder::new(
+            PROVIDER_NAME,
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(preamble.as_deref(), record_telemetry_content)
+        .build();
 
         send_xai_streaming_request(self.client.clone(), req)
             .instrument(span)
             .await
     }
+
+    pub(crate) async fn stream(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        let stream = self.raw_stream(completion_request).await?;
+
+        Ok(normalize_responses_stream(PROVIDER_NAME, stream))
+    }
 }
 
-/// Send a streaming request
+/// Send a streaming request, keeping the terminal record provider-native.
 pub(crate) async fn send_xai_streaming_request<T>(
     http_client: T,
     req: http::Request<Vec<u8>>,
-) -> Result<streaming::StreamingCompletionResponse<StreamingCompletionResponse>, CompletionError>
+) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
 {
     let span = tracing::Span::current();
     let event_source = GenericEventSource::new(http_client, req);
 
-    Ok(stream_from_event_source_with_options(
+    Ok(raw_stream_from_event_source_with_options(
         event_source,
         span,
         ResponsesStreamOptions::strict_with_immediate_tool_calls(),
@@ -87,11 +105,11 @@ mod tests {
     use crate::message::ReasoningContent;
     use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_json_events;
     use crate::providers::openai::responses_api::ReasoningSummary;
-    use crate::providers::openai::responses_api::streaming::reasoning_choices_from_done_item;
+    use crate::providers::openai::responses_api::streaming::reasoning_end_from_done_item;
     use crate::streaming::{RawStreamingChoice, StreamedAssistantContent};
 
     #[test]
-    fn reasoning_done_item_emits_summary_then_encrypted() {
+    fn reasoning_done_item_fuses_summary_and_encrypted_into_one_end() {
         let summary = vec![
             ReasoningSummary::SummaryText {
                 text: "s1".to_string(),
@@ -100,30 +118,84 @@ mod tests {
                 text: "s2".to_string(),
             },
         ];
-        let choices = reasoning_choices_from_done_item("xr_1", &summary, &[], Some("enc"));
+        let end = reasoning_end_from_done_item(
+            &crate::streaming::StreamPartId::wire("xr_1"),
+            crate::streaming::WireId::new("xr_1").as_ref(),
+            &summary,
+            &[],
+            Some("enc"),
+        );
 
-        assert_eq!(choices.len(), 3);
-        assert!(matches!(
-            choices.first(),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "xr_1" && text == "s1"
-        ));
-        assert!(matches!(
-            choices.get(1),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Summary(text),
-            }) if id == "xr_1" && text == "s2"
-        ));
-        assert!(matches!(
-            choices.get(2),
-            Some(RawStreamingChoice::Reasoning {
-                id: Some(id),
-                content: ReasoningContent::Encrypted(data),
-            }) if id == "xr_1" && data == "enc"
-        ));
+        // One restatement carrying every block: xai shares the Responses
+        // adapter, so its multi-block done items must also aggregate as one
+        // part instead of same-id siblings.
+        let Some(RawStreamingChoice::ReasoningEnd {
+            id,
+            reasoning: Some(reasoning),
+            signature: None,
+            wire_sent: true,
+        }) = end
+        else {
+            panic!("expected one wire-sent ReasoningEnd restatement");
+        };
+        assert_eq!(id, crate::streaming::StreamPartId::wire("xr_1"));
+        assert_eq!(reasoning.id.as_deref(), Some("xr_1"));
+        assert_eq!(
+            reasoning.content,
+            vec![
+                ReasoningContent::Summary("s1".to_string()),
+                ReasoningContent::Summary("s2".to_string()),
+                ReasoningContent::Encrypted("enc".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn truncated_stream_does_not_synthesize_a_terminal_record() {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+        use serde_json::json;
+
+        // Deltas then EOF without `response.completed`: the truncated stream
+        // must deliver its content but never a synthesized terminal record.
+        let delta = json!({
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "content_index": 0,
+            "sequence_number": 1,
+            "delta": "hi"
+        });
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_json_events(&[delta]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/responses")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let raw = send_xai_streaming_request(client, req)
+            .await
+            .expect("stream should start");
+        let mut stream = super::normalize_responses_stream(super::PROVIDER_NAME, raw);
+
+        let mut texts = Vec::new();
+        let mut saw_terminal = false;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item should be Ok") {
+                StreamedAssistantContent::Text(text) => texts.push(text.text),
+                StreamedAssistantContent::Final(_) => saw_terminal = true,
+                _ => {}
+            }
+        }
+
+        assert_eq!(texts, ["hi"]);
+        assert!(
+            !saw_terminal,
+            "EOF without response.completed must not synthesize a terminal record"
+        );
+        assert!(stream.response.is_none());
     }
 
     #[tokio::test]
@@ -177,9 +249,10 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_xai_streaming_request(client, req)
+        let raw = send_xai_streaming_request(client, req)
             .await
             .expect("stream should start");
+        let mut stream = super::normalize_responses_stream(super::PROVIDER_NAME, raw);
 
         match stream
             .next()
@@ -188,8 +261,12 @@ mod tests {
             .expect("first stream item should be ok")
         {
             StreamedAssistantContent::ToolCall { tool_call, .. } => {
-                assert_eq!(tool_call.id, "fc_123");
-                assert_eq!(tool_call.call_id.as_deref(), Some("call_123"));
+                // The correlator (`call_…`) drives rig's id; the dual-wire
+                // item handle (`fc_…`) rides along as the provider item id.
+                assert_eq!(tool_call.id, "call_123");
+                let provider = tool_call.provider.as_ref().expect("provider ids are kept");
+                assert_eq!(provider.call_id, "call_123");
+                assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
                 assert_eq!(tool_call.function.name, "example_tool");
                 assert_eq!(tool_call.function.arguments, serde_json::json!({}));
             }

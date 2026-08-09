@@ -5,6 +5,7 @@ use crate::{
     OneOrMany,
     completion::{self, CompletionError, CompletionRequest},
     json_utils,
+    providers::internal::openai_chat_completions_compatible::map_openai_finish_reason,
     providers::openai,
 };
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,10 @@ pub const CLAUDE_3_7_SONNET: &str = "anthropic/claude-3.7-sonnet";
 pub const PERPLEXITY_SONAR_PRO: &str = "perplexity/sonar-pro";
 /// The `google/gemini-2.0-flash-001` model. Find more models at <https://openrouter.ai/models>.
 pub const GEMINI_FLASH_2_0: &str = "google/gemini-2.0-flash-001";
+
+/// Stable descriptor name recorded on telemetry spans and on every normalized
+/// response produced by this provider.
+pub(crate) const PROVIDER_NAME: &str = "openrouter";
 
 // ================================================================
 // Provider Selection and Prioritization
@@ -575,13 +580,67 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
+/// Normalize OpenRouter's terminal reason for a choice.
+///
+/// OpenRouter reports two fields: `finish_reason`, normalized by OpenRouter to
+/// the OpenAI Chat Completions vocabulary, and `native_finish_reason`, which is
+/// whatever the upstream provider said (e.g. Gemini's `"STOP"`). The normalized
+/// field wins; the native one is only consulted when OpenRouter omitted the
+/// normalized field, so a reason the gateway could not translate is still
+/// reported rather than lost. The native value must not be read with the OpenAI
+/// vocabulary — routing Gemini's `STOP` or Anthropic's `end_turn` through
+/// [`map_openai_finish_reason`] would report a plain natural stop as
+/// [`completion::FinishReason::Other`]. Either way an unrecognized value is
+/// preserved verbatim in [`FinishReason::Other`](completion::FinishReason::Other).
+pub(crate) fn map_finish_reason(choice: &Choice) -> Option<completion::FinishReason> {
+    if let Some(reason) = choice
+        .finish_reason
+        .as_deref()
+        .filter(|reason| !reason.is_empty())
+    {
+        return Some(map_openai_finish_reason(reason));
+    }
 
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+    choice
+        .native_finish_reason
+        .as_deref()
+        .filter(|reason| !reason.is_empty())
+        .map(map_native_finish_reason)
+}
+
+/// Map an upstream provider's own terminal reason, as forwarded by OpenRouter.
+///
+/// This covers the vocabularies OpenRouter routes to, matched
+/// case-insensitively because they disagree on casing (Gemini screams,
+/// Anthropic does not). Anything unrecognized is still carried verbatim in the
+/// spelling the upstream provider used.
+pub(crate) fn map_native_finish_reason(reason: &str) -> completion::FinishReason {
+    match reason.to_ascii_lowercase().as_str() {
+        // OpenAI-compatible upstreams, plus Anthropic's `end_turn`/`stop_sequence`
+        // and Gemini's `STOP`.
+        "stop" | "end_turn" | "stop_sequence" | "complete" => completion::FinishReason::Stop,
+        "length" | "max_tokens" | "model_length" => completion::FinishReason::Length,
+        "tool_calls" | "function_call" | "tool_use" => completion::FinishReason::ToolCalls,
+        "content_filter" | "safety" | "blocklist" | "prohibited_content" | "spii" => {
+            completion::FinishReason::ContentFilter
+        }
+        _ => completion::FinishReason::Other(reason.to_owned()),
+    }
+}
+
+/// Normalize an OpenRouter chat completion response.
+///
+/// The provider descriptor name is an *input* because the message model is the
+/// shared OpenAI one; taking it as part of the conversion keeps the shape
+/// consistent with the OpenAI-compatible path even though only OpenRouter
+/// produces this envelope.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+        let finish_reason = map_finish_reason(choice);
 
         let content = match &choice.message {
             Message::Assistant {
@@ -703,37 +762,18 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(|usage| {
-                let (cached_input, cache_creation) = usage
-                    .prompt_tokens_details
-                    .as_ref()
-                    .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
-                    .unwrap_or((0, 0));
-                completion::Usage {
-                    input_tokens: usage.prompt_tokens as u64,
-                    // Reported completion tokens (like the streaming path),
-                    // falling back to saturating total - prompt for gateways
-                    // that omit the field (it deserializes to 0).
-                    output_tokens: if usage.completion_tokens > 0 {
-                        usage.completion_tokens as u64
-                    } else {
-                        usage.total_tokens.saturating_sub(usage.prompt_tokens) as u64
-                    },
-                    total_tokens: usage.total_tokens as u64,
-                    cached_input_tokens: cached_input,
-                    cache_creation_input_tokens: cache_creation,
-                    tool_use_prompt_tokens: 0,
-                    reasoning_tokens: 0,
-                }
-            })
+            .map(completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(
+            // OpenRouter's `id` identifies the generation, not an assistant
+            // message, so it is carried as a response ID rather than a
+            // message ID.
+            completion::CompletionResponse::new(choice, usage, provider)
+                .with_response_id(response.id)
+                .with_model(response.model)
+                .with_optional_finish_reason(finish_reason),
+        )
     }
 }
 
@@ -1039,6 +1079,11 @@ fn user_contents_to_messages(
         match content {
             message::UserContent::ToolResult(tool_result) => {
                 flush_user_content(&mut messages, &mut pending)?;
+                // Prefer the provider-issued call id, matching the
+                // assistant echo (shared From<message::ToolCall>);
+                // provider-less results fall back to rig's minted
+                // handle — never empty.
+                let tool_call_id = tool_result.wire_call_id().to_owned();
                 let content = tool_result
                     .content
                     .into_iter()
@@ -1054,9 +1099,7 @@ fn user_contents_to_messages(
                     .collect::<Result<Vec<_>, _>>()?
                     .join("\n");
                 messages.push(Message::ToolResult {
-                    // Prefer the provider-issued call id, matching the
-                    // assistant echo (shared From<message::ToolCall>).
-                    tool_call_id: tool_result.call_id.unwrap_or(tool_result.id),
+                    tool_call_id,
                     content: openai::completion::ToolResultContentValue::String(content),
                 });
             }
@@ -1125,10 +1168,16 @@ fn assistant_contents_to_messages(
                         }
                         ToolCallAdditionalParams::Minimal { id, format } => {
                             // Correlate with the id the wire tool call will
-                            // carry (call_id when present, else id).
+                            // carry (provider call id when present, else
+                            // rig's handle).
                             let id = id
-                                .or_else(|| tool_call.call_id.clone())
-                                .unwrap_or_else(|| tool_call.id.clone());
+                                .or_else(|| {
+                                    tool_call
+                                        .provider
+                                        .as_ref()
+                                        .map(|provider| provider.call_id.clone())
+                                })
+                                .unwrap_or_else(|| tool_call.id.as_str().to_owned());
                             if let Some(signature) = &tool_call.signature {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
                                     id: Some(id),
@@ -1143,9 +1192,10 @@ fn assistant_contents_to_messages(
                     reasoning_details.push(ReasoningDetails::Encrypted {
                         id: Some(
                             tool_call
-                                .call_id
-                                .clone()
-                                .unwrap_or_else(|| tool_call.id.clone()),
+                                .provider
+                                .as_ref()
+                                .map(|provider| provider.call_id.clone())
+                                .unwrap_or_else(|| tool_call.id.as_str().to_owned()),
                         ),
                         format: None,
                         index: None,
@@ -1161,12 +1211,16 @@ fn assistant_contents_to_messages(
                         reasoning = Some(display);
                     }
                 } else {
+                    // A block the stream aggregated without a wire id carries
+                    // the accumulator's shared "" identity; send it back as a
+                    // null id, the shape the non-streaming path produces.
+                    let reasoning_id = r.id.clone().filter(|id| !id.is_empty());
                     for reasoning_block in &r.content {
                         let index = Some(reasoning_details.len());
                         match reasoning_block {
                             message::ReasoningContent::Text { text, signature } => {
                                 reasoning_details.push(ReasoningDetails::Text {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     text: Some(text.clone()),
@@ -1175,7 +1229,7 @@ fn assistant_contents_to_messages(
                             }
                             message::ReasoningContent::Summary(summary) => {
                                 reasoning_details.push(ReasoningDetails::Summary {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     summary: summary.clone(),
@@ -1184,7 +1238,7 @@ fn assistant_contents_to_messages(
                             message::ReasoningContent::Encrypted(data)
                             | message::ReasoningContent::Redacted { data } => {
                                 reasoning_details.push(ReasoningDetails::Encrypted {
-                                    id: r.id.clone(),
+                                    id: reasoning_id.clone(),
                                     format: None,
                                     index,
                                     data: data.clone(),
@@ -1442,7 +1496,7 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
 }
 
 impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
-    const PROVIDER_NAME: &'static str = "openrouter";
+    const PROVIDER_NAME: &'static str = self::PROVIDER_NAME;
 
     type StreamingUsage = Usage;
     type Response = CompletionResponse;
@@ -1471,32 +1525,56 @@ impl openai::completion::OpenAICompatibleProvider for OpenRouterExt {
         Ok(())
     }
 
-    fn decorate_streaming_tool_call(
+    /// Encrypted reasoning (`{"type":"reasoning.encrypted"}`) is the turn's own
+    /// output, not tool-call metadata: it arrives with `reasoning: null` and an
+    /// `rs_*` id of its own, which never matches a `call_*` tool-call id, and it
+    /// arrives before any tool call opens. Emitting it as a reasoning block
+    /// matches the non-streaming path (which maps the same detail to
+    /// [`message::ReasoningContent::Encrypted`]) and is what lets the blob reach
+    /// the aggregated choice and be replayed on the next turn.
+    fn streaming_detail_reasoning(
         &self,
         detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
+    ) -> Option<(
+        crate::streaming::StreamPartId,
+        Option<crate::streaming::WireId>,
+        message::ReasoningContent,
+    )> {
         let Ok(ReasoningDetails::Encrypted { id, data, .. }) =
             serde_json::from_value::<ReasoningDetails>(detail.clone())
         else {
-            return;
-        };
-        let Some(id) = id else {
-            return;
-        };
-        let Some(tool_call) = tool_calls
-            .values_mut()
-            .find(|tool_call| tool_call.id.eq(&id))
-        else {
-            return;
+            return None;
         };
 
-        tool_call.signature = Some(data);
-        tool_call.additional_params = Some(detail.clone());
+        // The durable handle exists only when the wire issued one; an
+        // id-less detail keys accumulation by a minted key and replays with
+        // the id absent — no fabricated empty "wire" id, and no
+        // per-serializer empty-string filter downstream (84a43e9e #4).
+        // The mint kind is `EncryptedReasoning`, NOT `Reasoning`: the shared
+        // compat adapter accumulates `reasoning`/`reasoning_content` text
+        // under `Minted { Reasoning, 0 }`, and a whole block under that same
+        // key would restate — i.e. replace — the open text part. Distinct
+        // content classes get distinct minted keys.
+        let provider_id = id.and_then(crate::streaming::WireId::new);
+        let key = provider_id
+            .as_ref()
+            .map(|id| crate::streaming::StreamPartId::wire(id.as_str()))
+            .unwrap_or(crate::streaming::StreamPartId::minted(
+                crate::streaming::MintKind::EncryptedReasoning,
+                0,
+            ));
+        Some((key, provider_id, message::ReasoningContent::Encrypted(data)))
     }
 }
 
 /// OpenRouter completion model, driven by the shared OpenAI Chat Completions path.
+///
+/// The provider-native escape hatches come with it:
+/// [`raw_completion`](openai::completion::GenericCompletionModel::raw_completion)
+/// returns OpenRouter's own [`CompletionResponse`] and
+/// [`raw_stream`](openai::completion::GenericCompletionModel::raw_stream) a
+/// stream whose terminal record stays provider-native — both over the same
+/// single request path as the normalized methods.
 pub type CompletionModel<H = reqwest::Client> =
     openai::completion::GenericCompletionModel<OpenRouterExt, H>;
 
@@ -1520,8 +1598,23 @@ impl<H> openai::completion::GenericCompletionModel<OpenRouterExt, H> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::NormalizeCompletionResponse;
     use crate::message::{AudioMediaType, ImageDetail, VideoMediaType};
     use serde_json::json;
+
+    #[test]
+    fn openrouter_client_constructs_a_completion_model() {
+        // Also a compile guard: it instantiates the shared chat-completions
+        // model over `OpenRouterExt`, which is what proves this provider's
+        // response conversion satisfies the normalization bound.
+        use crate::client::CompletionClient;
+
+        let client =
+            crate::providers::openrouter::Client::new("dummy-key").expect("Client::new() failed");
+        let model = client.completion_model(GEMINI_FLASH_2_0);
+
+        assert_eq!(model.model, GEMINI_FLASH_2_0);
+    }
 
     #[test]
     fn mixed_user_content_preserves_order_around_tool_results() {
@@ -1530,6 +1623,7 @@ mod tests {
             message::UserContent::tool_result_with_call_id(
                 "result-id",
                 "call-id".to_string(),
+                "tool",
                 OneOrMany::one(message::ToolResultContent::text("tool output")),
             ),
             message::UserContent::text("after"),
@@ -1824,7 +1918,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted = completion::CompletionResponse::try_from(response).unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         assert_eq!(converted.usage.output_tokens, 10);
     }
 
@@ -1844,7 +1938,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted = completion::CompletionResponse::try_from(response).unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         assert_eq!(converted.usage.output_tokens, 10);
     }
 
@@ -1875,8 +1969,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
 
         assert_eq!(converted.usage.input_tokens, 500);
         assert_eq!(converted.usage.output_tokens, 10);
@@ -1907,8 +2000,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
 
         assert_eq!(converted.usage.cached_input_tokens, 0);
         assert_eq!(converted.usage.cache_creation_input_tokens, 0);
@@ -1942,17 +2034,103 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
 
+        // The normalized response carries the model OpenRouter reported, which
+        // is routinely not the one that was requested.
         assert_eq!(
-            converted.raw_response.model,
-            "google/gemini-2.5-pro-exp-03-25:free"
+            converted.model.as_deref(),
+            Some("google/gemini-2.5-pro-exp-03-25:free")
         );
+        assert_eq!(converted.provider, "openrouter");
         assert!(matches!(
             converted.choice.first(),
             completion::AssistantContent::Text(text) if text.text == "CONTENT"
         ));
+    }
+
+    #[test]
+    fn openrouter_finish_reasons_map_and_preserve_unknown_values() {
+        use crate::completion::FinishReason;
+
+        let choice = |finish_reason: Option<&str>, native: Option<&str>| Choice {
+            index: 0,
+            native_finish_reason: native.map(str::to_string),
+            message: Message::Assistant {
+                content: vec![],
+                reasoning: None,
+                refusal: None,
+                audio: None,
+                name: None,
+                tool_calls: vec![],
+                reasoning_details: vec![],
+                images: vec![],
+            },
+            finish_reason: finish_reason.map(str::to_string),
+        };
+
+        assert_eq!(
+            map_finish_reason(&choice(Some("stop"), Some("STOP"))),
+            Some(FinishReason::Stop)
+        );
+        assert_eq!(
+            map_finish_reason(&choice(Some("length"), None)),
+            Some(FinishReason::Length)
+        );
+        assert_eq!(
+            map_finish_reason(&choice(Some("tool_calls"), None)),
+            Some(FinishReason::ToolCalls)
+        );
+        assert_eq!(
+            map_finish_reason(&choice(Some("content_filter"), None)),
+            Some(FinishReason::ContentFilter)
+        );
+        // A reason OpenRouter could not translate survives verbatim rather
+        // than reading as a natural stop.
+        assert_eq!(
+            map_finish_reason(&choice(Some("error"), None)),
+            Some(FinishReason::Other("error".to_string()))
+        );
+        // No normalized reason: the upstream provider's own spelling is
+        // reported, in its own casing.
+        assert_eq!(
+            map_finish_reason(&choice(None, Some("MALFORMED_FUNCTION_CALL"))),
+            Some(FinishReason::Other("MALFORMED_FUNCTION_CALL".to_string()))
+        );
+        assert_eq!(map_finish_reason(&choice(None, None)), None);
+    }
+
+    #[test]
+    fn openrouter_stop_with_tool_call_reports_tool_calls() {
+        // OpenRouter gateways routinely report a plain `stop` on a turn that
+        // carried tool calls; the normalized response upgrades it.
+        let json = json!({
+            "id": "gen-tool",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "anthropic/claude-3.5-sonnet",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{}"}
+                    }]
+                }
+            }]
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::ToolCalls)
+        );
     }
 
     #[test]
@@ -2833,8 +3011,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
 
         assert!(items.iter().any(|item| matches!(
@@ -2842,6 +3019,225 @@ mod tests {
             completion::AssistantContent::Reasoning(message::Reasoning { id: Some(id), content })
                 if id == "rs_1" && content.len() == 3
         )));
+    }
+
+    /// Encrypted `reasoning_details` on the streaming wire must reach the
+    /// aggregated choice and replay on the next turn.
+    ///
+    /// The SSE below mirrors the recorded OpenRouter shape
+    /// (`tests/cassettes/openrouter/streaming_tools/raw_stream_decorates_reasoning_tool_call_metadata.yaml`):
+    /// the detail arrives with `reasoning: null` and an `rs_*` id of its own,
+    /// one chunk *before* the `call_*` tool call opens. Routed through
+    /// tool-call decoration those two id namespaces never match, so the blob
+    /// was dropped on every streaming turn while the non-streaming path kept
+    /// it.
+    #[tokio::test]
+    async fn streaming_encrypted_reasoning_detail_reaches_the_choice_and_replays() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::streaming::StreamedAssistantContent;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":null,"reasoning_details":[{"type":"reasoning.encrypted","id":"rs_1","format":"openai-responses-v1","index":0,"data":"enc_blob"}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\":\"Tokyo\"}"}}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("openai/o4-mini");
+        let request = model.completion_request("weather?").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+
+        let mut events: Vec<&'static str> = Vec::new();
+        let mut streamed_tool_calls = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            match chunk.expect("stream item should be ok") {
+                StreamedAssistantContent::Reasoning { reasoning, .. } => {
+                    assert_eq!(reasoning.id.as_deref(), Some("rs_1"));
+                    assert!(matches!(
+                        reasoning.content.first(),
+                        Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                    ));
+                    events.push("reasoning");
+                }
+                StreamedAssistantContent::ToolCall { tool_call, .. } => {
+                    streamed_tool_calls.push(tool_call);
+                    events.push("tool_call");
+                }
+                _ => {}
+            }
+        }
+
+        // Wire order: the reasoning block precedes the tool call it was
+        // recorded before.
+        assert_eq!(events, vec!["reasoning", "tool_call"]);
+
+        // The tool call is *not* where the blob lives: decoration by the
+        // detail's own id could never match the call's id.
+        let tool_call = streamed_tool_calls.first().expect("streamed tool call");
+        assert_eq!(tool_call.id, "call_1");
+        assert!(tool_call.signature.is_none());
+        assert!(tool_call.additional_params.is_none());
+
+        // (a) the encrypted block reaches the aggregated choice ...
+        let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { id: Some(id), content })
+                    if id == "rs_1"
+                        && matches!(
+                            content.first(),
+                            Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                        )
+            )),
+            "encrypted reasoning must reach the aggregated choice: {choice:#?}"
+        );
+
+        // ... and (b) replays into the next turn's request messages.
+        let messages =
+            assistant_contents_to_messages(stream.choice.clone()).expect("history conversion");
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+        assert!(
+            reasoning_details.iter().any(|detail| matches!(
+                detail,
+                ReasoningDetails::Encrypted { id: Some(id), data, .. }
+                    if id == "rs_1" && data == "enc_blob"
+            )),
+            "encrypted reasoning must replay as a reasoning_details entry: {reasoning_details:#?}"
+        );
+    }
+
+    /// An id-less encrypted detail must not clobber the reasoning text
+    /// accumulating under the wire's constant minted key.
+    ///
+    /// The shared compat adapter keys `reasoning` text deltas by
+    /// `Minted { Reasoning, 0 }`; the id-less encrypted detail arrives as a
+    /// whole block while that part is still open. Keyed identically, the
+    /// whole block would *restate* — replace — the open text part
+    /// (pre-fix, all accumulated reasoning text was lost). Keyed as
+    /// `EncryptedReasoning` it is a sibling: both parts reach the
+    /// aggregated choice.
+    #[tokio::test]
+    async fn id_less_encrypted_detail_does_not_replace_open_reasoning_text() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::internal::openai_chat_completions_compatible::test_support::sse_bytes_from_data_lines;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let http_client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines([
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"deep "},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"reasoning":"thought"},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{"reasoning":null,"reasoning_details":[{"type":"reasoning.encrypted","id":null,"format":"openai-responses-v1","index":0,"data":"enc_blob"}]},"finish_reason":null}]}"#,
+                r#"{"id":"chatcmpl-1","model":"openai/o4-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+                "[DONE]",
+            ]),
+        };
+
+        let client = crate::providers::openrouter::Client::builder()
+            .api_key("dummy-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build");
+        let model = client.completion_model("openai/o4-mini");
+        let request = model.completion_request("weather?").build();
+        let mut stream = model.stream(request).await.expect("stream should start");
+        while stream.next().await.is_some() {}
+
+        let choice: Vec<message::AssistantContent> = stream.choice.clone().into_iter().collect();
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+                    if matches!(
+                        content.first(),
+                        Some(message::ReasoningContent::Text { text, .. }) if text == "deep thought"
+                    )
+            )),
+            "the accumulated reasoning text must survive the encrypted detail: {choice:#?}"
+        );
+        assert!(
+            choice.iter().any(|content| matches!(
+                content,
+                message::AssistantContent::Reasoning(message::Reasoning { id: None, content })
+                    if matches!(
+                        content.first(),
+                        Some(message::ReasoningContent::Encrypted(data)) if data == "enc_blob"
+                    )
+            )),
+            "the encrypted blob must reach the choice as its own part: {choice:#?}"
+        );
+    }
+
+    /// An encrypted detail the wire sends without an id streams under its
+    /// own minted `EncryptedReasoning` key; it must still replay, and with
+    /// a null wire id rather than an empty string.
+    #[test]
+    fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
+        use crate::providers::openai::completion::OpenAICompatibleProvider as _;
+
+        let detail = json!({
+            "type": "reasoning.encrypted",
+            "id": null,
+            "format": null,
+            "index": 0,
+            "data": "enc_blob",
+        });
+        let (id, provider_id, content) = OpenRouterExt
+            .streaming_detail_reasoning(&detail)
+            .expect("encrypted detail should map to reasoning");
+        // 84a43e9e #4, closed: an id-less detail keys accumulation by a
+        // minted (opaque) key and carries NO durable handle — a fabricated
+        // "wire" empty id is unrepresentable, so no serializer needs an
+        // empty-string filter.
+        assert!(
+            id.is_minted(),
+            "id-less details key by a minted key: {id:?}"
+        );
+        assert!(
+            provider_id.is_none(),
+            "absence is None, never a fabricated id"
+        );
+        assert!(matches!(
+            content,
+            message::ReasoningContent::Encrypted(ref data) if data == "enc_blob"
+        ));
+
+        let messages = assistant_contents_to_messages(OneOrMany::one(
+            message::AssistantContent::Reasoning(message::Reasoning {
+                id: provider_id.map(|id| id.into_string()),
+                content: vec![content],
+            }),
+        ))
+        .unwrap();
+        let Message::Assistant {
+            reasoning_details, ..
+        } = messages.first().expect("assistant message")
+        else {
+            panic!("Expected assistant message");
+        };
+        assert!(matches!(
+            reasoning_details.first(),
+            Some(ReasoningDetails::Encrypted { id: None, data, .. }) if data == "enc_blob"
+        ));
     }
 
     #[test]
@@ -2886,16 +3282,14 @@ mod tests {
 
     #[test]
     fn test_tool_call_signature_without_params_uses_wire_id_for_encrypted_detail() {
-        let tool_call = message::ToolCall {
-            id: "call_wire".to_string(),
-            call_id: None,
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call_wire",
+            message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
             },
-            signature: Some("sig-data".to_string()),
-            additional_params: None,
-        };
+        )
+        .with_signature(Some("sig-data".to_string()));
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::ToolCall(tool_call),
@@ -2921,18 +3315,17 @@ mod tests {
 
     #[test]
     fn test_tool_call_minimal_params_fall_back_to_wire_id() {
-        let tool_call = message::ToolCall {
-            id: "call_wire".to_string(),
-            call_id: None,
-            function: message::ToolFunction {
+        let tool_call = message::ToolCall::from_wire(
+            "call_wire",
+            message::ToolFunction {
                 name: "lookup".to_string(),
                 arguments: json!({}),
             },
-            signature: Some("sig-data".to_string()),
-            // Minimal params carrying only a format: the detail id must
-            // still correlate with the wire tool-call id.
-            additional_params: Some(json!({"format": "anthropic"})),
-        };
+        )
+        .with_signature(Some("sig-data".to_string()))
+        // Minimal params carrying only a format: the detail id must
+        // still correlate with the wire tool-call id.
+        .with_additional_params(Some(json!({"format": "anthropic"})));
 
         let messages = assistant_contents_to_messages(OneOrMany::one(
             message::AssistantContent::ToolCall(tool_call),
@@ -3015,8 +3408,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
             .into_iter()
@@ -3343,8 +3735,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         let reasoning_blocks: Vec<_> = items
             .into_iter()
@@ -3704,8 +4095,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
 
@@ -3753,8 +4143,7 @@ mod tests {
         });
 
         let response: CompletionResponse = serde_json::from_value(json).unwrap();
-        let converted: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
         let items: Vec<completion::AssistantContent> = converted.choice.into_iter().collect();
         assert_eq!(items.len(), 2);
 

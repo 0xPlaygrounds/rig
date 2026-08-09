@@ -70,7 +70,9 @@ use rig_core::completion::{
 };
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::streaming::{RawStreamingChoice, StreamingCompletionResponse, StreamingResult};
+use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
+use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
+use rig_core::streaming::{RawStreamingChoice, RawStreamingResult, StreamingCompletionResponse};
 #[cfg(test)]
 use tokenizers::Tokenizer;
 
@@ -102,16 +104,13 @@ const DEFAULT_MAX_CONCURRENT_REQUESTS: usize = 1;
 #[cfg(not(target_family = "wasm"))]
 const STREAM_CHANNEL_CAPACITY: usize = 8;
 
-#[derive(Clone)]
-enum ModelState {
-    Ready(Arc<LoadedModel>),
-    UnsupportedMake,
-}
-
 /// A cheaply cloneable, CPU-only Candle completion model.
+///
+/// A model always owns loaded weights: it is only constructible through the
+/// builders, which is what removing `CompletionModel::make` made expressible.
 #[derive(Clone)]
 pub struct CandleModel {
-    state: ModelState,
+    state: Arc<LoadedModel>,
 }
 
 /// Builder for loading a [`CandleModel`] and customizing generation defaults.
@@ -220,10 +219,7 @@ impl CandleModel {
 
     /// Returns the validated conversation/output protocol.
     pub fn conversation_protocol(&self) -> Option<ConversationProtocol> {
-        match &self.state {
-            ModelState::Ready(loaded) => Some(loaded.profile.definition.protocol),
-            ModelState::UnsupportedMake => None,
-        }
+        Some(self.state.profile.definition.protocol)
     }
 
     /// Backwards-compatible alias for [`Self::conversation_protocol`].
@@ -233,18 +229,12 @@ impl CandleModel {
 
     /// Returns the validated transformer architecture of the loaded checkpoint.
     pub fn architecture(&self) -> Option<ModelArchitecture> {
-        match &self.state {
-            ModelState::Ready(loaded) => Some(loaded.profile.definition.architecture),
-            ModelState::UnsupportedMake => None,
-        }
+        Some(self.state.profile.definition.architecture)
     }
 
     /// Returns the detected checkpoint quantization, if the model is quantized.
     pub fn quantization(&self) -> Option<Quantization> {
-        match &self.state {
-            ModelState::Ready(loaded) => loaded.profile.definition.quantization,
-            ModelState::UnsupportedMake => None,
-        }
+        self.state.profile.definition.quantization
     }
 }
 
@@ -332,7 +322,7 @@ impl<'a> CandleModelBuilder<'a> {
             )?,
         };
         Ok(CandleModel {
-            state: ModelState::Ready(Arc::new(loaded)),
+            state: Arc::new(loaded),
         })
     }
 }
@@ -418,24 +408,83 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-impl CompletionModel for CandleModel {
-    type Response = CandleCompletionResponse;
-    type StreamingResponse = CandleCompletionResponse;
-    type Client = ();
+/// The in-process generation channel as a [`WireAdapter`].
+///
+/// The producer sends already-typed canonical-grammar events, so
+/// classification is total: **this family never produces `Unknown`** — there
+/// is no foreign wire to be forward-compatible with — and decode errors
+/// cannot occur, since no decoding happens between the generator and the
+/// driver. Routing through the shared driver keeps the terminal and
+/// truncation semantics on the one policy site the conformance corpus pins.
+struct CandleAdapter;
 
-    fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-        Self {
-            state: ModelState::UnsupportedMake,
-        }
+impl WireAdapter for CandleAdapter {
+    type Frame = RawStreamingChoice<CandleCompletionResponse>;
+    type Event = RawStreamingChoice<CandleCompletionResponse>;
+    type Response = CandleCompletionResponse;
+
+    fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
+        wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 
-    async fn completion(
+    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput<Self::Response>) {
+        out.push(Ok(event));
+    }
+
+    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+        // Channel EOF without a `FinalResponse` means the generator failed or
+        // was cancelled: truncation, no terminal record.
+    }
+}
+
+/// Drive already-typed generation events through the full shared pipeline —
+/// driver policy, canonical grammar, terminal normalization.
+///
+/// The events-first conformance seam: grammar scenarios feed events directly
+/// with no model load.
+pub fn stream_from_events(
+    events: impl futures::Stream<
+        Item = Result<RawStreamingChoice<CandleCompletionResponse>, CompletionError>,
+    > + rig_core::wasm_compat::WasmCompatSend
+    + 'static,
+) -> StreamingCompletionResponse {
+    let raw = run_wire_stream(events, CandleAdapter);
+    StreamingCompletionResponse::stream(crate::types::PROVIDER_NAME, normalize_candle_stream(raw))
+}
+
+/// Normalize the provider-native terminal record into rig's
+/// [`rig_core::streaming::StreamFinal`].
+fn normalize_candle_stream(
+    raw: RawStreamingResult<CandleCompletionResponse>,
+) -> rig_core::streaming::StreamingResult {
+    rig_core::streaming::normalize_stream(raw, |response| {
+        let usage = (&response).into();
+        Ok(
+            rig_core::streaming::StreamFinal::new(crate::types::PROVIDER_NAME, usage)
+                .with_finish_reason(response.finish_reason.into()),
+        )
+    })
+}
+
+impl CandleModel {
+    /// Run one local completion and return this crate's own response record.
+    ///
+    /// This is the escape hatch for the local generation metrics rig does not
+    /// normalize (timings, tokens/second, the local finish reason).
+    /// [`CompletionModel::completion`] runs the same inference and normalizes
+    /// its result — the model is never run twice.
+    pub async fn raw_completion(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+    ) -> Result<CandleCompletionResponse, CompletionError> {
+        Ok(self.infer_completion(request).await?.response)
+    }
+
+    async fn infer_completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<crate::generation::InferredCompletion, CompletionError> {
+        let loaded = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -463,13 +512,13 @@ impl CompletionModel for CandleModel {
         }
     }
 
-    async fn stream(
+    /// Open a stream whose terminal record stays this crate's own response
+    /// type.
+    pub async fn raw_stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError> {
-        let ModelState::Ready(loaded) = &self.state else {
-            return Err(CandleError::UnsupportedMake.into());
-        };
+    ) -> Result<RawStreamingResult<CandleCompletionResponse>, CompletionError> {
+        let loaded = &self.state;
 
         #[cfg(not(target_family = "wasm"))]
         {
@@ -495,13 +544,19 @@ impl CompletionModel for CandleModel {
                     let _ = sender.send(Err(error.into())).await;
                 }
             });
-            let stream: StreamingResult<CandleCompletionResponse> =
-                Box::pin(CandleReceiverStream {
+            // Route the channel through the shared driver so the frame-triage
+            // policy and terminal semantics are the one conformance-pinned
+            // site; dropping the driver stream drops the receiver, which
+            // still signals cancellation.
+            let stream: RawStreamingResult<CandleCompletionResponse> = Box::pin(run_wire_stream(
+                CandleReceiverStream {
                     receiver,
                     cancellation,
-                });
+                },
+                CandleAdapter,
+            ));
             cancel_on_drop.disarm();
-            Ok(StreamingCompletionResponse::stream(stream))
+            Ok(stream)
         }
 
         #[cfg(target_family = "wasm")]
@@ -512,10 +567,33 @@ impl CompletionModel for CandleModel {
                 Ok(())
             })?;
             events.push(Ok(RawStreamingChoice::FinalResponse(response)));
-            let stream: StreamingResult<CandleCompletionResponse> =
-                Box::pin(futures::stream::iter(events));
-            Ok(StreamingCompletionResponse::stream(stream))
+            let stream: RawStreamingResult<CandleCompletionResponse> = Box::pin(run_wire_stream(
+                futures::stream::iter(events),
+                CandleAdapter,
+            ));
+            Ok(stream)
         }
+    }
+}
+
+impl CompletionModel for CandleModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse, CompletionError> {
+        Ok(self.infer_completion(request).await?.into_normalized())
+    }
+
+    async fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let raw = self.raw_stream(request).await?;
+
+        Ok(StreamingCompletionResponse::stream(
+            crate::types::PROVIDER_NAME,
+            normalize_candle_stream(raw),
+        ))
     }
 }
 

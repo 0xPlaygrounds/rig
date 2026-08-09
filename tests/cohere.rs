@@ -6,6 +6,8 @@
     clippy::unreachable
 )]
 
+#[path = "common/cassettes.rs"]
+mod cassettes;
 #[path = "common/reasoning.rs"]
 mod reasoning;
 #[path = "common/support.rs"]

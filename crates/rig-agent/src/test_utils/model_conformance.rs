@@ -378,19 +378,30 @@ fn validate_tool_correlation(
     for message in messages {
         match message {
             Message::Assistant { content, .. } => {
-                calls.extend(content.iter().filter_map(|item| match item {
-                    AssistantContent::ToolCall(call) => {
-                        Some((call.id.as_str(), call.call_id.as_deref()))
+                calls.extend(content.iter().filter_map(|item| {
+                    match item {
+                        AssistantContent::ToolCall(call) => Some((
+                            call.id.as_str(),
+                            call.provider
+                                .as_ref()
+                                .map(|provider| provider.call_id.as_str()),
+                        )),
+                        _ => None,
                     }
-                    _ => None,
                 }));
             }
             Message::User { content } => {
-                results.extend(content.iter().filter_map(|item| match item {
-                    UserContent::ToolResult(result) => {
-                        Some((result.id.as_str(), result.call_id.as_deref()))
+                results.extend(content.iter().filter_map(|item| {
+                    match item {
+                        UserContent::ToolResult(result) => Some((
+                            result.call.as_str(),
+                            result
+                                .provider
+                                .as_ref()
+                                .map(|provider| provider.call_id.as_str()),
+                        )),
+                        _ => None,
                     }
-                    _ => None,
                 }));
             }
             Message::System { .. } => {}
@@ -965,7 +976,7 @@ pub async fn parallel_tools<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let subtract_calls = Arc::new(AtomicUsize::new(0));
@@ -1060,7 +1071,7 @@ pub async fn zero_argument_tool<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "zero_argument_tool";
     let calls = Arc::new(AtomicUsize::new(0));
@@ -1110,7 +1121,7 @@ pub async fn tool_output_serialization<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "tool_output_serialization";
     let started = Instant::now();
@@ -1172,7 +1183,7 @@ pub async fn complex_tool_arguments<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "complex_tool_arguments";
     let expected = ComplexArgs {
@@ -1256,11 +1267,11 @@ where
                 streamed_text.push_str(&text.text);
             }
             crate::streaming::StreamedAssistantContent::Final(response) => {
-                streamed_usage = Some(crate::completion::GetTokenUsage::token_usage(&response));
+                streamed_usage = Some(response.usage);
             }
             crate::streaming::StreamedAssistantContent::ToolCall { .. }
             | crate::streaming::StreamedAssistantContent::ToolCallDelta { .. }
-            | crate::streaming::StreamedAssistantContent::Reasoning(_)
+            | crate::streaming::StreamedAssistantContent::Reasoning { .. }
             | crate::streaming::StreamedAssistantContent::ReasoningDelta { .. }
             | crate::streaming::StreamedAssistantContent::Unknown(_) => {}
         }
@@ -1308,7 +1319,7 @@ where
     const SCENARIO: &str = "structured_extraction";
     const INPUT: &str = "Hello, my name is Ada Lovelace and I work as a mathematician.";
     let started = Instant::now();
-    let response = crate::extractor::ExtractorBuilder::<M, ExtractedPerson>::new(model)
+    let response = crate::extractor::ExtractorBuilder::<ExtractedPerson>::new(model)
         .max_tokens(384)
         .retries(0)
         .build()
@@ -1376,7 +1387,7 @@ pub async fn invalid_tool_recovery<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "invalid_tool_recovery";
     const PROMPT: &str = "Call the add tool exactly once with x=2 and y=3. Do not call sum.";
@@ -1567,7 +1578,7 @@ pub async fn hook_rewrites_and_request_patch<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "hook_rewrites_and_request_patch";
     let started = Instant::now();
@@ -1641,7 +1652,7 @@ pub async fn cancellation_and_max_turns<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + Clone + 'static,
-    F: Fn(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: Fn(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     const SCENARIO: &str = "cancellation_and_max_turns";
     const REASON: &str = "portable result veto";
@@ -1718,7 +1729,7 @@ pub async fn optional_argument<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1753,7 +1764,7 @@ where
 pub async fn sequential_tools<M, F>(model: M, configure: F) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let add_calls = Arc::new(AtomicUsize::new(0));
     let multiply_calls = Arc::new(AtomicUsize::new(0));
@@ -1792,7 +1803,7 @@ where
 pub async fn streaming_tool<M, F>(model: M, configure: F) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1889,7 +1900,7 @@ pub async fn structured_after_tool<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -1922,7 +1933,7 @@ where
 /// Runs all portable tool-choice modes directly against a completion model.
 pub async fn tool_choice_modes<M>(model: M) -> Result<ScenarioReport, ScenarioError>
 where
-    M: CompletionModel + 'static,
+    M: CompletionModel + Clone + 'static,
 {
     let definition = |name: &str| ToolDefinition {
         name: name.to_string(),
@@ -2034,7 +2045,7 @@ pub async fn streaming_structured_after_tool<M, F>(
 ) -> Result<ScenarioReport, ScenarioError>
 where
     M: CompletionModel + 'static,
-    F: FnOnce(AgentBuilder<M, NoToolConfig>) -> AgentBuilder<M, NoToolConfig>,
+    F: FnOnce(AgentBuilder<NoToolConfig>) -> AgentBuilder<NoToolConfig>,
 {
     let calls = Arc::new(AtomicUsize::new(0));
     let started = Instant::now();
@@ -2095,7 +2106,7 @@ mod tests {
     use super::*;
     use crate::{
         completion::Usage,
-        test_utils::{MockCompletionModel, MockResponse, MockStreamEvent, MockTurn},
+        test_utils::{MockCompletionModel, MockStreamEvent, MockTurn, mock_final},
     };
     use rig_core::{
         OneOrMany,
@@ -2103,8 +2114,8 @@ mod tests {
     };
 
     fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
-        AssistantContent::ToolCall(ToolCall::new(
-            id.to_string(),
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
             ToolFunction::new(name.to_string(), arguments),
         ))
     }
@@ -2221,11 +2232,11 @@ mod tests {
                     "add",
                     serde_json::json!({"a": 17, "b": 25}),
                 ),
-                MockStreamEvent::FinalResponse(MockResponse::with_usage(usage(10, 2))),
+                MockStreamEvent::FinalResponse(mock_final(usage(10, 2))),
             ],
             vec![
                 MockStreamEvent::text("42"),
-                MockStreamEvent::FinalResponse(MockResponse::with_usage(usage(14, 1))),
+                MockStreamEvent::FinalResponse(mock_final(usage(14, 1))),
             ],
         ]);
         let report = streaming_tool(model, |builder| builder).await?;

@@ -2,8 +2,9 @@
 
 use rig::OneOrMany;
 use rig::completion::CompletionModel;
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::Prompt;
-use rig::message::{AssistantContent, Message, ToolChoice};
+use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamingPrompt;
@@ -49,20 +50,28 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let response = client
-                .completion_model(openai::GPT_4O)
+            let model = client.completion_model(openai::GPT_4O);
+            let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
-                .send()
+                .build();
+
+            // The cassette records exactly one interaction, so the raw wire
+            // response is fetched once and normalized through the provider's own
+            // conversion instead of issuing a second identical request.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("raw completions api request should succeed");
-
-            let normalized_text = assistant_text_response(&response.choice)
-                .expect("normalized completions api response should contain assistant text");
-            let raw_text = response
-                .raw_response
+            let raw_text = raw
                 .get_text_response()
                 .expect("raw completions api response should contain assistant text");
+
+            let response: rig::completion::CompletionResponse = raw
+                .normalize("openai")
+                .expect("raw completions api response should normalize");
+            let normalized_text = assistant_text_response(&response.choice)
+                .expect("normalized completions api response should contain assistant text");
 
             assert_nonempty_response(&normalized_text);
             assert_nonempty_response(&raw_text);
@@ -239,7 +248,14 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
                 content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
             };
             let tool_result_message =
-                Message::tool_result_with_call_id(tool_call.id, tool_call.call_id, ALPHA_SIGNAL_OUTPUT);
+                Message::User {
+        content: OneOrMany::one(UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            tool_call.function.name.clone(),
+            OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+        )),
+    };
             let followup_request = model
                 .completion_request(
                     "Now reply in one short sentence using the provided tool result. Do not call any tools.",

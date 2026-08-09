@@ -41,19 +41,80 @@ impl CompletionModel {
     }
 }
 
-impl completion::CompletionModel for CompletionModel {
-    type Response = GenerateContentResponse;
-    type StreamingResponse = super::streaming::StreamingCompletionResponse;
-    type Client = super::Client;
+/// Stable descriptor name reported on normalized responses from this provider.
+pub const PROVIDER_NAME: &str = "gemini-grpc";
 
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
+/// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
+///
+/// The wire value is a prost enum discriminant; unmapped values are carried
+/// verbatim in their SCREAMING_SNAKE proto spelling so a reason Google adds
+/// later surfaces rather than reading as a natural stop.
+pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
+    use proto::candidate::FinishReason as Wire;
+
+    let Ok(reason) = Wire::try_from(reason) else {
+        return Some(completion::FinishReason::Other(format!(
+            "FINISH_REASON_{reason}"
+        )));
+    };
+
+    let normalized = match reason {
+        // The proto default; Gemini reports it when no reason applies.
+        Wire::Unspecified => return None,
+        Wire::Stop => completion::FinishReason::Stop,
+        Wire::MaxTokens => completion::FinishReason::Length,
+        Wire::Safety | Wire::Blocklist | Wire::ProhibitedContent | Wire::Spii => {
+            completion::FinishReason::ContentFilter
+        }
+        other => completion::FinishReason::Other(other.as_str_name().to_owned()),
+    };
+
+    Some(normalized)
+}
+
+/// Turn a tool-protocol terminal `finishReason` into an error, mirroring the
+/// REST wire's `function_call_finish_reason_error`.
+///
+/// These reasons mean the turn ABORTED inside the tool protocol: the model
+/// emitted a call the API could not parse, called a tool that was not
+/// offered, or exceeded the per-turn call budget. The candidate that carries
+/// them has no usable tool call, so reporting the turn as merely "finished
+/// for some other reason" lets an agent loop read an aborted turn as a
+/// complete one. The REST surface has always failed here; the gRPC surface
+/// must not diverge.
+///
+/// Only the reasons this proto models are matched — REST's
+/// `MISSING_THOUGHT_SIGNATURE` / `MALFORMED_RESPONSE` have no protobuf
+/// discriminant in `v1beta`, so an unmapped value cannot masquerade as one.
+pub fn tool_protocol_finish_reason_error(
+    reason: i32,
+    finish_message: Option<&str>,
+) -> Option<CompletionError> {
+    use proto::candidate::FinishReason as Wire;
+
+    let reason = Wire::try_from(reason).ok()?;
+    match reason {
+        Wire::MalformedFunctionCall | Wire::UnexpectedToolCall | Wire::TooManyToolCalls => {
+            let message = finish_message.unwrap_or("no finish message provided");
+            Some(CompletionError::ResponseError(format!(
+                "Gemini stopped with finish_reason={}: {message}",
+                reason.as_str_name()
+            )))
+        }
+        _ => None,
     }
+}
 
-    async fn completion(
+impl CompletionModel {
+    /// Execute a completion and return Gemini's own protobuf response.
+    ///
+    /// This is the escape hatch for fields rig does not normalize;
+    /// [`completion::CompletionModel::completion`] calls it and maps the
+    /// result, so there is exactly one RPC either way.
+    pub async fn raw_completion(
         &self,
         completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse<GenerateContentResponse>, CompletionError> {
+    ) -> Result<GenerateContentResponse, CompletionError> {
         let request = create_grpc_request(self.model.clone(), completion_request)?;
 
         let mut grpc_client = self
@@ -67,16 +128,34 @@ impl completion::CompletionModel for CompletionModel {
             .map_err(rpc_error)?
             .into_inner();
 
-        response.try_into()
+        Ok(response)
+    }
+
+    /// Open a stream whose terminal record stays Gemini's own protobuf
+    /// response.
+    pub async fn raw_stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<
+        rig_core::streaming::RawStreamingResult<super::streaming::StreamingCompletionResponse>,
+        CompletionError,
+    > {
+        super::streaming::raw_stream(self.client.clone(), self.model.clone(), request).await
+    }
+}
+
+impl completion::CompletionModel for CompletionModel {
+    async fn completion(
+        &self,
+        completion_request: CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        self.raw_completion(completion_request).await?.try_into()
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
-    ) -> Result<
-        rig_core::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<rig_core::streaming::StreamingCompletionResponse, CompletionError> {
         super::streaming::stream(self.client.clone(), self.model.clone(), request).await
     }
 }
@@ -111,7 +190,10 @@ pub(crate) fn create_grpc_request(
         record_telemetry_content: _,
     } = completion_request;
 
-    let (history_system, chat_history) = split_system_messages_from_history(chat_history);
+    let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
+    // functionResponse.name keys the replay: cross-provider ingested
+    // results arrive with an empty name and their call carries it.
+    rig_core::providers::internal::resolve_empty_tool_result_names(&mut chat_history);
     let mut contents = Vec::new();
 
     // Convert chat history to gRPC Content messages
@@ -274,12 +356,18 @@ fn rig_user_content_to_grpc_part(
             let response_struct =
                 json_to_prost_struct(serde_json::json!({ "result": result_value }))?;
 
+            // `FunctionResponse.name` is the executed function's name —
+            // required data on the result. Only a provider-issued id may
+            // travel back on the wire (the proto field is optional-empty).
             Ok(proto::Part {
                 data: Some(proto::part::Data::FunctionResponse(
                     proto::FunctionResponse {
-                        name: result.id,
+                        name: result.name,
                         response: Some(response_struct),
-                        id: result.call_id.unwrap_or_default(),
+                        id: result
+                            .provider
+                            .map(|provider| provider.call_id)
+                            .unwrap_or_default(),
                     },
                 )),
                 thought: false,
@@ -370,7 +458,12 @@ fn rig_assistant_content_to_grpc_part(
                 data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
                     name: tool_call.function.name,
                     args: Some(args),
-                    id: tool_call.call_id.unwrap_or(tool_call.id),
+                    // Only a provider-issued id may travel back on the
+                    // wire; minted correlation handles stay internal.
+                    id: tool_call
+                        .provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_default(),
                 })),
                 thought: false,
                 thought_signature: decode_optional_base64(tool_call.signature)?,
@@ -392,13 +485,22 @@ fn rig_assistant_content_to_grpc_part(
 }
 
 // Convert gRPC GenerateContentResponse to Rig CompletionResponse
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<GenerateContentResponse> {
+impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
         let candidate = response.candidates.first().ok_or_else(|| {
             CompletionError::ResponseError("No response candidates in response".into())
         })?;
+
+        // Same helper (and therefore the same message) as the streaming path,
+        // so a tool-protocol abort reads identically on both surfaces.
+        if let Some(err) = tool_protocol_finish_reason_error(
+            candidate.finish_reason,
+            candidate.finish_message.as_deref(),
+        ) {
+            return Err(err);
+        }
 
         let content_ref = candidate.content.as_ref().ok_or_else(|| {
             CompletionError::ResponseError(format!(
@@ -447,21 +549,13 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
                         .map(prost_struct_to_json)
                         .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
-                    let mut tool_call = message::ToolCall::new(
-                        if function_call.id.is_empty() {
-                            function_call.name.clone()
-                        } else {
-                            function_call.id.clone()
-                        },
+                    // An id-less call mints its correlation handle —
+                    // never name-as-id, which collides two same-tool calls.
+                    let tool_call = message::ToolCall::from_wire(
+                        function_call.id.clone(),
                         message::ToolFunction::new(function_call.name.clone(), args),
-                    );
-
-                    if !function_call.id.is_empty() {
-                        tool_call = tool_call.with_call_id(function_call.id.clone());
-                    }
-
-                    tool_call =
-                        tool_call.with_signature(encode_optional_base64(&part.thought_signature));
+                    )
+                    .with_signature(encode_optional_base64(&part.thought_signature));
 
                     completion::AssistantContent::ToolCall(tool_call)
                 }
@@ -495,12 +589,19 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse<Generat
             })
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        let finish_reason = response
+            .candidates
+            .first()
+            .and_then(|candidate| map_finish_reason(candidate.finish_reason));
+        let model = Some(response.model_version.clone()).filter(|model| !model.is_empty());
+        Ok(
+            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_finish_reason(finish_reason)
+                .with_optional_response_id(
+                    Some(response.response_id.clone()).filter(|id| !id.is_empty()),
+                )
+                .with_optional_model(model),
+        )
     }
 }
 
@@ -951,6 +1052,82 @@ mod tests {
         assert_eq!(
             schema.items.expect("items").r#type,
             proto::Type::String as i32
+        );
+    }
+
+    /// `FunctionResponse.name` is the executed function's name: read from
+    /// the required `ToolResult::name` — never an identifier, no matter how
+    /// identifier-shaped the correlation handles are.
+    #[test]
+    fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
+        use rig_core::message::{
+            AssistantContent, ProviderCallId, ToolCall, ToolCallId, ToolFunction, ToolResult,
+            ToolResultContent,
+        };
+
+        let call = |wire_id: &str, name: &str| message::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+                wire_id,
+                ToolFunction {
+                    name: name.to_owned(),
+                    arguments: serde_json::json!({}),
+                },
+            ))),
+        };
+        let result = |wire_id: &str, name: &str| message::Message::User {
+            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                call: ToolCallId::new_or_mint(wire_id),
+                provider: ProviderCallId::new(wire_id),
+                name: name.to_owned(),
+                content: OneOrMany::one(ToolResultContent::text("out")),
+            })),
+        };
+
+        let req = create_grpc_request(
+            "gemini-2.5-flash".to_string(),
+            CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: OneOrMany::many(vec![
+                    // Driver-built: the executed name travels as data (a
+                    // repair hook renamed the call: `sum` ran, not `add`).
+                    call("call_1", "add"),
+                    result("call_1", "sum"),
+                    // Cross-provider history with an OpenAI-shaped id —
+                    // `call_abc` must never travel as the name.
+                    call("call_abc", "get_weather"),
+                    result("call_abc", "get_weather"),
+                ])
+                .expect("non-empty history"),
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            },
+        )
+        .expect("request build");
+
+        // The name is the executed tool's name; the proto `id` is the
+        // provider-issued call id (never rig's minted handle).
+        let responses: Vec<(&str, &str)> = req
+            .contents
+            .iter()
+            .flat_map(|content| content.parts.iter())
+            .filter_map(|part| match &part.data {
+                Some(proto::part::Data::FunctionResponse(fr)) => {
+                    Some((fr.id.as_str(), fr.name.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            responses,
+            vec![("call_1", "sum"), ("call_abc", "get_weather")]
         );
     }
 

@@ -65,7 +65,7 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
 
     let simple = tokio::time::timeout(Duration::from_secs(300), async {
         loaded_model
-            .completion(
+            .raw_completion(
                 loaded_model
                     .completion_request("Answer with only the capital of France.")
                     .temperature(0.0)
@@ -75,20 +75,20 @@ async fn pinned_qwen3_model_contract() -> Result<(), Box<dyn std::error::Error +
             .await
     })
     .await??;
-    if !simple.raw_response.text.contains("Paris") {
+    if !simple.text.contains("Paris") {
         return Err(format!(
             "model-quality failure in simple completion: {:?}",
-            simple.raw_response.text
+            simple.text
         )
         .into());
     }
     println!(
         "PASS simple_buffered prompt_tokens={} generated_tokens={} tool_calls=0 duration={}ms throughput={:?} output={:?}",
-        simple.raw_response.prompt_tokens,
-        simple.raw_response.generated_tokens,
-        simple.raw_response.generation_duration_ms,
-        simple.raw_response.tokens_per_second,
-        simple.raw_response.text,
+        simple.prompt_tokens,
+        simple.generated_tokens,
+        simple.generation_duration_ms,
+        simple.tokens_per_second,
+        simple.text,
     );
 
     let text_parity = tokio::time::timeout(

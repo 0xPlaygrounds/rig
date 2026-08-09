@@ -13,8 +13,7 @@
 //!
 //! ```rust,no_run
 //! # use rig_agent::Agent;
-//! # use rig_core::completion::CompletionModel;
-//! # async fn example<M: CompletionModel + 'static>(agent: Agent<M>) -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn example(agent: Agent) -> Result<(), Box<dyn std::error::Error>> {
 //! let response = agent
 //!     .runner("What is 2 + 2?")
 //!     .max_turns(3)
@@ -41,6 +40,7 @@ use super::{
         InvalidToolCallAction, ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch,
         ToolCall as ToolCallEvent, ToolCallAction, ToolResultAction, ToolResultEvent,
     },
+    model::ModelHandle,
     prompt_request::{
         PromptResponse,
         streaming::{
@@ -195,15 +195,12 @@ pub(crate) fn completion_call_decision(action: CompletionCallAction) -> Completi
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
 #[non_exhaustive]
-pub struct AgentRunner<M>
-where
-    M: CompletionModel,
-{
+pub struct AgentRunner {
     pub(crate) prompt: Message,
     pub(crate) chat_history: Option<Vec<Message>>,
     pub(crate) max_turns: usize,
     pub(crate) max_invalid_tool_call_retries: usize,
-    pub(crate) model: Arc<M>,
+    pub(crate) model: ModelHandle,
     pub(crate) agent_name: Option<String>,
     pub(crate) preamble: Option<String>,
     pub(crate) static_context: Vec<Document>,
@@ -228,13 +225,10 @@ where
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
     /// stack. Prefer [`Agent::runner`].
-    pub fn from_agent(agent: &Agent<M>, prompt: impl Into<Message>) -> Self {
+    pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         Self {
             prompt: prompt.into(),
             chat_history: None,
@@ -267,10 +261,11 @@ where
 
     /// Append a hook to the stack (on top of any the agent already carries).
     /// Hooks run in registration order; how their results compose is
-    /// event-dependent (`CompletionCall` request patches accumulate and merge,
-    /// `ToolCall`/`ToolResult` rewrites chain, while model-turn steering and
-    /// observe-only/recovery events use their event-specific terminal action). See the
-    /// [`hook`](crate::agent::hook) module docs.
+    /// event-dependent (model selections and `ToolCall`/`ToolResult` rewrites
+    /// chain, `CompletionCall` request patches accumulate and merge, while
+    /// model-turn steering and observe-only/recovery events use their
+    /// event-specific terminal action). See the [`hook`](crate::agent::hook)
+    /// module docs.
     pub fn add_hook<H>(mut self, hook: H) -> Self
     where
         H: AgentHook + 'static,
@@ -280,16 +275,32 @@ where
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     /// Set the total model-call budget, including the initial call and every
     /// retry or continuation. Zero emits no model calls; one permits only the
     /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.max_turns = max_turns;
         self
+    }
+
+    /// Set the default model candidate for this run.
+    ///
+    /// This does not suppress registered model-selection hooks, which may
+    /// replace the candidate before each model call (including retries).
+    /// Append an unconditional selecting hook last when the run must always
+    /// use one model.
+    pub fn using_model(mut self, model: ModelHandle) -> Self {
+        self.model = model;
+        self
+    }
+
+    /// Erase and set a typed default model for this run.
+    pub fn using_model_value<M>(self, model: M) -> Self
+    where
+        M: CompletionModel + 'static,
+    {
+        self.using_model(ModelHandle::new(model))
     }
 
     /// Set the typed context cloned for every tool dispatch in this run.
@@ -660,17 +671,14 @@ pub(crate) struct ToolCallOutcome {
 /// Records `gen_ai.tool.*` on the current span;
 /// `error_history` builds a cancellation error if a hook terminates the run.
 /// Returns whether the tool body executed via [`ToolCallOutcome::execution`].
-pub(crate) async fn run_single_tool<M>(
-    runner: &AgentRunner<M>,
+pub(crate) async fn run_single_tool(
+    runner: &AgentRunner,
     ctx: &HookContext,
     tool_snapshot: &ToolRegistrySnapshot,
     tool_call: &ToolCall,
     internal_call_id: &str,
     error_history: &[Message],
-) -> Result<ToolCallOutcome, PromptError>
-where
-    M: CompletionModel,
-{
+) -> Result<ToolCallOutcome, PromptError> {
     let hooks = &runner.hooks;
     let tool_context = &runner.tool_context;
     let record_content = runner.record_telemetry_content;
@@ -681,7 +689,7 @@ where
 
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
-    tool_span.record("gen_ai.tool.call.id", &tool_call.id);
+    tool_span.record("gen_ai.tool.call.id", tool_call.id.as_str());
     if record_content {
         tool_span.record("gen_ai.tool.call.arguments", &args);
     }
@@ -697,7 +705,7 @@ where
             ctx,
             ToolCallEvent {
                 tool_name,
-                tool_call_id: tool_call.call_id.as_deref(),
+                tool_call_id: Some(tool_call.id.as_str()),
                 internal_call_id,
                 args: &args,
             },
@@ -783,7 +791,7 @@ where
                 ctx,
                 ToolResultEvent {
                     tool_name,
-                    tool_call_id: tool_call.call_id.as_deref(),
+                    tool_call_id: Some(tool_call.id.as_str()),
                     internal_call_id,
                     args: &args,
                     presentation: exec.output(),
@@ -810,7 +818,8 @@ where
             Ok(ToolCallOutcome {
                 content: tool_result_output(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
                     replacement,
                 ),
                 execution,
@@ -822,7 +831,8 @@ where
             }
             let content = tool_result_output(
                 tool_call.id.clone(),
-                tool_call.call_id.clone(),
+                tool_call.provider.clone(),
+                tool_call.function.name.clone(),
                 exec.output().clone(),
             );
             Ok(ToolCallOutcome { content, execution })
@@ -896,15 +906,10 @@ impl UnaryTurnSource {
     }
 }
 
-impl<M> TurnSource<M> for UnaryTurnSource
-where
-    M: CompletionModel,
-{
-    type Raw = M::Response;
-
+impl TurnSource for UnaryTurnSource {
     fn open_chat_span(
         &self,
-        runner: &AgentRunner<M>,
+        runner: &AgentRunner,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
         let chat_span = build_chat_span!(runner, effective_preamble, "chat", "chat");
@@ -913,14 +918,14 @@ where
 
     fn run_model_turn<'a>(
         &'a mut self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
-        prepared: PreparedCompletionRequest<M>,
+        prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         _agent_span: &'a tracing::Span,
         current_prompt: Message,
-    ) -> DriveStream<'a, M::Response> {
+    ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
             let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
                 Ok(resp) => resp,
@@ -1050,12 +1055,12 @@ where
 
     fn run_tool_calls<'a>(
         &'a self,
-        runner: &'a AgentRunner<M>,
+        runner: &'a AgentRunner,
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
         tool_snapshot: Arc<ToolRegistrySnapshot>,
-    ) -> DriveStream<'a, M::Response> {
+    ) -> DriveStream<'a> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it
         // skips building them.
@@ -1088,17 +1093,14 @@ where
         }
     }
 
-    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem<M::Response>> {
+    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem> {
         // The blocking surface folds the engine and discards the final item, so
         // building it (an extra full-response clone) is skipped entirely.
         None
     }
 }
 
-impl<M> AgentRunner<M>
-where
-    M: CompletionModel,
-{
+impl AgentRunner {
     pub(crate) async fn run_with_error_usage(
         mut self,
     ) -> (Result<PromptResponse, PromptError>, Usage) {
@@ -1523,8 +1525,8 @@ mod tests {
         let streaming = Results::default();
         let streaming_model = MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_name_delta("tc1", "ic1", "flaky_tool"),
-                MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{}"),
+                MockStreamEvent::tool_call_name_delta("tc1", "flaky_tool"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{}"),
                 MockStreamEvent::tool_call("tc1", "flaky_tool", json!({})),
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
@@ -1930,6 +1932,52 @@ mod migrated_tests {
     }
 
     #[tokio::test]
+    async fn response_scoped_id_is_not_promoted_into_history() {
+        let prompt = Message::user("prompt");
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::text("reply").with_response_id("chatcmpl-123")
+        ]))
+        .build()
+        .runner(prompt)
+        .run()
+        .await
+        .expect("blocking response");
+
+        let messages = response.messages.expect("history enabled");
+        let assistant_ids: Vec<_> = messages
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(assistant_ids, [None]);
+    }
+
+    #[tokio::test]
+    async fn message_id_is_promoted_into_history() {
+        let prompt = Message::user("prompt");
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::text("reply").with_message_id("msg_abc")
+        ]))
+        .build()
+        .runner(prompt)
+        .run()
+        .await
+        .expect("blocking response");
+
+        let messages = response.messages.expect("history enabled");
+        let assistant_ids: Vec<_> = messages
+            .iter()
+            .filter_map(|message| match message {
+                Message::Assistant { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(assistant_ids, [Some("msg_abc".to_string())]);
+    }
+
+    #[tokio::test]
     async fn streaming_response_finish_matches_blocking_canonical_fields() {
         let prompt = Message::user("canonical prompt");
         let blocking_hook = CanonicalResponseHook::default();
@@ -2175,7 +2223,7 @@ mod migrated_tests {
             ("reasoning", MockStreamEvent::reasoning("late reasoning")),
             (
                 "reasoning delta",
-                MockStreamEvent::reasoning_delta(None::<String>, "late reasoning"),
+                MockStreamEvent::reasoning_delta("late reasoning"),
             ),
             (
                 "tool call",
@@ -2183,7 +2231,7 @@ mod migrated_tests {
             ),
             (
                 "tool-call delta",
-                MockStreamEvent::tool_call_name_delta("late", "internal-late", "add"),
+                MockStreamEvent::tool_call_name_delta("late", "add"),
             ),
             ("unknown", MockStreamEvent::unknown(json!({"type": "late"}))),
         ];
@@ -2313,11 +2361,15 @@ mod migrated_tests {
         ])
     }
 
+    /// Note the shape of turn one: the call's input streams as fragments
+    /// (`tc1`) *and* the wire restates it as one complete `ToolCall`. See
+    /// [`streamed_tool_call_items_share_one_internal_call_id`] for the
+    /// correlation contract this pins.
     fn streaming_model() -> MockCompletionModel {
         MockCompletionModel::from_stream_turns([
             vec![
-                MockStreamEvent::tool_call_name_delta("tc1", "ic1", "add"),
-                MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{\"x\":2,\"y\":3}"),
+                MockStreamEvent::tool_call_name_delta("tc1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
                 MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
@@ -2326,6 +2378,63 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(0),
             ],
         ])
+    }
+
+    /// #2258 F1, end to end: every stream item for one tool call carries the
+    /// same `internal_call_id` — the deltas, the completed call, the
+    /// execution confirmation, and the tool result. This mock has always
+    /// emitted deltas followed by a full `ToolCall` for `tc1`; before the
+    /// accumulator adopted the assembly's id, the completed call (and
+    /// therefore the execution and result items) carried a fresh id no delta
+    /// ever mentioned, and the mismatch passed silently here.
+    ///
+    /// Not inducible from a recorded provider turn: no in-tree wire mixes
+    /// fragments with a full restatement of the same call.
+    #[tokio::test]
+    async fn streamed_tool_call_items_share_one_internal_call_id() {
+        let mut stream = AgentBuilder::new(streaming_model())
+            .tool(MockAddTool)
+            .build()
+            .runner("add 2 and 3")
+            .max_turns(2)
+            .stream()
+            .await;
+
+        let mut delta_ids = Vec::new();
+        let mut completed_ids = Vec::new();
+        let mut executed_ids = Vec::new();
+        let mut result_ids = Vec::new();
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item") {
+                MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ToolCallDelta {
+                        internal_call_id, ..
+                    },
+                ) => delta_ids.push(internal_call_id),
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::ToolCall {
+                    internal_call_id,
+                    ..
+                }) => completed_ids.push(internal_call_id),
+                MultiTurnStreamItem::ToolExecutionCommitted {
+                    internal_call_id, ..
+                } => executed_ids.push(internal_call_id),
+                MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
+                    internal_call_id,
+                    ..
+                }) => result_ids.push(internal_call_id),
+                _ => {}
+            }
+        }
+
+        assert_eq!(delta_ids.len(), 2, "one name delta and one argument delta");
+        let correlated = delta_ids.first().expect("a delta id").clone();
+        assert!(
+            delta_ids.iter().all(|id| *id == correlated),
+            "the fragments of one call share one id: {delta_ids:?}"
+        );
+        assert_eq!(completed_ids, vec![correlated.clone()]);
+        assert_eq!(executed_ids, vec![correlated.clone()]);
+        assert_eq!(result_ids, vec![correlated]);
     }
 
     /// `AgentRunner::from_agent` preserves the distinction between an absent
@@ -2569,8 +2678,8 @@ mod migrated_tests {
         fn stream_model_one_tool_then_text(tool: &str) -> MockCompletionModel {
             MockCompletionModel::from_stream_turns([
                 vec![
-                    MockStreamEvent::tool_call_name_delta("tc1", "ic1", tool),
-                    MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", "{}"),
+                    MockStreamEvent::tool_call_name_delta("tc1", tool),
+                    MockStreamEvent::tool_call_arguments_delta("tc1", "{}"),
                     MockStreamEvent::tool_call("tc1", tool, json!({})),
                     MockStreamEvent::final_response_with_total_tokens(0),
                 ],
@@ -3228,12 +3337,12 @@ mod migrated_tests {
             };
 
             let turn = MockTurn::from_contents([
-                AssistantContent::ToolCall(MessageToolCall::new(
-                    "tc_add".to_string(),
+                AssistantContent::ToolCall(MessageToolCall::from_wire(
+                    "tc_add",
                     ToolFunction::new("add".to_string(), json!({ "x": 2, "y": 3 })),
                 )),
-                AssistantContent::ToolCall(MessageToolCall::new(
-                    "tc_flaky".to_string(),
+                AssistantContent::ToolCall(MessageToolCall::from_wire(
+                    "tc_flaky",
                     ToolFunction::new("flaky_tool".to_string(), json!({})),
                 )),
             ])
@@ -3272,7 +3381,7 @@ mod migrated_tests {
                     crate::completion::Message::User { content } => content
                         .iter()
                         .filter_map(|c| match c {
-                            UserContent::ToolResult(result) => Some(result.id.clone()),
+                            UserContent::ToolResult(result) => Some(result.call.to_string()),
                             _ => None,
                         })
                         .collect::<Vec<_>>(),
@@ -3313,9 +3422,7 @@ mod migrated_tests {
         };
         use crate::streaming::StreamedAssistantContent;
         use crate::streaming::StreamingCompletionResponse;
-        use crate::test_utils::{
-            MockAddTool, MockCompletionModel, MockResponse, MockStreamEvent, MockTurn,
-        };
+        use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
         use crate::tool::{ToolContext, ToolExecutionError};
         use rig_core::telemetry::{CompletionOperation, CompletionSpanBuilder};
 
@@ -3465,20 +3572,10 @@ mod migrated_tests {
         }
 
         impl CompletionModel for CompletionTelemetryModel {
-            type Response = MockResponse;
-            type StreamingResponse = MockResponse;
-            type Client = ();
-
-            fn make(_client: &Self::Client, _model: impl Into<String>) -> Self {
-                Self {
-                    inner: MockCompletionModel::default(),
-                }
-            }
-
             async fn completion(
                 &self,
                 request: CompletionRequest,
-            ) -> Result<CompletionResponse<Self::Response>, CompletionError> {
+            ) -> Result<CompletionResponse, CompletionError> {
                 let span = CompletionSpanBuilder::new(
                     "fixture-provider",
                     "fixture-model",
@@ -3491,8 +3588,7 @@ mod migrated_tests {
             async fn stream(
                 &self,
                 request: CompletionRequest,
-            ) -> Result<StreamingCompletionResponse<Self::StreamingResponse>, CompletionError>
-            {
+            ) -> Result<StreamingCompletionResponse, CompletionError> {
                 let span = CompletionSpanBuilder::new(
                     "fixture-provider",
                     "fixture-model",
@@ -4188,8 +4284,11 @@ mod migrated_tests {
     }
 
     fn tool_call_content(id: &str, args: serde_json::Value) -> AssistantContent {
-        AssistantContent::ToolCall(MessageToolCall::new(
-            id.to_string(),
+        // `from_wire` mirrors the provider boundary (and the streamed mock's
+        // conversion): the wire id becomes both the durable id and the
+        // provider correlator, keeping blocking/streaming parity exact.
+        AssistantContent::ToolCall(MessageToolCall::from_wire(
+            id,
             ToolFunction::new("add".to_string(), args),
         ))
     }
@@ -4374,7 +4473,7 @@ mod migrated_tests {
                 Message::User { content } => content
                     .iter()
                     .filter_map(|item| match item {
-                        UserContent::ToolResult(result) => Some(result.id.clone()),
+                        UserContent::ToolResult(result) => Some(result.call.to_string()),
                         _ => None,
                     })
                     .collect::<Vec<_>>(),
@@ -4387,8 +4486,8 @@ mod migrated_tests {
 
     /// Drive a stream to completion, panicking on any stream error, and return
     /// its final response.
-    async fn drive_to_final_response<R: Send + 'static>(
-        mut stream: crate::agent::prompt_request::streaming::StreamingResult<R>,
+    async fn drive_to_final_response(
+        mut stream: crate::agent::prompt_request::streaming::StreamingResult,
     ) -> crate::agent::prompt_request::PromptResponse {
         let mut final_response = None;
         while let Some(item) = stream.next().await {
@@ -4409,7 +4508,7 @@ mod migrated_tests {
                 Message::User { content } => content
                     .iter()
                     .filter_map(|item| match item {
-                        UserContent::ToolResult(result) => Some(result.id.clone()),
+                        UserContent::ToolResult(result) => Some(result.call.to_string()),
                         _ => None,
                     })
                     .collect::<Vec<_>>(),
@@ -4557,7 +4656,7 @@ mod migrated_tests {
                     MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult {
                         tool_result,
                         ..
-                    }) => streamed_result_ids.push(tool_result.id),
+                    }) => streamed_result_ids.push(tool_result.call.into_string()),
                     MultiTurnStreamItem::FinalResponse(resp) => final_response = Some(resp),
                     _ => {}
                 }
@@ -6104,9 +6203,11 @@ mod migrated_tests {
             match self {
                 ScriptedTurn::Text(text) => MockTurn::text(*text),
                 ScriptedTurn::ToolCalls(calls) => {
+                    // `from_wire` matches the streamed rendering's provider
+                    // boundary so both encodings yield identical calls.
                     MockTurn::from_contents(calls.iter().map(|call| {
-                        AssistantContent::ToolCall(MessageToolCall::new(
-                            call.id.to_string(),
+                        AssistantContent::ToolCall(MessageToolCall::from_wire(
+                            call.id,
                             ToolFunction::new(call.name.to_string(), call.args.clone()),
                         ))
                     }))
@@ -6122,18 +6223,13 @@ mod migrated_tests {
                 ScriptedTurn::ToolCalls(calls) => {
                     for call in calls {
                         if let StreamShape::Chunked = shape {
-                            // Distinct internal id per call; the canonical args
-                            // still come from the complete event below, so this
-                            // exercises the delta path without changing the turn.
-                            let internal = format!("ic-{}", call.id);
+                            // The canonical args still come from the complete
+                            // event below, so this exercises the delta path
+                            // without changing the turn.
                             let args = serde_json::to_string(&call.args)
                                 .expect("scripted args serialize to json");
-                            events.push(MockStreamEvent::tool_call_name_delta(
-                                call.id, &internal, call.name,
-                            ));
-                            events.push(MockStreamEvent::tool_call_arguments_delta(
-                                call.id, &internal, &args,
-                            ));
+                            events.push(MockStreamEvent::tool_call_name_delta(call.id, call.name));
+                            events.push(MockStreamEvent::tool_call_arguments_delta(call.id, &args));
                         }
                         events.push(MockStreamEvent::tool_call(
                             call.id,
@@ -6418,8 +6514,8 @@ mod migrated_tests {
         let blocking_model = MockCompletionModel::from_turns([
             MockTurn::from_contents([
                 AssistantContent::text("let me compute that"),
-                AssistantContent::ToolCall(MessageToolCall::new(
-                    "tc1".to_string(),
+                AssistantContent::ToolCall(MessageToolCall::from_wire(
+                    "tc1",
                     ToolFunction::new("default_api".to_string(), json!({"x": 2, "y": 3})),
                 )),
             ])
@@ -6801,21 +6897,11 @@ mod migrated_tests {
     }
 
     impl CompletionModel for PausingCompletionModel {
-        type Response = crate::test_utils::MockResponse;
-        type StreamingResponse = crate::test_utils::MockResponse;
-        type Client = ();
-
-        fn make(_: &Self::Client, _: impl Into<String>) -> Self {
-            Self::new(MockCompletionModel::default()).0
-        }
-
         async fn completion(
             &self,
             request: crate::completion::CompletionRequest,
-        ) -> Result<
-            crate::completion::CompletionResponse<Self::Response>,
-            crate::completion::CompletionError,
-        > {
+        ) -> Result<crate::completion::CompletionResponse, crate::completion::CompletionError>
+        {
             self.inspect_and_pause(&request).await;
             self.inner.completion(request).await
         }
@@ -6823,10 +6909,8 @@ mod migrated_tests {
         async fn stream(
             &self,
             request: crate::completion::CompletionRequest,
-        ) -> Result<
-            crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-            crate::completion::CompletionError,
-        > {
+        ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError>
+        {
             self.inspect_and_pause(&request).await;
             self.inner.stream(request).await
         }
@@ -8487,7 +8571,7 @@ mod migrated_tests {
                     if content.iter().any(|item| matches!(
                         item,
                         UserContent::ToolResult(result)
-                            if result.id == "real"
+                            if result.call == "real"
                                 && result.content.iter().any(|content| matches!(
                                     content,
                                     rig_core::message::ToolResultContent::Text(text)
@@ -9927,8 +10011,8 @@ mod migrated_tests {
         let recorder = RecordingHook::default();
         let executions = Arc::new(AtomicU32::new(0));
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::tool_call_name_delta("tc1", "ic1", "add"),
-            MockStreamEvent::tool_call_arguments_delta("tc1", "ic1", r#"{"x":1,"y":2}"#),
+            MockStreamEvent::tool_call_name_delta("tc1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tc1", r#"{"x":1,"y":2}"#),
             MockStreamEvent::tool_call("tc1", "add", json!({"x": 1, "y": 2})),
             MockStreamEvent::final_response_with_default_usage(),
         ]]))

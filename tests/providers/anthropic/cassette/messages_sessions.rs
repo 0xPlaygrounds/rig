@@ -11,7 +11,7 @@
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
-use rig::completion::{Chat, CompletionModel, Message};
+use rig::completion::{Chat, CompletionModel, FinishReason, Message};
 use rig::message::{AssistantContent, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
@@ -38,8 +38,8 @@ subtract tool to subtract 5 from it. Then state the final number in one short se
 /// it appeared at plus the identifiers needed to pair calls with results.
 struct ToolEvent {
     message_index: usize,
-    name_or_id: String,
-    call_id: Option<String>,
+    name: String,
+    call_id: String,
 }
 
 fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
@@ -50,8 +50,8 @@ fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
                         message_index,
-                        name_or_id: tool_call.function.name.clone(),
-                        call_id: tool_call.call_id.clone().or(Some(tool_call.id.clone())),
+                        name: tool_call.function.name.clone(),
+                        call_id: tool_call.id.to_string(),
                     });
                 }
             }
@@ -68,8 +68,8 @@ fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
                 if let UserContent::ToolResult(tool_result) = item {
                     results.push(ToolEvent {
                         message_index,
-                        name_or_id: tool_result.id.clone(),
-                        call_id: tool_result.call_id.clone().or(Some(tool_result.id.clone())),
+                        name: tool_result.name.clone(),
+                        call_id: tool_result.call.to_string(),
                     });
                 }
             }
@@ -85,7 +85,7 @@ fn result_index_for_call(results: &[ToolEvent], call: &ToolEvent) -> usize {
         .unwrap_or_else(|| {
             panic!(
                 "chat history is missing the tool result answering call {:?} (call_id {:?})",
-                call.name_or_id, call.call_id
+                call.name, call.call_id
             )
         })
         .message_index
@@ -117,11 +117,11 @@ async fn sequential_tool_calls_nonstreaming() {
             let results = history_tool_results(&history);
             let add_call = calls
                 .iter()
-                .find(|call| call.name_or_id == Adder::NAME)
+                .find(|call| call.name == Adder::NAME)
                 .expect("history should contain an add tool call");
             let subtract_call = calls
                 .iter()
-                .find(|call| call.name_or_id == Subtract::NAME)
+                .find(|call| call.name == Subtract::NAME)
                 .expect("history should contain a subtract tool call");
             let add_result_index = result_index_for_call(&results, add_call);
             let subtract_result_index = result_index_for_call(&results, subtract_call);
@@ -224,7 +224,7 @@ async fn parallel_tool_use_single_turn_nonstreaming() {
                 "expected exactly two tool calls in history, got {:?}",
                 calls
                     .iter()
-                    .map(|call| call.name_or_id.as_str())
+                    .map(|call| call.name.as_str())
                     .collect::<Vec<_>>()
             );
             assert_eq!(results.len(), 2, "expected exactly two tool results");
@@ -288,8 +288,8 @@ async fn long_history_replay_nonstreaming() {
                 })
                 .expect("first turn should call lookup_harbor_label");
             assert_eq!(
-                first_response.raw_response.stop_reason.as_deref(),
-                Some("tool_use"),
+                first_response.finish_reason(),
+                Some(FinishReason::ToolCalls),
                 "a tool-using turn should preserve the tool_use stop reason"
             );
 
@@ -316,11 +316,12 @@ async fn long_history_replay_nonstreaming() {
                     ])
                     .expect("assistant content should be non-empty"),
                 })
-                .message(Message::tool_result_with_call_id(
+                .message(Message::from(UserContent::tool_result_for(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
-                    ALPHA_SIGNAL_OUTPUT,
-                ))
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
+                    rig::OneOrMany::one(rig::message::ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                )))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
@@ -348,12 +349,19 @@ async fn long_history_replay_nonstreaming() {
                 "answer should recall the replayed tool result, got {text:?}"
             );
             assert_eq!(
-                response.raw_response.stop_reason.as_deref(),
-                Some("end_turn"),
+                response.finish_reason(),
+                Some(FinishReason::Stop),
                 "a plain answer should preserve the end_turn stop reason"
             );
             assert!(
-                !response.raw_response.model.is_empty() && !response.raw_response.id.is_empty(),
+                response
+                    .model
+                    .as_deref()
+                    .is_some_and(|model| !model.is_empty())
+                    && response
+                        .message_id
+                        .as_deref()
+                        .is_some_and(|id| !id.is_empty()),
                 "provider response should preserve model and message id"
             );
             assert!(

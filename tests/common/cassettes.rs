@@ -140,10 +140,12 @@ impl CassettePolicy {
     }
 
     fn generated_prefix_for(self, value: &str) -> Option<TokenPrefix> {
+        // Callers pass a value taken from a known id field, so the
+        // id-position gate is satisfied by construction.
         self.generated_token_prefixes
             .iter()
             .copied()
-            .find(|prefix| is_generated_token(value, *prefix))
+            .find(|prefix| is_generated_token(value, *prefix, true))
     }
 
     fn matching_generated_prefix(self, text: &str, index: usize) -> Option<TokenPrefix> {
@@ -2069,7 +2071,7 @@ impl CassetteScrubber {
                 let end = token_end(text, index);
                 let token = &text[index..end];
 
-                if is_generated_token(token, prefix) {
+                if is_generated_token(token, prefix, in_id_field_position(text, index)) {
                     output.push_str(&self.placeholder(token, prefix.placeholder_prefix));
                     index = end;
                     continue;
@@ -2088,6 +2090,15 @@ impl CassetteScrubber {
     }
 
     fn placeholder(&mut self, original: &str, kind: &'static str) -> String {
+        // An empty value carries nothing to redact, and minting a placeholder
+        // for it *invents data*: a recording would show a non-empty token
+        // where the wire sent `""`, changing replay semantics for any code
+        // that reads the field (observed on Anthropic's
+        // `content_block_start.signature`, which is empty on the wire).
+        if original.is_empty() {
+            return String::new();
+        }
+
         if let Some(existing) = self.placeholders.get(original) {
             return existing.clone();
         }
@@ -2230,7 +2241,7 @@ fn is_token_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')
 }
 
-fn is_generated_token(token: &str, prefix: TokenPrefix) -> bool {
+fn is_generated_token(token: &str, prefix: TokenPrefix, in_id_field: bool) -> bool {
     if is_redacted_placeholder(token) {
         return false;
     }
@@ -2239,11 +2250,52 @@ fn is_generated_token(token: &str, prefix: TokenPrefix) -> bool {
         return false;
     };
 
-    suffix.len() >= prefix.min_suffix_len
-        && suffix
+    if suffix.len() < prefix.min_suffix_len
+        || !suffix
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
-        && suffix.chars().any(|ch| ch.is_ascii_digit())
+    {
+        return false;
+    }
+
+    // The digit requirement keeps prose identifiers (`call_id`,
+    // `tool_call_id`) out of the generated-token class. Ollama daemons mint
+    // digit-less lowercase call ids (`call_kqpofucm`), so for `call_` a
+    // long all-lowercase suffix also counts as generated — but only in an
+    // id-bearing field position: a real tool named `call_forwarding` in a
+    // name field or prose must survive recording untouched. Redaction keys
+    // off field identity, not value shape.
+    suffix.chars().any(|ch| ch.is_ascii_digit())
+        || (prefix.raw == "call_"
+            && in_id_field
+            && suffix.len() >= 8
+            && suffix.chars().all(|ch| ch.is_ascii_lowercase()))
+}
+
+/// Whether the token starting at `token_start` is the value of an
+/// id-bearing JSON field (`"id":"…"`, `"tool_call_id":"…"`, `"toolCallId":"…"`),
+/// tolerating the escaped-quote spelling of bodies that are themselves
+/// JSON-encoded (`\"id\":\"…\"`).
+fn in_id_field_position(text: &str, token_start: usize) -> bool {
+    // The value's opening string delimiter: `"` or `\"`.
+    let Some(rest) = text[..token_start].strip_suffix('"') else {
+        return false;
+    };
+    let rest = rest.strip_suffix('\\').unwrap_or(rest);
+    let rest = rest.trim_end();
+    let Some(rest) = rest.strip_suffix(':') else {
+        return false;
+    };
+    // The field name's closing delimiter.
+    let Some(rest) = rest.trim_end().strip_suffix('"') else {
+        return false;
+    };
+    let rest = rest.strip_suffix('\\').unwrap_or(rest);
+    let name_start = rest
+        .rfind(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+        .map_or(0, |at| at + 1);
+    let name = &rest[name_start..];
+    name == "id" || name.ends_with("_id") || name.ends_with("Id")
 }
 
 fn is_redacted_placeholder(value: &str) -> bool {
@@ -2272,7 +2324,9 @@ fn generated_tokens(policy: CassettePolicy, contents: &str) -> Vec<String> {
         if let Some(prefix) = policy.matching_generated_prefix(contents, index) {
             let end = token_end(contents, index);
             let token = &contents[index..end];
-            if is_generated_token(token, prefix) && !token.contains("REDACTED_") {
+            if is_generated_token(token, prefix, in_id_field_position(contents, index))
+                && !token.contains("REDACTED_")
+            {
                 tokens.push(token.to_string());
             }
             index = end;
@@ -2505,6 +2559,26 @@ fn assert_path_is_repo_relative(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Scrubbing must redact, never invent. An empty wire value carries
+    /// nothing sensitive, and minting a placeholder for it makes a recording
+    /// claim the provider sent a token where it sent `""` — which silently
+    /// changes replay semantics for code that reads the field (found via
+    /// Anthropic's `content_block_start.signature`, empty on the wire).
+    #[test]
+    fn scrubbing_an_empty_value_invents_nothing() {
+        let mut scrubber = CassetteScrubber::new(CassettePolicy::default());
+        assert_eq!(scrubber.placeholder("", "signature_"), "");
+        // A real value still redacts, and stays stable across occurrences.
+        let first = scrubber.placeholder("sig-abc", "signature_");
+        assert!(!first.is_empty());
+        assert_eq!(scrubber.placeholder("sig-abc", "signature_"), first);
+        // The empty value did not consume a counter slot.
+        assert!(
+            first.ends_with('1'),
+            "the first real value should take placeholder 1, got {first}"
+        );
+    }
 
     fn query_pair(name: &str, value: &str) -> NameValue {
         NameValue {
@@ -3259,6 +3333,27 @@ then:
         assert!(scrubbed.contains("gpt-5.2"));
         assert!(scrubbed.contains("claude-sonnet-4-6"));
         assert!(!scrubbed.contains("id_REDACTED"));
+    }
+
+    /// The digit-less `call_` rule (Ollama's minted `call_kqpofucm` ids)
+    /// keys off field identity, not value shape: a legitimate tool *named*
+    /// `call_forwarding` survives recording untouched, while the same
+    /// spelling in an id field is redacted.
+    #[test]
+    fn scrubber_redacts_digitless_call_tokens_only_in_id_fields() {
+        let cassette = r#"when:
+  path: /api/chat
+  method: POST
+  body: '{"tool_calls":[{"id":"call_kqpofucm","function":{"name":"call_forwarding"}}]}'
+then:
+  status: 200
+  body: '{"message":"use call_forwarding for this"}'
+"#;
+
+        let scrubbed = scrub_cassette_contents(cassette);
+
+        assert!(!scrubbed.contains("call_kqpofucm"));
+        assert_eq!(scrubbed.matches("call_forwarding").count(), 2);
     }
 
     #[test]

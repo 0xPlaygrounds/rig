@@ -14,7 +14,7 @@ use rig::agent::{
     AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
     ToolCall as ToolCallEvent, ToolCallAction,
 };
-use rig::completion::{GetTokenUsage, PromptError, Usage};
+use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
 use rig::prelude::*;
 use rig::providers::gemini;
@@ -36,7 +36,7 @@ enum TurnEnd {
     Finished,
     /// Mid-stream recovery abandoned the turn (retry or skip).
     Abandoned {
-        skipped_tool_result: Option<ToolResult>,
+        skipped_tool_result: Option<Box<ToolResult>>,
     },
 }
 
@@ -136,13 +136,12 @@ async fn run_streamed_turn(
     Ok(TurnEnd::Finished)
 }
 
-async fn drain_stream_usage<R>(stream: &mut rig::streaming::StreamingCompletionResponse<R>) -> Usage
+async fn drain_stream_usage(stream: &mut rig::streaming::StreamingCompletionResponse) -> Usage
 where
-    R: Clone + Unpin + GetTokenUsage,
 {
     while let Some(item) = stream.next().await {
         if let Ok(StreamedAssistantContent::Final(final_response)) = item {
-            return final_response.token_usage();
+            return final_response.usage;
         }
     }
     Usage::new()
@@ -434,7 +433,13 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                                 assert!(expect_abandon, "only the first turn should abandon");
                                 let tool_result = skipped_tool_result
                                     .expect("a skipped call surfaces its synthetic tool result");
-                                assert!(!tool_result.id.is_empty());
+                                // Gemini's wire supplies no tool-call id, and
+                                // rig no longer fabricates one from the tool
+                                // name — the synthetic result answers the
+                                // call's minted correlation handle and
+                                // records no provider-issued id.
+                                assert!(!tool_result.call.as_str().is_empty());
+                                assert!(tool_result.provider.is_none());
                                 abandoned = true;
                             }
                             TurnEnd::Finished => {

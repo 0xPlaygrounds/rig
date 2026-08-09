@@ -118,6 +118,9 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/perplexity/cassette",
         wrapper_names: &["with_perplexity_cassette"],
     },
+    // NOTE(#2258): `tests/providers/cohere/cassette` is written but ready-to-record
+    // (no COHERE_API_KEY in the environment); register it here once its
+    // cassettes are recorded and the `#[ignore]` markers are dropped.
     ProviderCassetteSuite {
         provider: "mistralrs",
         source_dir: "tests/providers/mistralrs/cassette",
@@ -136,8 +139,79 @@ fn cassettes_do_not_contain_obvious_secrets() {
         return;
     }
 
+    // Each provider binary scans only its own `tests/cassettes/<provider>`
+    // directory. This module compiles into every provider test binary, and
+    // the scan (YAML parse + scrub + re-serialize + base64 decode + several
+    // regex families per file) is expensive — when every binary scanned the
+    // whole tree, CI ran the identical full-tree scan once per binary, and
+    // that duplication alone was the single largest execution cost in the PR
+    // gate's test sweep (~16s × 16 binaries per run).
+    //
+    // Scoping is safe because the partition below is asserted, in every
+    // binary, before anything is skipped:
+    //
+    //   * every top-level entry under `tests/cassettes` must be a directory
+    //     named after a suite registered in `PROVIDER_CASSETTE_SUITES` — a
+    //     stray file or an unregistered provider directory fails everywhere
+    //     rather than silently escaping the scan;
+    //   * every registered suite's `tests/<provider>.rs` must include this
+    //     module — so each registered directory is provably scanned by
+    //     exactly the binary that owns it, and adding a suite without wiring
+    //     the scan into its binary fails everywhere too;
+    //   * every registered provider name must be a valid crate identifier —
+    //     `env!("CARGO_CRATE_NAME")` mangles hyphens to underscores, so a
+    //     hyphenated provider would resolve `own_dir` to a path that never
+    //     exists and skip its own scan without a single failure.
     let mut failures = Vec::new();
-    scan_dir(root, &mut failures);
+
+    let registered: BTreeSet<&str> = PROVIDER_CASSETTE_SUITES
+        .iter()
+        .map(|suite| suite.provider)
+        .collect();
+    for entry in fs::read_dir(root).expect("cassette root should be readable") {
+        let entry = entry.expect("cassette root entry should be readable");
+        let name = entry.file_name();
+        let name = name.to_string_lossy().into_owned();
+        if !entry.path().is_dir() {
+            failures.push(format!(
+                "tests/cassettes/{name} is not a provider directory; loose files under the \
+                 cassette root are scanned by no binary"
+            ));
+        } else if !registered.contains(name.as_str()) {
+            failures.push(format!(
+                "tests/cassettes/{name} has no PROVIDER_CASSETTE_SUITES entry, so no test \
+                 binary scans it for secrets — register it in \
+                 tests/common/cassette_safety.rs"
+            ));
+        }
+    }
+    for suite in PROVIDER_CASSETTE_SUITES {
+        if !suite
+            .provider
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
+        {
+            failures.push(format!(
+                "provider {:?} is not equal to its test binary's CARGO_CRATE_NAME (hyphens and \
+                 other non-identifier characters are mangled), so its cassette directory would \
+                 be scanned by no binary — rename the provider or its directory",
+                suite.provider
+            ));
+        }
+        let binary_source = repo_path(&format!("tests/{}.rs", suite.provider));
+        if !binary_compiles_cassette_scan(&binary_source) {
+            failures.push(format!(
+                "tests/{}.rs does not include common/cassette_safety.rs as an unconditional \
+                 `mod`, so tests/cassettes/{} is scanned for secrets by no binary",
+                suite.provider, suite.provider
+            ));
+        }
+    }
+
+    let own_dir = root.join(env!("CARGO_CRATE_NAME"));
+    if own_dir.is_dir() {
+        scan_dir(&own_dir, &mut failures);
+    }
 
     assert!(
         failures.is_empty(),
@@ -275,6 +349,43 @@ fn collect_rust_files_in_dir(dir: &Path, files: &mut Vec<PathBuf>) {
             files.push(path);
         }
     }
+}
+
+/// Structural, not substring: the guarded claim is "this binary *compiles*
+/// the secret scan", so the check must parse the source and find an actual
+/// `#[path = ".../common/cassette_safety.rs"] mod …` item with no `#[cfg]`
+/// attached. A raw `contents.contains(...)` would stay satisfied by a
+/// commented-out include or by a cfg-gated one — a false green on the safety
+/// net itself, the same paper-claim failure mode the streaming-conformance
+/// registry's CI-step check guards against.
+fn binary_compiles_cassette_scan(source: &Path) -> bool {
+    let Ok(contents) = fs::read_to_string(source) else {
+        return false;
+    };
+    let Ok(syntax) = syn::parse_file(&contents) else {
+        return false;
+    };
+    syntax.items.iter().any(|item| {
+        let syn::Item::Mod(module) = item else {
+            return false;
+        };
+        let cfg_gated = module
+            .attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"));
+        let includes_scan = module.attrs.iter().any(|attr| {
+            attr.path().is_ident("path")
+                && matches!(
+                    &attr.meta,
+                    syn::Meta::NameValue(name_value) if matches!(
+                        &name_value.value,
+                        Expr::Lit(ExprLit { lit: Lit::Str(path), .. })
+                            if path.value().ends_with("common/cassette_safety.rs")
+                    )
+                )
+        });
+        includes_scan && !cfg_gated
+    })
 }
 
 fn cassette_scenarios_in_file(

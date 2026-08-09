@@ -12,6 +12,7 @@ use crate::client::{
     ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt};
+use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::{
     OneOrMany,
     completion::{self, CompletionError},
@@ -313,39 +314,58 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     }
 }
 
-impl crate::completion::GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-        usage.input_tokens = self.prompt_tokens as u64;
-        usage.output_tokens = self.total_tokens.saturating_sub(self.prompt_tokens) as u64;
-        usage.total_tokens = self.total_tokens as u64;
-        usage
+impl From<&Usage> for completion::Usage {
+    fn from(usage: &Usage) -> Self {
+        crate::providers::internal::completion_usage(
+            usage.prompt_tokens as u64,
+            // Mira reports only prompt and total counts; the completion count
+            // is the remainder.
+            usage.total_tokens.saturating_sub(usage.prompt_tokens) as u64,
+            usage.total_tokens as u64,
+            0,
+        )
     }
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
+impl From<Usage> for completion::Usage {
+    fn from(usage: Usage) -> Self {
+        Self::from(&usage)
+    }
+}
 
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let (content, usage) = match &response {
-            CompletionResponse::Structured { choices, usage, .. } => {
+/// Normalize a Mira chat completion response.
+///
+/// The provider descriptor name is an *input* rather than a constant so the
+/// shared OpenAI-compatible completion path labels the response with the
+/// descriptor that actually produced it.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
+        let (content, usage, message_id, model, finish_reason) = match &response {
+            CompletionResponse::Structured {
+                id,
+                model,
+                choices,
+                usage,
+                ..
+            } => {
                 let choice = choices.first().ok_or_else(|| {
                     CompletionError::ResponseError("Response contained no choices".to_owned())
                 })?;
 
                 let usage = usage
                     .as_ref()
-                    .map(|usage| completion::Usage {
-                        input_tokens: usage.prompt_tokens as u64,
-                        output_tokens: usage.total_tokens.saturating_sub(usage.prompt_tokens)
-                            as u64,
-                        total_tokens: usage.total_tokens as u64,
-                        cached_input_tokens: 0,
-                        cache_creation_input_tokens: 0,
-                        tool_use_prompt_tokens: 0,
-                        reasoning_tokens: 0,
-                    })
+                    .map(completion::Usage::from)
                     .unwrap_or_default();
+
+                let finish_reason = choice
+                    .finish_reason
+                    .as_deref()
+                    .filter(|reason| !reason.is_empty())
+                    .map(map_openai_finish_reason);
+
+                let message_id = Some(id.clone()).filter(|id| !id.is_empty());
+                let model = Some(model.clone()).filter(|model| !model.is_empty());
 
                 // Convert RawMessage to message::Message
                 let message = message::Message::try_from(choice.message.clone())?;
@@ -390,11 +410,16 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
                     }
                 };
 
-                (content, usage)
+                (content, usage, message_id, model, finish_reason)
             }
+            // The bare-string variant carries no metadata at all — not even a
+            // terminal reason, so the normalized reason stays `None`.
             CompletionResponse::Simple(text) => (
                 vec![completion::AssistantContent::text(text)],
                 completion::Usage::new(),
+                None,
+                None,
+                None,
             ),
         };
 
@@ -404,12 +429,10 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
             )
         })?;
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(completion::CompletionResponse::new(choice, usage, provider)
+            .with_optional_response_id(message_id)
+            .with_optional_model(model)
+            .with_optional_finish_reason(finish_reason))
     }
 }
 
@@ -432,6 +455,17 @@ impl std::fmt::Display for Usage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::FinishReason;
+    use crate::completion::NormalizeCompletionResponse;
+    use crate::providers::openai::completion::OpenAICompatibleProvider;
+
+    /// Normalize a Mira wire response the way the shared completion path does,
+    /// threading Mira's own descriptor name through the conversion.
+    fn normalized(response: CompletionResponse) -> completion::CompletionResponse {
+        response
+            .normalize(MiraExt::PROVIDER_NAME)
+            .expect("Mira response should convert")
+    }
 
     #[test]
     fn test_completion_response_conversion() {
@@ -454,14 +488,75 @@ mod tests {
             }),
         };
 
-        let completion_response: completion::CompletionResponse<CompletionResponse> =
-            mira_response.try_into().unwrap();
+        let completion_response = normalized(mira_response);
 
         assert_eq!(
             completion_response.choice.first(),
             completion::AssistantContent::text("Test response")
         );
+        assert_eq!(completion_response.provider, "mira");
+        assert_eq!(completion_response.response_id.as_deref(), Some("resp_123"));
+        assert_eq!(completion_response.message_id, None);
+        assert_eq!(completion_response.model.as_deref(), Some("deepseek-r1"));
+        assert_eq!(
+            completion_response.finish_reason(),
+            Some(FinishReason::Stop)
+        );
+        assert_eq!(completion_response.usage.input_tokens, 10);
+        assert_eq!(completion_response.usage.output_tokens, 10);
+        assert_eq!(completion_response.usage.total_tokens, 20);
     }
+
+    fn structured_response_with_finish_reason(finish_reason: &str) -> CompletionResponse {
+        CompletionResponse::Structured {
+            id: "resp_123".to_string(),
+            object: "chat.completion".to_string(),
+            created: 1234567890,
+            model: "deepseek-r1".to_string(),
+            choices: vec![ChatChoice {
+                message: RawMessage {
+                    role: "assistant".to_string(),
+                    content: "Test response".to_string(),
+                },
+                finish_reason: Some(finish_reason.to_string()),
+                index: Some(0),
+            }],
+            usage: None,
+        }
+    }
+
+    #[test]
+    fn mira_finish_reasons_normalize_and_preserve_unknowns() {
+        for (wire, expected) in [
+            ("stop", FinishReason::Stop),
+            ("length", FinishReason::Length),
+            ("max_tokens", FinishReason::Length),
+            ("tool_calls", FinishReason::ToolCalls),
+            ("function_call", FinishReason::ToolCalls),
+            ("content_filter", FinishReason::ContentFilter),
+            // A gateway-specific reason survives verbatim rather than reading
+            // as a natural stop.
+            (
+                "ERROR_UPSTREAM",
+                FinishReason::Other("ERROR_UPSTREAM".to_owned()),
+            ),
+        ] {
+            let converted = normalized(structured_response_with_finish_reason(wire));
+
+            assert_eq!(converted.finish_reason(), Some(expected), "wire: {wire}");
+        }
+    }
+
+    #[test]
+    fn mira_simple_response_reports_no_metadata() {
+        let converted = normalized(CompletionResponse::Simple("Test response".to_string()));
+
+        assert_eq!(converted.provider, "mira");
+        assert_eq!(converted.message_id, None);
+        assert_eq!(converted.model, None);
+        assert_eq!(converted.finish_reason(), None);
+    }
+
     #[test]
     fn test_client_initialization() {
         let _client =

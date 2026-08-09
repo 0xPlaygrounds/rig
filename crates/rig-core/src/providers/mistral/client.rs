@@ -207,6 +207,23 @@ impl Usage {
     }
 }
 
+impl From<&Usage> for crate::completion::Usage {
+    fn from(usage: &Usage) -> Self {
+        crate::providers::internal::completion_usage(
+            usage.prompt_tokens as u64,
+            usage.completion_tokens as u64,
+            usage.total_tokens as u64,
+            usage.cached_tokens(),
+        )
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(usage: Usage) -> Self {
+        Self::from(&usage)
+    }
+}
+
 impl std::fmt::Display for Usage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

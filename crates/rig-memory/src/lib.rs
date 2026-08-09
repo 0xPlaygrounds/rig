@@ -1560,7 +1560,8 @@ mod tests {
     use super::*;
     use rig_core::OneOrMany;
     use rig_core::message::{
-        AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
+        AssistantContent, ToolCall, ToolCallId, ToolFunction, ToolResult, ToolResultContent,
+        UserContent,
     };
     use std::sync::Mutex;
 
@@ -1576,7 +1577,7 @@ mod tests {
         Message::Assistant {
             id: None,
             content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
-                "call_1".into(),
+                ToolCallId::new_or_mint("call_1"),
                 ToolFunction::new("t".into(), serde_json::json!({})),
             ))),
         }
@@ -1585,8 +1586,9 @@ mod tests {
     fn tool_result_msg() -> Message {
         Message::User {
             content: OneOrMany::one(UserContent::ToolResult(ToolResult {
-                id: "call_1".into(),
-                call_id: None,
+                call: ToolCallId::new_or_mint("call_1"),
+                provider: None,
+                name: "t".into(),
                 content: OneOrMany::one(ToolResultContent::text("ok")),
             })),
         }

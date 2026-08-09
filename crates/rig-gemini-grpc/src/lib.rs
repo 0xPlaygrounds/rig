@@ -23,8 +23,9 @@ pub mod streaming;
 
 pub use client::Client;
 
-// Include the generated proto code
-mod proto {
+// Include the generated proto code. Public so the events-first conformance
+// seam ([`streaming::stream_from_events`]) can be fed constructed events.
+pub mod proto {
     #![allow(clippy::all)]
     #![allow(warnings)]
     tonic::include_proto!("google.ai.generativelanguage.v1beta");
@@ -36,10 +37,11 @@ pub use proto::{
     GenerateContentResponse, Part, generative_service_client::GenerativeServiceClient,
 };
 
-// Implement GetTokenUsage for proto::GenerateContentResponse to support streaming
-impl rig_core::completion::GetTokenUsage for proto::GenerateContentResponse {
-    fn token_usage(&self) -> rig_core::completion::Usage {
-        self.usage_metadata
+// Normalize Gemini's protobuf usage metadata into rig's usage record.
+impl From<&proto::GenerateContentResponse> for rig_core::completion::Usage {
+    fn from(response: &proto::GenerateContentResponse) -> Self {
+        response
+            .usage_metadata
             .as_ref()
             .map(|u| rig_core::completion::Usage {
                 input_tokens: u.prompt_token_count as u64,

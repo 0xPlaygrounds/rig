@@ -44,34 +44,10 @@ use rig_core::{
 
 use crate::{
     agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
-    completion::{CompletionError, GetTokenUsage, Message, Usage},
+    completion::{CompletionError, Message, Usage},
     json_utils,
     streaming::{StreamedAssistantContent, ToolCallDeltaContent},
 };
-
-/// Merge an incoming reasoning block into the accumulated reasoning,
-/// extending an existing block when provider-assigned IDs match.
-pub(crate) fn merge_reasoning_blocks(
-    accumulated_reasoning: &mut Vec<Reasoning>,
-    incoming: &Reasoning,
-) {
-    let ids_match = |existing: &Reasoning| {
-        matches!(
-            (&existing.id, &incoming.id),
-            (Some(existing_id), Some(incoming_id)) if existing_id == incoming_id
-        )
-    };
-
-    if let Some(existing) = accumulated_reasoning
-        .iter_mut()
-        .rev()
-        .find(|existing| ids_match(existing))
-    {
-        existing.content.extend(incoming.content.clone());
-    } else {
-        accumulated_reasoning.push(incoming.clone());
-    }
-}
 
 /// Assemble assistant content in canonical replay order: reasoning blocks,
 /// then text, then trailing items (tool calls, images).
@@ -177,6 +153,11 @@ impl PartialStreamedTurn {
         invalid_tool_call: ToolCall,
         feedback: String,
     ) -> Option<(Message, Message)> {
+        // Every call — the invalid one and each validated peer — already
+        // carries a unique, non-empty `ToolCallId` (minted at the provider
+        // boundary when the wire issued none), so both sides of this
+        // fabricated transcript pair correlate by id with no local minting
+        // and no peer left holding an empty sentinel.
         let assistant_message = self.assistant_message(Some(invalid_tool_call.clone()))?;
 
         let mut retry_results = self
@@ -185,14 +166,16 @@ impl PartialStreamedTurn {
             .map(|tool_call| {
                 tool_result_message(
                     tool_call.id.clone(),
-                    tool_call.call_id.clone(),
+                    tool_call.provider.clone(),
+                    tool_call.function.name.clone(),
                     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_string(),
                 )
             })
             .collect::<Vec<_>>();
         retry_results.push(tool_result_message(
             invalid_tool_call.id,
-            invalid_tool_call.call_id,
+            invalid_tool_call.provider,
+            invalid_tool_call.function.name,
             feedback,
         ));
 
@@ -245,8 +228,8 @@ pub enum StreamedResolution {
     /// [`AgentRun::next_step`](super::AgentRun::next_step).
     TurnAbandoned {
         /// For a skipped call, the synthetic tool result to surface to the
-        /// consumer stream.
-        skipped_tool_result: Option<ToolResult>,
+        /// consumer stream. Boxed: the result dwarfs the other variant.
+        skipped_tool_result: Option<Box<ToolResult>>,
     },
 }
 
@@ -262,8 +245,6 @@ pub enum StreamedTurnEvent {
     /// Forward this tool-call delta. Argument deltas buffered while the tool
     /// name awaited validation are replayed through this event.
     EmitToolCallDelta {
-        /// Provider-supplied tool call ID.
-        id: String,
         /// Rig-generated identifier correlating this call's stream items.
         internal_call_id: String,
         /// The (possibly repaired) name or argument delta.
@@ -295,6 +276,24 @@ struct ToolCallDeltaState {
     buffered_arguments: Vec<String>,
 }
 
+/// One reasoning part of the turn, in first-arrival order. A part opens as
+/// delta text keyed by the stream's rig-generated correlator and is
+/// superseded in place when a completed block restating the same part
+/// arrives; a completed block matching no open part occupies its own slot.
+struct ReasoningPart {
+    correlator: Option<String>,
+    provider_id: Option<String>,
+    state: ReasoningPartState,
+}
+
+enum ReasoningPartState {
+    /// Delta text accumulated so far for a part with no completed block.
+    Pending(String),
+    /// The authoritative completed block (may carry signatures or encrypted
+    /// content the deltas lacked).
+    Completed(Reasoning),
+}
+
 enum PendingInvalid {
     /// A complete tool call with a disallowed name.
     FullCall {
@@ -302,10 +301,7 @@ enum PendingInvalid {
         internal_call_id: String,
     },
     /// A streamed tool-name delta with a disallowed name.
-    NameDelta {
-        id: String,
-        internal_call_id: String,
-    },
+    NameDelta { internal_call_id: String },
 }
 
 /// Sans-IO accumulator that assembles one streamed model turn. See the
@@ -315,11 +311,9 @@ pub struct StreamedTurnAssembler {
     allowed_tool_names: BTreeSet<String>,
     text: String,
     saw_text: bool,
-    accumulated_reasoning: Vec<Reasoning>,
-    pending_reasoning_delta_text: String,
-    pending_reasoning_delta_id: Option<String>,
+    reasoning_parts: Vec<ReasoningPart>,
     pending_tool_calls: Vec<(ToolCall, String)>,
-    delta_states: HashMap<(String, String), ToolCallDeltaState>,
+    delta_states: HashMap<String, ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
 }
 
@@ -335,9 +329,7 @@ impl StreamedTurnAssembler {
             allowed_tool_names,
             text: String::new(),
             saw_text: false,
-            accumulated_reasoning: Vec::new(),
-            pending_reasoning_delta_text: String::new(),
-            pending_reasoning_delta_id: None,
+            reasoning_parts: Vec::new(),
             pending_tool_calls: Vec::new(),
             delta_states: HashMap::new(),
             pending_invalid: None,
@@ -356,14 +348,7 @@ impl StreamedTurnAssembler {
         &self,
         provider_choice: &OneOrMany<AssistantContent>,
     ) -> OneOrMany<AssistantContent> {
-        let mut reasoning = self.accumulated_reasoning.clone();
-        if reasoning.is_empty() && !self.pending_reasoning_delta_text.is_empty() {
-            let mut assembled = Reasoning::new(&self.pending_reasoning_delta_text);
-            if let Some(id) = self.pending_reasoning_delta_id.clone() {
-                assembled = assembled.with_id(id);
-            }
-            reasoning.push(assembled);
-        }
+        let reasoning = self.assembled_reasoning();
 
         if !self.pending_tool_calls.is_empty() || !reasoning.is_empty() {
             let text_items = assistant_text_items_from_choice(provider_choice);
@@ -379,19 +364,105 @@ impl StreamedTurnAssembler {
         }
     }
 
+    /// Record a completed reasoning block. It supersedes the same part —
+    /// matched by the stream correlator first, regardless of whether that
+    /// part is still pending or already completed (the stream restates one
+    /// correlator per part, so a later same-correlator completion is the
+    /// same part's authoritative whole, e.g. a signed restatement after an
+    /// unsigned close), then by the durable provider id for pending parts —
+    /// because the completed block restates the delta text plus payloads
+    /// (signatures, encrypted content) the deltas lacked. A block matching
+    /// no part by correlator merges with an earlier completed block sharing
+    /// its provider id, else occupies a new slot; unmatched pending buffers
+    /// are never dropped (a delta-only visible part and a completed
+    /// encrypted block can coexist in one stream).
+    fn ingest_completed_reasoning(&mut self, reasoning: &Reasoning, correlator: &str) {
+        // An exact correlator match IS the part, whatever its state:
+        // replace wholesale (pydantic-ai's replace-part semantics — the
+        // completed block always carries the whole content, the
+        // accumulator having merged signatures before yielding). Checked
+        // before the provider-id fallbacks so a signed restatement can
+        // never double-extend its own part.
+        let same_part = self
+            .reasoning_parts
+            .iter_mut()
+            .find(|part| part.correlator.as_deref() == Some(correlator));
+        if let Some(part) = same_part {
+            if reasoning.id.is_some() {
+                part.provider_id = reasoning.id.clone();
+            }
+            part.state = ReasoningPartState::Completed(reasoning.clone());
+            return;
+        }
+
+        let superseded = self.reasoning_parts.iter_mut().find(|part| {
+            matches!(part.state, ReasoningPartState::Pending(_))
+                && matches!(
+                    (&part.provider_id, &reasoning.id),
+                    (Some(pending_id), Some(incoming_id)) if pending_id == incoming_id
+                )
+        });
+        if let Some(part) = superseded {
+            if reasoning.id.is_some() {
+                part.provider_id = reasoning.id.clone();
+            }
+            part.state = ReasoningPartState::Completed(reasoning.clone());
+            return;
+        }
+
+        // Completed blocks sharing a provider-issued id extend one
+        // another (the multi-part same-id reasoning item shape).
+        let extends = self.reasoning_parts.iter_mut().rev().find(|part| {
+            matches!(part.state, ReasoningPartState::Completed(_))
+                && matches!(
+                    (&part.provider_id, &reasoning.id),
+                    (Some(existing_id), Some(incoming_id)) if existing_id == incoming_id
+                )
+        });
+        if let Some(part) = extends {
+            if let ReasoningPartState::Completed(existing) = &mut part.state {
+                existing.content.extend(reasoning.content.clone());
+            }
+            return;
+        }
+
+        self.reasoning_parts.push(ReasoningPart {
+            correlator: Some(correlator.to_owned()),
+            provider_id: reasoning.id.clone(),
+            state: ReasoningPartState::Completed(reasoning.clone()),
+        });
+    }
+
+    /// The turn's reasoning in first-arrival order: completed blocks as-is,
+    /// non-empty pending delta buffers each assembled into their own block
+    /// carrying only the part's provider-issued id.
+    fn assembled_reasoning(&self) -> Vec<Reasoning> {
+        self.reasoning_parts
+            .iter()
+            .filter_map(|part| match &part.state {
+                ReasoningPartState::Completed(reasoning) => Some(reasoning.clone()),
+                ReasoningPartState::Pending(text) if !text.is_empty() => {
+                    let mut assembled = Reasoning::new(text);
+                    if let Some(id) = part.provider_id.clone() {
+                        assembled = assembled.with_id(id);
+                    }
+                    Some(assembled)
+                }
+                ReasoningPartState::Pending(_) => None,
+            })
+            .collect()
+    }
+
     /// Ingest one provider stream item and return what the driver must do.
     ///
     /// # Errors
     /// Returns an error when the provider stream is inconsistent (argument
     /// deltas finishing without a validated tool name) or when an invalid
     /// tool call is still awaiting resolution.
-    pub fn ingest<R>(
+    pub fn ingest(
         &mut self,
-        item: &StreamedAssistantContent<R>,
-    ) -> Result<Vec<StreamedTurnEvent>, CompletionError>
-    where
-        R: Clone + Unpin + GetTokenUsage,
-    {
+        item: &StreamedAssistantContent,
+    ) -> Result<Vec<StreamedTurnEvent>, CompletionError> {
         if self.pending_invalid.is_some() {
             return Err(CompletionError::ResponseError(
                 "streamed turn ingested while an invalid tool call awaits resolution".to_string(),
@@ -407,18 +478,45 @@ impl StreamedTurnAssembler {
                 self.text.push_str(&text.text);
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
-            StreamedAssistantContent::Reasoning(reasoning) => {
-                merge_reasoning_blocks(&mut self.accumulated_reasoning, reasoning);
+            StreamedAssistantContent::Reasoning { reasoning, id } => {
+                self.ingest_completed_reasoning(reasoning, id);
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
-            StreamedAssistantContent::ReasoningDelta { reasoning, id } => {
+            StreamedAssistantContent::ReasoningDelta {
+                id,
+                reasoning,
+                provider_id,
+            } => {
                 // Deltas lack signatures/encrypted content that full blocks
-                // carry; mixing them into accumulated reasoning causes
+                // carry; mixing them into completed reasoning causes
                 // providers like Anthropic to reject with "signature required",
-                // so they are kept aside until the turn ends.
-                self.pending_reasoning_delta_text.push_str(reasoning);
-                if self.pending_reasoning_delta_id.is_none() {
-                    self.pending_reasoning_delta_id = id.clone();
+                // so each part's text is kept aside, keyed by the stream
+                // correlator, until its completed block (if any) supersedes
+                // it. Only the provider-issued id may become the assembled
+                // block's durable id — the public correlator is rig-generated
+                // and must never enter history.
+                let index = self
+                    .reasoning_parts
+                    .iter()
+                    .position(|part| {
+                        part.correlator.as_deref() == Some(id.as_str())
+                            && matches!(part.state, ReasoningPartState::Pending(_))
+                    })
+                    .unwrap_or_else(|| {
+                        self.reasoning_parts.push(ReasoningPart {
+                            correlator: Some(id.clone()),
+                            provider_id: None,
+                            state: ReasoningPartState::Pending(String::new()),
+                        });
+                        self.reasoning_parts.len() - 1
+                    });
+                if let Some(part) = self.reasoning_parts.get_mut(index) {
+                    if let ReasoningPartState::Pending(text) = &mut part.state {
+                        text.push_str(reasoning);
+                    }
+                    if part.provider_id.is_none() {
+                        part.provider_id = provider_id.clone();
+                    }
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
@@ -448,11 +546,10 @@ impl StreamedTurnAssembler {
                 Ok(Vec::new())
             }
             StreamedAssistantContent::ToolCallDelta {
-                id,
                 internal_call_id,
                 content,
             } => {
-                let key = (id.clone(), internal_call_id.clone());
+                let key = internal_call_id.clone();
                 match content {
                     ToolCallDeltaContent::Name(name) => {
                         if !self.allowed_tool_names.contains(name) {
@@ -462,18 +559,14 @@ impl StreamedTurnAssembler {
                                 .map(|state| state.buffered_arguments.join(""))
                                 .unwrap_or_default();
                             let invalid = StreamedInvalidToolCall {
-                                tool_call: self.name_delta_diagnostic_tool_call(
-                                    id,
-                                    name,
-                                    &buffered_args,
-                                ),
+                                tool_call: self
+                                    .name_delta_diagnostic_tool_call(name, &buffered_args),
                                 internal_call_id: internal_call_id.clone(),
                                 args: Some(buffered_args),
                                 executable_tool_names: self.executable_tool_names.clone(),
                                 allowed_tool_names: self.allowed_tool_names.clone(),
                             };
                             self.pending_invalid = Some(PendingInvalid::NameDelta {
-                                id: id.clone(),
                                 internal_call_id: internal_call_id.clone(),
                             });
                             return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
@@ -485,7 +578,6 @@ impl StreamedTurnAssembler {
                         let state = self.delta_states.entry(key.clone()).or_default();
                         if state.name_validated {
                             Ok(vec![StreamedTurnEvent::EmitToolCallDelta {
-                                id: id.clone(),
                                 internal_call_id: internal_call_id.clone(),
                                 content: ToolCallDeltaContent::Delta(arguments.clone()),
                             }])
@@ -501,7 +593,7 @@ impl StreamedTurnAssembler {
                     return Err(err);
                 }
 
-                let usage = final_response.token_usage();
+                let usage = final_response.usage;
                 let emit_final = self.saw_text;
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
@@ -542,24 +634,15 @@ impl StreamedTurnAssembler {
             }
             (
                 StreamedResolution::Repaired { tool_name },
-                PendingInvalid::NameDelta {
-                    id,
-                    internal_call_id,
-                },
-            ) => {
-                let key = (id, internal_call_id);
-                self.validate_delta_name(&key, tool_name.clone())
-            }
+                PendingInvalid::NameDelta { internal_call_id },
+            ) => self.validate_delta_name(&internal_call_id, tool_name.clone()),
             (
                 StreamedResolution::TurnAbandoned { .. },
-                PendingInvalid::NameDelta {
-                    id,
-                    internal_call_id,
-                },
+                PendingInvalid::NameDelta { internal_call_id },
             ) => {
                 // The abandoned call's buffered state must not trip the
                 // pending-delta consistency check while usage is drained.
-                self.delta_states.remove(&(id, internal_call_id));
+                self.delta_states.remove(&internal_call_id);
                 Vec::new()
             }
             (StreamedResolution::TurnAbandoned { .. }, PendingInvalid::FullCall { .. }) => {
@@ -574,9 +657,9 @@ impl StreamedTurnAssembler {
         self.delta_states
             .iter()
             .find(|(_, state)| !state.name_validated && !state.buffered_arguments.is_empty())
-            .map(|((id, internal_call_id), state)| {
+            .map(|(internal_call_id, state)| {
                 CompletionError::ResponseError(format!(
-                    "streamed tool call arguments received before a validated tool name for id `{id}` and internal_call_id `{internal_call_id}` ({} buffered argument delta(s))",
+                    "streamed tool call arguments received before a validated tool name for internal_call_id `{internal_call_id}` ({} buffered argument delta(s))",
                     state.buffered_arguments.len()
                 ))
             })
@@ -584,14 +667,7 @@ impl StreamedTurnAssembler {
 
     /// Snapshot of the turn so far, for diagnostics and rollback messages.
     pub fn partial_turn(&self, message_id: Option<String>) -> PartialStreamedTurn {
-        let mut reasoning = self.accumulated_reasoning.clone();
-        if reasoning.is_empty() && !self.pending_reasoning_delta_text.is_empty() {
-            let mut assembled = Reasoning::new(&self.pending_reasoning_delta_text);
-            if let Some(id) = self.pending_reasoning_delta_id.clone() {
-                assembled = assembled.with_id(id);
-            }
-            reasoning.push(assembled);
-        }
+        let reasoning = self.assembled_reasoning();
 
         PartialStreamedTurn {
             message_id,
@@ -617,7 +693,9 @@ impl StreamedTurnAssembler {
         let internal_call_ids: Vec<(String, String)> = self
             .pending_tool_calls
             .iter()
-            .map(|(tool_call, internal_call_id)| (tool_call.id.clone(), internal_call_id.clone()))
+            .map(|(tool_call, internal_call_id)| {
+                (tool_call.id.as_str().to_owned(), internal_call_id.clone())
+            })
             .collect();
 
         StreamedTurn {
@@ -629,41 +707,35 @@ impl StreamedTurnAssembler {
         }
     }
 
-    fn name_delta_diagnostic_tool_call(
-        &self,
-        id: &str,
-        name: &str,
-        buffered_args: &str,
-    ) -> ToolCall {
+    fn name_delta_diagnostic_tool_call(&self, name: &str, buffered_args: &str) -> ToolCall {
         let diagnostic_args = if buffered_args.trim().is_empty() {
             serde_json::Value::Null
         } else {
             serde_json::from_str(buffered_args).unwrap_or(serde_json::Value::Null)
         };
+        // Diagnostic only: the durable provider id is unknown at delta
+        // time, and no stream-internal key may surface — so the call mints
+        // its correlation handle and `provider` stays `None` (hooks
+        // faithfully observe that no provider id exists). The same minted
+        // id correlates the retry transcript pair in `rollback_messages`.
         ToolCall::new(
-            id.to_string(),
+            rig_core::message::ToolCallId::mint(),
             ToolFunction::new(name.to_string(), diagnostic_args),
         )
     }
 
-    fn validate_delta_name(
-        &mut self,
-        key: &(String, String),
-        name: String,
-    ) -> Vec<StreamedTurnEvent> {
-        let state = self.delta_states.entry(key.clone()).or_default();
+    fn validate_delta_name(&mut self, key: &str, name: String) -> Vec<StreamedTurnEvent> {
+        let state = self.delta_states.entry(key.to_owned()).or_default();
         state.name_validated = true;
         let buffered_arguments = std::mem::take(&mut state.buffered_arguments);
 
         let mut events = vec![StreamedTurnEvent::EmitToolCallDelta {
-            id: key.0.clone(),
-            internal_call_id: key.1.clone(),
+            internal_call_id: key.to_owned(),
             content: ToolCallDeltaContent::Name(name),
         }];
         events.extend(buffered_arguments.into_iter().map(|arguments| {
             StreamedTurnEvent::EmitToolCallDelta {
-                id: key.0.clone(),
-                internal_call_id: key.1.clone(),
+                internal_call_id: key.to_owned(),
                 content: ToolCallDeltaContent::Delta(arguments),
             }
         }));
@@ -677,7 +749,7 @@ mod tests {
     use crate::agent::hook::InvalidToolCallAction;
     use crate::agent::run::{AgentRun, AgentRunStep};
     use crate::completion::PromptError;
-    use crate::test_utils::MockResponse;
+    use crate::test_utils::mock_final;
     use rig_core::message::{Text, ToolResultContent, UserContent};
     use serde_json::json;
 
@@ -689,39 +761,36 @@ mod tests {
         StreamedTurnAssembler::new(tool_names(&["add"]), tool_names(&["add"]))
     }
 
-    fn text_item(text: &str) -> StreamedAssistantContent<MockResponse> {
+    fn text_item(text: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::Text(Text::new(text.to_string()))
     }
 
     fn tool_call(id: &str, name: &str) -> ToolCall {
-        ToolCall::new(
-            id.to_string(),
-            ToolFunction::new(name.to_string(), json!({"x": 1})),
-        )
+        // The provider-boundary shape: the wire id becomes both the durable
+        // id and the provider correlator.
+        ToolCall::from_wire(id, ToolFunction::new(name.to_string(), json!({"x": 1})))
     }
 
-    fn tool_call_item(id: &str, name: &str) -> StreamedAssistantContent<MockResponse> {
+    fn tool_call_item(id: &str, name: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCall {
             tool_call: tool_call(id, name),
             internal_call_id: format!("internal_{id}"),
         }
     }
 
-    fn final_item() -> StreamedAssistantContent<MockResponse> {
-        StreamedAssistantContent::Final(MockResponse::with_usage(Usage::new()))
+    fn final_item() -> StreamedAssistantContent {
+        StreamedAssistantContent::Final(mock_final(Usage::new()))
     }
 
-    fn name_delta(id: &str, name: &str) -> StreamedAssistantContent<MockResponse> {
+    fn name_delta(id: &str, name: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCallDelta {
-            id: id.to_string(),
             internal_call_id: format!("internal_{id}"),
             content: ToolCallDeltaContent::Name(name.to_string()),
         }
     }
 
-    fn args_delta(id: &str, arguments: &str) -> StreamedAssistantContent<MockResponse> {
+    fn args_delta(id: &str, arguments: &str) -> StreamedAssistantContent {
         StreamedAssistantContent::ToolCallDelta {
-            id: id.to_string(),
             internal_call_id: format!("internal_{id}"),
             content: ToolCallDeltaContent::Delta(arguments.to_string()),
         }
@@ -755,8 +824,8 @@ mod tests {
             .expect("ingest text should succeed");
 
         let events = asm
-            .ingest(&StreamedAssistantContent::<MockResponse>::Unknown(
-                json!({ "type": "web_search_call", "id": "ws_1" }),
+            .ingest(&StreamedAssistantContent::Unknown(
+                json!({ "type": "web_search_call", "id": "ws_1" }).into(),
             ))
             .expect("ingest unknown should succeed");
 
@@ -816,8 +885,9 @@ mod tests {
     #[test]
     fn finish_orders_reasoning_text_then_tool_calls() {
         let mut asm = assembler();
-        asm.ingest(&StreamedAssistantContent::<MockResponse>::ReasoningDelta {
-            id: Some("rs_1".to_string()),
+        asm.ingest(&StreamedAssistantContent::ReasoningDelta {
+            id: "corr_1".to_string(),
+            provider_id: Some("rs_1".to_string()),
             reasoning: "think".to_string(),
         })
         .expect("ingest should succeed");
@@ -843,6 +913,284 @@ mod tests {
             })
             .collect();
         assert_eq!(kinds, vec!["reasoning", "text", "tool_call"]);
+    }
+
+    fn reasoning_delta(
+        correlator: &str,
+        provider_id: Option<&str>,
+        text: &str,
+    ) -> StreamedAssistantContent {
+        StreamedAssistantContent::ReasoningDelta {
+            id: correlator.to_string(),
+            provider_id: provider_id.map(str::to_string),
+            reasoning: text.to_string(),
+        }
+    }
+
+    fn completed_reasoning(
+        correlator: &str,
+        provider_id: Option<&str>,
+        text: &str,
+        signature: Option<&str>,
+    ) -> StreamedAssistantContent {
+        let mut reasoning = Reasoning::new_with_signature(text, signature.map(str::to_string));
+        if let Some(provider_id) = provider_id {
+            reasoning = reasoning.with_id(provider_id.to_string());
+        }
+        StreamedAssistantContent::Reasoning {
+            reasoning,
+            id: correlator.to_string(),
+        }
+    }
+
+    fn assembled_reasoning_of(asm: &StreamedTurnAssembler) -> Vec<Reasoning> {
+        asm.partial_turn(None).reasoning
+    }
+
+    #[test]
+    fn interleaved_delta_parts_stay_distinct_in_arrival_order() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", None, "first "))
+            .expect("ingest");
+        asm.ingest(&reasoning_delta("corr_a", None, "part"))
+            .expect("ingest");
+        asm.ingest(&tool_call_item("tc_1", "add")).expect("ingest");
+        asm.ingest(&reasoning_delta("corr_b", None, "second part"))
+            .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(
+            reasoning.len(),
+            2,
+            "two parts must not merge: {reasoning:?}"
+        );
+        assert!(matches!(
+            reasoning[0].content.first(),
+            Some(rig_core::message::ReasoningContent::Text { text, .. }) if text == "first part"
+        ));
+        assert!(matches!(
+            reasoning[1].content.first(),
+            Some(rig_core::message::ReasoningContent::Text { text, .. }) if text == "second part"
+        ));
+    }
+
+    #[test]
+    fn delta_only_part_survives_alongside_a_completed_block() {
+        // The openrouter shape: visible chain-of-thought streams as deltas
+        // whose synthesized end stays silent, while an encrypted block
+        // arrives completed. Both must reach history, deltas first.
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_cot", None, "visible thoughts"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning(
+            "corr_enc",
+            Some("rd_1"),
+            "encrypted payload",
+            Some("sig"),
+        ))
+        .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(
+            reasoning.len(),
+            2,
+            "the visible chain of thought must not be dropped: {reasoning:?}"
+        );
+        assert!(matches!(
+            reasoning[0].content.first(),
+            Some(rig_core::message::ReasoningContent::Text { text, .. })
+                if text == "visible thoughts"
+        ));
+        assert_eq!(reasoning[0].id, None);
+        assert_eq!(reasoning[1].id.as_deref(), Some("rd_1"));
+    }
+
+    /// A later completion restating the SAME correlator is the same part's
+    /// authoritative whole (the unsigned-close-then-signed-restatement
+    /// shape): it replaces the completed slot, never appends a duplicate.
+    #[test]
+    fn a_same_correlator_completion_replaces_the_completed_part() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", None, "think"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning("corr_a", None, "think", None))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning("corr_a", None, "think", Some("sig")))
+            .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(
+            reasoning.len(),
+            1,
+            "one part per correlator, signed restatement replaces: {reasoning:?}"
+        );
+        assert!(matches!(
+            reasoning[0].content.first(),
+            Some(rig_core::message::ReasoningContent::Text { text, signature: Some(sig) })
+                if text == "think" && sig == "sig"
+        ));
+    }
+
+    /// Same shape with a provider id: the exact-correlator match must win
+    /// BEFORE the shared-provider-id extend fallback, or the signed
+    /// restatement doubles its own text.
+    #[test]
+    fn a_same_correlator_completion_with_a_provider_id_does_not_double_extend() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_1"), "think"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning("corr_a", Some("rs_1"), "think", None))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning(
+            "corr_a",
+            Some("rs_1"),
+            "think",
+            Some("sig"),
+        ))
+        .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(reasoning.len(), 1, "{reasoning:?}");
+        assert_eq!(
+            reasoning[0].content.len(),
+            1,
+            "the restatement must replace, not extend: {reasoning:?}"
+        );
+    }
+
+    #[test]
+    fn completed_block_supersedes_its_deltas_by_correlator() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", None, "streamed text"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning(
+            "corr_a",
+            None,
+            "streamed text",
+            Some("sig_1"),
+        ))
+        .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(
+            reasoning.len(),
+            1,
+            "the completed block replaces its own deltas: {reasoning:?}"
+        );
+        assert!(matches!(
+            reasoning[0].content.first(),
+            Some(rig_core::message::ReasoningContent::Text { text, signature: Some(sig) })
+                if text == "streamed text" && sig == "sig_1"
+        ));
+    }
+
+    #[test]
+    fn completed_block_supersedes_its_deltas_by_provider_id() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_1"), "streamed text"))
+            .expect("ingest");
+        // A completed restatement whose correlator does not match (e.g. a
+        // whole-block event minted its own) still supersedes via the
+        // durable provider handle.
+        asm.ingest(&completed_reasoning(
+            "corr_other",
+            Some("rs_1"),
+            "restated text",
+            None,
+        ))
+        .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(reasoning.len(), 1, "{reasoning:?}");
+        assert!(matches!(
+            reasoning[0].content.first(),
+            Some(rig_core::message::ReasoningContent::Text { text, .. }) if text == "restated text"
+        ));
+    }
+
+    #[test]
+    fn completed_blocks_sharing_a_provider_id_extend_one_part() {
+        let mut asm = assembler();
+        asm.ingest(&completed_reasoning(
+            "corr_1",
+            Some("rs_1"),
+            "step-1",
+            Some("sig-1"),
+        ))
+        .expect("ingest");
+        asm.ingest(&completed_reasoning(
+            "corr_2",
+            Some("rs_1"),
+            "step-2",
+            Some("sig-2"),
+        ))
+        .expect("ingest");
+        asm.ingest(&completed_reasoning("corr_3", Some("rs_2"), "other", None))
+            .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(reasoning.len(), 2, "{reasoning:?}");
+        assert_eq!(reasoning[0].id.as_deref(), Some("rs_1"));
+        assert_eq!(reasoning[0].content.len(), 2);
+        assert_eq!(reasoning[1].id.as_deref(), Some("rs_2"));
+    }
+
+    #[test]
+    fn completed_blocks_without_ids_stay_separate_parts() {
+        let mut asm = assembler();
+        asm.ingest(&completed_reasoning("corr_1", None, "first", None))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning("corr_2", None, "second", None))
+            .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(
+            reasoning.len(),
+            2,
+            "id-less blocks never merge: {reasoning:?}"
+        );
+    }
+
+    #[test]
+    fn each_delta_part_keeps_its_own_provider_id() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "alpha"))
+            .expect("ingest");
+        asm.ingest(&reasoning_delta("corr_b", Some("rs_b"), "beta"))
+            .expect("ingest");
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(reasoning.len(), 2, "{reasoning:?}");
+        assert_eq!(reasoning[0].id.as_deref(), Some("rs_a"));
+        assert_eq!(reasoning[1].id.as_deref(), Some("rs_b"));
+    }
+
+    #[test]
+    fn canonical_choice_and_partial_turn_agree_on_multi_part_reasoning() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", None, "visible"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning(
+            "corr_b",
+            Some("rd_1"),
+            "enc",
+            Some("sig"),
+        ))
+        .expect("ingest");
+
+        let partial = asm.partial_turn(None).reasoning;
+        let final_choice = OneOrMany::one(AssistantContent::text(""));
+        let turn = asm.finish(None, &final_choice);
+        let finished: Vec<Reasoning> = turn
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(partial, finished, "partial and finished assembly agree");
+        assert_eq!(finished.len(), 2);
     }
 
     #[test]
@@ -890,7 +1238,8 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].internal_call_id.as_deref(), Some("internal_tc_1"));
         run.tool_results(vec![UserContent::tool_result(
-            "tc_1".to_string(),
+            "tc_1",
+            "add",
             OneOrMany::one(ToolResultContent::text("2")),
         )])
         .expect("tool_results should succeed");
@@ -1071,7 +1420,7 @@ mod tests {
         else {
             panic!("expected skipped tool result");
         };
-        assert_eq!(tool_result.id, "tc_1");
+        assert_eq!(tool_result.call, "tc_1");
     }
 
     #[test]
@@ -1161,12 +1510,12 @@ mod tests {
         run.next_step().expect("next_step");
 
         let mut asm = assembler();
-        asm.ingest(&StreamedAssistantContent::<MockResponse>::ToolCall {
+        asm.ingest(&StreamedAssistantContent::ToolCall {
             tool_call: tool_call("tc_1", "add"),
             internal_call_id: "internal_a".to_string(),
         })
         .expect("ingest should succeed");
-        asm.ingest(&StreamedAssistantContent::<MockResponse>::ToolCall {
+        asm.ingest(&StreamedAssistantContent::ToolCall {
             tool_call: tool_call("tc_1", "add"),
             internal_call_id: "internal_b".to_string(),
         })
@@ -1244,7 +1593,8 @@ mod tests {
             serde_json::from_str(&serialized).expect("deserialize mid-run");
         restored
             .tool_results(vec![UserContent::tool_result(
-                "tc_1".to_string(),
+                "tc_1",
+                "add",
                 OneOrMany::one(ToolResultContent::text("2")),
             )])
             .expect("tool_results should succeed");

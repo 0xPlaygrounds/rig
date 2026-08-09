@@ -33,8 +33,8 @@ subtract tool to subtract 5 from it. Then state the final number in one short se
 /// it appeared at plus the identifiers needed to pair calls with results.
 struct ToolEvent {
     message_index: usize,
-    name_or_id: String,
-    call_id: Option<String>,
+    name: String,
+    call_id: String,
 }
 
 fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
@@ -45,8 +45,8 @@ fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
                         message_index,
-                        name_or_id: tool_call.function.name.clone(),
-                        call_id: tool_call.call_id.clone().or(Some(tool_call.id.clone())),
+                        name: tool_call.function.name.clone(),
+                        call_id: tool_call.id.to_string(),
                     });
                 }
             }
@@ -63,8 +63,8 @@ fn history_tool_results(history: &[Message]) -> Vec<ToolEvent> {
                 if let UserContent::ToolResult(tool_result) = item {
                     results.push(ToolEvent {
                         message_index,
-                        name_or_id: tool_result.id.clone(),
-                        call_id: tool_result.call_id.clone().or(Some(tool_result.id.clone())),
+                        name: tool_result.name.clone(),
+                        call_id: tool_result.call.to_string(),
                     });
                 }
             }
@@ -80,7 +80,7 @@ fn result_index_for_call(results: &[ToolEvent], call: &ToolEvent) -> usize {
         .unwrap_or_else(|| {
             panic!(
                 "chat history is missing the tool result answering call {:?} (call_id {:?})",
-                call.name_or_id, call.call_id
+                call.name, call.call_id
             )
         })
         .message_index
@@ -112,11 +112,11 @@ async fn sequential_tool_calls_ordering_nonstreaming() {
             let results = history_tool_results(&history);
             let add_call = calls
                 .iter()
-                .find(|call| call.name_or_id == Adder::NAME)
+                .find(|call| call.name == Adder::NAME)
                 .expect("history should contain an add tool call");
             let subtract_call = calls
                 .iter()
-                .find(|call| call.name_or_id == Subtract::NAME)
+                .find(|call| call.name == Subtract::NAME)
                 .expect("history should contain a subtract tool call");
             let add_result_index = result_index_for_call(&results, add_call);
             let subtract_result_index = result_index_for_call(&results, subtract_call);
@@ -215,15 +215,18 @@ async fn long_history_replay_nonstreaming() {
                     id: None,
                     content: rig::OneOrMany::many(vec![
                         AssistantContent::text("Checking the harbor label now."),
-                        AssistantContent::tool_call(
-                            AlphaSignal::NAME,
-                            AlphaSignal::NAME,
-                            serde_json::json!({}),
-                        ),
+                        // Gemini issues no functionCall ids: an empty wire id
+                        // records no provider id and mints the correlation
+                        // handle, which never reaches the wire.
+                        AssistantContent::tool_call("", AlphaSignal::NAME, serde_json::json!({})),
                     ])
                     .expect("assistant content should be non-empty"),
                 })
-                .message(Message::tool_result(AlphaSignal::NAME, ALPHA_SIGNAL_OUTPUT))
+                .message(Message::tool_result(
+                    "",
+                    AlphaSignal::NAME,
+                    ALPHA_SIGNAL_OUTPUT,
+                ))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .build();
@@ -257,8 +260,7 @@ async fn long_history_replay_nonstreaming() {
             );
             assert!(
                 response
-                    .raw_response
-                    .model_version
+                    .model
                     .as_deref()
                     .is_some_and(|version| !version.is_empty()),
                 "provider response should preserve the model version"

@@ -17,7 +17,6 @@ use rig::message::{
 };
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent};
 use rig::tool::Tool;
-use rig::wasm_compat::WasmCompatSend;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -36,6 +35,13 @@ pub(crate) struct ReasoningRoundtripAgent<M: CompletionModel> {
     pub(crate) model: M,
     pub(crate) preamble: String,
     pub(crate) additional_params: Option<serde_json::Value>,
+    /// Opt-in capability flag. Most providers stream reasoning as unsigned
+    /// deltas (or emit none at all), so the shared roundtrip only records
+    /// reasoning for diagnostics. A provider whose wire is known to carry a
+    /// replay-required signature opts in here, and the streaming roundtrip
+    /// then asserts that a complete `Reasoning` block with a signature
+    /// reached the caller and was round-tripped into turn 2.
+    pub(crate) expects_signed_reasoning_block: bool,
 }
 
 impl<M> ReasoningRoundtripAgent<M>
@@ -47,14 +53,20 @@ where
             model,
             preamble: ROUNDTRIP_PREAMBLE.to_owned(),
             additional_params,
+            expects_signed_reasoning_block: false,
         }
+    }
+
+    /// See [`ReasoningRoundtripAgent::expects_signed_reasoning_block`].
+    pub(crate) fn expecting_signed_reasoning_block(mut self) -> Self {
+        self.expects_signed_reasoning_block = true;
+        self
     }
 }
 
 pub(crate) async fn run_reasoning_roundtrip_streaming<M>(agent: ReasoningRoundtripAgent<M>)
 where
     M: CompletionModel,
-    M::StreamingResponse: WasmCompatSend,
 {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
 }
@@ -64,8 +76,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     mut inspect_final: F,
 ) where
     M: CompletionModel,
-    M::StreamingResponse: WasmCompatSend,
-    F: FnMut(&M::StreamingResponse),
+    F: FnMut(&rig::streaming::StreamFinal),
 {
     let turn1_prompt = Message::User {
         content: OneOrMany::one(UserContent::text(ROUNDTRIP_TURN1_TEXT)),
@@ -97,7 +108,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
             Ok(StreamedAssistantContent::Text(text)) => {
                 streamed_text.push_str(&text.text);
             }
-            Ok(StreamedAssistantContent::Reasoning(reasoning)) => {
+            Ok(StreamedAssistantContent::Reasoning { reasoning, .. }) => {
                 saw_reasoning_block = true;
                 assistant_content.push(AssistantContent::Reasoning(reasoning));
             }
@@ -108,6 +119,28 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
             Ok(_) => {}
             Err(error) => panic!("Turn 1 stream error: {error}"),
         }
+    }
+
+    if agent.expects_signed_reasoning_block {
+        assert!(
+            saw_reasoning_block,
+            "Provider opted into signed reasoning but streamed no complete Reasoning block \
+             (reasoning deltas seen: {} chars). A signature-only block must not be dropped.",
+            reasoning_delta_text.len()
+        );
+
+        let signed = assistant_content.iter().any(|content| match content {
+            AssistantContent::Reasoning(reasoning) => reasoning
+                .content
+                .iter()
+                .any(|block| matches!(block, ReasoningContent::Text { signature, .. } if signature.is_some())),
+            _ => false,
+        });
+        assert!(
+            signed,
+            "Provider opted into signed reasoning but no streamed Reasoning block carried a \
+             signature: {assistant_content:#?}"
+        );
     }
 
     // Providers like Gemini 2.5 emit thinking as deltas without signatures,
@@ -423,8 +456,8 @@ fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &s
     );
 }
 
-pub(crate) async fn collect_stream_stats<R>(
-    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem<R>, StreamingError>>,
+pub(crate) async fn collect_stream_stats(
+    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, StreamingError>>,
     provider: &str,
 ) -> StreamStats {
     let mut stats = StreamStats::new();
@@ -434,7 +467,7 @@ pub(crate) async fn collect_stream_stats<R>(
     while let Some(item) = stream.next().await {
         match item {
             Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
-                StreamedAssistantContent::Reasoning(ref reasoning) => {
+                StreamedAssistantContent::Reasoning { ref reasoning, .. } => {
                     record_reasoning(&mut stats, reasoning, provider);
                 }
                 StreamedAssistantContent::ReasoningDelta { .. } => {

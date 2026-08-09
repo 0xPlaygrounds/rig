@@ -1,7 +1,9 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
+use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{
-    AssistantContent, CompletionModel, Document, Message, ProviderToolDefinition,
+    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, Document,
+    Message, ProviderToolDefinition,
 };
 use rig::message::Text;
 use rig::prelude::*;
@@ -12,6 +14,10 @@ use serde_json::Value;
 use serde_json::json;
 
 use crate::support::{assert_contains_any_case_insensitive, assistant_text_response};
+
+/// Descriptor name the Anthropic client normalizes responses under; needed
+/// when a test converts a `raw_completion` response itself.
+const ANTHROPIC_PROVIDER: &str = "anthropic";
 
 const SYSTEM_ROLE_INSTRUCTION: &str = "For the rest of this conversation, answer in Spanish only.";
 const DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION: &str = "Answer in Spanish only. Use one short sentence.";
@@ -24,7 +30,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
         "opus_4_8/web_search_with_dynamic_filtering_succeeds",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
-            let response = model
+            let request = model
                 .completion_request(
                     "Search for the current prices of AAPL and GOOGL, then calculate which has a better P/E ratio.",
                 )
@@ -33,9 +39,17 @@ async fn web_search_with_dynamic_filtering_succeeds() {
                         .with_config("name", json!("web_search")),
                 )
                 .max_tokens(1024)
-                .send()
+                .build();
+            // One request, two views: `raw_completion` returns Anthropic's own
+            // response and the same value normalizes into rig's, so the
+            // provider-text fallback below still costs a single interaction.
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("Opus 4.8 dynamic web-search request should succeed");
+            let raw_text = raw.get_text_response();
+            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER)
+                .expect("Opus 4.8 dynamic web-search response should normalize");
 
             assert!(
                 response.choice.iter().any(|content| {
@@ -45,7 +59,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
             );
             assert!(
                 assistant_text_response(&response.choice)
-                    .or_else(|| response.raw_response.get_text_response())
+                    .or(raw_text)
                     .is_some_and(|text| !text.trim().is_empty()),
                 "dynamic web-search response should contain assistant text",
             );
@@ -60,7 +74,7 @@ async fn messages_preserve_mid_conversation_system_role() {
         "opus_4_8/messages_preserve_mid_conversation_system_role",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
-            let response = model
+            let request = model
                 .completion_request(
                     "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
                 )
@@ -70,12 +84,18 @@ async fn messages_preserve_mid_conversation_system_role() {
                     Message::assistant("Entendido."),
                 ])
                 .max_tokens(64)
-                .send()
+                .build();
+            let raw = model
+                .raw_completion(request)
                 .await
                 .expect("Opus 4.8 system-role request should succeed");
+            let raw_text = raw.get_text_response();
+            let response: RigCompletionResponse = raw
+                .normalize(ANTHROPIC_PROVIDER)
+                .expect("Opus 4.8 system-role response should normalize");
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or(raw_text)
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },
@@ -109,7 +129,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
             let server_tool_assistant_message =
                 server_tool_assistant_message_from_response(first_response.choice);
 
-            let response = model
+            let request = model
                 .completion_request(
                     "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
                 )
@@ -119,14 +139,17 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                     Message::assistant("Entendido."),
                 ])
                 .max_tokens(64)
-                .send()
-                .await
-                .expect(
-                    "Opus 4.8 request with system role after server tool result should succeed",
-                );
+                .build();
+            let raw = model.raw_completion(request).await.expect(
+                "Opus 4.8 request with system role after server tool result should succeed",
+            );
+            let raw_text = raw.get_text_response();
+            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER).expect(
+                "Opus 4.8 response with system role after server tool result should normalize",
+            );
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or(raw_text)
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },
@@ -145,7 +168,7 @@ async fn documents_keep_leading_system_message_top_level() {
         "opus_4_8/documents_keep_leading_system_message_top_level",
         |client| async move {
             let model = client.completion_model(CLAUDE_OPUS_4_8);
-            let response = model
+            let request = model
                 .completion_request(
                     "According to the document, what color is the clear daytime sky?",
                 )
@@ -159,14 +182,17 @@ async fn documents_keep_leading_system_message_top_level() {
                     additional_props: Default::default(),
                 })
                 .max_tokens(64)
-                .send()
-                .await
-                .expect(
-                    "Opus 4.8 request with documents and a leading system message should succeed",
-                );
+                .build();
+            let raw = model.raw_completion(request).await.expect(
+                "Opus 4.8 request with documents and a leading system message should succeed",
+            );
+            let raw_text = raw.get_text_response();
+            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER).expect(
+                "Opus 4.8 response with documents and a leading system message should normalize",
+            );
 
             let text = assistant_text_response(&response.choice)
-                .or_else(|| response.raw_response.get_text_response())
+                .or(raw_text)
                 .expect("response should contain assistant text");
             assert_contains_any_case_insensitive(&text, &["azul"]);
         },

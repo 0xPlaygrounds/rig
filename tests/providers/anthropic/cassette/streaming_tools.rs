@@ -2,7 +2,7 @@
 
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
-use rig::message::{Message, UserContent};
+use rig::message::{Message, ToolCallId, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
@@ -262,8 +262,8 @@ struct ConcurrentToolObservation {
     events: Vec<&'static str>,
 }
 
-async fn collect_concurrent_tool_observation<R>(
-    stream: &mut StreamingResult<R>,
+async fn collect_concurrent_tool_observation(
+    stream: &mut StreamingResult,
 ) -> ConcurrentToolObservation {
     let mut observation = ConcurrentToolObservation::default();
     let mut tool_names_by_id = HashMap::new();
@@ -287,7 +287,7 @@ async fn collect_concurrent_tool_observation<R>(
             })) => {
                 observation
                     .streamed_tool_results
-                    .push(tool_name_for_result(&tool_names_by_id, &tool_result.id));
+                    .push(tool_name_for_result(&tool_names_by_id, &tool_result.call));
                 observation.events.push("tool_result");
             }
             Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -309,9 +309,9 @@ async fn collect_concurrent_tool_observation<R>(
             )) => {
                 observation.events.push("tool_call_delta");
             }
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning(
-                _,
-            ))) => {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Reasoning {
+                ..
+            })) => {
                 observation.events.push("reasoning");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(
@@ -343,7 +343,7 @@ fn streaming_error_to_string(error: StreamingError) -> String {
 
 fn tool_result_names_in_history(
     history: &[Message],
-    tool_names_by_id: &HashMap<String, String>,
+    tool_names_by_id: &HashMap<ToolCallId, String>,
 ) -> Vec<String> {
     history
         .iter()
@@ -352,7 +352,7 @@ fn tool_result_names_in_history(
                 .iter()
                 .filter_map(|item| match item {
                     UserContent::ToolResult(tool_result) => {
-                        Some(tool_name_for_result(tool_names_by_id, &tool_result.id))
+                        Some(tool_name_for_result(tool_names_by_id, &tool_result.call))
                     }
                     _ => None,
                 })
@@ -364,7 +364,7 @@ fn tool_result_names_in_history(
 
 fn last_tool_result_message_names(
     history: &[Message],
-    tool_names_by_id: &HashMap<String, String>,
+    tool_names_by_id: &HashMap<ToolCallId, String>,
 ) -> Vec<String> {
     history
         .iter()
@@ -380,7 +380,7 @@ fn last_tool_result_message_names(
                         .iter()
                         .filter_map(|item| match item {
                             UserContent::ToolResult(tool_result) => {
-                                Some(tool_name_for_result(tool_names_by_id, &tool_result.id))
+                                Some(tool_name_for_result(tool_names_by_id, &tool_result.call))
                             }
                             _ => None,
                         })
@@ -392,11 +392,14 @@ fn last_tool_result_message_names(
         .unwrap_or_default()
 }
 
-fn tool_name_for_result(tool_names_by_id: &HashMap<String, String>, id: &str) -> String {
+fn tool_name_for_result(
+    tool_names_by_id: &HashMap<ToolCallId, String>,
+    call: &ToolCallId,
+) -> String {
     tool_names_by_id
-        .get(id)
+        .get(call)
         .cloned()
-        .unwrap_or_else(|| format!("<unknown tool result id {id}>"))
+        .unwrap_or_else(|| format!("<unknown tool result id {call}>"))
 }
 
 fn assert_events_emit_all_tool_calls_before_results(events: &[&'static str]) {

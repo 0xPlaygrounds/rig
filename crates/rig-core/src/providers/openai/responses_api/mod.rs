@@ -14,8 +14,8 @@
 //! # }
 //! ```
 use super::InputAudio;
-use super::responses_api::streaming::StreamingCompletionResponse;
-use crate::completion::{CompletionError, GetTokenUsage};
+use crate::completion::CompletionError;
+use crate::completion::NormalizeCompletionResponse;
 use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
@@ -447,21 +447,19 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
-                        crate::message::UserContent::ToolResult(
-                            crate::completion::message::ToolResult {
-                                call_id,
-                                content: tool_content,
-                                ..
-                            },
-                        ) => {
-                            let output =
-                                responses_tool_result_output(tool_content).map_err(|error| {
+                        crate::message::UserContent::ToolResult(tool_result) => {
+                            // Provider-issued call id when one exists, else
+                            // rig's minted handle — always present and
+                            // non-empty.
+                            let call_id = tool_result.wire_call_id().to_owned();
+                            let output = responses_tool_result_output(tool_result.content)
+                                .map_err(|error| {
                                     CompletionError::ProviderError(error.to_string())
                                 })?;
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCallOutput(ToolResult {
-                                    call_id: require_call_id(call_id, "Tool result")?,
+                                    call_id,
                                     output,
                                     status: ToolStatus::Completed,
                                 }),
@@ -612,17 +610,24 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             });
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                            id: tool_id,
-                            call_id,
+                            id,
+                            provider,
                             function,
                             ..
                         }) => {
+                            let (call_id, item_id) = match provider {
+                                Some(provider) => {
+                                    let item_id = provider.item_id.clone().unwrap_or_default();
+                                    (provider.call_id, item_id)
+                                }
+                                None => (id.into_string(), String::new()),
+                            };
                             other_items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCall(OutputFunctionCall {
-                                    arguments: function.arguments,
-                                    call_id: require_call_id(call_id, "Assistant tool call")?,
-                                    id: tool_id,
+                                    arguments: function.arguments.into(),
+                                    call_id,
+                                    id: item_id,
                                     name: function.name,
                                     status: ToolStatus::Completed,
                                 }),
@@ -661,17 +666,14 @@ impl From<OneOrMany<String>> for Vec<ReasoningSummary> {
     }
 }
 
-fn require_call_id(call_id: Option<String>, context: &str) -> Result<String, CompletionError> {
-    call_id.ok_or_else(|| {
-        CompletionError::RequestError(
-            format!("{context} `call_id` is required for OpenAI Responses API").into(),
-        )
-    })
-}
-
 fn openai_reasoning_from_core(
     reasoning: &crate::message::Reasoning,
 ) -> Result<Option<OpenAIReasoning>, MessageError> {
+    // Only wire-genuine ids exist in durable histories: the streaming layer
+    // populates `Reasoning::id` exclusively from `StreamPartId::Wire`, so an
+    // id-less (rig-keyed) reasoning item arrives here as `None` and drops
+    // from request input, mirroring main's handling. No provenance gate is
+    // needed — a fabricated id structurally cannot reach this function.
     let Some(id) = reasoning.id.clone() else {
         return Ok(None);
     };
@@ -960,25 +962,31 @@ impl ResponsesUsage {
     }
 }
 
-impl GetTokenUsage for ResponsesUsage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<&ResponsesUsage> for crate::completion::Usage {
+    fn from(usage: &ResponsesUsage) -> Self {
         crate::completion::Usage {
-            input_tokens: self.input_tokens,
-            output_tokens: self.output_tokens,
-            total_tokens: self.total_tokens,
-            cached_input_tokens: self
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            total_tokens: usage.total_tokens,
+            cached_input_tokens: usage
                 .input_tokens_details
                 .as_ref()
                 .map(|details| details.cached_tokens)
                 .unwrap_or(0),
             cache_creation_input_tokens: 0,
             tool_use_prompt_tokens: 0,
-            reasoning_tokens: self
+            reasoning_tokens: usage
                 .output_tokens_details
                 .as_ref()
                 .map(|details| details.reasoning_tokens)
                 .unwrap_or(0),
         }
+    }
+}
+
+impl From<ResponsesUsage> for crate::completion::Usage {
+    fn from(usage: ResponsesUsage) -> Self {
+        Self::from(&usage)
     }
 }
 
@@ -1092,6 +1100,68 @@ pub enum ResponseStatus {
     Incomplete,
 }
 
+/// The wire spelling of a [`ResponseStatus`].
+///
+/// Statuses outside the normalized finish-reason vocabulary are carried through
+/// as [`completion::FinishReason::Other`], so they must keep OpenAI's own
+/// spelling rather than a Rust `Debug` name.
+fn response_status_wire_name(status: &ResponseStatus) -> &'static str {
+    match status {
+        ResponseStatus::InProgress => "in_progress",
+        ResponseStatus::Completed => "completed",
+        ResponseStatus::Failed => "failed",
+        ResponseStatus::Cancelled => "cancelled",
+        ResponseStatus::Queued => "queued",
+        ResponseStatus::Incomplete => "incomplete",
+    }
+}
+
+/// Map the Responses API's terminal state onto the normalized finish reason.
+///
+/// This API reports how a turn ended with two fields rather than one: `status`
+/// says whether the turn ran to completion, and `incomplete_details.reason`
+/// says why it did not. Both the unary and streaming paths funnel through here
+/// so they cannot disagree.
+///
+/// `completed` maps to [`completion::FinishReason::Stop`]; the upgrade to
+/// [`completion::FinishReason::ToolCalls`] for a turn that emitted function
+/// calls is applied once, centrally, by
+/// [`completion::CompletionResponse::with_optional_finish_reason`] (and, for
+/// streams, by [`crate::streaming::normalize_stream`]).
+///
+/// Anything unrecognized — a new `incomplete_details.reason`, or a terminal
+/// status such as `failed`/`cancelled` that has no normalized counterpart — is
+/// preserved verbatim in OpenAI's spelling instead of being smoothed into a
+/// natural stop. In-flight statuses report no reason at all.
+pub(crate) fn map_finish_reason(
+    status: &ResponseStatus,
+    incomplete_details: Option<&IncompleteDetailsReason>,
+) -> Option<completion::FinishReason> {
+    match status {
+        ResponseStatus::Completed => Some(completion::FinishReason::Stop),
+        ResponseStatus::Incomplete => Some(
+            match incomplete_details
+                .map(|details| details.reason.as_str())
+                .filter(|reason| !reason.is_empty())
+            {
+                Some("max_output_tokens") => completion::FinishReason::Length,
+                Some("content_filter") => completion::FinishReason::ContentFilter,
+                Some(other) => completion::FinishReason::Other(other.to_owned()),
+                // Incomplete without a stated reason: the status itself is all
+                // the provider told us.
+                None => {
+                    completion::FinishReason::Other(response_status_wire_name(status).to_owned())
+                }
+            },
+        ),
+        ResponseStatus::Failed | ResponseStatus::Cancelled => Some(
+            completion::FinishReason::Other(response_status_wire_name(status).to_owned()),
+        ),
+        // The turn has not terminated, so there is genuinely no reason yet.
+        ResponseStatus::InProgress | ResponseStatus::Queued => None,
+    }
+}
+
 /// Controls where Rig system instructions are placed in an OpenAI Responses request.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -1120,6 +1190,14 @@ pub enum SystemInstructionsPlacement {
 /// [`GenericResponsesCompletionModel`], so a client-level configuration can
 /// control request shaping for every model created from that client.
 pub trait ResponsesProviderExt {
+    /// Stable descriptor name recorded on `gen_ai.provider.name` telemetry
+    /// spans and on every normalized response produced through this extension.
+    ///
+    /// Defaults to `"openai"` because the Responses wire format is OpenAI's;
+    /// providers that merely *speak* it (ChatGPT, Copilot) override this so a
+    /// shared wire type never mislabels them.
+    const PROVIDER_NAME: &'static str = "openai";
+
     /// Where Rig system instructions are placed in requests built from this
     /// provider. See [`SystemInstructionsPlacement`].
     ///
@@ -1361,6 +1439,12 @@ where
 
     pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
         Self::new(client, model)
+    }
+
+    /// The stable descriptor name of the provider behind this model, as
+    /// recorded on telemetry spans and normalized responses.
+    pub fn provider_name(&self) -> &'static str {
+        Ext::PROVIDER_NAME
     }
 
     /// Enable strict mode for function tool schemas.
@@ -2100,9 +2184,24 @@ impl From<Output> for Vec<completion::AssistantContent> {
                 call_id,
                 name,
                 ..
-            }) => vec![completion::AssistantContent::tool_call_with_call_id(
-                id, call_id, name, arguments,
-            )],
+            }) => match arguments.parse() {
+                Ok(arguments) => vec![completion::AssistantContent::tool_call_with_call_id(
+                    id, call_id, name, arguments,
+                )],
+                // Truncation policy: arguments the wire never finished (a
+                // turn cut by `max_output_tokens` mid-tool-call) do not
+                // fabricate a call the model never fully made.
+                Err(_) => {
+                    // warn, not debug: main errored the whole response here,
+                    // so the quieter drop still deserves an operator-visible
+                    // signal.
+                    tracing::warn!(
+                        tool = %name,
+                        "dropping tool call whose arguments never fully arrived"
+                    );
+                    Vec::new()
+                }
+            },
             Output::Reasoning {
                 id,
                 summary,
@@ -2160,11 +2259,69 @@ pub struct OutputFunctionCall {
     /// output by `call_id` alone.
     #[serde(default, skip_serializing_if = "is_not_function_call_item_id")]
     pub id: String,
-    #[serde(with = "json_utils::stringified_json")]
-    pub arguments: serde_json::Value,
+    pub arguments: FunctionCallArguments,
     pub call_id: String,
     pub name: String,
     pub status: ToolStatus,
+}
+
+/// The wire form of a Responses `function_call` item's `arguments`: the raw
+/// string exactly as the provider sent it, parsed into JSON only at
+/// consumption time.
+///
+/// The Responses wire genuinely emits arguments that are not valid JSON: a
+/// turn cut by `max_output_tokens` mid-tool-call restates the call on
+/// `response.output_item.done` (and in `response.incomplete`'s `output[]`)
+/// with the arguments truncated mid-JSON (e.g. `"{\""`) and item status
+/// `incomplete`. Decoding the string eagerly (the old
+/// `json_utils::stringified_json` field) rejected those frames wholesale, so
+/// the stream classified them `Corrupt` instead of ending with a `Length`
+/// terminal. Keeping the raw string makes the typed model accept what the
+/// wire sends; whether a truncated call surfaces is decided by the settled
+/// truncation policy at parse time (partial arguments never fabricate a
+/// call).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionCallArguments(String);
+
+impl FunctionCallArguments {
+    /// Parse the raw wire string into JSON arguments. An empty string is a
+    /// parameterless invocation (`{}`); anything else must parse as JSON.
+    pub fn parse(&self) -> serde_json::Result<serde_json::Value> {
+        json_utils::parse_tool_arguments(&self.0)
+    }
+
+    /// The raw wire string, exactly as the provider sent it.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<serde_json::Value> for FunctionCallArguments {
+    /// Encode already-parsed arguments (Rig's canonical tool-call form) in
+    /// the wire's stringified-JSON spelling.
+    fn from(value: serde_json::Value) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl Serialize for FunctionCallArguments {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for FunctionCallArguments {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // The wire spells arguments as a string; a non-string payload is
+        // still a schema defect of the known `function_call` shape.
+        String::deserialize(deserializer).map(Self)
+    }
 }
 
 /// See [`OutputFunctionCall::id`]: only provider-native `fc` item IDs may be
@@ -2202,7 +2359,7 @@ pub enum OutputRole {
     Assistant,
 }
 
-impl<Ext, H> completion::CompletionModel for GenericResponsesCompletionModel<Ext, H>
+impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -2215,32 +2372,28 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = CompletionResponse;
-    type StreamingResponse = StreamingCompletionResponse;
-
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    // The OpenAI Responses API constrains only the final assistant message via
-    // `text.format`; tools are still called across turns, so native structured
-    // output composes with tool calls. See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        true
-    }
-
-    async fn completion(
+    /// Execute a completion and return the provider's own wire response.
+    ///
+    /// This is the escape hatch for Responses-API fields rig does not normalize
+    /// (hosted-tool output items, `previous_response_id`, service tier, ...). It
+    /// shares the request builder, transport, telemetry, and error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one network
+    /// request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse<Self::Response>, CompletionError> {
+    ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_completion_request(completion_request)?;
-        let span = CompletionSpanBuilder::new("openai", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
+        let span = CompletionSpanBuilder::new(
+            Ext::PROVIDER_NAME,
+            &request.model,
+            CompletionOperation::Chat,
+        )
+        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
+        .build();
         let body = serde_json::to_vec(&request)?;
 
         if enabled!(Level::TRACE) {
@@ -2262,8 +2415,11 @@ where
 
             if response.status().is_success() {
                 let t = http_client::text(response).await?;
-                let response = serde_json::from_str::<Self::Response>(&t)?;
+                let response = serde_json::from_str::<CompletionResponse>(&t)?;
                 let span = tracing::Span::current();
+                // `gen_ai.response.id` is the response ID (`resp_...`), which is
+                // deliberately *not* the assistant message ID (`msg_...`) that
+                // the normalized response carries.
                 span.record("gen_ai.response.id", &response.id);
                 span.record("gen_ai.response.model", &response.model);
                 if let Some(ref usage) = response.usage {
@@ -2283,7 +2439,7 @@ where
                         response = serde_json::to_string_pretty(&response)?
                     );
                 }
-                response.try_into()
+                Ok(response)
             } else {
                 let status = response.status();
                 let text = http_client::text(response).await?;
@@ -2293,23 +2449,69 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<Ext, H> completion::CompletionModel for GenericResponsesCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: crate::client::Provider
+        + ResponsesProviderExt
+        + crate::client::DebugExt
+        + Clone
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+{
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        // The OpenAI Responses API constrains only the final assistant message via
+        // `text.format`; tools are still called across turns, so native structured
+        // output composes with tool calls. See issue #1928.
+        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: crate::completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self.raw_completion(completion_request).await?;
+        response.normalize(Ext::PROVIDER_NAME)
+    }
 
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericResponsesCompletionModel::stream(self, request).await
     }
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
+impl<Ext, H> crate::client::ConstructCompletionModel<crate::client::Client<Ext, H>>
+    for GenericResponsesCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
+    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
+    H: Clone + Default + std::fmt::Debug + 'static,
+{
+    fn construct(client: &crate::client::Client<Ext, H>, model: String) -> Self {
+        Self::new(client.clone(), model)
+    }
+}
 
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        // Extract the msg_ ID from the first Output::Message item
+/// Normalize an OpenAI Responses API completion.
+///
+/// The provider descriptor name is an *input* rather than a constant: ChatGPT
+/// and Copilot return this exact wire shape, so hardcoding `"openai"` here would
+/// mislabel them. Taking it as part of the conversion makes the correct name
+/// impossible to forget.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
+        // The assistant message ID (`msg_...`) from the first message output
+        // item. This is NOT `response.id` (`resp_...`), which identifies the
+        // whole response; only the message ID pairs reasoning items with their
+        // output items across turns.
         let message_id = response.output.iter().find_map(|item| match item {
             Output::Message(msg) => Some(msg.id.clone()),
             _ => None,
@@ -2348,15 +2550,17 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(crate::completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id,
-        })
+        let finish_reason =
+            map_finish_reason(&response.status, response.incomplete_details.as_ref());
+
+        Ok(completion::CompletionResponse::new(choice, usage, provider)
+            .with_optional_message_id(message_id)
+            .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+            .with_optional_model(Some(response.model.as_str()).filter(|model| !model.is_empty()))
+            .with_optional_finish_reason(finish_reason))
     }
 }
 
@@ -2622,14 +2826,11 @@ fn responses_user_content(content: message::UserContent) -> Result<UserContent, 
 }
 
 fn responses_tool_result(tool_result: message::ToolResult) -> Result<Message, MessageError> {
+    let tool_call_id = tool_result.wire_call_id().to_owned();
     let output = responses_tool_result_output(tool_result.content)?;
 
     Ok(Message::ToolResult {
-        tool_call_id: tool_result.call_id.ok_or_else(|| {
-            MessageError::ConversionError(
-                "Tool result `call_id` is required for OpenAI Responses API".into(),
-            )
-        })?,
+        tool_call_id,
         output,
     })
 }
@@ -2689,22 +2890,24 @@ impl TryFrom<message::Message> for Vec<Message> {
                             }
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                            id: tool_id,
-                            call_id,
+                            id,
+                            provider,
                             function,
                             ..
                         }) => {
+                            let (call_id, item_id) = match provider {
+                                Some(provider) => {
+                                    let item_id = provider.item_id.clone().unwrap_or_default();
+                                    (provider.call_id, item_id)
+                                }
+                                None => (id.into_string(), String::new()),
+                            };
                             messages.push(Message::Assistant {
                                 content: OneOrMany::one(AssistantContentType::ToolCall(
                                     OutputFunctionCall {
-                                        call_id: call_id.ok_or_else(|| {
-                                            MessageError::ConversionError(
-                                                "Tool call `call_id` is required for OpenAI Responses API"
-                                                    .into(),
-                                            )
-                                        })?,
-                                        arguments: function.arguments,
-                                        id: tool_id,
+                                        call_id,
+                                        arguments: function.arguments.into(),
+                                        id: item_id,
                                         name: function.name,
                                         status: ToolStatus::Completed,
                                     },
@@ -2787,8 +2990,10 @@ mod tests {
     fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
         message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
-                id: "result-id".to_string(),
-                call_id: Some("call-id".to_string()),
+                call: message::ToolCallId::new_or_mint("call-id"),
+                provider: message::ProviderCallId::new("call-id")
+                    .map(|provider| provider.with_item_id("result-id")),
+                name: "tool".to_string(),
                 content: OneOrMany::one(content),
             })),
         }
@@ -2802,6 +3007,7 @@ mod tests {
                 message::UserContent::tool_result_with_call_id(
                     "result-id",
                     "call-id".to_string(),
+                    "tool",
                     OneOrMany::one(message::ToolResultContent::text("tool output")),
                 ),
                 message::UserContent::text("after"),
@@ -2821,6 +3027,134 @@ mod tests {
                 && tool_call_id == "call-id"
                 && matches!(after.first(), UserContent::InputText { text } if text == "after")
         ));
+    }
+
+    fn reasoning_input_items(items: &[InputItem]) -> Vec<serde_json::Value> {
+        items
+            .iter()
+            .map(|item| serde_json::to_value(item).expect("input item should serialize"))
+            .filter(|value| value["type"] == "reasoning")
+            .collect()
+    }
+
+    /// F7 leak route (a): reasoning replayed cross-provider — another
+    /// provider's stream aggregated under a boundary-minted id and swapped
+    /// onto a Responses model — must not serialize the fabricated id
+    /// upstream; the item is dropped like main dropped id-less reasoning.
+    /// A wire-plausible id keeps round-tripping.
+    #[tokio::test]
+    async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::MockStreamEvent;
+        use futures::StreamExt as _;
+
+        // The constant-id shape gemini/ollama/chat-compat streams leave in
+        // history, via the mock model's streaming pipeline.
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::reasoning_delta("thinking hard"),
+            MockStreamEvent::text("answer"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]]);
+        let request = CompletionRequestBuilder::new(model.clone(), "hi").build();
+        let mut stream = model.stream(request).await.expect("mock stream");
+        while stream.next().await.is_some() {}
+        let choice = stream.choice.clone();
+        // The provenance funnel: a minted stream identity never becomes the
+        // durable `Reasoning::id`, so the replayed history carries no id at
+        // all — there is nothing for a serializer gate to filter, and no
+        // gate exists.
+        assert!(
+            choice.iter().any(
+                |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
+                    if reasoning.id.is_none())
+            ),
+            "a minted stream identity must aggregate as an id-less reasoning part"
+        );
+
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: choice,
+        })
+        .expect("history should convert");
+        assert!(
+            reasoning_input_items(&items).is_empty(),
+            "an id-less reasoning part must not reach the request input"
+        );
+
+        // A wire-plausible id is provider-issued and must round-trip.
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: OneOrMany::one(message::AssistantContent::Reasoning(message::Reasoning {
+                id: Some("rs_0123".to_string()),
+                content: vec![message::ReasoningContent::Text {
+                    text: "real item".to_string(),
+                    signature: None,
+                }],
+            })),
+        })
+        .expect("history should convert");
+        let reasoning = reasoning_input_items(&items);
+        assert_eq!(reasoning.len(), 1);
+        assert_eq!(reasoning[0]["id"], "rs_0123");
+    }
+
+    /// F7 leak route (b), closed structurally: a same-provider delta-only
+    /// Responses stream whose reasoning deltas lack `item_id` keys
+    /// accumulation by a minted identity that never becomes a durable id, so
+    /// the next request carries no fabricated `output-{index}` item.
+    #[tokio::test]
+    async fn delta_only_stream_minted_output_ids_are_not_serialized_upstream() {
+        use crate::test_utils::streaming_conformance::{fixtures, ok_chunks};
+        use bytes::Bytes;
+
+        let sse = |frame: &serde_json::Value| Bytes::from(format!("data: {frame}\n\n"));
+        let frames = vec![
+            // No `item_id`: the streaming adapter mints `output-0`.
+            sse(&json!({
+                "type": "response.reasoning_text.delta",
+                "output_index": 0,
+                "content_index": 0,
+                "sequence_number": 1,
+                "delta": "unattributed thought",
+            })),
+            sse(&json!({
+                "type": "response.completed",
+                "sequence_number": 2,
+                "response": {
+                    "id": "resp_1",
+                    "object": "response",
+                    "created_at": 0,
+                    "status": "completed",
+                    "model": "gpt-5.4",
+                    "output": [],
+                    "tools": [],
+                    "usage": null,
+                },
+            })),
+        ];
+        let drained = fixtures::openai_responses::driver()
+            .drive(ok_chunks(frames))
+            .await
+            .expect("stream should complete");
+        // The minted `output_index` identity keys accumulation only; the
+        // aggregated part carries no durable id, so nothing can go upstream.
+        assert!(
+            drained.choice.iter().any(
+                |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
+                    if reasoning.id.is_none())
+            ),
+            "an id-less delta stream must aggregate as an id-less reasoning part"
+        );
+
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: drained.choice.clone(),
+        })
+        .expect("history should convert");
+        assert!(
+            reasoning_input_items(&items).is_empty(),
+            "an id-less reasoning part must not reach the request input"
+        );
     }
 
     #[test]
@@ -2872,8 +3206,10 @@ mod tests {
 
         let input = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
-                id: "result-id".to_string(),
-                call_id: Some("call-id".to_string()),
+                call: message::ToolCallId::new_or_mint("call-id"),
+                provider: message::ProviderCallId::new("call-id")
+                    .map(|provider| provider.with_item_id("result-id")),
+                name: "tool".to_string(),
                 content,
             })),
         };
@@ -2976,8 +3312,10 @@ mod tests {
         .expect("mixed tool output is non-empty");
         let input = message::Message::User {
             content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
-                id: "result-id".to_string(),
-                call_id: Some("call-id".to_string()),
+                call: message::ToolCallId::new_or_mint("call-id"),
+                provider: message::ProviderCallId::new("call-id")
+                    .map(|provider| provider.with_item_id("result-id")),
+                name: "tool".to_string(),
                 content,
             })),
         };
@@ -3739,7 +4077,7 @@ mod tests {
             total_tokens: 150,
         };
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
 
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
@@ -3762,7 +4100,7 @@ mod tests {
 
         assert!(usage.output_tokens_details.is_none());
 
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
 
         assert_eq!(token_usage.input_tokens, 100);
         assert_eq!(token_usage.cached_input_tokens, 25);
@@ -3811,8 +4149,9 @@ mod tests {
             json!("thinking through the answer")
         );
 
-        let completion: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().expect("response should convert");
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
+            .expect("response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert!(matches!(
             items[0],
@@ -3867,8 +4206,8 @@ mod tests {
         }))
         .expect("reasoning-only response should deserialize");
 
-        let completion: completion::CompletionResponse<CompletionResponse> = response
-            .try_into()
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
             .expect("reasoning-only response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
 
@@ -3892,12 +4231,211 @@ mod tests {
         }))
         .expect("empty response shape should deserialize");
 
-        let err = completion::CompletionResponse::<CompletionResponse>::try_from(response)
+        let err = response
+            .normalize("openai")
             .expect_err("empty response without reasoning should be rejected");
 
         assert!(
             err.to_string()
                 .contains("Response contained no message or tool call")
+        );
+    }
+
+    fn incomplete_because(reason: &str) -> IncompleteDetailsReason {
+        IncompleteDetailsReason {
+            reason: reason.to_string(),
+        }
+    }
+
+    #[test]
+    fn finish_reason_maps_every_documented_terminal_state() {
+        assert_eq!(
+            map_finish_reason(&ResponseStatus::Completed, None),
+            Some(completion::FinishReason::Stop)
+        );
+        assert_eq!(
+            map_finish_reason(
+                &ResponseStatus::Incomplete,
+                Some(&incomplete_because("max_output_tokens"))
+            ),
+            Some(completion::FinishReason::Length)
+        );
+        assert_eq!(
+            map_finish_reason(
+                &ResponseStatus::Incomplete,
+                Some(&incomplete_because("content_filter"))
+            ),
+            Some(completion::FinishReason::ContentFilter)
+        );
+        // `incomplete_details` on a completed turn is not a termination reason.
+        assert_eq!(
+            map_finish_reason(
+                &ResponseStatus::Completed,
+                Some(&incomplete_because("noise"))
+            ),
+            Some(completion::FinishReason::Stop)
+        );
+        // In-flight statuses are not terminations at all.
+        assert_eq!(map_finish_reason(&ResponseStatus::InProgress, None), None);
+        assert_eq!(map_finish_reason(&ResponseStatus::Queued, None), None);
+    }
+
+    #[test]
+    fn finish_reason_preserves_unknown_values_verbatim() {
+        // A reason OpenAI adds later must survive in OpenAI's own spelling
+        // rather than being smoothed into a natural stop.
+        assert_eq!(
+            map_finish_reason(
+                &ResponseStatus::Incomplete,
+                Some(&incomplete_because("MAX_TOOL_CALLS"))
+            ),
+            Some(completion::FinishReason::Other(
+                "MAX_TOOL_CALLS".to_string()
+            ))
+        );
+        // So must a terminal status with no normalized counterpart, and an
+        // `incomplete` that states no reason.
+        assert_eq!(
+            map_finish_reason(&ResponseStatus::Failed, None),
+            Some(completion::FinishReason::Other("failed".to_string()))
+        );
+        assert_eq!(
+            map_finish_reason(&ResponseStatus::Cancelled, None),
+            Some(completion::FinishReason::Other("cancelled".to_string()))
+        );
+        assert_eq!(
+            map_finish_reason(&ResponseStatus::Incomplete, None),
+            Some(completion::FinishReason::Other("incomplete".to_string()))
+        );
+        assert_eq!(
+            map_finish_reason(&ResponseStatus::Incomplete, Some(&incomplete_because(""))),
+            Some(completion::FinishReason::Other("incomplete".to_string()))
+        );
+    }
+
+    #[test]
+    fn completion_response_carries_the_message_id_not_the_response_id() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "output": [{
+                "type": "message",
+                "id": "msg_456",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{
+                    "type": "output_text",
+                    "annotations": [],
+                    "text": "done"
+                }]
+            }],
+            "tools": []
+        }))
+        .expect("response should deserialize");
+
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
+            .expect("response should convert");
+
+        // The two IDs are distinct in this API: `resp_...` names the response,
+        // `msg_...` names the assistant message.
+        assert_eq!(completion.message_id.as_deref(), Some("msg_456"));
+        assert_eq!(completion.provider, "openai");
+        assert_eq!(completion.model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(
+            completion.finish_reason(),
+            Some(completion::FinishReason::Stop)
+        );
+    }
+
+    #[test]
+    fn completion_response_provider_name_is_an_input() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.3-codex",
+            "output": [{
+                "type": "message",
+                "id": "msg_456",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{ "type": "output_text", "annotations": [], "text": "done" }]
+            }],
+            "tools": []
+        }))
+        .expect("response should deserialize");
+
+        let completion: completion::CompletionResponse = response
+            .normalize("chatgpt")
+            .expect("response should convert");
+
+        assert_eq!(completion.provider, "chatgpt");
+    }
+
+    #[test]
+    fn completion_response_completed_with_tool_call_reports_tool_calls() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-5.4",
+            "output": [{
+                "type": "function_call",
+                "id": "fc_1",
+                "call_id": "call_1",
+                "name": "get_weather",
+                "arguments": "{\"city\":\"London\"}",
+                "status": "completed"
+            }],
+            "tools": []
+        }))
+        .expect("response should deserialize");
+
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
+            .expect("response should convert");
+
+        // `completed` is reconciled up to `ToolCalls` because the turn carried
+        // a function call.
+        assert_eq!(
+            completion.finish_reason(),
+            Some(completion::FinishReason::ToolCalls)
+        );
+    }
+
+    #[test]
+    fn completion_response_incomplete_reports_the_truncation_reason() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "incomplete",
+            "incomplete_details": { "reason": "max_output_tokens" },
+            "model": "gpt-5.4",
+            "output": [{
+                "type": "message",
+                "id": "msg_456",
+                "status": "incomplete",
+                "role": "assistant",
+                "content": [{ "type": "output_text", "annotations": [], "text": "half an ans" }]
+            }],
+            "tools": []
+        }))
+        .expect("response should deserialize");
+
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
+            .expect("response should convert");
+
+        assert_eq!(
+            completion.finish_reason(),
+            Some(completion::FinishReason::Length)
         );
     }
 
@@ -3952,8 +4490,9 @@ mod tests {
             })
         );
 
-        let completion: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().expect("response should convert");
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
+            .expect("response should convert");
         let items = completion.choice.iter().collect::<Vec<_>>();
         assert_eq!(items.len(), 1);
         assert!(matches!(items[0], completion::AssistantContent::Text(_)));
@@ -4158,8 +4697,9 @@ mod tests {
         }))
         .expect("response should deserialize");
 
-        let completion: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().expect("response should convert");
+        let completion: completion::CompletionResponse = response
+            .normalize("openai")
+            .expect("response should convert");
         let reasoning_count = completion
             .choice
             .iter()
@@ -4519,7 +5059,7 @@ mod tests {
         };
 
         let usage = lhs + rhs;
-        let token_usage = usage.token_usage();
+        let token_usage = crate::completion::Usage::from(&usage);
 
         assert_eq!(token_usage.input_tokens, 13);
         assert_eq!(token_usage.cached_input_tokens, 2);

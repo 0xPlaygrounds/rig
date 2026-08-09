@@ -1,21 +1,32 @@
 //! Crate-internal streaming profile helpers for compatible provider tests.
 
 use crate::{
-    completion::CompletionError,
+    completion::Usage,
     providers::internal::openai_chat_completions_compatible::{
         CompatibleChoice, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-        CompatibleToolCallChunk,
+        CompatibleTerminal, CompatibleToolCallChunk,
     },
+    providers::internal::wire::WireEvent,
+    streaming::StreamFinal,
 };
 
-use super::MockResponse;
+use super::MOCK_PROVIDER;
 
-fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<MockResponse, ()> {
+fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
     CompatibleChunk {
         response_id: None,
         response_model: None,
         choice: Some(choice),
         usage: None,
+    }
+}
+
+/// Classify an unmatched mock frame as `Unknown`, mirroring how the real
+/// classifier treats unrecognizable JSON (driver policy: warn + skip).
+fn unknown_frame<U, D>(data: &str) -> WireEvent<CompatibleChunk<U, D>> {
+    WireEvent::Unknown {
+        event_type: data.to_owned(),
+        value: serde_json::Value::String(data.to_owned()).into(),
     }
 }
 
@@ -46,33 +57,34 @@ fn tool_call_chunk(
     }
 }
 
-/// Streaming profile that yields a pending tool call and then errors.
+/// Streaming profile that yields a pending tool call and then a corrupt frame.
 #[derive(Clone, Copy)]
 pub(crate) struct ErrorAfterPendingToolCallProfile;
 
 impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
-    type Usage = MockResponse;
+    type Usage = Usage;
     type Detail = ();
-    type FinalResponse = MockResponse;
+    type FinalResponse = StreamFinal;
 
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         match data {
-            "start" => Ok(Some(test_chunk(tool_call_choice(
-                CompatibleFinishReason::Other,
+            "start" => WireEvent::Known(test_chunk(tool_call_choice(
+                CompatibleFinishReason::Absent,
                 vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
-            )))),
-            "bad" => Err(CompletionError::ProviderError(
-                "normalize failed".to_owned(),
+            ))),
+            "bad" => WireEvent::Corrupt(<serde_json::Error as serde::de::Error>::custom(
+                "normalize failed",
             )),
-            _ => Ok(None),
+            _ => unknown_frame(data),
         }
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(
+        &self,
+        terminal: CompatibleTerminal<Self::Usage>,
+    ) -> Self::FinalResponse {
+        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason)
     }
 }
 
@@ -81,17 +93,14 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
 pub(crate) struct DistinctToolCallEvictionProfile;
 
 impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
-    type Usage = MockResponse;
+    type Usage = Usage;
     type Detail = ();
-    type FinalResponse = MockResponse;
+    type FinalResponse = StreamFinal;
 
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         let choice = match data {
             "first_start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Absent,
                 vec![tool_call_chunk(
                     0,
                     Some("call_aaa"),
@@ -100,7 +109,7 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
                 )],
             )),
             "first_args" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Absent,
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":\"one\"}"))],
             )),
             // A partial (still-streaming) argument fragment: the accumulator
@@ -108,11 +117,11 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
             // `{...}` object. If the first call is evicted at this point, its
             // arguments are a non-object string — the exact #1958 leak condition.
             "first_args_partial" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Absent,
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":"))],
             )),
             "second_start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Absent,
                 vec![tool_call_chunk(
                     0,
                     Some("call_bbb"),
@@ -121,25 +130,104 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
                 )],
             )),
             "second_args" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Absent,
                 vec![tool_call_chunk(0, None, None, Some("{\"query\":\"two\"}"))],
             )),
             "finish" => Some(tool_call_choice(
-                CompatibleFinishReason::ToolCalls,
+                CompatibleFinishReason::Reported(crate::completion::FinishReason::ToolCalls),
                 Vec::new(),
             )),
             _ => None,
         };
 
-        Ok(choice.map(test_chunk))
+        match choice {
+            Some(choice) => WireEvent::Known(test_chunk(choice)),
+            None => unknown_frame(data),
+        }
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(
+        &self,
+        terminal: CompatibleTerminal<Self::Usage>,
+    ) -> Self::FinalResponse {
+        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason)
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
         true
+    }
+}
+
+/// Streaming profile whose reasoning deltas straddle a complete tool call —
+/// pins that a tool call starting is a reasoning boundary on this wire.
+#[derive(Clone, Copy)]
+pub(crate) struct ReasoningAroundToolCallProfile;
+
+impl CompatibleStreamProfile for ReasoningAroundToolCallProfile {
+    type Usage = Usage;
+    type Detail = ();
+    type FinalResponse = StreamFinal;
+
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
+        let choice = match data {
+            "reasoning_a" => Some(CompatibleChoice {
+                finish_reason: CompatibleFinishReason::Absent,
+                text: None,
+                reasoning: Some("thinking before".to_owned()),
+                tool_calls: Vec::new(),
+                details: Vec::new(),
+            }),
+            "tool_call" => Some(tool_call_choice(
+                CompatibleFinishReason::Absent,
+                vec![tool_call_chunk(
+                    0,
+                    Some("call_mid"),
+                    Some("probe"),
+                    Some("{\"q\":1}"),
+                )],
+            )),
+            "reasoning_b" => Some(CompatibleChoice {
+                finish_reason: CompatibleFinishReason::Absent,
+                text: None,
+                reasoning: Some("thinking after".to_owned()),
+                tool_calls: Vec::new(),
+                details: Vec::new(),
+            }),
+            // One chunk carrying BOTH a reasoning delta and a complete tool
+            // call — pins the adapter's within-chunk order: the reasoning is
+            // emitted (and its block closed) before the tool call.
+            "combined" => Some(CompatibleChoice {
+                finish_reason: CompatibleFinishReason::Absent,
+                text: None,
+                reasoning: Some("thinking inline".to_owned()),
+                tool_calls: vec![tool_call_chunk(
+                    0,
+                    Some("call_mid"),
+                    Some("probe"),
+                    Some("{\"q\":1}"),
+                )],
+                details: Vec::new(),
+            }),
+            "finish" => Some(tool_call_choice(
+                CompatibleFinishReason::Reported(crate::completion::FinishReason::ToolCalls),
+                Vec::new(),
+            )),
+            _ => None,
+        };
+
+        match choice {
+            Some(choice) => WireEvent::Known(test_chunk(choice)),
+            None => unknown_frame(data),
+        }
+    }
+
+    fn build_final_response(
+        &self,
+        terminal: CompatibleTerminal<Self::Usage>,
+    ) -> Self::FinalResponse {
+        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason)
     }
 }
 
@@ -148,17 +236,14 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
 pub(crate) struct FinishReasonCleanupProfile;
 
 impl CompatibleStreamProfile for FinishReasonCleanupProfile {
-    type Usage = MockResponse;
+    type Usage = Usage;
     type Detail = ();
-    type FinalResponse = MockResponse;
+    type FinalResponse = StreamFinal;
 
-    fn normalize_chunk(
-        &self,
-        data: &str,
-    ) -> Result<Option<CompatibleChunk<Self::Usage, Self::Detail>>, CompletionError> {
+    fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
         let choice = match data {
             "start" => Some(tool_call_choice(
-                CompatibleFinishReason::Other,
+                CompatibleFinishReason::Absent,
                 vec![tool_call_chunk(
                     0,
                     Some("call_123"),
@@ -167,16 +252,23 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
                 )],
             )),
             "finish" => Some(tool_call_choice(
-                CompatibleFinishReason::ToolCalls,
+                CompatibleFinishReason::Reported(crate::completion::FinishReason::ToolCalls),
                 Vec::new(),
             )),
             _ => None,
         };
 
-        Ok(choice.map(test_chunk))
+        match choice {
+            Some(choice) => WireEvent::Known(test_chunk(choice)),
+            None => unknown_frame(data),
+        }
     }
 
-    fn build_final_response(&self, _usage: Self::Usage) -> Self::FinalResponse {
-        MockResponse::new()
+    fn build_final_response(
+        &self,
+        terminal: CompatibleTerminal<Self::Usage>,
+    ) -> Self::FinalResponse {
+        StreamFinal::new(MOCK_PROVIDER, terminal.usage)
+            .with_optional_finish_reason(terminal.finish_reason)
     }
 }

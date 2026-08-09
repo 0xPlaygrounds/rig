@@ -2,10 +2,9 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::{client::ApiResponse, streaming::StreamingCompletionResponse};
-use crate::completion::{
-    CompletionError, CompletionRequest as CoreCompletionRequest, GetTokenUsage,
-};
+use super::client::ApiResponse;
+use crate::completion::NormalizeCompletionResponse;
+use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::http_client::{self, HttpClientExt};
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::one_or_many::string_or_one_or_many;
@@ -604,6 +603,11 @@ impl TryFrom<message::ToolResult> for Message {
     type Error = message::MessageError;
 
     fn try_from(value: message::ToolResult) -> Result<Self, Self::Error> {
+        // The wire requires a non-empty correlator: the provider-issued
+        // call id when one exists, else rig's minted handle — which is
+        // unique and non-empty by construction, unlike the old empty-
+        // string sentinel.
+        let tool_call_id = value.wire_call_id().to_owned();
         let parts = value
             .content
             .into_iter()
@@ -623,9 +627,7 @@ impl TryFrom<message::ToolResult> for Message {
         };
 
         Ok(Message::ToolResult {
-            // `call_id` carries the provider-issued call id when it differs
-            // from the rig-level tool-result id (e.g. Mistral, llama.cpp).
-            tool_call_id: value.call_id.unwrap_or(value.id),
+            tool_call_id,
             content,
         })
     }
@@ -922,6 +924,11 @@ impl From<message::ToolCall> for ToolCall {
             // which prefers the provider-issued `call_id` over the rig-level
             // id (e.g. Responses-API history replayed via chat completions).
             id: tool_call.call_id.unwrap_or(tool_call.id),
+            // Keep the assistant echo consistent with the tool-result side:
+            // the provider-issued call id when one exists (e.g. a
+            // Responses-API history replayed via chat completions), else
+            // rig's minted handle — never empty.
+            id: tool_call.wire_call_id().to_owned(),
             r#type: ToolType::default(),
             function: Function {
                 name: tool_call.function.name,
@@ -933,16 +940,13 @@ impl From<message::ToolCall> for ToolCall {
 
 impl From<ToolCall> for message::ToolCall {
     fn from(tool_call: ToolCall) -> Self {
-        Self {
-            id: tool_call.id,
-            call_id: None,
-            function: message::ToolFunction {
+        message::ToolCall::from_wire(
+            tool_call.id,
+            message::ToolFunction {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
             },
-            signature: None,
-            additional_params: None,
-        }
+        )
     }
 }
 
@@ -997,8 +1001,11 @@ impl TryFrom<Message> for message::Message {
                 tool_call_id,
                 content,
             } => message::Message::User {
-                content: OneOrMany::one(message::UserContent::tool_result(
+                // OpenAI chat tool messages carry no tool name; this
+                // conversion is lossy for name-keyed wires.
+                content: OneOrMany::one(message::UserContent::tool_result_from_wire(
                     tool_call_id,
+                    "",
                     OneOrMany::one(message::ToolResultContent::text(content.as_text())),
                 )),
             },
@@ -1143,13 +1150,22 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionResponse> {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
+/// Normalize an OpenAI-compatible chat completion response.
+///
+/// The provider descriptor name is an *input* rather than a constant: this same
+/// wire shape is shared by every OpenAI-compatible provider, so baking in
+/// `"openai"` here would mislabel Groq, Together, DeepSeek and the rest. Taking
+/// it as part of the conversion makes the correct name impossible to forget.
+impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self;
         let choice = response.choices.first().ok_or_else(|| {
             CompletionError::ResponseError("Response contained no choices".to_owned())
         })?;
+
+        let finish_reason = Some(choice.finish_reason.as_str())
+            .filter(|reason| !reason.is_empty())
+            .map(crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason);
 
         let content = match &choice.message {
             Message::Assistant {
@@ -1210,15 +1226,13 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse<CompletionRe
         let usage = response
             .usage
             .as_ref()
-            .map(GetTokenUsage::token_usage)
+            .map(crate::completion::Usage::from)
             .unwrap_or_default();
 
-        Ok(completion::CompletionResponse {
-            choice,
-            usage,
-            raw_response: response,
-            message_id: None,
-        })
+        Ok(completion::CompletionResponse::new(choice, usage, provider)
+            .with_response_id(response.id.as_str())
+            .with_model(response.model.as_str())
+            .with_optional_finish_reason(finish_reason))
     }
 }
 
@@ -1369,8 +1383,21 @@ impl fmt::Display for Usage {
     }
 }
 
-impl GetTokenUsage for Usage {
-    fn token_usage(&self) -> crate::completion::Usage {
+impl From<&Usage> for crate::completion::Usage {
+    fn from(value: &Usage) -> crate::completion::Usage {
+        value.to_normalized()
+    }
+}
+
+impl From<Usage> for crate::completion::Usage {
+    fn from(value: Usage) -> crate::completion::Usage {
+        value.to_normalized()
+    }
+}
+
+impl Usage {
+    /// Normalize this provider usage payload into rig's [`crate::completion::Usage`].
+    pub fn to_normalized(&self) -> crate::completion::Usage {
         let mut usage = crate::providers::internal::completion_usage(
             self.prompt_tokens as u64,
             self.completion_tokens
@@ -1448,7 +1475,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// fallbacks, DeepSeek's cache hit/miss counters) substitute their own.
     type StreamingUsage: Clone
         + Default
-        + GetTokenUsage
+        + Into<crate::completion::Usage>
         + Serialize
         + serde::de::DeserializeOwned
         + Unpin
@@ -1457,10 +1484,14 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         + 'static;
 
     /// The chat-completions payload this provider returns.
+    ///
+    /// The normalization bound is stated over `(&str, Self::Response)` so the
+    /// provider descriptor name is threaded through the conversion instead of
+    /// being hardcoded by whichever wire type happens to implement it.
     type Response: serde::de::DeserializeOwned
         + Serialize
-        + crate::telemetry::ProviderResponseExt<Usage: GetTokenUsage>
-        + TryInto<completion::CompletionResponse<Self::Response>, Error = CompletionError>
+        + crate::telemetry::ProviderResponseExt<Usage: Into<crate::completion::Usage>>
+        + crate::completion::NormalizeCompletionResponse
         + WasmCompatSend
         + WasmCompatSync;
 
@@ -1524,14 +1555,40 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         self.finalize_request_body(body)
     }
 
-    /// Decorate streamed tool calls from provider-specific streaming detail
-    /// payloads. Most OpenAI-compatible providers do not emit such details.
+    /// Map a provider-specific streaming detail payload onto a complete
+    /// reasoning block — its identity and content — that the stream emits as
+    /// the turn's own output. OpenRouter's `reasoning_details` entries of type
+    /// `reasoning.encrypted` are the in-tree case: the wire carries them with
+    /// `reasoning: null`, so this hook is the only place they can reach the
+    /// aggregated choice (and, from there, the next turn's request).
+    ///
+    /// A detail maps to *either* a reasoning block or a
+    /// [`decoration`](Self::decorate_streaming_tool_call), never both.
+    fn streaming_detail_reasoning(
+        &self,
+        detail: &serde_json::Value,
+    ) -> Option<(
+        crate::streaming::StreamPartId,
+        Option<crate::streaming::WireId>,
+        crate::message::ReasoningContent,
+    )> {
+        let _ = detail;
+        None
+    }
+
+    /// Decorate a streamed tool call from a provider-specific streaming
+    /// detail payload, matched by its established provider id. Most
+    /// OpenAI-compatible providers do not emit such details.
+    ///
+    /// The decoration is an adapter-level event rewrite: it rides the
+    /// adapter's tool-input end event onto the completed call; fragment
+    /// assembly itself lives in the shared accumulator.
     fn decorate_streaming_tool_call(
         &self,
         detail: &serde_json::Value,
-        tool_calls: &mut std::collections::HashMap<usize, crate::streaming::RawStreamingToolCall>,
-    ) {
-        let _ = (detail, tool_calls);
+    ) -> Option<crate::streaming::ToolCallDecoration> {
+        let _ = detail;
+        None
     }
 }
 
@@ -1910,7 +1967,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
     }
 }
 
-impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
+impl<Ext, H> GenericCompletionModel<Ext, H>
 where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
@@ -1923,34 +1980,18 @@ where
         + 'static,
     H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
 {
-    type Response = Ext::Response;
-    type StreamingResponse = StreamingCompletionResponse<Ext::StreamingUsage>;
-
-    type Client = crate::client::Client<Ext, H>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    // OpenAI Chat Completions *defers* `response_format` while tools are present
-    // and no tool result exists yet (see `should_apply_response_format`), then
-    // applies it once a tool result is in the history. So the native constraint
-    // does not suppress tool calls — they compose — which is what this flag
-    // governs. (Caveat: a turn-1 answer with no tool call is therefore not
-    // schema-constrained; `Native` is "guaranteed" only once tools have run.)
-    // See issue #1928.
-    fn composes_native_output_with_tools(&self) -> bool {
-        // Providers that drop `output_schema` (SUPPORTS_RESPONSE_FORMAT =
-        // false) cannot compose native structured output with tools; the
-        // agent then falls back to tool-mode enforcement as their
-        // pre-migration hand-rolled models did.
-        Ext::SUPPORTS_RESPONSE_FORMAT
-    }
-
-    async fn completion(
+    /// Execute a chat completion and return the provider's own wire response.
+    ///
+    /// This is the escape hatch for provider-specific fields rig does not
+    /// normalize. It shares the request builder, transport, telemetry, and
+    /// error handling with
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
+    /// which calls it and then applies the provider-local mapping — one
+    /// network request either way.
+    pub async fn raw_completion(
         &self,
         completion_request: CoreCompletionRequest,
-    ) -> Result<completion::CompletionResponse<Ext::Response>, CompletionError> {
+    ) -> Result<Ext::Response, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
@@ -2006,7 +2047,11 @@ where
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_response_metadata(&response);
-                        span.record_token_usage(&response.get_usage());
+                        let usage = response
+                            .get_usage()
+                            .map(Into::into)
+                            .unwrap_or_default();
+                        span.record_token_usage(&usage);
                         if enabled!(Level::TRACE) {
                             tracing::trace!(
                                 target: "rig::completions",
@@ -2015,7 +2060,7 @@ where
                             );
                         }
 
-                        response.try_into()
+                        Ok(response)
                     }
                     ApiResponse::Err(err) => {
                         tracing::warn!(message = %err.message, "provider returned an error response");
@@ -2030,15 +2075,61 @@ where
         .instrument(span)
         .await
     }
+}
+
+impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>:
+        HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+    Ext: crate::client::Provider
+        + OpenAICompatibleProvider
+        + crate::client::DebugExt
+        + Clone
+        + WasmCompatSend
+        + WasmCompatSync
+        + 'static,
+    H: Clone + Default + std::fmt::Debug + WasmCompatSend + WasmCompatSync + 'static,
+{
+    // OpenAI Chat Completions *defers* `response_format` while tools are present
+    // and no tool result exists yet (see `should_apply_response_format`), then
+    // applies it once a tool result is in the history. So the native constraint
+    // does not suppress tool calls — they compose — which is what this flag
+    // governs. (Caveat: a turn-1 answer with no tool call is therefore not
+    // schema-constrained; `Native` is "guaranteed" only once tools have run.)
+    // See issue #1928.
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        // Providers that drop `output_schema` (SUPPORTS_RESPONSE_FORMAT =
+        // false) cannot compose native structured output with tools; the
+        // agent then falls back to tool-mode enforcement as their
+        // pre-migration hand-rolled models did.
+        completion::ProviderCapabilities::default()
+            .with_native_output_tool_composition(Ext::SUPPORTS_RESPONSE_FORMAT)
+    }
+
+    async fn completion(
+        &self,
+        completion_request: CoreCompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let response = self.raw_completion(completion_request).await?;
+        response.normalize(Ext::PROVIDER_NAME)
+    }
 
     async fn stream(
         &self,
         request: CoreCompletionRequest,
-    ) -> Result<
-        crate::streaming::StreamingCompletionResponse<Self::StreamingResponse>,
-        CompletionError,
-    > {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
         GenericCompletionModel::stream(self, request).await
+    }
+}
+
+impl<Ext, H> crate::client::ConstructCompletionModel<crate::client::Client<Ext, H>>
+    for GenericCompletionModel<Ext, H>
+where
+    crate::client::Client<Ext, H>: std::fmt::Debug + Clone + 'static,
+    Ext: crate::client::Provider + Clone + 'static,
+{
+    fn construct(client: &crate::client::Client<Ext, H>, model: String) -> Self {
+        Self::new(client.clone(), model)
     }
 }
 
@@ -2058,6 +2149,60 @@ where
 
 #[cfg(test)]
 mod tests {
+    /// Boundary-minted tool ids (`tool-{index}`, from id-less streamed calls)
+    /// replay to the chat wire as a self-consistent pair: the assistant
+    /// message's `tool_calls[].id` and the tool result's `tool_call_id` carry
+    /// the same minted value. The wire requires both fields, so gating minted
+    /// ids out (the Responses reasoning treatment) is impossible here — and
+    /// unnecessary: a gateway that omitted ids has no server-side id to
+    /// validate against, so the consistent pair is accepted. This pins the
+    /// per-wire upstream rule documented on `SyntheticIds`.
+    #[test]
+    fn minted_tool_ids_replay_as_a_consistent_pair() {
+        let assistant = crate::message::Message::Assistant {
+            id: None,
+            content: crate::OneOrMany::one(crate::message::AssistantContent::tool_call(
+                "tool-0",
+                "get_weather",
+                serde_json::json!({"city": "Tokyo"}),
+            )),
+        };
+        let tool_result = crate::message::Message::User {
+            content: crate::OneOrMany::one(crate::message::UserContent::tool_result(
+                "tool-0",
+                "get_weather",
+                crate::OneOrMany::one(crate::message::ToolResultContent::text("22C")),
+            )),
+        };
+
+        let assistant_wire: Vec<super::Message> = assistant.try_into().expect("assistant converts");
+        let result_wire: Vec<super::Message> =
+            tool_result.try_into().expect("tool result converts");
+
+        let call_id = assistant_wire
+            .iter()
+            .find_map(|message| match message {
+                super::Message::Assistant { tool_calls, .. } => {
+                    tool_calls.first().map(|call| call.id.clone())
+                }
+                _ => None,
+            })
+            .expect("assistant message carries the tool call");
+        let result_id = result_wire
+            .iter()
+            .find_map(|message| match message {
+                super::Message::ToolResult { tool_call_id, .. } => Some(tool_call_id.clone()),
+                _ => None,
+            })
+            .expect("tool result message present");
+
+        assert_eq!(call_id, "tool-0");
+        assert_eq!(
+            result_id, call_id,
+            "the minted pair must be self-consistent"
+        );
+    }
+
     use super::*;
     use crate::completion::CompletionRequestBuilder;
     use crate::telemetry::ProviderResponseExt;
@@ -2075,8 +2220,9 @@ mod tests {
 
     fn request_with_multi_block_tool_result() -> CoreCompletionRequest {
         let tool_result = message::ToolResult {
-            id: "result-id".to_string(),
-            call_id: Some("call-id".to_string()),
+            call: message::ToolCallId::new_or_mint("call-id"),
+            provider: message::ProviderCallId::new("call-id"),
+            name: "tool".to_string(),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text("first"),
                 message::ToolResultContent::text("second"),
@@ -2108,6 +2254,7 @@ mod tests {
             message::UserContent::tool_result_with_call_id(
                 "result-id",
                 "call-id".to_string(),
+                "tool",
                 OneOrMany::one(message::ToolResultContent::text("tool output")),
             ),
             message::UserContent::text("after"),
@@ -2310,8 +2457,9 @@ mod tests {
     #[test]
     fn multiple_tool_result_blocks_convert_to_distinct_content_parts() {
         let result = message::ToolResult {
-            id: "result-id".to_string(),
-            call_id: Some("call-id".to_string()),
+            call: message::ToolCallId::new_or_mint("call-id"),
+            name: "tool".to_string(),
+            provider: message::ProviderCallId::new("call-id"),
             content: OneOrMany::many(vec![
                 message::ToolResultContent::text("first"),
                 message::ToolResultContent::json(serde_json::json!({
@@ -2832,6 +2980,7 @@ mod tests {
                 },
                 message::Message::tool_result(
                     "call_1",
+                    "weather",
                     "The weather in London is all fire and brimstone",
                 ),
             ])
@@ -3145,8 +3294,10 @@ mod tests {
             panic!("expected successful completion response");
         };
 
-        let response: completion::CompletionResponse<CompletionResponse> =
-            response.try_into().unwrap();
+        let response: completion::CompletionResponse =
+            response
+                .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+                .unwrap();
 
         assert_eq!(response.choice.len(), 1);
 
