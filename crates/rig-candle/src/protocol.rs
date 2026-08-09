@@ -885,6 +885,25 @@ mod tests {
 
     use super::*;
 
+    /// An immediate-EOS or whitespace-only local generation is a degenerate
+    /// but *successful* outcome, not a failure. The parser used to fabricate
+    /// an empty-text part here, which made the emptiness guard downstream in
+    /// `generation.rs` unreachable; with the fabrication gone that guard would
+    /// have started rejecting this turn, so it was removed rather than
+    /// translated. This pins that an empty local turn stays legal.
+    #[test]
+    fn a_contentless_generation_parses_to_no_items_rather_than_failing() {
+        let request = request(vec![Message::user("hi")]);
+        let parsed = parse_assistant("   ", &request, ModelFamily::Qwen3)
+            .expect("a whitespace-only generation is not a parse failure");
+        assert!(
+            parsed.items.is_empty(),
+            "an empty local turn must stay empty, got {:?}",
+            parsed.items
+        );
+        assert!(parsed.visible_text.is_empty());
+    }
+
     fn tool(name: &str) -> ToolDefinition {
         ToolDefinition {
             name: name.to_string(),

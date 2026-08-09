@@ -566,9 +566,15 @@ pub(crate) fn infer(
         loaded.profile.definition.protocol,
     )?;
     raw_response.text = parsed.visible_text;
-    let choice = rig_core::message::require_non_empty(parsed.items, || {
-        CandleError::Inference("output protocol produced no assistant content".to_string())
-    })?;
+    // No emptiness guard here on purpose. One existed, but it was unreachable:
+    // the parser fabricated an empty-text part whenever it had nothing, so
+    // `items` was never empty. Deleting that fabrication makes the guard
+    // reachable — and it would then reject a real outcome. A local model that
+    // emits EOS immediately, or only whitespace that `push_text` trims away,
+    // produced a degenerate but *successful* generation; failing it would be a
+    // new error class this migration has no business inventing. An empty
+    // assistant turn is legal everywhere else now; it is legal here too.
+    let choice = parsed.items;
 
     Ok(InferredCompletion {
         response: raw_response,
