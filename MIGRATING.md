@@ -400,6 +400,39 @@ reject.
 `test_utils::MockTurn::from_contents` returns `Self` rather than
 `Result<Self, EmptyListError>`; drop the `?` / `.expect(..)` at its call sites.
 
+**Silent behavior change — a tool whose `Output` is `Vec<ToolResultContent>`
+now sends rich content.** `IntoToolOutput` preserves the canonical
+rich-content types ahead of its `Serialize` fallback, so returning an image
+does not silently become a JSON object. That guard used to name
+`OneOrMany<ToolResultContent>` and now names `Vec<ToolResultContent>`, with
+three consequences:
+
+- `type Output = OneOrMany<ToolResultContent>` no longer compiles; change it
+  to `Vec<ToolResultContent>` and the behaviour you had is preserved.
+- `type Output = Vec<ToolResultContent>` **compiles unchanged and behaves
+  differently.** It used to miss the guard and fall through to serialization,
+  reaching the model as a single JSON tool result; it now takes the rich path
+  and reaches the model as N ordered content blocks. For most tools that is
+  the intended result, but it is a wire-payload change with no compile error
+  to announce it — check any tool with that output type.
+- an *empty* `Vec<ToolResultContent>` now produces zero blocks where it used
+  to produce one JSON block (`[]`). `CompletionRequest::validate_message_content`
+  rejects that at the boundary, naming the tool; if the empty array was the
+  payload you meant to send, return
+  `ToolResultContent::json(serde_json::json!([]))`.
+
+**Decoding accepts two shapes it used to reject: `[]` and `null`.** The
+removed container's `Deserialize` implemented only `visit_seq`. Two inputs
+that used to raise a local parse error now decode to an empty `Vec`: an empty
+array, and `null` on the fields that moved onto `json_utils::string_or_vec`
+(anthropic `Message.content` and `Content::ToolResult.content`, plus the
+OpenAI chat and Responses system/user content). Those `visit_none`/`visit_unit`
+arms cannot simply be dropped — OpenAI sends `"content": null` for a message
+whose only payload is tool calls. If you relied on the decode to reject an
+empty or null content field, that check is now yours; on the request path
+`validate_message_content` catches it before the network, **including** a
+tool result whose block list decoded to empty.
+
 **Silent behavior change — an empty assistant turn is now empty.** Providers
 used to fabricate a single empty-text part (`AssistantContent::text("")`) when
 a turn carried no content, purely because the choice could not be empty. That
