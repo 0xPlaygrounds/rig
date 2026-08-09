@@ -23,7 +23,7 @@ fn cache_point_block() -> Result<CachePointBlock, CompletionError> {
 impl AwsCompletionRequest {
     pub fn additional_params(&self) -> Option<aws_smithy_types::Document> {
         self.inner
-            .additional_params
+            .additional_params()
             .to_owned()
             .map(|params| params.into())
             .map(|doc: AwsDocument| doc.0)
@@ -32,12 +32,12 @@ impl AwsCompletionRequest {
     pub fn inference_config(&self) -> Option<InferenceConfiguration> {
         let mut inference_configuration = InferenceConfiguration::builder();
 
-        if let Some(temperature) = &self.inner.temperature {
+        if let Some(temperature) = &self.inner.temperature() {
             inference_configuration =
                 inference_configuration.set_temperature(Some(*temperature as f32));
         }
 
-        if let Some(max_tokens) = &self.inner.max_tokens {
+        if let Some(max_tokens) = &self.inner.max_tokens() {
             inference_configuration =
                 inference_configuration.set_max_tokens(Some(*max_tokens as i32));
         }
@@ -46,12 +46,15 @@ impl AwsCompletionRequest {
     }
 
     pub fn tools_config(&self) -> Result<Option<ToolConfiguration>, CompletionError> {
-        if self.inner.tool_choice == Some(rig_core::message::ToolChoice::None) {
+        if matches!(
+            self.inner.tool_choice(),
+            Some(rig_core::message::ToolChoice::None)
+        ) {
             return Ok(None);
         }
 
         let mut tools = vec![];
-        for tool_definition in self.inner.tools.iter() {
+        for tool_definition in self.inner.tools().iter() {
             let doc: AwsDocument = tool_definition.parameters.clone().into();
             let schema = ToolInputSchema::Json(doc.0);
             let tool = Tool::ToolSpec(
@@ -70,7 +73,7 @@ impl AwsCompletionRequest {
             use aws_sdk_bedrockruntime::types as aws_bedrock;
             let tool_choice = self
                 .inner
-                .tool_choice
+                .tool_choice()
                 .as_ref()
                 .map(|choice| match choice {
                     rig_core::message::ToolChoice::Auto => Ok(Some(aws_bedrock::ToolChoice::Auto(
@@ -110,7 +113,7 @@ impl AwsCompletionRequest {
 
     /// Maps rig's `output_schema` to Bedrock's `OutputConfig` for structured output.
     pub fn output_config(&self) -> Result<Option<aws_bedrock::OutputConfig>, CompletionError> {
-        let Some(schema) = self.inner.output_schema.as_ref() else {
+        let Some(schema) = self.inner.output_schema().as_ref() else {
             return Ok(None);
         };
 
@@ -146,13 +149,13 @@ impl AwsCompletionRequest {
     pub fn system_prompt(&self) -> Result<Option<Vec<SystemContentBlock>>, CompletionError> {
         let mut system_blocks = Vec::new();
 
-        if let Some(system_prompt) = self.inner.preamble.to_owned()
+        if let Some(system_prompt) = self.inner.preamble().to_owned()
             && !system_prompt.is_empty()
         {
             system_blocks.push(SystemContentBlock::Text(system_prompt));
         }
 
-        for message in self.inner.chat_history.iter() {
+        for message in self.inner.chat_history().iter() {
             if let Message::System { content } = message
                 && !content.is_empty()
             {
@@ -173,10 +176,10 @@ impl AwsCompletionRequest {
     pub fn messages(&self) -> Result<Vec<aws_bedrock::Message>, CompletionError> {
         let mut full_history: Vec<Message> = Vec::new();
 
-        if !self.inner.documents.is_empty() {
+        if !self.inner.documents().is_empty() {
             let messages = self
                 .inner
-                .documents
+                .documents()
                 .iter()
                 .map(|doc| doc.to_string())
                 .collect::<Vec<_>>()
@@ -190,7 +193,7 @@ impl AwsCompletionRequest {
             full_history.push(Message::User { content });
         }
 
-        self.inner.chat_history.iter().for_each(|message| {
+        self.inner.chat_history().iter().for_each(|message| {
             if !matches!(message, Message::System { .. }) {
                 full_history.push(message.clone());
             }
@@ -209,12 +212,16 @@ impl AwsCompletionRequest {
         // result. Skip the message-level checkpoint in that case; the
         // system-prompt cache point still applies and captures the largest
         // stable prefix.
-        let has_reasoning = self.inner.chat_history.iter().any(|message| match message {
-            Message::Assistant { content, .. } => content
-                .iter()
-                .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
-            _ => false,
-        });
+        let has_reasoning = self
+            .inner
+            .chat_history()
+            .iter()
+            .any(|message| match message {
+                Message::Assistant { content, .. } => content
+                    .iter()
+                    .any(|c| matches!(c, rig_core::completion::AssistantContent::Reasoning(_))),
+                _ => false,
+            });
 
         if self.prompt_caching
             && !has_reasoning

@@ -457,7 +457,7 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<responses_api::CompletionResponse, CompletionError> {
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = self.create_request(completion_request)?;
         let span = self.completion_span(&request, record_telemetry_content);
 
@@ -581,7 +581,7 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = self.create_request(completion_request)?;
         let span = self.completion_span(&request, record_telemetry_content);
 
@@ -639,7 +639,7 @@ where
         crate::streaming::RawStreamingResult<responses_api::streaming::StreamingCompletionResponse>,
         CompletionError,
     > {
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = self.create_request(completion_request)?;
 
         if enabled!(Level::TRACE) {

@@ -1228,10 +1228,11 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
     fn try_from(params: ResponsesRequestParams) -> Result<Self, Self::Error> {
         let ResponsesRequestParams {
             model,
-            request: mut req,
+            request: req,
             system_instructions_placement,
         } = params;
         let chat_history = req.chat_history_with_documents();
+        let mut req = req.into_parts();
         let model = req.model.clone().unwrap_or(model);
         let preamble = req.preamble.take();
         let mut instruction_parts = Vec::new();
@@ -2379,8 +2380,8 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = self.create_completion_request(completion_request)?;
         let span = CompletionSpanBuilder::new(
             Ext::PROVIDER_NAME,

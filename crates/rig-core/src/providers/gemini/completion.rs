@@ -28,7 +28,7 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
-use crate::completion::{self, CompletionError, CompletionRequest};
+use crate::completion::{self, CompletionError, CompletionRequest, CompletionRequestParts};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
@@ -101,8 +101,8 @@ where
             CompletionOperation::GenerateContent,
         )
         .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
+            completion_request.preamble().as_deref(),
+            completion_request.record_telemetry_content(),
         )
         .build();
 
@@ -216,7 +216,7 @@ pub(crate) fn create_request_body(
 ) -> Result<GenerateContentRequest, CompletionError> {
     let chat_history = completion_request.chat_history_with_documents();
 
-    let CompletionRequest {
+    let CompletionRequestParts {
         model: _,
         preamble,
         chat_history: _,
@@ -228,7 +228,7 @@ pub(crate) fn create_request_body(
         mut additional_params,
         output_schema,
         record_telemetry_content: _,
-    } = completion_request;
+    } = completion_request.into_parts();
 
     let mut full_history = Vec::new();
     full_history.extend(chat_history);
@@ -357,7 +357,7 @@ pub(crate) fn resolve_request_model(
     completion_request: &CompletionRequest,
 ) -> String {
     completion_request
-        .model
+        .model()
         .clone()
         .unwrap_or_else(|| default_model.to_string())
 }

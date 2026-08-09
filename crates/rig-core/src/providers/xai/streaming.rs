@@ -32,8 +32,8 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let preamble = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let preamble = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let mut request =
             XAICompletionRequest::try_from((self.model.as_str(), completion_request))?;
 

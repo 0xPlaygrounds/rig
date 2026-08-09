@@ -2365,12 +2365,13 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
         let AnthropicRequestParams {
             model,
-            request: mut req,
+            request: req,
             prompt_caching,
             automatic_caching,
             automatic_caching_ttl,
         } = params;
         let chat_history = req.chat_history_with_documents();
+        let mut req = req.into_parts();
 
         // Check if max_tokens is set, required for Anthropic
         let Some(max_tokens) = req.max_tokens else {
@@ -2512,7 +2513,7 @@ where
         mut completion_request: completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
         let request_model = completion_request
-            .model
+            .model()
             .clone()
             .unwrap_or_else(|| self.model.clone());
         let span = CompletionSpanBuilder::new(
@@ -2521,13 +2522,13 @@ where
             CompletionOperation::Chat,
         )
         .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
+            completion_request.preamble().as_deref(),
+            completion_request.record_telemetry_content(),
         )
         .build();
 
         // Check if max_tokens is set, required for Anthropic
-        if completion_request.max_tokens.is_none() {
+        if completion_request.max_tokens().is_none() {
             if let Some(tokens) = self.default_max_tokens {
                 completion_request.max_tokens = Some(tokens);
             } else {

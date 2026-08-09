@@ -720,7 +720,126 @@ pub struct CompletionRequest {
     pub record_telemetry_content: bool,
 }
 
+/// The plain-data fields of a [`CompletionRequest`], with no invariant attached.
+///
+/// This is the output of [`CompletionRequest::into_parts`]: a request is
+/// taken apart into parts for by-value consumption (provider wire
+/// conversions). Field meanings are documented on the accessors of
+/// [`CompletionRequest`], which mirror these fields one-for-one.
+#[derive(Debug, Clone, Default)]
+pub struct CompletionRequestParts {
+    /// Optional model override for this request.
+    pub model: Option<String>,
+    /// Legacy preamble field preserved for backwards compatibility.
+    pub preamble: Option<String>,
+    /// The chat history to be sent to the completion model provider.
+    pub chat_history: Vec<Message>,
+    /// The documents to be sent to the completion model provider.
+    pub documents: Vec<Document>,
+    /// The tools to be sent to the completion model provider.
+    pub tools: Vec<ToolDefinition>,
+    /// The temperature to be sent to the completion model provider.
+    pub temperature: Option<f64>,
+    /// The max tokens to be sent to the completion model provider.
+    pub max_tokens: Option<u64>,
+    /// Whether tools are required to be used by the model provider or not.
+    pub tool_choice: Option<ToolChoice>,
+    /// Additional provider-specific parameters.
+    pub additional_params: Option<serde_json::Value>,
+    /// Optional JSON Schema for structured output.
+    pub output_schema: Option<schemars::Schema>,
+    /// Whether to record sensitive content on GenAI telemetry spans.
+    pub record_telemetry_content: bool,
+}
+
 impl CompletionRequest {
+    /// Optional model override for this request.
+    pub fn model(&self) -> &Option<String> {
+        &self.model
+    }
+
+    /// Legacy preamble field preserved for backwards compatibility.
+    ///
+    /// New code should prefer a leading [`Message::System`]
+    /// in `chat_history` as the canonical representation of system instructions.
+    pub fn preamble(&self) -> &Option<String> {
+        &self.preamble
+    }
+
+    /// The chat history to be sent to the completion model provider.
+    pub fn chat_history(&self) -> &[Message] {
+        &self.chat_history
+    }
+
+    /// The documents to be sent to the completion model provider.
+    pub fn documents(&self) -> &[Document] {
+        &self.documents
+    }
+
+    /// The tools to be sent to the completion model provider.
+    pub fn tools(&self) -> &[ToolDefinition] {
+        &self.tools
+    }
+
+    /// The temperature to be sent to the completion model provider.
+    pub fn temperature(&self) -> Option<f64> {
+        self.temperature
+    }
+
+    /// The max tokens to be sent to the completion model provider.
+    pub fn max_tokens(&self) -> Option<u64> {
+        self.max_tokens
+    }
+
+    /// Whether tools are required to be used by the model provider or not
+    /// before providing a response.
+    pub fn tool_choice(&self) -> &Option<ToolChoice> {
+        &self.tool_choice
+    }
+
+    /// Additional provider-specific parameters to be sent to the completion
+    /// model provider.
+    pub fn additional_params(&self) -> &Option<serde_json::Value> {
+        &self.additional_params
+    }
+
+    /// Optional JSON Schema for structured output. When set, providers that
+    /// support native structured outputs will constrain the model's response
+    /// to match this schema.
+    pub fn output_schema(&self) -> &Option<schemars::Schema> {
+        &self.output_schema
+    }
+
+    /// Whether to record sensitive request, response, and tool content on
+    /// GenAI telemetry spans.
+    ///
+    /// Defaults to `false`. See [`CompletionRequestBuilder::record_content_telemetry`]
+    /// for the full policy discussion.
+    pub fn record_telemetry_content(&self) -> bool {
+        self.record_telemetry_content
+    }
+
+    /// Takes the request apart into its plain-data fields for by-value
+    /// consumption — the provider wire conversions move `chat_history`,
+    /// `tools`, and friends into their own request types rather than clone
+    /// them. This is a one-way exit: the only way back to a
+    /// [`CompletionRequest`] is through validation.
+    pub fn into_parts(self) -> CompletionRequestParts {
+        CompletionRequestParts {
+            model: self.model,
+            preamble: self.preamble,
+            chat_history: self.chat_history,
+            documents: self.documents,
+            tools: self.tools,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            tool_choice: self.tool_choice,
+            additional_params: self.additional_params,
+            output_schema: self.output_schema,
+            record_telemetry_content: self.record_telemetry_content,
+        }
+    }
+
     /// Reject request messages that carry no content.
     ///
     /// Message content is a `Vec`, so "no content" is representable. Providers

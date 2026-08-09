@@ -96,13 +96,13 @@ fn validate_protocol_inputs(
     request: &CompletionRequest,
     protocol: ModelFamily,
 ) -> Result<(), CandleError> {
-    if let Some(preamble) = request.preamble.as_deref() {
+    if let Some(preamble) = request.preamble().as_deref() {
         validate_protocol_text(preamble, "preamble", protocol)?;
     }
-    for document in &request.documents {
+    for document in request.documents() {
         validate_protocol_text(&document.to_string(), "document", protocol)?;
     }
-    for tool in &request.tools {
+    for tool in request.tools() {
         validate_protocol_text(&tool.description, "tool description", protocol)?;
         validate_protocol_text(
             &serde_json::to_string(&tool.parameters).map_err(|error| {
@@ -115,7 +115,7 @@ fn validate_protocol_inputs(
             protocol,
         )?;
     }
-    for message in request.chat_history.iter() {
+    for message in request.chat_history().iter() {
         match message {
             Message::System { content } => {
                 validate_protocol_text(content, "system message", protocol)?;
@@ -205,19 +205,19 @@ pub(crate) fn parse_assistant(
 }
 
 fn validate_common_request(request: &CompletionRequest) -> Result<(), CandleError> {
-    if let Some(model) = &request.model {
+    if let Some(model) = &request.model() {
         return Err(CandleError::UnsupportedFeature(format!(
             "model override `{model}`; byte-loaded models do not support request-time model selection"
         )));
     }
-    if request.output_schema.is_some() {
+    if request.output_schema().is_some() {
         return Err(CandleError::UnsupportedFeature(
             "direct output_schema requires constrained decoding; use Rig's tool output mode"
                 .to_string(),
         ));
     }
     if request
-        .additional_params
+        .additional_params()
         .as_ref()
         .and_then(serde_json::Value::as_object)
         .is_some_and(|parameters| parameters.contains_key("tools"))
@@ -232,21 +232,21 @@ fn validate_common_request(request: &CompletionRequest) -> Result<(), CandleErro
 fn selected_tools(
     request: &CompletionRequest,
 ) -> Result<(Vec<&ToolDefinition>, bool), CandleError> {
-    for tool in &request.tools {
+    for tool in request.tools() {
         validate_tool_definition(tool)?;
     }
 
-    let choice = request.tool_choice.as_ref().unwrap_or(&ToolChoice::Auto);
+    let choice = request.tool_choice().as_ref().unwrap_or(&ToolChoice::Auto);
     match choice {
-        ToolChoice::Auto => Ok((request.tools.iter().collect(), false)),
+        ToolChoice::Auto => Ok((request.tools().iter().collect(), false)),
         ToolChoice::None => Ok((Vec::new(), false)),
         ToolChoice::Required => {
-            if request.tools.is_empty() {
+            if request.tools().is_empty() {
                 return Err(CandleError::ToolChoiceViolation(
                     "required tool choice was requested without any tools".to_string(),
                 ));
             }
-            Ok((request.tools.iter().collect(), true))
+            Ok((request.tools().iter().collect(), true))
         }
         ToolChoice::Specific { function_names } => {
             if function_names.is_empty() {
@@ -261,7 +261,7 @@ fn selected_tools(
                         "specific tool choice contains duplicate function `{name}`"
                     )));
                 }
-                if !request.tools.iter().any(|tool| tool.name == *name) {
+                if !request.tools().iter().any(|tool| tool.name == *name) {
                     return Err(CandleError::ToolChoiceViolation(format!(
                         "specific tool `{name}` is not present in the request"
                     )));
@@ -269,7 +269,7 @@ fn selected_tools(
             }
             Ok((
                 request
-                    .tools
+                    .tools()
                     .iter()
                     .filter(|tool| requested.contains(tool.name.as_str()))
                     .collect(),
@@ -325,13 +325,13 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
 
 fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
     let mut messages = Vec::new();
-    if let Some(preamble) = &request.preamble {
+    if let Some(preamble) = &request.preamble() {
         messages.push(Message::system(preamble.clone()));
     }
-    messages.extend(request.chat_history.iter().cloned());
-    if !request.documents.is_empty() {
+    messages.extend(request.chat_history().iter().cloned());
+    if !request.documents().is_empty() {
         let context = request
-            .documents
+            .documents()
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
@@ -349,12 +349,12 @@ fn render_plain_chat(
     request: &CompletionRequest,
     family: ModelFamily,
 ) -> Result<String, CandleError> {
-    if !request.tools.is_empty() {
+    if !request.tools().is_empty() {
         return Err(CandleError::UnsupportedFeature(
             "tools require the Qwen3 conversation protocol".to_string(),
         ));
     }
-    if request.tool_choice.is_some() {
+    if request.tool_choice().is_some() {
         return Err(CandleError::UnsupportedFeature(
             "tool_choice requires the Qwen3 conversation protocol".to_string(),
         ));

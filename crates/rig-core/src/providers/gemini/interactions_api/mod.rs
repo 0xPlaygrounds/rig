@@ -134,8 +134,8 @@ where
             CompletionOperation::Interactions,
         )
         .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
+            completion_request.preamble().as_deref(),
+            completion_request.record_telemetry_content(),
         )
         .build();
 
@@ -317,6 +317,7 @@ pub(crate) fn create_request_body(
     stream_override: Option<bool>,
 ) -> Result<CreateInteractionRequest, CompletionError> {
     let chat_history = completion_request.chat_history_with_documents();
+    let completion_request = completion_request.into_parts();
 
     let mut history = Vec::new();
     history.extend(chat_history);

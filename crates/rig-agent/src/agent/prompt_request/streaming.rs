@@ -1873,7 +1873,7 @@ mod migrated_tests {
     }
 
     fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), String> {
-        let history = request.chat_history.to_vec();
+        let history = request.chat_history().to_vec();
         if history.len() != 3 {
             return Err(format!(
                 "follow-up request should contain [original user prompt, assistant tool call, user tool result]: {history:?}"
@@ -2711,7 +2711,7 @@ mod migrated_tests {
 
         assert_eq!(default_requests.len(), 1);
         assert!(
-            !default_requests[0].record_telemetry_content,
+            !default_requests[0].record_telemetry_content(),
             "default agent stream should keep provider request message telemetry disabled"
         );
 
@@ -2745,7 +2745,7 @@ mod migrated_tests {
         );
         assert_eq!(opt_in_requests.len(), 1);
         assert!(
-            !opt_in_requests[0].record_telemetry_content,
+            !opt_in_requests[0].record_telemetry_content(),
             "agent-owned stream telemetry should clear the provider request flag"
         );
     }
@@ -2780,7 +2780,7 @@ mod migrated_tests {
         );
         assert_eq!(default_requests.len(), 1);
         assert!(
-            !default_requests[0].record_telemetry_content,
+            !default_requests[0].record_telemetry_content(),
             "default blocking prompt should keep provider request message telemetry disabled"
         );
 
@@ -2819,7 +2819,7 @@ mod migrated_tests {
         );
         assert_eq!(opt_in_requests.len(), 1);
         assert!(
-            !opt_in_requests[0].record_telemetry_content,
+            !opt_in_requests[0].record_telemetry_content(),
             "agent-owned blocking telemetry should clear the provider request flag"
         );
     }
@@ -3045,7 +3045,7 @@ mod migrated_tests {
         assert!(
             requests
                 .iter()
-                .all(|request| !request.record_telemetry_content),
+                .all(|request| !request.record_telemetry_content()),
             "agent-owned repaired telemetry should clear provider request flags"
         );
     }
@@ -3988,7 +3988,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.to_vec();
+        let follow_up_history = requests[1].chat_history().to_vec();
         assert!(matches!(
             follow_up_history.get(2),
             Some(Message::User { content })
@@ -4081,7 +4081,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.to_vec();
+        let retry_history = requests[1].chat_history().to_vec();
         assert_eq!(retry_history.len(), 3);
         assert!(matches!(
             retry_history.get(1),
@@ -4211,7 +4211,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.to_vec();
+        let follow_up_history = requests[1].chat_history().to_vec();
         assert_eq!(follow_up_history.len(), 3);
         assert!(matches!(
             follow_up_history.get(1),
@@ -4308,7 +4308,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.to_vec();
+        let follow_up_history = requests[1].chat_history().to_vec();
         assert!(history_contains_text(&follow_up_history, "checking "));
         assert!(assistant_reasoning_precedes_tool_call(
             &follow_up_history,
@@ -4361,7 +4361,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.to_vec();
+        let retry_history = requests[1].chat_history().to_vec();
         assert!(assistant_reasoning_precedes_tool_call(
             &retry_history,
             "delta reason",
@@ -4495,7 +4495,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.to_vec();
+        let retry_history = requests[1].chat_history().to_vec();
         assert!(matches!(
             retry_history.get(1),
             Some(Message::Assistant { content, .. })
@@ -4766,7 +4766,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.to_vec();
+        let follow_up_history = requests[1].chat_history().to_vec();
         assert!(matches!(
             follow_up_history.get(1),
             Some(Message::Assistant { content, .. })
@@ -6315,7 +6315,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.iter().collect::<Vec<_>>();
+        let follow_up_history = requests[1].chat_history().iter().collect::<Vec<_>>();
         let assistant_content = follow_up_history
             .iter()
             .find_map(|message| match message {
@@ -6759,7 +6759,7 @@ mod migrated_tests {
             }
         }
 
-        let received = recorded.requests()[0].chat_history.to_vec();
+        let received = recorded.requests()[0].chat_history().to_vec();
         assert_eq!(
             received.len(),
             3,

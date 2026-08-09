@@ -205,7 +205,7 @@ pub(crate) fn resolve_request_model(
     completion_request: &CompletionRequest,
 ) -> String {
     completion_request
-        .model
+        .model()
         .clone()
         .unwrap_or_else(|| default_model.to_string())
 }
@@ -225,8 +225,8 @@ impl CompletionModel {
         let span =
             CompletionSpanBuilder::new("aws_bedrock", &request_model, CompletionOperation::Chat)
                 .system_instructions(
-                    completion_request.preamble.as_deref(),
-                    completion_request.record_telemetry_content,
+                    completion_request.preamble().as_deref(),
+                    completion_request.record_telemetry_content(),
                 )
                 .build();
 

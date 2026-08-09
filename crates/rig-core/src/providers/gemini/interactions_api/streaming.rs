@@ -130,8 +130,8 @@ where
             CompletionOperation::InteractionsStreaming,
         )
         .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
+            completion_request.preamble().as_deref(),
+            completion_request.record_telemetry_content(),
         )
         .build();
 

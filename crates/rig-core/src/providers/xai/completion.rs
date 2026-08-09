@@ -54,6 +54,7 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let chat_history = req.chat_history_with_documents();
+        let req = req.into_parts();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for xAI");
         }
@@ -260,8 +261,8 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request =
             XAICompletionRequest::try_from((self.model.to_string().as_ref(), completion_request))?;
         let span =

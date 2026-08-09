@@ -10,7 +10,7 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use base64::Engine as _;
-use rig_core::completion::{self, CompletionError, CompletionRequest};
+use rig_core::completion::{self, CompletionError, CompletionRequest, CompletionRequestParts};
 use rig_core::message::{self, MimeType, Reasoning};
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, tool_parameters_to_schema,
@@ -175,7 +175,7 @@ pub(crate) fn create_grpc_request(
     model: String,
     completion_request: CompletionRequest,
 ) -> Result<GenerateContentRequest, CompletionError> {
-    let CompletionRequest {
+    let CompletionRequestParts {
         model: _,
         preamble,
         chat_history,
@@ -187,7 +187,7 @@ pub(crate) fn create_grpc_request(
         additional_params: _,
         output_schema: _,
         record_telemetry_content: _,
-    } = completion_request;
+    } = completion_request.into_parts();
 
     let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
     // functionResponse.name keys the replay: cross-provider ingested

@@ -1824,7 +1824,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         } = params;
         let chat_history = req.chat_history_with_documents();
 
-        let CoreCompletionRequest {
+        let crate::completion::CompletionRequestParts {
             model: request_model,
             preamble,
             chat_history: _,
@@ -1835,7 +1835,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             tool_choice,
             output_schema,
             ..
-        } = req;
+        } = req.into_parts();
 
         let mut partial_history = Vec::new();
         partial_history.extend(chat_history);
@@ -1994,8 +1994,8 @@ where
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<Ext::Response, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,

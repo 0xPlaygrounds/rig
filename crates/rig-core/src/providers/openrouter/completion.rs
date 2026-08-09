@@ -1405,6 +1405,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             strict_tools,
         } = params;
         let chat_history = req.chat_history_with_documents();
+        let req = req.into_parts();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
 
         let mut full_history: Vec<Message> = match &req.preamble {
@@ -1481,7 +1482,7 @@ impl TryFrom<(&str, CompletionRequest)> for OpenrouterCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
-        let model = req.model.clone().unwrap_or_else(|| model.to_string());
+        let model = req.model().clone().unwrap_or_else(|| model.to_string());
         OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
             model: &model,
             request: req,

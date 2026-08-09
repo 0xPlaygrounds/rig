@@ -1514,8 +1514,8 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 

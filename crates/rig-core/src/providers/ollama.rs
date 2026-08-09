@@ -469,6 +469,7 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
         let chat_history = req.chat_history_with_documents();
+        let req = req.into_parts();
         let model = req.model.clone().unwrap_or_else(|| model.to_string());
         if req.tool_choice.is_some() {
             tracing::warn!("WARNING: `tool_choice` not supported for Ollama");
@@ -705,8 +706,8 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
         let span =
             CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
@@ -776,8 +777,8 @@ where
         &self,
         request: CompletionRequest,
     ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let system_instructions = request.preamble.clone();
-        let record_telemetry_content = request.record_telemetry_content;
+        let system_instructions = request.preamble().clone();
+        let record_telemetry_content = request.record_telemetry_content();
         let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
         let span = CompletionSpanBuilder::new(
             PROVIDER_NAME,

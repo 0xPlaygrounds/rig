@@ -94,14 +94,14 @@ pub(crate) fn effective_generation(
     defaults: &GenerationConfig,
     vocab_size: usize,
 ) -> Result<GenerationConfig, CandleError> {
-    let overrides = match &request.additional_params {
+    let overrides = match &request.additional_params() {
         Some(value) => serde_json::from_value::<RequestGenerationOverrides>(value.clone())
             .map_err(|error| CandleError::InvalidGeneration(error.to_string()))?,
         None => RequestGenerationOverrides::default(),
     };
     let generation = GenerationConfig {
-        max_tokens: override_or(request.max_tokens, defaults.max_tokens),
-        temperature: override_or(request.temperature, defaults.temperature),
+        max_tokens: override_or(request.max_tokens(), defaults.max_tokens),
+        temperature: override_or(request.temperature(), defaults.temperature),
         top_k: overrides.top_k.resolve(defaults.top_k),
         top_p: overrides.top_p.resolve(defaults.top_p),
         seed: override_or(overrides.seed, defaults.seed),

@@ -242,8 +242,8 @@ where
         completion_request: CompletionRequest,
     ) -> Result<RawStreamingResult<StreamingCompletionResponse<Ext::StreamingUsage>>, CompletionError>
     {
-        let preamble = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let preamble = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let options = CompletionModelOptions {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,

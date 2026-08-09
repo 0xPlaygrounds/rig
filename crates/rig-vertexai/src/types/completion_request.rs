@@ -14,7 +14,7 @@ impl VertexCompletionRequest {
     pub fn contents(&self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
         // Vertex's `functionResponse.name` is the *function name*, not a
         // call identifier — `ToolResult::name` carries it as required data.
-        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history.to_vec();
+        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history().to_vec();
         // Cross-provider ingested results arrive with an empty name and
         // their paired call carries it.
         rig_core::providers::internal::resolve_empty_tool_result_names(&mut history);
@@ -33,13 +33,13 @@ impl VertexCompletionRequest {
 
     pub fn system_instruction(&self) -> Option<vertexai::model::Content> {
         let mut system_texts = Vec::new();
-        if let Some(preamble) = self.0.preamble.as_ref()
+        if let Some(preamble) = self.0.preamble().as_ref()
             && !preamble.is_empty()
         {
             system_texts.push(preamble.clone());
         }
 
-        for message in self.0.chat_history.iter() {
+        for message in self.0.chat_history().iter() {
             if let rig_core::completion::Message::System { content } = message
                 && !content.is_empty()
             {
@@ -59,13 +59,13 @@ impl VertexCompletionRequest {
     }
 
     pub fn tools(&self) -> Option<vertexai::model::Tool> {
-        if self.0.tools.is_empty() {
+        if self.0.tools().is_empty() {
             return None;
         }
 
         let function_declarations: Vec<vertexai::model::FunctionDeclaration> = self
             .0
-            .tools
+            .tools()
             .iter()
             .map(|tool_def| {
                 vertexai::model::FunctionDeclaration::new()
@@ -79,11 +79,11 @@ impl VertexCompletionRequest {
     }
 
     pub fn tool_config(&self) -> Option<vertexai::model::ToolConfig> {
-        if self.0.tools.is_empty() {
+        if self.0.tools().is_empty() {
             return None;
         }
 
-        let function_calling_config = match self.0.tool_choice.as_ref() {
+        let function_calling_config = match self.0.tool_choice().as_ref() {
             Some(rig_core::message::ToolChoice::Auto) => {
                 vertexai::model::FunctionCallingConfig::new()
                     .set_mode(vertexai::model::function_calling_config::Mode::Auto)
@@ -115,7 +115,7 @@ impl VertexCompletionRequest {
     ) -> Result<Option<vertexai::model::GenerationConfig>, CompletionError> {
         let additional_params = self
             .0
-            .additional_params
+            .additional_params()
             .clone()
             .unwrap_or_else(|| Value::Object(Map::new()));
         let AdditionalParameters {
@@ -126,12 +126,12 @@ impl VertexCompletionRequest {
             .map(|mut config| {
                 // Typed max_tokens is authoritative, so an overridden provider value must not be
                 // converted or range-validated before the typed value is applied below.
-                if self.0.max_tokens.is_some() {
+                if self.0.max_tokens().is_some() {
                     config.max_output_tokens = None;
                 }
                 // Typed temperature is likewise authoritative, so it must bypass provider
                 // conversion and range validation before being applied below.
-                if self.0.temperature.is_some() {
+                if self.0.temperature().is_some() {
                     config.temperature = None;
                 }
                 vertex_generation_config(config)
@@ -140,11 +140,11 @@ impl VertexCompletionRequest {
             .unwrap_or_else(vertexai::model::GenerationConfig::new);
 
         // The typed request surface is authoritative over provider-specific extras.
-        if let Some(temperature) = self.0.temperature {
+        if let Some(temperature) = self.0.temperature() {
             config = config.set_temperature(vertex_f32(temperature, "temperature")?);
         }
 
-        if let Some(max_tokens) = self.0.max_tokens {
+        if let Some(max_tokens) = self.0.max_tokens() {
             config = config.set_max_output_tokens(vertex_max_output_tokens(max_tokens)?);
         }
 

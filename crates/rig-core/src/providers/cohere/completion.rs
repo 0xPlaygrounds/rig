@@ -614,6 +614,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
     type Error = CompletionError;
 
     fn try_from((model, req): (&str, CompletionRequest)) -> Result<Self, Self::Error> {
+        let req = req.into_parts();
         let documents = req.documents.clone();
         if req.output_schema.is_some() {
             tracing::warn!("Structured outputs currently not supported for Cohere");
@@ -699,8 +700,8 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
 
         let llm_span =

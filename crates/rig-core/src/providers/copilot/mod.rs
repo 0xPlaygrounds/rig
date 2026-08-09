@@ -527,7 +527,7 @@ fn get_with_auth_base<H>(
 }
 
 fn request_initiator(request: &completion::CompletionRequest) -> &'static str {
-    for message in request.chat_history.iter() {
+    for message in request.chat_history().iter() {
         match message {
             crate::completion::Message::Assistant { .. } => return "agent",
             crate::completion::Message::User { content } => {
@@ -546,7 +546,7 @@ fn request_initiator(request: &completion::CompletionRequest) -> &'static str {
 }
 
 fn request_has_vision(request: &completion::CompletionRequest) -> bool {
-    request.chat_history.iter().any(|message| match message {
+    request.chat_history().iter().any(|message| match message {
         crate::completion::Message::User { content } => content
             .iter()
             .any(|item| matches!(item, crate::message::UserContent::Image(_))),
@@ -832,8 +832,8 @@ where
     ) -> Result<ChatCompletionResponse, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = self.chat_request(completion_request)?;
         let body = serde_json::to_vec(&request)?;
         let auth = self.auth_context().await?;
@@ -896,8 +896,8 @@ where
     ) -> Result<responses_api::CompletionResponse, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = self.responses_request(completion_request)?;
         let auth = self.auth_context().await?;
 
@@ -952,8 +952,8 @@ where
     {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let request = self.chat_request(completion_request)?;
         let auth = self.auth_context().await?;
         let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
@@ -996,8 +996,8 @@ where
     {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let system_instructions = completion_request.preamble().clone();
+        let record_telemetry_content = completion_request.record_telemetry_content();
         let mut request = self.responses_request(completion_request)?;
         request.stream = Some(true);
         let auth = self.auth_context().await?;
