@@ -54,7 +54,9 @@ async fn vector_search_test() {
     }
 
     // Setup a local qdrant container for testing. NOTE: docker service must be running.
-    let container = GenericImage::new("qdrant/qdrant", "latest")
+    // Pinned like `pgvector:pg17` / `scylla:5.4`: a floating `latest` defeats
+    // layer caching and lets a rerun silently test a different database version.
+    let container = GenericImage::new("qdrant/qdrant", "v1.19.0")
         .with_wait_for(WaitFor::Duration {
             length: std::time::Duration::from_secs(5),
         })

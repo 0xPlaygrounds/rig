@@ -235,6 +235,9 @@ pub(crate) fn create_request_body(
 
     let mut full_history = Vec::new();
     full_history.extend(chat_history);
+    // functionResponse.name keys the replay: cross-provider ingested
+    // results arrive with an empty name and their call carries it.
+    crate::providers::internal::resolve_empty_tool_result_names(&mut full_history);
     let (history_system, full_history) = split_system_messages_from_history(full_history);
 
     let mut additional_params_payload = additional_params
@@ -3655,6 +3658,115 @@ mod tests {
             };
             assert_eq!(response.response.as_ref(), Some(&expected));
         }
+    }
+
+    /// A consumer echoing a minted `ToolCall::id` through
+    /// `tool_result()` must not put that handle on Gemini's wire: the
+    /// paired functionCall omitted its id (the provider issued none), and
+    /// an asymmetric functionCall/functionResponse id pair is rejected.
+    #[test]
+    fn echoed_minted_handle_never_reaches_the_function_response_id() {
+        use crate::OneOrMany;
+        use crate::message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent};
+
+        // An id-less wire minted the handle (Gemini REST issued no id).
+        let call = ToolCall::new(
+            ToolCallId::mint(),
+            ToolFunction {
+                name: "lookup".to_string(),
+                arguments: json!({}),
+            },
+        );
+
+        let message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::tool_result(
+                call.id.as_str(),
+                "lookup",
+                OneOrMany::one(ToolResultContent::text("out")),
+            )),
+        };
+        let content: Content = message.try_into().expect("tool result should convert");
+        let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+            panic!("expected a function response");
+        };
+        assert_eq!(response.id, None);
+    }
+
+    /// A cross-provider ingested transcript (rig's inbound converters
+    /// stamp `name: ""` — Anthropic/OpenAI-chat/Cohere/Bedrock wires carry
+    /// no name) must reach Gemini with the name resolved from the paired
+    /// call: `functionResponse.name: ""` is INVALID_ARGUMENT.
+    #[test]
+    fn ingested_nameless_results_resolve_their_name_at_request_assembly() {
+        use crate::OneOrMany;
+        use crate::completion::request::CompletionRequest;
+        use crate::message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
+
+        let request = CompletionRequest {
+            preamble: None,
+            chat_history: OneOrMany::many(vec![
+                message::Message::user("weather?"),
+                message::Message::Assistant {
+                    id: None,
+                    content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+                        "toolu_abc",
+                        ToolFunction {
+                            name: "get_weather".to_owned(),
+                            arguments: json!({"city": "Paris"}),
+                        },
+                    ))),
+                },
+                message::Message::User {
+                    content: OneOrMany::one(message::UserContent::tool_result_from_wire(
+                        "toolu_abc",
+                        "",
+                        OneOrMany::one(ToolResultContent::text("sunny")),
+                    )),
+                },
+            ])
+            .expect("non-empty history"),
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            model: None,
+            output_schema: None,
+            record_telemetry_content: false,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+        };
+
+        let body = create_request_body(request).expect("request should build");
+        let response_names: Vec<_> = body
+            .contents
+            .iter()
+            .flat_map(|content| &content.parts)
+            .filter_map(|part| match &part.part {
+                PartKind::FunctionResponse(response) => Some(response.name.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(response_names, ["get_weather"]);
+    }
+
+    /// A wire-derived result keeps its provider-issued id on replay.
+    #[test]
+    fn wire_derived_tool_result_keeps_the_provider_id_on_the_wire() {
+        use crate::OneOrMany;
+        use crate::message::ToolResultContent;
+
+        let message = message::Message::User {
+            content: OneOrMany::one(message::UserContent::tool_result_from_wire(
+                "gemini-issued-id",
+                "lookup",
+                OneOrMany::one(ToolResultContent::text("out")),
+            )),
+        };
+        let content: Content = message.try_into().expect("tool result should convert");
+        let PartKind::FunctionResponse(response) = &content.parts[0].part else {
+            panic!("expected a function response");
+        };
+        assert_eq!(response.id.as_deref(), Some("gemini-issued-id"));
     }
 
     #[test]

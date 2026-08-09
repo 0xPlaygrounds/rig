@@ -475,7 +475,11 @@ impl PartsAccumulator {
                     _ => return None,
                 };
                 let (index, input) = candidate;
-                let restates = input.name == tool_call.function.name
+                // An assembly opened by args-only deltas never saw a name
+                // (`ensure_open_tool_input` records ""), so an empty name
+                // is no evidence against the restatement — only a
+                // *different* established name vetoes.
+                let restates = (input.name.is_empty() || input.name == tool_call.function.name)
                     && fragments_covered_by(input.buffer.as_deref(), &tool_call.function.arguments);
                 restates.then_some(index)
             });
@@ -715,10 +719,7 @@ impl PartsAccumulator {
             (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id),
             (None, None) => None,
         };
-        let id = provider
-            .as_ref()
-            .and_then(|provider| crate::message::ToolCallId::new(provider.call_id.clone()))
-            .unwrap_or_else(crate::message::ToolCallId::mint);
+        let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         let tool_call = ToolCall {
             id,
             provider,
@@ -811,6 +812,12 @@ fn fragments_covered_by(buffer: Option<&str>, arguments: &serde_json::Value) -> 
     let Ok(partial) = crate::json_utils::parse_tool_arguments(buffer) else {
         return false;
     };
+    // A buffer still holding the literal `null` placeholder (the gateway
+    // shape `tool_args_delta` documents) streamed no real arguments yet:
+    // any restatement covers it vacuously.
+    if partial.is_null() {
+        return true;
+    }
     json_subsumes(arguments, &partial)
 }
 
@@ -1775,6 +1782,62 @@ mod tests {
         accumulator.tool_args_delta(&pid("tool-0"), "{\"x\":1}");
         // A genuine restatement: same tool, arguments covering the
         // streamed fragments.
+        let restated = ToolCall::from_wire(
+            "call_late",
+            crate::message::ToolFunction {
+                name: "add".to_owned(),
+                arguments: serde_json::json!({"x": 1}),
+            },
+        );
+        let adopted =
+            accumulator.tool_call(&pid("call_late"), restated, "freshly-minted".to_owned());
+        assert_eq!(adopted, published);
+        assert!(
+            accumulator
+                .tool_input_end(end("tool-0", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none()
+        );
+    }
+
+    /// A gateway that fragments arguments WITHOUT ever sending a name
+    /// delta leaves the assembly nameless (`ensure_open_tool_input`
+    /// records `""`). An empty name is no evidence against the
+    /// restatement — demanding name equality published the whole call
+    /// under a fresh minted id (breaking delta correlation) and left the
+    /// assembly to finalize as a duplicate.
+    #[test]
+    fn a_wire_restatement_adopts_a_nameless_args_only_assembly() {
+        let mut accumulator = PartsAccumulator::new();
+        let published = accumulator.tool_args_delta(&pid("tool-0"), "{\"x\":1}");
+        let restated = ToolCall::from_wire(
+            "call_late",
+            crate::message::ToolFunction {
+                name: "add".to_owned(),
+                arguments: serde_json::json!({"x": 1}),
+            },
+        );
+        let adopted =
+            accumulator.tool_call(&pid("call_late"), restated, "freshly-minted".to_owned());
+        assert_eq!(adopted, published);
+        assert!(
+            accumulator
+                .tool_input_end(end("tool-0", UnparseableToolInput::Drop))
+                .expect("no error")
+                .is_none(),
+            "the adopted assembly must not finalize a second time"
+        );
+    }
+
+    /// A buffer still holding the literal `null` placeholder (the gateway
+    /// shape `tool_args_delta` documents) streamed no real arguments:
+    /// any restatement covers it vacuously. Strict subset comparison
+    /// rejected it (`{...} != null`) and published a duplicate.
+    #[test]
+    fn a_wire_restatement_adopts_an_assembly_holding_the_null_placeholder() {
+        let mut accumulator = PartsAccumulator::new();
+        let published = accumulator.tool_name_delta(&pid("tool-0"), "add");
+        accumulator.tool_args_delta(&pid("tool-0"), "null");
         let restated = ToolCall::from_wire(
             "call_late",
             crate::message::ToolFunction {

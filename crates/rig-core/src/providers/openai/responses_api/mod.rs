@@ -447,27 +447,19 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                 }),
                             });
                         }
-                        crate::message::UserContent::ToolResult(
-                            crate::completion::message::ToolResult {
-                                call,
-                                provider,
-                                content: tool_content,
-                                ..
-                            },
-                        ) => {
-                            let output =
-                                responses_tool_result_output(tool_content).map_err(|error| {
+                        crate::message::UserContent::ToolResult(tool_result) => {
+                            // Provider-issued call id when one exists, else
+                            // rig's minted handle — always present and
+                            // non-empty.
+                            let call_id = tool_result.wire_call_id().to_owned();
+                            let output = responses_tool_result_output(tool_result.content)
+                                .map_err(|error| {
                                     CompletionError::ProviderError(error.to_string())
                                 })?;
                             items.push(InputItem {
                                 role: None,
                                 input: InputContent::FunctionCallOutput(ToolResult {
-                                    // Provider-issued call id when one
-                                    // exists, else rig's minted handle —
-                                    // always present and non-empty.
-                                    call_id: provider
-                                        .map(|provider| provider.call_id)
-                                        .unwrap_or_else(|| call.into_string()),
+                                    call_id,
                                     output,
                                     status: ToolStatus::Completed,
                                 }),
@@ -2834,13 +2826,11 @@ fn responses_user_content(content: message::UserContent) -> Result<UserContent, 
 }
 
 fn responses_tool_result(tool_result: message::ToolResult) -> Result<Message, MessageError> {
+    let tool_call_id = tool_result.wire_call_id().to_owned();
     let output = responses_tool_result_output(tool_result.content)?;
 
     Ok(Message::ToolResult {
-        tool_call_id: tool_result
-            .provider
-            .map(|provider| provider.call_id)
-            .unwrap_or_else(|| tool_result.call.into_string()),
+        tool_call_id,
         output,
     })
 }

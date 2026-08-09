@@ -1106,19 +1106,12 @@ impl TryFrom<message::AssistantContent> for Content {
             message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
                 "Anthropic currently doesn't support images.".to_string(),
             )),
-            message::AssistantContent::ToolCall(message::ToolCall {
-                id,
-                provider,
-                function,
-                ..
-            }) => Ok(Content::ToolUse {
+            message::AssistantContent::ToolCall(tool_call) => Ok(Content::ToolUse {
                 // The wire requires a non-empty id: the provider-issued one
                 // when it exists, else rig's minted handle.
-                id: provider
-                    .map(|provider| provider.call_id)
-                    .unwrap_or_else(|| id.into_string()),
-                name: function.name,
-                input: coerce_tool_input(function.arguments),
+                id: tool_call.wire_call_id().to_owned(),
+                name: tool_call.function.name,
+                input: coerce_tool_input(tool_call.function.arguments),
             }),
             message::AssistantContent::Reasoning(reasoning) => Ok(Content::Thinking {
                 thinking: reasoning.display_text(),
@@ -1160,17 +1153,10 @@ fn anthropic_content_from_assistant_content(
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
             "Anthropic currently doesn't support images.".to_string(),
         )),
-        message::AssistantContent::ToolCall(message::ToolCall {
-            id,
-            provider,
-            function,
-            ..
-        }) => Ok(vec![Content::ToolUse {
-            id: provider
-                .map(|provider| provider.call_id)
-                .unwrap_or_else(|| id.into_string()),
-            name: function.name,
-            input: coerce_tool_input(function.arguments),
+        message::AssistantContent::ToolCall(tool_call) => Ok(vec![Content::ToolUse {
+            id: tool_call.wire_call_id().to_owned(),
+            name: tool_call.function.name,
+            input: coerce_tool_input(tool_call.function.arguments),
         }]),
         message::AssistantContent::Reasoning(reasoning) => {
             let mut converted = Vec::new();
@@ -1219,16 +1205,9 @@ impl TryFrom<message::Message> for Message {
                         citations: Vec::new(),
                         cache_control: None,
                     }),
-                    message::UserContent::ToolResult(message::ToolResult {
-                        call,
-                        provider,
-                        content,
-                        ..
-                    }) => Ok(Content::ToolResult {
-                        tool_use_id: provider
-                            .map(|provider| provider.call_id)
-                            .unwrap_or_else(|| call.into_string()),
-                        content: content.try_map(|content| match content {
+                    message::UserContent::ToolResult(tool_result) => Ok(Content::ToolResult {
+                        tool_use_id: tool_result.wire_call_id().to_owned(),
+                        content: tool_result.content.try_map(|content| match content {
                             message::ToolResultContent::Text(message::Text { text, .. }) => {
                                 Ok(ToolResultContent::Text { text })
                             }
@@ -1482,7 +1461,7 @@ impl TryFrom<Message> for message::Message {
                             tool_use_id,
                             content,
                             ..
-                        } => message::UserContent::tool_result(
+                        } => message::UserContent::tool_result_from_wire(
                             tool_use_id,
                             // Anthropic's wire correlates results by id only
                             // and never carries the tool name; this

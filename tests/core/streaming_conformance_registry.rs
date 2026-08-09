@@ -86,11 +86,21 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
         family: "bedrock",
         suite_file: "tests/providers/bedrock/streaming_conformance.rs",
         ci_step: FACADE_CI_STEP,
-        ci_selector: None,
+        // The PR gate's sweep runs `--features bedrock`, not `--all-features`,
+        // so this suite's existence now depends on that one flag: without it
+        // the `#[cfg(feature = "bedrock")] mod bedrock` in `tests/bedrock.rs`
+        // is cfg-ed out and all 11 conformance tests silently stop compiling.
+        // (The binary itself still builds — its cassette-safety scan is
+        // deliberately ungated — so do NOT "fix" this by gating the whole
+        // file: that would drop the bedrock cassette secret scan from every
+        // default-feature run.) Asserting only the step *name* would leave
+        // the suite a paper claim, the exact failure mode this file's module
+        // doc describes.
+        ci_selector: Some("--features bedrock"),
         ci_package: None,
         reason: "lives in the `rig` facade but behind the `bedrock` feature, so it compiles into \
-                 the `bedrock` test binary rather than `core`; the workspace `--all-features` run \
-                 executes it",
+                 the `bedrock` test binary rather than `core`; the workspace sweep enables \
+                 `--features bedrock` specifically so this step keeps executing it",
     },
 ];
 
@@ -167,57 +177,63 @@ fn out_of_binary_families_name_a_live_ci_step() {
     let workflow = Path::new(env!("CARGO_MANIFEST_DIR")).join(".github/workflows/ci.yaml");
     let text = std::fs::read_to_string(&workflow).expect("ci.yaml should be readable");
 
-    // Structural, not substring: step names are matched only on
-    // non-comment lines whose content (after the `- ` list marker) begins
-    // with `name:` — a `# - name: …` comment cannot satisfy the check — and
-    // each step's selector/`-p` package list is looked for INSIDE that
-    // step's own block (up to the next step), not anywhere in the file.
-    let step_block = |step: &str| -> Option<String> {
-        let lines: Vec<&str> = text.lines().collect();
-        let is_step_line = |line: &str| {
-            let trimmed = line.trim_start();
-            !trimmed.starts_with('#')
-                && trimmed
-                    .strip_prefix("- ")
-                    .is_some_and(|rest| rest.trim_start().starts_with("name:"))
-        };
-        let start = lines.iter().position(|line| {
-            is_step_line(line)
-                && line
-                    .split_once("name:")
-                    .is_some_and(|(_, value)| value.trim() == step)
-        })?;
-        let block: Vec<&str> = lines[start + 1..]
-            .iter()
-            .take_while(|line| !is_step_line(line))
-            .copied()
-            .collect();
-        Some(block.join("\n"))
+    // A real YAML parse, not a line heuristic. Earlier versions of this
+    // check walked the raw text and accreted patches for each discovered
+    // hole — comments satisfying the match, job-final steps absorbing the
+    // next job's header, low-indent comments truncating blocks. Parsing
+    // `jobs.*.steps[]` gives exact step extents and comment-blindness by
+    // construction, and the selector/`-p` assertions run against the step's
+    // `run:` command alone — the only place where they are operative.
+    let doc: serde_yaml::Value = serde_yaml::from_str(&text).expect("ci.yaml should parse as YAML");
+    let jobs = doc
+        .get("jobs")
+        .and_then(serde_yaml::Value::as_mapping)
+        .expect("ci.yaml should have a jobs mapping");
+    let step_run = |step: &str| -> Option<String> {
+        jobs.values()
+            .filter_map(|job| job.get("steps").and_then(serde_yaml::Value::as_sequence))
+            .flatten()
+            .find(|candidate| {
+                candidate.get("name").and_then(serde_yaml::Value::as_str) == Some(step)
+            })
+            .map(|found| {
+                found
+                    .get("run")
+                    .and_then(serde_yaml::Value::as_str)
+                    .unwrap_or_else(|| {
+                        panic!("CI step {step:?} exists but has no run: command to check")
+                    })
+                    .to_string()
+            })
     };
 
     for entry in OUT_OF_BINARY_FAMILIES {
-        let block = step_block(entry.ci_step).unwrap_or_else(|| {
+        let run = step_run(entry.ci_step).unwrap_or_else(|| {
             panic!(
-                "{} is annotated with CI step {:?}, which no longer exists in {} \
-                 (comments do not count)",
+                "{} is annotated with CI step {:?}, which no longer exists in {}",
                 entry.family,
                 entry.ci_step,
                 workflow.display(),
             )
         });
         if let Some(selector) = entry.ci_selector {
+            // A `--features X` selector asserts an *outcome* — the feature is
+            // enabled in that step — not a spelling: `--all-features` enables
+            // strictly more, so a step that broadens its sweep must not fail
+            // this check for gaining coverage.
+            let satisfied = run.contains(selector)
+                || (selector.starts_with("--features ") && run.contains("--all-features"));
             assert!(
-                block.contains(selector),
-                "{}'s CI step no longer carries the {:?} predicate INSIDE its own block, so its \
+                satisfied,
+                "{}'s CI step no longer carries the {:?} predicate in its run: command, so its \
                  binary is selected by nothing — a nextest filter matching zero tests still \
                  exits 0",
-                entry.family,
-                selector,
+                entry.family, selector,
             );
         }
         if let Some(package) = entry.ci_package {
             assert!(
-                block.contains(&format!("-p {package}")),
+                run.contains(&format!("-p {package}")),
                 "{}'s CI step no longer compiles `-p {package}`, so its suite binary does not \
                  build there at all",
                 entry.family,

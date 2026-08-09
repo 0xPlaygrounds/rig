@@ -405,16 +405,9 @@ impl TryFrom<message::Message> for Vec<Message> {
                     message::UserContent::Text(message::Text { text, .. }) => Ok(Message::User {
                         content: OneOrMany::one(UserContent::Text { text }),
                     }),
-                    message::UserContent::ToolResult(message::ToolResult {
-                        call,
-                        provider,
-                        content,
-                        ..
-                    }) => Ok(Message::Tool {
-                        tool_call_id: provider
-                            .map(|provider| provider.call_id)
-                            .unwrap_or_else(|| call.into_string()),
-                        content: content.try_map(|content| match content {
+                    message::UserContent::ToolResult(tool_result) => Ok(Message::Tool {
+                        tool_call_id: tool_result.wire_call_id().to_owned(),
+                        content: tool_result.content.try_map(|content| match content {
                             message::ToolResultContent::Text(text) => {
                                 Ok(ToolResultContent::Text { text: text.text })
                             }
@@ -562,7 +555,7 @@ impl TryFrom<Message> for message::Message {
                 Ok(message::Message::User {
                     // Cohere tool messages carry no tool name; this
                     // conversion is lossy for name-keyed wires.
-                    content: OneOrMany::one(message::UserContent::tool_result(
+                    content: OneOrMany::one(message::UserContent::tool_result_from_wire(
                         tool_call_id,
                         "",
                         content,

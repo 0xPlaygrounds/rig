@@ -412,6 +412,11 @@ pub(crate) struct RawChoiceAccumulator {
     /// reused by every later event regardless of the id it carries — mixed
     /// id/id-less events on one slot can no longer split assembly keys.
     tool_slots: crate::providers::internal::tool_call_bridge::ToolCallBridge<u64>,
+    /// The `call_…` correlator each open slot announced on
+    /// `output_item.added`, kept beside the bridge so a slot closed by the
+    /// terminal drain (its `output_item.done` frame was lost) still
+    /// finalizes with the dual-wire identity Responses replay pairs on.
+    pending_call_ids: std::collections::HashMap<u64, String>,
     /// The message item whose text block is currently open. A text or
     /// refusal delta carrying a different `item_id` opens a new text block
     /// (`TextStart` keyed by that item id), so two `message` output items
@@ -439,6 +444,7 @@ impl RawChoiceAccumulator {
                 crate::providers::internal::tool_call_bridge::ToolCallBridge::with_minted_namespace(
                     crate::streaming::SyntheticIds::output(),
                 ),
+            pending_call_ids: std::collections::HashMap::new(),
             current_text_item: None,
         }
     }
@@ -517,6 +523,10 @@ impl RawChoiceAccumulator {
                     .open(output_index, Some(&func.id), Some(&func.name))
                     .key()
                     .to_owned();
+                if !func.call_id.is_empty() {
+                    self.pending_call_ids
+                        .insert(output_index, func.call_id.clone());
+                }
                 immediate.push(streaming::RawStreamingChoice::ToolCallDelta {
                     id: key,
                     content: streaming::ToolCallDeltaContent::Name(func.name),
@@ -606,6 +616,19 @@ impl RawChoiceAccumulator {
             // downstream, matching the unary path's `map_finish_reason`.
             ResponseChunkKind::ResponseCompleted | ResponseChunkKind::ResponseIncomplete => {
                 self.saw_terminal = true;
+                // The provider proved the turn ended, so a slot still open
+                // here lost only its `output_item.done` frame — the same
+                // terminal-drain the sibling adapters ship (Interactions at
+                // `interaction.completed`, chat-compat at `finish_reason`).
+                // Closing it lets the shared accumulator finalize the call
+                // from its streamed fragments (parse-or-drop), instead of
+                // discarding a provider-completed call as truncation.
+                for (index, slot) in self.tool_slots.drain_ordered_indexed() {
+                    let mut end = slot.end_event(streaming::UnparseableToolInput::Drop);
+                    end.call_id = self.pending_call_ids.remove(&index);
+                    self.tool_calls
+                        .push(streaming::RawStreamingChoice::ToolInputEnd(end));
+                }
                 // The terminal event is the only place the stream learns how the
                 // turn ended, which model answered, and which assistant message
                 // (`msg_...`, not the response's `resp_...`) carried the output.
@@ -661,6 +684,9 @@ impl RawChoiceAccumulator {
                 // or the assembled fragments dangle. A slot with no minted
                 // identity keeps the wire id, minting only when it is empty.
                 let slot = self.tool_slots.remove(output_index);
+                // The done item restates its own call_id; the announce-time
+                // copy is only for slots the terminal drain must close.
+                self.pending_call_ids.remove(&output_index);
                 let item_id = match &slot {
                     // The slot's established key wins even when the done item
                     // restates a real `fc_*` id — assembled fragments must
@@ -3505,6 +3531,73 @@ data: {done}
             ],
             "each id-less slot must assemble its own call"
         );
+    }
+
+    /// A lost `output_item.done` frame followed by a healthy
+    /// `response.completed` must not discard the call as truncation: the
+    /// provider proved the turn ended, so the still-open slot closes at the
+    /// terminal and finalizes from its streamed fragments — with the full
+    /// dual-wire identity the added event announced. The same
+    /// terminal-drain the sibling adapters ship (Interactions at
+    /// `interaction.completed`, chat-compat at `finish_reason`).
+    #[tokio::test]
+    async fn a_lost_done_frame_does_not_discard_a_provider_completed_call() {
+        let events = [
+            json!({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "sequence_number": 1,
+                "item": {
+                    "type": "function_call",
+                    "id": "fc_1",
+                    "call_id": "call_abc",
+                    "name": "get_weather",
+                    "arguments": "",
+                    "status": "in_progress",
+                },
+            }),
+            json!({
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "sequence_number": 2,
+                "delta": "{\"city\":\"Paris\"}"
+            }),
+            // The output_item.done frame is lost; the terminal still arrives.
+            json!({
+                "type": "response.completed",
+                "sequence_number": 3,
+                "response": sample_response(ResponseStatus::Completed),
+            }),
+        ];
+        let body = events
+            .iter()
+            .map(|event| format!("data: {event}\n"))
+            .collect::<String>();
+
+        let raw_choices = raw_choices_from_sse_body(&body, ResponsesUsage::new())
+            .expect("the stream must decode");
+        let raw_response = sample_response(ResponseStatus::Completed);
+        let response =
+            super::completion_response_from_raw_choices("openai", raw_choices, &raw_response)
+                .await
+                .expect("replay should normalize")
+                .expect("a tool-bearing replay is not empty");
+
+        let calls: Vec<_> = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 1, "the provider-completed call must survive");
+        let call = calls[0];
+        assert_eq!(call.function.name, "get_weather");
+        assert_eq!(call.function.arguments, json!({"city": "Paris"}));
+        let provider = call.provider.as_ref().expect("the wire issued ids");
+        assert_eq!(provider.call_id, "call_abc");
+        assert_eq!(provider.item_id.as_deref(), Some("fc_1"));
     }
 
     /// #2258 P3: id-less argument fragments must surface as deltas (keyed by

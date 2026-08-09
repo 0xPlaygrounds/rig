@@ -255,6 +255,9 @@ impl TryFrom<RigMessage> for Vec<Message> {
                             }
                             has_images = false;
 
+                            // Provider-issued call id when one exists,
+                            // else rig's minted handle — always present.
+                            let call_id = tr.wire_call_id().to_owned();
                             // Tool result becomes FunctionCallOutput
                             let output = tr
                                 .content
@@ -270,12 +273,6 @@ impl TryFrom<RigMessage> for Vec<Message> {
                                 })
                                 .collect::<Result<Vec<_>, _>>()?
                                 .join("\n");
-                            // Provider-issued call id when one exists,
-                            // else rig's minted handle — always present.
-                            let call_id = tr
-                                .provider
-                                .map(|provider| provider.call_id)
-                                .unwrap_or_else(|| tr.call.into_string());
                             items.push(Message::function_call_output(call_id, output));
                         }
                         UserContent::Document(doc) => {
@@ -327,10 +324,7 @@ impl TryFrom<RigMessage> for Vec<Message> {
                         AssistantContent::Text(t) => text_parts.push(t.text),
                         AssistantContent::ToolCall(tc) => {
                             flush_assistant_text(&mut items, &mut text_parts);
-                            let call_id = tc
-                                .provider
-                                .map(|provider| provider.call_id)
-                                .unwrap_or_else(|| tc.id.into_string());
+                            let call_id = tc.wire_call_id().to_owned();
                             items.push(Message::function_call(
                                 call_id,
                                 tc.function.name,
