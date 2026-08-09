@@ -82,7 +82,7 @@
 //! ));
 //! assert!(matches!(
 //!     output.as_content().first(),
-//!     ToolResultContent::Image(_)
+//!     Some(ToolResultContent::Image(_))
 //! ));
 //! ```
 //!
