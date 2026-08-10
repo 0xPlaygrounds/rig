@@ -624,11 +624,12 @@ pub(crate) fn invalid_tool_retry_user_message(
 /// - **One empty, unannotated text block.** A blocking wire can deliver an
 ///   assistant message whose only part is an empty text block; it carries
 ///   nothing, and the agent curates it out of history exactly as it curates
-///   a zero-part turn. The `additional_params.is_none()` guard is
-///   load-bearing: an *annotated* empty text block carries data and must
-///   not read as empty. (Histories persisted before message content became
-///   a `Vec` also encode empty turns this way — a consequence of this
-///   classification, not its reason.)
+///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
+///   empty text block carries data and must not read as empty. "Unannotated"
+///   means no captured keys, not `None` — `Text::additional_params` is a
+///   serde flatten, which decodes an empty remainder as `Some({})`, so a
+///   suspended run restored from JSON carries `Some({})` where the live run
+///   carried `None`, and both must classify identically.
 ///
 /// This runs on turns flowing through the agent loop only. Caller-supplied
 /// `chat_history` is never filtered: an empty text block you replay goes to
@@ -642,8 +643,16 @@ pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
         && matches!(
             choice.first(),
             Some(AssistantContent::Text(text))
-                if text.text.is_empty() && text.additional_params.is_none()
+                if text.text.is_empty() && has_no_annotations(text.additional_params.as_ref())
         )
+}
+
+/// Whether a text block's flatten-captured params carry no data. `None` and
+/// the empty map are the same absence: the flatten decodes an empty JSON
+/// remainder as `Some({})`, so a serde round trip must not change how a
+/// block classifies.
+fn has_no_annotations(params: Option<&serde_json::Value>) -> bool {
+    params.is_none_or(|value| value.as_object().is_some_and(serde_json::Map::is_empty))
 }
 
 pub(crate) fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
@@ -842,7 +851,7 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use super::{CompletionCall, PromptResponse, TypedPromptResponse};
+    use super::{CompletionCall, PromptResponse, TypedPromptResponse, is_empty_assistant_turn};
     use crate::{
         agent::{
             AgentBuilder,
@@ -1192,6 +1201,33 @@ mod tests {
     }
 
     #[test]
+    fn empty_turn_classification_survives_a_serde_round_trip() {
+        // `Text::additional_params` is a serde flatten, which decodes an
+        // empty JSON remainder as `Some({})` where the live value was
+        // `None`. A suspended run restored from JSON must classify its
+        // empty-text turn exactly like the live run did — and an
+        // *annotated* empty block must still read as content either way.
+        let live = vec![AssistantContent::text("")];
+        assert!(is_empty_assistant_turn(&live));
+
+        let round: Vec<AssistantContent> =
+            serde_json::from_str(&serde_json::to_string(&live).expect("serialize"))
+                .expect("deserialize");
+        assert!(
+            is_empty_assistant_turn(&round),
+            "restored turn must classify like the live one: {round:?}"
+        );
+
+        let annotated: Vec<AssistantContent> =
+            serde_json::from_value(serde_json::json!([{"text": "", "signature": "sig"}]))
+                .expect("deserialize annotated");
+        assert!(
+            !is_empty_assistant_turn(&annotated),
+            "an annotated empty block carries data: {annotated:?}"
+        );
+    }
+
+    #[test]
     fn prompt_response_deserializes_pre_monoid_null_usage_format() {
         // Pins `CompletionCall.usage`'s null tolerance: `"usage": null` (the
         // pre-monoid Option encoding) must map to zero-valued usage. The
@@ -1209,29 +1245,41 @@ mod tests {
             ]
         );
         // The migrated `content` shape is a *bare* text object — no "type"
-        // key. Assistant content is untagged, so a stray tag would be
-        // flatten-captured into `additional_params` and replayed to the
-        // wire. Pin the clean decode: the text, and no captured keys (the
-        // flatten decodes the empty remainder as `Some({})` — the known
-        // round-trip asymmetry — so "no keys" is the assertable property).
+        // key (see `a_stray_type_key_is_captured_not_a_tag` for why).
         let [AssistantContent::Text(text)] = response.content() else {
             panic!("expected one text block, got {:?}", response.content());
         };
         assert_eq!(text.text, "ok");
-        assert!(
-            text.additional_params
-                .as_ref()
-                .is_none_or(|params| params == &serde_json::json!({})),
-            "no stray keys may be captured: {:?}",
-            text.additional_params
+    }
+
+    #[test]
+    fn a_stray_type_key_is_captured_not_a_tag() {
+        // The hazard MIGRATING's hand-migration recipe warns about, exercised:
+        // assistant content is untagged, so a `"type":"text"` key written by
+        // analogy with (tagged) user content is not a tag — the flatten
+        // captures it into `additional_params`, where it would be replayed to
+        // providers as a provider-specific field. Pinned so a future serde
+        // change that starts *rejecting* or *dropping* the key is a visible
+        // decision.
+        let tagged: Vec<AssistantContent> =
+            serde_json::from_value(serde_json::json!([{"type": "text", "text": "ok"}]))
+                .expect("deserialize");
+        let [AssistantContent::Text(text)] = tagged.as_slice() else {
+            panic!("expected one text block, got {tagged:?}");
+        };
+        assert_eq!(text.text, "ok");
+        assert_eq!(
+            text.additional_params,
+            Some(serde_json::json!({"type": "text"})),
+            "the stray key is flatten-captured, not consumed as a tag"
         );
     }
 
     #[test]
     fn prompt_response_roundtrip_preserves_explicit_content() {
         // An explicitly-set `content` (e.g. the streaming surface's structured
-        // final turn) must survive a serialize/deserialize round-trip and is not
-        // clobbered by the output-derived fallback.
+        // final turn) must survive a serialize/deserialize round-trip intact —
+        // `content` and `output` are independent fields.
         let response = PromptResponse::new("visible text", Usage::new())
             .with_content(vec![AssistantContent::text("structured")]);
 
@@ -1244,10 +1292,10 @@ mod tests {
         let round: PromptResponse =
             serde_json::from_value(value).expect("deserialize prompt response");
         assert_eq!(round.output(), "visible text");
-        // The stored content is "structured" — distinct from `output` — proving the
-        // output-derived fallback only fills a genuinely absent `content`. (Compare
-        // the text directly to sidestep the unrelated `Text::additional_params`
-        // serde round-trip asymmetry.)
+        // The stored content is "structured" — distinct from `output` — so the
+        // round trip demonstrably carried `content` itself rather than anything
+        // derived from `output`. (Compare the text directly to sidestep the
+        // `Text::additional_params` serde round-trip asymmetry.)
         let Some(AssistantContent::Text(text)) = round.content().first() else {
             panic!("expected text content, got {:?}", round.content().first());
         };

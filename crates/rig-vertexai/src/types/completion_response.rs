@@ -151,16 +151,7 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             }
         }
 
-        if assistant_contents.is_empty() {
-            return Err(CompletionError::ProviderError(
-                "No text or tool call content found in response".to_string(),
-            ));
-        }
-
-        // Emptiness is already rejected above, with a message that says what was
-        // missing; the container's constructor was a second, weaker check whose
-        // error named the container rather than the response.
-        let choice = assistant_contents;
+        let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
 
         let usage = response
             .usage_metadata
@@ -437,12 +428,13 @@ mod tests {
             Err(error) => error,
             Ok(_) => panic!("thought-image-only response must fail"),
         };
-        assert!(matches!(error, CompletionError::ProviderError(_)));
-        assert!(
-            error
-                .to_string()
-                .contains("No text or tool call content found in response")
-        );
+        // Rejected with the shared empty-response wording via
+        // `require_non_empty_response`, like every other wire.
+        assert!(matches!(
+            error,
+            CompletionError::ResponseError(message)
+                if message == rig_core::message::EMPTY_RESPONSE_ERROR
+        ));
     }
 
     #[test]

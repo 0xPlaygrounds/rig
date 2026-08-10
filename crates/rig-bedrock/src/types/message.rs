@@ -68,11 +68,7 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
                     .map(|rig_assistant_content| rig_assistant_content.0)
                     .collect::<Vec<AssistantContent>>();
 
-                let content = rig_core::message::require_non_empty(assistant_content, || {
-                    CompletionError::ResponseError(
-                        "Bedrock returned an assistant message with no content".to_owned(),
-                    )
-                })?;
+                let content = rig_core::message::require_non_empty_response(assistant_content)?;
 
                 Ok(RigMessage(Message::Assistant { content, id: None }))
             }

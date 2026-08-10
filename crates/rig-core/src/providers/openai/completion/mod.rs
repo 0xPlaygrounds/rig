@@ -2119,7 +2119,7 @@ where
 }
 
 fn serialize_assistant_content_vec<S>(
-    value: &Vec<AssistantContent>,
+    value: &[AssistantContent],
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where

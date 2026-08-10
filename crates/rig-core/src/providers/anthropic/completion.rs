@@ -7,10 +7,7 @@ use crate::{
     client::Provider,
     completion::{self, CompletionError},
     http_client::HttpClientExt,
-    message::{
-        self, DocumentMediaType, DocumentSourceKind, EMPTY_RESPONSE_ERROR, MessageError, MimeType,
-        Reasoning,
-    },
+    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
     telemetry::{CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
@@ -257,25 +254,15 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = if content.is_empty() {
-            // Anthropic documents empty `end_turn` responses after tool-result
-            // round trips. That turn genuinely carried nothing, and an empty
-            // list says exactly that. It used to be normalized into a
-            // fabricated empty-text part, because the assistant content type
-            // could not be empty and the terminal no-op had to be spelled
-            // somehow — that part was indistinguishable downstream from an
-            // empty text block Anthropic had actually sent.
-            if response.stop_reason.as_deref() == Some("end_turn") {
-                Vec::new()
-            } else {
-                return Err(CompletionError::ResponseError(
-                    EMPTY_RESPONSE_ERROR.to_owned(),
-                ));
-            }
+        // Anthropic documents empty `end_turn` responses after tool-result
+        // round trips. That turn genuinely carried nothing, and an empty
+        // list says exactly that — it used to be normalized into a
+        // fabricated empty-text part. Any *other* empty response is the
+        // shared provider defect.
+        let choice = if content.is_empty() && response.stop_reason.as_deref() == Some("end_turn") {
+            Vec::new()
         } else {
-            // Non-empty by the branch above; the container's constructor used
-            // to re-check it here and could never fail.
-            content
+            crate::message::require_non_empty_response(content)?
         };
 
         let finish_reason = response.stop_reason.as_deref().map(map_finish_reason);
@@ -2666,6 +2653,7 @@ enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::EMPTY_RESPONSE_ERROR;
     use serde_json::json;
     use serde_path_to_error::deserialize;
 

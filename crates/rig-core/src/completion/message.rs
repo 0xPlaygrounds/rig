@@ -34,13 +34,11 @@ pub enum Message {
 
 /// The shared wording for a response whose converted choice is empty.
 ///
-/// Most provider decodes reject that state through
-/// [`require_non_empty_response`]; anthropic uses this constant directly (it
-/// branches on `stop_reason` before deciding emptiness, so the helper does
-/// not fit its shape). Sharing the literal keeps a wording change from
-/// silently forking the error text across wires; a guard rejecting a
-/// *different* state (a role mismatch, a missing message) keeps its own
-/// text instead.
+/// Every provider decode rejects that state through
+/// [`require_non_empty_response`]; sharing the literal keeps a wording
+/// change from silently forking the error text across wires. A guard
+/// rejecting a *different* state (a role mismatch, a missing message) keeps
+/// its own text instead.
 pub const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
 
 /// Reject an empty content list, with the error the call site chose.
@@ -80,12 +78,11 @@ pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Resu
 }
 
 /// [`require_non_empty`] with the shared response-direction rejection — the
-/// one-line guard for a provider decode whose converted choice is empty and
-/// that has no extra context to add. Pairing the guard with
-/// [`EMPTY_RESPONSE_ERROR`] here keeps the wording from forking per wire.
-/// The one decode not routed through here is anthropic's, whose emptiness
-/// decision is entangled with `stop_reason` branching — it uses
-/// [`EMPTY_RESPONSE_ERROR`] directly so the wording still cannot fork.
+/// one-line guard for a provider decode whose converted choice is empty.
+/// Pairing the guard with [`EMPTY_RESPONSE_ERROR`] here keeps the wording
+/// from forking per wire. A decode with a *legal* empty case (anthropic's
+/// documented empty `end_turn`) branches around the guard for that case and
+/// still routes every other empty through it.
 pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<Vec<T>, CompletionError> {
     require_non_empty(items, || {
         CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned())
