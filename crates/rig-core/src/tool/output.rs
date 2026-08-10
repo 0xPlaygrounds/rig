@@ -88,7 +88,14 @@ impl ToolOutput {
         }
 
         match self.content.first()? {
-            ToolResultContent::Text(text) if text.additional_params.is_none() => Some(&text.text),
+            // Annotation judged by the shared rule: `None`, `null`, and `{}`
+            // all mean "no extras", so the read side agrees with what
+            // serialization would emit for the same value.
+            ToolResultContent::Text(text)
+                if !crate::message::params_carry_data(text.additional_params.as_ref()) =>
+            {
+                Some(&text.text)
+            }
             ToolResultContent::Text(_)
             | ToolResultContent::Image(_)
             | ToolResultContent::Json { .. } => None,

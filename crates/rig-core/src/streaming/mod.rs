@@ -1323,24 +1323,13 @@ impl Stream for StreamingCompletionResponse {
                         // Pass an unmodeled provider item straight through to the
                         // consumer; it is intentionally not pushed into
                         // `assistant_items` (no `AssistantContent::Unknown` exists).
-                        //
-                        // One shape deserves a loud exclusion: a payload with a
-                        // `text` key but no `type` key is a rig text item that
-                        // failed the strict `Text` decode (stray sibling keys) —
-                        // provider-native unmodeled items always carry their
-                        // wire `type` tag. Losing it from the assembled message
-                        // loses transcript content; the payload stays redacted.
-                        // This is the one exclusion point, so every consumer
-                        // (direct streaming and the agent assembler) is covered.
-                        if value.value().get("text").is_some()
-                            && value.value().get("type").is_none()
-                        {
-                            tracing::warn!(
-                                "stream item carrying a `text` key but no `type` tag excluded \
-                                 from the assembled assistant message — stray sibling keys on \
-                                 a text item fail the strict decode"
-                            );
-                        }
+                        // No exclusion warning here: everything reaching this arm
+                        // is a live wire frame a provider adapter chose not to
+                        // model (adapters warn on those themselves) — a persisted
+                        // item that failed the strict `Text` decode is created by
+                        // consumer-side serde and never re-enters this stream.
+                        // The agent assembler, which does ingest such items,
+                        // carries that warning.
                         Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
                     }
                 },

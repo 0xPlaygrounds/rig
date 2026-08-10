@@ -1328,10 +1328,11 @@ This is not a 0.41-upgrade-only hazard: it applies to any relayed or persisted
 stream event with keys outside the schema, today and onward (a relay stamping
 bookkeeping keys onto text items will lose them from assembled history). The
 exclusion of such a payload (a `text` key with no `type` tag) logs a
-`tracing` warning at rig's assembly points — the streaming normalizer and the
-agent assembler; a consumer assembling self-deserialized events with their own
-logic gets no warning and should check for text-carrying `Unknown` items
-themselves. Re-nest extras under `additional_params` to keep them.
+`tracing` warning in the **agent assembler** — the one rig component that
+ingests replayed stream events; a consumer assembling self-deserialized
+events with their own logic gets no warning and should check for
+text-carrying `Unknown` items themselves. Re-nest extras under
+`additional_params` to keep them.
 
 ### Two pre-`Vec` serde accommodations are gone
 
