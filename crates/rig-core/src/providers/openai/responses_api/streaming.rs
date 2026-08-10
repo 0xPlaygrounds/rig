@@ -480,14 +480,19 @@ impl RawChoiceAccumulator {
         output_index: u64,
         item_id: Option<&str>,
     ) -> crate::streaming::StreamPartId {
-        self.reasoning_slots
-            .entry(output_index)
-            .or_insert_with(|| {
-                item_id
-                    .map(crate::streaming::StreamPartId::wire)
-                    .unwrap_or(crate::streaming::MintKind::Output.for_wire_index(output_index))
-            })
-            .clone()
+        if let Some(key) = self.reasoning_slots.get(&output_index) {
+            return key.clone();
+        }
+        // Minted from the bridge's ONE counter (tool_call_bridge's own
+        // invariant): a second sequence stamping `Minted{Output, index}`
+        // could collide with an assembly the bridge minted the same value
+        // for. The per-slot map above, not the mint, is what keeps the key
+        // stable across the slot's frames.
+        let key = item_id
+            .map(crate::streaming::StreamPartId::wire)
+            .unwrap_or_else(|| self.tool_slots.minted_ids().mint());
+        self.reasoning_slots.insert(output_index, key.clone());
+        key
     }
 
     pub(crate) fn decode_item_chunk(
@@ -692,9 +697,12 @@ impl RawChoiceAccumulator {
                     // restates a real `fc_*` id — assembled fragments must
                     // not dangle under a different key.
                     Some(slot) => slot.key().clone(),
-                    None if func.id.is_empty() => {
-                        crate::streaming::MintKind::Output.for_wire_index(output_index)
-                    }
+                    // Minted from the bridge's ONE counter: a done-only call
+                    // stamping `Minted{Output, index}` from a second sequence
+                    // could collide with a mid-assembly key the bridge minted
+                    // the same value for, consuming that assembly under the
+                    // wrong call.
+                    None if func.id.is_empty() => self.tool_slots.minted_ids().mint(),
                     None => crate::streaming::StreamPartId::wire(func.id.clone()),
                 };
                 let mut end = streaming::ToolInputEnd::new(
@@ -968,17 +976,17 @@ pub(crate) async fn completion_response_from_raw_choices(
     // message text only in the terminal body while streaming other kinds as
     // deltas. A replay with no message text takes the body's message content;
     // everything replayed is kept.
-    let mut contents = stream.choice.iter().cloned().collect::<Vec<_>>();
+    let mut choice = std::mem::take(&mut stream.choice);
     // Presence of ANY streamed text — even whitespace — means the deltas were
     // the content channel; merging the body then would duplicate it.
-    let replay_has_message_text = contents.iter().any(|content| {
+    let replay_has_message_text = choice.iter().any(|content| {
         matches!(
             content,
             completion::AssistantContent::Text(text) if !text.text.is_empty()
         )
     });
     if !replay_has_message_text {
-        contents.extend(
+        choice.extend(
             raw_response
                 .output
                 .iter()
@@ -987,7 +995,6 @@ pub(crate) async fn completion_response_from_raw_choices(
                 .flat_map(<Vec<completion::AssistantContent>>::from),
         );
     }
-    let choice = crate::OneOrMany::many(contents).unwrap_or_else(|_| stream.choice.clone());
 
     let terminal = stream.response.clone();
     let usage = terminal
@@ -1027,7 +1034,7 @@ pub(crate) async fn completion_response_from_raw_choices(
     ))
 }
 
-fn choice_is_empty(choice: &crate::OneOrMany<completion::AssistantContent>) -> bool {
+fn choice_is_empty(choice: &[completion::AssistantContent]) -> bool {
     choice.iter().all(|content| match content {
         completion::AssistantContent::Text(text) => text.text.trim().is_empty(),
         completion::AssistantContent::Reasoning(reasoning) => reasoning.content.is_empty(),

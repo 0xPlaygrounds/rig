@@ -728,7 +728,6 @@ fn merge_instructions(default_instructions: &str, existing_instructions: Option<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OneOrMany;
 
     #[test]
     fn test_parse_chatgpt_sse_completion() {
@@ -777,9 +776,7 @@ data: [DONE]"#;
         );
     }
 
-    fn chatgpt_conversion_request(
-        chat_history: OneOrMany<completion::Message>,
-    ) -> ResponsesRequest {
+    fn chatgpt_conversion_request(chat_history: Vec<completion::Message>) -> ResponsesRequest {
         let client = crate::providers::chatgpt::Client::builder()
             .oauth()
             .build()
@@ -806,13 +803,10 @@ data: [DONE]"#;
 
     #[test]
     fn test_conversion_lifts_leading_system_messages_into_instructions() {
-        let request = chatgpt_conversion_request(
-            OneOrMany::many(vec![
-                completion::Message::system("System two"),
-                completion::Message::user("hi"),
-            ])
-            .expect("history"),
-        );
+        let request = chatgpt_conversion_request(vec![
+            completion::Message::system("System two"),
+            completion::Message::user("hi"),
+        ]);
 
         assert_eq!(
             request.instructions.as_deref(),
@@ -823,14 +817,11 @@ data: [DONE]"#;
 
     #[test]
     fn test_conversion_lifts_mid_conversation_system_messages() {
-        let request = chatgpt_conversion_request(
-            OneOrMany::many(vec![
-                completion::Message::user("hi"),
-                completion::Message::system("Mid-conversation instruction"),
-                completion::Message::user("again"),
-            ])
-            .expect("history"),
-        );
+        let request = chatgpt_conversion_request(vec![
+            completion::Message::user("hi"),
+            completion::Message::system("Mid-conversation instruction"),
+            completion::Message::user("again"),
+        ]);
 
         assert_eq!(
             request.instructions.as_deref(),
@@ -852,7 +843,7 @@ data: [DONE]"#;
                 record_telemetry_content: false,
                 model: None,
                 preamble: Some("Respond tersely.".to_string()),
-                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                chat_history: vec![completion::Message::user("hello")],
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: None,
@@ -879,7 +870,7 @@ data: [DONE]"#;
             .create_request(completion::CompletionRequest {
                 model: None,
                 preamble: None,
-                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                chat_history: vec![completion::Message::user("hello")],
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: Some(0.5),

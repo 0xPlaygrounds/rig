@@ -1,6 +1,4 @@
 //! Focused DeepSeek cassette coverage for request document ordering.
-
-use rig::OneOrMany;
 use rig::completion::{AssistantContent, CompletionModel, Document, Message};
 use rig::prelude::*;
 use rig::providers::deepseek;
@@ -32,7 +30,7 @@ fn ordering_document() -> Document {
     }
 }
 
-fn assistant_text(choice: &OneOrMany<AssistantContent>) -> String {
+fn assistant_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {

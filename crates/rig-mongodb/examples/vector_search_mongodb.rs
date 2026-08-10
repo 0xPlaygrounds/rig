@@ -93,7 +93,7 @@ async fn main() -> Result<(), anyhow::Error> {
             doc! {
                 "id": id.clone(),
                 "definition": definition.clone(),
-                "embedding": embedding.first().vec.clone(),
+                "embedding": embedding.first().map(|embedding| embedding.vec.clone()),
             }
         })
         .collect::<Vec<_>>();

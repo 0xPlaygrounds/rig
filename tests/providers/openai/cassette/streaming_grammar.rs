@@ -12,7 +12,6 @@
 //! mint literal IDs.
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolResultContent,
@@ -43,7 +42,7 @@ struct StreamRun {
     /// Terminal records yielded by the stream.
     finals: Vec<StreamFinal>,
     /// The aggregated choice built by the normalized stream.
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     /// The normalized terminal record retained on the stream.
     response: Option<StreamFinal>,
     /// Provider-assigned assistant message ID retained on the stream.
@@ -57,7 +56,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         reasoning_delta: String::new(),
         tool_calls: Vec::new(),
         finals: Vec::new(),
-        choice: OneOrMany::one(AssistantContent::text("")),
+        choice: vec![AssistantContent::text("")],
         response: None,
         message_id: None,
     };
@@ -92,7 +91,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 }
 
 /// Text of each reasoning part in the aggregated choice, in order.
-fn aggregated_reasoning_parts(choice: &OneOrMany<AssistantContent>) -> Vec<ReasoningContent> {
+fn aggregated_reasoning_parts(choice: &[AssistantContent]) -> Vec<ReasoningContent> {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -418,13 +417,13 @@ async fn tool_call_then_followup_text_across_turns() {
 
             let assistant_message = Message::Assistant {
                 id: first.message_id.clone(),
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call.clone())),
+                content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result = Message::from(UserContent::tool_result_for(
                 tool_call.id.clone(),
                 tool_call.provider.clone(),
                 tool_call.function.name.clone(),
-                OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             ));
             let followup_request = model
                 .completion_request(
@@ -543,7 +542,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 tool_call.id.clone(),
                 tool_call.provider.clone(),
                 tool_call.function.name.clone(),
-                OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
             ));
             let second_request = model
                 .completion_request(

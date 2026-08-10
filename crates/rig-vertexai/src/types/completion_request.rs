@@ -14,8 +14,7 @@ impl VertexCompletionRequest {
     pub fn contents(&self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
         // Vertex's `functionResponse.name` is the *function name*, not a
         // call identifier — `ToolResult::name` carries it as required data.
-        let mut history: Vec<rig_core::completion::Message> =
-            self.0.chat_history.iter().cloned().collect();
+        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history.clone();
         // Cross-provider ingested results arrive with an empty name and
         // their paired call carries it.
         rig_core::providers::internal::resolve_empty_tool_result_names(&mut history);
@@ -317,7 +316,6 @@ fn vertex_image_config(image_config: GeminiImageConfig) -> vertexai::model::Imag
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig_core::OneOrMany;
     use rig_core::completion::{CompletionRequest, ToolDefinition};
     use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
@@ -326,9 +324,9 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
-            }),
+            chat_history: vec![Message::User {
+                content: vec![UserContent::Text(Text::new("test".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -352,45 +350,45 @@ mod tests {
 
         let call = |wire_id: &str, name: &str| Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+            content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 wire_id,
                 ToolFunction {
                     name: name.to_owned(),
                     arguments: serde_json::json!({}),
                 },
-            ))),
+            ))],
         };
         let result = |wire_id: &str, name: &str| Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+            content: vec![UserContent::ToolResult(ToolResult {
                 call: ToolCallId::new_or_mint(wire_id),
                 provider: ProviderCallId::new(wire_id),
                 name: name.to_owned(),
-                content: OneOrMany::one(ToolResultContent::text("out")),
-            })),
+                content: vec![ToolResultContent::text("out")],
+            })],
         };
         let call_dual = |item_id: &str, call_id: &str, name: &str| Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_dual_wire(
+            content: vec![AssistantContent::ToolCall(ToolCall::from_dual_wire(
                 item_id,
                 call_id,
                 ToolFunction {
                     name: name.to_owned(),
                     arguments: serde_json::json!({}),
                 },
-            ))),
+            ))],
         };
         let result_dual = |item_id: &str, call_id: &str, name: &str| Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+            content: vec![UserContent::ToolResult(ToolResult {
                 call: ToolCallId::new_or_mint(call_id),
                 provider: ProviderCallId::new(call_id)
                     .map(|provider| provider.with_item_id(item_id)),
                 name: name.to_owned(),
-                content: OneOrMany::one(ToolResultContent::text("out")),
-            })),
+                content: vec![ToolResultContent::text("out")],
+            })],
         };
 
         let request = CompletionRequest {
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 // A driver-built result carries the executed name (a repair
                 // hook renamed the call: `sum` ran, not `add`) — the wire
                 // name comes from the result, not the call.
@@ -405,8 +403,7 @@ mod tests {
                 // `fc_1` must never reach the wire as a name.
                 call_dual("fc_1", "call_9", "get_time"),
                 result_dual("fc_1", "call_9", "get_time"),
-            ])
-            .expect("non-empty history"),
+            ],
             ..minimal_request()
         };
 
@@ -587,13 +584,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("System from history"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("hello".to_string()))),
+                    content: vec![UserContent::Text(Text::new("hello".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 

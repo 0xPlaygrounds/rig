@@ -4,8 +4,6 @@
 //! explicit media type through the request-side message conversion: the
 //! document must map to a `"source": {"type": "url", ...}` content block.
 //! See <https://docs.anthropic.com/en/docs/build-with-claude/pdf-support>.
-
-use rig::OneOrMany;
 use rig::completion::Prompt;
 use rig::message::{Message, UserContent};
 use rig::prelude::*;
@@ -29,13 +27,12 @@ async fn url_pdf_document_prompt() {
 
             let response = agent
                 .prompt(Message::User {
-                    content: OneOrMany::many(vec![
+                    content: vec![
                         UserContent::document_url(PDF_URL, None),
                         UserContent::text(
                             "What is the title of this paper? Answer in one short sentence.",
                         ),
-                    ])
-                    .expect("content should be non-empty"),
+                    ],
                 })
                 .await
                 .expect("URL PDF document prompt should succeed");

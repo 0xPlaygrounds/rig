@@ -350,9 +350,195 @@ defined a `wasm` feature and expected it to drive these macros, you now get the
 target's answer instead. Gate on the target directly if you need the old
 association.
 
+### next
+
+#### An assistant turn that carried nothing is empty, not a fabricated empty text part
+
+Message content was a non-empty container, so a turn the model ended without
+text and without tool calls — a tool-call-only turn whose calls were all
+dropped, a content-filtered turn, a truncated stream, a local model emitting
+EOS immediately — could not be represented. Six production sites papered over
+that by pushing an `AssistantContent::text("")` the model never produced, and
+that fabricated part reached history and the wire indistinguishably from a real
+empty text block. (A seventh `text("")`, in the streaming accumulator's
+`ensure_text_block`, is not a sentinel: it opens a slot that deltas fill, and
+`finish` drops it if nothing ever arrives. That one stays.)
+
+Content is a `Vec` now, so the honest representation exists and the fabrication
+is gone. What changes for you:
+
+- A streamed turn that produces nothing yields `choice == []` where it used to
+  yield one empty-text part. Code matching `choice.first()` for a `Text` block
+  to detect "the model said nothing" needs to check `choice.is_empty()` as
+  well — both spellings appear, because histories persisted before this release
+  still carry the fabricated part.
+- rig keeps reading the old shape. `is_empty_assistant_turn` recognises both a
+  genuinely empty turn and the legacy sentinel, so stored conversations keep
+  round-tripping; nothing produces the sentinel any more.
+- Three internal guards no longer fire: two that cancelled a run on "lost
+  assistant content" and one in `rig-candle`. All three were unreachable while
+  the padding existed, and reachable they would have failed runs that previously
+  succeeded.
+- Anthropic's empty `end_turn` follow-up — documented by Anthropic, and the
+  reason the sentinel existed on that path — now normalizes to an empty choice
+  rather than one empty-text part. The recorded provider response is unchanged;
+  only rig's spelling of it is.
+
+#### Decoding accepts two shapes it used to reject: `[]` and `null`
+
+The removed container's `Deserialize` implemented only `visit_seq`. Its JSON was
+otherwise byte-identical to `Vec`'s, which is why no recorded provider fixture
+changes in this release — but two inputs that used to raise a local parse error
+now decode to an empty `Vec`:
+
+- an **empty array** (`[]`), which the container rejected outright;
+- **`null`**, on the fields that moved from the deleted `string_or_one_or_many`
+  onto `json_utils::string_or_vec` — anthropic `Message.content` and
+  `Content::ToolResult.content`, plus the OpenAI chat and Responses-API
+  system/user content. `string_or_vec` carries `visit_none`/`visit_unit` arms
+  its predecessor did not, and those arms cannot simply be dropped: the OpenAI
+  assistant-content field that already used this helper depends on them, because
+  OpenAI sends `"content": null` for a message whose only payload is tool calls.
+
+If you fed rig a history with a null or empty content field and relied on the
+decode to reject it, that check is now yours. The value survives as an empty
+content list; on the request path it is caught by
+`CompletionRequest::validate_message_content` before the network — including a
+tool result whose own block list decoded to empty, which the validator rejects
+by tool name even though the user message carrying it is non-empty — but a
+value you hand straight to a provider is re-emitted as `"content": []`, which
+providers generally reject at the API.
+
+#### A tool whose `Output` is `Vec<ToolResultContent>` now sends rich content
+
+This is the change in this release that alters a wire payload with no compile
+error to announce it, so check any tool that returns a list of
+`ToolResultContent`.
+
+`IntoToolOutput` preserves the canonical rich-content types ahead of its
+`Serialize` fallback, so returning an image does not silently become a JSON
+object. That guard used to name `OneOrMany<ToolResultContent>`; it now names
+`Vec<ToolResultContent>`. Three consequences:
+
+- `type Output = OneOrMany<ToolResultContent>` no longer compiles. Change it to
+  `Vec<ToolResultContent>` and the behaviour you had is preserved.
+- `type Output = Vec<ToolResultContent>` **compiles unchanged and behaves
+  differently.** It used to miss the guard and fall through to serialization,
+  reaching the model as a single JSON tool result
+  (`[{"type":"text",...}, ...]`). It now takes the rich path and reaches the
+  model as N ordered content blocks, with images sent as image parts. For nearly
+  every tool that is the intended result — it is what the `OneOrMany` guard
+  always did — but it is a payload change, and a prompt that parsed that JSON
+  array out of the tool result needs updating.
+- An **empty** `Vec<ToolResultContent>` is now an eager `ToolExecutionError`
+  where it used to produce `json([])`. A zero-block tool result cannot be sent
+  (the request boundary rejects it), so the error fires at the tool instead —
+  as an ordinary tool failure the agent feeds back to the model, not a
+  run-aborting request error one turn later. Return an explicit
+  `serde_json::json!([])` for the old shape, or one empty text block for a
+  genuinely empty result. (An empty **MCP** result is different: it is
+  protocol-legal and outside the tool author's control, so the MCP path
+  normalizes it to one empty text block instead of erroring.)
+- The check lives in `ToolOutput::content`, which is now **fallible**:
+  `content(Vec<ToolResultContent>) -> Result<ToolOutput, ToolExecutionError>`,
+  and `impl From<Vec<ToolResultContent>>` becomes `TryFrom`. On 0.41 the
+  argument type (`OneOrMany`) made the empty case unrepresentable, so the
+  constructor could not fail; the `Vec` argument moves that guarantee into the
+  return type. `text`, `json`, and `one` stay infallible — they construct
+  exactly one block.
+
+#### A local generation that produces nothing keeps succeeding
+
+- A degenerate local generation on `rig-candle` — a model that emits EOS
+  immediately, or only whitespace, which the parser trims — used to be padded to
+  non-empty and succeed. Removing the padding exposed an emptiness check that
+  would have turned it into a hard `CandleError::Inference`. That check is
+  removed: an empty turn is legal here exactly as it is everywhere else, so this
+  case keeps succeeding, now with genuinely empty content.
+- Requests are validated before the network: an empty `chat_history`, or a user
+  or assistant message with no content, is rejected locally with a message
+  naming the offending index instead of becoming a provider 400. System content
+  is not checked — it is a `String` and the removed container never constrained
+  it.
+
 ---
 
 ## 0.41 → next
+
+### `OneOrMany<T>` is gone; lists are `Vec<T>`
+
+`rig_core::OneOrMany` and `rig_core::EmptyListError` are removed, along with the
+`one_or_many` module and both prelude re-exports. Every use becomes `Vec<T>`.
+There is no replacement crate and no bespoke non-empty type.
+
+The type promised something untrue. It asserted "at least one item" on a
+response path where zero items is a real outcome, so the code fabricated data to
+satisfy it (see [Silent behavior changes](#next)). Its `is_empty()` returned a
+hardcoded `false`, which meant every caller asking a list whether it was empty
+got the wrong answer with no compile error — two live defects were hiding behind
+that, one of them a provider guard that could never fire.
+
+**The serialized format is unchanged**, so persisted histories and stored
+embeddings need no migration: the container already serialized as a plain
+sequence. This is a source-only break, and it is why not one recorded provider
+fixture changes.
+
+The migration at your call sites:
+
+| Was | Now |
+| --- | --- |
+| `OneOrMany<T>` | `Vec<T>` |
+| `OneOrMany::one(x)` | `vec![x]` |
+| `OneOrMany::many(xs)` → `Result<_, EmptyListError>` | the `Vec` itself; use `message::require_non_empty` where you were relying on the rejection |
+| `OneOrMany::merge(xs)` → `Result<_, EmptyListError>` | `xs.into_iter().flatten().collect()` — the `?` is gone: `merge` returned `Err(EmptyListError)` when the flattened result was empty, this yields an empty `Vec`. Add your own check if you relied on the rejection |
+| `OneOrMany::from_iter_optional(xs)` | `message::non_empty(xs)`, or inline `Some(xs).filter(\|items\| !items.is_empty())` |
+| `.first()` / `.last()` → owned `T` | `.first()` / `.last()` → `Option<&T>` |
+| `.first_ref()` / `.last_ref()` → `&T` | `.first()` / `.last()` → `Option<&T>` |
+| `.rest()` → `Vec<T>` | `.iter().skip(1)` or `.get(1..)` |
+| `.is_empty()` → always `false` | `.is_empty()` → the real answer |
+| `one_or_many::string_or_one_or_many` | `json_utils::string_or_vec` |
+
+`.len()`, `.iter()`, `.iter_mut()`, `.into_iter()`, `.push()` and `.insert()`
+carry over unchanged.
+
+Two conversions could not stay trait impls: with both sides now foreign types,
+`impl TryFrom<Vec<..>> for Vec<..>` violates the orphan rule. They are `pub`
+free functions in `providers::openai::completion`, so the surface is not
+narrowed:
+
+| Was | Now |
+| --- | --- |
+| `<Vec<Message>>::try_from(v)` where `v: Vec<message::UserContent>` | `user_content_to_messages(v)` |
+| `<Vec<Message>>::try_from(v)` where `v: Vec<message::AssistantContent>` | `assistant_content_to_messages(v)` |
+| `impl From<OneOrMany<String>> for Vec<ReasoningSummary>` | `providers::openai::responses_api::reasoning_summaries(v)` |
+
+`<Vec<Message>>::try_from(m)` for a whole `message::Message` is unaffected.
+
+### Where the container's enforcement went
+
+The container was doing two jobs in opposite directions, and they separate:
+
+- **Outbound (request path).** `CompletionRequest::validate_message_content`
+  rejects an empty `chat_history` and any user or assistant message with no
+  content, before the request is sent. `CompletionRequestBuilder::send`/`::stream`
+  call it, which is also how both agent surfaces issue their requests, so agent
+  traffic is covered without a second check. Handing a request straight to a
+  `CompletionModel` bypasses it — call it yourself there.
+- **Inbound (response path).** Per-wire guards route through the new
+  `message::require_non_empty(items, || error)`, each naming its own error
+  rather than sharing the constructor's context-free one. Most keep the message
+  they already had verbatim; the exception is bedrock, whose guards previously
+  surfaced `EmptyListError` — a message naming the deleted container — and now
+  say which message came back empty, as `ResponseError` rather than
+  `RequestError`. These reject a provider that returned nothing where its
+  protocol promises content — a provider defect, which is a different claim from
+  "empty assistant content is illegal". It is not: on the response path an empty
+  turn is legal, which is the whole reason the container had to go.
+
+If you implement `CompletionModel` yourself, nothing is required of you. If you
+built messages by hand and relied on the constructor to reject empties, call
+`message::require_non_empty` at that point, or let the request boundary catch it.
+
 
 ### The raw grammar is a part lifecycle: Start / Delta / End per content kind
 
@@ -470,7 +656,7 @@ pub struct ToolResult {
     pub provider: Option<ProviderCallId>,
     /// The *executed* tool's name. Required, not `Option`.
     pub name: String,
-    pub content: OneOrMany<ToolResultContent>,
+    pub content: Vec<ToolResultContent>,
 }
 ```
 
@@ -812,7 +998,7 @@ callers actually reached into `raw_response` for:
 
 ```rust
 pub struct CompletionResponse {
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     pub usage: Usage,
     pub message_id: Option<String>,
     pub response_id: Option<String>,
@@ -2120,6 +2306,8 @@ Renamed or relocated items, for searching.
 
 | Old | New | Version |
 | --- | --- | --- |
+| `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → next" | next |
+| `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | next |
 | `rig_core::tool::Tool` (portable) | `rig_core::tool::PortableTool` | 0.41 |
 | `rig_agent::<item>` (portable re-export) | `rig_agent::core::<item>` | 0.41 |
 | `client.agent(...)` inherent method | `AgentClientExt::agent` (via `rig::prelude::*`) | 0.41 |
@@ -2143,7 +2331,7 @@ Renamed or relocated items, for searching.
 | `Output::Unknown` | `Output::Unknown(Value)` | 0.40 |
 | provider-specific `StreamingCompletionResponse` | shared `openai::StreamingCompletionResponse` | 0.40 |
 | `GenericCompletionModel::with_model` | `GenericCompletionModel::new` | 0.40 |
-| `MultiTurnStreamItem::final_response(&str, ..)` | `final_response(OneOrMany<AssistantContent>, ..)` | 0.38 |
+| `MultiTurnStreamItem::final_response(&str, ..)` | `final_response(OneOrMany<AssistantContent>, ..)`; if you are skipping straight past 0.41, `OneOrMany` is itself removed in the next release — go directly to `Vec<AssistantContent>` | 0.38 |
 | `DeltaTextChunkWithItemId.item_id` | none | 0.38 |
 | library target `rig` in `rig-core` | `rig_core`, or the new `rig` facade crate | 0.37 |
 | `Chat::chat(prompt, impl IntoIterator)` | `Chat::chat(prompt, &mut Vec<Message>)` | 0.37 |

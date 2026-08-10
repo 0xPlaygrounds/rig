@@ -818,7 +818,7 @@ mod tests {
         }
         assert_eq!(reasoning_deltas, ["step one, ", "step two"]);
 
-        let parts: Vec<_> = stream.choice.iter().cloned().collect();
+        let parts: Vec<_> = stream.choice.clone();
         assert_eq!(parts.len(), 2, "one reasoning part, one text part");
         assert!(matches!(
             parts.first(),

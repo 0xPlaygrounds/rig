@@ -75,7 +75,6 @@ use tokio::sync::{Mutex, RwLock};
 use crate::tool::ErasedTool;
 use crate::tool::server::{ManagedToolToken, ToolServerHandle};
 use crate::tool::{ToolContext, ToolExecutionError, ToolOutput, ToolResult};
-use rig_core::OneOrMany;
 use rig_core::message::{ImageMediaType, MimeType, ToolResultContent};
 use rig_core::wasm_compat::WasmBoxedFuture;
 
@@ -433,13 +432,20 @@ fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutio
 
     let mut mapped = mapped.into_iter();
     if let Some(first) = mapped.next() {
-        let mut ordered = OneOrMany::one(first);
+        let mut ordered = vec![first];
         for block in mapped {
             ordered.push(block);
         }
-        return Ok(ToolOutput::content(ordered));
+        return ToolOutput::content(ordered);
     }
 
+    // A content-less MCP result normalizes to one empty text block. This is
+    // deliberately *not* what the native path does — a native tool returning an
+    // empty `Vec<ToolResultContent>` gets an eager `ToolExecutionError`,
+    // because that shape is the tool author's own type choice and fixable in
+    // one read. An empty MCP result is protocol-legal and outside the caller's
+    // control, so erroring here would fail tools the author cannot fix; the
+    // empty block keeps the result sendable without inventing text.
     if result.is_error == Some(true) {
         Ok(ToolOutput::text("the MCP tool reported an error"))
     } else {
@@ -1108,7 +1114,7 @@ mod tests {
             .content
             .push(ContentBlock::text("human-readable note"));
 
-        let mut expected = OneOrMany::one(RigToolResultContent::json(value));
+        let mut expected = vec![RigToolResultContent::json(value)];
         expected.push(RigToolResultContent::image_base64(
             "aW1hZ2U=",
             Some(ImageMediaType::PNG),
@@ -1117,7 +1123,7 @@ mod tests {
         expected.push(RigToolResultContent::text("human-readable note"));
         assert_eq!(
             mcp_result_output(&result).expect("MCP structured rich output"),
-            ToolOutput::content(expected)
+            ToolOutput::content(expected).expect("fixture content is non-empty")
         );
     }
 
@@ -1223,10 +1229,10 @@ mod tests {
         let mut context = ToolContext::new();
         let result = execute(&fixture, "{}", &mut context).await;
 
-        let mut expected_content = OneOrMany::one(RigToolResultContent::json(json!({
+        let mut expected_content = vec![RigToolResultContent::json(json!({
             "answer": 42,
             "source": "fixture"
-        })));
+        }))];
         expected_content.push(RigToolResultContent::text("before"));
         expected_content.push(RigToolResultContent::image_base64(
             "aGVsbG8=",
@@ -1234,7 +1240,10 @@ mod tests {
             None,
         ));
         expected_content.push(RigToolResultContent::text("after"));
-        assert_eq!(result.output(), &ToolOutput::content(expected_content));
+        assert_eq!(
+            result.output(),
+            &ToolOutput::content(expected_content).expect("fixture content is non-empty")
+        );
 
         let raw = context
             .result::<CallToolResult>()

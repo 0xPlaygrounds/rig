@@ -1,13 +1,11 @@
 //! Google Gemini Interactions API integration.
 //! From <https://ai.google.dev/api/interactions-api>
 
-use base64::{Engine, prelude::BASE64_STANDARD};
-
-use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use serde_json::{Map, Value};
 use tracing::{Level, enabled};
 use tracing_futures::Instrument;
@@ -517,7 +515,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
+        let choice = crate::message::require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )
@@ -2683,7 +2681,6 @@ pub mod interactions_api_types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OneOrMany;
     use crate::completion::{CompletionRequest, Message};
     use crate::message::{self, ToolChoice as MessageToolChoice};
     use serde_json::json;
@@ -2691,14 +2688,14 @@ mod tests {
     #[test]
     fn test_create_request_body_simple() {
         let prompt = Message::User {
-            content: OneOrMany::one(message::UserContent::text("Hello")),
+            content: vec![message::UserContent::text("Hello")],
         };
 
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
             preamble: Some("Be precise.".to_string()),
-            chat_history: OneOrMany::one(prompt),
+            chat_history: vec![prompt],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2755,30 +2752,30 @@ mod tests {
             };
             Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+                content: vec![AssistantContent::ToolCall(tool_call)],
             }
         };
         let result = |item_id: Option<&str>, call_id: &str, name: &str| Message::User {
-            content: OneOrMany::one(match item_id {
+            content: vec![match item_id {
                 Some(item_id) => message::UserContent::tool_result_with_call_id(
                     item_id,
                     call_id,
                     name,
-                    OneOrMany::one(ToolResultContent::text("out")),
+                    vec![ToolResultContent::text("out")],
                 ),
                 None => message::UserContent::tool_result_from_wire(
                     call_id,
                     name,
-                    OneOrMany::one(ToolResultContent::text("out")),
+                    vec![ToolResultContent::text("out")],
                 ),
-            }),
+            }],
         };
 
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 // A driver-built result carries the executed name (a repair
                 // hook renamed the call: `sum` ran, not `add`).
                 call(None, "call_1", "sum"),
@@ -2794,8 +2791,7 @@ mod tests {
                 // wire as a name.
                 call(Some("fc_1"), "call_9", "get_time"),
                 result(Some("fc_1"), "call_9", "get_time"),
-            ])
-            .expect("non-empty history"),
+            ],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2863,7 +2859,7 @@ mod tests {
             call: call.clone(),
             provider: None,
             name: "get_weather".to_string(),
-            content: OneOrMany::one(message::ToolResultContent::text("ok")),
+            content: vec![message::ToolResultContent::text("ok")],
         });
 
         let converted = Content::try_from(content).expect("tool result should convert");
@@ -2880,11 +2876,10 @@ mod tests {
             call: message::ToolCallId::new_or_mint("call-123"),
             provider: message::ProviderCallId::new("call-123"),
             name: "get_weather".to_string(),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::ToolResultContent::text(r#"{"status":"literal"}"#),
                 message::ToolResultContent::json(json!({ "status": "structured" })),
-            ])
-            .expect("tool result content is non-empty"),
+            ],
         });
 
         let converted = Content::try_from(content).expect("tool result should convert");
@@ -2936,7 +2931,7 @@ mod tests {
                 call: message::ToolCallId::new_or_mint("call-123"),
                 provider: message::ProviderCallId::new("call-123"),
                 name: "get_weather".to_string(),
-                content: OneOrMany::one(tool_content),
+                content: vec![tool_content],
             });
 
             let Content::FunctionResult(result) =
@@ -2977,7 +2972,7 @@ mod tests {
                 call: message::ToolCallId::new_or_mint("call-123"),
                 provider: message::ProviderCallId::new("call-123"),
                 name: "get_weather".to_string(),
-                content: OneOrMany::one(tool_content),
+                content: vec![tool_content],
             });
 
             let Content::FunctionResult(result) =
@@ -2995,7 +2990,7 @@ mod tests {
             call: message::ToolCallId::new_or_mint("call-image"),
             provider: message::ProviderCallId::new("call-image"),
             name: "render".to_string(),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::ToolResultContent::image_base64(
                     "first-image",
                     Some(message::ImageMediaType::PNG),
@@ -3010,16 +3005,15 @@ mod tests {
                     detail: None,
                     additional_params: None,
                 }),
-            ])
-            .expect("tool result content should be non-empty"),
+            ],
         });
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(tool_result),
-            }),
+            chat_history: vec![Message::User {
+                content: vec![tool_result],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -3081,7 +3075,7 @@ mod tests {
 
         let choice = response.choice.first();
         match choice {
-            completion::AssistantContent::ToolCall(tool_call) => {
+            Some(completion::AssistantContent::ToolCall(tool_call)) => {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert_eq!(tool_call.id, "call-123");
                 assert_eq!(

@@ -37,9 +37,8 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::{
-    OneOrMany,
-    message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult},
+use rig_core::message::{
+    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
 
 use crate::{
@@ -50,24 +49,38 @@ use crate::{
 };
 
 /// Assemble assistant content in canonical replay order: reasoning blocks,
-/// then text, then trailing items (tool calls, images).
-pub(crate) fn ordered_streaming_assistant_content(
+/// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
+/// so the result is empty exactly when every input is.
+pub(crate) fn ordered_assistant_content(
     reasoning_items: impl IntoIterator<Item = Reasoning>,
     text_items: impl IntoIterator<Item = AssistantContent>,
     trailing_items: impl IntoIterator<Item = AssistantContent>,
-) -> Option<OneOrMany<AssistantContent>> {
+) -> Vec<AssistantContent> {
     let mut content_items = reasoning_items
         .into_iter()
         .map(AssistantContent::Reasoning)
         .collect::<Vec<_>>();
     content_items.extend(text_items);
     content_items.extend(trailing_items);
+    content_items
+}
 
-    OneOrMany::from_iter_optional(content_items)
+/// [`ordered_assistant_content`], as an `Option` for slots where an empty
+/// assembly means "no message".
+pub(crate) fn ordered_streaming_assistant_content(
+    reasoning_items: impl IntoIterator<Item = Reasoning>,
+    text_items: impl IntoIterator<Item = AssistantContent>,
+    trailing_items: impl IntoIterator<Item = AssistantContent>,
+) -> Option<Vec<AssistantContent>> {
+    non_empty(ordered_assistant_content(
+        reasoning_items,
+        text_items,
+        trailing_items,
+    ))
 }
 
 pub(crate) fn assistant_text_items_from_choice(
-    choice: &OneOrMany<AssistantContent>,
+    choice: &[AssistantContent],
 ) -> Vec<AssistantContent> {
     choice
         .iter()
@@ -179,8 +192,10 @@ impl PartialStreamedTurn {
             feedback,
         ));
 
+        // `retry_results` is non-empty: the invalid call's own feedback result
+        // was just pushed unconditionally.
         let user_message = Message::User {
-            content: OneOrMany::from_iter_optional(retry_results)?,
+            content: retry_results,
         };
 
         Some((assistant_message, user_message))
@@ -197,7 +212,7 @@ pub struct StreamedTurn {
     /// The assistant content to record in history: canonical
     /// (reasoning → text → tool calls) when the turn produced reasoning or
     /// tool calls, otherwise the provider's aggregated choice as-is.
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     /// Executable Rig tools advertised to the provider for this turn.
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active tool choice for this turn.
@@ -342,14 +357,17 @@ impl StreamedTurnAssembler {
         &self.text
     }
 
-    /// Normalize a snapshot of the provider aggregate into the content that
-    /// would be committed for this turn, without consuming the assembler.
-    fn canonical_choice(
+    /// Normalize the provider aggregate into the content committed for this
+    /// turn. The reasoning is supplied by the caller: the finish path drains
+    /// its parts by value ([`Self::drain_reasoning`]) instead of cloning
+    /// them, while the partial-turn surface assembles borrowed
+    /// ([`Self::assembled_reasoning`]) — agreement between the two is pinned
+    /// by `canonical_choice_and_partial_turn_agree_on_multi_part_reasoning`.
+    fn canonical_choice_with(
         &self,
-        provider_choice: &OneOrMany<AssistantContent>,
-    ) -> OneOrMany<AssistantContent> {
-        let reasoning = self.assembled_reasoning();
-
+        reasoning: Vec<Reasoning>,
+        provider_choice: &[AssistantContent],
+    ) -> Vec<AssistantContent> {
         if !self.pending_tool_calls.is_empty() || !reasoning.is_empty() {
             let text_items = assistant_text_items_from_choice(provider_choice);
             let tool_items = self
@@ -357,10 +375,12 @@ impl StreamedTurnAssembler {
                 .iter()
                 .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
                 .collect::<Vec<_>>();
-            ordered_streaming_assistant_content(reasoning, text_items, tool_items)
-                .unwrap_or_else(|| provider_choice.clone())
+            // Infallible on purpose: the enclosing guard makes at least one
+            // input non-empty and the assembly maps its inputs 1:1, so there
+            // is no empty case to fall back from.
+            ordered_assistant_content(reasoning, text_items, tool_items)
         } else {
-            provider_choice.clone()
+            provider_choice.to_vec()
         }
     }
 
@@ -444,6 +464,26 @@ impl StreamedTurnAssembler {
                 ReasoningPartState::Pending(text) if !text.is_empty() => {
                     let mut assembled = Reasoning::new(text);
                     if let Some(id) = part.provider_id.clone() {
+                        assembled = assembled.with_id(id);
+                    }
+                    Some(assembled)
+                }
+                ReasoningPartState::Pending(_) => None,
+            })
+            .collect()
+    }
+
+    /// [`Self::assembled_reasoning`], consuming the parts — the finish path
+    /// owns the assembler, and reasoning blocks can carry large encrypted
+    /// payloads that should move rather than clone.
+    fn drain_reasoning(&mut self) -> Vec<Reasoning> {
+        std::mem::take(&mut self.reasoning_parts)
+            .into_iter()
+            .filter_map(|part| match part.state {
+                ReasoningPartState::Completed(reasoning) => Some(reasoning),
+                ReasoningPartState::Pending(text) if !text.is_empty() => {
+                    let mut assembled = Reasoning::new(&text);
+                    if let Some(id) = part.provider_id {
                         assembled = assembled.with_id(id);
                     }
                     Some(assembled)
@@ -685,11 +725,12 @@ impl StreamedTurnAssembler {
     /// aggregated choice for the turn
     /// ([`crate::streaming::StreamingCompletionResponse::choice`]).
     pub fn finish(
-        self,
+        mut self,
         message_id: Option<String>,
-        final_choice: &OneOrMany<AssistantContent>,
+        final_choice: &[AssistantContent],
     ) -> StreamedTurn {
-        let choice = self.canonical_choice(final_choice);
+        let reasoning = self.drain_reasoning();
+        let choice = self.canonical_choice_with(reasoning, final_choice);
         let internal_call_ids: Vec<(String, String)> = self
             .pending_tool_calls
             .iter()
@@ -895,11 +936,10 @@ mod tests {
             .expect("ingest should succeed");
 
         // Provider aggregation order differs deliberately.
-        let final_choice = OneOrMany::many(vec![
+        let final_choice = vec![
             AssistantContent::text("answer"),
             AssistantContent::ToolCall(tool_call("tc_1", "add")),
-        ])
-        .expect("two items");
+        ];
 
         let turn = asm.finish(Some("msg_1".to_string()), &final_choice);
         let kinds: Vec<&'static str> = turn
@@ -1179,7 +1219,7 @@ mod tests {
         .expect("ingest");
 
         let partial = asm.partial_turn(None).reasoning;
-        let final_choice = OneOrMany::one(AssistantContent::text(""));
+        let final_choice = vec![AssistantContent::text("")];
         let turn = asm.finish(None, &final_choice);
         let finished: Vec<Reasoning> = turn
             .choice
@@ -1198,7 +1238,7 @@ mod tests {
         let mut asm = assembler();
         asm.ingest(&text_item("hi")).expect("ingest should succeed");
 
-        let final_choice = OneOrMany::one(AssistantContent::text("hi"));
+        let final_choice = vec![AssistantContent::text("hi")];
         let turn = asm.finish(None, &final_choice);
         assert_eq!(
             serde_json::to_value(&turn.choice).expect("serialize"),
@@ -1228,7 +1268,7 @@ mod tests {
         };
         run.record_streamed_completion_call(usage)
             .expect("record should succeed");
-        let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
+        let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
         run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
             .expect("streamed_turn should succeed");
 
@@ -1240,7 +1280,7 @@ mod tests {
         run.tool_results(vec![UserContent::tool_result(
             "tc_1",
             "add",
-            OneOrMany::one(ToolResultContent::text("2")),
+            vec![ToolResultContent::text("2")],
         )])
         .expect("tool_results should succeed");
 
@@ -1251,7 +1291,7 @@ mod tests {
         let asm = assembler();
         run.record_streamed_completion_call(Usage::new())
             .expect("record should succeed");
-        let final_choice = OneOrMany::one(AssistantContent::text("done"));
+        let final_choice = vec![AssistantContent::text("done")];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
 
@@ -1474,7 +1514,7 @@ mod tests {
 
         let turn = StreamedTurn {
             message_id: None,
-            choice: OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "unknown"))),
+            choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
             executable_tool_names: tool_names(&["add"]),
             allowed_tool_names: tool_names(&["add"]),
             internal_call_ids: Vec::new(),
@@ -1523,11 +1563,10 @@ mod tests {
         run.record_streamed_completion_call(Usage::new())
             .expect("record should succeed");
 
-        let final_choice = OneOrMany::many(vec![
+        let final_choice = vec![
             AssistantContent::ToolCall(tool_call("tc_1", "add")),
             AssistantContent::ToolCall(tool_call("tc_1", "add")),
-        ])
-        .expect("two items");
+        ];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
 
@@ -1549,7 +1588,7 @@ mod tests {
         run.next_step().expect("next_step");
 
         let asm = assembler();
-        let final_choice = OneOrMany::one(AssistantContent::text("done"));
+        let final_choice = vec![AssistantContent::text("done")];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
 
@@ -1583,7 +1622,7 @@ mod tests {
             .expect("ingest should succeed");
         run.record_streamed_completion_call(Usage::new())
             .expect("record should succeed");
-        let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
+        let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
         run.next_step().expect("CallTools step");
@@ -1595,7 +1634,7 @@ mod tests {
             .tool_results(vec![UserContent::tool_result(
                 "tc_1",
                 "add",
-                OneOrMany::one(ToolResultContent::text("2")),
+                vec![ToolResultContent::text("2")],
             )])
             .expect("tool_results should succeed");
         assert!(matches!(

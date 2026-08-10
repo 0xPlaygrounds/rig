@@ -11,7 +11,6 @@
 //! the recorded turn and never mint literal IDs.
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolChoice,
@@ -38,7 +37,7 @@ struct StreamRun {
     reasoning_delta: String,
     tool_calls: Vec<ToolCall>,
     finals: Vec<StreamFinal>,
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
 }
 
@@ -49,7 +48,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         reasoning_delta: String::new(),
         tool_calls: Vec::new(),
         finals: Vec::new(),
-        choice: OneOrMany::one(AssistantContent::text("")),
+        choice: vec![AssistantContent::text("")],
         response: None,
     };
 
@@ -116,7 +115,7 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     );
 }
 
-fn aggregated_text(choice: &OneOrMany<AssistantContent>) -> String {
+fn aggregated_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -126,7 +125,7 @@ fn aggregated_text(choice: &OneOrMany<AssistantContent>) -> String {
         .collect()
 }
 
-fn aggregated_reasoning_text(choice: &OneOrMany<AssistantContent>) -> String {
+fn aggregated_reasoning_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -779,7 +778,7 @@ async fn interactions_requires_action_roundtrip() {
                             tool_call.id.clone(),
                             tool_call.provider.clone(),
                             tool_call.function.name.clone(),
-                            OneOrMany::one(ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)),
+                            vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
                         )))
                         .additional_params(
                             serde_json::to_value(interactions_api::AdditionalParameters {
@@ -1024,7 +1023,7 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(AssistantContent::ToolCall(ToolCall {
+                    content: vec![AssistantContent::ToolCall(ToolCall {
                         // The cross-provider shape: the other wire's
                         // identifier survives as rig's correlation handle,
                         // with no provider id for Gemini's wire.
@@ -1036,15 +1035,15 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                         },
                         signature: None,
                         additional_params: None,
-                    })),
+                    })],
                 },
                 rig::message::Message::User {
-                    content: OneOrMany::one(UserContent::ToolResult(rig::message::ToolResult {
+                    content: vec![UserContent::ToolResult(rig::message::ToolResult {
                         call: cross_provider_handle,
                         provider: None,
                         name: "add".to_owned(),
-                        content: OneOrMany::one(ToolResultContent::text("5")),
-                    })),
+                        content: vec![ToolResultContent::text("5")],
+                    })],
                 },
             ];
             let request = model

@@ -31,10 +31,7 @@ use rig_agent::{
     },
     tool::{Tool, ToolContext, ToolExecutionError},
 };
-use rig_core::{
-    OneOrMany,
-    message::{AssistantContent, ReasoningContent, ToolCall, ToolFunction, UserContent},
-};
+use rig_core::message::{AssistantContent, ReasoningContent, ToolCall, ToolFunction, UserContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
@@ -162,24 +159,23 @@ impl Turn {
         }
     }
 
-    fn choice(&self) -> OneOrMany<AssistantContent> {
+    fn choice(&self) -> Vec<AssistantContent> {
         match self {
-            Self::Text { text, .. } => OneOrMany::one(AssistantContent::text(text)),
+            Self::Text { text, .. } => vec![AssistantContent::text(text)],
             Self::Tool {
                 id,
                 name,
                 arguments,
                 ..
-            } => OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+            } => vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 id.clone(),
                 ToolFunction::new(name.clone(), arguments.clone()),
-            ))),
-            Self::Rich { text, .. } => OneOrMany::many(vec![
+            ))],
+            Self::Rich { text, .. } => vec![
                 AssistantContent::reasoning("considering the evidence"),
                 AssistantContent::text(text),
-            ])
-            .expect("rich turn contains two items"),
-            Self::Error(_) => OneOrMany::one(AssistantContent::text("unreachable")),
+            ],
+            Self::Error(_) => vec![AssistantContent::text("unreachable")],
         }
     }
 }
@@ -382,7 +378,7 @@ fn request(prompt: &str) -> CompletionRequest {
     CompletionRequest {
         model: None,
         preamble: None,
-        chat_history: OneOrMany::one(Message::user(prompt)),
+        chat_history: vec![Message::user(prompt)],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -1485,7 +1481,7 @@ impl CompletionModel for PendingStreamingModel {
         _request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
         Ok(CompletionResponse::new(
-            OneOrMany::one(AssistantContent::text("unused")),
+            vec![AssistantContent::text("unused")],
             Usage::new(),
             "pending",
         ))

@@ -1,7 +1,6 @@
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 
 use rig_core::{
-    OneOrMany,
     completion::CompletionError,
     message::{Text, ToolResultContent, UserContent},
 };
@@ -28,9 +27,12 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigUserContent {
                     .map(|rt| rt.0)
                     .collect::<Vec<ToolResultContent>>();
 
-                let tool_results = OneOrMany::many(tool_result_contents).map_err(|_| {
-                    CompletionError::ProviderError("ToolResult returned invalid response".into())
-                })?;
+                let tool_results =
+                    rig_core::message::require_non_empty(tool_result_contents, || {
+                        CompletionError::ProviderError(
+                            "ToolResult returned invalid response".into(),
+                        )
+                    })?;
                 // Bedrock's wire correlates results by `toolUseId` only
                 // and never carries the tool name; this conversion is lossy
                 // for name-keyed wires.
@@ -103,7 +105,6 @@ mod tests {
     use crate::types::user_content::RigUserContent;
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig_core::{
-        OneOrMany,
         completion::CompletionError,
         message::{ToolResultContent, UserContent},
     };
@@ -148,7 +149,7 @@ mod tests {
         assert_eq!(content.name, "");
         assert_eq!(
             content.content,
-            OneOrMany::one(ToolResultContent::Text("content".into()))
+            vec![ToolResultContent::Text("content".into())]
         )
     }
 

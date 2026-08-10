@@ -708,17 +708,8 @@ impl PartsAccumulator {
         // `provider` stays `None` — the empty-string sentinel is
         // unrepresentable here.
         let wire_tool_id = end.tool_id.map(WireId::into_string).or(opened_wire_id);
-        let call_id = end.call_id.filter(|call_id| !call_id.is_empty());
-        let provider = match (call_id, wire_tool_id) {
-            (Some(call_id), tool_id) => {
-                crate::message::ProviderCallId::new(call_id).map(|provider| match tool_id {
-                    Some(tool_id) => provider.with_item_id(tool_id),
-                    None => provider,
-                })
-            }
-            (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id),
-            (None, None) => None,
-        };
+        let provider =
+            crate::message::ProviderCallId::from_optional_wire(end.call_id, wire_tool_id);
         let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         let tool_call = ToolCall {
             id,
@@ -769,7 +760,7 @@ impl PartsAccumulator {
     /// truncation contract; reasoning still open is kept as-is (its deltas
     /// are real content).
     pub(crate) fn finish(&mut self) -> Vec<AssistantContent> {
-        let mut parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
+        let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
             .into_iter()
             .filter(|part| match part {
                 // A lazily opened block that got content survives; the
@@ -789,9 +780,10 @@ impl PartsAccumulator {
         self.open_tool_inputs.clear();
         self.finished_tools.clear();
         self.saw_tool_call = false;
-        if parts.is_empty() {
-            parts.push(AssistantContent::text(""));
-        }
+        // A turn that streamed no parts finishes empty. The fabricated
+        // empty-text part that used to be pushed here existed only to satisfy
+        // the non-empty content type, and it reached history and the wire as if
+        // the model had emitted it.
         parts
     }
 }
@@ -1339,10 +1331,13 @@ mod tests {
     }
 
     #[test]
-    fn finish_on_an_empty_stream_yields_one_empty_text_part() {
+    fn finish_on_an_empty_stream_yields_no_parts() {
         let mut accumulator = PartsAccumulator::new();
         let parts = accumulator.finish();
-        assert_eq!(parts, vec![AssistantContent::text("")]);
+        // Was one fabricated empty-text part, which the old non-empty content
+        // type forced and which was indistinguishable on the wire from a real
+        // empty text block.
+        assert!(parts.is_empty());
     }
 
     // --- tool-call lifecycle (the settled semantics) ---
@@ -1688,7 +1683,10 @@ mod tests {
         accumulator.tool_name_delta(&pid("call_1"), "ping");
         accumulator.tool_args_delta(&pid("call_1"), "{\"x\":");
         let parts = accumulator.finish();
-        assert_eq!(parts, vec![AssistantContent::text("")]);
+        // Discarding the only (incomplete) call leaves the turn with nothing,
+        // which is now representable instead of being padded with an empty
+        // text part.
+        assert!(parts.is_empty());
         assert!(!accumulator.saw_tool_call());
     }
 

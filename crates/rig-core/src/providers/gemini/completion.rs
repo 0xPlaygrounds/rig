@@ -28,16 +28,13 @@ pub const GEMINI_2_0_FLASH_LITE: &str = "gemini-2.0-flash-lite";
 pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
+use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
-use crate::{
-    OneOrMany,
-    completion::{self, CompletionError, CompletionRequest},
-};
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
     GenerationConfig, Part, PartKind, Role, Tool, map_finish_reason,
@@ -533,7 +530,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             )
             .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
+        let choice = crate::message::require_non_empty(content, || {
             CompletionError::ResponseError(
                 "Response contained no message or tool call (empty)".to_owned(),
             )
@@ -2423,7 +2420,7 @@ mod tests {
         let request = CompletionRequest {
             model: Some("gemini-2.5-flash".to_string()),
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2451,7 +2448,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello".into()),
+            chat_history: vec!["Hello".into()],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2672,7 +2669,7 @@ mod tests {
         let first = converted.choice.first();
         assert!(matches!(
             first,
-            message::AssistantContent::Reasoning(message::Reasoning { content, .. })
+            Some(message::AssistantContent::Reasoning(message::Reasoning { content, .. }))
                 if matches!(
                     content.first(),
                     Some(message::ReasoningContent::Text {
@@ -2947,7 +2944,7 @@ mod tests {
 
         assert!(matches!(
             converted.choice.first(),
-            message::AssistantContent::Text(text) if text.text == "hi"
+            Some(message::AssistantContent::Text(text)) if text.text == "hi"
         ));
         assert_eq!(converted.usage.total_tokens, 5);
         assert_eq!(
@@ -3044,12 +3041,12 @@ mod tests {
     fn test_reasoning_signature_is_emitted_in_gemini_part() {
         let msg = message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::Reasoning(
+            content: vec![message::AssistantContent::Reasoning(
                 message::Reasoning::new_with_signature(
                     "structured thought",
                     Some("reuse_sig_456".to_string()),
                 ),
-            )),
+            )],
         };
 
         let converted: Content = msg.try_into().expect("convert message");
@@ -3074,7 +3071,7 @@ mod tests {
 
         let msg = message::Message::Assistant {
             id: None,
-            content: OneOrMany::one(message::AssistantContent::ToolCall(tool_call)),
+            content: vec![message::AssistantContent::ToolCall(tool_call)],
         };
 
         let content: Content = msg.try_into().unwrap();
@@ -3118,7 +3115,7 @@ mod tests {
 
         let converted: crate::completion::CompletionResponse =
             response.try_into().expect("response should convert");
-        let message::AssistantContent::ToolCall(tool_call) = converted.choice.first() else {
+        let Some(message::AssistantContent::ToolCall(tool_call)) = converted.choice.first() else {
             panic!("expected a tool call");
         };
         assert_eq!(tool_call.id, "call-123");
@@ -3335,11 +3332,9 @@ mod tests {
             Some(DocumentMediaType::TXT),
         );
 
-        let content: Content = message::Message::User {
-            content: crate::OneOrMany::one(doc),
-        }
-        .try_into()
-        .unwrap();
+        let content: Content = message::Message::User { content: vec![doc] }
+            .try_into()
+            .unwrap();
 
         if let Part {
             part: PartKind::Text(text),
@@ -3359,7 +3354,6 @@ mod tests {
     #[test]
     fn test_tool_result_with_image_content() {
         // Test that a ToolResult with image content converts correctly to Gemini's Part format
-        use crate::OneOrMany;
         use crate::message::{
             DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
         };
@@ -3369,7 +3363,7 @@ mod tests {
             call: message::ToolCallId::new_or_mint("call-123"),
             provider: message::ProviderCallId::new("call-123"),
             name: "test_tool".to_string(),
-            content: OneOrMany::many(vec![
+            content: vec![
                 ToolResultContent::Text(message::Text::new(r#"{"status": "success"}"#.to_string())),
                 ToolResultContent::Image(Image {
                     data: DocumentSourceKind::Base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string()),
@@ -3377,12 +3371,12 @@ mod tests {
                     detail: None,
                     additional_params: None,
                 }),
-            ]).expect("Should create OneOrMany with multiple items"),
+            ],
         };
 
         let user_content = message::UserContent::ToolResult(tool_result);
         let msg = message::Message::User {
-            content: OneOrMany::one(user_content),
+            content: vec![user_content],
         };
 
         // Convert to Gemini Content
@@ -3427,15 +3421,14 @@ mod tests {
 
     #[test]
     fn mixed_inline_images_and_text_keep_text_response_and_ordered_parts() {
-        use crate::OneOrMany;
         use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
         let message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+            content: vec![message::UserContent::ToolResult(ToolResult {
                 call: message::ToolCallId::mint(),
                 provider: None,
                 name: "ordered_tool".to_string(),
-                content: OneOrMany::many(vec![
+                content: vec![
                     ToolResultContent::image_base64("first-image", Some(ImageMediaType::PNG), None),
                     ToolResultContent::text("between-images"),
                     ToolResultContent::image_base64(
@@ -3443,9 +3436,8 @@ mod tests {
                         Some(ImageMediaType::JPEG),
                         None,
                     ),
-                ])
-                .expect("mixed tool result content should be non-empty"),
-            })),
+                ],
+            })],
         };
 
         let content: Content = message.try_into().expect("tool result should convert");
@@ -3475,20 +3467,18 @@ mod tests {
 
     #[test]
     fn mixed_inline_image_and_json_keep_structured_value_and_media_part() {
-        use crate::OneOrMany;
         use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
         let message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+            content: vec![message::UserContent::ToolResult(ToolResult {
                 call: message::ToolCallId::mint(),
                 provider: None,
                 name: "ordered_tool".to_string(),
-                content: OneOrMany::many(vec![
+                content: vec![
                     ToolResultContent::json(json!({ "status": "ok" })),
                     ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
-                ])
-                .expect("mixed tool result content should be non-empty"),
-            })),
+                ],
+            })],
         };
 
         let content: Content = message.try_into().expect("tool result should convert");
@@ -3512,15 +3502,14 @@ mod tests {
 
     #[test]
     fn mixed_url_image_and_response_value_is_rejected() {
-        use crate::OneOrMany;
         use crate::message::{DocumentSourceKind, Image, ImageMediaType, ToolResultContent};
 
         let tool_result = message::Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(message::ToolResult {
+            content: vec![message::UserContent::ToolResult(message::ToolResult {
                 call: message::ToolCallId::mint(),
                 provider: None,
                 name: "url_tool".to_string(),
-                content: OneOrMany::many(vec![
+                content: vec![
                     ToolResultContent::Image(Image {
                         data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
                         media_type: Some(ImageMediaType::PNG),
@@ -3528,9 +3517,8 @@ mod tests {
                         additional_params: None,
                     }),
                     ToolResultContent::text("after-image"),
-                ])
-                .expect("mixed tool result content should be non-empty"),
-            })),
+                ],
+            })],
         };
 
         let error = Content::try_from(tool_result)
@@ -3545,7 +3533,6 @@ mod tests {
 
     #[test]
     fn tool_result_rejects_unsupported_image_media_types() {
-        use crate::OneOrMany;
         use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
         for media_type in [
@@ -3555,16 +3542,16 @@ mod tests {
             ImageMediaType::SVG,
         ] {
             let message = message::Message::User {
-                content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                content: vec![message::UserContent::ToolResult(ToolResult {
                     call: message::ToolCallId::mint(),
                     provider: None,
                     name: "image_tool".to_string(),
-                    content: OneOrMany::one(ToolResultContent::image_base64(
+                    content: vec![ToolResultContent::image_base64(
                         "image-data",
                         Some(media_type),
                         None,
-                    )),
-                })),
+                    )],
+                })],
             };
 
             let error = Content::try_from(message)
@@ -3580,24 +3567,22 @@ mod tests {
 
     #[test]
     fn structured_json_refs_remain_literal_with_unreferenced_image_parts() {
-        use crate::OneOrMany;
         use crate::message::{ImageMediaType, ToolResult, ToolResultContent};
 
         let message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+            content: vec![message::UserContent::ToolResult(ToolResult {
                 call: message::ToolCallId::mint(),
                 provider: None,
                 name: "collision_tool".to_string(),
-                content: OneOrMany::many(vec![
+                content: vec![
                     ToolResultContent::json(json!({
                         "literal": {
                             "$ref": "tool_result_image_0"
                         }
                     })),
                     ToolResultContent::image_base64("image-data", Some(ImageMediaType::PNG), None),
-                ])
-                .expect("mixed tool result content should be non-empty"),
-            })),
+                ],
+            })],
         };
 
         let content: Content = message.try_into().expect("tool result should convert");
@@ -3628,7 +3613,6 @@ mod tests {
 
     #[test]
     fn tool_result_literal_text_and_structured_json_remain_distinct() {
-        use crate::OneOrMany;
         use crate::message::{ToolResult, ToolResultContent};
 
         let cases = [
@@ -3644,12 +3628,12 @@ mod tests {
 
         for (tool_content, expected) in cases {
             let message = message::Message::User {
-                content: OneOrMany::one(message::UserContent::ToolResult(ToolResult {
+                content: vec![message::UserContent::ToolResult(ToolResult {
                     call: message::ToolCallId::mint(),
                     provider: None,
                     name: "test_tool".to_string(),
-                    content: OneOrMany::one(tool_content),
-                })),
+                    content: vec![tool_content],
+                })],
             };
             let content: Content = message.try_into().expect("tool result should convert");
 
@@ -3666,7 +3650,6 @@ mod tests {
     /// an asymmetric functionCall/functionResponse id pair is rejected.
     #[test]
     fn echoed_minted_handle_never_reaches_the_function_response_id() {
-        use crate::OneOrMany;
         use crate::message::{ToolCall, ToolCallId, ToolFunction, ToolResultContent};
 
         // An id-less wire minted the handle (Gemini REST issued no id).
@@ -3679,11 +3662,11 @@ mod tests {
         );
 
         let message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::tool_result(
+            content: vec![message::UserContent::tool_result(
                 call.id.as_str(),
                 "lookup",
-                OneOrMany::one(ToolResultContent::text("out")),
-            )),
+                vec![ToolResultContent::text("out")],
+            )],
         };
         let content: Content = message.try_into().expect("tool result should convert");
         let PartKind::FunctionResponse(response) = &content.parts[0].part else {
@@ -3698,33 +3681,31 @@ mod tests {
     /// call: `functionResponse.name: ""` is INVALID_ARGUMENT.
     #[test]
     fn ingested_nameless_results_resolve_their_name_at_request_assembly() {
-        use crate::OneOrMany;
         use crate::completion::request::CompletionRequest;
         use crate::message::{AssistantContent, ToolCall, ToolFunction, ToolResultContent};
 
         let request = CompletionRequest {
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 message::Message::user("weather?"),
                 message::Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+                    content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
                         "toolu_abc",
                         ToolFunction {
                             name: "get_weather".to_owned(),
                             arguments: json!({"city": "Paris"}),
                         },
-                    ))),
+                    ))],
                 },
                 message::Message::User {
-                    content: OneOrMany::one(message::UserContent::tool_result_from_wire(
+                    content: vec![message::UserContent::tool_result_from_wire(
                         "toolu_abc",
                         "",
-                        OneOrMany::one(ToolResultContent::text("sunny")),
-                    )),
+                        vec![ToolResultContent::text("sunny")],
+                    )],
                 },
-            ])
-            .expect("non-empty history"),
+            ],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -3752,15 +3733,14 @@ mod tests {
     /// A wire-derived result keeps its provider-issued id on replay.
     #[test]
     fn wire_derived_tool_result_keeps_the_provider_id_on_the_wire() {
-        use crate::OneOrMany;
         use crate::message::ToolResultContent;
 
         let message = message::Message::User {
-            content: OneOrMany::one(message::UserContent::tool_result_from_wire(
+            content: vec![message::UserContent::tool_result_from_wire(
                 "gemini-issued-id",
                 "lookup",
-                OneOrMany::one(ToolResultContent::text("out")),
-            )),
+                vec![ToolResultContent::text("out")],
+            )],
         };
         let content: Content = message.try_into().expect("tool result should convert");
         let PartKind::FunctionResponse(response) = &content.parts[0].part else {
@@ -3779,11 +3759,9 @@ mod tests {
             Some(DocumentMediaType::MARKDOWN),
         );
 
-        let content: Content = message::Message::User {
-            content: crate::OneOrMany::one(doc),
-        }
-        .try_into()
-        .unwrap();
+        let content: Content = message::Message::User { content: vec![doc] }
+            .try_into()
+            .unwrap();
 
         if let Part {
             part: PartKind::Text(text),
@@ -3812,11 +3790,9 @@ mod tests {
             additional_params: None,
         });
 
-        let content: Content = message::Message::User {
-            content: crate::OneOrMany::one(doc),
-        }
-        .try_into()
-        .unwrap();
+        let content: Content = message::Message::User { content: vec![doc] }
+            .try_into()
+            .unwrap();
 
         if let Part {
             part: PartKind::FileData(file_data),
@@ -3838,7 +3814,6 @@ mod tests {
 
     #[test]
     fn test_tool_result_with_url_image_is_rejected() {
-        use crate::OneOrMany;
         use crate::message::{
             DocumentSourceKind, Image, ImageMediaType, ToolResult, ToolResultContent,
         };
@@ -3847,17 +3822,17 @@ mod tests {
             call: message::ToolCallId::mint(),
             provider: None,
             name: "screenshot_tool".to_string(),
-            content: OneOrMany::one(ToolResultContent::Image(Image {
+            content: vec![ToolResultContent::Image(Image {
                 data: DocumentSourceKind::Url("https://example.com/image.png".to_string()),
                 media_type: Some(ImageMediaType::PNG),
                 detail: None,
                 additional_params: None,
-            })),
+            })],
         };
 
         let user_content = message::UserContent::ToolResult(tool_result);
         let msg = message::Message::User {
-            content: OneOrMany::one(user_content),
+            content: vec![user_content],
         };
 
         let error =
@@ -3873,7 +3848,6 @@ mod tests {
     #[test]
     fn test_create_request_body_with_documents() {
         // Test that documents are injected into chat history
-        use crate::OneOrMany;
         use crate::completion::request::{CompletionRequest, Document};
         use crate::message::Message;
 
@@ -3892,7 +3866,7 @@ mod tests {
 
         let documents_message = CompletionRequest {
             preamble: None,
-            chat_history: OneOrMany::one(Message::user("placeholder")),
+            chat_history: vec![Message::user("placeholder")],
             documents,
             tools: vec![],
             temperature: None,
@@ -3908,11 +3882,7 @@ mod tests {
 
         let completion_request = CompletionRequest {
             preamble: Some("You are a helpful assistant".to_string()),
-            chat_history: OneOrMany::many(vec![
-                documents_message,
-                Message::user("What are my notes about?"),
-            ])
-            .unwrap(),
+            chat_history: vec![documents_message, Message::user("What are my notes about?")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -3973,13 +3943,12 @@ mod tests {
     #[test]
     fn test_create_request_body_without_documents() {
         // Test backward compatibility: requests without documents work as before
-        use crate::OneOrMany;
         use crate::completion::request::CompletionRequest;
         use crate::message::Message;
 
         let completion_request = CompletionRequest {
             preamble: Some("You are a helpful assistant".to_string()),
-            chat_history: OneOrMany::one(Message::user("Hello")),
+            chat_history: vec![Message::user("Hello")],
             documents: vec![], // No documents
             tools: vec![],
             temperature: None,
