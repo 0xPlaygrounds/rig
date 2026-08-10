@@ -496,6 +496,10 @@ impl AgentRun {
             return None;
         };
 
+        // Deliberately not `non_empty(turn.items.clone())`: the helper takes
+        // the list by value, so it would pay the clone even when the turn is
+        // empty and the copy is discarded. Check first, clone only on the
+        // path that keeps it.
         if turn.items.is_empty() {
             return None;
         }

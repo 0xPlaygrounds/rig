@@ -149,9 +149,7 @@ where
                 (HashMap::<usize, Vec<Embedding>>::new(), Usage::default()),
                 |(mut acc, mut usage_acc), (chunk_embeddings, chunk_usage)| async move {
                     chunk_embeddings.into_iter().for_each(|(i, embedding)| {
-                        acc.entry(i)
-                            .and_modify(|embeddings| embeddings.push(embedding.clone()))
-                            .or_insert(vec![embedding.clone()]);
+                        acc.entry(i).or_default().push(embedding);
                     });
                     usage_acc += chunk_usage;
                     Ok((acc, usage_acc))

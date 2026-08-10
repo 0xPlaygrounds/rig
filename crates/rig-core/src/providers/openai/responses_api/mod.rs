@@ -2716,17 +2716,16 @@ fn flush_responses_user_content(
     messages: &mut Vec<Message>,
     pending: &mut Vec<UserContent>,
 ) -> Result<(), MessageError> {
+    // An empty flush is a legal no-op — it fires between consecutive
+    // tool-result groups — not a conversion error. This early return is
+    // the only emptiness decision here; the pushed content is non-empty
+    // because of it.
     if pending.is_empty() {
         return Ok(());
     }
 
-    let content = crate::message::require_non_empty(std::mem::take(pending), || {
-        MessageError::ConversionError(
-            "User message did not contain OpenAI Responses-compatible content".to_string(),
-        )
-    })?;
     messages.push(Message::User {
-        content,
+        content: std::mem::take(pending),
         name: None,
     });
     Ok(())

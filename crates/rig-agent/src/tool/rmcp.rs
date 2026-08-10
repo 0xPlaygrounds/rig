@@ -439,6 +439,13 @@ fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutio
         return Ok(ToolOutput::content(ordered));
     }
 
+    // A content-less MCP result normalizes to one empty text block. This is
+    // deliberately *not* what the native path does — a native tool returning an
+    // empty `Vec<ToolResultContent>` gets an eager `ToolExecutionError`,
+    // because that shape is the tool author's own type choice and fixable in
+    // one read. An empty MCP result is protocol-legal and outside the caller's
+    // control, so erroring here would fail tools the author cannot fix; the
+    // empty block keeps the result sendable without inventing text.
     if result.is_error == Some(true) {
         Ok(ToolOutput::text("the MCP tool reported an error"))
     } else {

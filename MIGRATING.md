@@ -430,10 +430,15 @@ object. That guard used to name `OneOrMany<ToolResultContent>`; it now names
   every tool that is the intended result — it is what the `OneOrMany` guard
   always did — but it is a payload change, and a prompt that parsed that JSON
   array out of the tool result needs updating.
-- An **empty** `Vec<ToolResultContent>` now produces a content-less `ToolOutput`
-  (`content: []`, with `as_text()` and `as_json()` both `None`) where it used to
-  produce `json([])`. Return an explicit `serde_json::json!([])` for the old
-  shape.
+- An **empty** `Vec<ToolResultContent>` is now an eager `ToolExecutionError`
+  where it used to produce `json([])`. A zero-block tool result cannot be sent
+  (the request boundary rejects it), so the error fires at the tool instead —
+  as an ordinary tool failure the agent feeds back to the model, not a
+  run-aborting request error one turn later. Return an explicit
+  `serde_json::json!([])` for the old shape, or one empty text block for a
+  genuinely empty result. (An empty **MCP** result is different: it is
+  protocol-legal and outside the tool author's control, so the MCP path
+  normalizes it to one empty text block instead of erroring.)
 
 #### A local generation that produces nothing keeps succeeding
 

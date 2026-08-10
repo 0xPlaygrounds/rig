@@ -353,6 +353,13 @@ where
             ));
         }
 
+        // The session takes a raw `CompletionRequest`, bypassing the builder's
+        // `send`/`stream` — so this is a direct-to-model surface and validates
+        // here, per `validate_message_content`'s own contract. Every session
+        // entry point (`send`, `warmup`, `completion`, `raw_completion`)
+        // funnels through this method.
+        completion_request.validate_message_content()?;
+
         let payload = ResponsesWebSocketClientEvent {
             kind: ResponsesWebSocketClientEventKind::ResponseCreate,
             request: self.prepare_request(completion_request)?,

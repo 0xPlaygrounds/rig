@@ -205,6 +205,20 @@ where
             return Ok(ToolOutput::one(content.clone()));
         }
         if let Some(content) = value.downcast_ref::<Vec<ToolResultContent>>() {
+            // Reject an empty rich-content list here, where the error can be a
+            // normal tool failure the agent feeds back to the model, instead of
+            // letting the zero-block result enter history and abort the whole
+            // run at the next request's boundary validation. This is not
+            // normalized to an empty text block: inventing content the tool
+            // never produced is the fabrication this crate removed. A tool with
+            // genuinely empty output should return one empty text block (or an
+            // empty string) explicitly.
+            if content.is_empty() {
+                return Err(ToolExecutionError::other(
+                    "tool returned an empty rich-content list (Vec<ToolResultContent>); \
+                     return at least one block — an empty text block is valid",
+                ));
+            }
             return Ok(ToolOutput::content(content.clone()));
         }
         let is_explicit_json = value.is::<serde_json::Value>();
@@ -232,6 +246,23 @@ mod tests {
     use crate::message::{DocumentSourceKind, ImageMediaType};
 
     use super::*;
+
+    #[test]
+    fn an_empty_rich_content_list_is_an_eager_tool_error() {
+        // A zero-block tool result cannot be sent — the request boundary
+        // rejects it — so the failure surfaces here as an ordinary tool error
+        // instead of aborting the run one request later. One empty text block,
+        // by contrast, is a legitimate empty result and passes.
+        let error = Vec::<ToolResultContent>::new()
+            .into_tool_output()
+            .expect_err("an empty rich-content list must not become a ToolOutput");
+        assert!(error.to_string().contains("empty rich-content list"));
+
+        let output = vec![ToolResultContent::text("")]
+            .into_tool_output()
+            .unwrap();
+        assert_eq!(output, ToolOutput::text(""));
+    }
 
     #[test]
     fn json_shaped_strings_remain_literal_text() {

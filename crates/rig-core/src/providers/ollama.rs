@@ -1347,9 +1347,17 @@ impl From<Message> for crate::completion::Message {
                         crate::completion::message::AssistantContent::reasoning(thinking),
                     );
                 }
-                assistant_contents.push(crate::completion::message::AssistantContent::Text(
-                    Text::new(content),
-                ));
+                // Only a non-empty text body becomes a text block. Pushing
+                // unconditionally would mint the legacy `vec![Text("")]`
+                // sentinel for a content-less assistant message — the shape
+                // `is_empty_assistant_turn` documents as produced by old
+                // persisted histories only. Empty content is representable
+                // now, and the agent layer handles it.
+                if !content.is_empty() {
+                    assistant_contents.push(crate::completion::message::AssistantContent::Text(
+                        Text::new(content),
+                    ));
+                }
                 // Same id policy as the unary decode above: a daemon-issued
                 // id is preserved, an absent one mints (provider id: none).
                 for tc in tool_calls {
@@ -1361,14 +1369,10 @@ impl From<Message> for crate::completion::Message {
                         ),
                     );
                 }
-                let content = crate::completion::message::non_empty(assistant_contents)
-                    .unwrap_or_else(|| {
-                        vec![crate::completion::message::AssistantContent::Text(
-                            Text::new(String::new()),
-                        )]
-                    });
-
-                crate::completion::Message::Assistant { id: None, content }
+                crate::completion::Message::Assistant {
+                    id: None,
+                    content: assistant_contents,
+                }
             }
             // System and ToolResult are converted to User message as needed.
             Message::System { content, .. } => crate::completion::Message::User {
