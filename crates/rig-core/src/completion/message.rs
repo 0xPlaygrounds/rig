@@ -121,8 +121,12 @@ pub enum UserContent {
 }
 
 /// Describes responses from a provider which is either text or a tool call.
+///
+/// Tagged with `"type"`, exactly like [`UserContent`]. The tag is required on
+/// deserialize — there is no fallback to the tagless shape, so a bare
+/// `{"text": …}` block (the pre-tag form, never released) does not load.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(untagged)]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum AssistantContent {
     /// Plain assistant text.
     Text(Text),
@@ -701,14 +705,18 @@ impl ToolFunction {
 ///
 /// `additional_params` carries provider-specific fields that arrive on text
 /// content blocks (e.g. Anthropic returns citation metadata on assistant text
-/// blocks). It is flattened during serialization so the inner JSON keys appear
-/// at the same level as `text`, matching the wire format of provider APIs.
+/// blocks). It is a **named** field in the serialized form — never flattened
+/// into the block's own key namespace, so a stray key can neither shadow the
+/// enum tag nor be silently captured, and an absent field decodes as `None`
+/// (no empty-map artifact). The params are provider-specific: a serializer
+/// replays only params it recognizes as its own wire's.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Text {
     /// Text content.
     pub text: String,
     /// Provider-specific text fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -736,6 +744,7 @@ impl std::fmt::Display for Text {
 
 /// Image content containing image data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Image {
     /// Image source data.
     pub data: DocumentSourceKind,
@@ -746,7 +755,7 @@ pub struct Image {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
     /// Provider-specific image fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -849,6 +858,7 @@ impl std::fmt::Display for DocumentSourceKind {
 
 /// Audio content containing audio data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Audio {
     /// Audio source data.
     pub data: DocumentSourceKind,
@@ -856,12 +866,13 @@ pub struct Audio {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<AudioMediaType>,
     /// Provider-specific audio fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
 
 /// Video content containing video data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Video {
     /// Video source data.
     pub data: DocumentSourceKind,
@@ -869,12 +880,13 @@ pub struct Video {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<VideoMediaType>,
     /// Provider-specific video fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
 
 /// Document content containing document data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Document {
     /// Document source data.
     pub data: DocumentSourceKind,
@@ -882,7 +894,7 @@ pub struct Document {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
     /// Provider-specific document fields.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
 

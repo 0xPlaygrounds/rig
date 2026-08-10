@@ -591,7 +591,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             let message = if let Some(id) = id.clone() {
                                 Message::Assistant {
                                     content: vec![AssistantContentType::Text(
-                                        AssistantContent::OutputText(Text::new(text)),
+                                        AssistantContent::OutputText(OutputText::new(text)),
                                     )],
                                     id,
                                     name: None,
@@ -2637,8 +2637,30 @@ impl Message {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AssistantContent {
-    OutputText(Text),
+    OutputText(OutputText),
     Refusal { refusal: String },
+}
+
+/// Wire shape of a Responses `output_text` block — this wire's own type, not
+/// the rig-level [`Text`]. `text` is the payload; everything else OpenAI
+/// attaches at the same level (`annotations`, `logprobs`, future keys) is
+/// preserved verbatim so a decoded item re-serializes value-equal.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct OutputText {
+    pub text: String,
+    /// OpenAI's sibling keys, preserved verbatim for value-equal replay.
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub extras: Option<serde_json::Value>,
+}
+
+impl OutputText {
+    /// A bare text block, as request assembly emits (no wire extras).
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            extras: None,
+        }
+    }
 }
 
 impl From<AssistantContent> for completion::AssistantContent {
@@ -2647,7 +2669,7 @@ impl From<AssistantContent> for completion::AssistantContent {
             AssistantContent::Refusal { refusal } => {
                 completion::AssistantContent::Text(Text::new(refusal))
             }
-            AssistantContent::OutputText(Text { text, .. }) => {
+            AssistantContent::OutputText(OutputText { text, .. }) => {
                 completion::AssistantContent::Text(Text::new(text))
             }
         }
@@ -2886,7 +2908,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     id,
                                     status: ToolStatus::Completed,
                                     content: vec![AssistantContentType::Text(
-                                        AssistantContent::OutputText(Text::new(text)),
+                                        AssistantContent::OutputText(OutputText::new(text)),
                                     )],
                                     name: None,
                                 });
@@ -4789,7 +4811,7 @@ mod tests {
         };
         assert!(matches!(
             content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
+            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4813,7 +4835,7 @@ mod tests {
         };
         assert!(matches!(
             content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
+            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4833,7 +4855,7 @@ mod tests {
         };
         assert!(matches!(
             content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
+            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4975,7 +4997,7 @@ mod tests {
         assert_eq!(id, "msg_123");
         assert!(matches!(
             content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })))
+            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. })))
                 if text == "final answer"
         ));
 

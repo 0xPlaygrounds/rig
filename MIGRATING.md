@@ -1258,6 +1258,38 @@ merged `RequestPatch` and the previous model, and may pick a different handle
 per model call). `CompletionModel::capabilities()` is captured by value when
 the handle is created.
 
+### Assistant content is tagged and provider extras are a named field
+
+`AssistantContent` serializes with a `"type"` tag, exactly like `UserContent`
+always has:
+
+```json
+{"type": "text",      "text": "hello"}
+{"type": "toolcall",  "id": "call_1", "function": {"name": "add", "arguments": {}}}
+{"type": "reasoning", "id": null, "content": [...]}
+{"type": "image",     "data": ...}
+```
+
+The tag is **required** on deserialize. There is no untagged fallback: the
+pre-tag bare shape (`{"text": "hello"}`) was never in a release and does not
+load.
+
+`additional_params` on every content block (`Text`, `Image`, `Audio`, `Video`,
+`Document`) is now a **named** field instead of a serde flatten:
+
+```json
+{"type": "text", "text": "", "additional_params": {"citations": [...]}}
+```
+
+Two defect classes die with the flatten: a stray key can no longer be silently
+captured into `additional_params` and replayed to providers, and an absent
+field round-trips as `None` instead of the flatten's `Some({})` artifact — so
+turn-emptiness classification is identical before and after a persist/restore.
+Unknown keys inside a content block are now rejected
+(`deny_unknown_fields`), so a malformed block is a decode error instead of
+silent capture. The params remain provider-specific: a serializer replays only
+params it recognizes as its own wire's.
+
 ### Two pre-`Vec` serde accommodations are gone
 
 Backwards compatibility with data persisted before this release is no longer
@@ -1270,12 +1302,10 @@ carried:
   `Option`.) This reaches further than standalone response values: `AgentRun`
   embeds a `PromptResponse` in its `Done` state, so a **persisted run** that
   reached `Done` before the field existed fails to load too — migrate stored
-  runs (add `"content": [{"text": <output>}]` to the embedded response)
-  before upgrading. Note the **absence** of a `"type"` key: assistant
-  content is untagged, and a stray `"type": "text"` would be flatten-captured
-  into the block's `additional_params` instead of acting as a tag — an
-  annotation the serializer never produces, silently replayed to providers
-  as a provider-specific text field on the next request.
+  runs (add `"content": [{"type": "text", "text": <output>}]` to the embedded
+  response) before upgrading. Assistant content is tagged with `"type"` in
+  this release, exactly like user content — see "Assistant content is tagged
+  and provider extras are a named field" below.
 - Pre-provider-split `ToolCall` JSON is no longer migrated on load — see the
   "Persisted histories" bullet in the tool-call identity section above for
   what a legacy `call_id` key now means and how to migrate the JSON by hand.
