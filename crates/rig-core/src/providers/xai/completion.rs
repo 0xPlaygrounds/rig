@@ -86,6 +86,19 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
             Some(additional_params_payload)
         };
 
+        // The per-message conversion can drop parts (id-less reasoning has no
+        // xAI representation), so rig-level non-empty content can still
+        // convert to zero wire items — a state `validate_message_content`
+        // cannot see. Guard the converted list, per `require_non_empty`'s
+        // contract for lossy request conversions.
+        let input = crate::message::require_non_empty(input, || {
+            CompletionError::RequestError(
+                "no message in the chat history converted to xAI input \
+                 (id-less reasoning-only content has no xAI representation)"
+                    .into(),
+            )
+        })?;
+
         Ok(Self {
             model: model.to_string(),
             input,

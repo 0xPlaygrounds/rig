@@ -60,7 +60,11 @@ pub(crate) mod shared_parts {
             id,
             tool_id,
             internal_call_id: crate::id::generate(),
-            call_id: wire_id.filter(|id| !id.is_empty()),
+            // Gemini is a single-identifier wire: its one id travels as
+            // `tool_id` and `call_id` stays unset. Filling both from the same
+            // id would take the dual-wire arm downstream and fabricate an
+            // item id Gemini never issued.
+            call_id: None,
             name,
             arguments: args,
             signature,

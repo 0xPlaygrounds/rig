@@ -179,16 +179,17 @@ impl WireAdapter for GrpcAdapter {
                                 rig_core::streaming::StreamPartId::wire(function_call.id.clone())
                             };
 
-                            let mut tool_call = streaming::RawStreamingToolCall::new(
+                            // Gemini is a single-identifier wire: the id
+                            // above travels as the part identity (`tool_id`)
+                            // and `call_id` stays unset — setting both from
+                            // one id would take the dual-wire arm downstream
+                            // and fabricate an item id the wire never issued.
+                            let tool_call = streaming::RawStreamingToolCall::new(
                                 tool_id,
                                 function_call.name.clone(),
                                 args_json,
                             )
                             .with_signature(encode_signature(&part.thought_signature));
-
-                            if !function_call.id.is_empty() {
-                                tool_call = tool_call.with_call_id(function_call.id.clone());
-                            }
 
                             out.push(Ok(streaming::RawStreamingChoice::ToolCall(tool_call)));
                         }

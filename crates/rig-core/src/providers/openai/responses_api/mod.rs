@@ -2547,20 +2547,31 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             })
             .unwrap_or(output_content);
 
-        let choice = crate::message::require_non_empty(content, || {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+        let finish_reason =
+            map_finish_reason(&response.status, response.incomplete_details.as_ref());
+
+        // A contentless *completed* turn is a provider defect and is rejected.
+        // A contentless *incomplete* turn can be rig-induced — a truncated
+        // `function_call` whose arguments never parsed drops its item by the
+        // documented truncation policy — and the finish reason (e.g. `Length`)
+        // is the diagnostic the caller needs, so the empty choice survives to
+        // carry it. The streaming path already behaves this way; this keeps
+        // the two from disagreeing.
+        let choice = if matches!(response.status, ResponseStatus::Incomplete) {
+            content
+        } else {
+            crate::message::require_non_empty(content, || {
+                CompletionError::ResponseError(
+                    "Response contained no message or tool call (empty)".to_owned(),
+                )
+            })?
+        };
 
         let usage = response
             .usage
             .as_ref()
             .map(crate::completion::Usage::from)
             .unwrap_or_default();
-
-        let finish_reason =
-            map_finish_reason(&response.status, response.incomplete_details.as_ref());
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)
             .with_optional_message_id(message_id)
@@ -2712,23 +2723,19 @@ pub enum UserContent {
     },
 }
 
-fn flush_responses_user_content(
-    messages: &mut Vec<Message>,
-    pending: &mut Vec<UserContent>,
-) -> Result<(), MessageError> {
+fn flush_responses_user_content(messages: &mut Vec<Message>, pending: &mut Vec<UserContent>) {
     // An empty flush is a legal no-op — it fires between consecutive
     // tool-result groups — not a conversion error. This early return is
     // the only emptiness decision here; the pushed content is non-empty
     // because of it.
     if pending.is_empty() {
-        return Ok(());
+        return;
     }
 
     messages.push(Message::User {
         content: std::mem::take(pending),
         name: None,
     });
-    Ok(())
 }
 
 fn responses_user_content(content: message::UserContent) -> Result<UserContent, MessageError> {
@@ -2856,14 +2863,14 @@ impl TryFrom<message::Message> for Vec<Message> {
                 for content in content {
                     match content {
                         message::UserContent::ToolResult(tool_result) => {
-                            flush_responses_user_content(&mut messages, &mut pending)?;
+                            flush_responses_user_content(&mut messages, &mut pending);
                             messages.push(responses_tool_result(tool_result)?);
                         }
                         content => pending.push(responses_user_content(content)?),
                     }
                 }
 
-                flush_responses_user_content(&mut messages, &mut pending)?;
+                flush_responses_user_content(&mut messages, &mut pending);
                 Ok(messages)
             }
             message::Message::Assistant {
@@ -4236,6 +4243,36 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("Response contained no message or tool call")
+        );
+    }
+
+    #[test]
+    fn truncated_incomplete_response_surfaces_length_not_an_error() {
+        // A truncated `function_call` whose arguments never parsed drops its
+        // item by the documented truncation policy, so the choice can be
+        // rig-induced-empty. On `status: incomplete` the finish reason is the
+        // diagnostic the caller needs — the emptiness guard must not eat it,
+        // which is exactly how the streaming path already behaves.
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "incomplete",
+            "incomplete_details": { "reason": "max_output_tokens" },
+            "model": "gpt-test",
+            "output": [],
+            "tools": []
+        }))
+        .expect("incomplete response shape should deserialize");
+
+        let completion = response
+            .normalize("openai")
+            .expect("truncated incomplete response must not be an error");
+
+        assert!(completion.choice.is_empty());
+        assert_eq!(
+            completion.finish_reason(),
+            Some(completion::FinishReason::Length)
         );
     }
 

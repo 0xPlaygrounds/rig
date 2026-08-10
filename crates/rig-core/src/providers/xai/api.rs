@@ -197,6 +197,10 @@ impl TryFrom<RigMessage> for Vec<Message> {
             // request input, mirroring the OpenAI Responses handling, rather
             // than failing the whole request locally.
             let Some(id) = id else {
+                tracing::warn!(
+                    "xAI: dropping id-less reasoning item from request input \
+                     (cross-provider replay; xAI reasoning requires a wire id)"
+                );
                 return Ok(None);
             };
             let mut encrypted_content = None;

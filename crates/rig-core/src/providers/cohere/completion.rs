@@ -191,7 +191,11 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                     .into_iter()
                     .filter_map(|tool_call| {
                         let ToolCallFunction { name, arguments } = tool_call.function?;
-                        let id = tool_call.id.unwrap_or_else(|| name.clone());
+                        // The wire's id when present, or empty so the
+                        // conversion mints — never the tool name: a name-as-id
+                        // is fake provenance and collides two same-tool calls
+                        // in one turn.
+                        let id = tool_call.id.unwrap_or_default();
 
                         Some(completion::AssistantContent::tool_call(id, name, arguments))
                     })
@@ -535,8 +539,11 @@ impl TryFrom<Message> for message::Message {
                 content.extend(tool_calls.into_iter().filter_map(|tool_call| {
                     let ToolCallFunction { name, arguments } = tool_call.function?;
 
+                    // Empty when the wire issued no id, so the conversion
+                    // mints — never the tool name (fake provenance; collides
+                    // two same-tool calls in one turn).
                     Some(message::AssistantContent::tool_call(
-                        tool_call.id.unwrap_or_else(|| name.clone()),
+                        tool_call.id.unwrap_or_default(),
                         name,
                         arguments,
                     ))

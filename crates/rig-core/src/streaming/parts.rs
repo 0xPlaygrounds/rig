@@ -708,17 +708,8 @@ impl PartsAccumulator {
         // `provider` stays `None` — the empty-string sentinel is
         // unrepresentable here.
         let wire_tool_id = end.tool_id.map(WireId::into_string).or(opened_wire_id);
-        let call_id = end.call_id.filter(|call_id| !call_id.is_empty());
-        let provider = match (call_id, wire_tool_id) {
-            (Some(call_id), tool_id) => {
-                crate::message::ProviderCallId::new(call_id).map(|provider| match tool_id {
-                    Some(tool_id) => provider.with_item_id(tool_id),
-                    None => provider,
-                })
-            }
-            (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id),
-            (None, None) => None,
-        };
+        let provider =
+            crate::message::ProviderCallId::from_optional_wire(end.call_id, wire_tool_id);
         let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         let tool_call = ToolCall {
             id,

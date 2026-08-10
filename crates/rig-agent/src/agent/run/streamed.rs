@@ -357,11 +357,17 @@ impl StreamedTurnAssembler {
         &self.text
     }
 
-    /// Normalize a snapshot of the provider aggregate into the content that
-    /// would be committed for this turn, without consuming the assembler.
-    fn canonical_choice(&self, provider_choice: &[AssistantContent]) -> Vec<AssistantContent> {
-        let reasoning = self.assembled_reasoning();
-
+    /// Normalize the provider aggregate into the content committed for this
+    /// turn. The reasoning is supplied by the caller: the finish path drains
+    /// its parts by value ([`Self::drain_reasoning`]) instead of cloning
+    /// them, while the partial-turn surface assembles borrowed
+    /// ([`Self::assembled_reasoning`]) — agreement between the two is pinned
+    /// by `canonical_choice_and_partial_turn_agree_on_multi_part_reasoning`.
+    fn canonical_choice_with(
+        &self,
+        reasoning: Vec<Reasoning>,
+        provider_choice: &[AssistantContent],
+    ) -> Vec<AssistantContent> {
         if !self.pending_tool_calls.is_empty() || !reasoning.is_empty() {
             let text_items = assistant_text_items_from_choice(provider_choice);
             let tool_items = self
@@ -458,6 +464,26 @@ impl StreamedTurnAssembler {
                 ReasoningPartState::Pending(text) if !text.is_empty() => {
                     let mut assembled = Reasoning::new(text);
                     if let Some(id) = part.provider_id.clone() {
+                        assembled = assembled.with_id(id);
+                    }
+                    Some(assembled)
+                }
+                ReasoningPartState::Pending(_) => None,
+            })
+            .collect()
+    }
+
+    /// [`Self::assembled_reasoning`], consuming the parts — the finish path
+    /// owns the assembler, and reasoning blocks can carry large encrypted
+    /// payloads that should move rather than clone.
+    fn drain_reasoning(&mut self) -> Vec<Reasoning> {
+        std::mem::take(&mut self.reasoning_parts)
+            .into_iter()
+            .filter_map(|part| match part.state {
+                ReasoningPartState::Completed(reasoning) => Some(reasoning),
+                ReasoningPartState::Pending(text) if !text.is_empty() => {
+                    let mut assembled = Reasoning::new(&text);
+                    if let Some(id) = part.provider_id {
                         assembled = assembled.with_id(id);
                     }
                     Some(assembled)
@@ -699,11 +725,12 @@ impl StreamedTurnAssembler {
     /// aggregated choice for the turn
     /// ([`crate::streaming::StreamingCompletionResponse::choice`]).
     pub fn finish(
-        self,
+        mut self,
         message_id: Option<String>,
         final_choice: &[AssistantContent],
     ) -> StreamedTurn {
-        let choice = self.canonical_choice(final_choice);
+        let reasoning = self.drain_reasoning();
+        let choice = self.canonical_choice_with(reasoning, final_choice);
         let internal_call_ids: Vec<(String, String)> = self
             .pending_tool_calls
             .iter()

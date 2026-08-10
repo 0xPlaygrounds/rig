@@ -766,17 +766,10 @@ impl From<RawStreamingToolCall> for ToolCall {
         // carries (call_id, item id), a single wire carries its id in
         // `call_id`. With none, the correlation handle is minted and
         // `provider` records the absence — never an empty sentinel.
-        let call_id = tool_call.call_id.filter(|call_id| !call_id.is_empty());
-        let provider = match (call_id, tool_call.tool_id) {
-            (Some(call_id), tool_id) => {
-                crate::message::ProviderCallId::new(call_id).map(|provider| match tool_id {
-                    Some(tool_id) => provider.with_item_id(tool_id.into_string()),
-                    None => provider,
-                })
-            }
-            (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id.into_string()),
-            (None, None) => None,
-        };
+        let provider = crate::message::ProviderCallId::from_optional_wire(
+            tool_call.call_id,
+            tool_call.tool_id.map(WireId::into_string),
+        );
         let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         ToolCall {
             id,

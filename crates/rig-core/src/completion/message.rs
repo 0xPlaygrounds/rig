@@ -507,6 +507,31 @@ impl ProviderCallId {
         self.item_id = (!item_id.is_empty()).then_some(item_id);
         self
     }
+
+    /// Derive the provider identity from a streaming part's optional wire
+    /// handles. A dual wire carries `(call_id, item id)`; a single wire's id
+    /// arrives as the tool/part id alone and becomes the `call_id`; with
+    /// neither, the identity is absent. The empty-string filtering is
+    /// load-bearing: [`ProviderCallId::new`] returns `None` on empty, so an
+    /// empty `call_id` must fall through to the single-id arm rather than
+    /// erase a real tool id.
+    ///
+    /// Both streaming surfaces (the parts accumulator and the raw
+    /// `ToolCall` lift) derive through here so they cannot disagree.
+    /// [`ToolCall::from_dual_wire`] is deliberately different — a dual wire
+    /// that omits its `call_id` has no single-id fallback — and stays
+    /// separate.
+    pub fn from_optional_wire(call_id: Option<String>, tool_id: Option<String>) -> Option<Self> {
+        let call_id = call_id.filter(|call_id| !call_id.is_empty());
+        match (call_id, tool_id) {
+            (Some(call_id), tool_id) => Self::new(call_id).map(|provider| match tool_id {
+                Some(tool_id) => provider.with_item_id(tool_id),
+                None => provider,
+            }),
+            (None, Some(tool_id)) => Self::new(tool_id),
+            (None, None) => None,
+        }
+    }
 }
 
 impl TryFrom<ProviderCallIdWire> for ProviderCallId {

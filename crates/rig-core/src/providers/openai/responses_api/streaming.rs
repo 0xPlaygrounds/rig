@@ -480,14 +480,19 @@ impl RawChoiceAccumulator {
         output_index: u64,
         item_id: Option<&str>,
     ) -> crate::streaming::StreamPartId {
-        self.reasoning_slots
-            .entry(output_index)
-            .or_insert_with(|| {
-                item_id
-                    .map(crate::streaming::StreamPartId::wire)
-                    .unwrap_or(crate::streaming::MintKind::Output.for_wire_index(output_index))
-            })
-            .clone()
+        if let Some(key) = self.reasoning_slots.get(&output_index) {
+            return key.clone();
+        }
+        // Minted from the bridge's ONE counter (tool_call_bridge's own
+        // invariant): a second sequence stamping `Minted{Output, index}`
+        // could collide with an assembly the bridge minted the same value
+        // for. The per-slot map above, not the mint, is what keeps the key
+        // stable across the slot's frames.
+        let key = item_id
+            .map(crate::streaming::StreamPartId::wire)
+            .unwrap_or_else(|| self.tool_slots.minted_ids().mint());
+        self.reasoning_slots.insert(output_index, key.clone());
+        key
     }
 
     pub(crate) fn decode_item_chunk(
@@ -692,9 +697,12 @@ impl RawChoiceAccumulator {
                     // restates a real `fc_*` id — assembled fragments must
                     // not dangle under a different key.
                     Some(slot) => slot.key().clone(),
-                    None if func.id.is_empty() => {
-                        crate::streaming::MintKind::Output.for_wire_index(output_index)
-                    }
+                    // Minted from the bridge's ONE counter: a done-only call
+                    // stamping `Minted{Output, index}` from a second sequence
+                    // could collide with a mid-assembly key the bridge minted
+                    // the same value for, consuming that assembly under the
+                    // wrong call.
+                    None if func.id.is_empty() => self.tool_slots.minted_ids().mint(),
                     None => crate::streaming::StreamPartId::wire(func.id.clone()),
                 };
                 let mut end = streaming::ToolInputEnd::new(

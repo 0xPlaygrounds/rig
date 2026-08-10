@@ -810,23 +810,19 @@ impl TryFrom<message::UserContent> for UserContent {
 pub fn user_content_to_messages(
     value: Vec<message::UserContent>,
 ) -> Result<Vec<Message>, message::MessageError> {
-    fn flush_user_content(
-        messages: &mut Vec<Message>,
-        pending: &mut Vec<UserContent>,
-    ) -> Result<(), message::MessageError> {
+    fn flush_user_content(messages: &mut Vec<Message>, pending: &mut Vec<UserContent>) {
         // An empty flush is a legal no-op — it fires between consecutive
         // tool-result groups — not a conversion error. This early return is
         // the only emptiness decision here; the pushed content is non-empty
         // because of it.
         if pending.is_empty() {
-            return Ok(());
+            return;
         }
 
         messages.push(Message::User {
             content: std::mem::take(pending),
             name: None,
         });
-        Ok(())
     }
 
     let mut messages = Vec::new();
@@ -835,14 +831,14 @@ pub fn user_content_to_messages(
     for content in value {
         match content {
             message::UserContent::ToolResult(tool_result) => {
-                flush_user_content(&mut messages, &mut pending)?;
+                flush_user_content(&mut messages, &mut pending);
                 messages.push(tool_result.try_into()?);
             }
             content => pending.push(content.try_into()?),
         }
     }
 
-    flush_user_content(&mut messages, &mut pending)?;
+    flush_user_content(&mut messages, &mut pending);
     Ok(messages)
 }
 

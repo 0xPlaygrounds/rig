@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(streaming)* [**behavior**] streamed function calls carry a single-wire identity: the wire's one id travels as the part id only, so `provider` is `{call_id, item_id: None}` — filling both slots fabricated a dual identity the wire never issued (mirrors the rig-core gemini fix)
+
 - *(completion)* message and tool-result content conversions follow rig-core's message-content change from `OneOrMany<T>` to `Vec<T>`; wire payloads are unchanged
 
 ### Fixed
