@@ -706,9 +706,11 @@ impl ToolFunction {
 /// mean "no extras" and become `None`. The one home for that rule — the
 /// content-block deserializers route through it, and producers (streaming
 /// accumulation, provider conversions) apply it before storing, so a stored
-/// `additional_params` is either `None` or carries data. That invariant is
-/// what lets emptiness checks (`is_empty_assistant_turn`) use plain
-/// `is_none()` without a tolerant shim.
+/// `additional_params` is either `None` or carries data. Persisted and
+/// provider-produced values are therefore always canonical; readers still ask
+/// [`params_carry_data`] rather than `is_some()`, because the fields are
+/// public and out-of-tree code can store an uncanonicalized `Some({})`
+/// directly.
 pub fn non_empty_params(value: serde_json::Value) -> Option<serde_json::Value> {
     Some(value).filter(|value| params_carry_data(Some(value)))
 }

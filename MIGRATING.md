@@ -1284,10 +1284,13 @@ untagged-enum error). Migrate stored assistant blocks by inserting the tag:
 
 The tag alone is not always enough: 0.41's flatten also wrote provider extras
 as top-level siblings on **assistant** text (anthropic citations, raw server
-tool content), and those keys now fail the strict decode. Re-nest them under
-`additional_params` in the same pass, exactly as the user-content instructions
-below describe — `{"text": "…", "citations": […]}` becomes
-`{"type": "text", "text": "…", "additional_params": {"citations": […]}}`.
+tool content) and **assistant** images (openrouter response images always
+carry an `"openrouter"` extras object), and those keys now fail the strict
+decode. Re-nest them under `additional_params` in the same pass, exactly as
+the user-content instructions below describe — `{"text": "…", "citations":
+[…]}` becomes `{"type": "text", "text": "…", "additional_params":
+{"citations": […]}}`, and `{"data": …, "openrouter": {…}}` becomes
+`{"type": "image", "data": …, "additional_params": {"openrouter": {…}}}`.
 
 `additional_params` on every content block (`Text`, `Image`, `Audio`, `Video`,
 `Document`) is now a **named** field instead of a serde flatten:
@@ -1327,9 +1330,10 @@ keys does not error — it decodes as `Unknown` and is excluded from assembly.
 This is not a 0.41-upgrade-only hazard: it applies to any relayed or persisted
 stream event with keys outside the schema, today and onward (a relay stamping
 bookkeeping keys onto text items will lose them from assembled history). The
-exclusion of such a payload (a `text` key with no `type` tag) logs a
-`tracing` warning in the **agent assembler** — the one rig component that
-ingests replayed stream events; a consumer assembling self-deserialized
+exclusion of such a payload (a string `text` key with no `type` tag, or one
+tagged `"type": "text"` — the tagged `AssistantContent` serialization is not
+a stream-item shape) logs a `tracing` warning in the **agent assembler** —
+the one rig component that ingests replayed stream events; a consumer assembling self-deserialized
 events with their own logic gets no warning and should check for
 text-carrying `Unknown` items themselves. Re-nest extras under
 `additional_params` to keep them.

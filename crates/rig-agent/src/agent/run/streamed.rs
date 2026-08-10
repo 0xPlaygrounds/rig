@@ -38,7 +38,7 @@ use std::collections::{BTreeSet, HashMap};
 use serde::{Deserialize, Serialize};
 
 use rig_core::message::{
-    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
+    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty, params_carry_data,
 };
 
 use crate::{
@@ -79,6 +79,22 @@ pub(crate) fn ordered_streaming_assistant_content(
     ))
 }
 
+/// Whether a [`StreamedAssistantContent::Unknown`] payload looks like a text
+/// item whose strict [`Text`](rig_core::message::Text) decode failed — either
+/// stray sibling keys (0.41's flatten wrote provider extras top-level) or a
+/// `"type": "text"` tag (the tagged `AssistantContent` serialization; stream
+/// items are untagged). Both shapes lose transcript text from assembly. A
+/// `type` tag naming anything other than `text` is a provider-native
+/// unmodeled item. The heuristic can still fire on a genuinely unmodeled
+/// tagless text-carrying frame, trading that noise for never missing a real
+/// loss.
+fn unknown_payload_loses_text(payload: &serde_json::Value) -> bool {
+    payload
+        .get("text")
+        .is_some_and(serde_json::Value::is_string)
+        && payload.get("type").is_none_or(|tag| tag == "text")
+}
+
 pub(crate) fn assistant_text_items_from_choice(
     choice: &[AssistantContent],
 ) -> Vec<AssistantContent> {
@@ -86,7 +102,7 @@ pub(crate) fn assistant_text_items_from_choice(
         .iter()
         .filter_map(|content| match content {
             AssistantContent::Text(text) => (!text.text.is_empty()
-                || text.additional_params.is_some())
+                || params_carry_data(text.additional_params.as_ref()))
             .then(|| AssistantContent::Text(text.clone())),
             _ => None,
         })
@@ -644,16 +660,15 @@ impl StreamedTurnAssembler {
                 // assistant message — there is no `AssistantContent::Unknown`, and
                 // it must not perturb text/tool-call/reasoning accumulation.
                 //
-                // A payload with a `text` key but no `type` key is a rig text
-                // item that failed the strict `Text` decode (stray sibling
-                // keys) — provider-native unmodeled items always carry their
-                // wire `type` tag. That exclusion loses transcript content,
-                // so it is loud; the payload itself stays redacted.
-                if payload.value().get("text").is_some() && payload.value().get("type").is_none() {
+                // The exclusion loses transcript text when the payload is a
+                // failed text-item decode, so that case is loud; the payload
+                // itself stays redacted.
+                if unknown_payload_loses_text(payload.value()) {
                     tracing::warn!(
-                        "stream item carrying a `text` key but no `type` tag excluded \
-                         from the assembled assistant message — stray sibling keys on \
-                         a text item fail the strict decode"
+                        "stream item carrying a `text` key excluded from the \
+                         assembled assistant message — a stray sibling key or a \
+                         `type` tag on a text item fails the strict decode, and \
+                         its text is lost from assembled history"
                     );
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
@@ -890,6 +905,62 @@ mod tests {
         ));
         // ... but perturbs no accumulation state used to build the assistant message.
         assert_eq!(asm.aggregated_text(), "answer");
+    }
+
+    #[test]
+    fn lost_text_heuristic_covers_tagged_and_tagless_failed_decodes() {
+        // A tagged text block — the serialized `AssistantContent::Text`
+        // shape MIGRATING teaches — fails the strict stream-item decode
+        // (stream items are untagged) and must land in the loud path, not
+        // vanish silently.
+        let tagged = json!({"type": "text", "text": "hi"});
+        assert!(matches!(
+            serde_json::from_value::<StreamedAssistantContent>(tagged.clone())
+                .expect("tolerant decode"),
+            StreamedAssistantContent::Unknown(_)
+        ));
+        assert!(unknown_payload_loses_text(&tagged));
+
+        // Stray sibling keys on a tagless text item — 0.41's flatten shape.
+        assert!(unknown_payload_loses_text(
+            &json!({"text": "hi", "citations": []})
+        ));
+        // Documented noise: a genuinely unmodeled tagless text-carrying
+        // frame also fires — the heuristic prefers that over missing a loss.
+        assert!(unknown_payload_loses_text(
+            &json!({"text": "hmm", "thought": true})
+        ));
+        // Provider-native unmodeled items carrying their own wire tag stay
+        // quiet, even when they also carry a `text` key.
+        assert!(!unknown_payload_loses_text(
+            &json!({"type": "web_search_call", "id": "ws_1"})
+        ));
+        assert!(!unknown_payload_loses_text(
+            &json!({"type": "output_text.annotation", "text": "cite"})
+        ));
+        // A non-string `text` value is not a text item.
+        assert!(!unknown_payload_loses_text(&json!({"text": 42})));
+    }
+
+    #[test]
+    fn choice_text_items_use_the_tolerant_params_rule() {
+        // An uncanonicalized `Some({})` — constructible by an out-of-tree
+        // `CompletionModel`, since the fields are public — serializes exactly
+        // like `None`, so keeping the block live would diverge from the
+        // restored run's classification. The reader must apply
+        // `params_carry_data`, not `is_some()`.
+        let empty_annotated = AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: Some(json!({})),
+        });
+        assert!(assistant_text_items_from_choice(&[empty_annotated]).is_empty());
+
+        // A genuinely annotated empty block is content and survives.
+        let annotated = AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: Some(json!({"citations": [1]})),
+        });
+        assert_eq!(assistant_text_items_from_choice(&[annotated]).len(), 1);
     }
 
     #[test]
