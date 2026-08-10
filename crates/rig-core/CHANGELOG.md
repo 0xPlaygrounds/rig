@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- *(completion)* [**breaking**] pre-provider-split `ToolCall` JSON is no longer migrated on load: the `ToolCallWire` legacy lift is deleted, `ToolCall` deserializes against the current schema only, and a legacy `call_id` key is ignored as an unknown field — migrate persisted JSON by hand (`call_id` → `provider.call_id`) if you need those identifiers; see MIGRATING
+- *(completion)* [**breaking**] pre-provider-split `ToolCall` JSON is no longer migrated on load: the `ToolCallWire` legacy lift is deleted, `ToolCall` deserializes against the current schema only, and a legacy `call_id` key is ignored as an unknown field — migrate persisted JSON by hand (`call_id` → `provider.call_id`, and for dual-identifier payloads also `id` → the `call_…` correlator, with the `fc_…` handle as `provider.item_id`) if you need those identifiers; see MIGRATING
 
 - *(tool)* [**breaking**] `ToolOutput::as_content` returns `&[ToolResultContent]` instead of `&Vec<ToolResultContent>`; `message::EMPTY_RESPONSE_ERROR` is the one home for the shared empty-response wording every provider decode rejects with
 

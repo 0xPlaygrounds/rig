@@ -704,7 +704,10 @@ What this changes for you:
   payload's `id` is read as rig's handle with no provider provenance.
   Migrate the JSON before upgrading if you need those identifiers
   (`call_id` → `provider.call_id`; for old dual-identifier payloads the
-  `fc_…` `id` becomes `provider.item_id`). Legacy `ToolResult` JSON does
+  `fc_…` `id` becomes `provider.item_id`, **and the top-level `id` becomes
+  the `call_…` correlator** — `id` is required, and rig pairs a
+  `ToolResult.call` against `ToolCall.id`, so leaving the `fc_…` handle
+  there breaks the pairing the adjacent `ToolResult` recipe produces). Legacy `ToolResult` JSON does
   **not** deserialize (no `call`, no `name`); re-run the conversation or
   migrate the JSON by hand (`id`/`call_id` → `call` + `provider.call_id`,
   add the executed tool's `name`). Empty-string ids in old JSON are
@@ -1267,8 +1270,12 @@ carried:
   `Option`.) This reaches further than standalone response values: `AgentRun`
   embeds a `PromptResponse` in its `Done` state, so a **persisted run** that
   reached `Done` before the field existed fails to load too — migrate stored
-  runs (add `"content": [{"type":"text","text": <output>}]` to the embedded
-  response) before upgrading.
+  runs (add `"content": [{"text": <output>}]` to the embedded response)
+  before upgrading. Note the **absence** of a `"type"` key: assistant
+  content is untagged, and a stray `"type": "text"` would be flatten-captured
+  into the block's `additional_params` instead of acting as a tag — an
+  annotation the serializer never produces, silently replayed to providers
+  as a provider-specific text field on the next request.
 - Pre-provider-split `ToolCall` JSON is no longer migrated on load — see the
   "Persisted histories" bullet in the tool-call identity section above for
   what a legacy `call_id` key now means and how to migrate the JSON by hand.

@@ -408,9 +408,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                 tc.function.arguments.clone(),
             ));
         }
-        let choice = crate::message::require_non_empty(assistant_contents, || {
-            CompletionError::ResponseError("No content provided".to_owned())
-        })?;
+        let choice = crate::message::require_non_empty_response(assistant_contents)?;
 
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)

@@ -1197,7 +1197,7 @@ mod tests {
         // pre-monoid Option encoding) must map to zero-valued usage. The
         // fixture otherwise uses the current shape — `content` is a required
         // field since the missing-`content` reconstruction was dropped.
-        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}],"content":[{"type":"text","text":"ok"}]}"#;
+        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}],"content":[{"text":"ok"}]}"#;
 
         let response: PromptResponse =
             serde_json::from_str(fixture).expect("old-format response should deserialize");
@@ -1207,6 +1207,23 @@ mod tests {
                 CompletionCall::new(0, Usage::new()),
                 CompletionCall::new(1, usage(3, 4))
             ]
+        );
+        // The migrated `content` shape is a *bare* text object — no "type"
+        // key. Assistant content is untagged, so a stray tag would be
+        // flatten-captured into `additional_params` and replayed to the
+        // wire. Pin the clean decode: the text, and no captured keys (the
+        // flatten decodes the empty remainder as `Some({})` — the known
+        // round-trip asymmetry — so "no keys" is the assertable property).
+        let [AssistantContent::Text(text)] = response.content() else {
+            panic!("expected one text block, got {:?}", response.content());
+        };
+        assert_eq!(text.text, "ok");
+        assert!(
+            text.additional_params
+                .as_ref()
+                .is_none_or(|params| params == &serde_json::json!({})),
+            "no stray keys may be captured: {:?}",
+            text.additional_params
         );
     }
 
@@ -1259,6 +1276,16 @@ mod tests {
             round.completion_calls(),
             &[CompletionCall::new(0, usage(1, 2))]
         );
+
+        // The omission direction of `completion_calls`' skip-when-empty:
+        // an empty list serializes without the key (the shadow-era wire
+        // shape), and the keyless JSON still deserializes.
+        let bare = serde_json::to_value(PromptResponse::new("hi", usage(1, 2)))
+            .expect("serialize bare response");
+        assert!(bare.get("completion_calls").is_none());
+        let round: PromptResponse =
+            serde_json::from_value(bare).expect("deserialize keyless response");
+        assert!(round.completion_calls().is_empty());
     }
 
     #[tokio::test]

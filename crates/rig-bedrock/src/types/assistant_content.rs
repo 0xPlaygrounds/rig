@@ -117,10 +117,14 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
             .to_owned()
             .try_into()?;
 
+        // This arm rejects a *role* mismatch, not an empty choice — the
+        // empty-converted-content case is rejected upstream in the message
+        // conversion — so it carries its own diagnostic rather than the
+        // shared empty-response wording.
         let choice = match message.0 {
             completion::Message::Assistant { content, .. } => Ok(content),
             _ => Err(CompletionError::ResponseError(
-                rig_core::message::EMPTY_RESPONSE_ERROR.to_owned(),
+                "Converse output message was not an assistant message".to_owned(),
             )),
         }?;
 
