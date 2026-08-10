@@ -1361,8 +1361,7 @@ impl From<Message> for crate::completion::Message {
                         ),
                     );
                 }
-                let content = Some(assistant_contents)
-                    .filter(|items| !items.is_empty())
+                let content = crate::completion::message::non_empty(assistant_contents)
                     .unwrap_or_else(|| {
                         vec![crate::completion::message::AssistantContent::Text(
                             Text::new(String::new()),

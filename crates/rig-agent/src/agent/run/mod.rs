@@ -496,7 +496,10 @@ impl AgentRun {
             return None;
         };
 
-        Some(turn.items.clone()).filter(|items| !items.is_empty())
+        if turn.items.is_empty() {
+            return None;
+        }
+        Some(turn.items.clone())
     }
 
     /// Reject the accepted, tool-free model turn and prepare another model call.
@@ -661,17 +664,6 @@ impl AgentRun {
                     skipped,
                     mut internal_call_ids,
                 } = *turn_state;
-                // An empty turn is not a lost turn. This used to cancel the run,
-                // but the check could never fire: the streaming accumulator
-                // padded every content-less turn with a fabricated empty-text
-                // part, so `items` was never empty. With that fabrication gone a
-                // textless turn — a tool-call-only turn whose calls were all
-                // dropped, a content-filtered turn, a truncated stream — arrives
-                // here honestly empty, and cancelling on it would fail runs that
-                // previously succeeded. `is_empty_assistant_turn` below already
-                // does the right thing: keep the turn out of history and carry on.
-                let choice = items.clone();
-
                 // Tool output mode (#1928): a call to the synthetic output tool
                 // finalizes the run with the call's arguments as the response,
                 // instead of executing it as a tool. First match wins; any
@@ -706,7 +698,7 @@ impl AgentRun {
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages.push(Message::Assistant {
                             id: message_id,
-                            content: choice.clone(),
+                            content: items.clone(),
                         });
                         let feedback = format!(
                             "The `{output_tool_name}` arguments were missing required field(s): \
@@ -714,7 +706,7 @@ impl AgentRun {
                             missing.join(", ")
                         );
                         if let Some(user_message) =
-                            invalid_tool_retry_user_message(&choice, &tool_call_id, feedback)
+                            invalid_tool_retry_user_message(&items, &tool_call_id, feedback)
                         {
                             self.new_messages.push(user_message);
                         }
@@ -732,29 +724,30 @@ impl AgentRun {
                         .cloned()
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
-                    let final_content = Some(final_items).filter(|items| !items.is_empty());
-                    if let Some(content) = final_content.clone() {
-                        self.new_messages.push(Message::Assistant {
-                            id: message_id,
-                            content,
-                        });
-                    }
+                    self.new_messages.push(Message::Assistant {
+                        id: message_id,
+                        content: final_items.clone(),
+                    });
 
-                    let mut response = PromptResponse::new(output, self.usage)
+                    let response = PromptResponse::new(output, self.usage)
                         .with_messages(self.new_messages.clone())
                         .with_completion_calls(self.completion_calls.clone())
-                        .with_output_tool_calls(output_tool_calls);
-                    if let Some(content) = final_content {
-                        response = response.with_content(content);
-                    }
+                        .with_output_tool_calls(output_tool_calls)
+                        .with_content(final_items);
                     self.state = RunState::Done(Box::new(response.clone()));
                     return Ok(AgentRunStep::Done(response));
                 }
 
-                if !is_empty_assistant_turn(&choice) {
+                // An empty turn is not a lost turn. Cancelling here would fail
+                // runs that previously succeeded: with the fabricated empty-text
+                // padding gone, a textless turn — a tool-call-only turn whose
+                // calls were all dropped, a content-filtered turn, a truncated
+                // stream — arrives honestly empty. `is_empty_assistant_turn`
+                // does the right thing: keep the turn out of history and carry on.
+                if !is_empty_assistant_turn(&items) {
                     self.new_messages.push(Message::Assistant {
                         id: message_id,
-                        content: choice.clone(),
+                        content: items.clone(),
                     });
                 }
 
@@ -799,9 +792,9 @@ impl AgentRun {
                     // turn — the model answered correctly, just via the wrong
                     // channel.
                     if let Some(output_tool_name) = self.output_tool_name.clone()
-                        && !is_empty_assistant_turn(&choice)
+                        && !is_empty_assistant_turn(&items)
                         && self.can_reprompt_for_output()
-                        && !self.text_satisfies_output_schema(&assistant_text_from_choice(&choice))
+                        && !self.text_satisfies_output_schema(&assistant_text_from_choice(&items))
                     {
                         let feedback = format!(
                             "Provide your final answer by calling the `{output_tool_name}` tool \
@@ -812,10 +805,10 @@ impl AgentRun {
                     }
 
                     let response =
-                        PromptResponse::new(assistant_text_from_choice(&choice), self.usage)
+                        PromptResponse::new(assistant_text_from_choice(&items), self.usage)
                             .with_messages(self.new_messages.clone())
                             .with_completion_calls(self.completion_calls.clone())
-                            .with_content(choice.clone());
+                            .with_content(items);
                     self.state = RunState::Done(Box::new(response.clone()));
                     Ok(AgentRunStep::Done(response))
                 }
@@ -1160,14 +1153,7 @@ impl AgentRun {
             )));
         }
 
-        // `results` is non-empty (checked above), so construction succeeds.
-        let Some(content) = Some(results).filter(|items| !items.is_empty()) else {
-            return Err(
-                self.protocol_violation("internal: tool results vanished during validation")
-            );
-        };
-
-        self.new_messages.push(Message::User { content });
+        self.new_messages.push(Message::User { content: results });
         self.state = RunState::PreparingRequest;
         Ok(())
     }
@@ -1439,12 +1425,12 @@ impl AgentRun {
             self.streamed_completion_call_recorded = true;
         }
 
-        let items: Vec<AssistantContent> = turn.choice.to_vec();
-        let has_tool_calls = items
+        let has_tool_calls = turn
+            .choice
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
 
-        for item in &items {
+        for item in &turn.choice {
             let AssistantContent::ToolCall(tool_call) = item else {
                 continue;
             };
@@ -1470,7 +1456,7 @@ impl AgentRun {
 
         self.finalize_turn(
             turn.message_id,
-            items,
+            turn.choice,
             has_tool_calls,
             BTreeMap::new(),
             turn.internal_call_ids,

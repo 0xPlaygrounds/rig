@@ -37,7 +37,9 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult};
+use rig_core::message::{
+    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
+};
 
 use crate::{
     agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
@@ -60,7 +62,7 @@ pub(crate) fn ordered_streaming_assistant_content(
     content_items.extend(text_items);
     content_items.extend(trailing_items);
 
-    Some(content_items).filter(|items| !items.is_empty())
+    non_empty(content_items)
 }
 
 pub(crate) fn assistant_text_items_from_choice(
@@ -176,8 +178,10 @@ impl PartialStreamedTurn {
             feedback,
         ));
 
+        // `retry_results` is non-empty: the invalid call's own feedback result
+        // was just pushed unconditionally.
         let user_message = Message::User {
-            content: Some(retry_results).filter(|items| !items.is_empty())?,
+            content: retry_results,
         };
 
         Some((assistant_message, user_message))

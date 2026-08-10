@@ -479,7 +479,7 @@ The migration at your call sites:
 | `OneOrMany::one(x)` | `vec![x]` |
 | `OneOrMany::many(xs)` → `Result<_, EmptyListError>` | the `Vec` itself; use `message::require_non_empty` where you were relying on the rejection |
 | `OneOrMany::merge(xs)` → `Result<_, EmptyListError>` | `xs.into_iter().flatten().collect()` — the `?` is gone: `merge` returned `Err(EmptyListError)` when the flattened result was empty, this yields an empty `Vec`. Add your own check if you relied on the rejection |
-| `OneOrMany::from_iter_optional(xs)` | `Some(xs).filter(\|items\| !items.is_empty())` |
+| `OneOrMany::from_iter_optional(xs)` | `message::non_empty(xs)`, or inline `Some(xs).filter(\|items\| !items.is_empty())` |
 | `.first()` / `.last()` → owned `T` | `.first()` / `.last()` → `Option<&T>` |
 | `.first_ref()` / `.last_ref()` → `&T` | `.first()` / `.last()` → `Option<&T>` |
 | `.rest()` → `Vec<T>` | `.iter().skip(1)` or `.get(1..)` |
@@ -644,7 +644,7 @@ pub struct ToolResult {
     pub provider: Option<ProviderCallId>,
     /// The *executed* tool's name. Required, not `Option`.
     pub name: String,
-    pub content: OneOrMany<ToolResultContent>,
+    pub content: Vec<ToolResultContent>,
 }
 ```
 
@@ -986,7 +986,7 @@ callers actually reached into `raw_response` for:
 
 ```rust
 pub struct CompletionResponse {
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     pub usage: Usage,
     pub message_id: Option<String>,
     pub response_id: Option<String>,
@@ -2294,6 +2294,8 @@ Renamed or relocated items, for searching.
 
 | Old | New | Version |
 | --- | --- | --- |
+| `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → next" | next |
+| `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | next |
 | `rig_core::tool::Tool` (portable) | `rig_core::tool::PortableTool` | 0.41 |
 | `rig_agent::<item>` (portable re-export) | `rig_agent::core::<item>` | 0.41 |
 | `client.agent(...)` inherent method | `AgentClientExt::agent` (via `rig::prelude::*`) | 0.41 |
@@ -2317,7 +2319,7 @@ Renamed or relocated items, for searching.
 | `Output::Unknown` | `Output::Unknown(Value)` | 0.40 |
 | provider-specific `StreamingCompletionResponse` | shared `openai::StreamingCompletionResponse` | 0.40 |
 | `GenericCompletionModel::with_model` | `GenericCompletionModel::new` | 0.40 |
-| `MultiTurnStreamItem::final_response(&str, ..)` | `final_response(OneOrMany<AssistantContent>, ..)` | 0.38 |
+| `MultiTurnStreamItem::final_response(&str, ..)` | `final_response(OneOrMany<AssistantContent>, ..)`; if you are skipping straight past 0.41, `OneOrMany` is itself removed in the next release — go directly to `Vec<AssistantContent>` | 0.38 |
 | `DeltaTextChunkWithItemId.item_id` | none | 0.38 |
 | library target `rig` in `rig-core` | `rig_core`, or the new `rig` facade crate | 0.37 |
 | `Chat::chat(prompt, impl IntoIterator)` | `Chat::chat(prompt, &mut Vec<Message>)` | 0.37 |

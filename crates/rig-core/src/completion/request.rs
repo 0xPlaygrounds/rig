@@ -852,9 +852,7 @@ impl CompletionRequest {
             })
             .collect::<Vec<_>>();
 
-        Some(messages)
-            .filter(|items| !items.is_empty())
-            .map(|content| Message::User { content })
+        crate::message::non_empty(messages).map(|content| Message::User { content })
     }
 
     pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {

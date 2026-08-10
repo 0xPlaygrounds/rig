@@ -814,17 +814,16 @@ pub fn user_content_to_messages(
         messages: &mut Vec<Message>,
         pending: &mut Vec<UserContent>,
     ) -> Result<(), message::MessageError> {
+        // An empty flush is a legal no-op — it fires between consecutive
+        // tool-result groups — not a conversion error. This early return is
+        // the only emptiness decision here; the pushed content is non-empty
+        // because of it.
         if pending.is_empty() {
             return Ok(());
         }
 
-        let content = crate::message::require_non_empty(std::mem::take(pending), || {
-            message::MessageError::ConversionError(
-                "OpenAI user message did not contain any non-tool content".into(),
-            )
-        })?;
         messages.push(Message::User {
-            content,
+            content: std::mem::take(pending),
             name: None,
         });
         Ok(())

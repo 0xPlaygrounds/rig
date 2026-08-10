@@ -255,12 +255,9 @@ fn finalize_streamed_choice(
         })
         .cloned()
         .collect();
+    // `items` is non-empty: the output text was just pushed unconditionally.
     items.push(AssistantContent::text(output.to_string()));
-    Some(
-        Some(items)
-            .filter(|items| !items.is_empty())
-            .unwrap_or_else(|| vec![AssistantContent::text(output.to_string())]),
-    )
+    Some(items)
 }
 
 #[derive(Debug, thiserror::Error)]

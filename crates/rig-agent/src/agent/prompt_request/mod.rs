@@ -2,7 +2,9 @@ pub mod streaming;
 
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use rig_core::{
-    message::{AssistantContent, ProviderCallId, ToolCallId, ToolResultContent, UserContent},
+    message::{
+        AssistantContent, ProviderCallId, ToolCallId, ToolResultContent, UserContent, non_empty,
+    },
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 
@@ -662,7 +664,7 @@ pub(crate) fn invalid_tool_retry_user_message(
         .collect::<Vec<_>>();
 
     Some(Message::User {
-        content: Some(retry_results).filter(|items| !items.is_empty())?,
+        content: non_empty(retry_results)?,
     })
 }
 

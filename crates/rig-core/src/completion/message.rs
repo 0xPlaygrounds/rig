@@ -47,11 +47,16 @@ pub enum Message {
 ///
 /// Two rules for anyone extending this:
 ///
-/// - It is a guard for the **response** direction. Empty assistant content is
-///   legal at the rig level — a tool-call-only turn, a truncated stream — but a
-///   provider returning nothing where its protocol promises content is
-///   malformed, and that is what these call sites detect. Request-direction
-///   emptiness is rejected once, at the request boundary.
+/// - It is **mostly** a guard for the **response** direction. Empty assistant
+///   content is legal at the rig level — a tool-call-only turn, a truncated
+///   stream — but a provider returning nothing where its protocol promises
+///   content is malformed, and that is what most of these call sites detect.
+///   Request-direction emptiness at the rig level is rejected once, at the
+///   request boundary — but a few request-conversion sites also use this guard,
+///   because non-empty rig content can still convert to zero *wire* blocks
+///   (e.g. assistant content whose only parts have no representation on that
+///   wire), and only the provider's own conversion can see that. If your
+///   request `TryFrom` can drop parts, guard the converted list too.
 /// - The check is on the **whole list**, never on individual items. A visibly
 ///   empty block can still carry data that must survive a round trip: reasoning
 ///   signatures and encrypted reasoning attach to blocks whose text is empty.
@@ -61,6 +66,17 @@ pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Resu
         return Err(error());
     }
     Ok(items)
+}
+
+/// The `Option` sibling of [`require_non_empty`]: `None` for an empty list,
+/// `Some(items)` otherwise.
+///
+/// This is the one home for the "an empty list means absent" rule, wherever a
+/// list is being placed into an `Option`-shaped slot (an optional response
+/// content, an optional message) rather than validated. The same whole-list
+/// rule applies: never decide emptiness per item.
+pub fn non_empty<T>(items: Vec<T>) -> Option<Vec<T>> {
+    if items.is_empty() { None } else { Some(items) }
 }
 
 /// Describes the content of a message, which can be text, a tool result, an image, audio, or
