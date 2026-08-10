@@ -568,9 +568,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             assistant_contents.push(assistant_content);
         }
 
-        let choice = rig_core::message::require_non_empty(assistant_contents, || {
-            CompletionError::ResponseError(rig_core::message::EMPTY_RESPONSE_ERROR.to_owned())
-        })?;
+        let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
 
         let usage = response
             .usage_metadata

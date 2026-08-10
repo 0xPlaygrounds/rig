@@ -76,6 +76,18 @@ pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Resu
     Ok(items)
 }
 
+/// [`require_non_empty`] with the shared response-direction rejection — the
+/// one-line guard for a provider decode whose converted choice is empty and
+/// that has no extra context to add. Pairing the guard with
+/// [`EMPTY_RESPONSE_ERROR`] here keeps the wording from forking per wire; a
+/// decode that *does* have more to say (anthropic branches on `stop_reason`
+/// first) composes [`require_non_empty`] with its own error instead.
+pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<Vec<T>, CompletionError> {
+    require_non_empty(items, || {
+        CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned())
+    })
+}
+
 /// The `Option` sibling of [`require_non_empty`]: `None` for an empty list,
 /// `Some(items)` otherwise.
 ///
@@ -1870,6 +1882,24 @@ mod tests {
         let roundtrip: super::ToolCall = serde_json::from_value(json).expect("deserialize");
         assert_eq!(roundtrip.provider, None);
         assert_eq!(roundtrip, call);
+    }
+
+    #[test]
+    fn legacy_call_id_key_is_ignored_not_lifted() {
+        // The pre-provider-split lift is deleted: a legacy `call_id` key is
+        // an unknown field, so it deserializes with the key ignored — `id`
+        // is read as rig's handle and `provider` stays absent. Pinned so a
+        // future change (e.g. making the key a hard error) is a decision,
+        // not an accident; the hand-migration recipe lives in MIGRATING.
+        let legacy = serde_json::json!({
+            "id": "fc_123",
+            "call_id": "call_abc",
+            "function": {"name": "add", "arguments": {"x": 1}},
+        });
+
+        let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
+        assert_eq!(call.id, "fc_123");
+        assert_eq!(call.provider, None);
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -515,9 +515,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = crate::message::require_non_empty(content, || {
-            CompletionError::ResponseError(crate::message::EMPTY_RESPONSE_ERROR.to_owned())
-        })?;
+        let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
             .usage

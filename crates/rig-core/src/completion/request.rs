@@ -1409,8 +1409,11 @@ mod tests {
         fn the_legacy_fabricated_sentinel_still_passes() {
             // Histories persisted before message content became a `Vec` encode a
             // content-less assistant turn as a single empty text part. That is a
-            // one-element list, so it validates; `is_empty_assistant_turn`
-            // neutralizes it further up the stack.
+            // one-element list, so it validates — the rule is block count, not
+            // block content — and, being caller-supplied history, it is never
+            // filtered: it goes to the wire as-is (where some providers reject
+            // it). Callers migrating pre-`Vec` histories drop such turns
+            // themselves; see MIGRATING.
             let request = request(vec![
                 Message::user("hello"),
                 Message::Assistant {

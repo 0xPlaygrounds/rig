@@ -65,7 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(completion)* legacy (pre-provider-split) `ToolCall` JSON lifts its `call_id` into `provider` instead of silently discarding it as an unknown key — a persisted Responses history no longer loses its correlator and replays the `fc_*` item handle in the `call_id` slot; single-identifier legacy payloads keep their provider-supplied `id` as `provider.call_id`, and the current schema (no `call_id` key) never promotes minted handles
 - *(providers)* name-keyed wires (Gemini REST/Interactions, Ollama, Vertex AI, gemini-grpc) fill a cross-provider ingested result's empty `name` from its paired call at request assembly (`providers::internal::resolve_empty_tool_result_names`, matched by identifier only) — rig's own inbound converters stamp `""` because the Anthropic/OpenAI-chat/Cohere/Bedrock wires carry no name, and replaying it raw was INVALID_ARGUMENT
 - *(openai)* a Responses tool call whose `output_item.done` frame was lost survives a healthy `response.completed`: the terminal closes every open slot (with the announced dual-wire identity) and the call finalizes from its streamed fragments instead of being discarded as truncation — the same terminal-proof drain Interactions and chat-compat ship
 - *(gemini)* an Interactions streamed call carries a single-wire identity: its `fc_*` id lands in `provider.call_id` with `item_id` empty, instead of a fabricated Responses-shaped dual id whose fake item id passed the foreign-id guard on cross-provider replay

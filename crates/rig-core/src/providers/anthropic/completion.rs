@@ -7,7 +7,10 @@ use crate::{
     client::Provider,
     completion::{self, CompletionError},
     http_client::HttpClientExt,
-    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
+    message::{
+        self, DocumentMediaType, DocumentSourceKind, EMPTY_RESPONSE_ERROR, MessageError, MimeType,
+        Reasoning,
+    },
     telemetry::{CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
@@ -34,7 +37,6 @@ pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
-use crate::message::EMPTY_RESPONSE_ERROR;
 pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
 pub trait AnthropicCompatibleProvider: Provider {

@@ -1264,7 +1264,11 @@ carried:
   longer deserializes — `content` is a required field. (On self-describing
   formats like JSON the serialized shape is unchanged; a non-self-describing
   format sees `content` as a bare list where the old shadow repr encoded an
-  `Option`.)
+  `Option`.) This reaches further than standalone response values: `AgentRun`
+  embeds a `PromptResponse` in its `Done` state, so a **persisted run** that
+  reached `Done` before the field existed fails to load too — migrate stored
+  runs (add `"content": [{"type":"text","text": <output>}]` to the embedded
+  response) before upgrading.
 - Pre-provider-split `ToolCall` JSON is no longer migrated on load — see the
   "Persisted histories" bullet in the tool-call identity section above for
   what a legacy `call_id` key now means and how to migrate the JSON by hand.

@@ -208,7 +208,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                 },
             )?
         } else {
-            crate::message::require_non_empty(
+            crate::message::require_non_empty_response(
                 content
                     .into_iter()
                     .map(|content| match content {
@@ -218,7 +218,6 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                         }
                     })
                     .collect::<Vec<_>>(),
-                || CompletionError::ResponseError(crate::message::EMPTY_RESPONSE_ERROR.to_owned()),
             )?
         };
 
