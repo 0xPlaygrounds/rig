@@ -1282,6 +1282,13 @@ untagged-enum error). Migrate stored assistant blocks by inserting the tag:
 - reasoning (`"content"` list of reasoning blocks) → add `"type": "reasoning"`
 - image (`"data"` key, assistant side) → add `"type": "image"`
 
+The tag alone is not always enough: 0.41's flatten also wrote provider extras
+as top-level siblings on **assistant** text (anthropic citations, raw server
+tool content), and those keys now fail the strict decode. Re-nest them under
+`additional_params` in the same pass, exactly as the user-content instructions
+below describe — `{"text": "…", "citations": […]}` becomes
+`{"type": "text", "text": "…", "additional_params": {"citations": […]}}`.
+
 `additional_params` on every content block (`Text`, `Image`, `Audio`, `Video`,
 `Document`) is now a **named** field instead of a serde flatten:
 
@@ -1320,8 +1327,11 @@ keys does not error — it decodes as `Unknown` and is excluded from assembly.
 This is not a 0.41-upgrade-only hazard: it applies to any relayed or persisted
 stream event with keys outside the schema, today and onward (a relay stamping
 bookkeeping keys onto text items will lose them from assembled history). The
-exclusion of a text-carrying payload logs a `tracing` warning; re-nest extras
-under `additional_params` to keep them.
+exclusion of such a payload (a `text` key with no `type` tag) logs a
+`tracing` warning at rig's assembly points — the streaming normalizer and the
+agent assembler; a consumer assembling self-deserialized events with their own
+logic gets no warning and should check for text-carrying `Unknown` items
+themselves. Re-nest extras under `additional_params` to keep them.
 
 ### Two pre-`Vec` serde accommodations are gone
 

@@ -624,12 +624,13 @@ pub(crate) fn invalid_tool_retry_user_message(
 /// - **One empty, unannotated text block.** A blocking wire can deliver an
 ///   assistant message whose only part is an empty text block; it carries
 ///   nothing, and the agent curates it out of history exactly as it curates
-///   a zero-part turn. The `additional_params.is_none()` guard is
-///   load-bearing: an *annotated* empty text block carries data and must
-///   not read as empty. (`additional_params` is a named serde field, so an
-///   absent field round-trips as `None` — live and restored runs classify
-///   identically, pinned by
-///   `empty_turn_classification_survives_a_serde_round_trip`.)
+///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
+///   empty text block carries data and must not read as empty. Annotation is
+///   judged by [`rig_core::message::params_carry_data`] — the one home for
+///   the "`None`, `null`, and `{}` all mean no extras" rule — so an
+///   uncanonicalized in-memory `Some({})` (the fields are public) classifies
+///   exactly like the canonical `None`, live and restored alike (pinned by
+///   `empty_turn_classification_survives_a_serde_round_trip`).
 ///
 /// This runs on turns flowing through the agent loop only. Caller-supplied
 /// `chat_history` is never filtered: an empty text block you replay goes to
@@ -643,7 +644,8 @@ pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
         && matches!(
             choice.first(),
             Some(AssistantContent::Text(text))
-                if text.text.is_empty() && text.additional_params.is_none()
+                if text.text.is_empty()
+                    && !rig_core::message::params_carry_data(text.additional_params.as_ref())
         )
 }
 
@@ -1233,6 +1235,24 @@ mod tests {
             );
             assert!(is_empty_assistant_turn(&migrated));
         }
+
+        // An *in-memory* `Some({})` — constructible by out-of-tree code, since
+        // the fields are public — classifies empty (the read-side rule) and
+        // serializes canonically (the field is skipped), so live and restored
+        // agree even for uncanonicalized values.
+        let uncanonical = vec![AssistantContent::Text(rig_core::message::Text {
+            text: String::new(),
+            additional_params: Some(serde_json::json!({})),
+        })];
+        assert!(is_empty_assistant_turn(&uncanonical));
+        let serialized = serde_json::to_value(&uncanonical).expect("serialize");
+        assert!(
+            serialized[0].get("additional_params").is_none(),
+            "empty params must not reach the wire: {serialized}"
+        );
+        let restored: Vec<AssistantContent> =
+            serde_json::from_value(serialized).expect("deserialize");
+        assert!(is_empty_assistant_turn(&restored));
 
         let annotated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
             {"type": "text", "text": "", "additional_params": {"signature": "sig"}}

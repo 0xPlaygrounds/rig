@@ -710,9 +710,25 @@ impl ToolFunction {
 /// what lets emptiness checks (`is_empty_assistant_turn`) use plain
 /// `is_none()` without a tolerant shim.
 pub fn non_empty_params(value: serde_json::Value) -> Option<serde_json::Value> {
-    Some(value).filter(|value| {
+    Some(value).filter(|value| params_carry_data(Some(value)))
+}
+
+/// The read-side spelling of the same rule: whether an optional params slot
+/// actually carries data. `None`, `null`, and `{}` all mean "no extras" —
+/// readers that must be robust to an uncanonicalized in-memory value (the
+/// fields are public, so out-of-tree code can store `Some({})` directly) ask
+/// this instead of `is_some()`.
+pub fn params_carry_data(params: Option<&serde_json::Value>) -> bool {
+    params.is_some_and(|value| {
         !value.is_null() && !value.as_object().is_some_and(serde_json::Map::is_empty)
     })
+}
+
+/// Serialize-side spelling: skip the field entirely when it carries no data,
+/// so an uncanonicalized `Some({})`/`Some(null)` in memory serializes exactly
+/// like `None` and the persisted form is always canonical.
+fn params_carry_no_data(params: &Option<serde_json::Value>) -> bool {
+    !params_carry_data(params.as_ref())
 }
 
 /// Serde route into [`non_empty_params`]: an explicit `null` or `{}` in the
@@ -744,7 +760,7 @@ pub struct Text {
     #[serde(
         default,
         deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "Option::is_none"
+        skip_serializing_if = "params_carry_no_data"
     )]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -787,7 +803,7 @@ pub struct Image {
     #[serde(
         default,
         deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "Option::is_none"
+        skip_serializing_if = "params_carry_no_data"
     )]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -902,7 +918,7 @@ pub struct Audio {
     #[serde(
         default,
         deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "Option::is_none"
+        skip_serializing_if = "params_carry_no_data"
     )]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -920,7 +936,7 @@ pub struct Video {
     #[serde(
         default,
         deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "Option::is_none"
+        skip_serializing_if = "params_carry_no_data"
     )]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -938,7 +954,7 @@ pub struct Document {
     #[serde(
         default,
         deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "Option::is_none"
+        skip_serializing_if = "params_carry_no_data"
     )]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -1940,6 +1956,42 @@ mod tests {
         let roundtrip: super::ToolCall = serde_json::from_value(json).expect("deserialize");
         assert_eq!(roundtrip.provider, None);
         assert_eq!(roundtrip, call);
+    }
+
+    #[test]
+    fn empty_params_canonicalize_to_none_in_both_serde_directions() {
+        // The `non_empty_params` contract, pinned where it lives: an explicit
+        // `{}` or `null` decodes as `None` exactly like an absent field, data
+        // survives, and an uncanonicalized in-memory `Some({})`/`Some(null)`
+        // never reaches the wire.
+        for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
+            let text: Text = serde_json::from_value(
+                serde_json::json!({"text": "x", "additional_params": empty_spelling}),
+            )
+            .expect("deserialize");
+            assert_eq!(text.additional_params, None);
+        }
+
+        let text: Text = serde_json::from_value(
+            serde_json::json!({"text": "x", "additional_params": {"citations": [1]}}),
+        )
+        .expect("deserialize");
+        assert_eq!(
+            text.additional_params,
+            Some(serde_json::json!({"citations": [1]}))
+        );
+
+        for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
+            let uncanonical = Text {
+                text: "x".to_owned(),
+                additional_params: Some(empty_spelling),
+            };
+            let serialized = serde_json::to_value(&uncanonical).expect("serialize");
+            assert!(
+                serialized.get("additional_params").is_none(),
+                "empty params must not serialize: {serialized}"
+            );
+        }
     }
 
     #[test]

@@ -644,15 +644,16 @@ impl StreamedTurnAssembler {
                 // assistant message — there is no `AssistantContent::Unknown`, and
                 // it must not perturb text/tool-call/reasoning accumulation.
                 //
-                // A payload carrying a `text` key is the one shape whose
-                // exclusion loses transcript content (a text item with stray
-                // sibling keys fails the strict `Text` decode and lands here),
-                // so that case is loud — the payload itself stays redacted.
-                if payload.value().get("text").is_some() {
+                // A payload with a `text` key but no `type` key is a rig text
+                // item that failed the strict `Text` decode (stray sibling
+                // keys) — provider-native unmodeled items always carry their
+                // wire `type` tag. That exclusion loses transcript content,
+                // so it is loud; the payload itself stays redacted.
+                if payload.value().get("text").is_some() && payload.value().get("type").is_none() {
                     tracing::warn!(
-                        "unmodeled stream item carrying a `text` key excluded \
-                         from the assembled assistant message (stray sibling \
-                         keys on a text item fail the strict decode)"
+                        "stream item carrying a `text` key but no `type` tag excluded \
+                         from the assembled assistant message — stray sibling keys on \
+                         a text item fail the strict decode"
                     );
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
