@@ -185,8 +185,17 @@ impl PartsAccumulator {
 
     /// Merge provider metadata into the active text block, opening an empty
     /// block if none is active.
+    ///
+    /// `null` and the empty object are both "no metadata" and are dropped
+    /// here — this is the normalization boundary that keeps `Some({})` out of
+    /// [`Text::additional_params`], where it would make an empty text block
+    /// read as annotated (`is_empty_assistant_turn` checks `is_none()`).
     pub(crate) fn text_additional_params(&mut self, additional_params: serde_json::Value) {
-        if additional_params.is_null() {
+        if additional_params.is_null()
+            || additional_params
+                .as_object()
+                .is_some_and(serde_json::Map::is_empty)
+        {
             return;
         }
         let index = self.ensure_text_block();

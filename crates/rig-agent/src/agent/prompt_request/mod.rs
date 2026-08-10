@@ -1194,11 +1194,10 @@ mod tests {
 
     #[test]
     fn empty_turn_classification_survives_a_serde_round_trip() {
-        // `Text::additional_params` is a serde flatten, which decodes an
-        // empty JSON remainder as `Some({})` where the live value was
-        // `None`. A suspended run restored from JSON must classify its
-        // empty-text turn exactly like the live run did — and an
-        // *annotated* empty block must still read as content either way.
+        // `additional_params` is a named serde field, so absence round-trips
+        // as `None` — a suspended run restored from JSON must classify its
+        // empty-text turn exactly like the live run did, and an *annotated*
+        // empty block must still read as content either way.
         let live = vec![AssistantContent::text("")];
         assert!(is_empty_assistant_turn(&live));
 
@@ -1210,7 +1209,7 @@ mod tests {
             "restored turn must classify like the live one: {round:?}"
         );
         // With `additional_params` a named field, the absence round-trips as
-        // `None` — no flatten, no `Some({{}})` artifact.
+        // `None` — no flatten, no `Some({})` artifact.
         assert!(matches!(
             round.as_slice(),
             [AssistantContent::Text(text)] if text.additional_params.is_none()
@@ -1255,9 +1254,10 @@ mod tests {
     fn the_type_key_is_the_tag_and_the_untagged_shape_does_not_load() {
         // Assistant content is tagged like user content: `"type"` is consumed
         // as the discriminant, never captured into `additional_params`. And
-        // there is deliberately no untagged fallback — the pre-tag bare shape
-        // (never released) fails to deserialize, pinned here so removing the
-        // tag requirement is a visible decision, not an accident.
+        // there is deliberately no untagged fallback — the bare shape 0.41
+        // serialized fails to deserialize (MIGRATING carries the recipe),
+        // pinned here so removing the tag requirement is a visible decision,
+        // not an accident.
         let tagged: Vec<AssistantContent> =
             serde_json::from_value(serde_json::json!([{"type": "text", "text": "ok"}]))
                 .expect("deserialize");

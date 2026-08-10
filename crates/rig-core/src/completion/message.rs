@@ -123,8 +123,9 @@ pub enum UserContent {
 /// Describes responses from a provider which is either text or a tool call.
 ///
 /// Tagged with `"type"`, exactly like [`UserContent`]. The tag is required on
-/// deserialize — there is no fallback to the tagless shape, so a bare
-/// `{"text": …}` block (the pre-tag form, never released) does not load.
+/// deserialize — there is no fallback to the tagless shape 0.41 serialized,
+/// so a bare `{"text": …}` block does not load; see MIGRATING for the
+/// tag-insertion recipe.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AssistantContent {

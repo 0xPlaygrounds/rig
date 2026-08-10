@@ -2389,13 +2389,10 @@ mod tests {
         assert_eq!(resumed.output, uninterrupted.output);
         assert_eq!(resumed.usage, uninterrupted.usage);
         assert_eq!(resumed.completion_calls, uninterrupted.completion_calls);
-        // Compare messages by their serialized form: deserializing a message
-        // normalizes absent `additional_params` to an empty map, which is
-        // semantically identical and serializes identically.
-        assert_eq!(
-            serde_json::to_value(&resumed.messages).expect("messages should serialize"),
-            serde_json::to_value(&uninterrupted.messages).expect("messages should serialize"),
-        );
+        // Direct value comparison: with `additional_params` a named field,
+        // a restored message is identical to the live one — no serialized-form
+        // detour that would hide a round-trip divergence.
+        assert_eq!(resumed.messages, uninterrupted.messages);
     }
 
     #[test]

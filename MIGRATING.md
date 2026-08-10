@@ -1270,9 +1270,16 @@ always has:
 {"type": "image",     "data": ...}
 ```
 
-The tag is **required** on deserialize. There is no untagged fallback: the
-pre-tag bare shape (`{"text": "hello"}`) was never in a release and does not
-load.
+The tag is **required** on deserialize, and there is no untagged fallback.
+**This breaks released data**: 0.41 serialized assistant content untagged, so
+a history or run persisted under 0.41 carries the bare shape
+(`{"text": "hello"}`) and fails to load with "data did not match any
+variant". Migrate stored assistant blocks by inserting the tag:
+
+- text block (`"text"` key) → add `"type": "text"`
+- tool call (`"id"` + `"function"` keys) → add `"type": "toolcall"`
+- reasoning (`"content"` list of reasoning blocks) → add `"type": "reasoning"`
+- image (`"data"` key, assistant side) → add `"type": "image"`
 
 `additional_params` on every content block (`Text`, `Image`, `Audio`, `Video`,
 `Document`) is now a **named** field instead of a serde flatten:
@@ -1285,10 +1292,28 @@ Two defect classes die with the flatten: a stray key can no longer be silently
 captured into `additional_params` and replayed to providers, and an absent
 field round-trips as `None` instead of the flatten's `Some({})` artifact — so
 turn-emptiness classification is identical before and after a persist/restore.
-Unknown keys inside a content block are now rejected
+Unknown keys inside these five block structs are now rejected
 (`deny_unknown_fields`), so a malformed block is a decode error instead of
-silent capture. The params remain provider-specific: a serializer replays only
-params it recognizes as its own wire's.
+silent capture. Scope that guarantee precisely: it covers
+`Text`/`Image`/`Audio`/`Video`/`Document` only — `ToolCall` and `Reasoning`
+blocks still ignore unknown keys, deliberately (a legacy `call_id` on a tool
+call is dropped, not an error; see the tool-call identity section). The params
+remain provider-specific: a serializer replays only params it recognizes as
+its own wire's.
+
+**This also breaks released *user*-content blocks.** 0.41's flatten wrote
+provider extras at the block's top level — e.g. an Anthropic document block
+serialized as `{"type": "document", "data": …, "title": "t", "citations": …}`.
+Under `deny_unknown_fields` those blocks fail with `unknown field "title"`.
+Migrate by re-nesting every non-schema key under `additional_params`:
+`{"type": "document", "data": …, "additional_params": {"title": "t",
+"citations": …}}`.
+
+**Streaming events**: `StreamedAssistantContent` is a tolerant decode with an
+`Unknown` catch-all, so a 0.41-serialized stream item whose text block carried
+flattened extras does not error — it decodes as `Unknown` and is dropped from
+assembly. If you persist or relay raw stream events across the upgrade,
+re-nest their extras the same way; do not expect a loud failure there.
 
 ### Two pre-`Vec` serde accommodations are gone
 

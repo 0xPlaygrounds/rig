@@ -2649,8 +2649,10 @@ pub enum AssistantContent {
 pub struct OutputText {
     pub text: String,
     /// OpenAI's sibling keys, preserved verbatim for value-equal replay.
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub extras: Option<serde_json::Value>,
+    /// The `Map` form (not `Option<Value>`) makes absence and the empty map
+    /// one value, so a decoded bare block equals a request-assembled one.
+    #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+    pub extras: Map<String, Value>,
 }
 
 impl OutputText {
@@ -2658,7 +2660,7 @@ impl OutputText {
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
-            extras: None,
+            extras: Map::new(),
         }
     }
 }
