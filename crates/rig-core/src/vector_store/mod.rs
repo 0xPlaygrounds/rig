@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingError},
     tool::PortableTool,
     vector_store::request::{Filter, FilterError, SearchFilter},
@@ -74,9 +74,18 @@ pub enum VectorStoreError {
 /// Trait for inserting documents and embeddings into a vector store.
 pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
     /// Insert precomputed embeddings for each document.
+    ///
+    /// **Every document must carry at least one embedding.** The embedding
+    /// list was non-empty by construction until it became a `Vec`; the
+    /// requirement did not go away, it moved to the caller. Implementors do
+    /// not guard it, and what an empty list does varies by store — some
+    /// silently insert nothing, some store a document no similarity search
+    /// can ever return, some surface a confusing driver error. Embeddings
+    /// produced by `EmbeddingsBuilder` always satisfy this; only hand-built
+    /// tuples can violate it.
     fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> impl std::future::Future<Output = Result<(), VectorStoreError>> + WasmCompatSend;
 }
 

@@ -4,7 +4,6 @@
 //! record, usage, and finish reason.
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall};
 use rig::prelude::*;
@@ -22,7 +21,7 @@ struct StreamRun {
     reasoning_blocks: Vec<Reasoning>,
     tool_calls: Vec<ToolCall>,
     finals: Vec<StreamFinal>,
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
 }
 
@@ -33,7 +32,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         reasoning_blocks: Vec::new(),
         tool_calls: Vec::new(),
         finals: Vec::new(),
-        choice: OneOrMany::one(AssistantContent::text("")),
+        choice: vec![AssistantContent::text("")],
         response: None,
     };
 

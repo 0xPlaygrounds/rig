@@ -154,6 +154,13 @@ impl ModelHandle {
 
 /// A handle behaves exactly like the model it erased, with capabilities served
 /// from the snapshot captured at erasure time.
+///
+/// It deliberately adds no request validation of its own. Both agent surfaces
+/// reach a model through `CompletionRequestBuilder` — `runner.rs`'s blocking
+/// turn calls `builder.send()`, the streaming turn calls `builder.stream()` —
+/// and the builder already runs
+/// [`CompletionRequest::validate_message_content`]. Repeating it here would
+/// scan the whole history a second time on every model call and buy nothing.
 impl CompletionModel for ModelHandle {
     fn completion(
         &self,

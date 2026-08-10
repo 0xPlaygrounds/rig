@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde::de::{self, Deserializer, SeqAccess, Visitor};
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
@@ -156,6 +156,27 @@ where
             A: SeqAccess<'de>,
         {
             Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+
+        /// A bare object where a list is expected is one block, not a defect —
+        /// several wires spell single-block content that way. This arm comes
+        /// from the removed non-empty container's `string_or_one_or_many`,
+        /// whose callers (Anthropic `Message.content`, OpenAI system and user
+        /// content) now share this helper.
+        ///
+        /// The two were not interchangeable: this one also has
+        /// `visit_none`/`visit_unit`, so the migrated fields now accept `null`
+        /// where they used to raise a parse error. Those arms are load-bearing
+        /// for the OpenAI assistant-content field that already used this
+        /// helper — OpenAI sends `"content": null` for a tool-calls-only
+        /// message — so the widening is the price of sharing one helper, and it
+        /// is documented in MIGRATING rather than hidden.
+        fn visit_map<M>(self, map: M) -> Result<Vec<T>, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let item = Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+            Ok(vec![item])
         }
 
         fn visit_none<E>(self) -> Result<Vec<T>, E>
@@ -384,5 +405,93 @@ mod tests {
     fn test_parse_tool_arguments_valid_json() {
         let parsed = parse_tool_arguments(r#"{"key":"value"}"#).unwrap();
         assert_eq!(parsed, serde_json::json!({"key": "value"}));
+    }
+
+    mod string_or_vec_shapes {
+        use serde::Deserialize;
+        use std::convert::Infallible;
+        use std::str::FromStr;
+
+        /// A content block that can arrive in every shape the helper accepts.
+        ///
+        /// The suite deliberately does not use `Vec<String>`: a bare object
+        /// cannot deserialize into a `String`, so a string element type makes
+        /// the `visit_map` arm structurally untestable — and that is the arm
+        /// whose loss would be a silent wire break, since several providers
+        /// spell single-block content as a bare object.
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct Block {
+            text: String,
+        }
+
+        impl FromStr for Block {
+            type Err = Infallible;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                Ok(Block {
+                    text: value.to_owned(),
+                })
+            }
+        }
+
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct Holder {
+            #[serde(deserialize_with = "super::super::string_or_vec")]
+            content: Vec<Block>,
+        }
+
+        fn decode(json: serde_json::Value) -> Vec<Block> {
+            serde_json::from_value::<Holder>(json)
+                .expect("shape should decode")
+                .content
+        }
+
+        fn block(text: &str) -> Block {
+            Block {
+                text: text.to_owned(),
+            }
+        }
+
+        #[test]
+        fn a_bare_object_is_one_element() {
+            // `visit_map`. Carried over from the removed container's
+            // `string_or_one_or_many`, which had this arm where the helper it
+            // merged into did not.
+            assert_eq!(
+                decode(serde_json::json!({"content": {"text": "hi"}})),
+                vec![block("hi")]
+            );
+        }
+
+        #[test]
+        fn a_bare_string_becomes_one_element_via_from_str() {
+            assert_eq!(
+                decode(serde_json::json!({"content": "hi"})),
+                vec![block("hi")]
+            );
+        }
+
+        #[test]
+        fn a_sequence_decodes_elementwise() {
+            assert_eq!(
+                decode(serde_json::json!({"content": [{"text": "a"}, {"text": "b"}]})),
+                vec![block("a"), block("b")]
+            );
+        }
+
+        #[test]
+        fn an_empty_sequence_is_an_empty_list() {
+            // The non-empty container this helper replaced rejected `[]`
+            // outright. It is now a value.
+            assert!(decode(serde_json::json!({"content": []})).is_empty());
+        }
+
+        #[test]
+        fn null_is_an_empty_list() {
+            // Load-bearing: OpenAI sends `"content": null` for a message that
+            // carries only tool calls, so dropping this arm would turn a normal
+            // response into a decode error.
+            assert!(decode(serde_json::json!({"content": null})).is_empty());
+        }
     }
 }

@@ -1,5 +1,4 @@
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError},
     http_client::HttpClientExt,
     json_utils,
@@ -180,35 +179,39 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
         let (content, _, tool_calls) = response.message()?;
 
         let model_response = if !tool_calls.is_empty() {
-            OneOrMany::many(
+            crate::message::require_non_empty(
                 tool_calls
                     .into_iter()
                     .filter_map(|tool_call| {
                         let ToolCallFunction { name, arguments } = tool_call.function?;
-                        let id = tool_call.id.unwrap_or_else(|| name.clone());
+                        // The wire's id when present, or empty so the
+                        // conversion mints — never the tool name: a name-as-id
+                        // is fake provenance and collides two same-tool calls
+                        // in one turn.
+                        let id = tool_call.id.unwrap_or_default();
 
                         Some(completion::AssistantContent::tool_call(id, name, arguments))
                     })
                     .collect::<Vec<_>>(),
-            )
-            .map_err(|_| {
-                CompletionError::ResponseError(
-                    "response contained tool call metadata without any callable tool content"
-                        .to_owned(),
-                )
-            })?
+                || {
+                    CompletionError::ResponseError(
+                        "response contained tool call metadata without any callable tool content"
+                            .to_owned(),
+                    )
+                },
+            )?
         } else {
-            OneOrMany::many(content.into_iter().map(|content| match content {
-                AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                AssistantContent::Thinking { thinking } => {
-                    completion::AssistantContent::Reasoning(Reasoning::new(&thinking))
-                }
-            }))
-            .map_err(|_| {
-                CompletionError::ResponseError(
-                    "Response contained no message or tool call (empty)".to_owned(),
-                )
-            })?
+            crate::message::require_non_empty_response(
+                content
+                    .into_iter()
+                    .map(|content| match content {
+                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
+                        AssistantContent::Thinking { thinking } => {
+                            completion::AssistantContent::Reasoning(Reasoning::new(&thinking))
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )?
         };
 
         let usage = response
@@ -310,7 +313,7 @@ impl From<completion::ToolDefinition> for Tool {
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
     User {
-        content: OneOrMany<UserContent>,
+        content: Vec<UserContent>,
     },
 
     Assistant {
@@ -325,7 +328,7 @@ pub enum Message {
     },
 
     Tool {
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
         tool_call_id: String,
     },
 
@@ -403,26 +406,30 @@ impl TryFrom<message::Message> for Vec<Message> {
                 .into_iter()
                 .map(|content| match content {
                     message::UserContent::Text(message::Text { text, .. }) => Ok(Message::User {
-                        content: OneOrMany::one(UserContent::Text { text }),
+                        content: vec![UserContent::Text { text }],
                     }),
                     message::UserContent::ToolResult(tool_result) => Ok(Message::Tool {
                         tool_call_id: tool_result.wire_call_id().to_owned(),
-                        content: tool_result.content.try_map(|content| match content {
-                            message::ToolResultContent::Text(text) => {
-                                Ok(ToolResultContent::Text { text: text.text })
-                            }
-                            message::ToolResultContent::Json { value } => {
-                                Ok(ToolResultContent::Text {
-                                    text: value.to_string(),
-                                })
-                            }
-                            message::ToolResultContent::Image(_) => {
-                                Err(message::MessageError::ConversionError(
-                                    "Only text tool result content is supported by Cohere"
-                                        .to_owned(),
-                                ))
-                            }
-                        })?,
+                        content: tool_result
+                            .content
+                            .into_iter()
+                            .map(|content| match content {
+                                message::ToolResultContent::Text(text) => {
+                                    Ok(ToolResultContent::Text { text: text.text })
+                                }
+                                message::ToolResultContent::Json { value } => {
+                                    Ok(ToolResultContent::Text {
+                                        text: value.to_string(),
+                                    })
+                                }
+                                message::ToolResultContent::Image(_) => {
+                                    Err(message::MessageError::ConversionError(
+                                        "Only text tool result content is supported by Cohere"
+                                            .to_owned(),
+                                    ))
+                                }
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
                     }),
                     _ => Err(message::MessageError::ConversionError(
                         "Only text content is supported by Cohere".to_owned(),
@@ -491,14 +498,17 @@ impl TryFrom<Message> for message::Message {
     fn try_from(message: Message) -> Result<Self, Self::Error> {
         match message {
             Message::User { content } => Ok(message::Message::User {
-                content: content.map(|content| match content {
-                    UserContent::Text { text } => {
-                        message::UserContent::Text(message::Text::new(text))
-                    }
-                    UserContent::ImageUrl { image_url } => {
-                        message::UserContent::image_url(image_url.url, None, None)
-                    }
-                }),
+                content: content
+                    .into_iter()
+                    .map(|content| match content {
+                        UserContent::Text { text } => {
+                            message::UserContent::Text(message::Text::new(text))
+                        }
+                        UserContent::ImageUrl { image_url } => {
+                            message::UserContent::image_url(image_url.url, None, None)
+                        }
+                    })
+                    .collect(),
             }),
             Message::Assistant {
                 content,
@@ -518,14 +528,17 @@ impl TryFrom<Message> for message::Message {
                 content.extend(tool_calls.into_iter().filter_map(|tool_call| {
                     let ToolCallFunction { name, arguments } = tool_call.function?;
 
+                    // Empty when the wire issued no id, so the conversion
+                    // mints — never the tool name (fake provenance; collides
+                    // two same-tool calls in one turn).
                     Some(message::AssistantContent::tool_call(
-                        tool_call.id.unwrap_or_else(|| name.clone()),
+                        tool_call.id.unwrap_or_default(),
                         name,
                         arguments,
                     ))
                 }));
 
-                let content = OneOrMany::many(content).map_err(|_| {
+                let content = crate::message::require_non_empty(content, || {
                     message::MessageError::ConversionError(
                         "Expected either text content or tool calls".to_string(),
                     )
@@ -537,7 +550,7 @@ impl TryFrom<Message> for message::Message {
                 content,
                 tool_call_id,
             } => {
-                let content = content.try_map(|content| {
+                let content = content.into_iter().map(|content| {
                     Ok(match content {
                         ToolResultContent::Text { text } => message::ToolResultContent::text(text),
                         ToolResultContent::Document { document } => {
@@ -550,16 +563,16 @@ impl TryFrom<Message> for message::Message {
                             )
                         }
                     })
-                })?;
+                }).collect::<Result<Vec<_>, _>>()?;
 
                 Ok(message::Message::User {
                     // Cohere tool messages carry no tool name; this
                     // conversion is lossy for name-keyed wires.
-                    content: OneOrMany::one(message::UserContent::tool_result_from_wire(
+                    content: vec![message::UserContent::tool_result_from_wire(
                         tool_call_id,
                         "",
                         content,
-                    )),
+                    )],
                 })
             }
             Message::System { content } => Ok(message::Message::user(content)),
@@ -946,9 +959,9 @@ mod tests {
     #[test]
     fn test_convert_completion_message_to_message_and_back() {
         let completion_message = completion::Message::User {
-            content: OneOrMany::one(completion::message::UserContent::Text(
+            content: vec![completion::message::UserContent::Text(
                 completion::message::Text::new("Hello, world!".to_string()),
-            )),
+            )],
         };
 
         let messages: Vec<Message> = completion_message.clone().try_into().unwrap();
@@ -961,9 +974,9 @@ mod tests {
     #[test]
     fn test_convert_message_to_completion_message_and_back() {
         let message = Message::User {
-            content: OneOrMany::one(UserContent::Text {
+            content: vec![UserContent::Text {
                 text: "Hello, world!".to_string(),
-            }),
+            }],
         };
 
         let completion_message: completion::Message = message.clone().try_into().unwrap();

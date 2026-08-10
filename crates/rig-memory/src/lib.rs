@@ -220,7 +220,7 @@ impl MemoryPolicy for SlidingWindowMemory {
         // it is preserved end-to-end through the demotion hook even though
         // the model never sees it again.
         if let Some(Message::User { content }) = window.first()
-            && matches!(content.first_ref(), UserContent::ToolResult(_))
+            && matches!(content.first(), Some(UserContent::ToolResult(_)))
         {
             demoted.push(window.remove(0));
         }
@@ -483,7 +483,7 @@ impl MemoryPolicy for TokenWindowMemory {
         let mut window: Vec<Message> = iter.collect();
 
         if let Some(Message::User { content }) = window.first()
-            && matches!(content.first_ref(), UserContent::ToolResult(_))
+            && matches!(content.first(), Some(UserContent::ToolResult(_)))
         {
             demoted.push(window.remove(0));
         }
@@ -1558,7 +1558,6 @@ fn render_message_line(msg: &Message) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig_core::OneOrMany;
     use rig_core::message::{
         AssistantContent, ToolCall, ToolCallId, ToolFunction, ToolResult, ToolResultContent,
         UserContent,
@@ -1576,21 +1575,21 @@ mod tests {
     fn tool_call_msg() -> Message {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::new(
+            content: vec![AssistantContent::ToolCall(ToolCall::new(
                 ToolCallId::new_or_mint("call_1"),
                 ToolFunction::new("t".into(), serde_json::json!({})),
-            ))),
+            ))],
         }
     }
 
     fn tool_result_msg() -> Message {
         Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+            content: vec![UserContent::ToolResult(ToolResult {
                 call: ToolCallId::new_or_mint("call_1"),
                 provider: None,
                 name: "t".into(),
-                content: OneOrMany::one(ToolResultContent::text("ok")),
-            })),
+                content: vec![ToolResultContent::text("ok")],
+            })],
         }
     }
 
@@ -1638,7 +1637,7 @@ mod tests {
 
         assert_eq!(out.len(), 2);
         assert!(matches!(out.first(), Some(Message::User { content })
-            if matches!(content.first(), UserContent::Text(_))));
+            if matches!(content.first(), Some(UserContent::Text(_)))));
     }
 
     #[test]
@@ -1670,7 +1669,7 @@ mod tests {
             .unwrap();
         assert_eq!(out.len(), 1);
         assert!(matches!(out.first(), Some(Message::User { content })
-            if matches!(content.first(), UserContent::Text(_))));
+            if matches!(content.first(), Some(UserContent::Text(_)))));
     }
 
     #[test]
@@ -1888,7 +1887,7 @@ mod tests {
             .unwrap();
         assert_eq!(kept.len(), 2);
         assert!(matches!(kept.first(), Some(Message::User { content })
-            if matches!(content.first(), UserContent::Text(_))));
+            if matches!(content.first(), Some(UserContent::Text(_)))));
         assert_eq!(demoted.len(), 2);
     }
 
@@ -2462,7 +2461,7 @@ mod tests {
         let Message::User { content } = &loaded[1] else {
             panic!("expected kept user message");
         };
-        let UserContent::Text(t) = content.first_ref() else {
+        let Some(UserContent::Text(t)) = content.first() else {
             panic!("expected text");
         };
         assert_eq!(t.text, "third");

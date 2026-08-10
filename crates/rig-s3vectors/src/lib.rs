@@ -144,7 +144,7 @@ where
 {
     async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + Send>(
         &self,
-        documents: Vec<(Doc, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
+        documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), rig_core::vector_store::VectorStoreError> {
         let docs: Vec<PutInputVector> = documents
             .into_iter()

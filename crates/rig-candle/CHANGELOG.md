@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(protocol)* [**behavior**] a generation that produces no assistant content stays empty instead of being padded with a fabricated empty-text part, and the emptiness check that padding made unreachable is removed rather than made live — a model that emits EOS immediately, or only whitespace the parser trims, keeps succeeding with genuinely empty content instead of failing with `CandleError::Inference`
+
 - *(streaming)* generation events route through the shared `WireAdapter` driver (this family never produces `Unknown`); `stream_from_events` is the events-first conformance seam driving typed events through the full pipeline with no model load
 
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-candle-v0.1.0...rig-candle-v0.41.0) - 2026-07-28

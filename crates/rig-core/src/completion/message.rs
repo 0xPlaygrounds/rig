@@ -1,7 +1,5 @@
-use std::{convert::Infallible, str::FromStr};
-
-use crate::OneOrMany;
 use serde::{Deserialize, Serialize};
+use std::{convert::Infallible, str::FromStr};
 use thiserror::Error;
 
 use super::CompletionError;
@@ -24,14 +22,82 @@ pub enum Message {
     System { content: String },
 
     /// User message containing one or more content types defined by `UserContent`.
-    User { content: OneOrMany<UserContent> },
+    User { content: Vec<UserContent> },
 
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
         /// Provider-assigned assistant message ID, when available.
         id: Option<String>,
-        content: OneOrMany<AssistantContent>,
+        content: Vec<AssistantContent>,
     },
+}
+
+/// The shared wording for a response whose converted choice is empty.
+///
+/// Every provider decode rejects that state through
+/// [`require_non_empty_response`]; sharing the literal keeps a wording
+/// change from silently forking the error text across wires. A guard
+/// rejecting a *different* state (a role mismatch, a missing message) keeps
+/// its own text instead.
+pub const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
+
+/// Reject an empty content list, with the error the call site chose.
+///
+/// Message content is a `Vec`, so "no content" is representable in the type.
+/// Most wires nevertheless reject it — a completion that carried no message and
+/// no tool call is a provider defect, and a history message with no blocks has
+/// nothing to send — and at least one call site depends on that rejection as
+/// control flow rather than as a diagnostic.
+///
+/// These guards used to be a side effect of the non-empty container's
+/// constructor, which meant every site borrowed the same context-free "cannot
+/// create with an empty vector". Stated explicitly here, each site keeps its own
+/// message, which is where the useful detail lives.
+///
+/// Two rules for anyone extending this:
+///
+/// - It is **mostly** a guard for the **response** direction. Empty assistant
+///   content is legal at the rig level — a tool-call-only turn, a truncated
+///   stream — but a provider returning nothing where its protocol promises
+///   content is malformed, and that is what most of these call sites detect.
+///   Request-direction emptiness at the rig level is rejected once, at the
+///   request boundary — but a few request-conversion sites also use this guard,
+///   because non-empty rig content can still convert to zero *wire* blocks
+///   (e.g. assistant content whose only parts have no representation on that
+///   wire), and only the provider's own conversion can see that. If your
+///   request `TryFrom` can drop parts, guard the converted list too.
+/// - The check is on the **whole list**, never on individual items. A visibly
+///   empty block can still carry data that must survive a round trip: reasoning
+///   signatures and encrypted reasoning attach to blocks whose text is empty.
+///   Emptiness is a property of the list, not of its members.
+pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Result<Vec<T>, E> {
+    if items.is_empty() {
+        return Err(error());
+    }
+    Ok(items)
+}
+
+/// [`require_non_empty`] with the shared response-direction rejection — the
+/// one-line guard for a provider decode whose converted choice is empty.
+/// Pairing the guard with [`EMPTY_RESPONSE_ERROR`] here keeps the wording
+/// from forking per wire. A decode with a *legal* empty case (anthropic's
+/// documented empty `end_turn`) branches around the guard for that case and
+/// still routes every other empty through it.
+pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<Vec<T>, CompletionError> {
+    require_non_empty(items, || {
+        CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned())
+    })
+}
+
+/// The `Option` sibling of [`require_non_empty`]: `None` for an empty list,
+/// `Some(items)` otherwise.
+///
+/// This is the one home for the "an empty list means absent" rule, wherever a
+/// list is being placed into an `Option`-shaped slot (an optional response
+/// content, an optional message) rather than validated. The same whole-list
+/// rule applies: never decide emptiness per item.
+pub fn non_empty<T>(items: Vec<T>) -> Option<Vec<T>> {
+    if items.is_empty() { None } else { Some(items) }
 }
 
 /// Describes the content of a message, which can be text, a tool result, an image, audio, or
@@ -227,7 +293,7 @@ pub struct ToolResult {
     /// replays (review 84a43e9e #5).
     pub name: String,
     /// One or more content items produced by the tool.
-    pub content: OneOrMany<ToolResultContent>,
+    pub content: Vec<ToolResultContent>,
 }
 
 impl ToolResult {
@@ -462,6 +528,31 @@ impl ProviderCallId {
         self.item_id = (!item_id.is_empty()).then_some(item_id);
         self
     }
+
+    /// Derive the provider identity from a streaming part's optional wire
+    /// handles. A dual wire carries `(call_id, item id)`; a single wire's id
+    /// arrives as the tool/part id alone and becomes the `call_id`; with
+    /// neither, the identity is absent. The empty-string filtering is
+    /// load-bearing: [`ProviderCallId::new`] returns `None` on empty, so an
+    /// empty `call_id` must fall through to the single-id arm rather than
+    /// erase a real tool id.
+    ///
+    /// Both streaming surfaces (the parts accumulator and the raw
+    /// `ToolCall` lift) derive through here so they cannot disagree.
+    /// [`ToolCall::from_dual_wire`] is deliberately different — a dual wire
+    /// that omits its `call_id` has no single-id fallback — and stays
+    /// separate.
+    pub fn from_optional_wire(call_id: Option<String>, tool_id: Option<String>) -> Option<Self> {
+        let call_id = call_id.filter(|call_id| !call_id.is_empty());
+        match (call_id, tool_id) {
+            (Some(call_id), tool_id) => Self::new(call_id).map(|provider| match tool_id {
+                Some(tool_id) => provider.with_item_id(tool_id),
+                None => provider,
+            }),
+            (None, Some(tool_id)) => Self::new(tool_id),
+            (None, None) => None,
+        }
+    }
 }
 
 impl TryFrom<ProviderCallIdWire> for ProviderCallId {
@@ -478,71 +569,8 @@ impl TryFrom<ProviderCallIdWire> for ProviderCallId {
     }
 }
 
-/// Wire shape for [`ToolCall`]: the current schema plus the legacy
-/// (pre-provider-split) `call_id` key, lifted into [`ToolCall::provider`]
-/// rather than silently discarded — dropping it would strip the Responses
-/// correlator from persisted histories with no error.
-#[derive(Deserialize)]
-struct ToolCallWire {
-    id: ToolCallId,
-    #[serde(default)]
-    provider: Option<ProviderCallId>,
-    /// Legacy schema marker. Old payloads always wrote `call_id` (it was
-    /// never skipped), so the key's presence identifies them:
-    /// `Some(Some(_))` is the old dual-identifier shape, `Some(None)` the
-    /// old single-identifier shape, `None` the current schema.
-    #[serde(default, deserialize_with = "deserialize_present")]
-    call_id: Option<Option<String>>,
-    function: ToolFunction,
-    #[serde(default)]
-    signature: Option<String>,
-    #[serde(default)]
-    additional_params: Option<serde_json::Value>,
-}
-
-/// Distinguish an absent key (`None`) from an explicit `null`
-/// (`Some(None)`): serde only calls this when the key is present.
-fn deserialize_present<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Option::<String>::deserialize(deserializer).map(Some)
-}
-
-impl From<ToolCallWire> for ToolCall {
-    fn from(wire: ToolCallWire) -> Self {
-        let (id, provider) = match (wire.provider, wire.call_id) {
-            // Current schema — and `provider` stays authoritative even
-            // next to a stray legacy key.
-            (provider @ Some(_), _) | (provider @ None, None) => (wire.id, provider),
-            // Legacy dual-identifier payload (OpenAI Responses): `call_id`
-            // was the correlator, `id` the output-item handle.
-            (None, Some(Some(call_id))) if !call_id.is_empty() => {
-                let provider = ProviderCallId::new(call_id)
-                    .map(|provider| provider.with_item_id(wire.id.as_str()));
-                (ToolCallId::for_provider(provider.as_ref()), provider)
-            }
-            // Legacy single-identifier payload: `id` was documented as
-            // "provider-supplied", so it is the provider's id, not a
-            // minted handle.
-            (None, Some(_)) => {
-                let provider = ProviderCallId::new(wire.id.as_str());
-                (wire.id, provider)
-            }
-        };
-        Self {
-            id,
-            provider,
-            function: wire.function,
-            signature: wire.signature,
-            additional_params: wire.additional_params,
-        }
-    }
-}
-
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(from = "ToolCallWire")]
 pub struct ToolCall {
     /// Rig's correlation handle. Always present; minted when the provider
     /// issued none.
@@ -564,8 +592,10 @@ pub struct ToolCall {
     ///
     /// This is an optional, provider-specific feature and will be `None` for providers
     /// that don't support tool call signatures.
+    #[serde(default)]
     pub signature: Option<String>,
     /// Additional provider-specific parameters to be sent to the completion model provider
+    #[serde(default)]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -983,7 +1013,7 @@ impl Message {
     /// Helper constructor to make creating user messages easier.
     pub fn user(text: impl Into<String>) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::text(text)),
+            content: vec![UserContent::text(text)],
         }
     }
 
@@ -991,7 +1021,7 @@ impl Message {
     pub fn assistant(text: impl Into<String>) -> Self {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::text(text)),
+            content: vec![AssistantContent::text(text)],
         }
     }
 
@@ -999,7 +1029,7 @@ impl Message {
     pub fn assistant_with_id(id: String, text: impl Into<String>) -> Self {
         Message::Assistant {
             id: Some(id),
-            content: OneOrMany::one(AssistantContent::text(text)),
+            content: vec![AssistantContent::text(text)],
         }
     }
 
@@ -1014,11 +1044,11 @@ impl Message {
         content: impl Into<String>,
     ) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::tool_result(
+            content: vec![UserContent::tool_result(
                 call,
                 name,
-                OneOrMany::one(ToolResultContent::text(content)),
-            )),
+                vec![ToolResultContent::text(content)],
+            )],
         }
     }
 }
@@ -1169,7 +1199,7 @@ impl UserContent {
     pub fn tool_result(
         call: impl Into<String>,
         name: impl Into<String>,
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
     ) -> Self {
         UserContent::ToolResult(ToolResult {
             call: ToolCallId::new_or_mint(call),
@@ -1187,7 +1217,7 @@ impl UserContent {
     pub fn tool_result_from_wire(
         wire_id: impl Into<String>,
         name: impl Into<String>,
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(wire_id);
         let call = ToolCallId::for_provider(provider.as_ref());
@@ -1207,7 +1237,7 @@ impl UserContent {
         call: ToolCallId,
         provider: Option<ProviderCallId>,
         name: impl Into<String>,
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
     ) -> Self {
         UserContent::ToolResult(ToolResult {
             call,
@@ -1224,7 +1254,7 @@ impl UserContent {
         item_id: impl Into<String>,
         call_id: impl Into<String>,
         name: impl Into<String>,
-        content: OneOrMany<ToolResultContent>,
+        content: Vec<ToolResultContent>,
     ) -> Self {
         let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
         let call = ToolCallId::for_provider(provider.as_ref());
@@ -1559,7 +1589,7 @@ impl From<&Message> for Message {
 impl From<String> for Message {
     fn from(text: String) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
+            content: vec![UserContent::Text(text.into())],
         }
     }
 }
@@ -1567,7 +1597,7 @@ impl From<String> for Message {
 impl From<&str> for Message {
     fn from(text: &str) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
+            content: vec![UserContent::Text(text.into())],
         }
     }
 }
@@ -1575,7 +1605,7 @@ impl From<&str> for Message {
 impl From<&String> for Message {
     fn from(text: &String) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text(text.into())),
+            content: vec![UserContent::Text(text.into())],
         }
     }
 }
@@ -1583,7 +1613,7 @@ impl From<&String> for Message {
 impl From<Text> for Message {
     fn from(text: Text) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Text(text)),
+            content: vec![UserContent::Text(text)],
         }
     }
 }
@@ -1591,7 +1621,7 @@ impl From<Text> for Message {
 impl From<Image> for Message {
     fn from(image: Image) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Image(image)),
+            content: vec![UserContent::Image(image)],
         }
     }
 }
@@ -1599,7 +1629,7 @@ impl From<Image> for Message {
 impl From<Audio> for Message {
     fn from(audio: Audio) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Audio(audio)),
+            content: vec![UserContent::Audio(audio)],
         }
     }
 }
@@ -1607,7 +1637,7 @@ impl From<Audio> for Message {
 impl From<Document> for Message {
     fn from(document: Document) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::Document(document)),
+            content: vec![UserContent::Document(document)],
         }
     }
 }
@@ -1634,7 +1664,7 @@ impl From<AssistantContent> for Message {
     fn from(content: AssistantContent) -> Self {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(content),
+            content: vec![content],
         }
     }
 }
@@ -1642,19 +1672,19 @@ impl From<AssistantContent> for Message {
 impl From<UserContent> for Message {
     fn from(content: UserContent) -> Self {
         Message::User {
-            content: OneOrMany::one(content),
+            content: vec![content],
         }
     }
 }
 
-impl From<OneOrMany<AssistantContent>> for Message {
-    fn from(content: OneOrMany<AssistantContent>) -> Self {
+impl From<Vec<AssistantContent>> for Message {
+    fn from(content: Vec<AssistantContent>) -> Self {
         Message::Assistant { id: None, content }
     }
 }
 
-impl From<OneOrMany<UserContent>> for Message {
-    fn from(content: OneOrMany<UserContent>) -> Self {
+impl From<Vec<UserContent>> for Message {
+    fn from(content: Vec<UserContent>) -> Self {
         Message::User { content }
     }
 }
@@ -1663,7 +1693,7 @@ impl From<ToolCall> for Message {
     fn from(tool_call: ToolCall) -> Self {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+            content: vec![AssistantContent::ToolCall(tool_call)],
         }
     }
 }
@@ -1671,7 +1701,7 @@ impl From<ToolCall> for Message {
 impl From<ToolResult> for Message {
     fn from(tool_result: ToolResult) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(tool_result)),
+            content: vec![UserContent::ToolResult(tool_result)],
         }
     }
 }
@@ -1679,12 +1709,12 @@ impl From<ToolResult> for Message {
 impl From<ToolResultContent> for Message {
     fn from(tool_result_content: ToolResultContent) -> Self {
         Message::User {
-            content: OneOrMany::one(UserContent::ToolResult(ToolResult {
+            content: vec![UserContent::ToolResult(ToolResult {
                 call: ToolCallId::mint(),
                 provider: None,
                 name: String::new(),
-                content: OneOrMany::one(tool_result_content),
-            })),
+                content: vec![tool_result_content],
+            })],
         }
     }
 }
@@ -1723,6 +1753,56 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     use super::{Message, Reasoning, ReasoningContent, Text, ToolResultContent};
+
+    mod vec_content_serde {
+        use super::super::{AssistantContent, Message, UserContent};
+
+        #[test]
+        fn message_content_still_serializes_as_a_plain_sequence() {
+            // The removed container serialized as a bare sequence, which is why
+            // this migration changes no persisted history and no recorded
+            // provider fixture. Pin the wire shape so that stays true.
+            let message = Message::User {
+                content: vec![UserContent::text("hi")],
+            };
+            let json = serde_json::to_value(&message).expect("serialize");
+            assert_eq!(
+                json,
+                serde_json::json!({
+                    "role": "user",
+                    "content": [{"type": "text", "text": "hi"}],
+                })
+            );
+        }
+
+        #[test]
+        fn message_content_round_trips_byte_identically() {
+            let message = Message::Assistant {
+                id: Some("msg_1".to_owned()),
+                content: vec![AssistantContent::text("hello")],
+            };
+            let encoded = serde_json::to_string(&message).expect("serialize");
+            let decoded: Message = serde_json::from_str(&encoded).expect("deserialize");
+            assert_eq!(
+                serde_json::to_string(&decoded).expect("re-serialize"),
+                encoded
+            );
+        }
+
+        #[test]
+        fn an_empty_content_array_now_deserializes() {
+            // The container's `Deserialize` implemented only `visit_seq` and
+            // rejected `[]`. That is the single input whose behaviour this
+            // migration changes: it was an error, and it is now an empty list.
+            let message: Message =
+                serde_json::from_value(serde_json::json!({"role": "user", "content": []}))
+                    .expect("an empty content list is representable now");
+            let Message::User { content } = message else {
+                panic!("expected a user message");
+            };
+            assert!(content.is_empty());
+        }
+    }
 
     #[test]
     fn reasoning_constructors_and_accessors_work() {
@@ -1787,52 +1867,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_dual_identifier_tool_call_json_lifts_call_id_into_provider() {
-        // Pre-provider-split payload (OpenAI Responses): `call_id` was the
-        // correlator, `id` the output-item handle. Dropping `call_id`
-        // silently would replay the `fc_` item id in the call_id slot.
-        let legacy = serde_json::json!({
-            "id": "fc_123",
-            "call_id": "call_abc",
-            "function": {"name": "add", "arguments": {"x": 1}},
-            "signature": null,
-            "additional_params": null,
-        });
-
-        let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
-        let provider = call
-            .provider
-            .expect("legacy call_id is lifted, not dropped");
-        assert_eq!(provider.call_id, "call_abc");
-        assert_eq!(provider.item_id.as_deref(), Some("fc_123"));
-        assert_eq!(call.id, "call_abc");
-    }
-
-    #[test]
-    fn legacy_single_identifier_tool_call_json_promotes_id_to_provider() {
-        // Old payloads always wrote `call_id` (never skipped), so an
-        // explicit null still marks the legacy schema — where `id` was
-        // documented as provider-supplied.
-        let legacy = serde_json::json!({
-            "id": "toolu_xyz",
-            "call_id": null,
-            "function": {"name": "add", "arguments": {}},
-        });
-
-        let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
-        let provider = call
-            .provider
-            .expect("legacy provider-supplied id is kept as one");
-        assert_eq!(provider.call_id, "toolu_xyz");
-        assert_eq!(provider.item_id, None);
-        assert_eq!(call.id, "toolu_xyz");
-    }
-
-    #[test]
     fn current_schema_tool_call_json_round_trips_without_provider_promotion() {
-        // A minted handle with no provider must stay provider-less: the
-        // absence of the `call_id` key is what separates the current
-        // schema from the legacy one.
+        // A minted handle with no provider must stay provider-less —
+        // nothing in the round trip may invent provider provenance.
         let call = super::ToolCall::new(
             super::ToolCallId::new("minted-handle").expect("non-empty"),
             super::ToolFunction {
@@ -1846,6 +1883,24 @@ mod tests {
         let roundtrip: super::ToolCall = serde_json::from_value(json).expect("deserialize");
         assert_eq!(roundtrip.provider, None);
         assert_eq!(roundtrip, call);
+    }
+
+    #[test]
+    fn legacy_call_id_key_is_ignored_not_lifted() {
+        // The pre-provider-split lift is deleted: a legacy `call_id` key is
+        // an unknown field, so it deserializes with the key ignored — `id`
+        // is read as rig's handle and `provider` stays absent. Pinned so a
+        // future change (e.g. making the key a hard error) is a decision,
+        // not an accident; the hand-migration recipe lives in MIGRATING.
+        let legacy = serde_json::json!({
+            "id": "fc_123",
+            "call_id": "call_abc",
+            "function": {"name": "add", "arguments": {"x": 1}},
+        });
+
+        let call: super::ToolCall = serde_json::from_value(legacy).expect("deserialize");
+        assert_eq!(call.id, "fc_123");
+        assert_eq!(call.provider, None);
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

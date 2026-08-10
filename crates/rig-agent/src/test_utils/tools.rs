@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use rig_core::{
-    OneOrMany,
     message::{ImageMediaType, ToolResultContent},
     vector_store::{VectorSearchRequest, VectorStoreError, VectorStoreIndex, request::Filter},
     wasm_compat::WasmCompatSend,
@@ -236,8 +235,10 @@ impl Tool for MockImageOutputTool {
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        Ok(ToolOutput::content(OneOrMany::one(
-            ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+        Ok(ToolOutput::one(ToolResultContent::image_base64(
+            "base64data==",
+            Some(ImageMediaType::PNG),
+            None,
         )))
     }
 }
@@ -269,12 +270,10 @@ impl Tool for MockImageGeneratorTool {
         _context: &mut crate::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        Ok(ToolOutput::content(OneOrMany::one(
-            ToolResultContent::image_base64(
-                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
-                Some(ImageMediaType::PNG),
-                None,
-            ),
+        Ok(ToolOutput::one(ToolResultContent::image_base64(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+            Some(ImageMediaType::PNG),
+            None,
         )))
     }
 }

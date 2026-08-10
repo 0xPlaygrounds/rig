@@ -12,7 +12,6 @@
 //! mint literal IDs.
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, ToolCall};
 use rig::prelude::*;
@@ -30,7 +29,7 @@ struct StreamRun {
     text_chunks: usize,
     tool_calls: Vec<ToolCall>,
     finals: Vec<StreamFinal>,
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
 }
 
@@ -40,7 +39,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         text_chunks: 0,
         tool_calls: Vec::new(),
         finals: Vec::new(),
-        choice: OneOrMany::one(AssistantContent::text("")),
+        choice: vec![AssistantContent::text("")],
         response: None,
     };
 
@@ -89,7 +88,7 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
     );
 }
 
-fn aggregated_tool_calls(choice: &OneOrMany<AssistantContent>) -> Vec<&ToolCall> {
+fn aggregated_tool_calls(choice: &[AssistantContent]) -> Vec<&ToolCall> {
     choice
         .iter()
         .filter_map(|content| match content {
@@ -99,7 +98,7 @@ fn aggregated_tool_calls(choice: &OneOrMany<AssistantContent>) -> Vec<&ToolCall>
         .collect()
 }
 
-fn aggregated_text(choice: &OneOrMany<AssistantContent>) -> String {
+fn aggregated_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {

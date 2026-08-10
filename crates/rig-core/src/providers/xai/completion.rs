@@ -10,7 +10,6 @@ use tracing::{Instrument, Level, enabled};
 
 use super::api::{ApiResponse, Message, ToolDefinition};
 use super::client::Client;
-use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::providers::openai::responses_api::ToolChoice;
@@ -86,6 +85,19 @@ impl TryFrom<(&str, CompletionRequest)> for XAICompletionRequest {
         } else {
             Some(additional_params_payload)
         };
+
+        // The per-message conversion can drop parts (id-less reasoning has no
+        // xAI representation), so rig-level non-empty content can still
+        // convert to zero wire items — a state `validate_message_content`
+        // cannot see. Guard the converted list, per `require_non_empty`'s
+        // contract for lossy request conversions.
+        let input = crate::message::require_non_empty(input, || {
+            CompletionError::RequestError(
+                "no message in the chat history converted to xAI input \
+                 (id-less reasoning-only content has no xAI representation)"
+                    .into(),
+            )
+        })?;
 
         Ok(Self {
             model: model.to_string(),
@@ -194,9 +206,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             .flat_map(<Vec<completion::AssistantContent>>::from)
             .collect();
 
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError("Response contained no output".to_owned())
-        })?;
+        let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
             .usage
@@ -356,7 +366,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::XAICompletionRequest;
-    use crate::OneOrMany;
     use crate::completion::request::Document;
     use crate::completion::{CompletionRequest, CompletionRequestBuilder, Message, ToolDefinition};
     use crate::message::ToolChoice;
@@ -394,13 +403,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),
                 Message::system("Mid-conversation instruction"),
                 Message::user("What is glarb-glarb?"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![Document {
                 id: "doc_1".to_string(),
                 text: "Definition of glarb-glarb: an ancient tool.".to_string(),

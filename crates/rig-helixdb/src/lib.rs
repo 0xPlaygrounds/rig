@@ -205,7 +205,7 @@ where
 {
     async fn insert_documents<Doc: Serialize + rig_core::Embed + WasmCompatSend>(
         &self,
-        documents: Vec<(Doc, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
+        documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         #[derive(Serialize, Deserialize, Clone, Debug, Default)]
         struct QueryInput {
