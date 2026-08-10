@@ -206,9 +206,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             .flat_map(<Vec<completion::AssistantContent>>::from)
             .collect();
 
-        let choice = crate::message::require_non_empty(content, || {
-            CompletionError::ResponseError("Response contained no output".to_owned())
-        })?;
+        let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
             .usage

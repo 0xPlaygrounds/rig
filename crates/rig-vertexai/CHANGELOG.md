@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(completion)* [**behavior**] an empty converted response choice is rejected as `CompletionError::ResponseError` with rig-core's shared empty-response wording (via `message::require_non_empty_response`) — previously `ProviderError("No text or tool call content found in response")`
+
 - *(completion)* message and tool-result content conversions follow rig-core's message-content change from `OneOrMany<T>` to `Vec<T>`; wire payloads are unchanged
 
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.40.0...rig-vertexai-v0.41.0) - 2026-07-28

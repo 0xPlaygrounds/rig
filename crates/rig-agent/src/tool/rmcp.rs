@@ -430,13 +430,8 @@ fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutio
         mapped.insert(0, ToolResultContent::json(structured.clone()));
     }
 
-    let mut mapped = mapped.into_iter();
-    if let Some(first) = mapped.next() {
-        let mut ordered = vec![first];
-        for block in mapped {
-            ordered.push(block);
-        }
-        return ToolOutput::content(ordered);
+    if !mapped.is_empty() {
+        return ToolOutput::content(mapped);
     }
 
     // A content-less MCP result normalizes to one empty text block. This is

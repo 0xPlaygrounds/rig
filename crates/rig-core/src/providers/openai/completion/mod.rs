@@ -24,7 +24,7 @@ pub mod streaming;
 
 /// Serializes user content as a plain string when there's a single text item,
 /// otherwise as an array of content parts.
-fn serialize_user_content<S>(content: &Vec<UserContent>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_user_content<S>(content: &[UserContent], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -1210,11 +1210,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             )),
         }?;
 
-        let choice = crate::message::require_non_empty(content, || {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+        let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
             .usage
@@ -2123,7 +2119,7 @@ where
 }
 
 fn serialize_assistant_content_vec<S>(
-    value: &Vec<AssistantContent>,
+    value: &[AssistantContent],
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where

@@ -34,7 +34,6 @@ pub const CLAUDE_HAIKU_4_5: &str = "claude-haiku-4-5";
 pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
-const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
 pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 
 pub trait AnthropicCompatibleProvider: Provider {
@@ -255,25 +254,15 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = if content.is_empty() {
-            // Anthropic documents empty `end_turn` responses after tool-result
-            // round trips. That turn genuinely carried nothing, and an empty
-            // list says exactly that. It used to be normalized into a
-            // fabricated empty-text part, because the assistant content type
-            // could not be empty and the terminal no-op had to be spelled
-            // somehow — that part was indistinguishable downstream from an
-            // empty text block Anthropic had actually sent.
-            if response.stop_reason.as_deref() == Some("end_turn") {
-                Vec::new()
-            } else {
-                return Err(CompletionError::ResponseError(
-                    EMPTY_RESPONSE_ERROR.to_owned(),
-                ));
-            }
+        // Anthropic documents empty `end_turn` responses after tool-result
+        // round trips. That turn genuinely carried nothing, and an empty
+        // list says exactly that — it used to be normalized into a
+        // fabricated empty-text part. Any *other* empty response is the
+        // shared provider defect.
+        let choice = if content.is_empty() && response.stop_reason.as_deref() == Some("end_turn") {
+            Vec::new()
         } else {
-            // Non-empty by the branch above; the container's constructor used
-            // to re-check it here and could never fail.
-            content
+            crate::message::require_non_empty_response(content)?
         };
 
         let finish_reason = response.stop_reason.as_deref().map(map_finish_reason);
@@ -2664,6 +2653,7 @@ enum ApiResponse<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::EMPTY_RESPONSE_ERROR;
     use serde_json::json;
     use serde_path_to_error::deserialize;
 

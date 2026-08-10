@@ -568,11 +568,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             assistant_contents.push(assistant_content);
         }
 
-        let choice = rig_core::message::require_non_empty(assistant_contents, || {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+        let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
 
         let usage = response
             .usage_metadata

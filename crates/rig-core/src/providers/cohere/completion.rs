@@ -208,7 +208,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                 },
             )?
         } else {
-            crate::message::require_non_empty(
+            crate::message::require_non_empty_response(
                 content
                     .into_iter()
                     .map(|content| match content {
@@ -218,11 +218,6 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                         }
                     })
                     .collect::<Vec<_>>(),
-                || {
-                    CompletionError::ResponseError(
-                        "Response contained no message or tool call (empty)".to_owned(),
-                    )
-                },
             )?
         };
 

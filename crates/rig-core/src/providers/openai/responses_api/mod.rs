@@ -2560,11 +2560,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
         let choice = if matches!(response.status, ResponseStatus::Incomplete) {
             content
         } else {
-            crate::message::require_non_empty(content, || {
-                CompletionError::ResponseError(
-                    "Response contained no message or tool call (empty)".to_owned(),
-                )
-            })?
+            crate::message::require_non_empty_response(content)?
         };
 
         let usage = response
@@ -4242,7 +4238,7 @@ mod tests {
 
         assert!(
             err.to_string()
-                .contains("Response contained no message or tool call")
+                .contains(crate::message::EMPTY_RESPONSE_ERROR)
         );
     }
 

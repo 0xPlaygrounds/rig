@@ -370,11 +370,16 @@ is gone. What changes for you:
 - A streamed turn that produces nothing yields `choice == []` where it used to
   yield one empty-text part. Code matching `choice.first()` for a `Text` block
   to detect "the model said nothing" needs to check `choice.is_empty()` as
-  well — both spellings appear, because histories persisted before this release
-  still carry the fabricated part.
-- rig keeps reading the old shape. `is_empty_assistant_turn` recognises both a
-  genuinely empty turn and the legacy sentinel, so stored conversations keep
-  round-tripping; nothing produces the sentinel any more.
+  well — both spellings appear: a blocking wire can still deliver a turn whose
+  only part is an empty text block, and histories persisted before this
+  release encode empty turns that way too.
+- The agent loop neutralizes empty turns in **both** spellings: a model turn
+  that is a zero-part list or a single empty, unannotated text block is kept
+  out of history. That is the loop curating its own turns, not a filter on
+  yours — history **you** supply is never rewritten, so an empty text block
+  you replay goes to the wire exactly as this release's predecessor sent it
+  (and some providers reject it there). If you carry pre-`Vec` histories with
+  the fabricated empty-text part, drop those turns yourself before replaying.
 - Three internal guards no longer fire: two that cancelled a run on "lost
   assistant content" and one in `rig-candle`. All three were unreachable while
   the padding existed, and reachable they would have failed runs that previously
@@ -693,14 +698,20 @@ What this changes for you:
   minted handles never travel upstream there.
 - **Persisted histories**: the canonical serde shape changed (`ToolCall`
   gains `provider`, loses `call_id`; `ToolResult` renames `id` → `call`,
-  requires `name`). Legacy `ToolCall` JSON still loads: the old `call_id`
-  key is lifted into `provider` (dual-identifier payloads keep the
-  correlator and the `fc_…` item handle; single-identifier payloads keep
-  the provider-supplied `id` as `provider.call_id`), never silently
-  dropped. Legacy `ToolResult` JSON does **not** deserialize (no `call`,
-  no `name`); re-run the conversation or migrate the JSON by hand
-  (`id`/`call_id` → `call` + `provider.call_id`, add the executed tool's
-  `name`). Empty-string ids in old JSON are rejected by construction.
+  requires `name`). Pre-provider-split `ToolCall` JSON is **not migrated
+  on load**: a legacy `call_id` key is an unknown field and is ignored, so
+  a dual-identifier payload loses its correlator and a single-identifier
+  payload's `id` is read as rig's handle with no provider provenance.
+  Migrate the JSON before upgrading if you need those identifiers
+  (`call_id` → `provider.call_id`; for old dual-identifier payloads the
+  `fc_…` `id` becomes `provider.item_id`, **and the top-level `id` becomes
+  the `call_…` correlator** — `id` is required, and rig pairs a
+  `ToolResult.call` against `ToolCall.id`, so leaving the `fc_…` handle
+  there breaks the pairing the adjacent `ToolResult` recipe produces). Legacy `ToolResult` JSON does
+  **not** deserialize (no `call`, no `name`); re-run the conversation or
+  migrate the JSON by hand (`id`/`call_id` → `call` + `provider.call_id`,
+  add the executed tool's `name`). Empty-string ids in old JSON are
+  rejected by construction.
 - **The back-compat pairing shim is deleted**:
   `providers::internal::resolve_tool_result_names` (and the name-in-id
   legacy encodings it supported) no longer exist — `ToolResult::name` is
@@ -1246,6 +1257,28 @@ Because the stored model is a handle, it can now change at runtime:
 merged `RequestPatch` and the previous model, and may pick a different handle
 per model call). `CompletionModel::capabilities()` is captured by value when
 the handle is created.
+
+### Two pre-`Vec` serde accommodations are gone
+
+Backwards compatibility with data persisted before this release is no longer
+carried:
+
+- `PromptResponse` JSON serialized **before the `content` field existed** no
+  longer deserializes — `content` is a required field. (On self-describing
+  formats like JSON the serialized shape is unchanged; a non-self-describing
+  format sees `content` as a bare list where the old shadow repr encoded an
+  `Option`.) This reaches further than standalone response values: `AgentRun`
+  embeds a `PromptResponse` in its `Done` state, so a **persisted run** that
+  reached `Done` before the field existed fails to load too — migrate stored
+  runs (add `"content": [{"text": <output>}]` to the embedded response)
+  before upgrading. Note the **absence** of a `"type"` key: assistant
+  content is untagged, and a stray `"type": "text"` would be flatten-captured
+  into the block's `additional_params` instead of acting as a tag — an
+  annotation the serializer never produces, silently replayed to providers
+  as a provider-specific text field on the next request.
+- Pre-provider-split `ToolCall` JSON is no longer migrated on load — see the
+  "Persisted histories" bullet in the tool-call identity section above for
+  what a legacy `call_id` key now means and how to migrate the JSON by hand.
 
 ---
 

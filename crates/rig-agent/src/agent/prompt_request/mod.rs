@@ -363,13 +363,6 @@ where
 /// [`StreamingPromptRequest`]: crate::agent::StreamingPromptRequest
 /// [`MultiTurnStreamItem::FinalResponse`]: crate::agent::MultiTurnStreamItem::FinalResponse
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// Serialize *and* deserialize both go through `PromptResponseRepr` so the two
-// directions agree on `content`'s wire shape (an `Option`). Routing only
-// deserialize through the shadow would make serialize write a bare `Vec`
-// while deserialize expects an `Option`, breaking round-trips for positional /
-// non-self-describing formats (e.g. bincode). The repr carries the field serde
-// attributes, so the JSON shape is unchanged.
-#[serde(from = "PromptResponseRepr", into = "PromptResponseRepr")]
 #[non_exhaustive]
 pub struct PromptResponse {
     /// Concatenated assistant text for the final turn.
@@ -382,6 +375,7 @@ pub struct PromptResponse {
     /// entry's usage to inspect the final completion request's prompt/context
     /// length. Zero-valued entry usage means the provider reported no usage
     /// metrics for that request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
     /// Accumulated message history for the run (the run's persisted transcript),
     /// unless memory/history bookkeeping was disabled for the request.
@@ -394,56 +388,8 @@ pub struct PromptResponse {
     /// Number of synthetic output-tool calls in the turn that finalized this
     /// response. Kept crate-private because it is runner bookkeeping rather
     /// than provider-facing response content.
-    output_tool_calls: usize,
-}
-
-/// Serde shadow for [`PromptResponse`]. `content` is an `Option` here so runs
-/// serialized before the field existed still deserialize: a missing `content`
-/// reconstructs the structured final turn from `output` (a single text part),
-/// keeping [`PromptResponse::output`] and [`PromptResponse::content`] consistent
-/// for legacy data rather than defaulting to empty text. It carries the field
-/// serde attributes for both directions, keeping the serialized shape identical
-/// (`completion_calls` omitted when empty; `messages`/`content` always present).
-#[derive(Serialize, Deserialize)]
-struct PromptResponseRepr {
-    output: String,
-    usage: Usage,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    completion_calls: Vec<CompletionCall>,
-    messages: Option<Vec<Message>>,
-    #[serde(default)]
-    content: Option<Vec<AssistantContent>>,
     #[serde(skip)]
     output_tool_calls: usize,
-}
-
-impl From<PromptResponseRepr> for PromptResponse {
-    fn from(repr: PromptResponseRepr) -> Self {
-        let content = repr
-            .content
-            .unwrap_or_else(|| vec![AssistantContent::text(repr.output.clone())]);
-        Self {
-            output: repr.output,
-            usage: repr.usage,
-            completion_calls: repr.completion_calls,
-            messages: repr.messages,
-            content,
-            output_tool_calls: repr.output_tool_calls,
-        }
-    }
-}
-
-impl From<PromptResponse> for PromptResponseRepr {
-    fn from(response: PromptResponse) -> Self {
-        Self {
-            output: response.output,
-            usage: response.usage,
-            completion_calls: response.completion_calls,
-            messages: response.messages,
-            content: Some(response.content),
-            output_tool_calls: response.output_tool_calls,
-        }
-    }
 }
 
 impl std::fmt::Display for PromptResponse {
@@ -512,7 +458,7 @@ impl PromptResponse {
     }
 
     /// The structured assistant content for the final turn.
-    pub fn content(&self) -> &Vec<AssistantContent> {
+    pub fn content(&self) -> &[AssistantContent] {
         &self.content
     }
 
@@ -672,15 +618,22 @@ pub(crate) fn invalid_tool_retry_user_message(
 ///
 /// Two shapes mean the same thing, and both must be recognised:
 ///
-/// - **Genuinely empty.** Now that content is a `Vec`, a turn that produced no
-///   text and no tool call is simply an empty list. This is the shape new code
-///   produces.
-/// - **The legacy sentinel.** Histories persisted before message content became
-///   a `Vec` encode that same turn as a single empty text part, because the
-///   non-empty container forbade the honest representation and the code
-///   fabricated a part to satisfy it. Those histories must keep round-tripping,
-///   so the fabricated shape stays recognised here even though nothing produces
-///   it any more.
+/// - **Zero parts.** A turn that produced no text and no tool call is an
+///   empty list — the shape the streaming path produces (its assembler
+///   filters empty text deltas out of the canonical order).
+/// - **One empty, unannotated text block.** A blocking wire can deliver an
+///   assistant message whose only part is an empty text block; it carries
+///   nothing, and the agent curates it out of history exactly as it curates
+///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
+///   empty text block carries data and must not read as empty. "Unannotated"
+///   means no captured keys, not `None` — `Text::additional_params` is a
+///   serde flatten, which decodes an empty remainder as `Some({})`, so a
+///   suspended run restored from JSON carries `Some({})` where the live run
+///   carried `None`, and both must classify identically.
+///
+/// This runs on turns flowing through the agent loop only. Caller-supplied
+/// `chat_history` is never filtered: an empty text block you replay goes to
+/// the wire as-is.
 pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
     if choice.is_empty() {
         return true;
@@ -690,8 +643,16 @@ pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
         && matches!(
             choice.first(),
             Some(AssistantContent::Text(text))
-                if text.text.is_empty() && text.additional_params.is_none()
+                if text.text.is_empty() && has_no_annotations(text.additional_params.as_ref())
         )
+}
+
+/// Whether a text block's flatten-captured params carry no data. `None` and
+/// the empty map are the same absence: the flatten decodes an empty JSON
+/// remainder as `Some({})`, so a serde round trip must not change how a
+/// block classifies.
+fn has_no_annotations(params: Option<&serde_json::Value>) -> bool {
+    params.is_none_or(|value| value.as_object().is_some_and(serde_json::Map::is_empty))
 }
 
 pub(crate) fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
@@ -890,7 +851,7 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use super::{CompletionCall, PromptResponse, PromptResponseRepr, TypedPromptResponse};
+    use super::{CompletionCall, PromptResponse, TypedPromptResponse, is_empty_assistant_turn};
     use crate::{
         agent::{
             AgentBuilder,
@@ -1240,10 +1201,39 @@ mod tests {
     }
 
     #[test]
+    fn empty_turn_classification_survives_a_serde_round_trip() {
+        // `Text::additional_params` is a serde flatten, which decodes an
+        // empty JSON remainder as `Some({})` where the live value was
+        // `None`. A suspended run restored from JSON must classify its
+        // empty-text turn exactly like the live run did — and an
+        // *annotated* empty block must still read as content either way.
+        let live = vec![AssistantContent::text("")];
+        assert!(is_empty_assistant_turn(&live));
+
+        let round: Vec<AssistantContent> =
+            serde_json::from_str(&serde_json::to_string(&live).expect("serialize"))
+                .expect("deserialize");
+        assert!(
+            is_empty_assistant_turn(&round),
+            "restored turn must classify like the live one: {round:?}"
+        );
+
+        let annotated: Vec<AssistantContent> =
+            serde_json::from_value(serde_json::json!([{"text": "", "signature": "sig"}]))
+                .expect("deserialize annotated");
+        assert!(
+            !is_empty_assistant_turn(&annotated),
+            "an annotated empty block carries data: {annotated:?}"
+        );
+    }
+
+    #[test]
     fn prompt_response_deserializes_pre_monoid_null_usage_format() {
-        // Fixture captured from rig before CompletionCall.usage dropped its
-        // Option encoding; `"usage": null` must map to zero-valued usage.
-        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}]}"#;
+        // Pins `CompletionCall.usage`'s null tolerance: `"usage": null` (the
+        // pre-monoid Option encoding) must map to zero-valued usage. The
+        // fixture otherwise uses the current shape — `content` is a required
+        // field since the missing-`content` reconstruction was dropped.
+        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}],"content":[{"text":"ok"}]}"#;
 
         let response: PromptResponse =
             serde_json::from_str(fixture).expect("old-format response should deserialize");
@@ -1254,59 +1244,42 @@ mod tests {
                 CompletionCall::new(1, usage(3, 4))
             ]
         );
+        // The migrated `content` shape is a *bare* text object — no "type"
+        // key (see `a_stray_type_key_is_captured_not_a_tag` for why).
+        let [AssistantContent::Text(text)] = response.content() else {
+            panic!("expected one text block, got {:?}", response.content());
+        };
+        assert_eq!(text.text, "ok");
     }
 
     #[test]
-    fn prompt_response_missing_content_reconstructs_from_output() {
-        // Runs serialized before `content` existed must not deserialize to empty
-        // text: the structured final turn is reconstructed from `output`, so
-        // `output()` and `content()` stay consistent for legacy data.
-        let mut value = serde_json::to_value(PromptResponse::new("hello", Usage::new()))
-            .expect("serialize prompt response");
-        value
-            .as_object_mut()
-            .expect("prompt response serializes to a JSON object")
-            .remove("content");
-        assert!(
-            value.get("content").is_none(),
-            "fixture must omit the content field to model legacy data"
-        );
-
-        let response: PromptResponse = serde_json::from_value(value)
-            .expect("legacy response without content should deserialize");
-
-        assert_eq!(response.output(), "hello");
-        assert_eq!(response.content().iter().count(), 1);
+    fn a_stray_type_key_is_captured_not_a_tag() {
+        // The hazard MIGRATING's hand-migration recipe warns about, exercised:
+        // assistant content is untagged, so a `"type":"text"` key written by
+        // analogy with (tagged) user content is not a tag — the flatten
+        // captures it into `additional_params`, where it would be replayed to
+        // providers as a provider-specific field. Pinned so a future serde
+        // change that starts *rejecting* or *dropping* the key is a visible
+        // decision.
+        let tagged: Vec<AssistantContent> =
+            serde_json::from_value(serde_json::json!([{"type": "text", "text": "ok"}]))
+                .expect("deserialize");
+        let [AssistantContent::Text(text)] = tagged.as_slice() else {
+            panic!("expected one text block, got {tagged:?}");
+        };
+        assert_eq!(text.text, "ok");
         assert_eq!(
-            response.content().first(),
-            Some(&AssistantContent::text("hello"))
-        );
-    }
-
-    #[test]
-    fn prompt_response_missing_content_empty_output_stays_empty_text() {
-        let mut value =
-            serde_json::to_value(PromptResponse::empty()).expect("serialize prompt response");
-        value
-            .as_object_mut()
-            .expect("prompt response serializes to a JSON object")
-            .remove("content");
-
-        let response: PromptResponse = serde_json::from_value(value)
-            .expect("legacy empty response without content should deserialize");
-
-        assert_eq!(response.output(), "");
-        assert_eq!(
-            response.content().first(),
-            Some(&AssistantContent::text(""))
+            text.additional_params,
+            Some(serde_json::json!({"type": "text"})),
+            "the stray key is flatten-captured, not consumed as a tag"
         );
     }
 
     #[test]
     fn prompt_response_roundtrip_preserves_explicit_content() {
         // An explicitly-set `content` (e.g. the streaming surface's structured
-        // final turn) must survive a serialize/deserialize round-trip and is not
-        // clobbered by the output-derived fallback.
+        // final turn) must survive a serialize/deserialize round-trip intact —
+        // `content` and `output` are independent fields.
         let response = PromptResponse::new("visible text", Usage::new())
             .with_content(vec![AssistantContent::text("structured")]);
 
@@ -1319,10 +1292,10 @@ mod tests {
         let round: PromptResponse =
             serde_json::from_value(value).expect("deserialize prompt response");
         assert_eq!(round.output(), "visible text");
-        // The stored content is "structured" — distinct from `output` — proving the
-        // output-derived fallback only fills a genuinely absent `content`. (Compare
-        // the text directly to sidestep the unrelated `Text::additional_params`
-        // serde round-trip asymmetry.)
+        // The stored content is "structured" — distinct from `output` — so the
+        // round trip demonstrably carried `content` itself rather than anything
+        // derived from `output`. (Compare the text directly to sidestep the
+        // `Text::additional_params` serde round-trip asymmetry.)
         let Some(AssistantContent::Text(text)) = round.content().first() else {
             panic!("expected text content, got {:?}", round.content().first());
         };
@@ -1331,26 +1304,18 @@ mod tests {
 
     #[test]
     fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
-        // Serialize *and* deserialize both route through `PromptResponseRepr`, so
-        // the two directions agree on `content`'s wire shape (an `Option`).
-        // Routing only deserialize through the shadow would make serialize write a
-        // bare `Vec` while deserialize expects an `Option`, breaking
-        // round-trips for positional / non-self-describing formats. Assert this
-        // structurally: the message content types use `#[serde(flatten)]`, which no
-        // length-prefixed binary format can encode, and self-describing formats
-        // (JSON) collapse `Some(x)` and `x` to identical bytes, hiding the mismatch.
+        // `content` is a required, bare list in both serde directions — the
+        // pre-`content` reconstruction (and the shadow repr that carried it)
+        // is gone, so serialize and deserialize agree by construction. Pin
+        // the shape: `content` present, `completion_calls` omitted only when
+        // empty, and the value round-trips.
         let response = PromptResponse::new("hi", usage(1, 2))
             .with_completion_calls(vec![CompletionCall::new(0, usage(1, 2))]);
 
         let from_response = serde_json::to_value(&response).expect("serialize response");
-        let from_shadow = serde_json::to_value(PromptResponseRepr::from(response.clone()))
-            .expect("serialize shadow");
-        assert_eq!(
-            from_response, from_shadow,
-            "serialize must route through the same shadow as deserialize"
-        );
+        assert!(from_response.get("content").is_some());
+        assert!(from_response.get("completion_calls").is_some());
 
-        // ...and the value still round-trips back to an equivalent response.
         let round: PromptResponse =
             serde_json::from_value(from_response).expect("deserialize response");
         assert_eq!(round.output(), "hi");
@@ -1359,6 +1324,16 @@ mod tests {
             round.completion_calls(),
             &[CompletionCall::new(0, usage(1, 2))]
         );
+
+        // The omission direction of `completion_calls`' skip-when-empty:
+        // an empty list serializes without the key (the shadow-era wire
+        // shape), and the keyless JSON still deserializes.
+        let bare = serde_json::to_value(PromptResponse::new("hi", usage(1, 2)))
+            .expect("serialize bare response");
+        assert!(bare.get("completion_calls").is_none());
+        let round: PromptResponse =
+            serde_json::from_value(bare).expect("deserialize keyless response");
+        assert!(round.completion_calls().is_empty());
     }
 
     #[tokio::test]

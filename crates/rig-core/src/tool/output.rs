@@ -108,7 +108,7 @@ impl ToolOutput {
     }
 
     /// Borrow the canonical ordered content blocks.
-    pub fn as_content(&self) -> &Vec<ToolResultContent> {
+    pub fn as_content(&self) -> &[ToolResultContent] {
         &self.content
     }
 
