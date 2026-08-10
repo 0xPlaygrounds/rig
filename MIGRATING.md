@@ -1322,7 +1322,10 @@ Migrate by re-nesting every non-schema key under `additional_params`:
 (`UserContent::ToolResult` → `ToolResultContent::Text`/`Image`) reuses these
 same structs, so flattened extras inside a persisted tool result fail the
 same way and need the same re-nesting. (An empty `"additional_params": {}`
-or `null` is fine — it canonicalizes to absent on load.)
+or `null` is fine — it canonicalizes to absent on load. Any other non-object
+value is a decode error: extras are a keyed namespace, so a re-nesting
+script that writes `"additional_params": []` or a bare string fails loudly
+instead of loading as an annotation no extractor can read.)
 
 **Streaming events**: `StreamedAssistantContent` is a tolerant decode with an
 `Unknown` catch-all, so a stream item whose text block carries stray sibling
@@ -1330,10 +1333,11 @@ keys does not error — it decodes as `Unknown` and is excluded from assembly.
 This is not a 0.41-upgrade-only hazard: it applies to any relayed or persisted
 stream event with keys outside the schema, today and onward (a relay stamping
 bookkeeping keys onto text items will lose them from assembled history). The
-exclusion of such a payload (a string `text` key with no `type` tag, or one
-tagged `"type": "text"` — the tagged `AssistantContent` serialization is not
-a stream-item shape) logs a `tracing` warning in the **agent assembler** —
-the one rig component that ingests replayed stream events; a consumer assembling self-deserialized
+exclusion of such a payload (a string `text` key with no `type` tag, or any
+rig assistant-content tag — `text`/`toolcall`/`reasoning`/`image`, since the
+tagged `AssistantContent` serialization is not a stream-item shape) logs a
+`tracing` warning in the **agent assembler** — the one rig component that
+ingests replayed stream events; a consumer assembling self-deserialized
 events with their own logic gets no warning and should check for
 text-carrying `Unknown` items themselves. Re-nest extras under
 `additional_params` to keep them.

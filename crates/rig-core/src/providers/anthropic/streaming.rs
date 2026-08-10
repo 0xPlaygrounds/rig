@@ -671,11 +671,8 @@ fn handle_event(
             content_block,
         } => match content_block {
             Content::Text { citations, .. } => {
-                let additional_params = (!citations.is_empty()).then(|| {
-                    json!({
-                        "citations": citations
-                    })
-                });
+                let additional_params = crate::message::non_empty(citations.clone())
+                    .map(|citations| json!({ "citations": citations }));
                 Some(Ok(RawStreamingChoice::TextStart {
                     // Anthropic has no text item id; the content-block index
                     // is stable for the block's lifetime.

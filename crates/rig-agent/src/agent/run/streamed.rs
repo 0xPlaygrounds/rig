@@ -79,20 +79,33 @@ pub(crate) fn ordered_streaming_assistant_content(
     ))
 }
 
-/// Whether a [`StreamedAssistantContent::Unknown`] payload looks like a text
-/// item whose strict [`Text`](rig_core::message::Text) decode failed — either
-/// stray sibling keys (0.41's flatten wrote provider extras top-level) or a
-/// `"type": "text"` tag (the tagged `AssistantContent` serialization; stream
-/// items are untagged). Both shapes lose transcript text from assembly. A
-/// `type` tag naming anything other than `text` is a provider-native
-/// unmodeled item. The heuristic can still fire on a genuinely unmodeled
-/// tagless text-carrying frame, trading that noise for never missing a real
-/// loss.
-fn unknown_payload_loses_text(payload: &serde_json::Value) -> bool {
-    payload
+/// Whether a [`StreamedAssistantContent::Unknown`] payload looks like rig
+/// assistant content whose strict stream-item decode failed, so excluding it
+/// from assembly loses transcript content. Two shapes qualify:
+///
+/// - a string `text` key with no `type` tag or a `"text"` tag: a text item
+///   with stray sibling keys (0.41's flatten wrote provider extras
+///   top-level) or the tagged [`AssistantContent`] serialization (stream
+///   items are untagged). The tagless arm can still fire on a genuinely
+///   unmodeled text-carrying frame, trading that noise for never missing a
+///   real loss;
+/// - any other rig [`AssistantContent`] tag (`toolcall`/`reasoning`/`image`):
+///   the tagged serialization from a replayed assistant block, which is not
+///   a stream-item shape (the untagged stream variants carry different
+///   keys). A dropped tool call additionally desyncs the turn — no pending
+///   call, no result.
+///
+/// A `type` tag outside rig's own is a provider-native unmodeled item and
+/// stays quiet.
+fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
+    let tag = payload.get("type");
+    let failed_text_item = payload
         .get("text")
         .is_some_and(serde_json::Value::is_string)
-        && payload.get("type").is_none_or(|tag| tag == "text")
+        && tag.is_none_or(|tag| tag == "text");
+    let replayed_rig_tag =
+        tag.is_some_and(|tag| tag == "toolcall" || tag == "reasoning" || tag == "image");
+    failed_text_item || replayed_rig_tag
 }
 
 pub(crate) fn assistant_text_items_from_choice(
@@ -660,15 +673,17 @@ impl StreamedTurnAssembler {
                 // assistant message — there is no `AssistantContent::Unknown`, and
                 // it must not perturb text/tool-call/reasoning accumulation.
                 //
-                // The exclusion loses transcript text when the payload is a
-                // failed text-item decode, so that case is loud; the payload
-                // itself stays redacted.
-                if unknown_payload_loses_text(payload.value()) {
+                // The exclusion loses transcript content when the payload is
+                // rig assistant content that failed the strict stream-item
+                // decode, so that case is loud; the payload itself stays
+                // redacted.
+                if unknown_payload_loses_assistant_content(payload.value()) {
                     tracing::warn!(
-                        "stream item carrying a `text` key excluded from the \
-                         assembled assistant message — a stray sibling key or a \
-                         `type` tag on a text item fails the strict decode, and \
-                         its text is lost from assembled history"
+                        "stream item excluded from the assembled assistant \
+                         message — it matches rig's tagged assistant-content \
+                         serialization or a text item with stray sibling keys, \
+                         neither of which is a stream-item shape; its content \
+                         is lost from assembled history"
                     );
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
@@ -908,38 +923,53 @@ mod tests {
     }
 
     #[test]
-    fn lost_text_heuristic_covers_tagged_and_tagless_failed_decodes() {
-        // A tagged text block — the serialized `AssistantContent::Text`
-        // shape MIGRATING teaches — fails the strict stream-item decode
-        // (stream items are untagged) and must land in the loud path, not
-        // vanish silently.
-        let tagged = json!({"type": "text", "text": "hi"});
-        assert!(matches!(
-            serde_json::from_value::<StreamedAssistantContent>(tagged.clone())
-                .expect("tolerant decode"),
-            StreamedAssistantContent::Unknown(_)
-        ));
-        assert!(unknown_payload_loses_text(&tagged));
+    fn lost_content_heuristic_covers_replayed_rig_shapes_and_failed_text_decodes() {
+        // Every tagged assistant block — the serialized `AssistantContent`
+        // shapes MIGRATING teaches — fails the strict stream-item decode
+        // (stream items are untagged, with different keys) and must land in
+        // the loud path, not vanish silently. A dropped tool call is the
+        // worst case: it desyncs the turn.
+        for replayed in [
+            json!({"type": "text", "text": "hi"}),
+            json!({"type": "toolcall", "id": "call_1", "function": {"name": "add", "arguments": {}}}),
+            json!({"type": "reasoning", "id": null, "content": []}),
+            json!({"type": "image", "data": "aGk="}),
+        ] {
+            assert!(
+                matches!(
+                    serde_json::from_value::<StreamedAssistantContent>(replayed.clone())
+                        .expect("tolerant decode"),
+                    StreamedAssistantContent::Unknown(_)
+                ),
+                "replayed block must decode Unknown: {replayed}"
+            );
+            assert!(
+                unknown_payload_loses_assistant_content(&replayed),
+                "replayed block must be loud: {replayed}"
+            );
+        }
 
         // Stray sibling keys on a tagless text item — 0.41's flatten shape.
-        assert!(unknown_payload_loses_text(
+        assert!(unknown_payload_loses_assistant_content(
             &json!({"text": "hi", "citations": []})
         ));
         // Documented noise: a genuinely unmodeled tagless text-carrying
         // frame also fires — the heuristic prefers that over missing a loss.
-        assert!(unknown_payload_loses_text(
+        assert!(unknown_payload_loses_assistant_content(
             &json!({"text": "hmm", "thought": true})
         ));
         // Provider-native unmodeled items carrying their own wire tag stay
         // quiet, even when they also carry a `text` key.
-        assert!(!unknown_payload_loses_text(
+        assert!(!unknown_payload_loses_assistant_content(
             &json!({"type": "web_search_call", "id": "ws_1"})
         ));
-        assert!(!unknown_payload_loses_text(
+        assert!(!unknown_payload_loses_assistant_content(
             &json!({"type": "output_text.annotation", "text": "cite"})
         ));
         // A non-string `text` value is not a text item.
-        assert!(!unknown_payload_loses_text(&json!({"text": 42})));
+        assert!(!unknown_payload_loses_assistant_content(
+            &json!({"text": 42})
+        ));
     }
 
     #[test]

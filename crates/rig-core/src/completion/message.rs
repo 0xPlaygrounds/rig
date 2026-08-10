@@ -736,12 +736,26 @@ fn params_carry_no_data(params: &Option<serde_json::Value>) -> bool {
 /// Serde route into [`non_empty_params`]: an explicit `null` or `{}` in the
 /// JSON decodes as `None`, exactly like an absent field — so a mechanically
 /// migrated block that wrote `"additional_params": {}` classifies identically
-/// to one that omitted the key.
+/// to one that omitted the key. Any other non-object value is a decode error:
+/// extras are a keyed namespace (every producer stores an object, every
+/// extractor `get`s a key), so a mis-migrated `[]` or bare string is
+/// malformed data that must fail loudly — same doctrine as
+/// `deny_unknown_fields` on the block structs — not load as a phantom
+/// annotation no reader can see.
 fn params_as_none_when_empty<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    Ok(Option::<serde_json::Value>::deserialize(deserializer)?.and_then(non_empty_params))
+    let params = Option::<serde_json::Value>::deserialize(deserializer)?;
+    if let Some(value) = &params
+        && !value.is_null()
+        && !value.is_object()
+    {
+        return Err(serde::de::Error::custom(
+            "`additional_params` must be a JSON object (or null)",
+        ));
+    }
+    Ok(params.and_then(non_empty_params))
 }
 
 /// Basic text content.
@@ -1992,6 +2006,21 @@ mod tests {
             assert!(
                 serialized.get("additional_params").is_none(),
                 "empty params must not serialize: {serialized}"
+            );
+        }
+
+        // Extras are a keyed namespace: a non-object carrier (the shape a
+        // mis-firing migration script writes) is malformed data and fails
+        // loudly instead of loading as a phantom annotation no extractor
+        // can read.
+        for malformed in [serde_json::json!([]), serde_json::json!("title")] {
+            let err = serde_json::from_value::<Text>(
+                serde_json::json!({"text": "x", "additional_params": malformed}),
+            )
+            .expect_err("non-object params must be a decode error");
+            assert!(
+                err.to_string().contains("must be a JSON object"),
+                "unexpected error: {err}"
             );
         }
     }

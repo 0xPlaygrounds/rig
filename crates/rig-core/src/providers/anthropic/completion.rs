@@ -1396,8 +1396,8 @@ impl TryFrom<Content> for message::AssistantContent {
                 // `additional_params` so callers going through the generic
                 // `AssistantContent` surface can still recover them (see
                 // [`anthropic_citations`]).
-                let additional_params =
-                    (!citations.is_empty()).then(|| serde_json::json!({ "citations": citations }));
+                let additional_params = message::non_empty(citations)
+                    .map(|citations| serde_json::json!({ "citations": citations }));
                 message::AssistantContent::Text(message::Text {
                     text,
                     additional_params,

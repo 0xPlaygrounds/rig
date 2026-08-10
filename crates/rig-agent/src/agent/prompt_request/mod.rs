@@ -1196,10 +1196,14 @@ mod tests {
 
     #[test]
     fn empty_turn_classification_survives_a_serde_round_trip() {
-        // `additional_params` is a named serde field, so absence round-trips
-        // as `None` — a suspended run restored from JSON must classify its
-        // empty-text turn exactly like the live run did, and an *annotated*
-        // empty block must still read as content either way.
+        // A suspended run restored from JSON must classify its empty-text
+        // turn exactly like the live run did, whatever spelling of "no
+        // extras" the JSON carries, and an *annotated* empty block must
+        // still read as content either way. The serde canonicalization
+        // mechanics behind this (`{}`/`null` decode to `None`, empty params
+        // never serialize) are pinned where they live, by rig-core's
+        // `empty_params_canonicalize_to_none_in_both_serde_directions` —
+        // this test asserts classification only.
         let live = vec![AssistantContent::text("")];
         assert!(is_empty_assistant_turn(&live));
 
@@ -1210,48 +1214,28 @@ mod tests {
             is_empty_assistant_turn(&round),
             "restored turn must classify like the live one: {round:?}"
         );
-        // With `additional_params` a named field, the absence round-trips as
-        // `None` — no flatten, no `Some({})` artifact.
-        assert!(matches!(
-            round.as_slice(),
-            [AssistantContent::Text(text)] if text.additional_params.is_none()
-        ));
 
         // An explicit `{}` or `null` in the JSON — the shape a mechanical
-        // migration script writes — canonicalizes to `None` on decode
-        // (`message::non_empty_params`), so it classifies exactly like an
-        // absent field.
+        // migration script writes — classifies exactly like an absent field.
         for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
             let migrated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
                 {"type": "text", "text": "", "additional_params": empty_spelling}
             ]))
             .expect("deserialize migrated");
-            assert!(
-                matches!(
-                    migrated.as_slice(),
-                    [AssistantContent::Text(text)] if text.additional_params.is_none()
-                ),
-                "empty params must canonicalize to None: {migrated:?}"
-            );
             assert!(is_empty_assistant_turn(&migrated));
         }
 
         // An *in-memory* `Some({})` — constructible by out-of-tree code, since
-        // the fields are public — classifies empty (the read-side rule) and
-        // serializes canonically (the field is skipped), so live and restored
-        // agree even for uncanonicalized values.
+        // the fields are public — classifies empty (the read-side rule), and
+        // its round-trip agrees.
         let uncanonical = vec![AssistantContent::Text(rig_core::message::Text {
             text: String::new(),
             additional_params: Some(serde_json::json!({})),
         })];
         assert!(is_empty_assistant_turn(&uncanonical));
-        let serialized = serde_json::to_value(&uncanonical).expect("serialize");
-        assert!(
-            serialized[0].get("additional_params").is_none(),
-            "empty params must not reach the wire: {serialized}"
-        );
         let restored: Vec<AssistantContent> =
-            serde_json::from_value(serialized).expect("deserialize");
+            serde_json::from_value(serde_json::to_value(&uncanonical).expect("serialize"))
+                .expect("deserialize");
         assert!(is_empty_assistant_turn(&restored));
 
         let annotated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
