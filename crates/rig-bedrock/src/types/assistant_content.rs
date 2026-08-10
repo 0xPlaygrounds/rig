@@ -120,7 +120,7 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
         let choice = match message.0 {
             completion::Message::Assistant { content, .. } => Ok(content),
             _ => Err(CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
+                rig_core::message::EMPTY_RESPONSE_ERROR.to_owned(),
             )),
         }?;
 

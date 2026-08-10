@@ -432,9 +432,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
         };
 
         let choice = crate::message::require_non_empty(content, || {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
+            CompletionError::ResponseError(crate::message::EMPTY_RESPONSE_ERROR.to_owned())
         })?;
 
         Ok(completion::CompletionResponse::new(choice, usage, provider)

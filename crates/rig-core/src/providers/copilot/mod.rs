@@ -684,9 +684,7 @@ impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse {
         }?;
 
         let choice = crate::message::require_non_empty(content, || {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
+            CompletionError::ResponseError(crate::message::EMPTY_RESPONSE_ERROR.to_owned())
         })?;
 
         let usage = response

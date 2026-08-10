@@ -218,11 +218,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
                         }
                     })
                     .collect::<Vec<_>>(),
-                || {
-                    CompletionError::ResponseError(
-                        "Response contained no message or tool call (empty)".to_owned(),
-                    )
-                },
+                || CompletionError::ResponseError(crate::message::EMPTY_RESPONSE_ERROR.to_owned()),
             )?
         };
 
