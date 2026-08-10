@@ -808,6 +808,35 @@ impl AdditionalParams {
         merge_maps(&mut self.0, incoming.0);
     }
 
+    /// The extras stored under a wire's own key, when present — the
+    /// replay-side gate: a serializer asks for its key and never sees
+    /// another wire's extras (capture is unconditional at ingest; replay is
+    /// gated here). A non-object value under the key yields `None` (it is
+    /// not that wire's extras); a caller that must *distinguish* malformed
+    /// from absent — a warn path — pairs this with [`Self::get`]. Never a
+    /// hard error: extras were written by a previous turn, and failing
+    /// serialization over them would turn a persistence blemish into a
+    /// broken conversation.
+    pub fn wire_extras(
+        &self,
+        wire_key: &str,
+    ) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        self.0.get(wire_key).and_then(serde_json::Value::as_object)
+    }
+
+    /// Owned counterpart of [`Self::wire_extras`] for serialization paths
+    /// that already own the params (the common replay case): extracts the
+    /// wire's object without cloning. Same gate semantics.
+    pub fn into_wire_extras(
+        mut self,
+        wire_key: &str,
+    ) -> Option<serde_json::Map<String, serde_json::Value>> {
+        match self.0.remove(wire_key) {
+            Some(serde_json::Value::Object(map)) => Some(map),
+            _ => None,
+        }
+    }
+
     /// Build from a JSON value: `Ok(None)` for `null` and the empty object
     /// (canonical absence), `Ok(Some)` for a non-empty object, and `Err`
     /// handing the value back otherwise — a non-object is never silently
@@ -870,7 +899,30 @@ impl<'de> Deserialize<'de> for AdditionalParams {
 /// migration time: load a message tolerantly, re-serialize it, and every
 /// dropped key surfaces here by path. An empty result means the history
 /// survives the round trip; keys the current writer *adds* (defaults such as
-/// an explicit `null`) are not differences.
+/// an explicit `null`) are not differences, and neither is a value the
+/// loader canonicalizes to absence (`null`, the empty object).
+///
+/// # Example
+///
+/// MIGRATING's verification recipe, compiled here so the documented snippet
+/// and the behavior cannot drift — run it once over persisted history at
+/// migration time:
+///
+/// ```
+/// use rig_core::message;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let original = serde_json::json!({
+///     "role": "assistant",
+///     "content": [{"type": "text", "text": "cited", "citations": ["not re-nested"]}],
+/// });
+/// let loaded: message::Message = serde_json::from_value(original.clone())?;
+/// let round_tripped = serde_json::to_value(&loaded)?;
+/// let lost = message::keys_lost_in_round_trip(&original, &round_tripped);
+/// assert_eq!(lost, vec!["content.0.citations".to_string()]);
+/// # Ok(())
+/// # }
+/// ```
 pub fn keys_lost_in_round_trip(
     original: &serde_json::Value,
     round_tripped: &serde_json::Value,
@@ -1339,33 +1391,6 @@ impl Message {
 }
 
 impl UserContent {
-    /// Provider extras on this content block, when the block carries the
-    /// slot and it holds data.
-    ///
-    /// One accessor instead of per-call-site matching: the non-carrying
-    /// variant is named (never `_`), so adding a variant forces an explicit
-    /// decision here while every call site stays untouched.
-    pub fn additional_params(&self) -> Option<&AdditionalParams> {
-        match self {
-            Self::Text(Text {
-                additional_params, ..
-            })
-            | Self::Image(Image {
-                additional_params, ..
-            })
-            | Self::Audio(Audio {
-                additional_params, ..
-            })
-            | Self::Video(Video {
-                additional_params, ..
-            })
-            | Self::Document(Document {
-                additional_params, ..
-            }) => additional_params.as_ref(),
-            Self::ToolResult(_) => None,
-        }
-    }
-
     /// Helper constructor to make creating user text content easier.
     pub fn text(text: impl Into<String>) -> Self {
         UserContent::Text(text.into().into())
@@ -1580,27 +1605,6 @@ impl UserContent {
 }
 
 impl AssistantContent {
-    /// Provider extras on this content block, when the block carries the
-    /// slot and it holds data.
-    ///
-    /// One accessor instead of per-call-site matching: the non-carrying
-    /// variants are named (never `_`), so adding a variant forces an
-    /// explicit decision here while every call site stays untouched.
-    /// `ToolCall` extras live on [`ToolCall::additional_params`] under a
-    /// looser contract (any JSON value) and are deliberately not surfaced
-    /// here.
-    pub fn additional_params(&self) -> Option<&AdditionalParams> {
-        match self {
-            Self::Text(Text {
-                additional_params, ..
-            })
-            | Self::Image(Image {
-                additional_params, ..
-            }) => additional_params.as_ref(),
-            Self::ToolCall(_) | Self::Reasoning(_) => None,
-        }
-    }
-
     /// Helper constructor to make creating assistant text content easier.
     pub fn text(text: impl Into<String>) -> Self {
         AssistantContent::Text(text.into().into())

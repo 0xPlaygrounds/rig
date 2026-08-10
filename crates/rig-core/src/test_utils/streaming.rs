@@ -20,13 +20,11 @@ pub fn mock_final(usage: Usage) -> StreamFinal {
 fn fixture_additional_params(
     value: serde_json::Value,
 ) -> Result<Option<crate::message::AdditionalParams>, CompletionError> {
-    match value {
-        serde_json::Value::Null => Ok(None),
-        serde_json::Value::Object(map) => Ok(crate::message::AdditionalParams::new(map)),
-        other => Err(CompletionError::ProviderError(format!(
+    crate::message::AdditionalParams::try_from_value(value).map_err(|other| {
+        CompletionError::ProviderError(format!(
             "mock stream fixture `additional_params` must be a JSON object, got: {other}"
-        ))),
-    }
+        ))
+    })
 }
 
 /// Build a terminal record whose usage has only `total_tokens` set.

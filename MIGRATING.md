@@ -1339,7 +1339,9 @@ as an annotation no extractor can read.)
 **Verify the migration** with the round-trip recipe: load each persisted
 message tolerantly, re-serialize it, and ask
 [`message::keys_lost_in_round_trip`] for every key that did not survive —
-an empty result means the history migrated whole:
+an empty result means the history migrated whole. (The canonical copy of
+this snippet is the compiled doc example on `keys_lost_in_round_trip`
+itself, so the recipe and the behavior cannot drift.)
 
 ```rust
 let loaded: message::Message = serde_json::from_value(original.clone())?;
@@ -1359,10 +1361,12 @@ items — decodes as stream *text* with the stray keys dropped: the text is
 assembled, nothing is excluded. A replayed **tagged** assistant block
 (`toolcall`/`reasoning`/`image` — the tagged `AssistantContent`
 serialization is not a stream-item shape) decodes as `Unknown` and is
-excluded from assembly; the **agent assembler** — the one rig component that
-ingests replayed stream events — counts those exclusions and logs a single
-`tracing` warning per turn (`StreamedTurnAssembler::excluded_assistant_content`
-exposes the count). A consumer assembling self-deserialized events with its
+excluded from assembly, as is a text item whose `additional_params` is
+malformed (a non-object — the strict decode rejects the known field); the
+**agent assembler** — the one rig component that ingests replayed stream
+events — counts both kinds of exclusion and logs a single `tracing` warning
+per turn, on every termination path
+(`StreamedTurnAssembler::excluded_assistant_content` exposes the count). A consumer assembling self-deserialized events with its
 own logic gets no warning and should apply the same check itself.
 
 ### Two pre-`Vec` serde accommodations are gone

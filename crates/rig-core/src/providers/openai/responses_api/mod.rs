@@ -588,20 +588,32 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             text,
                             additional_params,
                         }) => {
-                            // Same rule as the sibling site above: an
-                            // annotated empty block carries data; only a
-                            // bare empty block is skipped.
-                            if text.is_empty() && additional_params.is_none() {
+                            // Replay honors only *this wire's* extras: an
+                            // empty block annotated with them still replays,
+                            // while a bare or foreign-annotated empty block
+                            // is skipped — foreign extras cannot reach this
+                            // wire anyway, and an empty assistant item the
+                            // wire never sent risks a rejection.
+                            // Deliverability is part of the rule: the
+                            // id-less `AssistantInput` form is a bare
+                            // string and cannot carry extras, so an empty
+                            // block replays only when its own-wire extras
+                            // can actually ride (the id-carrying form).
+                            let own_extras_deliverable = id.is_some()
+                                && additional_params
+                                    .as_ref()
+                                    .and_then(|params| {
+                                        params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
+                                    })
+                                    .is_some();
+                            if text.is_empty() && !own_extras_deliverable {
                                 continue;
                             }
                             let message = if let Some(id) = id.clone() {
                                 Message::Assistant {
                                     content: vec![AssistantContentType::Text(
                                         AssistantContent::OutputText(
-                                            OutputText::from_message_text(
-                                                text,
-                                                additional_params.as_ref(),
-                                            ),
+                                            OutputText::from_message_text(text, additional_params),
                                         ),
                                     )],
                                     id,
@@ -2681,34 +2693,40 @@ impl OutputText {
     /// [`From<AssistantContent> for completion::AssistantContent`]).
     fn from_message_text(
         text: impl Into<String>,
-        additional_params: Option<&crate::message::AdditionalParams>,
+        additional_params: Option<crate::message::AdditionalParams>,
     ) -> Self {
-        let extras =
-            match additional_params.and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)) {
-                Some(Value::Object(map)) => map
-                    .iter()
+        let Some(params) = additional_params else {
+            return Self::new(text);
+        };
+        // The gate (`into_wire_extras`) collapses malformed-under-key to
+        // `None`; distinguishing malformed from absent for the warn is what
+        // the raw `get` is for. Only reachable via hand-built or
+        // mis-migrated history (ingest always writes an object): replay
+        // proceeds without the extras, loudly.
+        if let Some(non_object) = params
+            .get(OPENAI_RESPONSES_EXTRAS_KEY)
+            .filter(|value| !value.is_object())
+        {
+            tracing::warn!(
+                %non_object,
+                "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
+                 object — replaying the text block without its extras"
+            );
+        }
+        let extras = params
+            .into_wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
+            .map(|map| {
+                map.into_iter()
                     // The named field and the tag own `text`/`type`. Extras
                     // ride a serde flatten, so an unfiltered key here would
-                    // serialize as a *duplicate* JSON key and last-wins parsers
-                    // would read history data as the block's text or tag —
-                    // ingest can never capture these keys, so dropping them
-                    // loses nothing.
-                    .filter(|(key, _)| key.as_str() != "text" && key.as_str() != "type")
-                    .map(|(key, value)| (key.clone(), value.clone()))
-                    .collect(),
-                Some(non_object) => {
-                    // Only reachable via hand-built or mis-migrated history
-                    // (ingest always writes an object): replay proceeds without
-                    // the extras, loudly.
-                    tracing::warn!(
-                        %non_object,
-                        "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
-                         object — replaying the text block without its extras"
-                    );
-                    Map::new()
-                }
-                None => Map::new(),
-            };
+                    // serialize as a *duplicate* JSON key and last-wins
+                    // parsers would read history data as the block's text or
+                    // tag — ingest can never capture these keys, so dropping
+                    // them loses nothing.
+                    .filter(|(key, _)| key != "text" && key != "type")
+                    .collect()
+            })
+            .unwrap_or_default();
         Self {
             text: text.into(),
             extras,
@@ -2982,10 +3000,22 @@ impl TryFrom<message::Message> for Vec<Message> {
                             text,
                             additional_params,
                         }) => {
-                            // An *annotated* empty block carries data (the
-                            // captured wire extras) and must not vanish from
-                            // the request; only a bare empty block is skipped.
-                            if text.is_empty() && additional_params.is_none() {
+                            // Same rule as the sibling site above: replay
+                            // honors only this wire's extras; bare and
+                            // foreign-annotated empty blocks are skipped.
+                            // Deliverability is part of the rule: the
+                            // id-less `AssistantInput` form is a bare
+                            // string and cannot carry extras, so an empty
+                            // block replays only when its own-wire extras
+                            // can actually ride (the id-carrying form).
+                            let own_extras_deliverable = assistant_message_id.is_some()
+                                && additional_params
+                                    .as_ref()
+                                    .and_then(|params| {
+                                        params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
+                                    })
+                                    .is_some();
+                            if text.is_empty() && !own_extras_deliverable {
                                 continue;
                             }
                             if let Some(id) = assistant_message_id.clone() {
@@ -2994,10 +3024,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     status: ToolStatus::Completed,
                                     content: vec![AssistantContentType::Text(
                                         AssistantContent::OutputText(
-                                            OutputText::from_message_text(
-                                                text,
-                                                additional_params.as_ref(),
-                                            ),
+                                            OutputText::from_message_text(text, additional_params),
                                         ),
                                     )],
                                     name: None,
@@ -3108,7 +3135,7 @@ mod tests {
         );
 
         let replayed =
-            OutputText::from_message_text(text.text.clone(), text.additional_params.as_ref());
+            OutputText::from_message_text(text.text.clone(), text.additional_params.clone());
         assert_eq!(replayed.text, "cited");
         assert_eq!(replayed.extras, extras);
 
@@ -3123,13 +3150,69 @@ mod tests {
             }
         }))
         .expect("object params");
-        let replayed = OutputText::from_message_text("real", hostile.as_ref());
+        let replayed = OutputText::from_message_text("real", hostile.clone());
         assert_eq!(replayed.text, "real");
         assert!(replayed.extras.get("text").is_none());
         assert!(replayed.extras.get("type").is_none());
         assert_eq!(replayed.extras.get("annotations"), Some(&json!(["kept"])));
         let wire = serde_json::to_value(&replayed).expect("serialize");
         assert_eq!(wire.get("text"), Some(&json!("real")));
+
+        // Replay honors only this wire's extras: an empty text block
+        // annotated with a *foreign* wire's extras (the shape anthropic
+        // ingest writes for raw server-tool content) produces no Responses
+        // item at all — its extras cannot reach this wire, and an empty
+        // assistant item the wire never sent risks a rejection — while an
+        // `openai_responses`-annotated empty block still replays.
+        let foreign = message::Message::Assistant {
+            id: None,
+            content: vec![completion::AssistantContent::Text(message::Text {
+                text: String::new(),
+                additional_params: message::AdditionalParams::try_from_value(json!({
+                    "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
+                }))
+                .expect("object params"),
+            })],
+        };
+        let items: Vec<InputItem> = foreign.try_into().expect("convert");
+        assert!(
+            items.is_empty(),
+            "foreign-annotated empty block must produce no Responses item: {items:?}"
+        );
+
+        let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
+            id,
+            content: vec![completion::AssistantContent::Text(message::Text {
+                text: String::new(),
+                additional_params: message::AdditionalParams::try_from_value(json!({
+                    OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
+                }))
+                .expect("object params"),
+            })],
+        };
+        // With a message id, the Assistant form carries the extras.
+        let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
+            .try_into()
+            .expect("convert");
+        assert_eq!(
+            items.len(),
+            1,
+            "own-wire-annotated empty block must replay when deliverable: {items:?}"
+        );
+        let serialized = serde_json::to_value(&items).expect("serialize");
+        assert_eq!(
+            serialized[0]["content"][0]["annotations"],
+            json!(["kept"]),
+            "the replayed item must carry the extras: {serialized}"
+        );
+        // Without an id the only form is the bare-string `AssistantInput`,
+        // which cannot carry extras — an empty block is skipped rather than
+        // sent as a content-free item with its extras dropped.
+        let items: Vec<InputItem> = own_annotated_empty(None).try_into().expect("convert");
+        assert!(
+            items.is_empty(),
+            "undeliverable annotated empty block must be skipped: {items:?}"
+        );
 
         // A bare block stays bare in both directions.
         let bare: completion::AssistantContent =

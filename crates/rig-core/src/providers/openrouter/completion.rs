@@ -882,7 +882,7 @@ fn is_openrouter_response_image(image: &message::Image) -> bool {
     image
         .additional_params
         .as_ref()
-        .and_then(|params| params.get("openrouter"))
+        .and_then(|params| params.wire_extras("openrouter"))
         .is_some_and(|params| {
             params
                 .get(OPENROUTER_RESPONSE_ONLY_KEY)
