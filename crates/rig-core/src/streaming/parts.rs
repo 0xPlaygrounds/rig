@@ -186,18 +186,14 @@ impl PartsAccumulator {
     /// Merge provider metadata into the active text block, opening an empty
     /// block if none is active.
     ///
-    /// `null` and the empty object are both "no metadata" and are dropped
-    /// here — this is the normalization boundary that keeps `Some({})` out of
-    /// [`Text::additional_params`], where it would make an empty text block
-    /// read as annotated (`is_empty_assistant_turn` checks `is_none()`).
+    /// Routed through [`crate::message::non_empty_params`]: `null` and the
+    /// empty object are both "no metadata" and are dropped, keeping the
+    /// stored-params invariant (`None` or data, never an empty carrier) that
+    /// emptiness checks rely on.
     pub(crate) fn text_additional_params(&mut self, additional_params: serde_json::Value) {
-        if additional_params.is_null()
-            || additional_params
-                .as_object()
-                .is_some_and(serde_json::Map::is_empty)
-        {
+        let Some(additional_params) = crate::message::non_empty_params(additional_params) else {
             return;
-        }
+        };
         let index = self.ensure_text_block();
         let Some(AssistantContent::Text(text)) = self.parts.get_mut(index) else {
             return;

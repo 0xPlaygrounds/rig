@@ -638,11 +638,23 @@ impl StreamedTurnAssembler {
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
             }
-            StreamedAssistantContent::Unknown(_) => {
+            StreamedAssistantContent::Unknown(payload) => {
                 // Unmodeled provider item (e.g. a hosted-tool result): forward it
                 // to the consumer but do not fold it into the accumulated
                 // assistant message — there is no `AssistantContent::Unknown`, and
                 // it must not perturb text/tool-call/reasoning accumulation.
+                //
+                // A payload carrying a `text` key is the one shape whose
+                // exclusion loses transcript content (a text item with stray
+                // sibling keys fails the strict `Text` decode and lands here),
+                // so that case is loud — the payload itself stays redacted.
+                if payload.value().get("text").is_some() {
+                    tracing::warn!(
+                        "unmodeled stream item carrying a `text` key excluded \
+                         from the assembled assistant message (stray sibling \
+                         keys on a text item fail the strict decode)"
+                    );
+                }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
         }

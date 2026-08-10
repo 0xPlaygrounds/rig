@@ -702,6 +702,30 @@ impl ToolFunction {
 // Base content models
 // ================================================================
 
+/// Canonicalize a provider-extras value: `null` and the empty object both
+/// mean "no extras" and become `None`. The one home for that rule — the
+/// content-block deserializers route through it, and producers (streaming
+/// accumulation, provider conversions) apply it before storing, so a stored
+/// `additional_params` is either `None` or carries data. That invariant is
+/// what lets emptiness checks (`is_empty_assistant_turn`) use plain
+/// `is_none()` without a tolerant shim.
+pub fn non_empty_params(value: serde_json::Value) -> Option<serde_json::Value> {
+    Some(value).filter(|value| {
+        !value.is_null() && !value.as_object().is_some_and(serde_json::Map::is_empty)
+    })
+}
+
+/// Serde route into [`non_empty_params`]: an explicit `null` or `{}` in the
+/// JSON decodes as `None`, exactly like an absent field — so a mechanically
+/// migrated block that wrote `"additional_params": {}` classifies identically
+/// to one that omitted the key.
+fn params_as_none_when_empty<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<serde_json::Value>::deserialize(deserializer)?.and_then(non_empty_params))
+}
+
 /// Basic text content.
 ///
 /// `additional_params` carries provider-specific fields that arrive on text
@@ -717,7 +741,11 @@ pub struct Text {
     /// Text content.
     pub text: String,
     /// Provider-specific text fields.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "params_as_none_when_empty",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -756,7 +784,11 @@ pub struct Image {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<ImageDetail>,
     /// Provider-specific image fields.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "params_as_none_when_empty",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -867,7 +899,11 @@ pub struct Audio {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<AudioMediaType>,
     /// Provider-specific audio fields.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "params_as_none_when_empty",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -881,7 +917,11 @@ pub struct Video {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<VideoMediaType>,
     /// Provider-specific video fields.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "params_as_none_when_empty",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 
@@ -895,7 +935,11 @@ pub struct Document {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
     /// Provider-specific document fields.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "params_as_none_when_empty",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub additional_params: Option<serde_json::Value>,
 }
 

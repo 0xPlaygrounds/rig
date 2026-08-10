@@ -1273,8 +1273,9 @@ always has:
 The tag is **required** on deserialize, and there is no untagged fallback.
 **This breaks released data**: 0.41 serialized assistant content untagged, so
 a history or run persisted under 0.41 carries the bare shape
-(`{"text": "hello"}`) and fails to load with "data did not match any
-variant". Migrate stored assistant blocks by inserting the tag:
+(`{"text": "hello"}`) and fails to load with ``missing field `type` `` (the
+internally-tagged enum's wording — grep your logs for that, not for an
+untagged-enum error). Migrate stored assistant blocks by inserting the tag:
 
 - text block (`"text"` key) → add `"type": "text"`
 - tool call (`"id"` + `"function"` keys) → add `"type": "toolcall"`
@@ -1307,13 +1308,20 @@ serialized as `{"type": "document", "data": …, "title": "t", "citations": …}
 Under `deny_unknown_fields` those blocks fail with `unknown field "title"`.
 Migrate by re-nesting every non-schema key under `additional_params`:
 `{"type": "document", "data": …, "additional_params": {"title": "t",
-"citations": …}}`.
+"citations": …}}`. Cover the nested blocks too: a tool result's content list
+(`UserContent::ToolResult` → `ToolResultContent::Text`/`Image`) reuses these
+same structs, so flattened extras inside a persisted tool result fail the
+same way and need the same re-nesting. (An empty `"additional_params": {}`
+or `null` is fine — it canonicalizes to absent on load.)
 
 **Streaming events**: `StreamedAssistantContent` is a tolerant decode with an
-`Unknown` catch-all, so a 0.41-serialized stream item whose text block carried
-flattened extras does not error — it decodes as `Unknown` and is dropped from
-assembly. If you persist or relay raw stream events across the upgrade,
-re-nest their extras the same way; do not expect a loud failure there.
+`Unknown` catch-all, so a stream item whose text block carries stray sibling
+keys does not error — it decodes as `Unknown` and is excluded from assembly.
+This is not a 0.41-upgrade-only hazard: it applies to any relayed or persisted
+stream event with keys outside the schema, today and onward (a relay stamping
+bookkeeping keys onto text items will lose them from assembled history). The
+exclusion of a text-carrying payload logs a `tracing` warning; re-nest extras
+under `additional_params` to keep them.
 
 ### Two pre-`Vec` serde accommodations are gone
 

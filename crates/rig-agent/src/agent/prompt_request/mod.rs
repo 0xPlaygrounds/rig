@@ -1215,6 +1215,25 @@ mod tests {
             [AssistantContent::Text(text)] if text.additional_params.is_none()
         ));
 
+        // An explicit `{}` or `null` in the JSON — the shape a mechanical
+        // migration script writes — canonicalizes to `None` on decode
+        // (`message::non_empty_params`), so it classifies exactly like an
+        // absent field.
+        for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
+            let migrated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
+                {"type": "text", "text": "", "additional_params": empty_spelling}
+            ]))
+            .expect("deserialize migrated");
+            assert!(
+                matches!(
+                    migrated.as_slice(),
+                    [AssistantContent::Text(text)] if text.additional_params.is_none()
+                ),
+                "empty params must canonicalize to None: {migrated:?}"
+            );
+            assert!(is_empty_assistant_turn(&migrated));
+        }
+
         let annotated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
             {"type": "text", "text": "", "additional_params": {"signature": "sig"}}
         ]))

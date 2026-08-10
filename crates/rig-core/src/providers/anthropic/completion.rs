@@ -903,7 +903,9 @@ fn anthropic_document_additional_params(
         );
     }
 
-    Ok((!params.is_empty()).then_some(serde_json::Value::Object(params)))
+    // The shared canonicalization: an empty map is stored as `None`, never
+    // as an empty carrier.
+    Ok(message::non_empty_params(serde_json::Value::Object(params)))
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
