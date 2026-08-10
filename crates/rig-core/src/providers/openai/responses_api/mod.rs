@@ -588,7 +588,10 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             text,
                             additional_params,
                         }) => {
-                            if text.is_empty() {
+                            // Same rule as the sibling site above: an
+                            // annotated empty block carries data; only a
+                            // bare empty block is skipped.
+                            if text.is_empty() && additional_params.is_none() {
                                 continue;
                             }
                             let message = if let Some(id) = id.clone() {
@@ -2680,11 +2683,32 @@ impl OutputText {
         text: impl Into<String>,
         additional_params: Option<&crate::message::AdditionalParams>,
     ) -> Self {
-        let extras = additional_params
-            .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY))
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default();
+        let extras =
+            match additional_params.and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)) {
+                Some(Value::Object(map)) => map
+                    .iter()
+                    // The named field and the tag own `text`/`type`. Extras
+                    // ride a serde flatten, so an unfiltered key here would
+                    // serialize as a *duplicate* JSON key and last-wins parsers
+                    // would read history data as the block's text or tag —
+                    // ingest can never capture these keys, so dropping them
+                    // loses nothing.
+                    .filter(|(key, _)| key.as_str() != "text" && key.as_str() != "type")
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect(),
+                Some(non_object) => {
+                    // Only reachable via hand-built or mis-migrated history
+                    // (ingest always writes an object): replay proceeds without
+                    // the extras, loudly.
+                    tracing::warn!(
+                        %non_object,
+                        "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
+                         object — replaying the text block without its extras"
+                    );
+                    Map::new()
+                }
+                None => Map::new(),
+            };
         Self {
             text: text.into(),
             extras,
@@ -2958,7 +2982,10 @@ impl TryFrom<message::Message> for Vec<Message> {
                             text,
                             additional_params,
                         }) => {
-                            if text.is_empty() {
+                            // An *annotated* empty block carries data (the
+                            // captured wire extras) and must not vanish from
+                            // the request; only a bare empty block is skipped.
+                            if text.is_empty() && additional_params.is_none() {
                                 continue;
                             }
                             if let Some(id) = assistant_message_id.clone() {
@@ -3084,6 +3111,25 @@ mod tests {
             OutputText::from_message_text(text.text.clone(), text.additional_params.as_ref());
         assert_eq!(replayed.text, "cited");
         assert_eq!(replayed.extras, extras);
+
+        // Extras ride a serde flatten, so the reserved keys the named field
+        // and the tag own must never replay from history — a duplicate JSON
+        // key would let persisted data shadow the block's real text or tag.
+        let hostile = message::AdditionalParams::try_from_value(json!({
+            OPENAI_RESPONSES_EXTRAS_KEY: {
+                "text": "evil",
+                "type": "evil_type",
+                "annotations": ["kept"],
+            }
+        }))
+        .expect("object params");
+        let replayed = OutputText::from_message_text("real", hostile.as_ref());
+        assert_eq!(replayed.text, "real");
+        assert!(replayed.extras.get("text").is_none());
+        assert!(replayed.extras.get("type").is_none());
+        assert_eq!(replayed.extras.get("annotations"), Some(&json!(["kept"])));
+        let wire = serde_json::to_value(&replayed).expect("serialize");
+        assert_eq!(wire.get("text"), Some(&json!("real")));
 
         // A bare block stays bare in both directions.
         let bare: completion::AssistantContent =

@@ -95,7 +95,10 @@ pub(crate) fn ordered_streaming_assistant_content(
 /// its text is *assembled*, with only the stray keys dropped. Anything else
 /// in `Unknown` is a provider-native unmodeled item and stays quiet.
 fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
-    serde_json::from_value::<AssistantContent>(payload.clone()).is_ok()
+    // `&Value` is itself a `Deserializer`, so the probe allocates nothing —
+    // this runs on every `Unknown` item, and provider-native payloads can be
+    // large and frequent.
+    AssistantContent::deserialize(payload).is_ok()
 }
 
 pub(crate) fn assistant_text_items_from_choice(
@@ -776,20 +779,6 @@ impl StreamedTurnAssembler {
         message_id: Option<String>,
         final_choice: &[AssistantContent],
     ) -> StreamedTurn {
-        // One warning per turn, not per item: replayed tagged assistant
-        // blocks are excluded from assembly (there is no
-        // `AssistantContent::Unknown` history slot), and that exclusion
-        // loses transcript content — a dropped tool call also desyncs the
-        // turn. Zero exclusions stay silent.
-        if self.excluded_assistant_content > 0 {
-            tracing::warn!(
-                excluded = self.excluded_assistant_content,
-                "stream items matching rig's tagged assistant-content \
-                 serialization were excluded from the assembled assistant \
-                 message — replayed assistant blocks are not stream-item \
-                 shapes, and their content is lost from assembled history"
-            );
-        }
         let reasoning = self.drain_reasoning();
         let choice = self.canonical_choice_with(reasoning, final_choice);
         let internal_call_ids: Vec<(String, String)> = self
@@ -803,8 +792,10 @@ impl StreamedTurnAssembler {
         StreamedTurn {
             message_id,
             choice,
-            executable_tool_names: self.executable_tool_names,
-            allowed_tool_names: self.allowed_tool_names,
+            // `take`, not move: the assembler implements `Drop` (the
+            // per-turn lost-content warning), so fields cannot move out.
+            executable_tool_names: std::mem::take(&mut self.executable_tool_names),
+            allowed_tool_names: std::mem::take(&mut self.allowed_tool_names),
             internal_call_ids,
         }
     }
@@ -842,6 +833,27 @@ impl StreamedTurnAssembler {
             }
         }));
         events
+    }
+}
+
+impl Drop for StreamedTurnAssembler {
+    /// One warning per turn, not per item: replayed tagged assistant blocks
+    /// are excluded from assembly (there is no `AssistantContent::Unknown`
+    /// history slot), and that exclusion loses transcript content — a
+    /// dropped tool call also desyncs the turn. The warning lives on drop
+    /// so it survives *every* termination path — `finish`, stream errors,
+    /// hook cancellation, abandonment, truncation — and zero exclusions
+    /// stay silent.
+    fn drop(&mut self) {
+        if self.excluded_assistant_content > 0 {
+            tracing::warn!(
+                excluded = self.excluded_assistant_content,
+                "stream items matching rig's tagged assistant-content \
+                 serialization were excluded from the assembled assistant \
+                 message — replayed assistant blocks are not stream-item \
+                 shapes, and their content is lost from assembled history"
+            );
+        }
     }
 }
 

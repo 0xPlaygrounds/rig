@@ -776,21 +776,28 @@ impl AdditionalParams {
     /// citation deltas), objects merge recursively, scalars take the
     /// incoming value.
     pub fn merge(&mut self, incoming: Self) {
+        // One merge routine at every depth: the top level delegates to the
+        // same map merge the nested Object case uses, so the semantics
+        // cannot drift between single-level and nested params.
+        fn merge_maps(
+            existing: &mut serde_json::Map<String, serde_json::Value>,
+            incoming: serde_json::Map<String, serde_json::Value>,
+        ) {
+            for (key, incoming_value) in incoming {
+                match existing.get_mut(&key) {
+                    Some(existing_value) => merge_value(existing_value, incoming_value),
+                    None => {
+                        existing.insert(key, incoming_value);
+                    }
+                }
+            }
+        }
         fn merge_value(existing: &mut serde_json::Value, incoming: serde_json::Value) {
             match (existing, incoming) {
                 (
                     serde_json::Value::Object(existing_map),
                     serde_json::Value::Object(incoming_map),
-                ) => {
-                    for (key, incoming_value) in incoming_map {
-                        match existing_map.get_mut(&key) {
-                            Some(existing_value) => merge_value(existing_value, incoming_value),
-                            None => {
-                                existing_map.insert(key, incoming_value);
-                            }
-                        }
-                    }
-                }
+                ) => merge_maps(existing_map, incoming_map),
                 (
                     serde_json::Value::Array(existing_array),
                     serde_json::Value::Array(mut incoming_array),
@@ -798,14 +805,7 @@ impl AdditionalParams {
                 (existing, incoming) => *existing = incoming,
             }
         }
-        for (key, incoming_value) in incoming.0 {
-            match self.0.get_mut(&key) {
-                Some(existing_value) => merge_value(existing_value, incoming_value),
-                None => {
-                    self.0.insert(key, incoming_value);
-                }
-            }
-        }
+        merge_maps(&mut self.0, incoming.0);
     }
 
     /// Build from a JSON value: `Ok(None)` for `null` and the empty object
@@ -843,15 +843,17 @@ impl<'de> Deserialize<'de> for AdditionalParams {
     where
         D: serde::Deserializer<'de>,
     {
-        match serde_json::Value::deserialize(deserializer)? {
-            serde_json::Value::Object(map) if !map.is_empty() => Ok(Self(map)),
-            serde_json::Value::Object(_) => Err(serde::de::Error::custom(
+        match Self::try_from_value(serde_json::Value::deserialize(deserializer)?) {
+            Ok(Some(params)) => Ok(params),
+            // `null` and `{}` canonicalize to absence, which a bare
+            // (non-`Option`) slot cannot express.
+            Ok(None) => Err(serde::de::Error::custom(
                 "`additional_params` carries no data — omit the field (an `Option` \
                  field routed through `optional_additional_params` canonicalizes \
-                 `{}` to absent)",
+                 `{}` and `null` to absent)",
             )),
-            _ => Err(serde::de::Error::custom(
-                "`additional_params` must be a JSON object (or null)",
+            Err(_) => Err(serde::de::Error::custom(
+                "`additional_params` must be a non-empty JSON object",
             )),
         }
     }
@@ -892,7 +894,18 @@ pub fn keys_lost_in_round_trip(
                     path.push_str(key);
                     match round_map.get(key) {
                         Some(round_value) => walk(original_value, round_value, path, lost),
-                        None => lost.push(path.clone()),
+                        // A missing key whose original value the loader
+                        // canonicalizes to absence (the empty object —
+                        // MIGRATING's blessed `"additional_params": {}`
+                        // spelling; `null` is skipped above) is not a loss.
+                        None => {
+                            if !original_value
+                                .as_object()
+                                .is_some_and(serde_json::Map::is_empty)
+                            {
+                                lost.push(path.clone());
+                            }
+                        }
                     }
                     path.truncate(checkpoint);
                 }
@@ -938,11 +951,10 @@ where
     D: serde::Deserializer<'de>,
 {
     match Option::<serde_json::Value>::deserialize(deserializer)? {
-        None | Some(serde_json::Value::Null) => Ok(None),
-        Some(serde_json::Value::Object(map)) => Ok(AdditionalParams::new(map)),
-        Some(_) => Err(serde::de::Error::custom(
-            "`additional_params` must be a JSON object (or null)",
-        )),
+        None => Ok(None),
+        Some(value) => AdditionalParams::try_from_value(value).map_err(|_| {
+            serde::de::Error::custom("`additional_params` must be a JSON object (or null)")
+        }),
     }
 }
 
@@ -2313,11 +2325,17 @@ mod tests {
         );
 
         // A fully re-nested history survives whole: the recipe's success
-        // condition is an empty list.
+        // condition is an empty list. MIGRATING's blessed
+        // `"additional_params": {}` spelling canonicalizes to absence and
+        // must not read as a loss.
         let clean = serde_json::json!({
             "role": "assistant",
-            "content": [{"type": "text", "text": "clean",
-                         "additional_params": {"citations": ["re-nested"]}}],
+            "content": [
+                {"type": "text", "text": "clean",
+                 "additional_params": {"citations": ["re-nested"]}},
+                {"type": "text", "text": "mechanically migrated",
+                 "additional_params": {}},
+            ],
         });
         let loaded: Message = serde_json::from_value(clean.clone()).expect("decode");
         let reserialized = serde_json::to_value(&loaded).expect("serialize");
