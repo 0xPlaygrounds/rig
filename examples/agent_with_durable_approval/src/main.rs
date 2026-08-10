@@ -28,16 +28,14 @@
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_durable_approval`
 
 use anyhow::Result;
-use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::completion::CompletionModel;
+use rig::agent::{InvalidToolCallAction, TurnTools};
 use rig::message::{ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
+use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::BTreeSet;
 
 // ---------------------------------------------------------------------------
 // One read-only tool and one side-effecting tool worth gating.
@@ -145,17 +143,19 @@ async fn ask(prompt: &str) -> Option<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // A serializable `AgentRun` is a sans-IO protocol primitive. This example
-    // intentionally supplies raw model transport and tool dispatch explicitly;
-    // configured `Agent` execution instead always goes through `AgentRunner`.
+    // A hand-driven `AgentRun` is a sans-IO protocol primitive: this loop owns
+    // the IO and no agent hooks run. The per-turn request and the tool dispatch
+    // target both come from the configured `Agent` via `prepare_turn`, so
+    // nothing about the agent's configuration is restated below.
     let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
-    let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
-                    Call one tool at a time.";
-    let tools = ToolSet::builder()
-        .static_tool(GetBalance)
-        .static_tool(TransferFunds)
+    let agent = rig::agent::AgentBuilder::new(model)
+        .preamble(
+            "You are a banking assistant. Use the tools to carry out the user's request. \
+             Call one tool at a time.",
+        )
+        .tool(GetBalance)
+        .tool(TransferFunds)
         .build();
-    let tool_definitions = tools.get_tool_definitions();
 
     let prompt = "Check the balance of account A-1, then transfer $500 to account B-2.";
     println!("User: {prompt}");
@@ -165,6 +165,9 @@ async fn main() -> Result<()> {
     let _ = std::fs::remove_file(&state_path);
 
     let mut run = AgentRun::new(prompt).max_turns(10);
+    // Tool dispatch target of the most recent prepared turn: approved calls
+    // execute through the snapshot whose definitions the provider saw.
+    let mut turn_tools: Option<TurnTools> = None;
 
     loop {
         match run.next_step()? {
@@ -174,24 +177,16 @@ async fn main() -> Result<()> {
                 turn,
             } => {
                 println!("\n→ model call #{turn}");
-                let response = model
-                    .completion_request(prompt)
-                    .messages(history)
-                    .preamble(preamble.to_string())
-                    .tools(tool_definitions.clone())
-                    .send()
-                    .await?;
-                let tool_names: BTreeSet<String> = tool_definitions
-                    .iter()
-                    .map(|def| def.name.clone())
-                    .collect();
+                let (request, tools) = agent.prepare_turn(prompt, &history).await?.into_parts();
+                let response = request.send().await?;
                 let mut outcome = run.model_response(ModelTurn::new(
                     response.message_id.clone(),
                     response.choice.clone(),
                     response.usage,
-                    tool_names.clone(),
-                    tool_names,
+                    tools.executable_tool_names().clone(),
+                    tools.allowed_tool_names().clone(),
                 ))?;
+                turn_tools = Some(tools);
                 while let ModelTurnOutcome::NeedsResolution(context) = outcome {
                     eprintln!("model called unknown tool `{}`", context.tool_name);
                     outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
@@ -207,10 +202,16 @@ async fn main() -> Result<()> {
                 println!("\n💾 run suspended to {}", state_path.display());
 
                 // ----- imagine the process exits here and resumes later -----
+                // (Tool implementations are live objects: a genuinely separate
+                // process would rebuild the same `Agent` and prepare its own
+                // turns from there.)
 
                 let mut resumed: AgentRun = serde_json::from_slice(&std::fs::read(&state_path)?)?;
                 let AgentRunStep::CallTools { calls } = resumed.next_step()? else {
                     anyhow::bail!("resumed run must re-emit the pending tool calls");
+                };
+                let Some(tools) = turn_tools.as_ref() else {
+                    anyhow::bail!("CallTools always follows a prepared CallModel turn");
                 };
 
                 let mut results = Vec::new();
@@ -233,7 +234,7 @@ async fn main() -> Result<()> {
                     {
                         Some("a") | Some("approve") => {
                             let execution = tools
-                                .execute(&name, args, &mut rig::tool::ToolContext::new())
+                                .execute(&name, &args, &mut rig::tool::ToolContext::new())
                                 .await;
                             results.push(UserContent::tool_result_for(
                                 id,
@@ -252,7 +253,7 @@ async fn main() -> Result<()> {
                                     let execution = tools
                                         .execute(
                                             &name,
-                                            value.to_string(),
+                                            &value.to_string(),
                                             &mut rig::tool::ToolContext::new(),
                                         )
                                         .await;

@@ -103,6 +103,7 @@ mod builder;
 mod completion;
 pub mod hook;
 pub mod model;
+mod prepared_turn;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
@@ -123,6 +124,7 @@ pub use hook::{
     ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
 pub use model::ModelHandle;
+pub use prepared_turn::{PreparedTurn, TurnTools};
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };

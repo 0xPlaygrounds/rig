@@ -7,6 +7,11 @@
 //! because the machine is fully serializable between steps — pause a run while
 //! tool calls are pending and resume it later (even in another process).
 //!
+//! The per-turn request comes from [`Agent::prepare_turn`]: the loop reuses the
+//! configured `Agent`'s preamble, tools, and model parameters instead of
+//! restating them, and dispatches tool calls through the same registry snapshot
+//! the provider saw advertised.
+//!
 //! ## Part 2 — high-level [`rig::agent::AgentRunner`] with hooks
 //!
 //! For the common case you don't need that level of control: attach an
@@ -17,18 +22,16 @@
 //!
 //! Requires `OPENAI_API_KEY`.
 
-use std::collections::BTreeSet;
-
 use anyhow::Result;
+use rig::agent::TurnTools;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
 };
-use rig::completion::CompletionModel;
 use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
+use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -92,14 +95,16 @@ impl AgentHook for ToolLoggerHook {
 async fn main() -> Result<()> {
     let openai = openai::Client::from_env()?;
     let model = openai.completion_model(openai::GPT_4O);
-    let agent = rig::agent::AgentBuilder::new(model.clone())
+    let agent = rig::agent::AgentBuilder::new(model)
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();
-    let local_tools = ToolSet::builder().static_tool(Add).build();
-    let tool_definitions = local_tools.get_tool_definitions();
 
     let mut run = AgentRun::new("What is 2 + 5?").max_turns(2);
+    // The tool sets and dispatch target of the most recent prepared turn. Tool
+    // calls always execute through the snapshot whose definitions the provider
+    // saw — the same guarantee the runner gives its own turns.
+    let mut turn_tools: Option<TurnTools> = None;
 
     loop {
         match run.next_step()? {
@@ -110,34 +115,21 @@ async fn main() -> Result<()> {
             } => {
                 println!("→ model call #{turn}");
                 // A hand-driven `AgentRun` is a sans-IO protocol primitive, not
-                // execution of the configured `Agent`. Its transport is an
-                // explicit raw model request and therefore has no agent hooks.
-                let response = model
-                    .completion_request(prompt)
-                    .messages(history)
-                    .preamble(
-                        "You are a calculator. Always use the provided tools to compute results."
-                            .to_string(),
-                    )
-                    .tools(tool_definitions.clone())
-                    .send()
-                    .await?;
-
-                // The tools advertised to the provider for this turn. With
-                // static tools these are the agent's registered tools; agents
-                // with dynamic (RAG) tools would resolve them per turn.
-                let tool_names: BTreeSet<String> = tool_definitions
-                    .iter()
-                    .map(|def| def.name.clone())
-                    .collect();
+                // execution of the configured `Agent`: the driver owns the IO
+                // and no agent hooks run. `prepare_turn` supplies the request —
+                // preamble, tools, model parameters — from the agent's
+                // configuration instead of restating it here.
+                let (request, tools) = agent.prepare_turn(prompt, &history).await?.into_parts();
+                let response = request.send().await?;
 
                 let mut outcome = run.model_response(ModelTurn::new(
                     response.message_id.clone(),
                     response.choice.clone(),
                     response.usage,
-                    tool_names.clone(),
-                    tool_names,
+                    tools.executable_tool_names().clone(),
+                    tools.allowed_tool_names().clone(),
                 ))?;
+                turn_tools = Some(tools);
                 while let ModelTurnOutcome::NeedsResolution(context) = outcome {
                     eprintln!("model called unknown tool `{}`", context.tool_name);
                     // Preserve the agent loop's default fail-fast behavior; a
@@ -149,11 +141,17 @@ async fn main() -> Result<()> {
                 // The whole run is serializable while tool calls are pending:
                 // persist it here to pause for approval and resume later —
                 // even in a process that never saw this step. The resumed run
-                // re-emits the pending tool calls from its own state.
+                // re-emits the pending tool calls from its own state. (Tool
+                // implementations are live objects: a genuinely separate
+                // process would rebuild the same `Agent` and prepare its own
+                // turns from there.)
                 let suspended = serde_json::to_string(&run)?;
                 let mut run_resumed: AgentRun = serde_json::from_str(&suspended)?;
                 let AgentRunStep::CallTools { calls } = run_resumed.next_step()? else {
                     anyhow::bail!("resumed run must re-emit the pending tool calls");
+                };
+                let Some(tools) = turn_tools.as_ref() else {
+                    anyhow::bail!("CallTools always follows a prepared CallModel turn");
                 };
 
                 let mut results = Vec::new();
@@ -168,7 +166,7 @@ async fn main() -> Result<()> {
                     let args = call.tool_call.function.arguments.to_string();
                     println!("→ executing {name}({args})");
                     let mut context = rig::tool::ToolContext::new();
-                    let result = local_tools.execute(name, args, &mut context).await;
+                    let result = tools.execute(name, &args, &mut context).await;
                     results.push(UserContent::tool_result_for(
                         call.tool_call.id.clone(),
                         call.tool_call.provider.clone(),

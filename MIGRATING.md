@@ -1561,6 +1561,15 @@ response. For intentionally hook-free transport, start from
 for custom drivers. It holds no configured model, tools, memory, or hooks and is
 not an alternate execution path for configured agents.
 
+Reading a configured agent's request state back out (the 0.40 public fields,
+`agent.tool_server_handle`) has a supported replacement:
+`Agent::prepare_turn(prompt, &history)` resolves the agent's configuration into
+one turn's completion request plus its tool sets and dispatch snapshot
+(`PreparedTurn` / `TurnTools`), so a hand-driven `AgentRun` no longer restates
+the preamble and tools. It is a configuration read, not an execution path —
+hooks, memory, retrieval policy, and telemetry still run only under
+`Agent::runner`. See `examples/agent_run_stepping`.
+
 An `Agent`'s default model is set at construction. Per-run overrides now go
 through `runner(...).using_model(...)`, `Agent::set_model`, or a
 `ModelSelection` hook (see the "runtime model swapping" section for the
