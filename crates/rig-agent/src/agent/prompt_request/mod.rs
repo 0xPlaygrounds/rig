@@ -1415,7 +1415,7 @@ mod tests {
     }
 
     fn validate_follow_up_tool_history(request: &CompletionRequest) {
-        let history = request.chat_history.to_vec();
+        let history = request.chat_history.clone();
         assert_eq!(
             history.len(),
             3,
@@ -1877,7 +1877,7 @@ mod tests {
         assert_eq!(add_calls.load(Ordering::SeqCst), 0);
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.to_vec();
+        let retry_history = requests[1].chat_history.clone();
         assert_eq!(retry_history.len(), 3);
         assert!(matches!(
             retry_history.get(1),
@@ -2559,7 +2559,7 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let received = recorded.requests()[0].chat_history.to_vec();
+        let received = recorded.requests()[0].chat_history.clone();
         assert_eq!(
             received.len(),
             3,
@@ -2607,7 +2607,7 @@ mod tests {
         let appends = memory.append_count();
         assert_eq!(appends, 0, "append skipped");
 
-        let received = recorded.requests()[0].chat_history.to_vec();
+        let received = recorded.requests()[0].chat_history.clone();
         assert_eq!(received.len(), 2, "caller history (1) + current prompt");
         assert!(matches!(
             received.first(),
@@ -2860,7 +2860,7 @@ mod tests {
             .await
             .expect("prompt should succeed");
 
-        let received = recorded.requests()[0].chat_history.to_vec();
+        let received = recorded.requests()[0].chat_history.clone();
         assert_eq!(
             received.len(),
             3,

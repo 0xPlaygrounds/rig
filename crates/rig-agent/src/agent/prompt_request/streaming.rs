@@ -1838,7 +1838,7 @@ mod migrated_tests {
             rig_core::message::ToolCallId::new_or_mint("tool_call_1"),
             rig_core::message::ProviderCallId::new("call_1"),
             "render_reference_image".to_string(),
-            crate::tool::ToolOutput::content(content),
+            crate::tool::ToolOutput::content(content).expect("fixture content is non-empty"),
         );
 
         let tool_result = match user_content {
@@ -1877,7 +1877,7 @@ mod migrated_tests {
     }
 
     fn validate_follow_up_tool_history(request: &CompletionRequest) -> Result<(), String> {
-        let history = request.chat_history.to_vec();
+        let history = request.chat_history.clone();
         if history.len() != 3 {
             return Err(format!(
                 "follow-up request should contain [original user prompt, assistant tool call, user tool result]: {history:?}"
@@ -3994,7 +3994,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.to_vec();
+        let follow_up_history = requests[1].chat_history.clone();
         assert!(matches!(
             follow_up_history.get(2),
             Some(Message::User { content })
@@ -4087,7 +4087,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.to_vec();
+        let retry_history = requests[1].chat_history.clone();
         assert_eq!(retry_history.len(), 3);
         assert!(matches!(
             retry_history.get(1),
@@ -4217,7 +4217,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.to_vec();
+        let follow_up_history = requests[1].chat_history.clone();
         assert_eq!(follow_up_history.len(), 3);
         assert!(matches!(
             follow_up_history.get(1),
@@ -4314,7 +4314,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.to_vec();
+        let follow_up_history = requests[1].chat_history.clone();
         assert!(history_contains_text(&follow_up_history, "checking "));
         assert!(assistant_reasoning_precedes_tool_call(
             &follow_up_history,
@@ -4367,7 +4367,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.to_vec();
+        let retry_history = requests[1].chat_history.clone();
         assert!(assistant_reasoning_precedes_tool_call(
             &retry_history,
             "delta reason",
@@ -4501,7 +4501,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let retry_history = requests[1].chat_history.to_vec();
+        let retry_history = requests[1].chat_history.clone();
         assert!(matches!(
             retry_history.get(1),
             Some(Message::Assistant { content, .. })
@@ -4772,7 +4772,7 @@ mod migrated_tests {
 
         let requests = recorded.requests();
         assert_eq!(requests.len(), 2);
-        let follow_up_history = requests[1].chat_history.to_vec();
+        let follow_up_history = requests[1].chat_history.clone();
         assert!(matches!(
             follow_up_history.get(1),
             Some(Message::Assistant { content, .. })
@@ -6767,7 +6767,7 @@ mod migrated_tests {
             }
         }
 
-        let received = recorded.requests()[0].chat_history.to_vec();
+        let received = recorded.requests()[0].chat_history.clone();
         assert_eq!(
             received.len(),
             3,

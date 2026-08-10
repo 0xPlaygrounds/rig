@@ -14,7 +14,7 @@ impl VertexCompletionRequest {
     pub fn contents(&self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
         // Vertex's `functionResponse.name` is the *function name*, not a
         // call identifier — `ToolResult::name` carries it as required data.
-        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history.to_vec();
+        let mut history: Vec<rig_core::completion::Message> = self.0.chat_history.clone();
         // Cross-provider ingested results arrive with an empty name and
         // their paired call carries it.
         rig_core::providers::internal::resolve_empty_tool_result_names(&mut history);

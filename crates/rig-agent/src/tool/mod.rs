@@ -848,6 +848,7 @@ mod tests {
             ToolResultContent::text(label),
             ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
         ])
+        .expect("fixture content is non-empty")
     }
 
     fn assert_rich_error_output(result: &ToolResult, label: &str) {
@@ -1290,7 +1291,7 @@ mod migrated_tests {
                 Some(ImageMediaType::PNG),
                 None,
             ));
-            ToolOutput::content(content)
+            ToolOutput::content(content).expect("fixture content is non-empty")
         }
 
         pub fn portable_dynamic_fixture() -> PortableDynamicTool {

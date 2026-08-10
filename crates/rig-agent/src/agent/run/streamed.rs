@@ -49,20 +49,34 @@ use crate::{
 };
 
 /// Assemble assistant content in canonical replay order: reasoning blocks,
-/// then text, then trailing items (tool calls, images).
-pub(crate) fn ordered_streaming_assistant_content(
+/// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
+/// so the result is empty exactly when every input is.
+pub(crate) fn ordered_assistant_content(
     reasoning_items: impl IntoIterator<Item = Reasoning>,
     text_items: impl IntoIterator<Item = AssistantContent>,
     trailing_items: impl IntoIterator<Item = AssistantContent>,
-) -> Option<Vec<AssistantContent>> {
+) -> Vec<AssistantContent> {
     let mut content_items = reasoning_items
         .into_iter()
         .map(AssistantContent::Reasoning)
         .collect::<Vec<_>>();
     content_items.extend(text_items);
     content_items.extend(trailing_items);
+    content_items
+}
 
-    non_empty(content_items)
+/// [`ordered_assistant_content`], as an `Option` for slots where an empty
+/// assembly means "no message".
+pub(crate) fn ordered_streaming_assistant_content(
+    reasoning_items: impl IntoIterator<Item = Reasoning>,
+    text_items: impl IntoIterator<Item = AssistantContent>,
+    trailing_items: impl IntoIterator<Item = AssistantContent>,
+) -> Option<Vec<AssistantContent>> {
+    non_empty(ordered_assistant_content(
+        reasoning_items,
+        text_items,
+        trailing_items,
+    ))
 }
 
 pub(crate) fn assistant_text_items_from_choice(
@@ -355,8 +369,10 @@ impl StreamedTurnAssembler {
                 .iter()
                 .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
                 .collect::<Vec<_>>();
-            ordered_streaming_assistant_content(reasoning, text_items, tool_items)
-                .unwrap_or_else(|| provider_choice.to_vec())
+            // Infallible on purpose: the enclosing guard makes at least one
+            // input non-empty and the assembly maps its inputs 1:1, so there
+            // is no empty case to fall back from.
+            ordered_assistant_content(reasoning, text_items, tool_items)
         } else {
             provider_choice.to_vec()
         }

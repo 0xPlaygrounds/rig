@@ -62,7 +62,7 @@ impl Tool for HybridImageTool {
             Some(ImageMediaType::PNG),
             None,
         ));
-        Ok(ToolOutput::content(content))
+        Ok(ToolOutput::content(content).expect("fixture content is non-empty"))
     }
 }
 

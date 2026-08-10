@@ -436,7 +436,7 @@ fn mcp_result_output(result: &CallToolResult) -> Result<ToolOutput, ToolExecutio
         for block in mapped {
             ordered.push(block);
         }
-        return Ok(ToolOutput::content(ordered));
+        return ToolOutput::content(ordered);
     }
 
     // A content-less MCP result normalizes to one empty text block. This is
@@ -1123,7 +1123,7 @@ mod tests {
         expected.push(RigToolResultContent::text("human-readable note"));
         assert_eq!(
             mcp_result_output(&result).expect("MCP structured rich output"),
-            ToolOutput::content(expected)
+            ToolOutput::content(expected).expect("fixture content is non-empty")
         );
     }
 
@@ -1240,7 +1240,10 @@ mod tests {
             None,
         ));
         expected_content.push(RigToolResultContent::text("after"));
-        assert_eq!(result.output(), &ToolOutput::content(expected_content));
+        assert_eq!(
+            result.output(),
+            &ToolOutput::content(expected_content).expect("fixture content is non-empty")
+        );
 
         let raw = context
             .result::<CallToolResult>()

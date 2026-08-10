@@ -667,8 +667,8 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 /// and the orphan rule forbids the impl.
 pub fn reasoning_summaries(value: Vec<String>) -> Vec<ReasoningSummary> {
     value
-        .iter()
-        .map(|text| ReasoningSummary::new(text))
+        .into_iter()
+        .map(|text| ReasoningSummary::SummaryText { text })
         .collect()
 }
 

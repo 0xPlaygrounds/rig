@@ -4983,7 +4983,7 @@ mod tests {
             content: vec![message::AssistantContent::Reasoning(reasoning)],
         };
         let converted: Message = msg.try_into().expect("convert assistant message");
-        let converted_content = converted.content.to_vec();
+        let converted_content = converted.content.clone();
 
         assert_eq!(converted.role, Role::Assistant);
         assert_eq!(converted_content.len(), 4);
@@ -5039,7 +5039,7 @@ mod tests {
         };
 
         let converted: Message = msg.try_into().expect("convert assistant message");
-        let converted_content = converted.content.to_vec();
+        let converted_content = converted.content.clone();
 
         assert_eq!(converted_content.len(), 1);
         assert!(matches!(

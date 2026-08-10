@@ -439,6 +439,13 @@ object. That guard used to name `OneOrMany<ToolResultContent>`; it now names
   genuinely empty result. (An empty **MCP** result is different: it is
   protocol-legal and outside the tool author's control, so the MCP path
   normalizes it to one empty text block instead of erroring.)
+- The check lives in `ToolOutput::content`, which is now **fallible**:
+  `content(Vec<ToolResultContent>) -> Result<ToolOutput, ToolExecutionError>`,
+  and `impl From<Vec<ToolResultContent>>` becomes `TryFrom`. On 0.41 the
+  argument type (`OneOrMany`) made the empty case unrepresentable, so the
+  constructor could not fail; the `Vec` argument moves that guarantee into the
+  return type. `text`, `json`, and `one` stay infallible — they construct
+  exactly one block.
 
 #### A local generation that produces nothing keeps succeeding
 

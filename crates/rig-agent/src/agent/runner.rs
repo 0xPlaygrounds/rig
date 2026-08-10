@@ -9530,8 +9530,8 @@ mod migrated_tests {
 
         let requests = model.requests();
         assert_eq!(requests.len(), 2);
-        let first = requests[0].chat_history.to_vec();
-        let second = requests[1].chat_history.to_vec();
+        let first = requests[0].chat_history.clone();
+        let second = requests[1].chat_history.clone();
         assert_eq!(first, vec![Message::user("question")]);
         assert_eq!(
             second, first,
@@ -9573,7 +9573,7 @@ mod migrated_tests {
         );
         let second_request = &model.requests()[1];
         assert_eq!(
-            second_request.chat_history.to_vec(),
+            second_request.chat_history.clone(),
             vec![
                 Message::user("question"),
                 Message::assistant("rejected"),
@@ -9615,7 +9615,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1].chat_history.to_vec(),
+            model.requests()[1].chat_history.clone(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),
@@ -9802,7 +9802,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1].chat_history.to_vec(),
+            model.requests()[1].chat_history.clone(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),

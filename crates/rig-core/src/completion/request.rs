@@ -770,43 +770,57 @@ impl CompletionRequest {
             ));
         }
 
+        let empty_message = |role: &str, index: usize| {
+            CompletionError::RequestError(
+                format!(
+                    "{role} message at index {index} has no content; \
+                     providers reject empty content blocks"
+                )
+                .into(),
+            )
+        };
+
+        // One match per message, with every per-variant rule in that
+        // variant's arm, so extending validation means extending one arm.
         for (index, message) in self.chat_history.iter().enumerate() {
-            let (role, empty) = match message {
-                Message::User { content } => ("user", content.is_empty()),
-                Message::Assistant { content, .. } => ("assistant", content.is_empty()),
-                Message::System { .. } => continue,
-            };
+            match message {
+                Message::System { .. } => {}
+                Message::Assistant { content, .. } => {
+                    if content.is_empty() {
+                        return Err(empty_message("assistant", index));
+                    }
+                }
+                Message::User { content } => {
+                    if content.is_empty() {
+                        return Err(empty_message("user", index));
+                    }
 
-            if empty {
-                return Err(CompletionError::RequestError(
-                    format!(
-                        "{role} message at index {index} has no content; \
-                         providers reject empty content blocks"
-                    )
-                    .into(),
-                ));
-            }
-
-            if let Message::User { content } = message
-                && let Some((position, result)) =
-                    content
-                        .iter()
-                        .enumerate()
-                        .find_map(|(position, item)| match item {
+                    for (position, item) in content.iter().enumerate() {
+                        // Exhaustive on purpose: a future variant that carries
+                        // its own request-direction block list must decide here
+                        // whether its emptiness is checked, instead of slipping
+                        // past a wildcard un-validated.
+                        match item {
                             UserContent::ToolResult(result) if result.content.is_empty() => {
-                                Some((position, result))
+                                let name = &result.name;
+                                return Err(CompletionError::RequestError(
+                                    format!(
+                                        "tool result for `{name}` at index {position} of the \
+                                         user message at index {index} has no content; \
+                                         providers reject empty content blocks"
+                                    )
+                                    .into(),
+                                ));
                             }
-                            _ => None,
-                        })
-            {
-                let name = &result.name;
-                return Err(CompletionError::RequestError(
-                    format!(
-                        "tool result for `{name}` at index {position} of the user message at \
-                         index {index} has no content; providers reject empty content blocks"
-                    )
-                    .into(),
-                ));
+                            UserContent::ToolResult(_)
+                            | UserContent::Text(_)
+                            | UserContent::Image(_)
+                            | UserContent::Audio(_)
+                            | UserContent::Video(_)
+                            | UserContent::Document(_) => {}
+                        }
+                    }
+                }
             }
         }
 
@@ -856,7 +870,7 @@ impl CompletionRequest {
     }
 
     pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
-        let mut chat_history = self.chat_history.to_vec();
+        let mut chat_history = self.chat_history.clone();
         if let Some(documents) = self.normalized_documents() {
             let insert_at = chat_history
                 .iter()

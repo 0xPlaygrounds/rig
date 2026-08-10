@@ -565,7 +565,7 @@ mod tests {
         ) -> ObservationAction {
             *self.snapshot.lock().expect("extractor response snapshot") = Some((
                 event.prompt.clone(),
-                event.content.to_vec(),
+                event.content.clone(),
                 event.usage,
                 event.message_id.map(str::to_owned),
             ));

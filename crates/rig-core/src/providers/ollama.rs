@@ -1326,6 +1326,14 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
 
 /// Conversion from provider Message to a completion message.
 /// This is needed so that responses can be converted back into chat history.
+///
+/// An assistant message with empty `content` and no thinking or tool calls
+/// converts to **empty** message content — no fabricated empty-text block.
+/// Such a message cannot be replayed through the request boundary
+/// (`validate_message_content` rejects a content-less assistant message);
+/// callers ingesting raw Ollama history should filter empty assistant
+/// messages rather than expect rig to invent content for them. The agent
+/// loop never produces this shape: it drops empty turns before history.
 impl From<Message> for crate::completion::Message {
     fn from(msg: Message) -> Self {
         match msg {
@@ -1710,7 +1718,6 @@ mod tests {
         let comp_msg: crate::completion::Message = provider_msg.into();
         match comp_msg {
             crate::completion::Message::User { content } => {
-                // Assume Vec<T> has a method first() to access the first element.
                 let first_content = content.first();
                 // The expected type is crate::completion::message::UserContent::Text wrapping a Text struct.
                 match first_content {
@@ -1721,6 +1728,52 @@ mod tests {
                 }
             }
             _ => panic!("Conversion from provider Message to completion Message failed"),
+        }
+    }
+
+    #[test]
+    fn empty_assistant_history_converts_to_empty_content_not_a_sentinel() {
+        // A content-less Ollama assistant message converts to genuinely empty
+        // message content — no fabricated `Text("")` block. Pinned because the
+        // consequence is deliberate: such a message cannot be replayed through
+        // the request boundary, and callers ingesting raw Ollama history
+        // filter it rather than rig inventing content (see the `From` doc).
+        let provider_msg = Message::Assistant {
+            content: String::new(),
+            thinking: None,
+            images: None,
+            name: None,
+            tool_calls: Vec::new(),
+        };
+        let comp_msg: crate::completion::Message = provider_msg.into();
+        match comp_msg {
+            crate::completion::Message::Assistant { content, .. } => {
+                assert!(content.is_empty(), "expected empty content: {content:?}");
+            }
+            other => panic!("expected an assistant message, got {other:?}"),
+        }
+
+        // A non-empty body still converts to exactly one text block.
+        let provider_msg = Message::Assistant {
+            content: "hello".to_owned(),
+            thinking: None,
+            images: None,
+            name: None,
+            tool_calls: Vec::new(),
+        };
+        let comp_msg: crate::completion::Message = provider_msg.into();
+        match comp_msg {
+            crate::completion::Message::Assistant { content, .. } => {
+                assert!(
+                    matches!(
+                        content.as_slice(),
+                        [crate::completion::message::AssistantContent::Text(text)]
+                            if text.text == "hello"
+                    ),
+                    "unexpected content: {content:?}"
+                );
+            }
+            other => panic!("expected an assistant message, got {other:?}"),
         }
     }
 

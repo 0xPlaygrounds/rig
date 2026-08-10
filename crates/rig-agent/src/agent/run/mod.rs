@@ -868,7 +868,7 @@ impl AgentRun {
 
         self.record_completion_call(turn.usage);
 
-        let items: Vec<AssistantContent> = turn.choice.to_vec();
+        let items: Vec<AssistantContent> = turn.choice.clone();
         let has_tool_calls = items
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));

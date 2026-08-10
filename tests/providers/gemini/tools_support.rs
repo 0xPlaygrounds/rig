@@ -386,11 +386,11 @@ impl Tool for BadgeImageTool {
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        Ok(ToolOutput::content(vec![ToolResultContent::image_base64(
+        Ok(ToolOutput::one(ToolResultContent::image_base64(
             RED_PIXEL_PNG_BASE64,
             Some(ImageMediaType::PNG),
             None,
-        )]))
+        )))
     }
 }
 
