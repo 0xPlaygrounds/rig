@@ -22,11 +22,10 @@ fn build_video_prompt() -> Result<Message> {
             UserContent::Video(Video {
                 data: rig::message::DocumentSourceKind::Url(VIDEO_URL.to_string()),
                 media_type: None,
-                additional_params: Some(json!({
-                    "video_metadata": {
-                        "fps": 0.2
-                    }
-                })),
+                additional_params: rig::message::AdditionalParams::from_entries([(
+                    "video_metadata",
+                    json!({ "fps": 0.2 }),
+                )]),
             }),
         ],
     })

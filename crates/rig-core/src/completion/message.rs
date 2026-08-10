@@ -702,60 +702,248 @@ impl ToolFunction {
 // Base content models
 // ================================================================
 
-/// Canonicalize a provider-extras value: `null` and the empty object both
-/// mean "no extras" and become `None`. The one home for that rule — the
-/// content-block deserializers route through it, and producers (streaming
-/// accumulation, provider conversions) apply it before storing, so a stored
-/// `additional_params` is either `None` or carries data. Persisted and
-/// provider-produced values are therefore always canonical; readers still ask
-/// [`params_carry_data`] rather than `is_some()`, because the fields are
-/// public and out-of-tree code can store an uncanonicalized `Some({})`
-/// directly.
-pub fn non_empty_params(value: serde_json::Value) -> Option<serde_json::Value> {
-    Some(value).filter(|value| params_carry_data(Some(value)))
+/// Provider extras on a content block: a non-empty JSON object, by
+/// construction.
+///
+/// The serialized form is the bare object (`#[serde(transparent)]`), so the
+/// wire shape of an `additional_params` field is a named key carrying an
+/// object — never flattened into the block's own key namespace. The type
+/// carries the whole params contract, so no call-site convention is needed:
+///
+/// - `Some(AdditionalParams)` always carries data. The constructors collapse
+///   an empty map to `None` and the inner map is private, so emptiness checks
+///   on a params field are a plain `is_none()`/`is_some()` — no tolerant
+///   shim, in-tree or out.
+/// - A non-object params value is unrepresentable in memory, so serialization
+///   can never emit a value deserialization rejects: what a live run writes,
+///   a restored run loads.
+/// - On decode, `null` and `{}` canonicalize to an absent field (see
+///   [`optional_additional_params`]) and any other non-object value is a loud
+///   error.
+///
+/// The block structs themselves follow the complementary tolerance doctrine:
+/// a known field with the wrong shape is a loud decode error, an *unknown*
+/// key on a block is ignored (never captured, never replayed), and an unknown
+/// content-block tag is a loud error. The params are provider-specific: a
+/// serializer replays only params it recognizes as its own wire's.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct AdditionalParams(serde_json::Map<String, serde_json::Value>);
+
+impl AdditionalParams {
+    /// The canonical constructor: `None` when the map is empty.
+    pub fn new(map: serde_json::Map<String, serde_json::Value>) -> Option<Self> {
+        if map.is_empty() {
+            None
+        } else {
+            Some(Self(map))
+        }
+    }
+
+    /// Build from `(key, value)` entries; `None` when the iterator yields
+    /// none. `Option<(K, Value)>` is such an iterator, so a conditional
+    /// single-key params reads as
+    /// `AdditionalParams::from_entries(guard.then(|| (key, value)))`.
+    pub fn from_entries<K, I>(entries: I) -> Option<Self>
+    where
+        K: Into<String>,
+        I: IntoIterator<Item = (K, serde_json::Value)>,
+    {
+        Self::new(
+            entries
+                .into_iter()
+                .map(|(key, value)| (key.into(), value))
+                .collect(),
+        )
+    }
+
+    /// The value stored under `key`, when present.
+    pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
+        self.0.get(key)
+    }
+
+    /// The underlying (non-empty) object.
+    pub fn as_map(&self) -> &serde_json::Map<String, serde_json::Value> {
+        &self.0
+    }
+
+    /// The params as a bare JSON object value.
+    pub fn into_value(self) -> serde_json::Value {
+        serde_json::Value::Object(self.0)
+    }
+
+    /// Deep-merge `incoming` into `self`: arrays concatenate (streamed
+    /// citation deltas), objects merge recursively, scalars take the
+    /// incoming value.
+    pub fn merge(&mut self, incoming: Self) {
+        fn merge_value(existing: &mut serde_json::Value, incoming: serde_json::Value) {
+            match (existing, incoming) {
+                (
+                    serde_json::Value::Object(existing_map),
+                    serde_json::Value::Object(incoming_map),
+                ) => {
+                    for (key, incoming_value) in incoming_map {
+                        match existing_map.get_mut(&key) {
+                            Some(existing_value) => merge_value(existing_value, incoming_value),
+                            None => {
+                                existing_map.insert(key, incoming_value);
+                            }
+                        }
+                    }
+                }
+                (
+                    serde_json::Value::Array(existing_array),
+                    serde_json::Value::Array(mut incoming_array),
+                ) => existing_array.append(&mut incoming_array),
+                (existing, incoming) => *existing = incoming,
+            }
+        }
+        for (key, incoming_value) in incoming.0 {
+            match self.0.get_mut(&key) {
+                Some(existing_value) => merge_value(existing_value, incoming_value),
+                None => {
+                    self.0.insert(key, incoming_value);
+                }
+            }
+        }
+    }
+
+    /// Build from a JSON value: `Ok(None)` for `null` and the empty object
+    /// (canonical absence), `Ok(Some)` for a non-empty object, and `Err`
+    /// handing the value back otherwise — a non-object is never silently
+    /// swallowed; the caller decides loud versus lossy.
+    pub fn try_from_value(value: serde_json::Value) -> Result<Option<Self>, serde_json::Value> {
+        match value {
+            serde_json::Value::Null => Ok(None),
+            serde_json::Value::Object(map) => Ok(Self::new(map)),
+            other => Err(other),
+        }
+    }
 }
 
-/// The read-side spelling of the same rule: whether an optional params slot
-/// actually carries data. `None`, `null`, and `{}` all mean "no extras" —
-/// readers that must be robust to an uncanonicalized in-memory value (the
-/// fields are public, so out-of-tree code can store `Some({})` directly) ask
-/// this instead of `is_some()`.
-pub fn params_carry_data(params: Option<&serde_json::Value>) -> bool {
-    params.is_some_and(|value| {
-        !value.is_null() && !value.as_object().is_some_and(serde_json::Map::is_empty)
-    })
+impl From<AdditionalParams> for serde_json::Value {
+    fn from(params: AdditionalParams) -> Self {
+        params.into_value()
+    }
 }
 
-/// Serialize-side spelling: skip the field entirely when it carries no data,
-/// so an uncanonicalized `Some({})`/`Some(null)` in memory serializes exactly
-/// like `None` and the persisted form is always canonical.
-fn params_carry_no_data(params: &Option<serde_json::Value>) -> bool {
-    !params_carry_data(params.as_ref())
+impl std::ops::Index<&str> for AdditionalParams {
+    type Output = serde_json::Value;
+
+    /// Panics when the key is absent — the mirror of `serde_json::Map`'s
+    /// `Index`, for test assertions and quick extraction.
+    #[allow(clippy::indexing_slicing)]
+    fn index(&self, key: &str) -> &serde_json::Value {
+        &self.0[key]
+    }
 }
 
-/// Serde route into [`non_empty_params`]: an explicit `null` or `{}` in the
-/// JSON decodes as `None`, exactly like an absent field — so a mechanically
+impl<'de> Deserialize<'de> for AdditionalParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match serde_json::Value::deserialize(deserializer)? {
+            serde_json::Value::Object(map) if !map.is_empty() => Ok(Self(map)),
+            serde_json::Value::Object(_) => Err(serde::de::Error::custom(
+                "`additional_params` carries no data — omit the field (an `Option` \
+                 field routed through `optional_additional_params` canonicalizes \
+                 `{}` to absent)",
+            )),
+            _ => Err(serde::de::Error::custom(
+                "`additional_params` must be a JSON object (or null)",
+            )),
+        }
+    }
+}
+
+/// Migration verification: every key path present in `original` (with a
+/// non-`null` value) that is missing or unequal after a tolerant
+/// load-and-reserialize round trip.
+///
+/// The runtime load path ignores unknown keys on content blocks, so a 0.41
+/// history whose flattened provider extras were never re-nested under
+/// `additional_params` loads *silently minus those keys*. This is the opt-in
+/// detector MIGRATING's recipe runs over persisted history once, at
+/// migration time: load a message tolerantly, re-serialize it, and every
+/// dropped key surfaces here by path. An empty result means the history
+/// survives the round trip; keys the current writer *adds* (defaults such as
+/// an explicit `null`) are not differences.
+pub fn keys_lost_in_round_trip(
+    original: &serde_json::Value,
+    round_tripped: &serde_json::Value,
+) -> Vec<String> {
+    fn walk(
+        original: &serde_json::Value,
+        round_tripped: &serde_json::Value,
+        path: &mut String,
+        lost: &mut Vec<String>,
+    ) {
+        match (original, round_tripped) {
+            (serde_json::Value::Object(original_map), serde_json::Value::Object(round_map)) => {
+                for (key, original_value) in original_map {
+                    if original_value.is_null() {
+                        continue;
+                    }
+                    let checkpoint = path.len();
+                    if !path.is_empty() {
+                        path.push('.');
+                    }
+                    path.push_str(key);
+                    match round_map.get(key) {
+                        Some(round_value) => walk(original_value, round_value, path, lost),
+                        None => lost.push(path.clone()),
+                    }
+                    path.truncate(checkpoint);
+                }
+            }
+            (serde_json::Value::Array(original_items), serde_json::Value::Array(round_items)) => {
+                for (index, original_value) in original_items.iter().enumerate() {
+                    let checkpoint = path.len();
+                    if !path.is_empty() {
+                        path.push('.');
+                    }
+                    path.push_str(&index.to_string());
+                    match round_items.get(index) {
+                        Some(round_value) => walk(original_value, round_value, path, lost),
+                        None => lost.push(path.clone()),
+                    }
+                    path.truncate(checkpoint);
+                }
+            }
+            (original, round_tripped) => {
+                if original != round_tripped {
+                    lost.push(path.clone());
+                }
+            }
+        }
+    }
+
+    let mut lost = Vec::new();
+    walk(original, round_tripped, &mut String::new(), &mut lost);
+    lost
+}
+
+/// Serde route for `Option<AdditionalParams>` fields: an explicit `null` or
+/// `{}` decodes as `None`, exactly like an absent field — a mechanically
 /// migrated block that wrote `"additional_params": {}` classifies identically
-/// to one that omitted the key. Any other non-object value is a decode error:
-/// extras are a keyed namespace (every producer stores an object, every
-/// extractor `get`s a key), so a mis-migrated `[]` or bare string is
-/// malformed data that must fail loudly — same doctrine as
-/// `deny_unknown_fields` on the block structs — not load as a phantom
-/// annotation no reader can see.
-fn params_as_none_when_empty<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
+/// to one that omitted the key. Any other non-object value is a loud decode
+/// error: extras are a keyed namespace (every producer stores an object,
+/// every extractor `get`s a key), so a mis-migrated `[]` or bare string is
+/// malformed data, not a phantom annotation no reader can see.
+pub fn optional_additional_params<'de, D>(
+    deserializer: D,
+) -> Result<Option<AdditionalParams>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let params = Option::<serde_json::Value>::deserialize(deserializer)?;
-    if let Some(value) = &params
-        && !value.is_null()
-        && !value.is_object()
-    {
-        return Err(serde::de::Error::custom(
+    match Option::<serde_json::Value>::deserialize(deserializer)? {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Object(map)) => Ok(AdditionalParams::new(map)),
+        Some(_) => Err(serde::de::Error::custom(
             "`additional_params` must be a JSON object (or null)",
-        ));
+        )),
     }
-    Ok(params.and_then(non_empty_params))
 }
 
 /// Basic text content.
@@ -765,20 +953,20 @@ where
 /// blocks). It is a **named** field in the serialized form — never flattened
 /// into the block's own key namespace, so a stray key can neither shadow the
 /// enum tag nor be silently captured, and an absent field decodes as `None`
-/// (no empty-map artifact). The params are provider-specific: a serializer
-/// replays only params it recognizes as its own wire's.
+/// (no empty-map artifact). An unknown key on the block itself is ignored on
+/// decode — tolerated, never captured — so histories written by a newer rig
+/// stay loadable; [`AdditionalParams`] documents the full doctrine.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Text {
     /// Text content.
     pub text: String,
     /// Provider-specific text fields.
     #[serde(
         default,
-        deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "params_carry_no_data"
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
     )]
-    pub additional_params: Option<serde_json::Value>,
+    pub additional_params: Option<AdditionalParams>,
 }
 
 impl Text {
@@ -805,7 +993,6 @@ impl std::fmt::Display for Text {
 
 /// Image content containing image data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Image {
     /// Image source data.
     pub data: DocumentSourceKind,
@@ -818,10 +1005,10 @@ pub struct Image {
     /// Provider-specific image fields.
     #[serde(
         default,
-        deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "params_carry_no_data"
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
     )]
-    pub additional_params: Option<serde_json::Value>,
+    pub additional_params: Option<AdditionalParams>,
 }
 
 impl Image {
@@ -923,7 +1110,6 @@ impl std::fmt::Display for DocumentSourceKind {
 
 /// Audio content containing audio data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Audio {
     /// Audio source data.
     pub data: DocumentSourceKind,
@@ -933,15 +1119,14 @@ pub struct Audio {
     /// Provider-specific audio fields.
     #[serde(
         default,
-        deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "params_carry_no_data"
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
     )]
-    pub additional_params: Option<serde_json::Value>,
+    pub additional_params: Option<AdditionalParams>,
 }
 
 /// Video content containing video data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Video {
     /// Video source data.
     pub data: DocumentSourceKind,
@@ -951,15 +1136,14 @@ pub struct Video {
     /// Provider-specific video fields.
     #[serde(
         default,
-        deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "params_carry_no_data"
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
     )]
-    pub additional_params: Option<serde_json::Value>,
+    pub additional_params: Option<AdditionalParams>,
 }
 
 /// Document content containing document data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Document {
     /// Document source data.
     pub data: DocumentSourceKind,
@@ -969,10 +1153,10 @@ pub struct Document {
     /// Provider-specific document fields.
     #[serde(
         default,
-        deserialize_with = "params_as_none_when_empty",
-        skip_serializing_if = "params_carry_no_data"
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
     )]
-    pub additional_params: Option<serde_json::Value>,
+    pub additional_params: Option<AdditionalParams>,
 }
 
 /// Describes the format of the content, which can be base64 or string.
@@ -1143,6 +1327,33 @@ impl Message {
 }
 
 impl UserContent {
+    /// Provider extras on this content block, when the block carries the
+    /// slot and it holds data.
+    ///
+    /// One accessor instead of per-call-site matching: the non-carrying
+    /// variant is named (never `_`), so adding a variant forces an explicit
+    /// decision here while every call site stays untouched.
+    pub fn additional_params(&self) -> Option<&AdditionalParams> {
+        match self {
+            Self::Text(Text {
+                additional_params, ..
+            })
+            | Self::Image(Image {
+                additional_params, ..
+            })
+            | Self::Audio(Audio {
+                additional_params, ..
+            })
+            | Self::Video(Video {
+                additional_params, ..
+            })
+            | Self::Document(Document {
+                additional_params, ..
+            }) => additional_params.as_ref(),
+            Self::ToolResult(_) => None,
+        }
+    }
+
     /// Helper constructor to make creating user text content easier.
     pub fn text(text: impl Into<String>) -> Self {
         UserContent::Text(text.into().into())
@@ -1357,6 +1568,27 @@ impl UserContent {
 }
 
 impl AssistantContent {
+    /// Provider extras on this content block, when the block carries the
+    /// slot and it holds data.
+    ///
+    /// One accessor instead of per-call-site matching: the non-carrying
+    /// variants are named (never `_`), so adding a variant forces an
+    /// explicit decision here while every call site stays untouched.
+    /// `ToolCall` extras live on [`ToolCall::additional_params`] under a
+    /// looser contract (any JSON value) and are deliberately not surfaced
+    /// here.
+    pub fn additional_params(&self) -> Option<&AdditionalParams> {
+        match self {
+            Self::Text(Text {
+                additional_params, ..
+            })
+            | Self::Image(Image {
+                additional_params, ..
+            }) => additional_params.as_ref(),
+            Self::ToolCall(_) | Self::Reasoning(_) => None,
+        }
+    }
+
     /// Helper constructor to make creating assistant text content easier.
     pub fn text(text: impl Into<String>) -> Self {
         AssistantContent::Text(text.into().into())
@@ -1841,7 +2073,7 @@ impl From<MessageError> for CompletionError {
 mod tests {
     use serde::{Deserialize, Serialize};
 
-    use super::{Message, Reasoning, ReasoningContent, Text, ToolResultContent};
+    use super::{AdditionalParams, Message, Reasoning, ReasoningContent, Text, ToolResultContent};
 
     mod vec_content_serde {
         use super::super::{AssistantContent, Message, UserContent};
@@ -1976,10 +2208,12 @@ mod tests {
 
     #[test]
     fn empty_params_canonicalize_to_none_in_both_serde_directions() {
-        // The `non_empty_params` contract, pinned where it lives: an explicit
-        // `{}` or `null` decodes as `None` exactly like an absent field, data
-        // survives, and an uncanonicalized in-memory `Some({})`/`Some(null)`
-        // never reaches the wire.
+        // The `AdditionalParams` contract, pinned where it lives. One
+        // fixture, every direction: canonicalization, round-trip, tolerance,
+        // and rejection.
+
+        // An explicit `{}` or `null` decodes as `None` exactly like an
+        // absent field.
         for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
             let text: Text = serde_json::from_value(
                 serde_json::json!({"text": "x", "additional_params": empty_spelling}),
@@ -1988,26 +2222,47 @@ mod tests {
             assert_eq!(text.additional_params, None);
         }
 
+        // Data survives a round trip value-identically, and `Some` params
+        // always carry data — `AdditionalParams` has no empty value, so the
+        // old uncanonicalized-`Some({})` hazard is unrepresentable rather
+        // than tolerated.
         let text: Text = serde_json::from_value(
             serde_json::json!({"text": "x", "additional_params": {"citations": [1]}}),
         )
         .expect("deserialize");
         assert_eq!(
             text.additional_params,
-            Some(serde_json::json!({"citations": [1]}))
+            AdditionalParams::from_entries([("citations", serde_json::json!([1]))])
+        );
+        assert_eq!(
+            text.additional_params
+                .as_ref()
+                .and_then(|params| params.get("citations")),
+            Some(&serde_json::json!([1]))
+        );
+        let round: Text = serde_json::from_value(serde_json::to_value(&text).expect("serialize"))
+            .expect("round trip");
+        assert_eq!(round, text);
+
+        // The empty map canonicalizes to `None` at the constructor, so it
+        // never reaches serialization at all.
+        assert_eq!(AdditionalParams::new(serde_json::Map::new()), None);
+        assert_eq!(
+            AdditionalParams::try_from_value(serde_json::json!({})).expect("object"),
+            None
         );
 
-        for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
-            let uncanonical = Text {
-                text: "x".to_owned(),
-                additional_params: Some(empty_spelling),
-            };
-            let serialized = serde_json::to_value(&uncanonical).expect("serialize");
-            assert!(
-                serialized.get("additional_params").is_none(),
-                "empty params must not serialize: {serialized}"
-            );
-        }
+        // An unknown key on the block itself is tolerated and dropped —
+        // never an error, never captured into params — so histories written
+        // by a newer rig (or 0.41 flattened extras that were never
+        // re-nested) still load; MIGRATING's strict-decode recipe is the
+        // opt-in detector for the dropped keys.
+        let tolerant: Text = serde_json::from_value(
+            serde_json::json!({"text": "x", "citations": ["stray"], "future_field": 1}),
+        )
+        .expect("unknown keys on a block must not fail the decode");
+        assert_eq!(tolerant.text, "x");
+        assert_eq!(tolerant.additional_params, None);
 
         // Extras are a keyed namespace: a non-object carrier (the shape a
         // mis-firing migration script writes) is malformed data and fails
@@ -2022,7 +2277,55 @@ mod tests {
                 err.to_string().contains("must be a JSON object"),
                 "unexpected error: {err}"
             );
+            assert!(
+                AdditionalParams::try_from_value(serde_json::json!([])).is_err(),
+                "try_from_value must hand a non-object back, not swallow it"
+            );
         }
+    }
+
+    #[test]
+    fn round_trip_diff_recipe_detects_every_dropped_key() {
+        // Pins MIGRATING's opt-in verification recipe: the runtime load
+        // path tolerates unknown keys (see the tolerance case in
+        // `empty_params_canonicalize_to_none_in_both_serde_directions`),
+        // and a migration script detects what tolerance dropped by loading,
+        // re-serializing, and asking `keys_lost_in_round_trip` — a
+        // serde_ignored-based recipe cannot serve here, because the
+        // internally tagged enums buffer their content and hide ignored
+        // keys from its callback.
+        let migrated = serde_json::json!({
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "cited", "citations": ["not re-nested"]},
+                {"type": "text", "text": "clean",
+                 "additional_params": {"citations": ["re-nested"]}},
+            ],
+        });
+        let loaded: Message =
+            serde_json::from_value(migrated.clone()).expect("tolerant decode must succeed");
+        let reserialized = serde_json::to_value(&loaded).expect("serialize");
+        assert_eq!(
+            super::keys_lost_in_round_trip(&migrated, &reserialized),
+            vec!["content.0.citations".to_string()],
+            "every dropped key must be reported by path, and only dropped keys \
+             — writer-added defaults are not differences"
+        );
+
+        // A fully re-nested history survives whole: the recipe's success
+        // condition is an empty list.
+        let clean = serde_json::json!({
+            "role": "assistant",
+            "content": [{"type": "text", "text": "clean",
+                         "additional_params": {"citations": ["re-nested"]}}],
+        });
+        let loaded: Message = serde_json::from_value(clean.clone()).expect("decode");
+        let reserialized = serde_json::to_value(&loaded).expect("serialize");
+        assert_eq!(
+            super::keys_lost_in_round_trip(&clean, &reserialized),
+            Vec::<String>::new(),
+            "clean history must survive the round trip whole"
+        );
     }
 
     #[test]

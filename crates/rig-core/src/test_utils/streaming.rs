@@ -14,6 +14,21 @@ pub fn mock_final(usage: Usage) -> StreamFinal {
     StreamFinal::new(MOCK_PROVIDER, usage)
 }
 
+/// Convert a fixture JSON value into canonical params: `null`/`{}` mean
+/// "none", any other non-object is a scripting mistake surfaced as a stream
+/// error.
+fn fixture_additional_params(
+    value: serde_json::Value,
+) -> Result<Option<crate::message::AdditionalParams>, CompletionError> {
+    match value {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::Object(map) => Ok(crate::message::AdditionalParams::new(map)),
+        other => Err(CompletionError::ProviderError(format!(
+            "mock stream fixture `additional_params` must be a JSON object, got: {other}"
+        ))),
+    }
+}
+
 /// Build a terminal record whose usage has only `total_tokens` set.
 pub fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
     let mut usage = Usage::new();
@@ -221,10 +236,22 @@ impl MockStreamEvent {
                 additional_params,
             } => Ok(RawStreamingChoice::TextStart {
                 id: fixture_part_id(id),
-                additional_params,
+                additional_params: additional_params
+                    .map(fixture_additional_params)
+                    .transpose()?
+                    .flatten(),
             }),
             Self::TextAdditionalParams(additional_params) => {
-                Ok(RawStreamingChoice::TextAdditionalParams(additional_params))
+                match fixture_additional_params(additional_params)? {
+                    // The real variant is non-empty by construction; an empty
+                    // fixture object is a scripting mistake, not a no-op.
+                    None => Err(CompletionError::ProviderError(
+                        "mock stream fixture `TextAdditionalParams` carries no data — \
+                         drop the event instead"
+                            .to_string(),
+                    )),
+                    Some(params) => Ok(RawStreamingChoice::TextAdditionalParams(params)),
+                }
             }
             Self::ToolCall {
                 id,

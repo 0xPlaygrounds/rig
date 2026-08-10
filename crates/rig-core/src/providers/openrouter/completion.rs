@@ -849,13 +849,14 @@ fn parse_data_uri(url: &str) -> Option<(&str, &str)> {
     url.strip_prefix("data:")?.split_once(";base64,")
 }
 
-fn openrouter_response_image_params() -> serde_json::Value {
-    serde_json::json!({
-        "openrouter": {
+fn openrouter_response_image_params() -> Option<message::AdditionalParams> {
+    message::AdditionalParams::from_entries([(
+        "openrouter",
+        serde_json::json!({
             OPENROUTER_RESPONSE_ONLY_KEY: true,
             OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY: OPENROUTER_ASSISTANT_IMAGES_SOURCE,
-        }
-    })
+        }),
+    )])
 }
 
 fn response_image_to_assistant_content(image: &ResponseImage) -> completion::AssistantContent {
@@ -865,14 +866,14 @@ fn response_image_to_assistant_content(image: &ResponseImage) -> completion::Ass
             data: message::DocumentSourceKind::Base64(b64.to_string()),
             media_type: message::ImageMediaType::from_mime_type(mime),
             detail: None,
-            additional_params: Some(openrouter_response_image_params()),
+            additional_params: openrouter_response_image_params(),
         })
     } else {
         completion::AssistantContent::Image(message::Image {
             data: message::DocumentSourceKind::Url(url.clone()),
             media_type: None,
             detail: None,
-            additional_params: Some(openrouter_response_image_params()),
+            additional_params: openrouter_response_image_params(),
         })
     }
 }

@@ -39,10 +39,11 @@ fn cited_rust_document() -> Document {
     Document {
         data: DocumentSourceKind::String(rust_document()),
         media_type: Some(DocumentMediaType::TXT),
-        additional_params: Some(json!({
+        additional_params: rig::message::AdditionalParams::try_from_value(json!({
             "title": "Rust Goals",
             "citations": { "enabled": true }
-        })),
+        }))
+        .expect("object params"),
     }
 }
 

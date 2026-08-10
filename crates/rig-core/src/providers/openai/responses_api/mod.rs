@@ -584,14 +584,22 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
                 for assistant_content in content {
                     match assistant_content {
-                        crate::message::AssistantContent::Text(Text { text, .. }) => {
+                        crate::message::AssistantContent::Text(Text {
+                            text,
+                            additional_params,
+                        }) => {
                             if text.is_empty() {
                                 continue;
                             }
                             let message = if let Some(id) = id.clone() {
                                 Message::Assistant {
                                     content: vec![AssistantContentType::Text(
-                                        AssistantContent::OutputText(OutputText::new(text)),
+                                        AssistantContent::OutputText(
+                                            OutputText::from_message_text(
+                                                text,
+                                                additional_params.as_ref(),
+                                            ),
+                                        ),
                                     )],
                                     id,
                                     name: None,
@@ -2663,7 +2671,32 @@ impl OutputText {
             extras: Map::new(),
         }
     }
+
+    /// Rebuild a wire block from a rig text block, re-attaching only the
+    /// extras this wire recognizes as its own: the sibling keys captured off
+    /// an `output_text` block at ingest (see
+    /// [`From<AssistantContent> for completion::AssistantContent`]).
+    fn from_message_text(
+        text: impl Into<String>,
+        additional_params: Option<&crate::message::AdditionalParams>,
+    ) -> Self {
+        let extras = additional_params
+            .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY))
+            .and_then(Value::as_object)
+            .cloned()
+            .unwrap_or_default();
+        Self {
+            text: text.into(),
+            extras,
+        }
+    }
 }
+
+/// Key under which an `output_text` block's wire extras (`annotations`,
+/// `logprobs`, future keys) ride on the generic
+/// [`Text::additional_params`](crate::message::Text) — captured
+/// unconditionally at ingest, replayed only by this wire's serializer.
+pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
 
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
@@ -2671,8 +2704,28 @@ impl From<AssistantContent> for completion::AssistantContent {
             AssistantContent::Refusal { refusal } => {
                 completion::AssistantContent::Text(Text::new(refusal))
             }
-            AssistantContent::OutputText(OutputText { text, .. }) => {
-                completion::AssistantContent::Text(Text::new(text))
+            // Keep this destructuring exhaustive so new wire fields force an
+            // explicit capture-or-drop decision.
+            AssistantContent::OutputText(OutputText { text, extras }) => {
+                // Capture only extras that carry data: the wire stamps
+                // `"annotations": []` / `"logprobs": []` on every block, and
+                // empty carriers as params would change the replayed request
+                // bytes for content that carries nothing.
+                let extras: Map<String, Value> = extras
+                    .into_iter()
+                    .filter(|(_, value)| {
+                        !(value.is_null()
+                            || value.as_array().is_some_and(Vec::is_empty)
+                            || value.as_object().is_some_and(Map::is_empty))
+                    })
+                    .collect();
+                completion::AssistantContent::Text(Text {
+                    text,
+                    additional_params: crate::message::AdditionalParams::from_entries(
+                        (!extras.is_empty())
+                            .then_some((OPENAI_RESPONSES_EXTRAS_KEY, Value::Object(extras))),
+                    ),
+                })
             }
         }
     }
@@ -2901,7 +2954,10 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 for assistant_content in content {
                     match assistant_content {
-                        crate::message::AssistantContent::Text(Text { text, .. }) => {
+                        crate::message::AssistantContent::Text(Text {
+                            text,
+                            additional_params,
+                        }) => {
                             if text.is_empty() {
                                 continue;
                             }
@@ -2910,7 +2966,12 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     id,
                                     status: ToolStatus::Completed,
                                     content: vec![AssistantContentType::Text(
-                                        AssistantContent::OutputText(OutputText::new(text)),
+                                        AssistantContent::OutputText(
+                                            OutputText::from_message_text(
+                                                text,
+                                                additional_params.as_ref(),
+                                            ),
+                                        ),
                                     )],
                                     name: None,
                                 });
@@ -2993,6 +3054,51 @@ mod tests {
     use crate::test_utils::MockCompletionModel;
     use serde_json::json;
     use std::collections::HashMap;
+
+    #[test]
+    fn output_text_extras_survive_generic_conversion_and_replay() {
+        // Ingest capture is unconditional: the wire's sibling keys ride the
+        // generic block under this wire's params key. Replay is gated: only
+        // this wire's serializer reads them back, value-equal.
+        let mut extras = Map::new();
+        extras.insert(
+            "annotations".to_string(),
+            json!([{"type": "url_citation", "url": "https://example.com"}]),
+        );
+        let wire = OutputText {
+            text: "cited".to_string(),
+            extras: extras.clone(),
+        };
+        let generic: completion::AssistantContent = AssistantContent::OutputText(wire).into();
+        let completion::AssistantContent::Text(text) = &generic else {
+            panic!("expected a text block, got: {generic:?}");
+        };
+        assert_eq!(
+            text.additional_params
+                .as_ref()
+                .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)),
+            Some(&Value::Object(extras.clone()))
+        );
+
+        let replayed =
+            OutputText::from_message_text(text.text.clone(), text.additional_params.as_ref());
+        assert_eq!(replayed.text, "cited");
+        assert_eq!(replayed.extras, extras);
+
+        // A bare block stays bare in both directions.
+        let bare: completion::AssistantContent =
+            AssistantContent::OutputText(OutputText::new("plain")).into();
+        let completion::AssistantContent::Text(text) = &bare else {
+            panic!("expected a text block, got: {bare:?}");
+        };
+        assert_eq!(text.additional_params, None);
+        assert!(
+            OutputText::from_message_text("plain", None)
+                .extras
+                .is_empty(),
+            "no params, no extras"
+        );
+    }
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
         crate::completion::Document {

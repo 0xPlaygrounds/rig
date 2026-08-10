@@ -626,10 +626,9 @@ pub(crate) fn invalid_tool_retry_user_message(
 ///   nothing, and the agent curates it out of history exactly as it curates
 ///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
 ///   empty text block carries data and must not read as empty. Annotation is
-///   judged by [`rig_core::message::params_carry_data`] — the one home for
-///   the "`None`, `null`, and `{}` all mean no extras" rule — so an
-///   uncanonicalized in-memory `Some({})` (the fields are public) classifies
-///   exactly like the canonical `None`, live and restored alike (pinned by
+///   a plain `is_some()`: [`rig_core::message::AdditionalParams`] is
+///   non-empty by construction, so `Some` always carries data, live and
+///   restored alike (pinned by
 ///   `empty_turn_classification_survives_a_serde_round_trip`).
 ///
 /// This runs on turns flowing through the agent loop only. Caller-supplied
@@ -644,8 +643,7 @@ pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
         && matches!(
             choice.first(),
             Some(AssistantContent::Text(text))
-                if text.text.is_empty()
-                    && !rig_core::message::params_carry_data(text.additional_params.as_ref())
+                if text.text.is_empty() && text.additional_params.is_none()
         )
 }
 
@@ -1225,16 +1223,20 @@ mod tests {
             assert!(is_empty_assistant_turn(&migrated));
         }
 
-        // An *in-memory* `Some({})` — constructible by out-of-tree code, since
-        // the fields are public — classifies empty (the read-side rule), and
-        // its round-trip agrees.
-        let uncanonical = vec![AssistantContent::Text(rig_core::message::Text {
+        // The old uncanonicalized-`Some({})` hazard is unrepresentable:
+        // `AdditionalParams` has no empty value, so the only way to spell
+        // "no extras" in memory is `None` and live/restored classification
+        // agree by construction.
+        let canonical_absent = vec![AssistantContent::Text(rig_core::message::Text {
             text: String::new(),
-            additional_params: Some(serde_json::json!({})),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                serde_json::json!({}),
+            )
+            .expect("object params"),
         })];
-        assert!(is_empty_assistant_turn(&uncanonical));
+        assert!(is_empty_assistant_turn(&canonical_absent));
         let restored: Vec<AssistantContent> =
-            serde_json::from_value(serde_json::to_value(&uncanonical).expect("serialize"))
+            serde_json::from_value(serde_json::to_value(&canonical_absent).expect("serialize"))
                 .expect("deserialize");
         assert!(is_empty_assistant_turn(&restored));
 
@@ -2490,7 +2492,7 @@ mod tests {
 
     #[tokio::test]
     async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
-        let metadata = json!({
+        let metadata = rig_core::message::AdditionalParams::try_from_value(json!({
             "citations": [{
                 "type": "web_search_result_location",
                 "cited_text": "Claude Shannon was born in 1916.",
@@ -2498,7 +2500,9 @@ mod tests {
                 "title": null,
                 "encrypted_index": "encrypted-reference"
             }]
-        });
+        }))
+        .expect("object params")
+        .expect("params carry data");
         let model =
             MockCompletionModel::new([MockTurn::from_content(AssistantContent::Text(Text {
                 text: String::new(),

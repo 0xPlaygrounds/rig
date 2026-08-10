@@ -38,7 +38,7 @@ use std::collections::{BTreeSet, HashMap};
 use serde::{Deserialize, Serialize};
 
 use rig_core::message::{
-    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty, params_carry_data,
+    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
 
 use crate::{
@@ -79,33 +79,23 @@ pub(crate) fn ordered_streaming_assistant_content(
     ))
 }
 
-/// Whether a [`StreamedAssistantContent::Unknown`] payload looks like rig
-/// assistant content whose strict stream-item decode failed, so excluding it
-/// from assembly loses transcript content. Two shapes qualify:
+/// Whether a [`StreamedAssistantContent::Unknown`] payload is rig assistant
+/// content, so excluding it from assembly loses transcript content.
 ///
-/// - a string `text` key with no `type` tag or a `"text"` tag: a text item
-///   with stray sibling keys (0.41's flatten wrote provider extras
-///   top-level) or the tagged [`AssistantContent`] serialization (stream
-///   items are untagged). The tagless arm can still fire on a genuinely
-///   unmodeled text-carrying frame, trading that noise for never missing a
-///   real loss;
-/// - any other rig [`AssistantContent`] tag (`toolcall`/`reasoning`/`image`):
-///   the tagged serialization from a replayed assistant block, which is not
-///   a stream-item shape (the untagged stream variants carry different
-///   keys). A dropped tool call additionally desyncs the turn — no pending
-///   call, no result.
+/// The predicate is the decoder itself — a payload that parses as a tagged
+/// [`AssistantContent`] block (`toolcall`/`reasoning`/`image` today, every
+/// future variant automatically) is a replayed assistant block, not a
+/// stream-item shape: the untagged stream variants carry different keys, so
+/// it lands in `Unknown` and its content would silently vanish. A dropped
+/// tool call additionally desyncs the turn — no pending call, no result.
 ///
-/// A `type` tag outside rig's own is a provider-native unmodeled item and
-/// stays quiet.
+/// Text does not reach this path: the tolerant block decode ignores unknown
+/// keys, so a tagged text block or a text item with stray sibling keys
+/// (0.41's flatten shape) decodes as `StreamedAssistantContent::Text` and
+/// its text is *assembled*, with only the stray keys dropped. Anything else
+/// in `Unknown` is a provider-native unmodeled item and stays quiet.
 fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
-    let tag = payload.get("type");
-    let failed_text_item = payload
-        .get("text")
-        .is_some_and(serde_json::Value::is_string)
-        && tag.is_none_or(|tag| tag == "text");
-    let replayed_rig_tag =
-        tag.is_some_and(|tag| tag == "toolcall" || tag == "reasoning" || tag == "image");
-    failed_text_item || replayed_rig_tag
+    serde_json::from_value::<AssistantContent>(payload.clone()).is_ok()
 }
 
 pub(crate) fn assistant_text_items_from_choice(
@@ -115,7 +105,7 @@ pub(crate) fn assistant_text_items_from_choice(
         .iter()
         .filter_map(|content| match content {
             AssistantContent::Text(text) => (!text.text.is_empty()
-                || params_carry_data(text.additional_params.as_ref()))
+                || text.additional_params.is_some())
             .then(|| AssistantContent::Text(text.clone())),
             _ => None,
         })
@@ -359,6 +349,10 @@ pub struct StreamedTurnAssembler {
     pending_tool_calls: Vec<(ToolCall, String)>,
     delta_states: HashMap<String, ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
+    /// Replayed assistant blocks excluded from assembly this turn (see
+    /// [`unknown_payload_loses_assistant_content`]): counted per item,
+    /// surfaced as one warning at [`Self::finish`].
+    excluded_assistant_content: usize,
 }
 
 impl StreamedTurnAssembler {
@@ -377,7 +371,16 @@ impl StreamedTurnAssembler {
             pending_tool_calls: Vec::new(),
             delta_states: HashMap::new(),
             pending_invalid: None,
+            excluded_assistant_content: 0,
         }
+    }
+
+    /// Replayed assistant blocks excluded from assembly so far this turn.
+    /// Zero on well-formed provider streams; non-zero means transcript
+    /// content was lost (one warning summarizes the count at
+    /// [`Self::finish`]).
+    pub fn excluded_assistant_content(&self) -> usize {
+        self.excluded_assistant_content
     }
 
     /// Aggregated assistant text streamed so far this turn (empty until the
@@ -674,16 +677,17 @@ impl StreamedTurnAssembler {
                 // it must not perturb text/tool-call/reasoning accumulation.
                 //
                 // The exclusion loses transcript content when the payload is
-                // rig assistant content that failed the strict stream-item
-                // decode, so that case is loud; the payload itself stays
-                // redacted.
+                // rig assistant content (a replayed tagged block, not a
+                // stream-item shape). Counted here — text deltas arrive
+                // per-token, so per-item warns could flood the log — and
+                // surfaced as one warning at turn end; the payload itself
+                // stays redacted.
                 if unknown_payload_loses_assistant_content(payload.value()) {
-                    tracing::warn!(
-                        "stream item excluded from the assembled assistant \
-                         message — it matches rig's tagged assistant-content \
-                         serialization or a text item with stray sibling keys, \
-                         neither of which is a stream-item shape; its content \
-                         is lost from assembled history"
+                    self.excluded_assistant_content += 1;
+                    tracing::debug!(
+                        excluded = self.excluded_assistant_content,
+                        "stream item is a replayed assistant block, not a \
+                         stream-item shape; excluded from assembly"
                     );
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
@@ -772,6 +776,20 @@ impl StreamedTurnAssembler {
         message_id: Option<String>,
         final_choice: &[AssistantContent],
     ) -> StreamedTurn {
+        // One warning per turn, not per item: replayed tagged assistant
+        // blocks are excluded from assembly (there is no
+        // `AssistantContent::Unknown` history slot), and that exclusion
+        // loses transcript content — a dropped tool call also desyncs the
+        // turn. Zero exclusions stay silent.
+        if self.excluded_assistant_content > 0 {
+            tracing::warn!(
+                excluded = self.excluded_assistant_content,
+                "stream items matching rig's tagged assistant-content \
+                 serialization were excluded from the assembled assistant \
+                 message — replayed assistant blocks are not stream-item \
+                 shapes, and their content is lost from assembled history"
+            );
+        }
         let reasoning = self.drain_reasoning();
         let choice = self.canonical_choice_with(reasoning, final_choice);
         let internal_call_ids: Vec<(String, String)> = self
@@ -924,17 +942,37 @@ mod tests {
 
     #[test]
     fn lost_content_heuristic_covers_replayed_rig_shapes_and_failed_text_decodes() {
-        // Every tagged assistant block — the serialized `AssistantContent`
-        // shapes MIGRATING teaches — fails the strict stream-item decode
-        // (stream items are untagged, with different keys) and must land in
-        // the loud path, not vanish silently. A dropped tool call is the
-        // worst case: it desyncs the turn.
-        for replayed in [
+        // Text never lands in `Unknown`: the tolerant block decode ignores
+        // unknown keys, so a tagged text block and a text item with stray
+        // sibling keys (0.41's flatten shape) both decode as stream text and
+        // their text is *assembled* — only the stray keys drop.
+        for preserved in [
             json!({"type": "text", "text": "hi"}),
+            json!({"text": "hi", "citations": []}),
+        ] {
+            assert!(
+                matches!(
+                    serde_json::from_value::<StreamedAssistantContent>(preserved.clone())
+                        .expect("tolerant decode"),
+                    StreamedAssistantContent::Text(Text { ref text, .. }) if text == "hi"
+                ),
+                "text-carrying item must decode as stream text: {preserved}"
+            );
+        }
+
+        // Every non-text tagged assistant block — the serialized
+        // `AssistantContent` shapes MIGRATING teaches — is not a stream-item
+        // shape (the untagged stream variants carry different keys), lands
+        // in `Unknown`, and must be loud: the predicate is the
+        // `AssistantContent` decoder itself, so a future variant is covered
+        // the day it is added. A dropped tool call is the worst case: it
+        // desyncs the turn.
+        let replayed_blocks = [
             json!({"type": "toolcall", "id": "call_1", "function": {"name": "add", "arguments": {}}}),
             json!({"type": "reasoning", "id": null, "content": []}),
-            json!({"type": "image", "data": "aGk="}),
-        ] {
+            json!({"type": "image", "data": {"type": "base64", "value": "aGk="}}),
+        ];
+        for replayed in &replayed_blocks {
             assert!(
                 matches!(
                     serde_json::from_value::<StreamedAssistantContent>(replayed.clone())
@@ -944,51 +982,58 @@ mod tests {
                 "replayed block must decode Unknown: {replayed}"
             );
             assert!(
-                unknown_payload_loses_assistant_content(&replayed),
+                unknown_payload_loses_assistant_content(replayed),
                 "replayed block must be loud: {replayed}"
             );
         }
 
-        // Stray sibling keys on a tagless text item — 0.41's flatten shape.
-        assert!(unknown_payload_loses_assistant_content(
-            &json!({"text": "hi", "citations": []})
-        ));
-        // Documented noise: a genuinely unmodeled tagless text-carrying
-        // frame also fires — the heuristic prefers that over missing a loss.
-        assert!(unknown_payload_loses_assistant_content(
-            &json!({"text": "hmm", "thought": true})
-        ));
-        // Provider-native unmodeled items carrying their own wire tag stay
-        // quiet, even when they also carry a `text` key.
-        assert!(!unknown_payload_loses_assistant_content(
-            &json!({"type": "web_search_call", "id": "ws_1"})
-        ));
-        assert!(!unknown_payload_loses_assistant_content(
-            &json!({"type": "output_text.annotation", "text": "cite"})
-        ));
-        // A non-string `text` value is not a text item.
-        assert!(!unknown_payload_loses_assistant_content(
-            &json!({"text": 42})
-        ));
+        // Provider-native unmodeled items stay quiet.
+        for provider_native in [
+            json!({"type": "web_search_call", "id": "ws_1"}),
+            json!({"type": "output_text.annotation", "text": "cite"}),
+            json!({"text": 42}),
+        ] {
+            assert!(
+                !unknown_payload_loses_assistant_content(&provider_native),
+                "provider-native item must stay quiet: {provider_native}"
+            );
+        }
+
+        // The assembler counts each excluded block once and stays otherwise
+        // silent — one warning summarizes the count at `finish`.
+        let mut asm = assembler();
+        assert_eq!(asm.excluded_assistant_content(), 0);
+        for replayed in &replayed_blocks {
+            asm.ingest(&StreamedAssistantContent::Unknown(replayed.clone().into()))
+                .expect("ingest unknown should succeed");
+        }
+        asm.ingest(&StreamedAssistantContent::Unknown(
+            json!({"type": "web_search_call", "id": "ws_1"}).into(),
+        ))
+        .expect("ingest unknown should succeed");
+        assert_eq!(asm.excluded_assistant_content(), replayed_blocks.len());
     }
 
     #[test]
-    fn choice_text_items_use_the_tolerant_params_rule() {
-        // An uncanonicalized `Some({})` — constructible by an out-of-tree
-        // `CompletionModel`, since the fields are public — serializes exactly
-        // like `None`, so keeping the block live would diverge from the
-        // restored run's classification. The reader must apply
-        // `params_carry_data`, not `is_some()`.
-        let empty_annotated = AssistantContent::Text(Text {
+    fn choice_text_items_judge_annotation_by_presence() {
+        // `AdditionalParams` is non-empty by construction — an empty carrier
+        // is unrepresentable (`try_from_value(json!({}))` yields `None`) —
+        // so plain `is_some()` is the whole annotation rule and live and
+        // restored classification agree by type.
+        let unannotated = AssistantContent::Text(Text {
             text: String::new(),
-            additional_params: Some(json!({})),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(json!({}))
+                .expect("object params"),
         });
-        assert!(assistant_text_items_from_choice(&[empty_annotated]).is_empty());
+        assert!(assistant_text_items_from_choice(&[unannotated]).is_empty());
 
         // A genuinely annotated empty block is content and survives.
         let annotated = AssistantContent::Text(Text {
             text: String::new(),
-            additional_params: Some(json!({"citations": [1]})),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                json!({"citations": [1]}),
+            )
+            .expect("object params"),
         });
         assert_eq!(assistant_text_items_from_choice(&[annotated]).len(), 1);
     }

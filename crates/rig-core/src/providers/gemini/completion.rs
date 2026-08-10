@@ -1190,7 +1190,7 @@ pub mod gemini_api_types {
                         thought: Some(false),
                         thought_signature: None,
                         part,
-                        additional_params,
+                        additional_params: additional_params.map(Into::into),
                     })
                 }
             }

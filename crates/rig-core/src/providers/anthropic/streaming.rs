@@ -651,9 +651,8 @@ fn handle_event(
                 None
             }
             ContentDelta::CitationsDelta { citation } => {
-                Some(Ok(RawStreamingChoice::TextAdditionalParams(json!({
-                    "citations": [citation]
-                }))))
+                crate::message::AdditionalParams::from_entries([("citations", json!([citation]))])
+                    .map(|params| Ok(RawStreamingChoice::TextAdditionalParams(params)))
             }
             ContentDelta::Unknown(value) => {
                 // Structural metadata only: a novel delta type can carry
@@ -670,9 +669,18 @@ fn handle_event(
             index,
             content_block,
         } => match content_block {
-            Content::Text { citations, .. } => {
-                let additional_params = crate::message::non_empty(citations.clone())
-                    .map(|citations| json!({ "citations": citations }));
+            // Keep this destructuring exhaustive so new wire fields force an
+            // explicit capture-or-drop decision: block-start `text` arrives
+            // via the deltas, and `cache_control` is a request-side
+            // directive — both deliberately dropped here.
+            Content::Text {
+                text: _,
+                citations,
+                cache_control: _,
+            } => {
+                let additional_params = crate::message::AdditionalParams::from_entries(
+                    (!citations.is_empty()).then(|| ("citations", json!(citations))),
+                );
                 Some(Ok(RawStreamingChoice::TextStart {
                     // Anthropic has no text item id; the content-block index
                     // is stable for the block's lifetime.
@@ -695,9 +703,10 @@ fn handle_event(
             raw @ (Content::WebSearchToolResult { .. }
             | Content::CodeExecutionToolResult { .. }) => Some(Ok(RawStreamingChoice::TextStart {
                 id: MintKind::Block.for_wire_index(*index as u64),
-                additional_params: Some(json!({
-                    super::completion::ANTHROPIC_RAW_CONTENT_KEY: raw
-                })),
+                additional_params: crate::message::AdditionalParams::from_entries([(
+                    super::completion::ANTHROPIC_RAW_CONTENT_KEY,
+                    json!(raw),
+                )]),
             })),
             Content::ToolUse { id, name, .. } => {
                 *current_tool_call = Some(id.clone());
@@ -781,13 +790,14 @@ fn handle_event(
 
                 return Some(Ok(RawStreamingChoice::TextStart {
                     id: MintKind::Block.for_wire_index(*index as u64),
-                    additional_params: Some(json!({
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY: Content::ServerToolUse {
+                    additional_params: crate::message::AdditionalParams::from_entries([(
+                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
+                        json!(Content::ServerToolUse {
                             id: server_tool_use.id,
                             name: server_tool_use.name,
                             input,
-                        }
-                    })),
+                        }),
+                    )]),
                 }));
             }
 

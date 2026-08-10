@@ -455,14 +455,17 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// boundary-minted block.
         id: StreamPartId,
         /// Provider-specific metadata attached to this text block.
-        additional_params: Option<serde_json::Value>,
+        additional_params: Option<crate::message::AdditionalParams>,
     },
 
     /// Provider-specific metadata for the current text content block.
     ///
     /// This is not yielded to public stream consumers. The metadata is merged
     /// into the current aggregated [`Text`] block.
-    TextAdditionalParams(serde_json::Value),
+    /// [`crate::message::AdditionalParams`] is non-empty by construction, so
+    /// a provider with nothing to attach skips the variant instead of
+    /// emitting an empty carrier.
+    TextAdditionalParams(crate::message::AdditionalParams),
 
     /// A tool call response (in its entirety) — wires that never fragment
     /// tool input emit this directly; fragmenting wires emit
@@ -1351,6 +1354,13 @@ mod tests {
     /// Provider descriptor used by the mock streams in this module.
     const TEST_PROVIDER: &str = "test-provider";
 
+    /// Fixture params: the JSON literal is always a non-empty object.
+    fn fixture_params(value: serde_json::Value) -> crate::message::AdditionalParams {
+        crate::message::AdditionalParams::try_from_value(value)
+            .expect("fixture params must be a JSON object")
+            .expect("fixture params must carry data")
+    }
+
     /// Terminal record with a known total-token count.
     fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
         let mut usage = Usage::new();
@@ -1490,7 +1500,7 @@ mod tests {
                 additional_params: None,
             });
             yield Ok(RawStreamingChoice::Message("first".to_string()));
-            yield Ok(RawStreamingChoice::TextAdditionalParams(serde_json::json!({
+            yield Ok(RawStreamingChoice::TextAdditionalParams(fixture_params(serde_json::json!({
                 "citations": [{
                     "type": "char_location",
                     "cited_text": "First citation.",
@@ -1498,8 +1508,8 @@ mod tests {
                     "start_char_index": 0,
                     "end_char_index": 15
                 }]
-            })));
-            yield Ok(RawStreamingChoice::TextAdditionalParams(serde_json::json!({
+            }))));
+            yield Ok(RawStreamingChoice::TextAdditionalParams(fixture_params(serde_json::json!({
                 "citations": [{
                     "type": "char_location",
                     "cited_text": "Second citation.",
@@ -1507,12 +1517,12 @@ mod tests {
                     "start_char_index": 16,
                     "end_char_index": 32
                 }]
-            })));
+            }))));
             yield Ok(RawStreamingChoice::TextStart {
                 id: StreamPartId::wire("block-1"),
-                additional_params: Some(serde_json::json!({
+                additional_params: crate::message::AdditionalParams::try_from_value(serde_json::json!({
                     "block": 2
-                })),
+                })).expect("object params"),
             });
             yield Ok(RawStreamingChoice::Message("second".to_string()));
             yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(3)));

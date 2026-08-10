@@ -750,7 +750,7 @@ type AnthropicDocParams = (Option<String>, Option<String>, Option<CitationsConfi
 /// [`CitationsConfig`] — invalid shapes are reported instead of being silently
 /// dropped, so users notice typos.
 fn extract_anthropic_doc_params(
-    additional_params: Option<serde_json::Value>,
+    additional_params: Option<message::AdditionalParams>,
 ) -> Result<AnthropicDocParams, MessageError> {
     let Some(value) = additional_params else {
         return Ok((None, None, None));
@@ -873,9 +873,10 @@ fn anthropic_raw_content_to_message_text(content: Content) -> Result<message::Te
 
     Ok(message::Text {
         text: String::new(),
-        additional_params: Some(serde_json::json!({
-            ANTHROPIC_RAW_CONTENT_KEY: raw_content
-        })),
+        additional_params: message::AdditionalParams::from_entries([(
+            ANTHROPIC_RAW_CONTENT_KEY,
+            raw_content,
+        )]),
     })
 }
 
@@ -883,7 +884,7 @@ fn anthropic_document_additional_params(
     title: Option<String>,
     context: Option<String>,
     citations: Option<CitationsConfig>,
-) -> Result<Option<serde_json::Value>, MessageError> {
+) -> Result<Option<message::AdditionalParams>, MessageError> {
     let mut params = serde_json::Map::new();
 
     if let Some(title) = title {
@@ -903,9 +904,9 @@ fn anthropic_document_additional_params(
         );
     }
 
-    // The shared canonicalization: an empty map is stored as `None`, never
-    // as an empty carrier.
-    Ok(message::non_empty_params(serde_json::Value::Object(params)))
+    // The canonical constructor: an empty map is stored as `None`, never as
+    // an empty carrier.
+    Ok(message::AdditionalParams::new(params))
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -1389,15 +1390,22 @@ impl TryFrom<Content> for message::AssistantContent {
 
     fn try_from(content: Content) -> Result<Self, Self::Error> {
         Ok(match content {
+            // Keep this destructuring exhaustive so new wire fields force an
+            // explicit capture-or-drop decision. `cache_control` is a
+            // request-side directive, deliberately dropped on response
+            // ingest.
             Content::Text {
-                text, citations, ..
+                text,
+                citations,
+                cache_control: _,
             } => {
                 // Preserve citation metadata on the generic text block via
                 // `additional_params` so callers going through the generic
                 // `AssistantContent` surface can still recover them (see
                 // [`anthropic_citations`]).
-                let additional_params = message::non_empty(citations)
-                    .map(|citations| serde_json::json!({ "citations": citations }));
+                let additional_params = message::AdditionalParams::from_entries(
+                    (!citations.is_empty()).then(|| ("citations", serde_json::json!(citations))),
+                );
                 message::AssistantContent::Text(message::Text {
                     text,
                     additional_params,
@@ -3320,29 +3328,35 @@ mod tests {
                     content: vec![
                         message::AssistantContent::Text(message::Text {
                             text: String::new(),
-                            additional_params: Some(json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
-                                    "type": "server_tool_use",
-                                    "id": "srvtoolu_01",
-                                    "name": "web_search",
-                                    "input": {
-                                        "query": "clear daytime sky color"
+                            additional_params: crate::message::AdditionalParams::try_from_value(
+                                json!({
+                                    ANTHROPIC_RAW_CONTENT_KEY: {
+                                        "type": "server_tool_use",
+                                        "id": "srvtoolu_01",
+                                        "name": "web_search",
+                                        "input": {
+                                            "query": "clear daytime sky color"
+                                        }
                                     }
-                                }
-                            })),
+                                }),
+                            )
+                            .expect("object params"),
                         }),
                         message::AssistantContent::Text(message::Text {
                             text: String::new(),
-                            additional_params: Some(json!({
-                                ANTHROPIC_RAW_CONTENT_KEY: {
-                                    "type": "web_search_tool_result",
-                                    "tool_use_id": "srvtoolu_01",
-                                    "content": {
-                                        "type": "web_search_tool_result_error",
-                                        "error_code": "unavailable"
+                            additional_params: crate::message::AdditionalParams::try_from_value(
+                                json!({
+                                    ANTHROPIC_RAW_CONTENT_KEY: {
+                                        "type": "web_search_tool_result",
+                                        "tool_use_id": "srvtoolu_01",
+                                        "content": {
+                                            "type": "web_search_tool_result_error",
+                                            "error_code": "unavailable"
+                                        }
                                     }
-                                }
-                            })),
+                                }),
+                            )
+                            .expect("object params"),
                         }),
                     ],
                 },
@@ -3387,16 +3401,19 @@ mod tests {
                     id: None,
                     content: vec![message::AssistantContent::Text(message::Text {
                         text: String::new(),
-                        additional_params: Some(json!({
-                            ANTHROPIC_RAW_CONTENT_KEY: {
-                                "type": "server_tool_use",
-                                "id": "srvtoolu_01",
-                                "name": "web_search",
-                                "input": {
-                                    "query": "clear daytime sky color"
+                        additional_params: crate::message::AdditionalParams::try_from_value(
+                            json!({
+                                ANTHROPIC_RAW_CONTENT_KEY: {
+                                    "type": "server_tool_use",
+                                    "id": "srvtoolu_01",
+                                    "name": "web_search",
+                                    "input": {
+                                        "query": "clear daytime sky color"
+                                    }
                                 }
-                            }
-                        })),
+                            }),
+                        )
+                        .expect("object params"),
                     })],
                 },
                 message::Message::System {
@@ -5707,7 +5724,7 @@ mod tests {
     fn anthropic_citations_extracts_from_additional_params() {
         let text = message::Text {
             text: "the grass is green".into(),
-            additional_params: Some(json!({
+            additional_params: crate::message::AdditionalParams::try_from_value(json!({
                 "citations": [{
                     "type": "char_location",
                     "cited_text": "The grass is green.",
@@ -5715,7 +5732,8 @@ mod tests {
                     "start_char_index": 0,
                     "end_char_index": 20
                 }]
-            })),
+            }))
+            .expect("object params"),
         };
         let citations = anthropic_citations(&text).unwrap();
         assert_eq!(citations.len(), 1);
@@ -5793,7 +5811,7 @@ mod tests {
             id: None,
             content: vec![message::AssistantContent::Text(message::Text {
                 text: "the grass is green".into(),
-                additional_params: Some(json!({
+                additional_params: crate::message::AdditionalParams::try_from_value(json!({
                     "citations": [{
                         "type": "char_location",
                         "cited_text": "The grass is green.",
@@ -5801,7 +5819,8 @@ mod tests {
                         "start_char_index": 0,
                         "end_char_index": 20
                     }]
-                })),
+                }))
+                .expect("object params"),
             })],
         };
 
@@ -5830,12 +5849,13 @@ mod tests {
     fn assistant_text_invalid_known_citations_are_rejected_for_anthropic_request_conversion() {
         let text = message::AssistantContent::Text(message::Text {
             text: "bad citation".into(),
-            additional_params: Some(json!({
+            additional_params: crate::message::AdditionalParams::try_from_value(json!({
                 "citations": [{
                     "type": "char_location",
                     "cited_text": "bad"
                 }]
-            })),
+            }))
+            .expect("object params"),
         });
 
         let result = Content::try_from(text);
@@ -5851,11 +5871,12 @@ mod tests {
         let doc = message::UserContent::Document(message::Document {
             data: message::DocumentSourceKind::String("Hello world.".into()),
             media_type: Some(message::DocumentMediaType::TXT),
-            additional_params: Some(json!({
+            additional_params: crate::message::AdditionalParams::try_from_value(json!({
                 "title": "Doc1",
                 "context": "ctx",
                 "citations": { "enabled": true }
-            })),
+            }))
+            .expect("object params"),
         });
         let msg = message::Message::User { content: vec![doc] };
         let converted: Message = msg.try_into().unwrap();
