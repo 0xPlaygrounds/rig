@@ -29,7 +29,7 @@ use rig::tool::{Tool, ToolContext};
 use super::super::support::with_openai_completions_cassette;
 use crate::driver_support::{
     ADD_PROMPT, FORCE_TOOLS_PREAMBLE, dispatch_and_feed, drive_to_completion, expect_done,
-    expect_execute_tools, expect_send,
+    expect_execute_tools, expect_send, expect_turn_accepted,
 };
 use crate::support::{Adder, Subtract};
 
@@ -102,7 +102,7 @@ async fn drive_loop_round_trips_a_tool_call() {
         assert!(tools.executable_tool_names().contains("add"));
 
         let response = request.send().await.expect("first turn should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         assert!(!pending.is_empty(), "the model should have called the tool");
@@ -111,7 +111,7 @@ async fn drive_loop_round_trips_a_tool_call() {
         let (request, _, turn) = expect_send(&mut driver).await;
         assert_eq!(turn, 2);
         let response = request.send().await.expect("second turn should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let response = expect_done(&mut driver).await;
         assert!(
@@ -142,7 +142,7 @@ async fn both_registered_tools_are_advertised() {
         assert!(tools.executable_tool_names().contains("subtract"));
 
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         dispatch_and_feed(&mut driver, &pending, &tools).await;
 
@@ -171,7 +171,7 @@ async fn parallel_tool_calls_all_dispatch_through_one_turn() {
         let mut driver = agent.drive("Compute 2 + 5 and 9 - 3. Use the tools for both.");
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         assert!(!pending.is_empty());
@@ -219,7 +219,7 @@ async fn a_custom_runs_tool_choice_reaches_the_provider() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let (pending, _) = expect_execute_tools(&mut driver).await;
         assert!(
@@ -252,7 +252,7 @@ async fn tool_choice_none_forbids_tools_on_the_wire() {
             "ToolChoice::None allows nothing to be called"
         );
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(!response.output.trim().is_empty());
     })
@@ -285,7 +285,7 @@ async fn tool_choice_specific_names_the_tool_on_the_wire() {
         );
 
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let (pending, _) = expect_execute_tools(&mut driver).await;
         assert_eq!(pending[0].tool_call.function.name, "add");
     })
@@ -309,7 +309,7 @@ async fn a_patched_preamble_replaces_the_agents_on_the_wire() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(!response.output.trim().is_empty());
     })
@@ -341,7 +341,7 @@ async fn a_patched_tool_choice_outranks_the_runs() {
             "the patch's Required must govern, not the run's None"
         );
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let (pending, _) = expect_execute_tools(&mut driver).await;
         assert!(!pending.is_empty());
     })
@@ -374,7 +374,7 @@ async fn a_patched_active_tools_narrows_the_advertised_set() {
         );
 
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         dispatch_and_feed(&mut driver, &pending, &tools).await;
         let response = drive_to_completion(&mut driver)
@@ -402,7 +402,7 @@ async fn patched_sampling_parameters_reach_the_request() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let _ = expect_done(&mut driver).await;
     })
     .await;
@@ -428,7 +428,7 @@ async fn patched_extra_context_reaches_the_request() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(!response.output.trim().is_empty());
     })
@@ -454,7 +454,7 @@ async fn a_patched_history_replaces_the_runs_for_the_turn() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(!response.output.trim().is_empty());
     })
@@ -477,7 +477,7 @@ async fn driver_history_leads_the_request() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(!response.output.trim().is_empty());
     })
@@ -515,9 +515,7 @@ async fn a_run_suspended_awaiting_the_model_resumes_and_accepts_the_reply() {
             "a suspended run carries the turn's advertised names"
         );
         let mut resumed = agent.drive_run(restored);
-        resumed
-            .model_response(&response)
-            .expect("a resumed run accepts the reply to its in-flight call");
+        expect_turn_accepted(&mut resumed, &response);
 
         let (pending, tools) = expect_execute_tools(&mut resumed).await;
         assert!(!pending.is_empty());
@@ -542,7 +540,7 @@ async fn a_run_suspended_executing_tools_resumes_and_completes() {
         let mut driver = agent.drive(ADD_PROMPT);
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let _ = expect_execute_tools(&mut driver).await;
 
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
@@ -580,7 +578,7 @@ async fn a_resumed_turn_advertises_its_own_tools_not_the_processs() {
         let mut driver = agent.drive(ADD_PROMPT);
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let _ = expect_execute_tools(&mut driver).await;
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
         let advertised = driver
@@ -692,7 +690,7 @@ async fn a_rejected_send_rolls_back_and_re_prepares() {
         let (request, _, turn) = expect_send(&mut driver).await;
         assert_eq!(turn, 1);
         let response = request.send().await.expect("the retry should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         dispatch_and_feed(&mut driver, &pending, &tools).await;
@@ -743,7 +741,7 @@ async fn a_preparation_failure_costs_no_turn_and_no_interaction() {
         assert_eq!(turn, 1, "the retry takes the turn the failure did not");
         assert!(tools.executable_tool_names().contains("add"));
         let response = request.send().await.expect("the retry should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
     })
     .await;
 }
@@ -763,7 +761,7 @@ async fn max_turns_exhaustion_stops_before_a_second_send() {
         let mut driver = agent.drive(ADD_PROMPT).max_turns(1);
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         dispatch_and_feed(&mut driver, &pending, &tools).await;
@@ -817,7 +815,7 @@ async fn tool_output_mode_finalizes_via_the_output_tool() {
         );
 
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         // The output-tool call is intercepted by the run, never surfaced.
         let response = expect_done(&mut driver).await;
@@ -858,7 +856,7 @@ async fn native_output_mode_uses_the_provider_constraint() {
         );
 
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(response.output.contains("answer"));
     })
@@ -1017,6 +1015,77 @@ async fn a_streamed_turn_honors_the_request_patch() {
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         assert!(!pending.is_empty());
         dispatch_and_feed(&mut driver, &pending, &tools).await;
+    })
+    .await;
+}
+
+/// A stream that stops mid-tool-arguments, derived from
+/// `streamed_turn.yaml` by deleting every event after a partial `arguments`
+/// delta — no `finish_reason` chunk, no usage chunk, no `[DONE]`. Removing
+/// recorded data is a scrub; nothing here was invented.
+///
+/// This exists to pin what a *truncated* stream actually does, which is not
+/// the same thing as an *interrupted* one: a mock server that stops writing
+/// closes the connection cleanly, so the SSE layer sees end-of-stream rather
+/// than a transport failure. See the assertions for what that means for the
+/// assembled turn.
+#[tokio::test]
+async fn a_truncated_stream_ends_the_turn_without_a_transport_error() {
+    with_openai_completions_cassette("agent_driver/streamed_interrupted", |client| async move {
+        // `CountingAdder`, not `Adder`: this cassette is derived from
+        // `streamed_turn.yaml`, and the request body it matches carries that
+        // tool's schema.
+        let agent = client
+            .agent(openai::GPT_4O)
+            .preamble(FORCE_TOOLS_PREAMBLE)
+            .default_max_turns(3)
+            .tool(CountingAdder {
+                calls: Arc::new(AtomicUsize::new(0)),
+            })
+            .build();
+
+        let mut driver = agent.drive(ADD_PROMPT);
+        let (request, tools, _) = expect_send(&mut driver).await;
+
+        let mut assembler = StreamedTurnAssembler::new(
+            tools.executable_tool_names().clone(),
+            tools.allowed_tool_names().clone(),
+        );
+        let mut stream = request.stream().await.expect("stream should open");
+        let mut stream_error = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(item) => {
+                    assembler.ingest(&item).expect("ingest should succeed");
+                }
+                Err(err) => {
+                    stream_error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        // Observed, not assumed: a cleanly-closed truncated body is not a
+        // transport failure. `CompletionError::StreamInterrupted` needs a
+        // connection severed mid-frame, which no mock can produce — so its
+        // classification stays unit-tested in rig-core.
+        assert!(
+            stream_error.is_none(),
+            "a truncated body closes cleanly, it does not error: {stream_error:?}"
+        );
+
+        // The turn assembles from what arrived: a tool call whose arguments
+        // never completed.
+        let final_content = stream.choice.clone();
+        let streamed = assembler.finish(stream.message_id.clone(), &final_content);
+        driver
+            .run_mut()
+            .record_streamed_completion_call(stream.usage())
+            .expect("usage recorded");
+        driver
+            .run_mut()
+            .streamed_turn(streamed)
+            .expect("the truncated turn is still a turn");
     })
     .await;
 }

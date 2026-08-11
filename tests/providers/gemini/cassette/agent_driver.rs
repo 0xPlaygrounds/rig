@@ -20,7 +20,7 @@ use rig::providers::gemini;
 use super::super::support::with_gemini_cassette;
 use crate::driver_support::{
     ADD_PROMPT, FORCE_TOOLS_PREAMBLE, dispatch_and_feed, drive_to_completion, expect_done,
-    expect_execute_tools, expect_send,
+    expect_execute_tools, expect_send, expect_turn_accepted,
 };
 use crate::support::{Adder, Subtract};
 
@@ -44,7 +44,7 @@ async fn drive_loop_round_trips_a_tool_call() {
         assert!(tools.executable_tool_names().contains("add"));
 
         let response = request.send().await.expect("first turn should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         assert!(!pending.is_empty(), "the model should have called the tool");
@@ -76,7 +76,7 @@ async fn a_custom_runs_tool_choice_reaches_the_provider() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let (pending, _) = expect_execute_tools(&mut driver).await;
         assert!(
@@ -116,7 +116,7 @@ async fn tool_choice_none_forbids_tools_on_the_wire() {
             "ToolChoice::None allows nothing to be called"
         );
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         // Straight to Done: a tool step here would mean the constraint did not
         // reach the provider.
@@ -155,7 +155,7 @@ async fn tool_choice_specific_names_the_tool_on_the_wire() {
         assert!(!tools.allowed_tool_names().contains("subtract"));
 
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let (pending, _) = expect_execute_tools(&mut driver).await;
         assert_eq!(pending[0].tool_call.function.name, "add");
     })
@@ -177,7 +177,7 @@ async fn a_patched_preamble_replaces_the_agents_on_the_wire() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(!response.output.trim().is_empty());
     })
@@ -205,7 +205,7 @@ async fn a_patched_active_tools_narrows_the_advertised_set() {
         assert!(!tools.executable_tool_names().contains("subtract"));
 
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         dispatch_and_feed(&mut driver, &pending, &tools).await;
     })
@@ -232,7 +232,7 @@ async fn a_patched_tool_choice_outranks_the_runs() {
         let (request, tools, _) = expect_send(&mut driver).await;
         assert!(tools.allowed_tool_names().contains("add"));
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let (pending, _) = expect_execute_tools(&mut driver).await;
         assert!(!pending.is_empty());
     })
@@ -252,7 +252,7 @@ async fn driver_history_leads_the_request() {
 
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(!response.output.trim().is_empty());
     })
@@ -280,9 +280,7 @@ async fn a_run_suspended_awaiting_the_model_resumes_and_accepts_the_reply() {
         let restored: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
         assert!(restored.advertised_tools().is_some());
         let mut resumed = agent.drive_run(restored);
-        resumed
-            .model_response(&response)
-            .expect("a resumed run accepts the reply to its in-flight call");
+        expect_turn_accepted(&mut resumed, &response);
 
         let (pending, tools) = expect_execute_tools(&mut resumed).await;
         assert!(!pending.is_empty());
@@ -306,7 +304,7 @@ async fn a_run_suspended_executing_tools_resumes_and_completes() {
         let mut driver = agent.drive(ADD_PROMPT);
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let _ = expect_execute_tools(&mut driver).await;
 
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
@@ -354,7 +352,7 @@ async fn tool_output_mode_finalizes_via_the_output_tool() {
         assert!(!tools.executable_tool_names().contains(&output_tool));
 
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
         assert!(response.output.contains("answer"));
     })
@@ -449,7 +447,7 @@ async fn max_turns_exhaustion_stops_before_a_second_send() {
         let mut driver = agent.drive(ADD_PROMPT).max_turns(1);
         let (request, _, _) = expect_send(&mut driver).await;
         let response = request.send().await.expect("should send");
-        driver.model_response(&response).expect("turn accepted");
+        expect_turn_accepted(&mut driver, &response);
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         dispatch_and_feed(&mut driver, &pending, &tools).await;

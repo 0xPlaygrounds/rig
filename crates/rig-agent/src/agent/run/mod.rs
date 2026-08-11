@@ -288,6 +288,10 @@ impl ModelTurn {
 /// Deliberately exhaustive: a driver must handle every outcome, so adding a
 /// variant is a breaking change by design.
 #[derive(Debug)]
+#[must_use = "a model turn can need resolution before the run may advance; \
+              answer `NeedsResolution` via `resolve_invalid_tool_call` — dropping \
+              the outcome surfaces the same problem two steps later as an \
+              unrelated protocol violation"]
 pub enum ModelTurnOutcome {
     /// The turn was accepted. Unless `response_hook_suppressed` is set, the
     /// driver should run its completion-response hook now, then call
@@ -846,17 +850,36 @@ impl AgentRun {
             ));
         };
 
-        if self.current_turn >= self.max_turns {
-            return Err(PromptError::MaxTurnsError {
-                max_turns: self.max_turns,
-                chat_history: self.full_history().into(),
-                prompt: prompt.clone().into(),
-            });
-        }
+        self.check_turn_budget()?;
 
         Ok(ModelCallInputs {
             prompt: prompt.clone(),
             history: build_history_for_request(self.chat_history.as_deref(), history_for_turn),
+        })
+    }
+
+    /// Whether another model call fits in the run's budget.
+    ///
+    /// Checked in **two** places on purpose. [`Self::peek_model_call`] runs it
+    /// so a caller learns the budget is spent before building a request it
+    /// cannot send; [`Self::commit_model_call`] runs it because that is where
+    /// the turn is actually consumed, and the two halves are public — nothing
+    /// obliges a caller to peek before every commit, and a caller that peeks
+    /// once and re-commits (after a rollback, say) would otherwise drive model
+    /// calls forever against a budget never consulted.
+    fn check_turn_budget(&self) -> Result<(), PromptError> {
+        if self.current_turn < self.max_turns {
+            return Ok(());
+        }
+        let prompt = self
+            .new_messages
+            .last()
+            .cloned()
+            .unwrap_or_else(|| Message::user(""));
+        Err(PromptError::MaxTurnsError {
+            max_turns: self.max_turns,
+            chat_history: self.full_history().into(),
+            prompt: prompt.into(),
         })
     }
 
@@ -879,9 +902,13 @@ impl AgentRun {
     /// lost, [`Self::rollback_model_call`] undoes exactly this.
     ///
     /// # Errors
-    /// [`PromptError::PromptCancelled`] when the run is not preparing a
-    /// request — committing a call the run never asked for would consume a
-    /// turn against nothing.
+    /// - [`PromptError::PromptCancelled`] when the run is not preparing a
+    ///   request — committing a call the run never asked for would consume a
+    ///   turn against nothing.
+    /// - [`PromptError::MaxTurnsError`] when the model-call budget is spent.
+    ///   Checked here as well as in [`Self::peek_model_call`], because this is
+    ///   where the turn is actually consumed and a caller is not obliged to
+    ///   peek before every commit.
     pub fn commit_model_call(
         &mut self,
         advertised: Option<TurnToolNames>,
@@ -892,6 +919,7 @@ impl AgentRun {
                 self.protocol_violation("commit_model_call called without a peeked model call")
             );
         }
+        self.check_turn_budget()?;
         self.set_output_tool_name(output_tool_name);
         self.advertised_tools = advertised;
         self.current_turn += 1;
@@ -2131,6 +2159,40 @@ mod tests {
             None,
             "a retried turn's names do not outlive it"
         );
+    }
+
+    /// The budget is checked where it is *spent*, not only where it is
+    /// previewed. Both halves are public, and nothing obliges a caller to peek
+    /// before every commit — a caller that peeks once and re-commits (after a
+    /// rollback, say) would otherwise drive model calls forever.
+    #[test]
+    fn commit_model_call_enforces_the_turn_budget_without_a_peek() {
+        let mut run = AgentRun::new("add things").max_turns(1);
+
+        // Spend the budget through the normal path.
+        expect_call_model(&mut run);
+        run.rollback_model_call().expect("rollback should succeed");
+        expect_call_model(&mut run);
+        assert_eq!(run.turn(), 1);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+        run.tool_results(vec![tool_result("call_1", "2")])
+            .expect("tool_results should succeed");
+
+        // The run wants another call and the budget is spent. Committing
+        // without peeking must not get one.
+        assert!(run.is_preparing_request());
+        let err = run
+            .commit_model_call(None, None)
+            .expect_err("the budget is spent");
+        assert!(
+            matches!(err, PromptError::MaxTurnsError { .. }),
+            "expected MaxTurnsError, got {err:?}"
+        );
+        assert_eq!(run.turn(), 1, "a refused commit consumes nothing");
     }
 
     /// The two halves are a public protocol, so driving them out of order is

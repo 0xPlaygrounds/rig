@@ -12,8 +12,10 @@
 
 #![allow(dead_code)]
 
-use rig::agent::{AgentDriver, DriveStep, PendingToolCall, TurnTools};
-use rig::completion::PromptError;
+use rig::agent::{
+    AgentDriver, DriveStep, InvalidToolCallAction, ModelTurnOutcome, PendingToolCall, TurnTools,
+};
+use rig::completion::{CompletionResponse, PromptError};
 use rig::tool::ToolContext;
 
 /// Preamble that reliably drives a tool call on every provider tested.
@@ -75,9 +77,31 @@ pub(crate) async fn dispatch_and_feed(
         .expect("tool results should be accepted");
 }
 
+/// Feed a model response and assert the turn was accepted outright.
+///
+/// `ModelTurnOutcome` is `#[must_use]` because `NeedsResolution` must be
+/// answered before the run may advance. These suites drive well-behaved turns,
+/// so an unexpected resolution request is a test failure worth naming — not a
+/// value to drop on the floor, which would resurface two steps later as an
+/// unrelated protocol violation.
+pub(crate) fn expect_turn_accepted(driver: &mut AgentDriver, response: &CompletionResponse) {
+    match driver
+        .model_response(response)
+        .expect("the model turn should be accepted")
+    {
+        ModelTurnOutcome::Continue { .. } => {}
+        other => panic!("expected the turn to be accepted outright, got {other:?}"),
+    }
+}
+
 /// Drive a blocking run to completion, returning the final response.
 ///
-/// The loop a caller writes by hand, in the shape the driver's own docs use.
+/// The loop a caller writes by hand, in the shape the driver's own docs use —
+/// including the arm most hand-written loops forget. A model that hallucinates
+/// a tool name yields `NeedsResolution`, and the run cannot advance until it is
+/// answered; this helper answers `Fail`, the correct default for a caller with
+/// no recovery policy, so the run surfaces the invalid call rather than a
+/// protocol violation about it.
 pub(crate) async fn drive_to_completion(
     driver: &mut AgentDriver,
 ) -> Result<rig::agent::PromptResponse, PromptError> {
@@ -85,7 +109,10 @@ pub(crate) async fn drive_to_completion(
         match driver.next_step().await? {
             DriveStep::SendRequest { request, .. } => {
                 let response = request.send().await.map_err(PromptError::CompletionError)?;
-                driver.model_response(&response)?;
+                let mut outcome = driver.model_response(&response)?;
+                while let ModelTurnOutcome::NeedsResolution(_) = outcome {
+                    outcome = driver.resolve_invalid_tool_call(InvalidToolCallAction::Fail)?;
+                }
             }
             DriveStep::ExecuteTools { calls, tools } => {
                 let mut context = ToolContext::new();

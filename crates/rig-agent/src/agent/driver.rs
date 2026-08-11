@@ -216,6 +216,19 @@ impl AgentDriver {
         self
     }
 
+    /// Set the retry budget for [`InvalidToolCallAction::Retry`] resolutions,
+    /// mirroring [`AgentRunner::max_invalid_tool_call_retries`](super::AgentRunner::max_invalid_tool_call_retries).
+    ///
+    /// [`Agent::drive`] seeds this at **zero**, so answering a
+    /// [`ModelTurnOutcome::NeedsResolution`] with `Retry` fails until you raise
+    /// it — the run has no budget to spend and reports the invalid call
+    /// instead. Invalid tool-call retries also consume the total model-call
+    /// budget, so raise [`Self::max_turns`] alongside it.
+    pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
+        self.run = self.run.max_invalid_tool_call_retries(retries);
+        self
+    }
+
     /// Set the per-turn request configuration for the turns this driver
     /// prepares.
     ///
@@ -498,28 +511,28 @@ impl AgentDriver {
         Ok(TurnTools::from_parts(snapshot, names, output_tool_name))
     }
 
-    /// Take a registry snapshot for a run resumed in this process.
+    /// Take a registry snapshot for a run resumed in this process, containing
+    /// exactly the names the turn advertised and still has.
     ///
-    /// The retrieval query is re-derived from the run's history, matching what
-    /// request preparation would have used — but retrieval alone is not enough
-    /// here. It selects dynamic tools by similarity, so a registered dynamic
-    /// tool this query does not rank would be absent, and the caller's drift
-    /// check could not tell that apart from a tool that really was
-    /// deregistered. `required` — the names the turn advertised — is resolved
-    /// from the registry regardless of ranking, so absence means absence.
+    /// **No retrieval query is run**, deliberately. Retrieval selects dynamic
+    /// tools by similarity, and this snapshot is narrowed to `required`
+    /// immediately afterwards, so every retrieved name that is not in
+    /// `required` is discarded and every name in `required` is resolved from
+    /// the registry by name regardless of ranking. A query would therefore
+    /// contribute nothing to the result while costing a vector search — and,
+    /// worse, would make resuming a run *fail* when the index is unavailable,
+    /// even if every pending call is a static tool.
+    ///
+    /// Resolving `required` by name is also what makes the caller's drift check
+    /// meaningful: absence from this snapshot means the tool is gone, not
+    /// merely that a query did not rank it.
     async fn fresh_snapshot(
         &self,
         required: &BTreeSet<String>,
     ) -> Result<ToolRegistrySnapshot, PromptError> {
-        let query = self
-            .run
-            .full_history()
-            .iter()
-            .rev()
-            .find_map(|message| message.rag_text());
         self.agent
             .tool_server_handle
-            .snapshot_tool_defs_including(query, required)
+            .snapshot_tool_defs_including(None, required)
             .await
             .map_err(|_| {
                 PromptError::CompletionError(CompletionError::RequestError(
@@ -568,6 +581,18 @@ mod tests {
         }))
     }
 
+    /// Assert a model turn was accepted outright.
+    ///
+    /// `ModelTurnOutcome` is `#[must_use]`: `NeedsResolution` has to be
+    /// answered before the run may advance, so these tests name an unexpected
+    /// one rather than dropping it and hitting a protocol violation later.
+    fn expect_continue(outcome: ModelTurnOutcome) {
+        match outcome {
+            ModelTurnOutcome::Continue { .. } => {}
+            other => panic!("expected the turn to be accepted, got {other:?}"),
+        }
+    }
+
     /// Expect the next step to be `SendRequest`, panicking otherwise.
     macro_rules! expect_send {
         ($driver:expr) => {
@@ -613,7 +638,7 @@ mod tests {
         assert!(tools.executable_tool_names().contains("add"));
         assert_eq!(tools.executable_tool_names(), tools.allowed_tool_names());
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
 
         // Mutate the live registry AFTER the turn advertised its tools.
         agent.tool_server_handle.remove_tool("add").await;
@@ -646,7 +671,7 @@ mod tests {
         let (request, _, turn) = expect_send!(driver);
         assert_eq!(turn, 2);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         match driver.next_step().await.expect("next_step succeeds") {
             DriveStep::Done(response) => assert_eq!(response.output, "3"),
             other => panic!("expected Done, got {other:?}"),
@@ -717,7 +742,7 @@ mod tests {
         let mut driver = agent.drive("compute");
         let (request, _, _) = expect_send!(driver);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         match driver.next_step().await.expect("next_step succeeds") {
             DriveStep::Done(response) => {
                 assert!(
@@ -751,7 +776,7 @@ mod tests {
             .expect("Tool mode commits a name on turn 1")
             .to_owned();
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn processed");
+        expect_continue(driver.model_response(&response).expect("turn processed"));
 
         // Change the tool set between turns: retire every executable tool.
         agent.tool_server_handle.remove_tool("add").await;
@@ -783,7 +808,7 @@ mod tests {
         let mut driver = agent.drive("what is 2 + 5?");
         let (request, _, _) = expect_send!(driver);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         let _ = expect_execute_tools!(driver);
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
         drop(driver);
@@ -805,7 +830,7 @@ mod tests {
         driver.tool_results(results).expect("results accepted");
         let (request, _, _) = expect_send!(driver);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         match driver.next_step().await.expect("next_step succeeds") {
             DriveStep::Done(response) => assert_eq!(response.output, "7"),
             other => panic!("expected Done, got {other:?}"),
@@ -829,7 +854,7 @@ mod tests {
         let mut driver = agent.drive("what is 2 + 5?");
         let (request, _, _) = expect_send!(driver);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         let _ = expect_execute_tools!(driver);
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
 
@@ -979,7 +1004,7 @@ mod tests {
         assert_eq!(turn, 1, "the retry takes the turn the failure did not");
         assert!(tools.executable_tool_names().contains("add"));
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
     }
 
     /// The natural suspension point for a caller that owns the transport is
@@ -1012,9 +1037,11 @@ mod tests {
             .build();
         let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
         let mut driver = agent.drive_run(run);
-        driver
-            .model_response(&response)
-            .expect("a run resumed mid-model-call accepts its reply");
+        expect_continue(
+            driver
+                .model_response(&response)
+                .expect("a run resumed mid-model-call accepts its reply"),
+        );
 
         let (calls, tools) = expect_execute_tools!(driver);
         let mut context = ToolContext::new();
@@ -1025,7 +1052,7 @@ mod tests {
         driver.tool_results(results).expect("results accepted");
         let (request, _, _) = expect_send!(driver);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         match driver.next_step().await.expect("next_step succeeds") {
             DriveStep::Done(response) => assert_eq!(response.output, "7"),
             other => panic!("expected Done, got {other:?}"),
@@ -1111,7 +1138,7 @@ mod tests {
         let (request, _, turn) = expect_send!(driver);
         assert_eq!(turn, 1, "the retry takes the turn the failure did not");
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         match driver.next_step().await.expect("next_step succeeds") {
             DriveStep::Done(response) => assert_eq!(response.output, "done"),
             other => panic!("expected Done, got {other:?}"),
@@ -1167,7 +1194,7 @@ mod tests {
         let (request, _, turn) = expect_send!(driver);
         assert_eq!(turn, 1);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
     }
 
     /// `TurnTools` promises that a name the turn did not advertise cannot
@@ -1188,7 +1215,7 @@ mod tests {
         let mut driver = agent.drive("what is 2 + 5?");
         let (request, _, _) = expect_send!(driver);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         let _ = expect_execute_tools!(driver);
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
 
@@ -1219,6 +1246,72 @@ mod tests {
             .execute("add", r#"{"x": 2, "y": 5}"#, &mut context)
             .await;
         assert!(result.is_success());
+    }
+
+    /// `Retry` needs a budget, and `drive()` seeds zero — so the driver must
+    /// expose the setter the runner has, or the documented resolution path is
+    /// unreachable for every driver built the documented way.
+    #[tokio::test]
+    async fn a_retry_resolution_needs_a_budget_the_driver_can_set() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call_1", "nonexistent", json!({})),
+            MockTurn::text("ok"),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(3)
+            .tool(MockAddTool)
+            .build();
+
+        // Seeded at zero: the retry has nothing to spend.
+        let mut driver = agent.drive("go");
+        let (request, _, _) = expect_send!(driver);
+        let response = request.send().await.expect("scripted turn");
+        let outcome = driver
+            .model_response(&response)
+            .expect("the invalid call needs resolution");
+        assert!(matches!(outcome, ModelTurnOutcome::NeedsResolution(_)));
+        driver
+            .resolve_invalid_tool_call(InvalidToolCallAction::Retry {
+                feedback: "use a registered tool".to_string(),
+            })
+            .expect_err("a retry budget of zero cannot retry");
+    }
+
+    /// With a budget, the same resolution is accepted and the run re-prepares.
+    #[tokio::test]
+    async fn a_retry_resolution_succeeds_once_the_budget_is_set() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call_1", "nonexistent", json!({})),
+            MockTurn::text("recovered"),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(3)
+            .tool(MockAddTool)
+            .build();
+
+        let mut driver = agent.drive("go").max_invalid_tool_call_retries(1);
+        let (request, _, _) = expect_send!(driver);
+        let response = request.send().await.expect("scripted turn");
+        let outcome = driver
+            .model_response(&response)
+            .expect("the invalid call needs resolution");
+        assert!(matches!(outcome, ModelTurnOutcome::NeedsResolution(_)));
+
+        let outcome = driver
+            .resolve_invalid_tool_call(InvalidToolCallAction::Retry {
+                feedback: "use a registered tool".to_string(),
+            })
+            .expect("a retry budget of one accepts the retry");
+        assert!(matches!(outcome, ModelTurnOutcome::TurnRetried));
+
+        // The retry re-prepares and the run completes.
+        let (request, _, _) = expect_send!(driver);
+        let response = request.send().await.expect("scripted turn");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
+        match driver.next_step().await.expect("next_step succeeds") {
+            DriveStep::Done(response) => assert_eq!(response.output, "recovered"),
+            other => panic!("expected Done, got {other:?}"),
+        }
     }
 
     /// Retrieval picks dynamic tools by similarity to the turn's query, so a
@@ -1255,7 +1348,7 @@ mod tests {
         let (request, tools, _) = expect_send!(driver);
         assert!(tools.executable_tool_names().contains("subtract"));
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         let _ = expect_execute_tools!(driver);
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
 
@@ -1305,7 +1398,7 @@ mod tests {
         let mut driver = agent.drive("what is 2 + 5?");
         let (request, _, _) = expect_send!(driver);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         let _ = expect_execute_tools!(driver);
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
 
@@ -1348,7 +1441,7 @@ mod tests {
         let mut driver = agent.drive("what is 2 + 5?");
         let (request, _, _) = expect_send!(driver);
         let response = request.send().await.expect("scripted turn");
-        driver.model_response(&response).expect("turn accepted");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
         let _ = expect_execute_tools!(driver);
         let serialized = serde_json::to_string(driver.run()).expect("run serializes");
 
