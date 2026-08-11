@@ -397,9 +397,16 @@ impl WireAdapter for AnthropicAdapter {
                 // agree (every recorded cassette under
                 // `tests/cassettes/anthropic/` reporting it on the delta reports
                 // the same value on the start), so the preference is what runs
-                // there and the fallback is inert. The fallback covers frames
-                // that omit it: the Bedrock-compat `message_start`-less shape,
-                // and older/leaner deltas.
+                // there and the fallback is inert. The fallback covers the
+                // reverse split — a delta that omits the count, leaving the one
+                // `message_start` reported.
+                //
+                // It does *not* rescue the Bedrock-compat body-less
+                // `message_start`: that shape returns early above without
+                // setting `self.input_tokens`, so the fallback yields
+                // `Some(0)`. Preferring the delta is what carries a real count
+                // there — do not drop the preference on the theory that the
+                // fallback covers that case.
                 //
                 // Anthropic-*compatible* gateways do not all agree. OpenRouter's
                 // Messages endpoint can send `input_tokens: 0` on

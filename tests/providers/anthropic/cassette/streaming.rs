@@ -52,10 +52,10 @@ async fn streaming_smoke() {
 /// `message_start` says `"provider":"Amazon Bedrock"`, and the request pins no
 /// routing preference. Routed to Anthropic directly, OpenRouter would relay
 /// Anthropic's agreeing frames and the recording would stop witnessing the bug.
-/// The `message_start` assertion below exists to make that fail loudly rather
-/// than pass vacuously — if it trips after a re-record, the new recording did
-/// not reproduce the divergence and pinning `provider` in the request (or
-/// keeping the old fixture) is the fix, not relaxing the assertion.
+/// The `message_start` assertion after the wrapper exists to make that fail
+/// loudly rather than pass vacuously — if it trips after a re-record, the new
+/// recording did not reproduce the divergence and pinning `provider` in the
+/// request (or keeping the old fixture) is the fix, not relaxing the assertion.
 #[tokio::test]
 async fn gateway_reports_input_tokens_on_message_delta() {
     // Spelled out rather than shared with the constant below: the cassette-safety
@@ -82,15 +82,6 @@ async fn gateway_reports_input_tokens_on_message_delta() {
                 Some(rig::completion::FinishReason::Length),
                 "a max_tokens truncation must be distinguishable from a natural stop"
             );
-            // Anchors the count below to the frame it has to have come from: the
-            // fixture is only a regression test while the two frames disagree.
-            assert_eq!(
-                recorded_message_start_input_tokens(GATEWAY_METADATA_SCENARIO),
-                0,
-                "this fixture must keep reporting 0 input_tokens on message_start — \
-                 without the disagreement the assertion below passes with or without \
-                 the fix (see this test's doc comment before re-recording)"
-            );
             assert_eq!(
                 provider_final.usage.input_tokens, 32,
                 "the prompt size the gateway reported on message_delta must reach the consumer"
@@ -98,6 +89,21 @@ async fn gateway_reports_input_tokens_on_message_delta() {
         },
     )
     .await;
+
+    // Anchors the count above to the frame it has to have come from: the fixture
+    // is only a regression test while the two frames disagree.
+    //
+    // Read out here rather than inside the body because in record mode the
+    // cassette is written by `finish_after_test` only once the body returns — an
+    // in-body read would assert against the *previous* recording (or panic
+    // before anything is written at all, on a checkout that has no fixture yet).
+    assert_eq!(
+        recorded_message_start_input_tokens(GATEWAY_METADATA_SCENARIO),
+        0,
+        "this fixture must keep reporting 0 input_tokens on message_start — without \
+         the disagreement the assertion above passes with or without the fix (see \
+         this test's doc comment before re-recording)"
+    );
 }
 
 /// Kept in sync by hand with the literal at the call site above; a mismatch
