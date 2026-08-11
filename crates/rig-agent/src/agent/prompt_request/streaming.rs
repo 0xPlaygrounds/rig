@@ -4,7 +4,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::completion::build_prepared_completion_request,
+    agent::completion::{TurnBaseline, TurnRequest, build_prepared_completion_request},
     agent::hook::{
         AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
         ModelSelectionAction, ModelTurnFinished, ReasoningDelta, StepEventKind,
@@ -560,23 +560,27 @@ where
                     // consistent even if the per-turn tool set changes (#1928).
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let mut prepared = match build_prepared_completion_request(
-                        &selected_model,
-                        prompt.clone(),
-                        &history,
-                        runner.preamble.as_deref(),
-                        &runner.static_context,
-                        runner.temperature,
-                        runner.max_tokens,
-                        runner.additional_params.as_ref(),
-                        runner.record_telemetry_content,
-                        runner.tool_choice.as_ref(),
-                        &runner.tool_server_handle,
-                        runner.output_schema.as_ref(),
-                        &runner.output_mode,
-                        committed_output_tool.as_deref(),
-                        runner.output_tool_description.as_deref(),
-                        runner.augment_output_preamble,
-                        request_patch.as_ref(),
+                        TurnBaseline {
+                            model: &selected_model,
+                            preamble: runner.preamble.as_deref(),
+                            static_context: &runner.static_context,
+                            temperature: runner.temperature,
+                            max_tokens: runner.max_tokens,
+                            additional_params: runner.additional_params.as_ref(),
+                            record_telemetry_content: runner.record_telemetry_content,
+                            tool_choice: runner.tool_choice.as_ref(),
+                            tool_server_handle: &runner.tool_server_handle,
+                            output_schema: runner.output_schema.as_ref(),
+                            output_mode: &runner.output_mode,
+                            output_tool_description: runner.output_tool_description.as_deref(),
+                            augment_output_preamble: runner.augment_output_preamble,
+                        },
+                        TurnRequest {
+                            prompt: prompt.clone(),
+                            chat_history: &history,
+                            committed_output_tool: committed_output_tool.as_deref(),
+                            patch: request_patch.as_ref(),
+                        },
                     )
                     .await
                     {

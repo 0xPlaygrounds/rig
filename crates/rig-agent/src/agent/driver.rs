@@ -22,35 +22,55 @@
 //! advertise/dispatch skew happen; the driver owns it in one place while every
 //! side effect stays with the caller.
 //!
+//! It owns that pairing without *holding* it. Everything durable lives on the
+//! [`AgentRun`] — including the turn's advertised tool names — and the driver
+//! keeps only a cache of the live registry snapshot, which cannot be
+//! serialized in any design. That is what makes the durability guarantees
+//! below hold at every step rather than at one of them.
+//!
 //! # Durability
 //!
-//! The serializable state is still [`AgentRun`] — serialize
-//! [`AgentDriver::run`] while tool calls are pending, and resume in another
-//! process with [`Agent::drive_run`]. Tool implementations are live objects
-//! and cannot be serialized: the resuming process rebuilds the same `Agent`
-//! and the driver takes a **fresh** registry snapshot for the pending calls.
-//! If that snapshot no longer contains a pending call's tool, the driver
-//! surfaces an error instead of silently feeding a not-found result to the
-//! model (see [`AgentDriver::allow_missing_resumed_tools`]) — the model chose
-//! that tool from a registry this process no longer has, and re-prompting
-//! cannot fix deployment drift. If you suspend runs across deploys, version
-//! your agent definitions alongside the serialized run.
+//! The serializable state is *all* of the state: the driver holds nothing it
+//! could lose. Serialize [`AgentDriver::run`] at any step boundary — while
+//! tool calls are pending, or while a model call is in flight with a
+//! long-running or queued provider — and resume in another process with
+//! [`Agent::drive_run`]. Every step is a resume point, including
+//! [`DriveStep::SendRequest`]: the turn's advertised tool names travel with
+//! the run, so the resuming process validates the model's reply against the
+//! set the request actually carried rather than against whatever its registry
+//! holds now.
+//!
+//! Preparation failures are equally survivable. Nothing advances until a
+//! request exists, so a turn that fails to prepare — an unreachable tool
+//! server, an impossible `tool_choice` — costs no turn from the budget and
+//! leaves the run byte-identical, ready to retry.
+//!
+//! Tool *implementations* are live objects and cannot be serialized: the
+//! resuming process rebuilds the same `Agent` and the driver takes a fresh
+//! registry snapshot to dispatch pending calls through. If that snapshot no
+//! longer contains a pending call's tool, the driver surfaces an error instead
+//! of silently feeding a not-found result to the model (see
+//! [`AgentDriver::allow_missing_resumed_tools`]) — the model chose that tool
+//! from a registry this process no longer has, and re-prompting cannot fix
+//! deployment drift. If you suspend runs across deploys, version your agent
+//! definitions alongside the serialized run; the run's own format is versioned
+//! by [`RUN_SCHEMA_VERSION`](super::run::RUN_SCHEMA_VERSION).
 
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use rig_core::message::UserContent;
 
-use super::completion::{Agent, allowed_tool_names_for_choice, build_prepared_completion_request};
+use super::completion::{Agent, TurnBaseline, TurnRequest, build_prepared_completion_request};
 use super::model::ModelHandle;
-use super::run::{AgentRun, AgentRunStep, ModelTurnOutcome, PendingToolCall};
+use super::run::{Advance, AgentRun, ModelCallInputs, ModelTurnOutcome, PendingToolCall};
 use super::runner::build_agent_run;
 use super::turn_tools::{PreparedCompletionRequest, TurnTools};
-use crate::agent::hook::InvalidToolCallAction;
+use crate::agent::hook::{InvalidToolCallAction, RequestPatch};
 use crate::agent::prompt_request::PromptResponse;
 use crate::completion::{
     CompletionError, CompletionRequestBuilder, CompletionResponse, Message, PromptError,
 };
+use crate::tool::server::ToolRegistrySnapshot;
 
 impl Agent {
     /// Hand-drive this agent: build a driver whose run is seeded from the
@@ -80,7 +100,8 @@ impl Agent {
         AgentDriver {
             agent: self.clone(),
             run,
-            turn_tools: None,
+            snapshot: None,
+            request_patch: RequestPatch::new(),
             allow_missing_resumed_tools: false,
         }
     }
@@ -98,13 +119,15 @@ pub enum DriveStep {
     SendRequest {
         /// The fully configured request: the agent's preamble (with any
         /// output-mode augmentation), static context, model parameters,
-        /// `tool_choice`, and this turn's tool definitions. It reflects the
-        /// agent's **baseline** configuration — no `CompletionCall` hooks run
-        /// on this path, so there is no per-turn request patch, model
-        /// selection, or `active_tools` narrowing. The request still honors
-        /// the agent's `record_telemetry_content` for provider-level spans;
-        /// call `.record_content_telemetry(false)` on it to opt a hand-driven
-        /// turn out.
+        /// `tool_choice`, and this turn's tool definitions — with the
+        /// driver's [`RequestPatch`](AgentDriver::request_patch) applied over
+        /// that baseline, which is how a hand-driven turn gets the per-turn
+        /// preamble, `tool_choice`, or `active_tools` narrowing the runner
+        /// gets from its `CompletionCall` hooks. No hooks run on this path;
+        /// the patch is the seam. The request still honors the agent's
+        /// `record_telemetry_content` for provider-level spans; call
+        /// `.record_content_telemetry(false)` on it to opt a hand-driven turn
+        /// out.
         request: Box<CompletionRequestBuilder<ModelHandle>>,
         /// The turn's advertised tool sets — informational here (the driver
         /// assembles the model turn itself); the same value arrives on the
@@ -152,10 +175,17 @@ impl std::fmt::Debug for DriveStep {
 pub struct AgentDriver {
     agent: Agent,
     run: AgentRun,
-    /// Tool state of the most recently prepared turn. `None` until the first
-    /// `SendRequest` — or in a process that resumed a serialized run, where
-    /// [`Self::resume_tools`] derives a fresh snapshot on demand.
-    turn_tools: Option<TurnTools>,
+    /// Live dispatch target for the current turn — a **cache**, never state.
+    ///
+    /// Everything the driver must not lose lives on [`Self::run`]; a tool
+    /// registry snapshot cannot, because implementations are live objects. It
+    /// is held only so that a turn prepared in *this* process dispatches
+    /// through the exact implementations the provider was shown, and is
+    /// rebuilt on demand when a resumed run reaches its pending tool calls.
+    snapshot: Option<Arc<ToolRegistrySnapshot>>,
+    /// Per-turn request configuration applied to every turn this driver
+    /// prepares. See [`Self::request_patch`].
+    request_patch: RequestPatch,
     allow_missing_resumed_tools: bool,
 }
 
@@ -170,6 +200,29 @@ impl AgentDriver {
     pub fn max_turns(mut self, max_turns: usize) -> Self {
         self.run = self.run.max_turns(max_turns);
         self
+    }
+
+    /// Set the per-turn request configuration for the turns this driver
+    /// prepares.
+    ///
+    /// The driver runs no hooks, so this is how a hand-driven run gets what
+    /// the runner gets from its `CompletionCall` hooks: a per-turn preamble,
+    /// sampling parameters, `tool_choice`, `active_tools` narrowing, extra
+    /// context, or a substituted history. Each set field replaces the agent's
+    /// configured value for the turn; unset fields inherit it.
+    ///
+    /// The patch applies to every turn this driver prepares. Because the
+    /// caller owns the loop, per-turn variation needs no callback — call
+    /// [`Self::set_request_patch`] between steps.
+    pub fn request_patch(mut self, patch: RequestPatch) -> Self {
+        self.request_patch = patch;
+        self
+    }
+
+    /// Replace the per-turn request configuration in place, so a driving loop
+    /// can vary it from turn to turn. See [`Self::request_patch`].
+    pub fn set_request_patch(&mut self, patch: RequestPatch) {
+        self.request_patch = patch;
     }
 
     /// Opt out of the resumed-run drift check: dispatch pending calls whose
@@ -202,87 +255,55 @@ impl AgentDriver {
     /// or re-pick a name mid-run. Fails locally — with no provider
     /// round-trip — when the configuration cannot produce a valid request
     /// (e.g. a `tool_choice` impossible against the advertised tool set).
+    ///
+    /// **Such a failure costs nothing.** Preparation runs entirely before the
+    /// run advances: the turn is committed only once a request exists
+    /// ([`AgentRun::commit_model_call`]), so an error here leaves the run
+    /// exactly as it was — same state, same turn budget — and the step can be
+    /// retried once the cause is fixed (a tool server that was briefly
+    /// unreachable, say), here or in another process.
     pub async fn next_step(&mut self) -> Result<DriveStep, PromptError> {
-        match self.run.next_step()? {
-            AgentRunStep::CallModel {
-                prompt,
-                history,
-                turn,
-            } => {
+        match self.run.advance()? {
+            Advance::NeedsModelCall => {
+                // Peek, prepare, *then* commit. Reading the inputs consumes
+                // nothing, so everything fallible below happens while the run
+                // is still fully intact.
+                let ModelCallInputs {
+                    prompt, history, ..
+                } = self.run.peek_model_call()?;
                 // Pin Tool output mode once committed (#1928), mirroring the
                 // runner: read the run's committed name into preparation, and
                 // store the resolved name back (fill-once).
                 let committed = self.run.output_tool_name().map(str::to_owned);
+                let patch = self.effective_request_patch();
                 let prepared = build_prepared_completion_request(
-                    &self.agent.model,
-                    prompt,
-                    &history,
-                    self.agent.preamble.as_deref(),
-                    &self.agent.static_context,
-                    self.agent.temperature,
-                    self.agent.max_tokens,
-                    self.agent.additional_params.as_ref(),
-                    self.agent.record_telemetry_content,
-                    self.agent.tool_choice.as_ref(),
-                    &self.agent.tool_server_handle,
-                    self.agent.output_schema.as_ref(),
-                    &self.agent.output_mode,
-                    committed.as_deref(),
-                    None,
-                    true,
-                    None,
+                    TurnBaseline::from_agent(&self.agent),
+                    TurnRequest {
+                        prompt,
+                        chat_history: &history,
+                        committed_output_tool: committed.as_deref(),
+                        patch: Some(&patch),
+                    },
                 )
                 .await
                 .map_err(PromptError::CompletionError)?;
-                self.run
-                    .set_output_tool_name(prepared.tools.output_tool_name.clone());
+
                 let PreparedCompletionRequest { builder, tools } = prepared;
-                self.turn_tools = Some(tools.clone());
+                self.snapshot = Some(tools.snapshot.clone());
+                let turn = self
+                    .run
+                    .commit_model_call(Some(tools.names()), tools.output_tool_name.clone());
                 Ok(DriveStep::SendRequest {
                     request: Box::new(builder),
                     tools,
                     turn,
                 })
             }
-            AgentRunStep::CallTools { calls } => {
-                let tools = match &self.turn_tools {
-                    Some(tools) => tools.clone(),
-                    // A process resuming a serialized run wakes here with no
-                    // prepared turn: derive a fresh dispatch snapshot.
-                    None => {
-                        let tools = self.resume_tools().await?;
-                        if !self.allow_missing_resumed_tools {
-                            let missing: Vec<&str> = calls
-                                .iter()
-                                .filter(|call| call.preresolved_result.is_none())
-                                .map(|call| call.tool_call.function.name.as_str())
-                                .filter(|name| {
-                                    !tools.executable_tool_names.contains(*name)
-                                        && tools.output_tool_name() != Some(*name)
-                                })
-                                .collect();
-                            if !missing.is_empty() {
-                                return Err(PromptError::CompletionError(
-                                    CompletionError::RequestError(
-                                        format!(
-                                            "resumed run has pending tool calls {missing:?} that \
-                                             are not registered in this process; register the \
-                                             tools on the agent before resuming, or call \
-                                             `allow_missing_resumed_tools()` to dispatch anyway \
-                                             and feed not-found results to the model"
-                                        )
-                                        .into(),
-                                    ),
-                                ));
-                            }
-                        }
-                        self.turn_tools = Some(tools.clone());
-                        tools
-                    }
-                };
+            Advance::CallTools(calls) => {
+                let tools = self.dispatch_tools_for_turn(&calls).await?;
                 Ok(DriveStep::ExecuteTools { calls, tools })
             }
-            AgentRunStep::Done(response) => Ok(DriveStep::Done(response)),
+            Advance::Done(response) => Ok(DriveStep::Done(response)),
         }
     }
 
@@ -296,12 +317,17 @@ impl AgentDriver {
         &mut self,
         response: &CompletionResponse,
     ) -> Result<ModelTurnOutcome, PromptError> {
-        let Some(tools) = &self.turn_tools else {
+        // The advertised names come from the run, not from this driver — which
+        // is what lets a run serialized between `SendRequest` and the model's
+        // reply be resumed in another process, and what guarantees the
+        // response is validated against the set the request actually carried
+        // rather than whatever the registry holds now.
+        let Some(names) = self.run.advertised_tools().cloned() else {
             return Err(PromptError::CompletionError(CompletionError::RequestError(
                 "model_response must follow a SendRequest step from this driver".into(),
             )));
         };
-        self.run.model_response(tools.model_turn(response))
+        self.run.model_response(names.model_turn(response))
     }
 
     /// Resolve a pending invalid tool call, exactly as
@@ -319,22 +345,81 @@ impl AgentDriver {
         self.run.tool_results(results)
     }
 
-    /// Derive a fresh dispatch target for a resumed run's pending tool calls.
+    /// The turn's tool sets paired with a dispatch target.
     ///
-    /// Necessarily a **new** snapshot: implementations are live objects, so a
-    /// fresh process dispatches against its own registry state. The retrieval
-    /// query is re-derived from the run's history (matching preparation), and
-    /// the run's committed output tool — which is serialized with the run —
-    /// stays non-executable.
-    async fn resume_tools(&self) -> Result<TurnTools, PromptError> {
+    /// The names always come from the run. The snapshot comes from this
+    /// process: the one taken when the turn was prepared if the turn was
+    /// prepared here, otherwise a fresh one — implementations are live
+    /// objects, so a resumed process can only dispatch against its own
+    /// registry.
+    async fn dispatch_tools_for_turn(
+        &mut self,
+        calls: &[PendingToolCall],
+    ) -> Result<TurnTools, PromptError> {
+        let Some(names) = self.run.advertised_tools().cloned() else {
+            return Err(PromptError::CompletionError(CompletionError::RequestError(
+                "the run has no advertised tool set for the pending calls; drive the model turn \
+                 through this driver so the turn's tools are recorded on the run"
+                    .into(),
+            )));
+        };
+        let output_tool_name = self.run.output_tool_name().map(str::to_owned);
+
+        if let Some(snapshot) = &self.snapshot {
+            return Ok(TurnTools::from_parts(
+                snapshot.clone(),
+                names,
+                output_tool_name,
+            ));
+        }
+
+        // Resumed run: rebuild the live half, then report deployment drift
+        // rather than silently feeding not-found results to the model. The
+        // model chose these tools from a registry this process no longer has,
+        // and re-prompting cannot fix that.
+        let snapshot = Arc::new(self.fresh_snapshot().await?);
+        if !self.allow_missing_resumed_tools {
+            let missing: Vec<&str> = calls
+                .iter()
+                .filter(|call| call.preresolved_result.is_none())
+                .map(|call| call.tool_call.function.name.as_str())
+                .filter(|name| {
+                    output_tool_name.as_deref() != Some(*name)
+                        && !snapshot
+                            .definitions()
+                            .iter()
+                            .any(|tool| tool.name.as_str() == *name)
+                })
+                .collect();
+            if !missing.is_empty() {
+                return Err(PromptError::CompletionError(CompletionError::RequestError(
+                    format!(
+                        "resumed run has pending tool calls {missing:?} that are not registered \
+                         in this process; register the tools on the agent before resuming, or \
+                         call `allow_missing_resumed_tools()` to dispatch anyway and feed \
+                         not-found results to the model"
+                    )
+                    .into(),
+                )));
+            }
+        }
+
+        self.snapshot = Some(snapshot.clone());
+        Ok(TurnTools::from_parts(snapshot, names, output_tool_name))
+    }
+
+    /// Take a registry snapshot for a run resumed in this process.
+    ///
+    /// The retrieval query is re-derived from the run's history, matching what
+    /// request preparation would have used.
+    async fn fresh_snapshot(&self) -> Result<ToolRegistrySnapshot, PromptError> {
         let query = self
             .run
             .full_history()
             .iter()
             .rev()
             .find_map(|message| message.rag_text());
-        let snapshot = self
-            .agent
+        self.agent
             .tool_server_handle
             .snapshot_tool_defs(query)
             .await
@@ -342,29 +427,23 @@ impl AgentDriver {
                 PromptError::CompletionError(CompletionError::RequestError(
                     "Failed to get tool definitions".into(),
                 ))
-            })?;
-        let executable: BTreeSet<String> = snapshot
-            .definitions()
-            .iter()
-            .map(|tool| tool.name.clone())
-            .collect();
-        let output_tool_name = self.run.output_tool_name().map(str::to_owned);
-        let mut allowed = allowed_tool_names_for_choice(
-            &executable,
-            self.agent.tool_choice.as_ref(),
-            output_tool_name.as_deref(),
-            None,
-        )
-        .map_err(PromptError::CompletionError)?;
-        if let Some(name) = &output_tool_name {
-            allowed.insert(name.clone());
+            })
+    }
+
+    /// The patch actually applied to the next turn's request.
+    ///
+    /// The run's own `tool_choice` is the driver's baseline — a run built with
+    /// [`AgentRun::with_tool_choice`] and handed to
+    /// [`Agent::drive_run`](super::Agent::drive_run) is taken as-is, so its
+    /// choice must reach the provider and not merely the run's internal
+    /// decisions. An explicit [`Self::request_patch`] outranks it, exactly as
+    /// a per-turn patch outranks the agent's baseline everywhere else.
+    fn effective_request_patch(&self) -> RequestPatch {
+        let mut patch = self.request_patch.clone();
+        if patch.tool_choice.is_none() {
+            patch.tool_choice = self.run.tool_choice().cloned();
         }
-        Ok(TurnTools {
-            snapshot: Arc::new(snapshot),
-            executable_tool_names: Arc::new(executable),
-            allowed_tool_names: Arc::new(allowed),
-            output_tool_name,
-        })
+        patch
     }
 }
 
@@ -767,5 +846,195 @@ mod tests {
             .expect_err("Required with no advertised tool must fail at prepare time");
         assert!(err.to_string().contains("Required"));
         assert_eq!(model.request_count(), 0);
+    }
+
+    /// A preparation failure must cost nothing. Preparation runs before the
+    /// run advances, so a turn that never reached the provider consumes no
+    /// budget and leaves the run drivable — the caller fixes the cause (here,
+    /// a tool the registry was missing; in practice a briefly unreachable tool
+    /// server) and retries the same step.
+    #[tokio::test]
+    async fn failed_preparation_leaves_the_run_intact_and_retryable() {
+        let model = MockCompletionModel::new([MockTurn::text("done")]);
+        let agent = AgentBuilder::new(model.clone())
+            .default_max_turns(1)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+            .build();
+        let mut driver = agent.drive("go");
+
+        driver
+            .next_step()
+            .await
+            .expect_err("a tool_choice naming an unregistered tool must fail at prepare time");
+        assert_eq!(
+            driver.run().turn(),
+            0,
+            "a request that never left the process must not consume a turn"
+        );
+        assert_eq!(model.request_count(), 0);
+
+        // Fix the cause and drive the very same step again.
+        agent.tool_server_handle.add_tool(MockAddTool).await;
+        let (request, tools, turn) = expect_send!(driver);
+        assert_eq!(turn, 1, "the retry takes the turn the failure did not");
+        assert!(tools.executable_tool_names().contains("add"));
+        let response = request.send().await.expect("scripted turn");
+        driver.model_response(&response).expect("turn accepted");
+    }
+
+    /// The natural suspension point for a caller that owns the transport is
+    /// *after* the request is sent and before the reply lands — a queued or
+    /// long-running provider call. The turn's advertised tool names travel
+    /// with the run, so the reply can be fed to a driver in another process.
+    #[tokio::test]
+    async fn run_suspended_awaiting_the_model_resumes_in_another_process() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call_1", "add", json!({"x": 2, "y": 5})),
+            MockTurn::text("7"),
+        ]);
+        let agent = AgentBuilder::new(model.clone())
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .build();
+
+        let mut driver = agent.drive("what is 2 + 5?");
+        let (request, _, _) = expect_send!(driver);
+        // Suspend with the model call in flight.
+        let serialized = serde_json::to_string(driver.run()).expect("run serializes");
+        let response = request.send().await.expect("scripted turn");
+        drop(driver);
+        drop(agent);
+
+        // "Fresh process": rebuild the agent, deserialize, feed the reply.
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .build();
+        let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        let mut driver = agent.drive_run(run);
+        driver
+            .model_response(&response)
+            .expect("a run resumed mid-model-call accepts its reply");
+
+        let (calls, tools) = expect_execute_tools!(driver);
+        let mut context = ToolContext::new();
+        let mut results = Vec::new();
+        for call in &calls {
+            results.push(tools.execute_call(call, &mut context).await);
+        }
+        driver.tool_results(results).expect("results accepted");
+        let (request, _, _) = expect_send!(driver);
+        let response = request.send().await.expect("scripted turn");
+        driver.model_response(&response).expect("turn accepted");
+        match driver.next_step().await.expect("next_step succeeds") {
+            DriveStep::Done(response) => assert_eq!(response.output, "7"),
+            other => panic!("expected Done, got {other:?}"),
+        }
+    }
+
+    /// A custom run is taken as-is, so its own `tool_choice` must reach the
+    /// provider — not merely the run's internal decisions. Forbidding tools on
+    /// the run and having the model call one anyway is not a recoverable
+    /// situation; the request has to carry the constraint.
+    #[tokio::test]
+    async fn a_custom_runs_tool_choice_reaches_the_request() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive_run(AgentRun::new("go").with_tool_choice(ToolChoice::None));
+        let (request, tools, _) = expect_send!(driver);
+        assert_eq!(request.build().tool_choice, Some(ToolChoice::None));
+        assert!(
+            tools.allowed_tool_names().is_empty(),
+            "ToolChoice::None allows nothing to be called"
+        );
+    }
+
+    /// An explicit patch outranks the run's own choice, and reaches every
+    /// other per-turn field the runner's `CompletionCall` hooks reach.
+    #[tokio::test]
+    async fn a_request_patch_overrides_the_baseline_for_the_turn() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .preamble("baseline preamble")
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .build();
+        let mut driver = agent
+            .drive_run(AgentRun::new("go").with_tool_choice(ToolChoice::None))
+            .request_patch(
+                RequestPatch::new()
+                    .preamble("patched preamble")
+                    .tool_choice(ToolChoice::Required)
+                    .active_tools(["add"]),
+            );
+
+        let (request, tools, _) = expect_send!(driver);
+        assert!(
+            tools.executable_tool_names().contains("add")
+                && !tools.executable_tool_names().contains("subtract"),
+            "active_tools narrows the advertised set: {:?}",
+            tools.executable_tool_names()
+        );
+        let request = request.build();
+        assert_eq!(request.tool_choice, Some(ToolChoice::Required));
+        assert!(matches!(
+            request.chat_history.first(),
+            Some(Message::System { content }) if content == "patched preamble"
+        ));
+    }
+
+    /// Resuming is about dispatch, not about validating a request that will
+    /// never be built. A `tool_choice` the resuming process could not satisfy
+    /// must not pre-empt the drift report, and must not defeat the opt-out
+    /// that exists precisely for this situation.
+    #[tokio::test]
+    async fn resumed_dispatch_does_not_validate_an_unbuilt_requests_tool_choice() {
+        let model = MockCompletionModel::new([MockTurn::tool_call(
+            "call_1",
+            "add",
+            json!({"x": 2, "y": 5}),
+        )]);
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(2)
+            .tool_choice(ToolChoice::Required)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("what is 2 + 5?");
+        let (request, _, _) = expect_send!(driver);
+        let response = request.send().await.expect("scripted turn");
+        driver.model_response(&response).expect("turn accepted");
+        let _ = expect_execute_tools!(driver);
+        let serialized = serde_json::to_string(driver.run()).expect("run serializes");
+
+        // Resume against a process whose registry lost the tool. `Required`
+        // is unsatisfiable there, but no request is being built.
+        let bare_agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .default_max_turns(2)
+            .tool_choice(ToolChoice::Required)
+            .build();
+
+        let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        let err = bare_agent
+            .drive_run(run)
+            .next_step()
+            .await
+            .expect_err("the missing pending tool must surface");
+        let message = err.to_string();
+        assert!(
+            message.contains("add") && message.contains("allow_missing_resumed_tools"),
+            "drift must be reported, not the unsatisfiable tool choice: {message}"
+        );
+
+        let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        let mut driver = bare_agent.drive_run(run).allow_missing_resumed_tools();
+        let (calls, tools) = expect_execute_tools!(driver);
+        let mut context = ToolContext::new();
+        let result = tools.execute_call(&calls[0], &mut context).await;
+        assert!(
+            matches!(result, UserContent::ToolResult(_)),
+            "the opt-out must dispatch and produce a tool result"
+        );
     }
 }

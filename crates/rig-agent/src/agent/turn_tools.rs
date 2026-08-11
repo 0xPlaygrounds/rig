@@ -6,9 +6,16 @@
 //! together at one instant: the executable and allowed tool-name sets, the
 //! synthetic output-tool name, and dispatch pinned to the registry snapshot
 //! whose definitions the provider received.
+//!
+//! The type splits along the durability line: [`TurnToolNames`] is data and is
+//! recorded on the [`AgentRun`](super::run::AgentRun), while the dispatch
+//! target is a live object rebuilt from the registry when a run resumes
+//! elsewhere. [`TurnTools`] is the two halves paired back together.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
 
 use rig_core::message::UserContent;
 
@@ -27,6 +34,42 @@ pub(crate) struct PreparedCompletionRequest {
     pub(crate) builder: CompletionRequestBuilder<ModelHandle>,
     /// The turn's tool sets and dispatch target.
     pub(crate) tools: TurnTools,
+}
+
+/// The serializable half of [`TurnTools`]: the tool names a model call
+/// advertised to the provider.
+///
+/// Names are data, so they travel with the run — [`AgentRun`](super::run::AgentRun)
+/// records them when a model call is committed, and they survive
+/// serialization. Implementations are live objects and cannot, so the
+/// dispatch target ([`ToolRegistrySnapshot`]) is rebuilt from the agent's
+/// registry when a run resumes in another process. Pairing the two back
+/// together yields a [`TurnTools`] in any run state, in any process, which is
+/// what makes a suspended run resumable at *every* step boundary rather than
+/// only while tool calls are pending.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TurnToolNames {
+    /// The real registry tools advertised to the provider this turn.
+    pub executable: BTreeSet<String>,
+    /// The tools the active `tool_choice` let the model call this turn,
+    /// including the synthetic output tool when Tool output mode is active.
+    pub allowed: BTreeSet<String>,
+}
+
+impl TurnToolNames {
+    /// Assemble the [`ModelTurn`] for a completion response received on the
+    /// turn these names were advertised for. The single construction site for
+    /// driver-facing turns, so the two name sets can never be transposed by a
+    /// caller.
+    pub(crate) fn model_turn(&self, response: &CompletionResponse) -> ModelTurn {
+        ModelTurn::new(
+            response.message_id.clone(),
+            response.choice.clone(),
+            response.usage,
+            self.executable.clone(),
+            self.allowed.clone(),
+        )
+    }
 }
 
 /// One turn's advertised tool sets and their dispatch target.
@@ -74,6 +117,33 @@ impl std::fmt::Debug for TurnTools {
 }
 
 impl TurnTools {
+    /// Pair advertised names back with a dispatch target.
+    ///
+    /// The two halves come from different places once a run is resumed: the
+    /// names from the serialized [`AgentRun`](super::run::AgentRun), the
+    /// snapshot from the resuming process's registry.
+    pub(crate) fn from_parts(
+        snapshot: Arc<ToolRegistrySnapshot>,
+        names: TurnToolNames,
+        output_tool_name: Option<String>,
+    ) -> Self {
+        Self {
+            snapshot,
+            executable_tool_names: Arc::new(names.executable),
+            allowed_tool_names: Arc::new(names.allowed),
+            output_tool_name,
+        }
+    }
+
+    /// The advertised names, detached from the dispatch target so they can be
+    /// recorded on the run.
+    pub(crate) fn names(&self) -> TurnToolNames {
+        TurnToolNames {
+            executable: (*self.executable_tool_names).clone(),
+            allowed: (*self.allowed_tool_names).clone(),
+        }
+    }
+
     /// The executable registry tools advertised to the provider this turn.
     pub fn executable_tool_names(&self) -> &BTreeSet<String> {
         &self.executable_tool_names
@@ -160,16 +230,10 @@ impl TurnTools {
     }
 
     /// Assemble the [`ModelTurn`] for a completion response received on this
-    /// prepared turn. The single construction site for driver-facing turns,
-    /// so the two name sets can never be transposed by a caller.
+    /// prepared turn. Delegates to [`TurnToolNames::model_turn`], the single
+    /// construction site for driver-facing turns.
     pub(crate) fn model_turn(&self, response: &CompletionResponse) -> ModelTurn {
-        ModelTurn::new(
-            response.message_id.clone(),
-            response.choice.clone(),
-            response.usage,
-            (*self.executable_tool_names).clone(),
-            (*self.allowed_tool_names).clone(),
-        )
+        self.names().model_turn(response)
     }
 }
 

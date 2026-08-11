@@ -1572,6 +1572,23 @@ not an execution path — hooks, memory, retrieval policy, and telemetry still
 run only under `Agent::runner`. See `examples/agent_run_stepping` and
 `examples/agent_with_durable_approval`.
 
+A hand-driven turn gets per-turn configuration through
+`AgentDriver::request_patch(RequestPatch)` (or `set_request_patch` between
+steps) — the same `RequestPatch` the runner merges from its `CompletionCall`
+hooks, covering the per-turn preamble, sampling parameters, `tool_choice`,
+`active_tools` narrowing, extra context, and substituted history. A custom
+run's own `AgentRun::with_tool_choice` now also reaches the provider; before,
+it governed only the run's internal decisions while the request carried the
+agent's baseline.
+
+**Serialized `AgentRun` state does not survive the upgrade.** Payloads now
+carry a `$schemaVersion` tag and a build reads only the version it writes, so a
+run suspended by an earlier release fails to deserialize with a named error
+rather than being reinterpreted against fields whose meaning moved. Drain
+in-flight suspended runs before upgrading, or discard them. In exchange, a run
+can now be suspended and resumed at *every* step boundary — including with a
+model call in flight — not only while tool calls are pending.
+
 An `Agent`'s default model is set at construction. Per-run overrides now go
 through `runner(...).using_model(...)`, `Agent::set_model`, or a
 `ModelSelection` hook (see the "runtime model swapping" section for the
