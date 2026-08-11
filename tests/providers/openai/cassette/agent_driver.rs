@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
 use rig::agent::run::{OutputMode, StreamedTurnAssembler};
-use rig::agent::{AgentRun, RequestPatch};
+use rig::agent::{AgentRun, RequestPatch, TurnPreparation};
 use rig::completion::PromptError;
 use rig::message::{Message, ToolChoice};
 use rig::prelude::*;
@@ -29,7 +29,7 @@ use rig::tool::{Tool, ToolContext};
 use super::super::support::with_openai_completions_cassette;
 use crate::driver_support::{
     ADD_PROMPT, FORCE_TOOLS_PREAMBLE, dispatch_and_feed, drive_to_completion, expect_done,
-    expect_execute_tools, expect_send, expect_turn_accepted,
+    expect_execute_tools, expect_send, expect_send_patched, expect_turn_accepted,
 };
 use crate::support::{Adder, Subtract};
 
@@ -303,11 +303,13 @@ async fn a_patched_preamble_replaces_the_agents_on_the_wire() {
             .preamble("BASELINE PREAMBLE — must not appear in the request")
             .build();
 
-        let mut driver = agent
-            .drive("Say the word banana.")
-            .request_patch(RequestPatch::new().preamble("PATCHED PREAMBLE — reply with one word."));
+        let mut driver = agent.drive("Say the word banana.");
 
-        let (request, _, _) = expect_send(&mut driver).await;
+        let (request, _, _) = expect_send_patched(
+            &mut driver,
+            RequestPatch::new().preamble("PATCHED PREAMBLE — reply with one word."),
+        )
+        .await;
         let response = request.send().await.expect("should send");
         expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
@@ -331,11 +333,13 @@ async fn a_patched_tool_choice_outranks_the_runs() {
         let run = AgentRun::new(ADD_PROMPT)
             .max_turns(2)
             .with_tool_choice(ToolChoice::None);
-        let mut driver = agent
-            .drive_run(run)
-            .request_patch(RequestPatch::new().tool_choice(ToolChoice::Required));
+        let mut driver = agent.drive_run(run);
 
-        let (request, tools, _) = expect_send(&mut driver).await;
+        let (request, tools, _) = expect_send_patched(
+            &mut driver,
+            RequestPatch::new().tool_choice(ToolChoice::Required),
+        )
+        .await;
         assert!(
             tools.allowed_tool_names().contains("add"),
             "the patch's Required must govern, not the run's None"
@@ -348,10 +352,15 @@ async fn a_patched_tool_choice_outranks_the_runs() {
     .await;
 }
 
-/// `active_tools` narrows the advertised set for the turn, so the request's
-/// `tools` array shrinks.
+/// `active_tools` narrows the advertised set **for the turn it is given to**,
+/// and for no other.
+///
+/// Both request bodies are the assertion: turn one carries only `add`, turn two
+/// carries `add` and `subtract` again. A patch that leaked into the following
+/// turn — which is what a driver holding it as state does — would narrow the
+/// second body too and fail as a mock miss.
 #[tokio::test]
-async fn a_patched_active_tools_narrows_the_advertised_set() {
+async fn a_patched_active_tools_narrows_only_the_turn_it_is_given_to() {
     with_openai_completions_cassette("agent_driver/patch_active_tools", |client| async move {
         let agent = client
             .agent(openai::GPT_4O)
@@ -361,11 +370,10 @@ async fn a_patched_active_tools_narrows_the_advertised_set() {
             .tool(Subtract)
             .build();
 
-        let mut driver = agent
-            .drive(ADD_PROMPT)
-            .request_patch(RequestPatch::new().active_tools(["add"]));
+        let mut driver = agent.drive(ADD_PROMPT);
 
-        let (request, tools, _) = expect_send(&mut driver).await;
+        let (request, tools, _) =
+            expect_send_patched(&mut driver, RequestPatch::new().active_tools(["add"])).await;
         assert!(tools.executable_tool_names().contains("add"));
         assert!(
             !tools.executable_tool_names().contains("subtract"),
@@ -377,9 +385,19 @@ async fn a_patched_active_tools_narrows_the_advertised_set() {
         expect_turn_accepted(&mut driver, &response);
         let (pending, tools) = expect_execute_tools(&mut driver).await;
         dispatch_and_feed(&mut driver, &pending, &tools).await;
-        let response = drive_to_completion(&mut driver)
-            .await
-            .expect("run should finish");
+
+        // No patch this time. The narrowing does not persist: per-turn
+        // configuration was an input to the previous preparation, not state.
+        let (request, tools, turn) = expect_send(&mut driver).await;
+        assert_eq!(turn, 2);
+        assert!(
+            tools.executable_tool_names().contains("subtract"),
+            "the narrowing must not outlive the turn it was given to: {:?}",
+            tools.executable_tool_names()
+        );
+        let response = request.send().await.expect("should send");
+        expect_turn_accepted(&mut driver, &response);
+        let response = expect_done(&mut driver).await;
         assert!(!response.output.trim().is_empty());
     })
     .await;
@@ -396,11 +414,13 @@ async fn patched_sampling_parameters_reach_the_request() {
             .temperature(0.9)
             .build();
 
-        let mut driver = agent
-            .drive("Say the word banana.")
-            .request_patch(RequestPatch::new().temperature(0.0).max_tokens(16));
+        let mut driver = agent.drive("Say the word banana.");
 
-        let (request, _, _) = expect_send(&mut driver).await;
+        let (request, _, _) = expect_send_patched(
+            &mut driver,
+            RequestPatch::new().temperature(0.0).max_tokens(16),
+        )
+        .await;
         let response = request.send().await.expect("should send");
         expect_turn_accepted(&mut driver, &response);
         let _ = expect_done(&mut driver).await;
@@ -422,11 +442,13 @@ async fn patched_extra_context_reaches_the_request() {
             text: "The launch code is banana.".to_string(),
             additional_props: Default::default(),
         };
-        let mut driver = agent
-            .drive("What is the launch code?")
-            .request_patch(RequestPatch::new().extra_context(vec![document]));
+        let mut driver = agent.drive("What is the launch code?");
 
-        let (request, _, _) = expect_send(&mut driver).await;
+        let (request, _, _) = expect_send_patched(
+            &mut driver,
+            RequestPatch::new().extra_context(vec![document]),
+        )
+        .await;
         let response = request.send().await.expect("should send");
         expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
@@ -444,15 +466,16 @@ async fn a_patched_history_replaces_the_runs_for_the_turn() {
             .preamble("Answer briefly.")
             .build();
 
-        let mut driver =
-            agent
-                .drive("What did I just say?")
-                .request_patch(RequestPatch::new().history(vec![
-                    Message::user("Remember this: the code word is banana."),
-                    Message::assistant("Noted."),
-                ]));
+        let mut driver = agent.drive("What did I just say?");
 
-        let (request, _, _) = expect_send(&mut driver).await;
+        let (request, _, _) = expect_send_patched(
+            &mut driver,
+            RequestPatch::new().history(vec![
+                Message::user("Remember this: the code word is banana."),
+                Message::assistant("Noted."),
+            ]),
+        )
+        .await;
         let response = request.send().await.expect("should send");
         expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
@@ -718,14 +741,19 @@ async fn a_preparation_failure_costs_no_turn_and_no_interaction() {
             .tool(Adder)
             .build();
 
-        // An `active_tools` allow-list naming a tool this turn does not have:
-        // preparation fails locally, with no provider round trip.
-        let mut driver = agent
-            .drive(ADD_PROMPT)
-            .request_patch(RequestPatch::new().active_tools(["nonexistent_tool"]));
+        let mut driver = agent.drive(ADD_PROMPT);
 
+        // An `active_tools` allow-list naming a tool this turn does not have:
+        // preparation fails locally, with no provider round trip. The patch is
+        // an input to *this* preparation, so the failure is scoped to it.
         let error = driver
-            .next_step()
+            .next_step_with(|_| {
+                Box::pin(async {
+                    Ok(TurnPreparation::with_patch(
+                        RequestPatch::new().active_tools(["nonexistent_tool"]),
+                    ))
+                })
+            })
             .await
             .expect_err("active_tools naming an unavailable tool must fail at prepare time");
         assert!(matches!(error, PromptError::CompletionError(_)));
@@ -735,8 +763,8 @@ async fn a_preparation_failure_costs_no_turn_and_no_interaction() {
             "a request that never left the process must not consume a turn"
         );
 
-        // Fix the cause and drive the very same step again.
-        driver.set_request_patch(RequestPatch::new());
+        // The next turn simply does not pass that patch. Nothing to reset:
+        // per-turn configuration was never stored.
         let (request, tools, turn) = expect_send(&mut driver).await;
         assert_eq!(turn, 1, "the retry takes the turn the failure did not");
         assert!(tools.executable_tool_names().contains("add"));
@@ -981,13 +1009,14 @@ async fn a_streamed_turn_honors_the_request_patch() {
             .tool(Subtract)
             .build();
 
-        let mut driver = agent.drive(ADD_PROMPT).request_patch(
+        let mut driver = agent.drive(ADD_PROMPT);
+        let (request, tools, _) = expect_send_patched(
+            &mut driver,
             RequestPatch::new()
                 .preamble(FORCE_TOOLS_PREAMBLE)
                 .active_tools(["add"]),
-        );
-
-        let (request, tools, _) = expect_send(&mut driver).await;
+        )
+        .await;
         assert!(!tools.executable_tool_names().contains("subtract"));
 
         let mut assembler = StreamedTurnAssembler::new(

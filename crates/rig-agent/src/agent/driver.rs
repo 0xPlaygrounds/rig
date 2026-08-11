@@ -23,10 +23,14 @@
 //! side effect stays with the caller.
 //!
 //! It owns that pairing without *holding* it. Everything durable lives on the
-//! [`AgentRun`] — including the turn's advertised tool names — and the driver
-//! keeps only a cache of the live registry snapshot, which cannot be
-//! serialized in any design. That is what makes the durability guarantees
-//! below hold at every step rather than at one of them.
+//! [`AgentRun`] — including what each committed turn resolved to — and the
+//! driver's only other field is a cache of the live registry snapshot, which
+//! cannot be serialized in any design. Per-turn configuration is an input to
+//! [`AgentDriver::next_step_with`], never a field: policy for a turn that has
+//! not happened yet is not run state, and a driver that stored it would resume
+//! a serialized run with configuration the suspending process never recorded.
+//! That is what makes the durability guarantees below hold at every step
+//! rather than at one of them.
 //!
 //! # Durability
 //!
@@ -84,6 +88,7 @@ use crate::completion::{
     CompletionError, CompletionRequestBuilder, CompletionResponse, Message, PromptError,
 };
 use crate::tool::server::ToolRegistrySnapshot;
+use rig_core::wasm_compat::WasmBoxedFuture;
 
 impl Agent {
     /// Hand-drive this agent: build a driver whose run is seeded from the
@@ -114,7 +119,6 @@ impl Agent {
             agent: self.clone(),
             run,
             snapshot: None,
-            request_patch: RequestPatch::new(),
             allow_missing_resumed_tools: false,
         }
     }
@@ -134,11 +138,12 @@ pub enum DriveStep {
         /// The fully configured request: the agent's preamble (with any
         /// output-mode augmentation), static context, model parameters,
         /// `tool_choice`, and this turn's tool definitions — with the
-        /// driver's [`RequestPatch`](AgentDriver::request_patch) applied over
-        /// that baseline, which is how a hand-driven turn gets the per-turn
-        /// preamble, `tool_choice`, or `active_tools` narrowing the runner
-        /// gets from its `CompletionCall` hooks. No hooks run on this path;
-        /// the patch is the seam. The request still honors the agent's
+        /// [`RequestPatch`] from [`AgentDriver::next_step_with`]'s callback
+        /// applied over that baseline, which is how a hand-driven turn gets
+        /// the per-turn preamble, `tool_choice`, or `active_tools` narrowing
+        /// the runner gets from its `CompletionCall` hooks. No hooks run on
+        /// this path; the patch is the seam. The request still honors the
+        /// agent's
         /// `record_telemetry_content` for provider-level spans; call
         /// `.record_content_telemetry(false)` on it to opt a hand-driven turn
         /// out.
@@ -198,6 +203,49 @@ impl std::fmt::Debug for DriveStep {
     }
 }
 
+/// What a caller may decide about the turn that is about to be prepared.
+///
+/// Handed to the callback of [`AgentDriver::next_step_with`] before anything
+/// advances, so a decision that fails costs no turn.
+#[non_exhaustive]
+pub struct TurnPreparationContext<'a> {
+    /// The prompt this turn will send.
+    pub prompt: &'a Message,
+    /// The history preceding it.
+    pub history: &'a [Message],
+    /// One-based index this call *would* take, once committed.
+    pub turn: usize,
+}
+
+/// A caller's decisions for one turn.
+///
+/// Per-turn configuration is an **input to preparation**, never state the
+/// driver holds. Future policy is not run state: storing it would make a
+/// resumed run silently prepare its next request differently from the process
+/// that suspended it, and there would be nothing on the run to say so.
+#[derive(Debug, Default)]
+#[non_exhaustive]
+pub struct TurnPreparation {
+    /// Per-turn overrides layered over the agent's baseline. Each set field
+    /// replaces the configured value for this turn; unset fields inherit it.
+    pub patch: RequestPatch,
+    /// The model to use for this turn. `None` uses the agent's.
+    pub model: Option<ModelHandle>,
+}
+
+impl TurnPreparation {
+    /// Prepare this turn with `patch` layered over the agent's baseline.
+    pub fn with_patch(patch: RequestPatch) -> Self {
+        Self { patch, model: None }
+    }
+
+    /// Use `model` for this turn instead of the agent's.
+    pub fn using_model(mut self, model: ModelHandle) -> Self {
+        self.model = Some(model);
+        self
+    }
+}
+
 /// Hand-drives one [`AgentRun`] with one [`Agent`]'s configuration. Built by
 /// [`Agent::drive`] / [`Agent::drive_run`]; see the [module docs](self) for
 /// the driving protocol and the boundary with [`AgentRunner`](super::AgentRunner).
@@ -212,9 +260,6 @@ pub struct AgentDriver {
     /// through the exact implementations the provider was shown, and is
     /// rebuilt on demand when a resumed run reaches its pending tool calls.
     snapshot: Option<Arc<ToolRegistrySnapshot>>,
-    /// Per-turn request configuration applied to every turn this driver
-    /// prepares. See [`Self::request_patch`].
-    request_patch: RequestPatch,
     allow_missing_resumed_tools: bool,
 }
 
@@ -242,29 +287,6 @@ impl AgentDriver {
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
         self.run = self.run.max_invalid_tool_call_retries(retries);
         self
-    }
-
-    /// Set the per-turn request configuration for the turns this driver
-    /// prepares.
-    ///
-    /// The driver runs no hooks, so this is how a hand-driven run gets what
-    /// the runner gets from its `CompletionCall` hooks: a per-turn preamble,
-    /// sampling parameters, `tool_choice`, `active_tools` narrowing, extra
-    /// context, or a substituted history. Each set field replaces the agent's
-    /// configured value for the turn; unset fields inherit it.
-    ///
-    /// The patch applies to every turn this driver prepares. Because the
-    /// caller owns the loop, per-turn variation needs no callback — call
-    /// [`Self::set_request_patch`] between steps.
-    pub fn request_patch(mut self, patch: RequestPatch) -> Self {
-        self.request_patch = patch;
-        self
-    }
-
-    /// Replace the per-turn request configuration in place, so a driving loop
-    /// can vary it from turn to turn. See [`Self::request_patch`].
-    pub fn set_request_patch(&mut self, patch: RequestPatch) {
-        self.request_patch = patch;
     }
 
     /// Opt out of the resumed-run drift check: dispatch pending calls whose
@@ -329,19 +351,75 @@ impl AgentDriver {
     /// retried once the cause is fixed (a tool server that was briefly
     /// unreachable, say), here or in another process.
     pub async fn next_step(&mut self) -> Result<DriveStep, PromptError> {
+        self.next_step_with(|_| Box::pin(async { Ok(TurnPreparation::default()) }))
+            .await
+    }
+
+    /// Advance to the next step, deciding this turn's configuration first.
+    ///
+    /// The callback runs **before anything advances**, is handed the prompt,
+    /// history and prospective turn index, and returns the turn's
+    /// [`RequestPatch`] and optionally a model. It is the hand-driven
+    /// equivalent of the runner's `CompletionCall` and model-selection hooks,
+    /// and it is where a caller does per-turn work that can fail: a callback
+    /// that returns `Err` costs no turn, exactly like a preparation failure,
+    /// because the commit is still ahead of it.
+    ///
+    /// Per-turn configuration is an input, never driver state. A driver that
+    /// stored it would resume a serialized run with configuration the
+    /// suspending process never recorded, and nothing on the run would say so.
+    ///
+    /// ```rust,ignore
+    /// let step = driver
+    ///     .next_step_with(|ctx| {
+    ///         Box::pin(async move {
+    ///             Ok(TurnPreparation::with_patch(
+    ///                 RequestPatch::new().active_tools(tools_for(ctx.turn)),
+    ///             ))
+    ///         })
+    ///     })
+    ///     .await?;
+    /// ```
+    pub async fn next_step_with<F>(&mut self, prepare: F) -> Result<DriveStep, PromptError>
+    where
+        F: for<'a> FnOnce(
+            TurnPreparationContext<'a>,
+        ) -> WasmBoxedFuture<'a, Result<TurnPreparation, PromptError>>,
+    {
         match self.run.advance()? {
             Advance::NeedsModelCall => {
-                // Peek, prepare, *then* commit. Reading the inputs consumes
-                // nothing, so everything fallible below happens while the run
-                // is still fully intact.
+                // Peek, decide, prepare, *then* commit. Reading the inputs
+                // consumes nothing, so everything fallible below — including
+                // the caller's own callback — happens while the run is still
+                // fully intact.
                 let ModelCallInputs { prompt, history } = self.run.peek_model_call()?;
+                let turn = self.run.turn() + 1;
+                let preparation = prepare(TurnPreparationContext {
+                    prompt: &prompt,
+                    history: &history,
+                    turn,
+                })
+                .await?;
+
+                // The run's own choice is the baseline for a hand-driven turn:
+                // a custom run handed to `drive_run` is taken as-is, so its
+                // choice must reach the provider. An explicit patch outranks
+                // it, exactly as a per-turn patch outranks the agent's.
+                let mut patch = preparation.patch;
+                if patch.tool_choice.is_none() {
+                    patch.tool_choice = self.run.tool_choice().cloned();
+                }
+
                 // Pin Tool output mode once committed (#1928), mirroring the
                 // runner: read the run's committed name into preparation, and
                 // store the resolved name back (fill-once).
                 let committed = self.run.output_tool_name().map(str::to_owned);
-                let patch = self.effective_request_patch();
+                let mut baseline = TurnBaseline::from_agent(&self.agent);
+                if let Some(model) = preparation.model.as_ref() {
+                    baseline.model = model;
+                }
                 let prepared = build_prepared_completion_request(
-                    TurnBaseline::from_agent(&self.agent),
+                    baseline,
                     TurnRequest {
                         prompt,
                         chat_history: &history,
@@ -554,22 +632,6 @@ impl AgentDriver {
                 ))
             })
     }
-
-    /// The patch actually applied to the next turn's request.
-    ///
-    /// The run's own `tool_choice` is the driver's baseline — a run built with
-    /// [`AgentRun::with_tool_choice`] and handed to
-    /// [`Agent::drive_run`](super::Agent::drive_run) is taken as-is, so its
-    /// choice must reach the provider and not merely the run's internal
-    /// decisions. An explicit [`Self::request_patch`] outranks it, exactly as
-    /// a per-turn patch outranks the agent's baseline everywhere else.
-    fn effective_request_patch(&self) -> RequestPatch {
-        let mut patch = self.request_patch.clone();
-        if patch.tool_choice.is_none() {
-            patch.tool_choice = self.run.tool_choice().cloned();
-        }
-        patch
-    }
 }
 
 #[cfg(test)]
@@ -605,6 +667,24 @@ mod tests {
             ModelTurnOutcome::Continue { .. } => {}
             other => panic!("expected the turn to be accepted, got {other:?}"),
         }
+    }
+
+    /// Expect the next step to be `SendRequest` with a per-turn preparation.
+    macro_rules! expect_send_with {
+        ($driver:expr, $patch:expr) => {
+            match $driver
+                .next_step_with(|_| Box::pin(async { Ok(TurnPreparation::with_patch($patch)) }))
+                .await
+                .expect("next_step_with succeeds")
+            {
+                DriveStep::SendRequest {
+                    request,
+                    tools,
+                    turn,
+                } => (request, tools, turn),
+                other => panic!("expected SendRequest, got {other:?}"),
+            }
+        };
     }
 
     /// Expect the next step to be `SendRequest`, panicking otherwise.
@@ -1100,16 +1180,15 @@ mod tests {
             .tool(MockAddTool)
             .tool(MockSubtractTool)
             .build();
-        let mut driver = agent
-            .drive_run(AgentRun::new("go").with_tool_choice(ToolChoice::None))
-            .request_patch(
-                RequestPatch::new()
-                    .preamble("patched preamble")
-                    .tool_choice(ToolChoice::Required)
-                    .active_tools(["add"]),
-            );
+        let mut driver = agent.drive_run(AgentRun::new("go").with_tool_choice(ToolChoice::None));
 
-        let (request, tools, _) = expect_send!(driver);
+        let (request, tools, _) = expect_send_with!(
+            driver,
+            RequestPatch::new()
+                .preamble("patched preamble")
+                .tool_choice(ToolChoice::Required)
+                .active_tools(["add"])
+        );
         assert!(
             tools.executable_tool_names().contains("add")
                 && !tools.executable_tool_names().contains("subtract"),

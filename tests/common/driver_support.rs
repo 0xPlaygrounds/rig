@@ -13,7 +13,8 @@
 #![allow(dead_code)]
 
 use rig::agent::{
-    AgentDriver, DriveStep, InvalidToolCallAction, ModelTurnOutcome, PendingToolCall, TurnTools,
+    AgentDriver, DriveStep, InvalidToolCallAction, ModelTurnOutcome, PendingToolCall, RequestPatch,
+    TurnPreparation, TurnTools,
 };
 use rig::completion::{CompletionResponse, PromptError};
 use rig::tool::ToolContext;
@@ -23,6 +24,32 @@ pub(crate) const FORCE_TOOLS_PREAMBLE: &str = "You are a calculator assistant. Y
 
 /// A prompt whose only sensible answer is one `add` call.
 pub(crate) const ADD_PROMPT: &str = "What is 2 + 5?";
+
+/// Advance the driver with a per-turn patch, expecting a request to send.
+///
+/// Per-turn configuration is an input to preparation, so a test that wants a
+/// patched turn supplies it here rather than configuring the driver.
+pub(crate) async fn expect_send_patched(
+    driver: &mut AgentDriver,
+    patch: RequestPatch,
+) -> (
+    Box<rig::completion::CompletionRequestBuilder<rig::agent::ModelHandle>>,
+    TurnTools,
+    usize,
+) {
+    match driver
+        .next_step_with(|_| Box::pin(async { Ok(TurnPreparation::with_patch(patch)) }))
+        .await
+        .expect("next_step_with should succeed")
+    {
+        DriveStep::SendRequest {
+            request,
+            tools,
+            turn,
+        } => (request, tools, turn),
+        other => panic!("expected SendRequest, got {other:?}"),
+    }
+}
 
 /// Advance the driver, expecting a request to send.
 pub(crate) async fn expect_send(

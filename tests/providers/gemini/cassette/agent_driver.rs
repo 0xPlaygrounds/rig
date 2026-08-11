@@ -20,7 +20,7 @@ use rig::providers::gemini;
 use super::super::support::with_gemini_cassette;
 use crate::driver_support::{
     ADD_PROMPT, FORCE_TOOLS_PREAMBLE, dispatch_and_feed, drive_to_completion, expect_done,
-    expect_execute_tools, expect_send, expect_turn_accepted,
+    expect_execute_tools, expect_send, expect_send_patched, expect_turn_accepted,
 };
 use crate::support::{Adder, Subtract};
 
@@ -171,11 +171,13 @@ async fn a_patched_preamble_replaces_the_agents_on_the_wire() {
             .preamble("BASELINE PREAMBLE — must not appear in the request")
             .build();
 
-        let mut driver = agent
-            .drive("Say the word banana.")
-            .request_patch(RequestPatch::new().preamble("PATCHED PREAMBLE — reply with one word."));
+        let mut driver = agent.drive("Say the word banana.");
 
-        let (request, _, _) = expect_send(&mut driver).await;
+        let (request, _, _) = expect_send_patched(
+            &mut driver,
+            RequestPatch::new().preamble("PATCHED PREAMBLE — reply with one word."),
+        )
+        .await;
         let response = request.send().await.expect("should send");
         expect_turn_accepted(&mut driver, &response);
         let response = expect_done(&mut driver).await;
@@ -196,11 +198,10 @@ async fn a_patched_active_tools_narrows_the_advertised_set() {
             .tool(Subtract)
             .build();
 
-        let mut driver = agent
-            .drive(ADD_PROMPT)
-            .request_patch(RequestPatch::new().active_tools(["add"]));
+        let mut driver = agent.drive(ADD_PROMPT);
 
-        let (request, tools, _) = expect_send(&mut driver).await;
+        let (request, tools, _) =
+            expect_send_patched(&mut driver, RequestPatch::new().active_tools(["add"])).await;
         assert!(tools.executable_tool_names().contains("add"));
         assert!(!tools.executable_tool_names().contains("subtract"));
 
@@ -225,11 +226,13 @@ async fn a_patched_tool_choice_outranks_the_runs() {
         let run = AgentRun::new(ADD_PROMPT)
             .max_turns(2)
             .with_tool_choice(ToolChoice::None);
-        let mut driver = agent
-            .drive_run(run)
-            .request_patch(RequestPatch::new().tool_choice(ToolChoice::Required));
+        let mut driver = agent.drive_run(run);
 
-        let (request, tools, _) = expect_send(&mut driver).await;
+        let (request, tools, _) = expect_send_patched(
+            &mut driver,
+            RequestPatch::new().tool_choice(ToolChoice::Required),
+        )
+        .await;
         assert!(tools.allowed_tool_names().contains("add"));
         let response = request.send().await.expect("should send");
         expect_turn_accepted(&mut driver, &response);
