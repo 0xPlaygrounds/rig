@@ -7,6 +7,8 @@ readme = "README.md"
 description = "An opinionated library for building LLM powered applications."
 repository = "https://github.com/0xPlaygrounds/rig"
 exclude = [
+    "tests/domain_serde_policy.rs",
+    "tests/domain_serde_policy_allowlist.txt",
     "tests/macro_hygiene.rs",
     "tests/fixtures/telemetry_macro_consumer",
 ]
