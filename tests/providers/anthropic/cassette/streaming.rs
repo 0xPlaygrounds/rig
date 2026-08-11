@@ -36,16 +36,16 @@ async fn streaming_smoke() {
 ///
 /// Two signals used to be dropped. `stop_reason` never reached the consumer, so
 /// a `max_tokens` truncation was indistinguishable from a natural stop. And
-/// `input_tokens` was read only from `message_start` — which Anthropic proper
-/// populates, but which Anthropic-compatible gateways may report as `0` while
-/// sending the real prompt size on `message_delta`, silently yielding
-/// `Usage { input_tokens: 0 }`.
+/// `input_tokens` was read only from `message_start`, which Anthropic-compatible
+/// gateways may report as `0` while sending the real prompt size on
+/// `message_delta`, silently yielding `Usage { input_tokens: 0 }`.
 ///
 /// Recorded against OpenRouter's Anthropic Messages endpoint rather than
-/// `api.anthropic.com`, because that split is precisely what Anthropic proper
-/// does not do: a recording from Anthropic itself carries no `input_tokens` on
-/// `message_delta` at all, and could not witness the defect. `max_tokens` is
-/// capped low so one recording carries both signals.
+/// `api.anthropic.com`, because the *disagreement* is what Anthropic proper does
+/// not produce: it reports the count on both frames and they always match (see
+/// every streaming cassette under `tests/cassettes/anthropic/`), so a recording
+/// from Anthropic passes whether or not the bug is present and cannot witness
+/// it. `max_tokens` is capped low so one recording carries both signals.
 #[tokio::test]
 async fn gateway_reports_input_tokens_on_message_delta() {
     with_anthropic_gateway_cassette(

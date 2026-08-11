@@ -391,19 +391,32 @@ impl WireAdapter for AnthropicAdapter {
                 // streaming API spec — use them directly.
                 //
                 // `input_tokens` prefers the terminal `message_delta` and falls
-                // back to `message_start`. Anthropic proper reports the prompt
-                // size on `message_start` and omits it from `message_delta`, so
-                // the fallback is the live path there. Anthropic-*compatible*
-                // gateways do not all agree: OpenRouter's Messages endpoint
-                // sends `input_tokens: 0` on `message_start` and the real count
-                // on `message_delta`, which without this preference surfaces a
-                // silent `Usage { input_tokens: 0 }` — worse than a missing
-                // value for a consumer sizing its context window from it.
+                // back to `message_start`.
                 //
-                // Zero on the delta is treated as "not reported" rather than as
-                // a count, so a gateway with the inverse split cannot zero out a
-                // prompt size that `message_start` reported correctly. No real
-                // prompt costs zero input tokens, so nothing true is lost.
+                // Anthropic proper sends the count on *both* frames and they
+                // agree (every recorded cassette under
+                // `tests/cassettes/anthropic/` reporting it on the delta reports
+                // the same value on the start), so the preference is what runs
+                // there and the fallback is inert. The fallback covers frames
+                // that omit it: the Bedrock-compat `message_start`-less shape,
+                // and older/leaner deltas.
+                //
+                // Anthropic-*compatible* gateways do not all agree. OpenRouter's
+                // Messages endpoint sends `input_tokens: 0` on `message_start`
+                // and the real count on `message_delta`, which without this
+                // preference surfaces a silent `Usage { input_tokens: 0 }` —
+                // worse than a missing value for a consumer sizing its context
+                // window from it.
+                //
+                // Zero on the delta is read as "not reported" so a gateway with
+                // the inverse split cannot erase a count `message_start` got
+                // right. Note this is a heuristic, not an invariant: a fully
+                // cache-hit prompt legitimately bills zero *uncached* input
+                // tokens, and its real size lives in the cache fields. Nothing
+                // is lost today because both frames then carry the same zero and
+                // the fallback yields it anyway — but do not extend the `> 0`
+                // filter to the `message_start` side or the cache fields, where
+                // a genuine zero would be discarded.
                 let usage = PartialUsage {
                     output_tokens: usage.output_tokens,
                     input_tokens: usage
@@ -2654,13 +2667,22 @@ mod tests {
                     9,
                     "a gateway reporting the prompt size on message_delta must reach the consumer",
                 ),
-                // Anthropic proper: the count is on `message_start` and the
-                // terminal delta omits `input_tokens` entirely.
+                // A delta that omits `input_tokens` entirely — the Bedrock-compat
+                // and older/leaner shapes. (Not current Anthropic, which sends
+                // the count on both frames; that case is the one below, since
+                // the two always agree.)
                 (
                     message_start(5),
                     MESSAGE_DELTA.to_owned(),
                     5,
-                    "Anthropic proper still reports the message_start count",
+                    "a delta without input_tokens falls back to message_start",
+                ),
+                // Anthropic proper: both frames carry the same count.
+                (
+                    message_start(5),
+                    message_delta(5),
+                    5,
+                    "agreeing frames report that count",
                 ),
                 // The inverse split: a zero on the delta must not erase the
                 // real count `message_start` already gave us.
