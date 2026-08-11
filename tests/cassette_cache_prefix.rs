@@ -45,6 +45,16 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
          hook rewrite",
     ),
     (
+        "openai/agent_driver/patch_active_tools.yaml",
+        "the scenario under test is per-turn `active_tools` narrowing: turn 1 is \
+         given a patch restricting the advertised set to `add`, turn 2 is given \
+         none and re-advertises `add` and `subtract`. The tools array growing \
+         between turns is the assertion — a patch that outlived its turn would \
+         keep the second turn narrowed — so the moving prefix is the recorded \
+         behavior, not a defect in it. It is also the real cost of the feature, \
+         and `RequestPatch::active_tools` says so",
+    ),
+    (
         "openai/streaming_grammar/three_turn_tool_session.yaml",
         "turns 2 and 3 are hand-built `completion_request`s that deliberately omit \
          `.tool(...)` (the prompt says \"Do not call any tools\"), so the tools \
