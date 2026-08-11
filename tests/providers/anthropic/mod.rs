@@ -2,6 +2,7 @@ mod support;
 
 mod cassette {
     mod agent;
+    mod agent_driver;
     mod default_max_turns;
     mod document_file_id;
     mod empty_end_turn;

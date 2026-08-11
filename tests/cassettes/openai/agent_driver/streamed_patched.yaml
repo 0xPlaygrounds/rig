@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing it yourself. After you have the tool results, reply with the final numeric answer in plain text.","type":"text"}],"role":"system"},{"content":"What is 2 + 5?","role":"user"}],"model":"gpt-4o","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing it yourself. After you have the tool results, reply with the final numeric answer in plain text.","type":"text"}],"role":"system"},{"content":"What is 2 + 5?","role":"user"}],"model":"gpt-4o","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
@@ -36,24 +36,7 @@ then:
 
     data: {"choices":[{"delta":{},"finish_reason":"tool_calls","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-08-06","obfuscation":"obfuscation_REDACTED_11","object":"chat.completion.chunk","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":null}
 
-    data: {"choices":[],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-08-06","obfuscation":"obfuscation_REDACTED_12","object":"chat.completion.chunk","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":17,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":93,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":110}}
+    data: {"choices":[],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-08-06","obfuscation":"obfuscation_REDACTED_12","object":"chat.completion.chunk","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":17,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":106,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":123}}
 
     data: [DONE]
 
----
-when:
-  path: /v1/chat/completions
-  method: POST
-  query_param: []
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: '{"messages":[{"content":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing it yourself. After you have the tool results, reply with the final numeric answer in plain text.","type":"text"}],"role":"system"},{"content":"What is 2 + 5?","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"7","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"gpt-4o","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":"7","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"gpt-4o-2024-08-06","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":2,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":118,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":120}}'

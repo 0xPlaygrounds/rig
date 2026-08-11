@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-this-model-does-not-exist:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 2 + 5?","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing it yourself. After you have the tool results, reply with the final numeric answer in plain text.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"error":{"code":404,"message":"models/gemini-this-model-does-not-exist is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.","status":"NOT_FOUND"}}'
