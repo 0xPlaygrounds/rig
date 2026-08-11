@@ -255,6 +255,30 @@ impl AgentDriver {
         &self.run
     }
 
+    /// Mutable access to the run, for the entry points the driver does not
+    /// wrap.
+    ///
+    /// A streamed turn is fed through [`AgentRun::record_streamed_completion_call`],
+    /// [`AgentRun::resolve_streamed_invalid_tool_call`] and
+    /// [`AgentRun::streamed_turn`], all of which need `&mut AgentRun`. Driving
+    /// a custom streaming transport is a headline use for this type, so the
+    /// access has to exist; without it a streaming caller would have to
+    /// [`Self::into_run`], drive the turn by hand, and rebuild the driver —
+    /// which discards the per-turn snapshot cache and makes the driver treat a
+    /// turn prepared in *this* process as a resume, drift check and all.
+    ///
+    /// # Do not commit or roll back a model call through this
+    ///
+    /// Use [`Self::next_step`] and [`Self::rollback_model_call`] for those.
+    /// They keep the driver's cached dispatch target in step with the turn the
+    /// run is on; committing a turn behind the driver's back would leave the
+    /// previous turn's snapshot cached and dispatch this turn's calls through
+    /// it. Feeding a *response* — streamed or otherwise — is safe, because it
+    /// belongs to the turn the cache already holds.
+    pub fn run_mut(&mut self) -> &mut AgentRun {
+        &mut self.run
+    }
+
     /// Consume the driver, returning the run state.
     pub fn into_run(self) -> AgentRun {
         self.run

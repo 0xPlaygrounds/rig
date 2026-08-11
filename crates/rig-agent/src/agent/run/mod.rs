@@ -569,6 +569,19 @@ impl AgentRun {
     /// which reports the pending model call without committing it.
     fn reprompt_for_output(&mut self) {
         self.output_retries += 1;
+        self.park_for_new_request();
+    }
+
+    /// Park the run for a fresh model call, ending the current turn.
+    ///
+    /// The turn's advertised names end with it. They describe the call the
+    /// model was shown, and [`Self::advertised_tools`] is documented as the
+    /// record of *this* turn — so a run parked here, in memory or serialized,
+    /// must not still report the names of a turn that finished or was
+    /// abandoned. Every route back to `PreparingRequest` goes through here so
+    /// the invariant cannot be half-applied.
+    fn park_for_new_request(&mut self) {
+        self.advertised_tools = None;
         self.state = RunState::PreparingRequest;
     }
 
@@ -731,7 +744,7 @@ impl AgentRun {
             }
         }
 
-        self.state = RunState::PreparingRequest;
+        self.park_for_new_request();
         Ok(())
     }
 
@@ -954,12 +967,11 @@ impl AgentRun {
         self.model_call_rollbacks += 1;
         // The next preparation records its own; leaving stale names here would
         // let a later `model_response` validate against a turn that never ran.
-        self.advertised_tools = None;
         // Keep the streamed-usage window open when the record has not landed
         // yet: a caller that drains a broken stream for usage records it after
         // this point, exactly as invalid tool-call recovery does.
         self.rollback_pending = !self.streamed_completion_call_recorded;
-        self.state = RunState::PreparingRequest;
+        self.park_for_new_request();
         Ok(())
     }
 
@@ -1371,7 +1383,7 @@ impl AgentRun {
                     ));
                 };
                 self.new_messages.push(user_message);
-                self.state = RunState::PreparingRequest;
+                self.park_for_new_request();
                 Ok(ModelTurnOutcome::TurnRetried)
             }
             InvalidToolCallAction::Repair { tool_name } => {
@@ -1520,7 +1532,7 @@ impl AgentRun {
         }
 
         self.new_messages.push(Message::User { content: results });
-        self.state = RunState::PreparingRequest;
+        self.park_for_new_request();
         Ok(())
     }
 
@@ -1706,7 +1718,7 @@ impl AgentRun {
                 self.new_messages.push(assistant_message);
                 self.new_messages.push(user_message);
                 self.rollback_pending = true;
-                self.state = RunState::PreparingRequest;
+                self.park_for_new_request();
                 Ok(StreamedResolution::TurnAbandoned {
                     skipped_tool_result: None,
                 })
@@ -1759,7 +1771,7 @@ impl AgentRun {
                 self.new_messages.push(assistant_message);
                 self.new_messages.push(user_message);
                 self.rollback_pending = true;
-                self.state = RunState::PreparingRequest;
+                self.park_for_new_request();
                 Ok(StreamedResolution::TurnAbandoned {
                     skipped_tool_result: Some(Box::new(skipped_tool_result)),
                 })
@@ -2071,6 +2083,54 @@ mod tests {
         assert_eq!(restored.model_call_rollbacks(), 1);
         let (_, _, turn) = expect_call_model(&mut restored);
         assert_eq!(turn, 1);
+    }
+
+    /// `advertised_tools` is the record of what the model was shown on the
+    /// *current* turn, so every route back to `PreparingRequest` must end the
+    /// turn's names with it — not just the rollback path. A run parked for a
+    /// fresh call and then serialized would otherwise report a turn that is
+    /// over.
+    #[test]
+    fn every_route_back_to_preparing_ends_the_turns_advertised_names() {
+        let advertised = TurnToolNames::new(["add"], ["add"]);
+
+        // Normal progression: tool results end the turn.
+        let mut run = AgentRun::new("add things").max_turns(3);
+        run.advance().expect("advance");
+        run.peek_model_call().expect("peek");
+        run.commit_model_call(Some(advertised.clone()), None)
+            .expect("commit");
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response"),
+        );
+        expect_call_tools(&mut run);
+        assert!(run.advertised_tools().is_some(), "the turn is still live");
+        run.tool_results(vec![tool_result("call_1", "2")])
+            .expect("tool_results");
+        assert_eq!(
+            run.advertised_tools(),
+            None,
+            "tool results end the turn that advertised them"
+        );
+
+        // Hook-driven turn retry.
+        let mut run = AgentRun::new("add things").max_turns(3);
+        run.advance().expect("advance");
+        run.peek_model_call().expect("peek");
+        run.commit_model_call(Some(advertised.clone()), None)
+            .expect("commit");
+        expect_continue(
+            run.model_response(text_turn("nope"))
+                .expect("model_response"),
+        );
+        run.retry_model_turn(RetryRequest::Repeat)
+            .expect("retry should succeed");
+        assert_eq!(
+            run.advertised_tools(),
+            None,
+            "a retried turn's names do not outlive it"
+        );
     }
 
     /// The two halves are a public protocol, so driving them out of order is

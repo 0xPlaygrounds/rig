@@ -4,6 +4,7 @@ mod regressions;
 
 mod cassette {
     mod agent;
+    mod agent_driver;
     mod chat_history;
     mod completions_api;
     mod document_ordering;
