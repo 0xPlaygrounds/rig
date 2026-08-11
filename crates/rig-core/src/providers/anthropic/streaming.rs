@@ -389,9 +389,50 @@ impl WireAdapter for AnthropicAdapter {
                 // cache_creation_input_tokens and cache_read_input_tokens are
                 // cumulative totals on message_delta.usage per the Anthropic
                 // streaming API spec — use them directly.
+                //
+                // `input_tokens` prefers the terminal `message_delta` and falls
+                // back to `message_start`.
+                //
+                // Anthropic proper sends the count on *both* frames and they
+                // agree (every recorded cassette under
+                // `tests/cassettes/anthropic/` reporting it on the delta reports
+                // the same value on the start), so the preference is what runs
+                // there and the fallback is inert. The fallback covers the
+                // reverse split — a delta that omits the count, leaving the one
+                // `message_start` reported.
+                //
+                // It does *not* rescue the Bedrock-compat body-less
+                // `message_start`: that shape returns early above without
+                // setting `self.input_tokens`, so the fallback yields
+                // `Some(0)`. Preferring the delta is what carries a real count
+                // there — do not drop the preference on the theory that the
+                // fallback covers that case.
+                //
+                // Anthropic-*compatible* gateways do not all agree. OpenRouter's
+                // Messages endpoint can send `input_tokens: 0` on
+                // `message_start` and the real count on `message_delta`
+                // (recorded in `gateway_message_delta_metadata`, which OpenRouter
+                // served from an Amazon Bedrock upstream — the split follows what
+                // it routes to, so it is not every response from that endpoint).
+                // Without this preference such a turn surfaces a silent
+                // `Usage { input_tokens: 0 }` — worse than a missing value for a
+                // consumer sizing its context window from it.
+                //
+                // Zero on the delta is read as "not reported" so a gateway with
+                // the inverse split cannot erase a count `message_start` got
+                // right. Note this is a heuristic, not an invariant: a fully
+                // cache-hit prompt legitimately bills zero *uncached* input
+                // tokens, and its real size lives in the cache fields. Nothing
+                // is lost today because both frames then carry the same zero and
+                // the fallback yields it anyway — but do not extend the `> 0`
+                // filter to the `message_start` side or the cache fields, where
+                // a genuine zero would be discarded.
                 let usage = PartialUsage {
                     output_tokens: usage.output_tokens,
-                    input_tokens: usize::try_from(self.input_tokens).ok(),
+                    input_tokens: usage
+                        .input_tokens
+                        .filter(|tokens| *tokens > 0)
+                        .or_else(|| usize::try_from(self.input_tokens).ok()),
                     cache_creation_input_tokens: usage.cache_creation_input_tokens,
                     cache_read_input_tokens: usage.cache_read_input_tokens,
                 };
@@ -2600,6 +2641,75 @@ mod tests {
                 "a message_delta after an in-band provider error must not read as a completed turn"
             );
             assert!(stream.response.is_none());
+        }
+
+        /// `input_tokens` precedence between `message_start` and the terminal
+        /// `message_delta`, across all three wire splits at once.
+        ///
+        /// Not a cassette test: one recording can only witness whichever split
+        /// the endpoint it was recorded against happens to use, and the defect
+        /// here is the *precedence rule* relating three of them — the gateway
+        /// split, Anthropic proper, and the inverse. The gateway split is also
+        /// covered end-to-end by the recorded
+        /// `anthropic::cassette::streaming::gateway_reports_input_tokens_on_message_delta`;
+        /// this pins the two cases a single recording structurally cannot show
+        /// beside it.
+        #[tokio::test]
+        async fn input_tokens_prefer_the_terminal_delta_and_fall_back_to_message_start() {
+            fn message_start(input_tokens: usize) -> String {
+                format!(
+                    r#"{{"type":"message_start","message":{{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{{"input_tokens":{input_tokens},"output_tokens":0}}}}}}"#
+                )
+            }
+            fn message_delta(input_tokens: usize) -> String {
+                format!(
+                    r#"{{"type":"message_delta","delta":{{"stop_reason":"end_turn","stop_sequence":null}},"usage":{{"input_tokens":{input_tokens},"output_tokens":3}}}}"#
+                )
+            }
+
+            for (start, delta, expected, case) in [
+                // OpenRouter's Anthropic Messages shape: `message_start`
+                // reports a placeholder zero and the real prompt size lands on
+                // the terminal `message_delta`.
+                (
+                    message_start(0),
+                    message_delta(9),
+                    9,
+                    "a gateway reporting the prompt size on message_delta must reach the consumer",
+                ),
+                // A delta that omits `input_tokens` entirely — the Bedrock-compat
+                // and older/leaner shapes. (Not current Anthropic, which sends
+                // the count on both frames; that case is the one below, since
+                // the two always agree.)
+                (
+                    message_start(5),
+                    MESSAGE_DELTA.to_owned(),
+                    5,
+                    "a delta without input_tokens falls back to message_start",
+                ),
+                // Anthropic proper: both frames carry the same count.
+                (
+                    message_start(5),
+                    message_delta(5),
+                    5,
+                    "agreeing frames report that count",
+                ),
+                // The inverse split: a zero on the delta must not erase the
+                // real count `message_start` already gave us.
+                (
+                    message_start(5),
+                    message_delta(0),
+                    5,
+                    "a zero on the delta must not erase the message_start count",
+                ),
+            ] {
+                let (_texts, _saw_error, saw_terminal, stream) =
+                    collect(sse(&[&start, TEXT_START, TEXT_DELTA, &delta])).await;
+
+                assert!(saw_terminal, "{case}: the turn must complete");
+                let terminal = stream.response.expect("terminal record");
+                assert_eq!(terminal.usage.input_tokens, expected, "{case}");
+            }
         }
 
         #[tokio::test]
