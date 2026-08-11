@@ -106,43 +106,120 @@ fn public_enums_without_representation(source: &str) -> Vec<(String, usize)> {
     found
 }
 
-/// The contiguous run of attribute and doc-comment lines directly above `offset`.
+/// The attribute lines directly above `offset` — **attributes only**, never doc
+/// comments or prose.
+///
+/// The callers probe this with `contains("Serialize")` / `contains("tag")`, so
+/// admitting prose is not cosmetic: any enum whose rustdoc happened to contain
+/// `tag` as a substring — `stage`, `advantage`, `vintage`, or the word "tagged"
+/// itself — was silently exempted from the wall, which is exactly the regression
+/// class the wall exists to catch. Blank lines and doc comments are *skipped*
+/// rather than ending the block, because both may legally sit between an
+/// attribute and its declaration; only real code ends it.
 fn attribute_block_before(source: &str, offset: usize) -> String {
     let mut lines: Vec<&str> = Vec::new();
+    // Attributes are read bottom-up, so a multi-line `#[serde(\n … \n)]` arrives
+    // tail-first: collect until its opening `#[`.
+    let mut inside_multiline_attribute = false;
+
     for line in source[..offset].lines().rev() {
         let trimmed = line.trim();
-        let is_attribute_or_doc = trimmed.starts_with("#[")
-            || trimmed.starts_with("//")
-            || trimmed.starts_with(']')
-            || trimmed.starts_with(")]")
-            || trimmed.ends_with(',')
-            || trimmed.ends_with('(')
-            || trimmed.contains('=');
-        if trimmed.is_empty() || !is_attribute_or_doc {
-            break;
+
+        if inside_multiline_attribute {
+            lines.push(line);
+            if trimmed.starts_with("#[") {
+                inside_multiline_attribute = false;
+            }
+            continue;
         }
-        lines.push(line);
+
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        if trimmed.starts_with("#[") && trimmed.ends_with(']') {
+            lines.push(line);
+            continue;
+        }
+        if trimmed.ends_with(']') {
+            lines.push(line);
+            inside_multiline_attribute = true;
+            continue;
+        }
+
+        // Real code: the attribute block is over.
+        break;
     }
+
     lines.reverse();
     lines.join("\n")
 }
 
-/// The `{ … }` body of the enum declared at `declaration`, brace-matched.
-fn enum_body(source: &str, declaration: usize) -> Option<String> {
-    let open = source[declaration..].find('{')? + declaration;
-    let mut depth = 0usize;
-    for (index, character) in source[open..].char_indices() {
-        match character {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(source[open + 1..open + index].to_owned());
-                }
-            }
+/// `line` with any trailing `//` comment removed, ignoring `//` inside a string
+/// literal.
+///
+/// Brace matching must not count braces that only appear in prose: a variant
+/// documented as ``/// Rendered as `{`.`` otherwise unbalances the scan, which
+/// either exempts the enum (the depth never returns to zero, so every later
+/// variant reads as nested and the enum looks fieldless) or runs the body match
+/// past the closing brace and reports a spurious `UNPARSED BODY` failure.
+fn strip_line_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let mut in_string = false;
+    let mut index = 0;
+    while let Some(byte) = bytes.get(index) {
+        match byte {
+            b'\\' if in_string => index += 1,
+            b'"' => in_string = !in_string,
+            b'/' if !in_string && bytes.get(index + 1) == Some(&b'/') => return &line[..index],
             _ => {}
         }
+        index += 1;
     }
+    line
+}
+
+/// The `{ … }` body of the enum declared at `declaration`, brace-matched.
+fn enum_body(source: &str, declaration: usize) -> Option<String> {
+    // Match braces over a comment-stripped view so a `{` in a doc comment cannot
+    // run the scan past the enum's closing brace. The body is only consumed by
+    // `has_data_bearing_variant`, which is line-based, so returning the stripped
+    // text loses nothing.
+    let mut depth = 0usize;
+    let mut body = Vec::new();
+    let mut started = false;
+
+    for line in source[declaration..].lines() {
+        let code = strip_line_comment(line);
+        let mut captured = String::new();
+
+        for character in code.chars() {
+            match character {
+                '{' => {
+                    depth += 1;
+                    if !started {
+                        started = true;
+                        continue;
+                    }
+                }
+                '}' => {
+                    depth = depth.saturating_sub(1);
+                    if started && depth == 0 {
+                        body.push(captured);
+                        return Some(body.join("\n"));
+                    }
+                }
+                _ => {}
+            }
+            if started {
+                captured.push(character);
+            }
+        }
+
+        if started {
+            body.push(captured);
+        }
+    }
+
     None
 }
 
@@ -153,7 +230,12 @@ fn enum_body(source: &str, declaration: usize) -> Option<String> {
 fn has_data_bearing_variant(body: &str) -> bool {
     let mut depth = 0usize;
     for line in body.lines() {
-        let trimmed = line.trim();
+        // Strip comments *before* counting: a doc comment containing an
+        // unbalanced brace would otherwise pin `depth` above zero for the rest of
+        // the enum, making every later variant read as nested and the enum as
+        // fieldless — silently exempting it.
+        let code = strip_line_comment(line);
+        let trimmed = code.trim();
         // Only consider variants at the enum's own nesting level; a struct
         // variant's fields are not themselves variants.
         let at_top_level = depth == 0;
@@ -161,7 +243,7 @@ fn has_data_bearing_variant(body: &str) -> bool {
             .saturating_add(trimmed.matches('{').count())
             .saturating_sub(trimmed.matches('}').count());
 
-        if !at_top_level || trimmed.is_empty() || trimmed.starts_with("//") {
+        if !at_top_level || trimmed.is_empty() {
             continue;
         }
         let without_attribute = if trimmed.starts_with("#[") {
@@ -491,6 +573,74 @@ fn representation_scanner_flags_implicit_external_tagging_only_when_data_bearing
             .collect::<Vec<_>>(),
         vec!["ImplicitlyTagged", "StructVariantFieldsAreNotVariants"],
         "flagged: {flagged:?}"
+    );
+}
+
+/// Three ways the representation wall could be defeated or made to cry wolf,
+/// all found by review of the wall itself. Each was reproduced before the fix:
+/// the first two returned `[]` (silently exempt) and the third returned an
+/// `UNPARSED BODY` violation (spurious CI failure).
+#[test]
+fn representation_scanner_is_not_fooled_by_prose_blank_lines_or_braces_in_comments() {
+    // The wall probes the attribute block with `contains("tag")`. Admitting doc
+    // comments meant any enum whose prose contained `tag` as a substring —
+    // `stage`, `advantage`, `vintage` — exempted itself.
+    let prose = r#"
+        /// Two-stage handshake result.
+        #[derive(serde::Serialize, serde::Deserialize)]
+        pub enum StageProse { A(u32) }
+    "#;
+    assert_eq!(
+        public_enums_without_representation(prose)
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["StageProse"],
+        "an enum must not exempt itself through the word `stage` in its rustdoc"
+    );
+
+    // A blank line between the derive and the declaration is legal Rust; it used
+    // to empty the attribute block, fail the `Serialize` probe, and skip the enum.
+    let blank_line = "
+        #[derive(serde::Serialize, serde::Deserialize)]
+
+        pub enum BlankLine { A(u32) }
+    ";
+    assert_eq!(
+        public_enums_without_representation(blank_line)
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["BlankLine"],
+    );
+
+    // A brace in a doc comment must not unbalance either brace scanner. This enum
+    // is correctly tagged, so the right answer is "no violation" — previously it
+    // reported UNPARSED BODY.
+    let brace_in_comment = r#"
+        #[derive(serde::Serialize, serde::Deserialize)]
+        #[serde(tag = "type", content = "content")]
+        pub enum BraceDoc {
+            /// Rendered as `{` in the output.
+            A(u32),
+        }
+
+        #[derive(serde::Serialize, serde::Deserialize)]
+        pub enum FollowsTheBraceDoc { B(u32) }
+    "#;
+    assert_eq!(
+        public_enums_without_representation(brace_in_comment)
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["FollowsTheBraceDoc"],
+        "the braced doc comment must neither fail its own enum nor hide the next one"
+    );
+
+    // A `//` inside a string literal is not a comment.
+    assert_eq!(
+        strip_line_comment(r#"    #[serde(rename = "http://x")] // trailing"#),
+        r#"    #[serde(rename = "http://x")] "#
     );
 }
 
