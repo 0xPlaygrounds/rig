@@ -4,6 +4,8 @@
 //! `notifications/tools/list_changed` by re-fetching the tool list and updating
 //! the [`ToolServer`](super::server::ToolServer). Individual MCP tools are
 //! registered through the agent and tool-server `rmcp_tool` builder methods.
+//! [`RmcpToolRegistration`] supports a separate model-visible name when the
+//! MCP wire name needs to remain unchanged.
 //!
 //! # Example
 //!
@@ -101,9 +103,49 @@ pub const DEFAULT_MCP_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
 /// has already exceeded its caller-visible deadline.
 const MCP_CANCELLATION_GRACE_PERIOD: Duration = Duration::from_secs(1);
 
+/// Public registration data for an MCP tool.
+///
+/// `model_name` is used for provider-facing tool definitions and tool lookup,
+/// while `definition.name` remains the MCP protocol name sent in
+/// `tools/call` requests. Use [`Self::new`] when the names are identical and
+/// [`Self::with_timeout`] to override the default per-call timeout.
+pub struct RmcpToolRegistration {
+    /// Name exposed to the model and used by Rig's tool registry.
+    pub model_name: String,
+    /// Server-advertised MCP tool definition, including the wire name.
+    pub definition: rmcp::model::Tool,
+    /// Connected MCP server peer that receives `tools/call` requests.
+    pub client: rmcp::service::ServerSink,
+    /// Per-call timeout. `None` disables the timeout.
+    pub timeout: Option<Duration>,
+}
+
+impl RmcpToolRegistration {
+    /// Create a registration with the default MCP tool timeout.
+    pub fn new(
+        model_name: impl Into<String>,
+        definition: rmcp::model::Tool,
+        client: rmcp::service::ServerSink,
+    ) -> Self {
+        Self {
+            model_name: model_name.into(),
+            definition,
+            client,
+            timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
+        }
+    }
+
+    /// Set (or clear) the per-call timeout for this registration.
+    pub fn with_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
+        self.timeout = timeout.into();
+        self
+    }
+}
+
 /// Crate-private adapter used by Rig's public MCP registration methods.
 #[derive(Clone)]
 pub(crate) struct McpTool {
+    model_name: String,
     definition: rmcp::model::Tool,
     client: rmcp::service::ServerSink,
     /// Per-call timeout. When `Some`, an MCP `call_tool` that does not complete
@@ -124,10 +166,18 @@ impl McpTool {
         definition: rmcp::model::Tool,
         client: rmcp::service::ServerSink,
     ) -> Self {
+        let model_name = definition.name.to_string();
+        Self::from_registration(RmcpToolRegistration::new(model_name, definition, client))
+    }
+
+    /// Create an adapter from a public registration, preserving separate
+    /// model-visible and MCP wire names.
+    pub(crate) fn from_registration(registration: RmcpToolRegistration) -> Self {
         Self {
-            definition,
-            client,
-            timeout: Some(DEFAULT_MCP_TOOL_TIMEOUT),
+            model_name: registration.model_name,
+            definition: registration.definition,
+            client: registration.client,
+            timeout: registration.timeout,
         }
     }
 
@@ -291,22 +341,24 @@ impl McpTool {
         args: String,
         meta: Option<rmcp::model::Meta>,
     ) -> WasmBoxedFuture<'_, Result<CallToolResult, ToolExecutionError>> {
-        let name = self.definition.name.clone();
+        let wire_name = self.definition.name.clone();
+        let model_name = self.model_name.clone();
 
         Box::pin(async move {
             // Validate the JSON arguments before contacting the server: malformed
             // JSON must surface as an InvalidArgs failure, not a silent no-arg call.
             let arguments = parse_mcp_arguments(&args).map_err(|error| {
                 ToolExecutionError::invalid_args(format!(
-                    "MCP tool '{name}' received invalid arguments: {error}"
+                    "MCP tool '{model_name}' received invalid arguments: {error}"
                 ))
                 .with_source(error)
             })?;
             let mut request = arguments
                 .map(|arguments| {
-                    rmcp::model::CallToolRequestParams::new(name.clone()).with_arguments(arguments)
+                    rmcp::model::CallToolRequestParams::new(wire_name.clone())
+                        .with_arguments(arguments)
                 })
-                .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(name));
+                .unwrap_or_else(|| rmcp::model::CallToolRequestParams::new(wire_name));
             request.meta = meta;
 
             match call_mcp_tool(&self.client, request, self.timeout).await {
@@ -319,14 +371,14 @@ impl McpTool {
                     let timeout = self.timeout.unwrap_or(elapsed_timeout);
                     Err(ToolExecutionError::timeout(format!(
                         "MCP tool '{}' timed out after {timeout:?}",
-                        self.definition.name
+                        model_name
                     ))
                     .with_source(error))
                 }
                 // A transport/service error before the tool produced a result.
                 Err(error) => Err(ToolExecutionError::provider(format!(
                     "MCP tool '{}' request failed: {error}",
-                    self.definition.name
+                    model_name
                 ))
                 .with_source(error)),
             }
@@ -460,7 +512,7 @@ fn preserve_mcp_result(context: &mut ToolContext, result: &CallToolResult) {
 
 impl ErasedTool for McpTool {
     fn name(&self) -> String {
-        self.definition.name.to_string()
+        self.model_name.clone()
     }
 
     fn description(&self) -> String {
@@ -499,7 +551,7 @@ impl ErasedTool for McpTool {
                         ToolResult::failed(
                             ToolExecutionError::other(format!(
                                 "MCP tool '{}' reported an execution error",
-                                self.definition.name
+                                self.model_name
                             ))
                             .with_model_output(output),
                         )
@@ -833,6 +885,7 @@ mod tests {
     struct ScenarioServer {
         scenario: Scenario,
         seen: Arc<RwLock<Option<Meta>>>,
+        seen_name: Arc<RwLock<Option<String>>>,
         cancelled: Arc<Notify>,
     }
 
@@ -845,9 +898,10 @@ mod tests {
 
         async fn call_tool(
             &self,
-            _request: CallToolRequestParams,
+            request: CallToolRequestParams,
             context: RequestContext<RoleServer>,
         ) -> Result<CallToolResult, ErrorData> {
+            *self.seen_name.write().await = Some(request.name.to_string());
             *self.seen.write().await = Some(context.meta.clone());
             match self.scenario {
                 Scenario::Success => Ok(CallToolResult::success(vec![ContentBlock::text("ok")])),
@@ -895,19 +949,27 @@ mod tests {
     struct Fixture {
         handle: ToolServerHandle,
         seen: Arc<RwLock<Option<Meta>>>,
+        seen_name: Arc<RwLock<Option<String>>>,
         cancelled: Arc<Notify>,
-        _client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
+        client: rmcp::service::RunningService<rmcp::service::RoleClient, ClientInfo>,
         server_task: JoinHandle<()>,
     }
 
-    async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
+    async fn fixture_with_names(
+        scenario: Scenario,
+        timeout: Option<Duration>,
+        model_name: &str,
+        wire_name: &str,
+    ) -> Fixture {
         let seen = Arc::new(RwLock::new(None));
+        let seen_name = Arc::new(RwLock::new(None));
         let cancelled = Arc::new(Notify::new());
         let (client_to_server, server_from_client) = tokio::io::duplex(8192);
         let (server_to_client, client_from_server) = tokio::io::duplex(8192);
         let server = ScenarioServer {
             scenario,
             seen: seen.clone(),
+            seen_name: seen_name.clone(),
             cancelled: cancelled.clone(),
         };
         let server_task = tokio::spawn(async move {
@@ -922,20 +984,34 @@ mod tests {
             .await
             .expect("client connect");
         let definition = Tool::new(
-            "fixture_tool".to_string(),
+            wire_name.to_string(),
             "fixture".to_string(),
             Arc::new(serde_json::Map::new()),
         );
-        let handle = ToolServer::new()
-            .rmcp_tool_with_timeout(definition, client.peer().clone(), timeout)
-            .run();
+        let peer = client.peer().clone();
+        let handle = if model_name == wire_name {
+            ToolServer::new()
+                .rmcp_tool_with_timeout(definition, peer, timeout)
+                .run()
+        } else {
+            ToolServer::new()
+                .rmcp_tool_registration(
+                    RmcpToolRegistration::new(model_name, definition, peer).with_timeout(timeout),
+                )
+                .run()
+        };
         Fixture {
             handle,
             seen,
+            seen_name,
             cancelled,
-            _client: client,
+            client,
             server_task,
         }
+    }
+
+    async fn fixture(scenario: Scenario, timeout: Option<Duration>) -> Fixture {
+        fixture_with_names(scenario, timeout, "fixture_tool", "fixture_tool").await
     }
 
     async fn execute(fixture: &Fixture, args: &str, context: &mut ToolContext) -> ToolResult {
@@ -945,6 +1021,88 @@ mod tests {
         )
         .await
         .expect("MCP dispatch exceeded the outer safety timeout")
+    }
+
+    #[tokio::test]
+    async fn registration_uses_model_name_for_lookup_and_wire_name_for_call() {
+        let fixture = fixture_with_names(
+            Scenario::Success,
+            Some(Duration::from_secs(1)),
+            "model_fixture_tool",
+            "server_fixture_tool",
+        )
+        .await;
+
+        let definitions = fixture.handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(definitions.len(), 1);
+        assert_eq!(definitions[0].name, "model_fixture_tool");
+
+        let result = fixture
+            .handle
+            .execute("model_fixture_tool", "{}", &mut ToolContext::new())
+            .await;
+        assert!(result.is_success());
+        assert_eq!(
+            *fixture.seen_name.read().await,
+            Some("server_fixture_tool".to_string())
+        );
+
+        fixture.server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn registrations_allow_two_servers_with_the_same_wire_name() {
+        let first = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
+        let second = fixture(Scenario::Success, Some(Duration::from_secs(1))).await;
+        let definition = || {
+            Tool::new(
+                "fixture_tool".to_string(),
+                "fixture".to_string(),
+                Arc::new(serde_json::Map::new()),
+            )
+        };
+
+        let handle = ToolServer::new()
+            .rmcp_tool_registration(RmcpToolRegistration::new(
+                "first_fixture_tool",
+                definition(),
+                first.client.peer().clone(),
+            ))
+            .rmcp_tool_registration(RmcpToolRegistration::new(
+                "second_fixture_tool",
+                definition(),
+                second.client.peer().clone(),
+            ))
+            .run();
+
+        let definitions = handle.get_tool_defs(None).await.unwrap();
+        assert_eq!(
+            definitions
+                .iter()
+                .map(|definition| definition.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["first_fixture_tool", "second_fixture_tool"]
+        );
+
+        let first_result = handle
+            .execute("first_fixture_tool", "{}", &mut ToolContext::new())
+            .await;
+        assert!(first_result.is_success());
+        let second_result = handle
+            .execute("second_fixture_tool", "{}", &mut ToolContext::new())
+            .await;
+        assert!(second_result.is_success());
+        assert_eq!(
+            *first.seen_name.read().await,
+            Some("fixture_tool".to_string())
+        );
+        assert_eq!(
+            *second.seen_name.read().await,
+            Some("fixture_tool".to_string())
+        );
+
+        first.server_task.abort();
+        second.server_task.abort();
     }
 
     #[tokio::test]
