@@ -5,7 +5,7 @@ use crate::{
     message::{self, Reasoning, ToolChoice},
     telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator},
 };
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use super::client::Client;
 use crate::completion::CompletionRequest;
@@ -593,6 +593,13 @@ pub struct CompletionModel<T = reqwest::Client> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+enum CohereToolChoice {
+    None,
+    Required,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub(super) struct CohereCompletionRequest {
     pub(super) model: String,
     pub messages: Vec<Message>,
@@ -602,7 +609,7 @@ pub(super) struct CohereCompletionRequest {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<Tool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_choice: Option<ToolChoice>,
+    tool_choice: Option<CohereToolChoice>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
 }
@@ -634,16 +641,43 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
                 .collect::<Vec<_>>(),
         );
 
-        let tool_choice = if let Some(tool_choice) = req.tool_choice {
-            if !matches!(tool_choice, ToolChoice::Auto) {
-                Some(tool_choice)
-            } else {
-                return Err(CompletionError::RequestError(
-                    "\"auto\" is not an allowed tool_choice value in the Cohere API".into(),
-                ));
+        let mut tools = req.tools.into_iter().map(Tool::from).collect::<Vec<_>>();
+        let tool_choice = match req.tool_choice {
+            None | Some(ToolChoice::Auto) => None,
+            Some(ToolChoice::None) => Some(CohereToolChoice::None),
+            Some(ToolChoice::Required) => Some(CohereToolChoice::Required),
+            Some(ToolChoice::Specific { function_names }) => {
+                if function_names.is_empty() {
+                    return Err(CompletionError::RequestError(
+                        "ToolChoice::Specific requires at least one function name".into(),
+                    ));
+                }
+
+                let available = tools
+                    .iter()
+                    .map(|tool| tool.function.name.clone())
+                    .collect::<BTreeSet<_>>();
+                let missing = function_names
+                    .iter()
+                    .filter(|name| !available.contains(*name))
+                    .cloned()
+                    .collect::<Vec<_>>();
+
+                if !missing.is_empty() {
+                    return Err(CompletionError::RequestError(
+                        format!(
+                            "ToolChoice::Specific requested tool names not advertised in the \
+                             Cohere request: {missing:?}. Advertised: {available:?}"
+                        )
+                        .into(),
+                    ));
+                }
+
+                let requested = function_names.into_iter().collect::<BTreeSet<_>>();
+                tools.retain(|tool| requested.contains(&tool.function.name));
+
+                Some(CohereToolChoice::Required)
             }
-        } else {
-            None
         };
 
         Ok(Self {
@@ -651,7 +685,7 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
             messages: full_history,
             documents,
             temperature: req.temperature,
-            tools: req.tools.into_iter().map(Tool::from).collect::<Vec<_>>(),
+            tools,
             tool_choice,
             additional_params: req.additional_params,
         })
@@ -784,6 +818,46 @@ where
 mod tests {
     use super::*;
     use serde_path_to_error::deserialize;
+
+    fn cohere_tool_definition(name: &str) -> completion::ToolDefinition {
+        completion::ToolDefinition {
+            name: name.to_string(),
+            description: format!("Run {name}"),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        }
+    }
+
+    fn cohere_tool_choice_request(tool_choice: Option<ToolChoice>) -> CompletionRequest {
+        let mut request = crate::completion::CompletionRequestBuilder::new(
+            crate::test_utils::MockCompletionModel::default(),
+            "Use a tool",
+        )
+        .tools(vec![
+            cohere_tool_definition("alpha"),
+            cohere_tool_definition("beta"),
+            cohere_tool_definition("gamma"),
+        ])
+        .build();
+        request.tool_choice = tool_choice;
+        request
+    }
+
+    fn serialized_tool_names(request: &serde_json::Value) -> Vec<&str> {
+        request["tools"]
+            .as_array()
+            .expect("tools should serialize as an array")
+            .iter()
+            .map(|tool| {
+                tool["function"]["name"]
+                    .as_str()
+                    .expect("tool name should serialize as a string")
+            })
+            .collect()
+    }
 
     #[test]
     fn test_deserialize_completion_response() {
@@ -976,6 +1050,71 @@ mod tests {
 
         assert_eq!(request.documents.len(), 1);
         assert_eq!(request.documents[0].id, "doc_1");
+    }
+
+    #[test]
+    fn cohere_tool_choice_modes_serialize_to_native_wire_values() {
+        for (tool_choice, expected) in [
+            (None, None),
+            (Some(ToolChoice::Auto), None),
+            (Some(ToolChoice::None), Some(serde_json::json!("NONE"))),
+            (
+                Some(ToolChoice::Required),
+                Some(serde_json::json!("REQUIRED")),
+            ),
+        ] {
+            let case = format!("{tool_choice:?}");
+            let request = CohereCompletionRequest::try_from((
+                "command-r",
+                cohere_tool_choice_request(tool_choice),
+            ))
+            .expect("request conversion should succeed");
+            let request = serde_json::to_value(request).expect("request should serialize");
+
+            assert_eq!(request.get("tool_choice"), expected.as_ref(), "{case}");
+            assert_eq!(
+                serialized_tool_names(&request),
+                vec!["alpha", "beta", "gamma"],
+                "{case} should retain all advertised tools"
+            );
+        }
+    }
+
+    #[test]
+    fn cohere_specific_tool_choice_filters_tools_and_requires_a_call() {
+        let request = CohereCompletionRequest::try_from((
+            "command-r",
+            cohere_tool_choice_request(Some(ToolChoice::Specific {
+                function_names: vec!["gamma".to_string(), "alpha".to_string()],
+            })),
+        ))
+        .expect("specific tool choice should convert");
+        let request = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(request["tool_choice"], serde_json::json!("REQUIRED"));
+        assert_eq!(serialized_tool_names(&request), vec!["alpha", "gamma"]);
+    }
+
+    #[test]
+    fn cohere_specific_tool_choice_rejects_invalid_names() {
+        for (function_names, expected) in [
+            (Vec::new(), "requires at least one function name"),
+            (
+                vec!["alpha".to_string(), "missing".to_string()],
+                "not advertised in the Cohere request: [\"missing\"]",
+            ),
+        ] {
+            let error = CohereCompletionRequest::try_from((
+                "command-r",
+                cohere_tool_choice_request(Some(ToolChoice::Specific { function_names })),
+            ))
+            .expect_err("invalid specific tool choice should fail locally");
+
+            assert!(
+                matches!(error, CompletionError::RequestError(ref error) if error.to_string().contains(expected)),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[tokio::test]

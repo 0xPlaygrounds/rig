@@ -1419,21 +1419,31 @@ names.
 
 Persistence impact follows where these values are embedded:
 
-- Persisted `AgentRun` values carry `ToolChoice` and require its tagged form.
+- Persisted `AgentRun` and directly serialized `CompletionRequest` values carry
+  `ToolChoice` and require its tagged form.
 - Serialized `CompletionResponse` and `StreamFinal` values carry the new
   `FinishReason` form. `PromptResponse` has no new field shape from this
   change, but a `MultiTurnStreamItem::FinalResponse` stream-log record now
   wraps the whole response under the outer `content` field.
+- The public OpenAI-compatible raw terminal record
+  `openai::completion::streaming::StreamingCompletionResponse<U>` carries the
+  normalized `FinishReason` form too. This also affects its Mistral, Groq,
+  DeepSeek, and OpenRouter aliases when those values are serialized directly.
 - Recorded multi-turn stream events, standalone media-type values, serialized
   vector-store filters, model-listing errors, agent output-mode values, and
   SQLite metric configuration need the corresponding rewrite above.
 
-Provider request and response JSON is unchanged. Provider-native enums retain
-the upstream schema (including genuine untagged unions and scalar finish
-reasons); conversions map between those wire types and these Rig-owned values
-at the boundary. Existing explicitly tagged Rig domain enums (`Message`,
-`UserContent`, `AssistantContent`, `ReasoningContent`, `ToolResultContent`, and
-`DocumentSourceKind`) are unchanged.
+Provider HTTP request/response and SSE payload JSON is otherwise unchanged.
+Provider-native wire enums retain the upstream schema (including genuine
+untagged unions and scalar finish reasons); conversions map between those wire
+types and these Rig-owned values at the boundary. The exception is a Cohere v2
+Chat correction:
+`ToolChoice::Auto` now omits `tool_choice`, `None` and `Required` serialize as the
+native `"NONE"` and `"REQUIRED"` scalars, and `Specific` filters the advertised
+tools to the requested names and sends `"REQUIRED"`. Existing explicitly tagged
+Rig domain enums (`Message`, `UserContent`, `AssistantContent`,
+`ReasoningContent`, `ToolResultContent`, and `DocumentSourceKind`) are
+unchanged.
 
 ### Two pre-`Vec` serde accommodations are gone
 

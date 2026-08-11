@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- [**breaking**] Rig-owned public data-bearing Serde enums use explicit discriminators; multi-turn stream events use nested adjacent tags, and intentional unit enums use explicit lowercase strings. Old domain/event representations do not load; provider-native wire JSON is unchanged. See the crate changelogs and MIGRATING for exact shapes.
+- [**breaking**] Rig-owned public data-bearing Serde enums use explicit discriminators; multi-turn stream events use nested adjacent tags, and intentional unit enums use explicit lowercase strings. Old domain/event representations do not load; provider HTTP/SSE wire JSON is unchanged except for the Cohere `tool_choice` correction below. See the crate changelogs and MIGRATING for exact shapes.
+- *(cohere)* [**fix**] translate normalized tool choices to Cohere's native v2 Chat schema: omit `tool_choice` for auto mode, send `"NONE"`/`"REQUIRED"` scalar values, and implement named choices by filtering the advertised tools and requiring a call.
 
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/v0.40.0...v0.41.0) - 2026-07-28
 
