@@ -106,6 +106,101 @@ async fn gateway_reports_input_tokens_on_message_delta() {
     );
 }
 
+/// Regression: the premise the `input_tokens` preference rests on — Anthropic
+/// proper reports the prompt size on **both** `message_start` and the terminal
+/// `message_delta`, and the two agree.
+///
+/// `providers::anthropic::streaming` states this as the reason the preference is
+/// safe (preferring the delta cannot change what Anthropic-proper turns report,
+/// because the frames carry the same number). Nothing pinned it: the existing
+/// cassettes satisfy it incidentally, so a future wire change that split the two
+/// values on `api.anthropic.com` would silently alter every streamed turn's
+/// reported prompt size with no test objecting.
+///
+/// Recorded against `api.anthropic.com`, unlike the gateway fixture above, because
+/// the claim under test is specifically about Anthropic proper.
+#[tokio::test]
+async fn anthropic_proper_agrees_on_input_tokens_across_both_frames() {
+    with_anthropic_cassette(
+        "streaming/input_tokens_agree_across_frames",
+        |client| async move {
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .preamble(STREAMING_PREAMBLE)
+                .max_tokens(64)
+                .build();
+
+            let mut stream = agent.stream_prompt(STREAMING_PROMPT).await;
+            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+                collect_stream_final_response_and_provider_final(&mut stream)
+                    .await
+                    .expect("streaming prompt should succeed");
+
+            assert!(
+                provider_final.usage.input_tokens > 0,
+                "Anthropic proper reports a real prompt size"
+            );
+        },
+    )
+    .await;
+
+    // The premise itself, read off the recorded frames: both carry the count and
+    // the values match. Read after the wrapper returns so a re-record is what
+    // gets asserted (record mode writes the cassette only once the body ends).
+    let (start, delta) = recorded_input_tokens_on_both_frames(AGREEMENT_SCENARIO);
+    assert_eq!(
+        start, delta,
+        "api.anthropic.com must keep reporting the same input_tokens on \
+         message_start and message_delta — the streaming adapter's preference for \
+         the delta is documented as safe *because* they agree. If this trips, \
+         Anthropic's wire changed and the comment in anthropic/streaming.rs is \
+         now wrong."
+    );
+}
+
+const AGREEMENT_SCENARIO: &str = "streaming/input_tokens_agree_across_frames";
+
+/// The `input_tokens` a cassette reports on `message_start` and on the terminal
+/// `message_delta`. Panics if either frame omits the field — for this fixture,
+/// an omission is itself the regression.
+fn recorded_input_tokens_on_both_frames(scenario: &str) -> (u64, u64) {
+    let path = crate::cassettes::cassette_path("anthropic", scenario);
+    let contents = std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
+
+    let read = |marker: &str| -> u64 {
+        let frame = contents
+            .lines()
+            .find(|line| line.contains(marker))
+            .unwrap_or_else(|| {
+                panic!("cassette {} should record a {marker} frame", path.display())
+            });
+        // The leading quote keeps this off the `cache_*_input_tokens` siblings.
+        let (_, after) = frame.split_once(r#""input_tokens":"#).unwrap_or_else(|| {
+            panic!(
+                "{marker} in cassette {} should report input_tokens",
+                path.display()
+            )
+        });
+        after
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>()
+            .parse()
+            .unwrap_or_else(|err| {
+                panic!(
+                    "{marker} input_tokens in cassette {} should be a number: {err}",
+                    path.display()
+                )
+            })
+    };
+
+    (
+        read(r#""type":"message_start""#),
+        read(r#""type":"message_delta""#),
+    )
+}
+
 /// Kept in sync by hand with the literal at the call site above; a mismatch
 /// fails loudly on the read below rather than silently skipping the guard.
 const GATEWAY_METADATA_SCENARIO: &str = "streaming/gateway_message_delta_metadata";

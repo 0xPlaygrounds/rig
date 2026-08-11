@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":37,"promptTokenCount":193,"promptTokensDetails":[{"modality":"TEXT","tokenCount":193}],"serviceTier":"standard","thoughtsTokenCount":63,"totalTokenCount":293}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":3,"y":5},"name":"add"},"thoughtSignature":"signature_REDACTED_1"},{"functionCall":{"args":{"x":10,"y":4},"name":"subtract"}}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":37,"promptTokenCount":193,"promptTokensDetails":[{"modality":"TEXT","tokenCount":193}],"serviceTier":"standard","thoughtsTokenCount":100,"totalTokenCount":330}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"I''m sorry, I wasn''t able to compute 3 + 5 and 10 - 4 because the add and subtract tools are currently disabled.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":34,"promptTokenCount":276,"promptTokensDetails":[{"modality":"TEXT","tokenCount":276}],"serviceTier":"standard","thoughtsTokenCount":74,"totalTokenCount":384}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"I''m sorry, but I was unable to compute 3 + 5 and 10 - 4. The add tool is disabled for this request, and the subtract tool was not executed because of the issue with the add tool.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":49,"promptTokenCount":276,"promptTokensDetails":[{"modality":"TEXT","tokenCount":276}],"serviceTier":"standard","thoughtsTokenCount":96,"totalTokenCount":421}}'
