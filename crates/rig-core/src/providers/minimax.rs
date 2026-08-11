@@ -30,6 +30,12 @@ use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
 };
 
+#[cfg(feature = "image")]
+pub mod image_generation;
+
+#[cfg(feature = "image")]
+pub use image_generation::{IMAGE_01, IMAGE_01_LIVE, ImageGenerationModel};
+
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.minimax.io/v1";
 /// China OpenAI-compatible base URL.
@@ -96,7 +102,7 @@ impl<H> Capabilities<H> for MiniMaxExt {
     type Transcription = Nothing;
     type ModelListing = Nothing;
     #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
+    type ImageGeneration = Capable<ImageGenerationModel<H>>;
     #[cfg(feature = "audio")]
     type AudioGeneration = Nothing;
     type Rerank = Nothing;
