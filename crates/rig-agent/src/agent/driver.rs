@@ -40,10 +40,21 @@
 //! set the request actually carried rather than against whatever its registry
 //! holds now.
 //!
-//! Preparation failures are equally survivable. Nothing advances until a
-//! request exists, so a turn that fails to prepare — an unreachable tool
-//! server, an impossible `tool_choice` — costs no turn from the budget and
-//! leaves the run byte-identical, ready to retry.
+//! A turn can fail in two places, and both are recoverable:
+//!
+//! - **Preparing the request.** Nothing advances until a request exists, so an
+//!   unreachable tool server or an impossible `tool_choice` costs no turn from
+//!   the budget and leaves the run byte-identical. Call [`AgentDriver::next_step`]
+//!   again once the cause is fixed.
+//! - **Sending it.** The caller owns the send, so the caller is the only party
+//!   that learns it failed. [`AgentDriver::rollback_model_call`] hands the turn
+//!   back — refunding it and returning the run to preparing — and the next
+//!   `next_step` yields a freshly prepared request. This is *at-least-once*: if
+//!   the request reached the provider and only its reply was lost, retrying
+//!   bills a second completion, and only the caller can tell those apart. Use
+//!   [`CompletionError::is_retryable`](crate::completion::CompletionError::is_retryable)
+//!   to decide, and bound the attempts yourself — the driver runs no IO and
+//!   owns no clock.
 //!
 //! Tool *implementations* are live objects and cannot be serialized: the
 //! resuming process rebuilds the same `Agent` and the driver takes a fresh
@@ -56,6 +67,7 @@
 //! definitions alongside the serialized run; the run's own format is versioned
 //! by [`RUN_SCHEMA_VERSION`](super::run::RUN_SCHEMA_VERSION).
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use rig_core::message::UserContent;
@@ -109,8 +121,9 @@ impl Agent {
 
 /// What the caller must do next to advance an [`AgentDriver`].
 ///
-/// Deliberately exhaustive, like [`AgentRunStep`]: a driver loop must handle
-/// every step, so adding a variant is a breaking change by design.
+/// Deliberately exhaustive, like [`AgentRunStep`](super::run::AgentRunStep): a
+/// driver loop must handle every step, so adding a variant is a breaking change
+/// by design.
 pub enum DriveStep {
     /// Send this completion request to the model — via
     /// [`send`](CompletionRequestBuilder::send), or
@@ -292,7 +305,7 @@ impl AgentDriver {
                 self.snapshot = Some(tools.snapshot.clone());
                 let turn = self
                     .run
-                    .commit_model_call(Some(tools.names()), tools.output_tool_name.clone());
+                    .commit_model_call(Some(tools.names()), tools.output_tool_name.clone())?;
                 Ok(DriveStep::SendRequest {
                     request: Box::new(builder),
                     tools,
@@ -328,6 +341,45 @@ impl AgentDriver {
             )));
         };
         self.run.model_response(names.model_turn(response))
+    }
+
+    /// Hand back a model call that never produced a response, so the turn can
+    /// be prepared and sent again.
+    ///
+    /// [`DriveStep::SendRequest`] gives the caller a request and the caller
+    /// owns the send, so the caller is also the only party that learns the
+    /// send failed. This is how that news gets back into the run: the turn is
+    /// refunded and the run returns to preparing, so the next
+    /// [`Self::next_step`] yields a **freshly prepared** `SendRequest` — new
+    /// registry snapshot, new patch — rather than a replay of a request whose
+    /// tool snapshot has since gone stale.
+    ///
+    /// ```rust,no_run
+    /// # use rig_agent::agent::{AgentDriver, DriveStep};
+    /// # async fn example(driver: &mut AgentDriver) -> Result<(), Box<dyn std::error::Error>> {
+    /// if let DriveStep::SendRequest { request, .. } = driver.next_step().await? {
+    ///     match request.send().await {
+    ///         Ok(response) => { driver.model_response(&response)?; }
+    ///         // Nothing was produced: give the turn back and try again.
+    ///         Err(err) if err.is_retryable() => driver.rollback_model_call()?,
+    ///         Err(err) => return Err(err.into()),
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// See [`AgentRun::rollback_model_call`] for the full semantics — in
+    /// particular that this is **at-least-once**: if the request reached the
+    /// provider and only its reply was lost, retrying bills a second
+    /// completion. The driver cannot tell the two apart. Bounding attempts is
+    /// yours to do; the driver runs no IO and owns no clock.
+    pub fn rollback_model_call(&mut self) -> Result<(), PromptError> {
+        self.run.rollback_model_call()?;
+        // Drop the cached dispatch target too: the retry is a new turn and
+        // must advertise, and dispatch through, a snapshot taken for it.
+        self.snapshot = None;
+        Ok(())
     }
 
     /// Resolve a pending invalid tool call, exactly as
@@ -377,7 +429,15 @@ impl AgentDriver {
         // rather than silently feeding not-found results to the model. The
         // model chose these tools from a registry this process no longer has,
         // and re-prompting cannot fix that.
-        let snapshot = Arc::new(self.fresh_snapshot().await?);
+        let mut snapshot = self.fresh_snapshot(&names.executable).await?;
+        // Narrow to what the turn advertised, mirroring what preparation does
+        // in-process. Without this the resumed snapshot is the whole current
+        // registry, and `TurnTools`' two halves — advertised names and
+        // dispatch target — could disagree, which is the skew the type exists
+        // to prevent.
+        snapshot.retain_names(&names.executable);
+        let snapshot = Arc::new(snapshot);
+
         if !self.allow_missing_resumed_tools {
             let missing: Vec<&str> = calls
                 .iter()
@@ -394,10 +454,10 @@ impl AgentDriver {
             if !missing.is_empty() {
                 return Err(PromptError::CompletionError(CompletionError::RequestError(
                     format!(
-                        "resumed run has pending tool calls {missing:?} that are not registered \
-                         in this process; register the tools on the agent before resuming, or \
-                         call `allow_missing_resumed_tools()` to dispatch anyway and feed \
-                         not-found results to the model"
+                        "resumed run has pending tool calls {missing:?} that are no longer \
+                         registered in this process; register the tools on the agent before \
+                         resuming, or call `allow_missing_resumed_tools()` to dispatch anyway \
+                         and feed not-found results to the model"
                     )
                     .into(),
                 )));
@@ -411,8 +471,16 @@ impl AgentDriver {
     /// Take a registry snapshot for a run resumed in this process.
     ///
     /// The retrieval query is re-derived from the run's history, matching what
-    /// request preparation would have used.
-    async fn fresh_snapshot(&self) -> Result<ToolRegistrySnapshot, PromptError> {
+    /// request preparation would have used — but retrieval alone is not enough
+    /// here. It selects dynamic tools by similarity, so a registered dynamic
+    /// tool this query does not rank would be absent, and the caller's drift
+    /// check could not tell that apart from a tool that really was
+    /// deregistered. `required` — the names the turn advertised — is resolved
+    /// from the registry regardless of ranking, so absence means absence.
+    async fn fresh_snapshot(
+        &self,
+        required: &BTreeSet<String>,
+    ) -> Result<ToolRegistrySnapshot, PromptError> {
         let query = self
             .run
             .full_history()
@@ -421,7 +489,7 @@ impl AgentDriver {
             .find_map(|message| message.rag_text());
         self.agent
             .tool_server_handle
-            .snapshot_tool_defs(query)
+            .snapshot_tool_defs_including(query, required)
             .await
             .map_err(|_| {
                 PromptError::CompletionError(CompletionError::RequestError(
@@ -985,8 +1053,253 @@ mod tests {
         ));
     }
 
+    /// The caller owns the send, so the caller is the only party that learns
+    /// it failed. Handing the turn back refunds it and returns the run to
+    /// preparing, so the run survives a failure the driver never sees.
+    #[tokio::test]
+    async fn failed_send_rolls_back_and_re_prepares() {
+        let model = MockCompletionModel::new([MockTurn::text("done")]);
+        let agent = AgentBuilder::new(model.clone())
+            .default_max_turns(1)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("go");
+
+        let (request, _, turn) = expect_send!(driver);
+        assert_eq!(turn, 1);
+        // The send fails: drop the request without sending it. The provider
+        // never saw anything, so nothing was produced.
+        drop(request);
+        driver
+            .rollback_model_call()
+            .expect("a call that produced nothing can be handed back");
+        assert_eq!(driver.run().turn(), 0);
+        assert_eq!(driver.run().model_call_rollbacks(), 1);
+        assert_eq!(model.request_count(), 0);
+
+        // The budget of one is intact, so the retry can happen at all.
+        let (request, _, turn) = expect_send!(driver);
+        assert_eq!(turn, 1, "the retry takes the turn the failure did not");
+        let response = request.send().await.expect("scripted turn");
+        driver.model_response(&response).expect("turn accepted");
+        match driver.next_step().await.expect("next_step succeeds") {
+            DriveStep::Done(response) => assert_eq!(response.output, "done"),
+            other => panic!("expected Done, got {other:?}"),
+        }
+    }
+
+    /// The retry re-derives the request rather than replaying one. Replaying
+    /// would pin the failed attempt's tool snapshot, advertising one set of
+    /// implementations while a later turn dispatches another.
+    #[tokio::test]
+    async fn rollback_re_derives_against_the_current_registry() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("go");
+
+        let (_, tools, _) = expect_send!(driver);
+        assert!(!tools.executable_tool_names().contains("subtract"));
+        driver.rollback_model_call().expect("rollback succeeds");
+
+        agent.tool_server_handle.add_tool(MockSubtractTool).await;
+        let (_, tools, _) = expect_send!(driver);
+        assert!(
+            tools.executable_tool_names().contains("subtract"),
+            "the retry must advertise the registry as it is now: {:?}",
+            tools.executable_tool_names()
+        );
+    }
+
+    /// A run suspended mid-send is resumable, and the rollback travels with
+    /// it: the process that discovers the reply is lost need not be the one
+    /// that sent the request.
+    #[tokio::test]
+    async fn rollback_after_resume_recovers_a_lost_reply() {
+        let model = MockCompletionModel::new([MockTurn::text("done")]);
+        let agent = AgentBuilder::new(model.clone())
+            .default_max_turns(1)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("go");
+        let (request, _, _) = expect_send!(driver);
+        let serialized = serde_json::to_string(driver.run()).expect("run serializes");
+        drop(request);
+        drop(driver);
+
+        // "Fresh process": the reply never arrived, so hand the turn back.
+        let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        let mut driver = agent.drive_run(run);
+        driver.rollback_model_call().expect("rollback succeeds");
+        assert_eq!(driver.run().turn(), 0);
+
+        let (request, _, turn) = expect_send!(driver);
+        assert_eq!(turn, 1);
+        let response = request.send().await.expect("scripted turn");
+        driver.model_response(&response).expect("turn accepted");
+    }
+
+    /// `TurnTools` promises that a name the turn did not advertise cannot
+    /// reach the live registry. In-process the snapshot enforces that; on a
+    /// resumed turn only the advertised names can, since the snapshot is
+    /// rebuilt here.
+    #[tokio::test]
+    async fn unadvertised_name_is_not_found_even_on_a_resumed_turn() {
+        let model = MockCompletionModel::new([MockTurn::tool_call(
+            "call_1",
+            "add",
+            json!({"x": 2, "y": 5}),
+        )]);
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("what is 2 + 5?");
+        let (request, _, _) = expect_send!(driver);
+        let response = request.send().await.expect("scripted turn");
+        driver.model_response(&response).expect("turn accepted");
+        let _ = expect_execute_tools!(driver);
+        let serialized = serde_json::to_string(driver.run()).expect("run serializes");
+
+        // Resume against a process that has since registered another tool.
+        let resumed_agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .build();
+        let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        let mut driver = resumed_agent.drive_run(run);
+        let (_, tools) = expect_execute_tools!(driver);
+
+        assert!(
+            !tools.executable_tool_names().contains("subtract"),
+            "the advertised set is the turn's, not this process's"
+        );
+        let mut context = ToolContext::new();
+        let result = tools
+            .execute("subtract", r#"{"x": 1, "y": 2}"#, &mut context)
+            .await;
+        assert!(
+            result.is_error_kind(ToolErrorKind::NotFound),
+            "a tool registered after the turn must not be reachable"
+        );
+        // The advertised tool still dispatches.
+        let result = tools
+            .execute("add", r#"{"x": 2, "y": 5}"#, &mut context)
+            .await;
+        assert!(result.is_success());
+    }
+
+    /// Retrieval picks dynamic tools by similarity to the turn's query, so a
+    /// registered dynamic tool can be absent from a resumed snapshot purely
+    /// because that query did not rank it. Reporting that as "no longer
+    /// registered" would be false, and the advice it carries — register the
+    /// tool before resuming — unfollowable.
+    #[tokio::test]
+    async fn resumed_dynamic_tool_outside_retrieval_is_not_drift() {
+        use crate::test_utils::MockToolIndex;
+        use crate::tool::ToolSet;
+        use crate::tool::server::ToolServer;
+
+        let model = MockCompletionModel::new([MockTurn::tool_call(
+            "call_1",
+            "subtract",
+            json!({"x": 5, "y": 2}),
+        )]);
+        // Retrieval finds `subtract` while the turn is prepared.
+        let handle = ToolServer::new()
+            .tool(MockAddTool)
+            .retrieved_tools(
+                1,
+                MockToolIndex::new(["subtract"]),
+                ToolSet::from_tools(vec![MockSubtractTool]),
+            )
+            .run();
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(2)
+            .tool_server_handle(handle)
+            .build();
+
+        let mut driver = agent.drive("what is 5 - 2?");
+        let (request, tools, _) = expect_send!(driver);
+        assert!(tools.executable_tool_names().contains("subtract"));
+        let response = request.send().await.expect("scripted turn");
+        driver.model_response(&response).expect("turn accepted");
+        let _ = expect_execute_tools!(driver);
+        let serialized = serde_json::to_string(driver.run()).expect("run serializes");
+
+        // Resume where retrieval ranks nothing — the tool is still registered.
+        let resumed_handle = ToolServer::new()
+            .tool(MockAddTool)
+            .retrieved_tools(
+                1,
+                MockToolIndex::new(Vec::<String>::new()),
+                ToolSet::from_tools(vec![MockSubtractTool]),
+            )
+            .run();
+        let resumed_agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .default_max_turns(2)
+            .tool_server_handle(resumed_handle)
+            .build();
+        let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        let mut driver = resumed_agent.drive_run(run);
+
+        let (calls, tools) = expect_execute_tools!(driver);
+        let mut context = ToolContext::new();
+        let result = tools.execute_call(&calls[0], &mut context).await;
+        match result {
+            UserContent::ToolResult(result) => assert!(
+                !format!("{:?}", result.content).contains("not found"),
+                "a registered tool retrieval missed must still dispatch: {:?}",
+                result.content
+            ),
+            other => panic!("expected a tool result, got {other:?}"),
+        }
+    }
+
+    /// The two halves of a resumed `TurnTools` must agree: the snapshot is
+    /// narrowed to what the turn advertised, not left as this process's whole
+    /// registry.
+    #[tokio::test]
+    async fn resumed_snapshot_equals_the_advertised_set() {
+        let model = MockCompletionModel::new([MockTurn::tool_call(
+            "call_1",
+            "add",
+            json!({"x": 2, "y": 5}),
+        )]);
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("what is 2 + 5?");
+        let (request, _, _) = expect_send!(driver);
+        let response = request.send().await.expect("scripted turn");
+        driver.model_response(&response).expect("turn accepted");
+        let _ = expect_execute_tools!(driver);
+        let serialized = serde_json::to_string(driver.run()).expect("run serializes");
+
+        let resumed_agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .build();
+        let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        let advertised = run
+            .advertised_tools()
+            .expect("the turn recorded its advertised names")
+            .clone();
+        let mut driver = resumed_agent.drive_run(run);
+        let (_, tools) = expect_execute_tools!(driver);
+
+        assert_eq!(tools.executable_tool_names(), &advertised.executable);
+        assert!(
+            !tools.executable_tool_names().contains("subtract"),
+            "the resuming process's extra tool is not part of this turn"
+        );
+    }
+
     /// Resuming is about dispatch, not about validating a request that will
-    /// never be built. A `tool_choice` the resuming process could not satisfy
     /// must not pre-empt the drift report, and must not defeat the opt-out
     /// that exists precisely for this situation.
     #[tokio::test]

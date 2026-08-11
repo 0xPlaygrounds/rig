@@ -77,6 +77,39 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # When building the request can fail
+//!
+//! [`AgentRun::next_step`] consumes a turn the moment it hands out a
+//! [`AgentRunStep::CallModel`], which is right for a driver that has nothing
+//! fallible to do with it. A driver that must *build* something first — read a
+//! tool registry, resolve a model, validate a tool choice — uses the two halves
+//! instead, so a build failure costs no turn and leaves the run intact:
+//!
+//! ```rust,no_run
+//! use rig_agent::agent::run::{Advance, AgentRun, ModelCallInputs};
+//!
+//! # async fn example(run: &mut AgentRun) -> Result<(), Box<dyn std::error::Error>> {
+//! match run.advance()? {
+//!     Advance::NeedsModelCall => {
+//!         let ModelCallInputs { prompt, history } = run.peek_model_call()?;
+//!         // Build the request. Failing here changes nothing about `run`:
+//!         // no turn spent, still `is_preparing_request()`, retry at will.
+//!         # let _ = (prompt, history);
+//!         // Only once the request exists does the run advance.
+//!         let _turn = run.commit_model_call(None, None)?;
+//!         // Send it. If the send fails or its reply is lost, hand the turn
+//!         // back with `run.rollback_model_call()?` and prepare again.
+//!     }
+//!     Advance::CallTools(calls) => {
+//!         # let _ = calls;
+//!         // Execute, then: run.tool_results(results)?;
+//!     }
+//!     Advance::Done(response) => println!("{}", response.output),
+//! }
+//! # Ok(())
+//! # }
+//! ```
 
 pub mod output_mode;
 pub mod streamed;
@@ -388,23 +421,41 @@ pub struct AgentRun {
     /// advertised names arrive with the [`ModelTurn`] instead.
     #[serde(default)]
     advertised_tools: Option<TurnToolNames>,
+    /// How many committed model calls were handed back via
+    /// [`AgentRun::rollback_model_call`] — sends that failed, or whose reply
+    /// was lost. Observability only: the run imposes no bound on it, because
+    /// the caller that owns the transport is the only party that can decide
+    /// how many attempts are reasonable.
+    #[serde(default)]
+    model_call_rollbacks: usize,
     state: RunState,
 }
 
 /// The inputs for a model call the run is ready to make, read without
 /// advancing anything. See [`AgentRun::peek_model_call`].
+///
+/// Deliberately exhaustive, matching [`AgentRunStep::CallModel`]'s fields:
+/// destructuring it is the point, and a caller that must build a request from
+/// these should be told by the compiler when there is more to build it from.
 #[derive(Debug, Clone)]
-pub(crate) struct ModelCallInputs {
-    pub(crate) prompt: Message,
-    pub(crate) history: Vec<Message>,
+pub struct ModelCallInputs {
+    /// The prompt message for this turn (the latest message in the run).
+    pub prompt: Message,
+    /// The chat history preceding `prompt`: the caller-provided input history
+    /// followed by messages accumulated by earlier turns.
+    pub history: Vec<Message>,
 }
 
 /// What [`AgentRun::advance`] resolved to.
 ///
 /// Splits "the run wants another model call" from every step that needs no
-/// model call, so a caller with fallible request preparation can do that work
+/// model call, so a caller whose request preparation can fail does that work
 /// *before* anything advances (see [`AgentRun::commit_model_call`]).
-pub(crate) enum Advance {
+///
+/// Deliberately exhaustive, like [`AgentRunStep`]: a driver must handle every
+/// variant, so adding one is a breaking change by design.
+#[derive(Debug)]
+pub enum Advance {
     /// The run is parked in `PreparingRequest`: read the inputs with
     /// [`AgentRun::peek_model_call`], build the request, and commit it with
     /// [`AgentRun::commit_model_call`]. Nothing has advanced yet.
@@ -438,6 +489,7 @@ impl AgentRun {
             rollback_pending: false,
             streamed_completion_call_recorded: false,
             advertised_tools: None,
+            model_call_rollbacks: 0,
             state: RunState::PreparingRequest,
         }
     }
@@ -553,8 +605,13 @@ impl AgentRun {
     /// [`TurnTools`](crate::agent::TurnTools): pairing it with a registry
     /// snapshot reconstitutes the whole thing, which is what lets a driver
     /// resume a run suspended at *any* step rather than only while tool calls
-    /// are pending.
-    pub(crate) fn advertised_tools(&self) -> Option<&TurnToolNames> {
+    /// are pending. It is also the record of what the model was actually shown
+    /// this turn, which is worth persisting alongside the run for audit.
+    ///
+    /// `None` for a run hand-driven through [`Self::next_step`], which commits
+    /// no names because the driver supplies them with the [`ModelTurn`]
+    /// instead, and `None` before the run's first model call.
+    pub fn advertised_tools(&self) -> Option<&TurnToolNames> {
         self.advertised_tools.as_ref()
     }
 
@@ -738,8 +795,10 @@ impl AgentRun {
         })
     }
 
-    /// Whether the run is waiting for its next model call to be prepared.
-    pub(crate) fn is_preparing_request(&self) -> bool {
+    /// Whether the run is waiting for its next model call to be prepared —
+    /// that is, whether [`Self::peek_model_call`] and
+    /// [`Self::commit_model_call`] are valid right now.
+    pub fn is_preparing_request(&self) -> bool {
         matches!(self.state, RunState::PreparingRequest)
     }
 
@@ -757,12 +816,16 @@ impl AgentRun {
     /// - [`PromptError::MaxTurnsError`] when the total model-call budget is
     ///   exhausted. The run stays intact, so raising the budget and peeking
     ///   again resumes it.
-    /// - [`PromptError::PromptCancelled`] when there is no pending prompt.
-    pub(crate) fn peek_model_call(&self) -> Result<ModelCallInputs, PromptError> {
-        debug_assert!(
-            self.is_preparing_request(),
-            "peek_model_call is only meaningful while the run is preparing a request"
-        );
+    /// - [`PromptError::PromptCancelled`] when there is no pending prompt, or
+    ///   when the run is not preparing a request (check with
+    ///   [`Self::is_preparing_request`], or reach this through
+    ///   [`Self::advance`], which reports it).
+    pub fn peek_model_call(&self) -> Result<ModelCallInputs, PromptError> {
+        if !self.is_preparing_request() {
+            return Err(
+                self.protocol_violation("peek_model_call called while the run wants no model call")
+            );
+        }
         let Some((prompt, history_for_turn)) = self.new_messages.split_last() else {
             return Err(PromptError::prompt_cancelled(
                 self.full_history(),
@@ -798,22 +861,100 @@ impl AgentRun {
     /// with the [`ModelTurn`] instead. `output_tool_name` fills the run's
     /// committed Tool-mode name once (#1928), pinning the mode for the rest of
     /// the run.
-    pub(crate) fn commit_model_call(
+    ///
+    /// If the committed call then fails to reach the provider, or its reply is
+    /// lost, [`Self::rollback_model_call`] undoes exactly this.
+    ///
+    /// # Errors
+    /// [`PromptError::PromptCancelled`] when the run is not preparing a
+    /// request — committing a call the run never asked for would consume a
+    /// turn against nothing.
+    pub fn commit_model_call(
         &mut self,
         advertised: Option<TurnToolNames>,
         output_tool_name: Option<String>,
-    ) -> usize {
-        debug_assert!(
-            self.is_preparing_request(),
-            "commit_model_call is only valid on a peeked model call"
-        );
+    ) -> Result<usize, PromptError> {
+        if !self.is_preparing_request() {
+            return Err(
+                self.protocol_violation("commit_model_call called without a peeked model call")
+            );
+        }
         self.set_output_tool_name(output_tool_name);
         self.advertised_tools = advertised;
         self.current_turn += 1;
         self.rollback_pending = false;
         self.streamed_completion_call_recorded = false;
         self.state = RunState::AwaitingModel;
-        self.current_turn
+        Ok(self.current_turn)
+    }
+
+    /// Hand back a committed model call that never produced a response.
+    ///
+    /// For a request that could not be sent, or whose reply is known to be
+    /// lost: a transport error, a timeout, a cancelled or vanished provider
+    /// job. The turn is refunded — it produced nothing, so it costs nothing —
+    /// and the run returns to `PreparingRequest`, where the next
+    /// [`Self::peek_model_call`] / [`Self::commit_model_call`] pair (or
+    /// [`Self::next_step`]) prepares the request **again, from current
+    /// configuration**.
+    ///
+    /// Re-deriving rather than re-sending is deliberate. A request built for
+    /// the failed attempt carries that attempt's tool snapshot, and replaying
+    /// it would advertise one set of implementations while a later turn
+    /// dispatches another — the exact skew
+    /// [`TurnTools`](crate::agent::TurnTools) exists to prevent. The retry
+    /// therefore takes a fresh snapshot, a fresh patch, and the same history.
+    ///
+    /// # This is at-least-once
+    ///
+    /// If the request *did* reach the provider and only its reply was lost,
+    /// rolling back and re-sending bills a second completion. Nothing in the
+    /// run can distinguish "never arrived" from "arrived, reply lost" — only
+    /// the caller can, through provider-side idempotency or its own record of
+    /// what was transmitted. Roll back when you know the call produced
+    /// nothing; when you do not know, prefer failing the run.
+    ///
+    /// Usage accounting is preserved either way. Tokens the provider already
+    /// billed stay in [`Self::usage`] and [`Self::completion_calls`], and a
+    /// streamed turn may still record its usage after the rollback (the same
+    /// window invalid tool-call recovery uses, see
+    /// [`Self::record_streamed_completion_call`]).
+    ///
+    /// Bounding attempts is the caller's job: the machine performs no IO and
+    /// owns no clock, so it cannot know whether a retry is reasonable.
+    /// [`Self::model_call_rollbacks`] counts them for a caller that wants a
+    /// budget of its own, and
+    /// [`CompletionError::is_retryable`](crate::completion::CompletionError::is_retryable)
+    /// classifies whether the failure is worth another attempt at all.
+    ///
+    /// # Errors
+    /// [`PromptError::PromptCancelled`] when no model call is in flight.
+    pub fn rollback_model_call(&mut self) -> Result<(), PromptError> {
+        if !matches!(self.state, RunState::AwaitingModel) {
+            return Err(self
+                .protocol_violation("rollback_model_call called without a model call in flight"));
+        }
+
+        // Refund the turn. `saturating_sub` is belt-and-braces: reaching
+        // `AwaitingModel` always went through `commit_model_call`, which
+        // incremented it.
+        self.current_turn = self.current_turn.saturating_sub(1);
+        self.model_call_rollbacks += 1;
+        // The next preparation records its own; leaving stale names here would
+        // let a later `model_response` validate against a turn that never ran.
+        self.advertised_tools = None;
+        // Keep the streamed-usage window open when the record has not landed
+        // yet: a caller that drains a broken stream for usage records it after
+        // this point, exactly as invalid tool-call recovery does.
+        self.rollback_pending = !self.streamed_completion_call_recorded;
+        self.state = RunState::PreparingRequest;
+        Ok(())
+    }
+
+    /// How many committed model calls were handed back via
+    /// [`Self::rollback_model_call`].
+    pub fn model_call_rollbacks(&self) -> usize {
+        self.model_call_rollbacks
     }
 
     /// Advance the machine as far as it can go without a model call.
@@ -823,7 +964,7 @@ impl AgentRun {
     /// (#1928) — leaving the run in `PreparingRequest` for the caller to
     /// prepare and commit. [`Self::next_step`] is this plus an immediate
     /// commit, for callers with nothing that can fail in between.
-    pub(crate) fn advance(&mut self) -> Result<Advance, PromptError> {
+    pub fn advance(&mut self) -> Result<Advance, PromptError> {
         loop {
             if self.is_preparing_request() {
                 return Ok(Advance::NeedsModelCall);
@@ -1048,7 +1189,7 @@ impl AgentRun {
                 let ModelCallInputs {
                     prompt, history, ..
                 } = self.peek_model_call()?;
-                let turn = self.commit_model_call(None, None);
+                let turn = self.commit_model_call(None, None)?;
                 Ok(AgentRunStep::CallModel {
                     prompt,
                     history,
@@ -1790,6 +1931,150 @@ mod tests {
             AgentRunStep::Done(response) => response,
             step => panic!("expected Done, got {step:?}"),
         }
+    }
+
+    /// A model call that was committed and then failed to reach the provider:
+    /// the turn is refunded, the run is drivable again, and the retry takes
+    /// the turn the failure did not.
+    #[test]
+    fn rollback_model_call_refunds_the_turn_and_re_prepares() {
+        let mut run = AgentRun::new("add things").max_turns(1);
+        expect_call_model(&mut run);
+        assert_eq!(run.turn(), 1);
+
+        run.rollback_model_call().expect("rollback should succeed");
+        assert_eq!(run.turn(), 0, "a call that produced nothing costs nothing");
+        assert_eq!(run.model_call_rollbacks(), 1);
+        assert!(run.is_preparing_request());
+
+        // The budget of one is intact, so the retry is possible at all.
+        let (_, _, turn) = expect_call_model(&mut run);
+        assert_eq!(turn, 1);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("the retried turn is accepted"),
+        );
+    }
+
+    /// The advertised names belong to the call that was handed back, so they
+    /// must not survive it: a later `model_response` validating against a turn
+    /// that never ran would be validating against nothing.
+    #[test]
+    fn rollback_model_call_drops_the_advertised_tools() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+        run.advance().expect("advance should succeed");
+        run.peek_model_call().expect("peek should succeed");
+        run.commit_model_call(
+            Some(TurnToolNames {
+                executable: tool_names(&["add"]),
+                allowed: tool_names(&["add"]),
+            }),
+            None,
+        )
+        .expect("commit should succeed");
+        assert!(run.advertised_tools().is_some());
+
+        run.rollback_model_call().expect("rollback should succeed");
+        assert_eq!(run.advertised_tools(), None);
+    }
+
+    /// Tokens the provider already billed stay billed. A streamed turn that
+    /// died mid-stream may still learn its usage afterwards, so the recording
+    /// window stays open across the rollback — the same window invalid
+    /// tool-call recovery uses.
+    #[test]
+    fn rollback_model_call_preserves_streamed_usage_accounting() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+        expect_call_model(&mut run);
+        run.record_streamed_completion_call(Usage {
+            total_tokens: 11,
+            ..Usage::new()
+        })
+        .expect("usage recorded before the failure");
+
+        run.rollback_model_call().expect("rollback should succeed");
+        assert_eq!(
+            run.usage().total_tokens,
+            11,
+            "billed tokens survive the rollback"
+        );
+        assert_eq!(run.completion_calls().len(), 1);
+
+        // A second record for the same dead turn is still rejected...
+        run.record_streamed_completion_call(Usage::new())
+            .expect_err("the turn already recorded its usage");
+
+        // ...and the retried turn records its own.
+        expect_call_model(&mut run);
+        run.record_streamed_completion_call(Usage {
+            total_tokens: 7,
+            ..Usage::new()
+        })
+        .expect("the retried turn records its own usage");
+        assert_eq!(run.usage().total_tokens, 18);
+        assert_eq!(run.completion_calls().len(), 2);
+    }
+
+    /// A stream that broke before reporting usage can still report it after
+    /// the rollback, which is why the window is left open when nothing was
+    /// recorded.
+    #[test]
+    fn rollback_model_call_leaves_the_streamed_usage_window_open() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+        expect_call_model(&mut run);
+        run.rollback_model_call().expect("rollback should succeed");
+        run.record_streamed_completion_call(Usage {
+            total_tokens: 3,
+            ..Usage::new()
+        })
+        .expect("a drained stream may report usage after the rollback");
+        assert_eq!(run.usage().total_tokens, 3);
+    }
+
+    #[test]
+    fn rollback_model_call_requires_a_call_in_flight() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+        run.rollback_model_call()
+            .expect_err("nothing is in flight before the first call");
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add"))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+        run.rollback_model_call()
+            .expect_err("tool calls are pending, not a model call");
+    }
+
+    /// The transition is state, not driver memory, so it survives suspension.
+    #[test]
+    fn rollback_model_call_survives_a_serde_round_trip() {
+        let mut run = AgentRun::new("add things").max_turns(1);
+        expect_call_model(&mut run);
+        run.rollback_model_call().expect("rollback should succeed");
+
+        let serialized = serde_json::to_string(&run).expect("run should serialize");
+        let mut restored: AgentRun =
+            serde_json::from_str(&serialized).expect("run should deserialize");
+        assert_eq!(restored.turn(), 0);
+        assert_eq!(restored.model_call_rollbacks(), 1);
+        let (_, _, turn) = expect_call_model(&mut restored);
+        assert_eq!(turn, 1);
+    }
+
+    /// The two halves are a public protocol, so driving them out of order is
+    /// an error a caller can handle — not a `debug_assert` that vanishes in
+    /// release builds.
+    #[test]
+    fn peek_and_commit_reject_being_driven_out_of_protocol() {
+        let mut run = AgentRun::new("add things").max_turns(2);
+        expect_call_model(&mut run);
+
+        run.peek_model_call()
+            .expect_err("a model call is already in flight");
+        run.commit_model_call(None, None)
+            .expect_err("there is no peeked call to commit");
     }
 
     fn expect_continue(outcome: ModelTurnOutcome) -> bool {

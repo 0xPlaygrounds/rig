@@ -1589,6 +1589,23 @@ in-flight suspended runs before upgrading, or discard them. In exchange, a run
 can now be suspended and resumed at *every* step boundary — including with a
 model call in flight — not only while tool calls are pending.
 
+Because the caller owns the send, the caller also owns recovering from a failed
+one: `AgentDriver::rollback_model_call()` hands a turn back when its request
+could not be sent or its reply is known to be lost, refunding the turn and
+returning the run to preparing so the next step yields a freshly prepared
+request. It is at-least-once — a request that reached the provider and lost only
+its reply will be billed twice on retry — so pair it with
+`CompletionError::is_retryable()` and bound the attempts yourself. Runs driven
+by `Agent::runner` are unaffected; the runner still fails the prompt.
+
+Two behavior changes on the driver's resume path, both narrowing what dispatch
+will do: `TurnTools::execute` now refuses any name the turn did not advertise
+(previously a tool registered *after* a run was suspended could be dispatched
+through a turn that never advertised it), and a resumed snapshot resolves the
+advertised names explicitly instead of re-running retrieval for them, so a
+registered dynamic tool the new query does not rank is no longer reported as
+unregistered.
+
 An `Agent`'s default model is set at construction. Per-run overrides now go
 through `runner(...).using_model(...)`, `Agent::set_model`, or a
 `ModelSelection` hook (see the "runtime model swapping" section for the

@@ -42,12 +42,13 @@ pub(crate) struct PreparedCompletionRequest {
 /// Names are data, so they travel with the run — [`AgentRun`](super::run::AgentRun)
 /// records them when a model call is committed, and they survive
 /// serialization. Implementations are live objects and cannot, so the
-/// dispatch target ([`ToolRegistrySnapshot`]) is rebuilt from the agent's
-/// registry when a run resumes in another process. Pairing the two back
+/// dispatch target — the turn's registry snapshot — is rebuilt from the
+/// agent when a run resumes in another process. Pairing the two back
 /// together yields a [`TurnTools`] in any run state, in any process, which is
 /// what makes a suspended run resumable at *every* step boundary rather than
 /// only while tool calls are pending.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct TurnToolNames {
     /// The real registry tools advertised to the provider this turn.
     pub executable: BTreeSet<String>,
@@ -194,6 +195,16 @@ impl TurnTools {
                  answer; the driver must consume the call's arguments instead of dispatching it."
             )));
         }
+        // The advertised names are the authority, not the snapshot. In-process
+        // the two agree by construction (preparation narrows the snapshot to
+        // the advertised set), but a resumed turn pairs names carried on the
+        // run with a snapshot rebuilt here, so only this check makes the
+        // guarantee above hold on both paths.
+        if !self.executable_tool_names.contains(tool_name) {
+            return ToolResult::failed(ToolExecutionError::not_found(format!(
+                "`{tool_name}` was not advertised to the model on this turn"
+            )));
+        }
         self.snapshot.execute(tool_name, args, context).await
     }
 
@@ -317,6 +328,70 @@ mod tests {
 
         let result = tools.execute(&output_tool, "{}", &mut context).await;
         assert!(result.is_error_kind(ToolErrorKind::NotExecutable));
+        assert_eq!(
+            context.result::<Marker>(),
+            None,
+            "the rejection must not leave the previous dispatch's metadata behind"
+        );
+    }
+
+    /// The advertised names are the authority, not the snapshot. Pair a
+    /// snapshot that *can* dispatch a tool with names that never advertised
+    /// it — the shape a resumed turn produces — and dispatch must still
+    /// refuse.
+    #[tokio::test]
+    async fn dispatch_refuses_a_name_the_turn_did_not_advertise() {
+        use super::{TurnToolNames, TurnTools};
+        use std::collections::BTreeSet;
+
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .tool(MetadataTool)
+            .build();
+        let mut driver = agent.drive("go");
+        let advertised = match driver.next_step().await.expect("prepare succeeds") {
+            DriveStep::SendRequest { tools, .. } => tools,
+            other => panic!("expected SendRequest, got {other:?}"),
+        };
+        assert!(advertised.executable_tool_names().contains("metadata"));
+
+        // Same dispatch target, but a turn that advertised nothing.
+        let disowned = TurnTools::from_parts(
+            advertised.snapshot.clone(),
+            TurnToolNames {
+                executable: BTreeSet::new(),
+                allowed: BTreeSet::new(),
+            },
+            None,
+        );
+        let mut context = ToolContext::new();
+        let result = disowned.execute("metadata", "{}", &mut context).await;
+        assert!(
+            result.is_error_kind(ToolErrorKind::NotFound),
+            "a reachable implementation is still not dispatchable if the turn never advertised it"
+        );
+    }
+
+    /// The advertised-name gate is an `execute` early return like the
+    /// output-tool rejection, so it owes the same guarantee: the previous
+    /// dispatch's result metadata must not survive it.
+    #[tokio::test]
+    async fn unadvertised_name_rejection_clears_stale_context_metadata() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .tool(MetadataTool)
+            .build();
+        let mut driver = agent.drive("go");
+        let tools = match driver.next_step().await.expect("prepare succeeds") {
+            DriveStep::SendRequest { tools, .. } => tools,
+            other => panic!("expected SendRequest, got {other:?}"),
+        };
+
+        let mut context = ToolContext::new();
+        let result = tools.execute("metadata", "{}", &mut context).await;
+        assert!(result.is_success());
+        assert_eq!(context.result::<Marker>(), Some(&Marker("published")));
+
+        let result = tools.execute("never_advertised", "{}", &mut context).await;
+        assert!(result.is_error_kind(ToolErrorKind::NotFound));
         assert_eq!(
             context.result::<Marker>(),
             None,
