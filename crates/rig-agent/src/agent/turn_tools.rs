@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::message::UserContent;
+use rig_core::message::{ToolChoice, UserContent};
 
 use super::model::ModelHandle;
 use super::run::{ModelTurn, PendingToolCall};
@@ -34,6 +34,19 @@ pub(crate) struct PreparedCompletionRequest {
     pub(crate) builder: CompletionRequestBuilder<ModelHandle>,
     /// The turn's tool sets and dispatch target.
     pub(crate) tools: TurnTools,
+    /// The tool choice the built request actually carries, after any per-turn
+    /// patch. Returned rather than re-derived by callers: preparation is where
+    /// the baseline and the patch are reconciled, so it is the only place that
+    /// can answer without repeating the merge rule.
+    pub(crate) tool_choice: Option<ToolChoice>,
+}
+
+impl PreparedCompletionRequest {
+    /// What this turn resolved to, ready to commit on the run.
+    pub(crate) fn turn_metadata(&self) -> PreparedTurnMetadata {
+        PreparedTurnMetadata::new(self.tools.names(), self.tool_choice.clone())
+            .with_output_tool_name(self.tools.output_tool_name.clone())
+    }
 }
 
 /// The serializable half of [`TurnTools`]: the tool names a model call
@@ -91,6 +104,49 @@ impl TurnToolNames {
             self.executable.clone(),
             self.allowed.clone(),
         )
+    }
+}
+
+/// What a prepared turn resolved to, recorded when its model call is committed.
+///
+/// The turn's own answers, not the run's baseline. A per-turn
+/// [`RequestPatch`](crate::agent::RequestPatch) may override the tool choice —
+/// from a `CompletionCall` hook under the runner, or from the preparation
+/// callback under [`AgentDriver`](super::AgentDriver) — and everything
+/// downstream that reasons about *what this turn was allowed to do* must read
+/// what was actually sent. Reading the run's baseline instead makes the state
+/// machine disagree with the wire: a `Skip` resolution permitted under a
+/// baseline of `Required` when the request that went out carried `None`, or an
+/// invalid-tool-call hook told the choice was `None` when the request required
+/// a tool.
+///
+/// Serialized with the run, so a resumed turn answers those questions the same
+/// way the process that sent it would have.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PreparedTurnMetadata {
+    /// The tool names this turn advertised.
+    pub tools: TurnToolNames,
+    /// The tool choice the request actually carried, after any per-turn patch.
+    pub tool_choice: Option<ToolChoice>,
+    /// The synthetic structured-output tool advertised this turn, if any.
+    pub output_tool_name: Option<String>,
+}
+
+impl PreparedTurnMetadata {
+    /// The metadata for a turn prepared with these tools and choice.
+    pub fn new(tools: TurnToolNames, tool_choice: Option<ToolChoice>) -> Self {
+        Self {
+            tools,
+            tool_choice,
+            output_tool_name: None,
+        }
+    }
+
+    /// Record the synthetic structured-output tool advertised this turn.
+    pub fn with_output_tool_name(mut self, name: Option<String>) -> Self {
+        self.output_tool_name = name;
+        self
     }
 }
 

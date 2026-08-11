@@ -352,11 +352,10 @@ impl AgentDriver {
                 .await
                 .map_err(PromptError::CompletionError)?;
 
-                let PreparedCompletionRequest { builder, tools } = prepared;
+                let metadata = prepared.turn_metadata();
+                let PreparedCompletionRequest { builder, tools, .. } = prepared;
                 self.snapshot = Some(tools.snapshot.clone());
-                let turn = self
-                    .run
-                    .commit_model_call(Some(tools.names()), tools.output_tool_name.clone())?;
+                let turn = self.run.commit_model_call(Some(metadata))?;
                 Ok(DriveStep::SendRequest {
                     request: Box::new(builder),
                     tools,

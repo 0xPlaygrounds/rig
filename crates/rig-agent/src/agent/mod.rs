@@ -139,4 +139,4 @@ pub use run::{
     PendingToolCall,
 };
 pub use runner::AgentRunner;
-pub use turn_tools::{TurnToolNames, TurnTools};
+pub use turn_tools::{PreparedTurnMetadata, TurnToolNames, TurnTools};

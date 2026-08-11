@@ -576,6 +576,9 @@ pub(crate) async fn build_prepared_completion_request(
 
     Ok(PreparedCompletionRequest {
         builder: completion_request,
+        // The reconciled baseline-plus-patch choice, so no caller has to
+        // repeat the merge rule to learn what the request carries.
+        tool_choice: tool_choice.cloned(),
         tools: TurnTools {
             snapshot: Arc::new(tool_snapshot),
             executable_tool_names: Arc::new(executable_tool_names),

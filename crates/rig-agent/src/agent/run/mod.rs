@@ -31,7 +31,7 @@
 //!
 //! | version | change |
 //! | --- | --- |
-//! | `1.0` | Initial versioned format. Records the turn's advertised tool names so a run suspended mid-model-call can be resumed. |
+//! | `1.0` | Initial versioned format. Records what each model call resolved to — advertised tool names, effective tool choice, output tool — so a run suspended mid-model-call can be resumed and answers about the turn come from the turn. |
 //!
 //! `AgentRun` deliberately contains no model, tool registry, memory backend, or
 //! hook stack. Hand-driving it is a low-level provider integration: the caller
@@ -97,7 +97,7 @@
 //!         // no turn spent, still `is_preparing_request()`, retry at will.
 //!         # let _ = (prompt, history);
 //!         // Only once the request exists does the run advance.
-//!         let _turn = run.commit_model_call(None, None)?;
+//!         let _turn = run.commit_model_call(None)?;
 //!         // Send it. If the send fails or its reply is lost, hand the turn
 //!         // back with `run.rollback_model_call()?` and prepare again.
 //!     }
@@ -131,7 +131,7 @@ use crate::{
         assistant_text_from_choice, build_full_history, build_history_for_request,
         invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
     },
-    agent::turn_tools::TurnToolNames,
+    agent::turn_tools::{PreparedTurnMetadata, TurnToolNames},
     completion::{Message, PromptError, Usage},
     json_utils,
 };
@@ -415,16 +415,22 @@ pub struct AgentRun {
     /// [`AgentRunStep::CallModel`] is emitted.
     #[serde(default)]
     streamed_completion_call_recorded: bool,
-    /// Tool names advertised on the most recently committed model call.
+    /// What the most recently committed model call resolved to: its advertised
+    /// tool names, the tool choice the request actually carried, and the
+    /// synthetic output tool.
     ///
     /// Recorded by [`AgentRun::commit_model_call`] and kept for the whole turn
     /// — through validation, resolution and tool execution — so a driver can
     /// rebuild the turn's [`TurnTools`](crate::agent::TurnTools) in *any*
-    /// state, including in a process that only just deserialized the run.
+    /// state, including in a process that only just deserialized the run, and
+    /// so every question about what the turn was allowed to do is answered by
+    /// the turn rather than by the run's baseline.
+    ///
     /// `None` for runs hand-driven through [`AgentRun::next_step`], where the
-    /// advertised names arrive with the [`ModelTurn`] instead.
+    /// advertised names arrive with the [`ModelTurn`] instead; those runs fall
+    /// back to the baseline, which is all they ever had.
     #[serde(default)]
-    advertised_tools: Option<TurnToolNames>,
+    prepared_turn: Option<PreparedTurnMetadata>,
     /// How many committed model calls were handed back via
     /// [`AgentRun::rollback_model_call`] — sends that failed, or whose reply
     /// was lost. Observability only: the run imposes no bound on it, because
@@ -492,7 +498,7 @@ impl AgentRun {
             invalid_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
-            advertised_tools: None,
+            prepared_turn: None,
             model_call_rollbacks: 0,
             state: RunState::PreparingRequest,
         }
@@ -578,14 +584,13 @@ impl AgentRun {
 
     /// Park the run for a fresh model call, ending the current turn.
     ///
-    /// The turn's advertised names end with it. They describe the call the
-    /// model was shown, and [`Self::advertised_tools`] is documented as the
-    /// record of *this* turn — so a run parked here, in memory or serialized,
-    /// must not still report the names of a turn that finished or was
+    /// The turn's prepared metadata ends with it. It describes the call the
+    /// model was shown — see [`Self::prepared_turn`] — so a run parked here, in
+    /// memory or serialized, must not still report a turn that finished or was
     /// abandoned. Every route back to `PreparingRequest` goes through here so
     /// the invariant cannot be half-applied.
     fn park_for_new_request(&mut self) {
-        self.advertised_tools = None;
+        self.prepared_turn = None;
         self.state = RunState::PreparingRequest;
     }
 
@@ -615,21 +620,43 @@ impl AgentRun {
         self.tool_choice.as_ref()
     }
 
-    /// The tool names advertised on the current turn's model call, when the
-    /// call was committed with them (see [`Self::commit_model_call`]).
+    /// What the current turn's model call resolved to, when the call was
+    /// committed with it (see [`Self::commit_model_call`]).
     ///
-    /// This is the durable half of the turn's
-    /// [`TurnTools`](crate::agent::TurnTools): pairing it with a registry
-    /// snapshot reconstitutes the whole thing, which is what lets a driver
+    /// The durable half of the turn: pairing its tool names with a registry
+    /// snapshot reconstitutes the turn's
+    /// [`TurnTools`](crate::agent::TurnTools), which is what lets a driver
     /// resume a run suspended at *any* step rather than only while tool calls
     /// are pending. It is also the record of what the model was actually shown
-    /// this turn, which is worth persisting alongside the run for audit.
+    /// and actually allowed to do this turn, which is worth persisting
+    /// alongside the run for audit.
     ///
     /// `None` for a run hand-driven through [`Self::next_step`], which commits
-    /// no names because the driver supplies them with the [`ModelTurn`]
-    /// instead, and `None` before the run's first model call.
+    /// no metadata because the driver supplies the names with the
+    /// [`ModelTurn`] instead, and `None` before the run's first model call.
+    pub fn prepared_turn(&self) -> Option<&PreparedTurnMetadata> {
+        self.prepared_turn.as_ref()
+    }
+
+    /// The tool names the current turn advertised. Shorthand for
+    /// [`Self::prepared_turn`]'s `tools`.
     pub fn advertised_tools(&self) -> Option<&TurnToolNames> {
-        self.advertised_tools.as_ref()
+        self.prepared_turn.as_ref().map(|turn| &turn.tools)
+    }
+
+    /// The tool choice that governs the current turn: the one the request
+    /// actually carried when a turn is in flight, and the run's baseline
+    /// otherwise.
+    ///
+    /// This is the answer every question about *what this turn was allowed to
+    /// do* needs. A per-turn patch may have overridden the baseline, and
+    /// reading [`Self::tool_choice`] instead would make the machine disagree
+    /// with the request that went out.
+    fn effective_tool_choice(&self) -> Option<&ToolChoice> {
+        self.prepared_turn
+            .as_ref()
+            .map(|turn| turn.tool_choice.as_ref())
+            .unwrap_or(self.tool_choice.as_ref())
     }
 
     /// Set the synthetic output-tool name for Tool output mode (see #1928).
@@ -806,7 +833,7 @@ impl AgentRun {
             )),
             available_tools: resolving.executable_tool_names.iter().cloned().collect(),
             allowed_tools: resolving.allowed_tool_names.iter().cloned().collect(),
-            tool_choice: self.tool_choice.clone(),
+            tool_choice: self.effective_tool_choice().cloned(),
             chat_history: self.diagnostic_history(resolving),
             is_streaming: false,
         })
@@ -892,11 +919,13 @@ impl AgentRun {
     /// has already happened by the time it runs, so the run never advances into
     /// a call that was never made.
     ///
-    /// `advertised` records the turn's tool names on the run (see
-    /// [`Self::advertised_tools`]); pass `None` when the caller supplies them
-    /// with the [`ModelTurn`] instead. `output_tool_name` fills the run's
-    /// committed Tool-mode name once (#1928), pinning the mode for the rest of
-    /// the run.
+    /// `prepared` records what the turn resolved to (see
+    /// [`Self::prepared_turn`]): its advertised tool names, the tool choice the
+    /// request actually carried, and the synthetic output tool. Pass `None`
+    /// when the caller supplies the names with the [`ModelTurn`] instead — a
+    /// run driven that way answers from its baseline, which is all it has. The
+    /// metadata's `output_tool_name` fills the run's committed Tool-mode name
+    /// once (#1928), pinning the mode for the rest of the run.
     ///
     /// If the committed call then fails to reach the provider, or its reply is
     /// lost, [`Self::rollback_model_call`] undoes exactly this.
@@ -911,8 +940,7 @@ impl AgentRun {
     ///   peek before every commit.
     pub fn commit_model_call(
         &mut self,
-        advertised: Option<TurnToolNames>,
-        output_tool_name: Option<String>,
+        prepared: Option<PreparedTurnMetadata>,
     ) -> Result<usize, PromptError> {
         if !self.is_preparing_request() {
             return Err(
@@ -920,8 +948,12 @@ impl AgentRun {
             );
         }
         self.check_turn_budget()?;
-        self.set_output_tool_name(output_tool_name);
-        self.advertised_tools = advertised;
+        self.set_output_tool_name(
+            prepared
+                .as_ref()
+                .and_then(|turn| turn.output_tool_name.clone()),
+        );
+        self.prepared_turn = prepared;
         self.current_turn += 1;
         self.rollback_pending = false;
         self.streamed_completion_call_recorded = false;
@@ -1239,7 +1271,7 @@ impl AgentRun {
         match self.advance()? {
             Advance::NeedsModelCall => {
                 let ModelCallInputs { prompt, history } = self.peek_model_call()?;
-                let turn = self.commit_model_call(None, None)?;
+                let turn = self.commit_model_call(None)?;
                 Ok(AgentRunStep::CallModel {
                     prompt,
                     history,
@@ -1437,7 +1469,7 @@ impl AgentRun {
                 Err(PromptError::prompt_cancelled(diagnostic_history, reason))
             }
             InvalidToolCallAction::Skip { reason } => {
-                if matches!(self.tool_choice, Some(ToolChoice::None)) {
+                if matches!(self.effective_tool_choice(), Some(ToolChoice::None)) {
                     return Err(unknown_tool_call_error(
                         tool_call.function.name,
                         executable_tool_names,
@@ -1680,7 +1712,7 @@ impl AgentRun {
             args: invalid.args.clone(),
             available_tools: invalid.executable_tool_names.iter().cloned().collect(),
             allowed_tools: invalid.allowed_tool_names.iter().cloned().collect(),
-            tool_choice: self.tool_choice.clone(),
+            tool_choice: self.effective_tool_choice().cloned(),
             chat_history: self
                 .streamed_diagnostic_history(partial, Some(invalid.tool_call.clone())),
             is_streaming: true,
@@ -1768,7 +1800,7 @@ impl AgentRun {
                 Err(PromptError::prompt_cancelled(diagnostic_history, reason))
             }
             InvalidToolCallAction::Skip { reason } => {
-                if matches!(self.tool_choice, Some(ToolChoice::None)) {
+                if matches!(self.effective_tool_choice(), Some(ToolChoice::None)) {
                     self.state = RunState::Failed;
                     return Err(unknown_tool_call_error(
                         invalid.tool_call.function.name.clone(),
@@ -2014,13 +2046,10 @@ mod tests {
         let mut run = AgentRun::new("add things").max_turns(2);
         run.advance().expect("advance should succeed");
         run.peek_model_call().expect("peek should succeed");
-        run.commit_model_call(
-            Some(TurnToolNames {
-                executable: tool_names(&["add"]),
-                allowed: tool_names(&["add"]),
-            }),
+        run.commit_model_call(Some(PreparedTurnMetadata::new(
+            TurnToolNames::new(["add"], ["add"]),
             None,
-        )
+        )))
         .expect("commit should succeed");
         assert!(run.advertised_tools().is_some());
 
@@ -2126,7 +2155,7 @@ mod tests {
         let mut run = AgentRun::new("add things").max_turns(3);
         run.advance().expect("advance");
         run.peek_model_call().expect("peek");
-        run.commit_model_call(Some(advertised.clone()), None)
+        run.commit_model_call(Some(PreparedTurnMetadata::new(advertised.clone(), None)))
             .expect("commit");
         expect_continue(
             run.model_response(tool_call_turn("call_1", "add"))
@@ -2146,7 +2175,7 @@ mod tests {
         let mut run = AgentRun::new("add things").max_turns(3);
         run.advance().expect("advance");
         run.peek_model_call().expect("peek");
-        run.commit_model_call(Some(advertised.clone()), None)
+        run.commit_model_call(Some(PreparedTurnMetadata::new(advertised.clone(), None)))
             .expect("commit");
         expect_continue(
             run.model_response(text_turn("nope"))
@@ -2159,6 +2188,109 @@ mod tests {
             None,
             "a retried turn's names do not outlive it"
         );
+    }
+
+    /// Drive to an invalid tool call on a run whose committed turn resolved to
+    /// `committed`, over a baseline of `baseline`.
+    fn run_with_divergent_choice(
+        baseline: Option<ToolChoice>,
+        committed: Option<ToolChoice>,
+    ) -> AgentRun {
+        let mut run = AgentRun::new("go").max_turns(3);
+        if let Some(baseline) = baseline {
+            run = run.with_tool_choice(baseline);
+        }
+        run.advance().expect("advance");
+        run.peek_model_call().expect("peek");
+        run.commit_model_call(Some(PreparedTurnMetadata::new(
+            TurnToolNames::new(["add"], ["add"]),
+            committed,
+        )))
+        .expect("commit");
+        run
+    }
+
+    /// A per-turn patch may override the run's baseline choice, and everything
+    /// asking "what was this turn allowed to do" must read what the request
+    /// actually carried. Reading the baseline instead lets a `Skip` through
+    /// that the wire never justified.
+    #[test]
+    fn skip_is_rejected_by_the_turns_choice_not_the_runs_baseline() {
+        // Baseline permits tools; the turn that went out forbade them.
+        let mut run = run_with_divergent_choice(Some(ToolChoice::Required), Some(ToolChoice::None));
+        let outcome = run
+            .model_response(tool_call_turn("call_1", "nonexistent"))
+            .expect("the invalid call needs resolution");
+        assert!(matches!(outcome, ModelTurnOutcome::NeedsResolution(_)));
+
+        run.resolve_invalid_tool_call(InvalidToolCallAction::Skip {
+            reason: "skip it".to_string(),
+        })
+        .expect_err("the turn forbade tools, so a skipped call cannot be justified");
+    }
+
+    /// And the other direction: the hook context must report the choice the
+    /// request carried, not the baseline it overrode.
+    #[test]
+    fn invalid_call_context_reports_the_turns_choice() {
+        let mut run = run_with_divergent_choice(Some(ToolChoice::None), Some(ToolChoice::Required));
+        let outcome = run
+            .model_response(tool_call_turn("call_1", "nonexistent"))
+            .expect("the invalid call needs resolution");
+        let ModelTurnOutcome::NeedsResolution(context) = outcome else {
+            panic!("expected NeedsResolution");
+        };
+        assert_eq!(
+            context.tool_choice,
+            Some(ToolChoice::Required),
+            "the context must report what the request carried"
+        );
+    }
+
+    /// The effective choice is committed state, so it survives a suspension
+    /// taken while a resolution is pending.
+    #[test]
+    fn the_turns_choice_survives_serialize_and_resume() {
+        let mut run = run_with_divergent_choice(Some(ToolChoice::Required), Some(ToolChoice::None));
+        let outcome = run
+            .model_response(tool_call_turn("call_1", "nonexistent"))
+            .expect("the invalid call needs resolution");
+        assert!(matches!(outcome, ModelTurnOutcome::NeedsResolution(_)));
+
+        let serialized = serde_json::to_string(&run).expect("run serializes");
+        let mut restored: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        assert_eq!(
+            restored
+                .prepared_turn()
+                .expect("the turn's metadata survives")
+                .tool_choice,
+            Some(ToolChoice::None)
+        );
+        restored
+            .resolve_invalid_tool_call(InvalidToolCallAction::Skip {
+                reason: "skip it".to_string(),
+            })
+            .expect_err("the resumed run answers with the turn's choice, not the baseline");
+    }
+
+    /// A run driven through `next_step` commits no metadata — the names arrive
+    /// with the `ModelTurn` — so it answers from its baseline, which is all it
+    /// ever had.
+    #[test]
+    fn a_run_without_committed_metadata_falls_back_to_its_baseline() {
+        let mut run = AgentRun::new("go")
+            .max_turns(3)
+            .with_tool_choice(ToolChoice::None);
+        expect_call_model(&mut run);
+        assert_eq!(run.prepared_turn(), None);
+
+        let outcome = run
+            .model_response(tool_call_turn("call_1", "nonexistent"))
+            .expect("the invalid call needs resolution");
+        let ModelTurnOutcome::NeedsResolution(context) = outcome else {
+            panic!("expected NeedsResolution");
+        };
+        assert_eq!(context.tool_choice, Some(ToolChoice::None));
     }
 
     /// The budget is checked where it is *spent*, not only where it is
@@ -2186,7 +2318,7 @@ mod tests {
         // without peeking must not get one.
         assert!(run.is_preparing_request());
         let err = run
-            .commit_model_call(None, None)
+            .commit_model_call(None)
             .expect_err("the budget is spent");
         assert!(
             matches!(err, PromptError::MaxTurnsError { .. }),
@@ -2205,7 +2337,7 @@ mod tests {
 
         run.peek_model_call()
             .expect_err("a model call is already in flight");
-        run.commit_model_call(None, None)
+        run.commit_model_call(None)
             .expect_err("there is no peeked call to commit");
     }
 
