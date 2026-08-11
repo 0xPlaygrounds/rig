@@ -16,6 +16,7 @@ mod cassette {
     mod permission_control;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod regression_suite;
     mod request_hook;
     mod response_retry;
     mod response_schema;

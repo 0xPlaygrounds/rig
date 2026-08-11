@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":21,"y":21},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":109,"promptTokensDetails":[{"modality":"TEXT","tokenCount":109}],"serviceTier":"standard","thoughtsTokenCount":47,"totalTokenCount":176}}'
+  body: '{"candidates":[{"content":{"parts":[{"functionCall":{"args":{"x":21,"y":21},"name":"add"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":20,"promptTokenCount":109,"promptTokensDetails":[{"modality":"TEXT","tokenCount":109}],"serviceTier":"standard","thoughtsTokenCount":62,"totalTokenCount":191}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -34,4 +34,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"I''m sorry, the add tool is disabled for this request. Therefore, I cannot calculate 21 + 21.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":27,"promptTokenCount":150,"promptTokensDetails":[{"modality":"TEXT","tokenCount":150}],"serviceTier":"standard","thoughtsTokenCount":24,"totalTokenCount":201}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"The add tool is disabled for this request.","thoughtSignature":"signature_REDACTED_2"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":9,"promptTokenCount":150,"promptTokensDetails":[{"modality":"TEXT","tokenCount":150}],"serviceTier":"standard","thoughtsTokenCount":21,"totalTokenCount":180}}'

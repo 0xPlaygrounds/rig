@@ -255,17 +255,32 @@ pub(crate) fn create_request_body(
         cfg.response_json_schema = Some(schema.to_value());
     }
 
-    generation_config = generation_config.map(|mut cfg| {
+    // `Option::map` is a no-op on `None`, so a request that set `temperature` or
+    // `max_tokens` without ALSO supplying an `additional_params.generationConfig`
+    // used to drop both silently — `.max_tokens(8)` on a Gemini agent never
+    // reached `maxOutputTokens` and the model ran to its own limit. Create the
+    // config when either field is set, mirroring the `output_schema` arm above.
+    //
+    // Seeded with the two fields cleared rather than `GenerationConfig::default()`
+    // (which is `temperature: 1.0`, `max_output_tokens: 4096`) so a caller who
+    // sets one does not silently acquire the other: every field is
+    // `skip_serializing_if = "Option::is_none"`, so an unset field stays off the
+    // wire and Gemini applies its own default.
+    if temperature.is_some() || max_tokens.is_some() {
+        let cfg = generation_config.get_or_insert_with(|| GenerationConfig {
+            temperature: None,
+            max_output_tokens: None,
+            ..Default::default()
+        });
+
         if let Some(temp) = temperature {
             cfg.temperature = Some(temp);
-        };
+        }
 
         if let Some(max_tokens) = max_tokens {
             cfg.max_output_tokens = Some(max_tokens);
-        };
-
-        cfg
-    });
+        }
+    }
 
     let mut system_parts: Vec<Part> = Vec::new();
     if let Some(preamble) = preamble.filter(|preamble| !preamble.is_empty()) {

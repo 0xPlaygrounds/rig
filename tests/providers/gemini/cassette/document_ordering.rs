@@ -52,7 +52,14 @@ async fn generate_content_keeps_documents_after_system_before_history() {
                 .message(Message::assistant("Acknowledged."))
                 .document(ordering_document())
                 .temperature(0.0)
-                .max_tokens(32)
+                // 32 was enough only while `max_tokens` was being dropped before
+                // it reached `generationConfig` (see the gemini `create_request_body`
+                // fix): the model had an unbounded budget regardless. Now that the
+                // value is actually sent, gemini-2.5-flash spends part of it
+                // thinking and cannot reach the token in 32. This test is about
+                // document *ordering* in the request, not truncation, so the bound
+                // just has to be loose enough for an answer.
+                .max_tokens(512)
                 .send()
                 .await
                 .expect("Gemini document ordering request should succeed");
