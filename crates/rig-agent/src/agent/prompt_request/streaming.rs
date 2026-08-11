@@ -12,7 +12,7 @@ use crate::{
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
-        AgentRun, AgentRunStep, PendingToolCall,
+        AgentRun, PendingToolCall,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
@@ -31,7 +31,11 @@ use tracing_futures::Instrument;
 
 use super::{CompletionCall, PromptResponse, forward_prompt_setters};
 use crate::{
-    agent::{Agent, model::ModelHandle},
+    agent::{
+        Agent,
+        model::ModelHandle,
+        run::{Advance, ModelCallInputs},
+    },
     completion::{CompletionError, PromptError},
 };
 use rig_core::message::{Message, Text};
@@ -490,7 +494,12 @@ where
         let mut previous_model: Option<ModelHandle> = None;
 
         'outer: loop {
-            let step = match run.next_step() {
+            // `advance` never commits a model call: it reports that the run
+            // wants one and leaves the turn unspent. Everything fallible in the
+            // arm below — completion-call hooks, model selection, request
+            // preparation — therefore runs *before* the commit, so a stop or a
+            // failure costs no turn. `next_step` would have spent it first.
+            let step = match run.advance() {
                 Ok(step) => step,
                 Err(err) => {
                     store_error_usage(&runner, &run);
@@ -500,7 +509,16 @@ where
             };
 
             match step {
-                AgentRunStep::CallModel { prompt, history, turn } => {
+                Advance::NeedsModelCall => {
+                    let ModelCallInputs { prompt, history } = match run.peek_model_call() {
+                        Ok(inputs) => inputs,
+                        Err(err) => {
+                            store_error_usage(&runner, &run);
+                            yield Err(Box::new(err).into());
+                            break 'outer;
+                        }
+                    };
+                    let turn = run.turn() + 1;
                     drop(pending_tool_snapshot.take());
                     if runner.max_turns > 1 {
                         tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
@@ -591,7 +609,16 @@ where
                             break 'outer;
                         }
                     };
-                    run.set_output_tool_name(prepared.tools.output_tool_name.clone());
+                    // The request exists, so the turn is real: commit it with
+                    // what it resolved to. Everything that could have stopped
+                    // the run is behind us, and nothing after this point can
+                    // leave a turn spent against no request.
+                    let turn_metadata = prepared.turn_metadata();
+                    if let Err(err) = run.commit_model_call(Some(turn_metadata)) {
+                        store_error_usage(&runner, &run);
+                        yield Err(Box::new(err).into());
+                        break 'outer;
+                    }
                     let turn_tool_snapshot = prepared.tools.snapshot.clone();
                     if runner.record_telemetry_content {
                         let input_messages = prepared.builder.messages_for_telemetry();
@@ -634,7 +661,7 @@ where
                     }
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
-                AgentRunStep::CallTools { calls } => {
+                Advance::CallTools(calls) => {
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
                         yield Err(StreamingError::Completion(CompletionError::ResponseError(
@@ -667,7 +694,7 @@ where
                         break 'outer;
                     }
                 }
-                AgentRunStep::Done(response) => {
+                Advance::Done(response) => {
                     // Run-completion marker, unifying the blocking and streaming
                     // drivers' run-finished logs into one shared event.
                     tracing::info!(
@@ -1697,6 +1724,7 @@ mod migrated_tests {
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, HookContext};
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
+    use crate::agent::run::AgentRunStep;
     use crate::client::AgentClientExt;
     use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
