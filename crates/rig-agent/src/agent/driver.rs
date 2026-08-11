@@ -1363,6 +1363,97 @@ mod tests {
         assert!(result.is_success());
     }
 
+    /// A caller decision that fails costs no turn.
+    ///
+    /// The commit is behind the preparation callback, so a callback returning
+    /// `Err` — the driver's equivalent of a `CompletionCall` hook terminating
+    /// the run, or a model selection refusing — leaves the run exactly as it
+    /// was. The runner's loop commits *before* its hooks and its selection
+    /// run, and this is the boundary that must not drift back.
+    #[tokio::test]
+    async fn a_failed_preparation_decision_costs_no_turn() {
+        let model = MockCompletionModel::new([MockTurn::text("done")]);
+        let agent = AgentBuilder::new(model.clone())
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("go");
+
+        let error = driver
+            .next_step_with(|_| {
+                Box::pin(async {
+                    Err(PromptError::CompletionError(CompletionError::RequestError(
+                        "a hook said stop".into(),
+                    )))
+                })
+            })
+            .await
+            .expect_err("the callback refused the turn");
+        assert!(matches!(error, PromptError::CompletionError(_)));
+        assert_eq!(
+            driver.run().turn(),
+            0,
+            "a decision that never produced a request must not consume a turn"
+        );
+        assert_eq!(model.request_count(), 0, "and must not reach the provider");
+
+        // The very same step succeeds once the decision does.
+        let (request, _, turn) = expect_send!(driver);
+        assert_eq!(turn, 1, "the retry takes the turn the refusal did not");
+        let response = request.send().await.expect("scripted turn");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
+    }
+
+    /// The callback sees the turn it is deciding for, before that turn exists
+    /// on the run.
+    #[tokio::test]
+    async fn the_preparation_callback_sees_the_prospective_turn() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call_1", "add", json!({"x": 1, "y": 2})),
+            MockTurn::text("3"),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(3)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("add 1 and 2");
+
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        for _ in 0..1 {
+            let seen = seen.clone();
+            let (request, tools, turn) = match driver
+                .next_step_with(move |ctx| {
+                    seen.lock().expect("lock").push(ctx.turn);
+                    Box::pin(async { Ok(TurnPreparation::default()) })
+                })
+                .await
+                .expect("next_step_with succeeds")
+            {
+                DriveStep::SendRequest {
+                    request,
+                    tools,
+                    turn,
+                } => (request, tools, turn),
+                other => panic!("expected SendRequest, got {other:?}"),
+            };
+            assert_eq!(turn, 1);
+            let response = request.send().await.expect("scripted turn");
+            expect_continue(driver.model_response(&response).expect("turn accepted"));
+            let (calls, _) = expect_execute_tools!(driver);
+            let mut context = ToolContext::new();
+            let mut results = Vec::new();
+            for call in &calls {
+                results.push(tools.execute_call(call, &mut context).await);
+            }
+            driver.tool_results(results).expect("results accepted");
+        }
+        assert_eq!(
+            *seen.lock().expect("lock"),
+            vec![1],
+            "the callback is told the turn it is preparing, before it is committed"
+        );
+    }
+
     /// `Retry` needs a budget, and `drive()` seeds zero — so the driver must
     /// expose the setter the runner has, or the documented resolution path is
     /// unreachable for every driver built the documented way.
