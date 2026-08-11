@@ -402,11 +402,14 @@ impl WireAdapter for AnthropicAdapter {
                 // and older/leaner deltas.
                 //
                 // Anthropic-*compatible* gateways do not all agree. OpenRouter's
-                // Messages endpoint sends `input_tokens: 0` on `message_start`
-                // and the real count on `message_delta`, which without this
-                // preference surfaces a silent `Usage { input_tokens: 0 }` —
-                // worse than a missing value for a consumer sizing its context
-                // window from it.
+                // Messages endpoint can send `input_tokens: 0` on
+                // `message_start` and the real count on `message_delta`
+                // (recorded in `gateway_message_delta_metadata`, which OpenRouter
+                // served from an Amazon Bedrock upstream — the split follows what
+                // it routes to, so it is not every response from that endpoint).
+                // Without this preference such a turn surfaces a silent
+                // `Usage { input_tokens: 0 }` — worse than a missing value for a
+                // consumer sizing its context window from it.
                 //
                 // Zero on the delta is read as "not reported" so a gateway with
                 // the inverse split cannot erase a count `message_start` got
