@@ -62,6 +62,22 @@ impl ToolRegistrySnapshot {
         let tool = self.tools.get(tool_name).cloned();
         dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
+
+    /// Execute through the snapshot's pinned implementation, publishing result
+    /// metadata back to `context`. The snapshot counterpart of
+    /// [`ToolServerHandle::execute`], sharing the same
+    /// clear → dispatch → publish sequence.
+    pub(crate) async fn execute(
+        &self,
+        tool_name: &str,
+        args: &str,
+        context: &mut ToolContext,
+    ) -> ToolResult {
+        context.clear_dispatch_result();
+        self.dispatch(tool_name, args, context)
+            .await
+            .publish_to(context)
+    }
 }
 
 /// Shared state behind a `ToolServerHandle`.
@@ -427,12 +443,9 @@ impl ToolServerHandle {
         context: &mut ToolContext,
     ) -> ToolResult {
         context.clear_dispatch_result();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = self.dispatch(tool_name, args, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        self.dispatch(tool_name, args, context)
+            .await
+            .publish_to(context)
     }
 
     /// Run one isolated dispatch and retain its full context for agent hooks.

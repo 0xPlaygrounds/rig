@@ -4,7 +4,8 @@ use rig_core::{
 };
 
 use crate::{
-    agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
+    agent::completion::build_prepared_completion_request,
+    agent::turn_tools::PreparedCompletionRequest,
     agent::hook::{
         AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
         ModelSelectionAction, ModelTurnFinished, ReasoningDelta, StepEventKind,
@@ -586,8 +587,8 @@ where
                             break 'outer;
                         }
                     };
-                    run.set_output_tool_name(prepared.output_tool_name.clone());
-                    let turn_tool_snapshot = prepared.tool_snapshot.clone();
+                    run.set_output_tool_name(prepared.tools.output_tool_name.clone());
+                    let turn_tool_snapshot = prepared.tools.snapshot.clone();
                     if runner.record_telemetry_content {
                         let input_messages = prepared.builder.messages_for_telemetry();
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
@@ -1082,8 +1083,8 @@ impl TurnSource for StreamingTurnSource {
             let mut last_usage = crate::completion::Usage::new();
 
             let mut assembler = StreamedTurnAssembler::new(
-                prepared.executable_tool_names.clone(),
-                prepared.allowed_tool_names.clone(),
+                (*prepared.tools.executable_tool_names).clone(),
+                (*prepared.tools.allowed_tool_names).clone(),
             );
             let mut completion_call_emitted = false;
             let mut turn_abandoned = false;

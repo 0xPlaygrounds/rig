@@ -101,13 +101,14 @@
 //! ```
 mod builder;
 mod completion;
+pub mod driver;
 pub mod hook;
 pub mod model;
-mod prepared_turn;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
 mod tool;
+mod turn_tools;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no
 /// configured name.
@@ -123,8 +124,9 @@ pub use hook::{
     RetryRequest, RunId, Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall,
     ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
+pub use driver::{AgentDriver, DriveStep};
 pub use model::ModelHandle;
-pub use prepared_turn::{PreparedTurn, TurnTools};
+pub use turn_tools::TurnTools;
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };

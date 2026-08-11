@@ -19,6 +19,12 @@ pub enum ToolErrorKind {
     Cancelled,
     /// The requested tool or resource was not found.
     NotFound,
+    /// The tool is advertised to the model but is not executable by the
+    /// dispatcher — its call must be handled by the host. Produced for the
+    /// synthetic structured-output tool, whose call carries the final
+    /// structured answer; also the natural classification for host-executed
+    /// or deferred tools.
+    NotExecutable,
     /// An authorization or permission check failed. Intentional tool refusals
     /// use this normalized kind with a separate refusal disposition.
     PermissionDenied,
@@ -40,6 +46,7 @@ impl ToolErrorKind {
             Self::Timeout => "timeout",
             Self::Cancelled => "cancelled",
             Self::NotFound => "not_found",
+            Self::NotExecutable => "not_executable",
             Self::PermissionDenied => "permission_denied",
             Self::RateLimited => "rate_limited",
             Self::Provider => "provider",
@@ -51,9 +58,11 @@ impl ToolErrorKind {
     const fn default_retryable(self) -> Option<bool> {
         match self {
             Self::Timeout | Self::RateLimited | Self::Network => Some(true),
-            Self::InvalidArgs | Self::Cancelled | Self::NotFound | Self::PermissionDenied => {
-                Some(false)
-            }
+            Self::InvalidArgs
+            | Self::Cancelled
+            | Self::NotFound
+            | Self::NotExecutable
+            | Self::PermissionDenied => Some(false),
             Self::Provider | Self::Other => None,
         }
     }
@@ -64,6 +73,7 @@ impl ToolErrorKind {
             Self::Timeout => "tool execution timed out",
             Self::Cancelled => "tool execution was cancelled",
             Self::NotFound => "the requested tool or resource was not found",
+            Self::NotExecutable => "the tool is not executable by the dispatcher",
             Self::PermissionDenied => "the tool denied the request",
             Self::RateLimited => "the tool was rate limited; try again later",
             Self::Provider => "the tool provider failed",
@@ -137,6 +147,13 @@ impl ToolExecutionError {
     /// Missing tool or resource.
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(ToolErrorKind::NotFound, message)
+    }
+
+    /// Advertised but not executable by the dispatcher — the host must handle
+    /// the call (e.g. the synthetic structured-output tool, whose call is the
+    /// final structured answer).
+    pub fn not_executable(message: impl Into<String>) -> Self {
+        Self::new(ToolErrorKind::NotExecutable, message)
     }
 
     /// An authorization or permission failure.

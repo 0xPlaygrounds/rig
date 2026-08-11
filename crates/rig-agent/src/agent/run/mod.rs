@@ -25,16 +25,16 @@
 //! `AgentRun` deliberately contains no model, tool registry, memory backend, or
 //! hook stack. Hand-driving it is a low-level provider integration: the caller
 //! owns all IO and any lifecycle policy. To drive a *configured*
-//! [`Agent`](crate::agent::Agent) by hand, obtain each turn's completion
-//! request and tool dispatch from
-//! [`Agent::prepare_turn`](crate::agent::Agent::prepare_turn) — it resolves the
-//! agent's configuration (preamble, tools, `tool_choice`, output mode, model
-//! parameters) into a [`PreparedTurn`](crate::agent::PreparedTurn) instead of
-//! the driver restating it. To execute an `Agent` with its hooks, memory,
-//! retrieval policy, and telemetry, use
+//! [`Agent`](crate::agent::Agent) by hand, use
+//! [`Agent::drive`](crate::agent::Agent::drive) — the returned
+//! [`AgentDriver`](crate::agent::AgentDriver) seeds this machine from the
+//! agent's configuration and pairs each turn's completion request with its
+//! tool dispatch snapshot, while every side effect (the provider call, tool
+//! execution) stays with the caller. To execute an `Agent` with its hooks,
+//! memory, retrieval policy, and telemetry, use
 //! [`Agent::runner`](crate::agent::Agent::runner); constructing an `AgentRun`
-//! directly is not an alternate way to execute an `Agent`, and a prepared turn
-//! is a configuration read, not a second execution path.
+//! directly is not an alternate way to execute an `Agent`, and the driver is a
+//! configuration and pairing layer, not a second execution path.
 //!
 //! [`crate::completion::Prompt::prompt`] and
 //! [`Agent::runner`](crate::agent::Agent::runner) drive this machine internally;

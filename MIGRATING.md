@@ -1563,12 +1563,14 @@ not an alternate execution path for configured agents.
 
 Reading a configured agent's request state back out (the 0.40 public fields,
 `agent.tool_server_handle`) has a supported replacement:
-`Agent::prepare_turn(prompt, &history)` resolves the agent's configuration into
-one turn's completion request plus its tool sets and dispatch snapshot
-(`PreparedTurn` / `TurnTools`), so a hand-driven `AgentRun` no longer restates
-the preamble and tools. It is a configuration read, not an execution path —
-hooks, memory, retrieval policy, and telemetry still run only under
-`Agent::runner`. See `examples/agent_run_stepping`.
+`Agent::drive(prompt)` returns an `AgentDriver` that hand-drives the sans-IO
+`AgentRun` with the agent's own configuration — each `DriveStep::SendRequest`
+carries the fully configured completion request for the caller to send, and
+each `DriveStep::ExecuteTools` carries the `TurnTools` dispatch snapshot of
+the turn that advertised the calls. It is a configuration and pairing layer,
+not an execution path — hooks, memory, retrieval policy, and telemetry still
+run only under `Agent::runner`. See `examples/agent_run_stepping` and
+`examples/agent_with_durable_approval`.
 
 An `Agent`'s default model is set at construction. Per-run overrides now go
 through `runner(...).using_model(...)`, `Agent::set_model`, or a

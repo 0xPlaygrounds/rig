@@ -28,8 +28,8 @@
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_durable_approval`
 
 use anyhow::Result;
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::agent::{InvalidToolCallAction, TurnTools};
+use rig::agent::run::{AgentRun, ModelTurnOutcome};
+use rig::agent::{DriveStep, InvalidToolCallAction};
 use rig::message::{ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
@@ -143,16 +143,17 @@ async fn ask(prompt: &str) -> Option<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // A hand-driven `AgentRun` is a sans-IO protocol primitive: this loop owns
-    // the IO and no agent hooks run. The per-turn request and the tool dispatch
-    // target both come from the configured `Agent` via `prepare_turn`, so
-    // nothing about the agent's configuration is restated below.
+    // A hand-driven run is a sans-IO protocol primitive: this loop owns the IO
+    // and no agent hooks run. The driver pairs each turn's request and tool
+    // dispatch with the configured `Agent`, so nothing about the agent's
+    // configuration is restated below.
     let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
     let agent = rig::agent::AgentBuilder::new(model)
         .preamble(
             "You are a banking assistant. Use the tools to carry out the user's request. \
              Call one tool at a time.",
         )
+        .default_max_turns(10)
         .tool(GetBalance)
         .tool(TransferFunds)
         .build();
@@ -164,54 +165,38 @@ async fn main() -> Result<()> {
     let state_path = std::env::temp_dir().join("rig_durable_approval.json");
     let _ = std::fs::remove_file(&state_path);
 
-    let mut run = AgentRun::new(prompt).max_turns(10);
-    // Tool dispatch target of the most recent prepared turn: approved calls
-    // execute through the snapshot whose definitions the provider saw.
-    let mut turn_tools: Option<TurnTools> = None;
+    let mut driver = agent.drive(prompt);
 
     loop {
-        match run.next_step()? {
-            AgentRunStep::CallModel {
-                prompt,
-                history,
-                turn,
-            } => {
+        match driver.next_step().await? {
+            DriveStep::SendRequest { request, turn, .. } => {
                 println!("\n→ model call #{turn}");
-                let (request, tools) = agent.prepare_turn(prompt, &history).await?.into_parts();
                 let response = request.send().await?;
-                let mut outcome = run.model_response(ModelTurn::new(
-                    response.message_id.clone(),
-                    response.choice.clone(),
-                    response.usage,
-                    tools.executable_tool_names().clone(),
-                    tools.allowed_tool_names().clone(),
-                ))?;
-                turn_tools = Some(tools);
+                let mut outcome = driver.model_response(&response)?;
                 while let ModelTurnOutcome::NeedsResolution(context) = outcome {
                     eprintln!("model called unknown tool `{}`", context.tool_name);
-                    outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
+                    outcome = driver.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
                 }
             }
 
-            AgentRunStep::CallTools { .. } => {
-                // DURABLE PAUSE. Persist the whole run, then reconstruct it from
-                // the file before deciding. The write→reload boundary below could
-                // be a separate process / request / much later — the resumed run
-                // re-emits the pending tool calls purely from serialized state.
-                std::fs::write(&state_path, serde_json::to_vec_pretty(&run)?)?;
+            DriveStep::ExecuteTools { .. } => {
+                // DURABLE PAUSE. Persist the run state, then rebuild the driver
+                // from the file before deciding. The write→reload boundary below
+                // could be a separate process / request / much later — the
+                // resumed driver re-emits the pending tool calls purely from
+                // serialized state, and re-derives its dispatch snapshot from
+                // the rebuilt agent (tool implementations are live objects; if
+                // a pending tool is missing from this process's registry the
+                // driver surfaces the drift as an error instead of dispatching).
+                std::fs::write(&state_path, serde_json::to_vec_pretty(driver.run())?)?;
                 println!("\n💾 run suspended to {}", state_path.display());
 
                 // ----- imagine the process exits here and resumes later -----
-                // (Tool implementations are live objects: a genuinely separate
-                // process would rebuild the same `Agent` and prepare its own
-                // turns from there.)
 
-                let mut resumed: AgentRun = serde_json::from_slice(&std::fs::read(&state_path)?)?;
-                let AgentRunStep::CallTools { calls } = resumed.next_step()? else {
-                    anyhow::bail!("resumed run must re-emit the pending tool calls");
-                };
-                let Some(tools) = turn_tools.as_ref() else {
-                    anyhow::bail!("CallTools always follows a prepared CallModel turn");
+                let resumed: AgentRun = serde_json::from_slice(&std::fs::read(&state_path)?)?;
+                driver = agent.drive_run(resumed);
+                let DriveStep::ExecuteTools { calls, tools } = driver.next_step().await? else {
+                    anyhow::bail!("a resumed run re-emits its pending tool calls");
                 };
 
                 let mut results = Vec::new();
@@ -308,12 +293,11 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
 
-                resumed.tool_results(results)?;
+                driver.tool_results(results)?;
                 let _ = std::fs::remove_file(&state_path);
-                run = resumed;
             }
 
-            AgentRunStep::Done(response) => {
+            DriveStep::Done(response) => {
                 println!("\n✓ {}", response.output);
                 return Ok(());
             }

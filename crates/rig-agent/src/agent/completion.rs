@@ -6,33 +6,18 @@ use super::runner::AgentRunner;
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
-        Prompt, PromptError, ToolDefinition, TypedPrompt,
+        Chat, CompletionError, CompletionModel, Document, Message, Prompt, PromptError,
+        ToolDefinition, TypedPrompt,
     },
     json_utils,
     streaming::{StreamingChat, StreamingPrompt},
-    tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
+    tool::server::{ToolServerError, ToolServerHandle},
 };
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
-
-/// A prepared completion request plus the executable Rig tool names advertised
-/// to the provider for this turn.
-pub(crate) struct PreparedCompletionRequest {
-    /// Builder carrying the selected model handle: request preparation ran
-    /// against this handle's captured capabilities, and the same handle
-    /// executes the prepared request.
-    pub(crate) builder: CompletionRequestBuilder<ModelHandle>,
-    /// Exact implementations behind this turn's provider definitions.
-    pub(crate) tool_snapshot: Arc<ToolRegistrySnapshot>,
-    pub(crate) executable_tool_names: BTreeSet<String>,
-    pub(crate) allowed_tool_names: BTreeSet<String>,
-    /// When Tool output mode is active, the name of the synthetic output tool
-    /// advertised to the model (allowed but not executable). See #1928.
-    pub(crate) output_tool_name: Option<String>,
-}
+use super::turn_tools::{PreparedCompletionRequest, TurnTools};
 
 /// Base name of the synthetic output tool used by [`OutputMode::Tool`].
 const DEFAULT_OUTPUT_TOOL_NAME: &str = "final_result";
@@ -518,10 +503,12 @@ pub(crate) async fn build_prepared_completion_request(
 
     Ok(PreparedCompletionRequest {
         builder: completion_request,
-        tool_snapshot: Arc::new(tool_snapshot),
-        executable_tool_names,
-        allowed_tool_names,
-        output_tool_name,
+        tools: TurnTools {
+            snapshot: Arc::new(tool_snapshot),
+            executable_tool_names: Arc::new(executable_tool_names),
+            allowed_tool_names: Arc::new(allowed_tool_names),
+            output_tool_name,
+        },
     })
 }
 
@@ -667,94 +654,6 @@ impl Agent {
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
         self.tool_server_handle.get_tool_defs(prompt).await
-    }
-
-    /// Prepare one model turn from this agent's configuration, for hand-driven
-    /// [`AgentRun`](super::run::AgentRun) loops.
-    ///
-    /// Resolves the agent's preamble, static context, model parameters,
-    /// `tool_choice`, output schema/mode, and tool registry into a
-    /// [`PreparedTurn`](super::PreparedTurn): the fully configured completion request plus a
-    /// [`TurnTools`](super::TurnTools) value carrying the turn's executable and
-    /// allowed tool-name sets, the synthetic output-tool name (if any), and a
-    /// dispatch target pinned to this turn's registry snapshot. Use it to drive
-    /// the sans-IO [`AgentRun`](super::run::AgentRun) machine — custom provider
-    /// transport, suspend/resume — without restating the agent's configuration.
-    ///
-    /// # Baseline, not hook-patched
-    ///
-    /// A prepared turn reflects the agent's **baseline** configuration: no
-    /// `CompletionCall` hooks run (so no per-turn `RequestPatch` or
-    /// `active_tools` narrowing), no model-selection hooks run (the agent's
-    /// current default model is used), and no memory or telemetry is involved.
-    /// [`Agent::runner`](Self::runner) remains the only path that executes an
-    /// agent with hooks, memory, retrieval policy, and telemetry.
-    ///
-    /// # Per-turn snapshot
-    ///
-    /// The tool definitions in the request and the dispatch target in
-    /// [`TurnTools`](super::TurnTools) come from one registry snapshot taken by
-    /// this call. Registry changes made afterwards (`add_tool` / `remove_tool`,
-    /// MCP refreshes) affect the next prepared turn, never this one — see
-    /// [`TurnTools`](super::TurnTools) for the semantics. Retrieval-selected
-    /// (dynamic) tools are resolved here too, using the prompt's text (or the
-    /// latest history text) as the retrieval query, exactly as the runner does.
-    ///
-    /// # Errors
-    ///
-    /// Fails locally — with no provider round-trip — when the configuration
-    /// cannot produce a valid request: a `tool_choice` that is impossible
-    /// against the advertised tool set (`Required` with no advertised tool, or
-    /// `Specific` naming an unadvertised tool), or a real tool colliding with
-    /// the structured-output tool name.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let mut run = AgentRun::new("What is 2 + 5?").max_turns(2);
-    /// // ... in the AgentRunStep::CallModel arm:
-    /// let prepared = agent.prepare_turn(prompt, &history).await?;
-    /// let (request, tools) = prepared.into_parts();
-    /// let response = request.send().await?;
-    /// run.model_response(ModelTurn::new(
-    ///     response.message_id.clone(),
-    ///     response.choice.clone(),
-    ///     response.usage,
-    ///     tools.executable_tool_names().clone(),
-    ///     tools.allowed_tool_names().clone(),
-    /// ))?;
-    /// // ... in the AgentRunStep::CallTools arm, dispatch via `tools.execute(...)`.
-    /// ```
-    pub async fn prepare_turn(
-        &self,
-        prompt: impl Into<Message> + WasmCompatSend,
-        history: &[Message],
-    ) -> Result<super::PreparedTurn, CompletionError> {
-        let prepared = build_prepared_completion_request(
-            &self.model,
-            prompt.into(),
-            history,
-            self.preamble.as_deref(),
-            &self.static_context,
-            self.temperature,
-            self.max_tokens,
-            self.additional_params.as_ref(),
-            self.record_telemetry_content,
-            self.tool_choice.as_ref(),
-            &self.tool_server_handle,
-            self.output_schema.as_ref(),
-            &self.output_mode,
-            // Baseline preparation matches a fresh runner's defaults: no
-            // run-committed output tool, the default output-tool description,
-            // and output-mode preamble augmentation enabled.
-            None,
-            None,
-            true,
-            // No hook stack exists on this path, so there is no request patch.
-            None,
-        )
-        .await?;
-        Ok(super::PreparedTurn::from_prepared(prepared))
     }
 }
 

@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(tool)* `ToolErrorKind::NotExecutable` and `ToolExecutionError::not_executable`: the tool is advertised to the model but not executable by the dispatcher — its call must be handled by the host. Produced by rig-agent when dispatching the synthetic structured-output tool; also the natural classification for host-executed or deferred tools. The enum is `#[non_exhaustive]`, so this is additive
 - *(streaming)* `wire::classify_typed_event` extends the decode-then-validate policy to typed-transport wires (bedrock, candle, gemini-grpc): modeled variants are `Known`, the SDK's non-exhaustive/unrecognized variants are `Unknown`, SDK decode errors are `Corrupt` — a typed transport earns no policy exemption
 - *(streaming)* `WireAdapter` gains an associated `Frame` type so typed-event wires implement the same contract over their SDK events; `classify` now takes the frame by value
 - *(streaming)* the conformance corpus accepts typed-event input (`WireInput::{Bytes, Event}`), so typed wires run the shared scenarios events-first with no mock transport; frame-level scenarios a typed wire cannot spell report visible skips
