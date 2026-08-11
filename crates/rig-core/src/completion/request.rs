@@ -134,36 +134,61 @@ impl CompletionError {
 
     /// Whether re-issuing an equivalent request could plausibly succeed.
     ///
-    /// A **default** classification, not a policy: it answers "is this failure
-    /// about the request or about the moment?" and leaves the decision to
-    /// retry — and any backoff, budget, or idempotency handling — to the
-    /// caller. Callers that know their provider better should override it.
+    /// A conservative **floor**, not a verdict. `true` means rig can see a
+    /// reason to believe a retry could succeed; `false` means it cannot see
+    /// one — *not* that a retry is provably pointless. It is a default a
+    /// caller may override, and never a policy: backoff, attempt budgets, and
+    /// idempotency stay with the caller.
     ///
-    /// - [`HttpError`](Self::HttpError) carrying no status is a transport
-    ///   failure: the request may never have arrived. Retryable.
-    /// - Any preserved provider status of `408` (request timeout), `409`
-    ///   (conflict), `429` (too many requests), or `5xx` is retryable. These
-    ///   are the same four classes the AI SDK treats as retryable by default.
-    /// - Everything else is not: a malformed request, a serialization or URL
-    ///   error, or a response this build could not parse will fail the same
-    ///   way every time.
+    /// # What it answers
     ///
-    /// A 2xx carrying a provider-authored error envelope
-    /// ([`ProviderResponse`](Self::ProviderResponse)) is deliberately *not*
-    /// retryable — the call completed and the provider rejected it on its
-    /// merits.
+    /// - A preserved provider status of `408` (request timeout), `409`
+    ///   (conflict), `429` (too many requests), or `5xx` — the same four
+    ///   classes the AI SDK treats as retryable by default.
+    /// - A transport failure with no status, when the transport itself
+    ///   reports one that could resolve on its own: a dropped connection or a
+    ///   cut stream. Deterministic transport failures — a header value the
+    ///   client refused, a request that could not be constructed, a wrong
+    ///   content type — are **not** retryable, because retrying them is how a
+    ///   caller ends up in a loop it cannot leave. (An API key with a trailing
+    ///   newline is the canonical example: it fails identically forever.)
+    /// - A 2xx carrying a provider-authored error envelope is not retryable:
+    ///   the call completed and the provider rejected it on its merits.
     ///
-    /// Note the asymmetry this removes: rig has classified tool failures by
-    /// retryability for some time, while model failures had no equivalent, so
-    /// every caller guessed.
+    /// # What it cannot answer
     ///
-    /// Useful with a hand-driven run, where the caller owns the send and must
-    /// decide whether a failed turn is worth handing back:
+    /// **Providers reached over a non-HTTP transport** — AWS Bedrock, Vertex
+    /// AI, the gRPC Gemini client — report errors as a body with no status
+    /// (see `from_provider_body`). Throttling from those providers is
+    /// therefore classified `false` here: rig cannot tell it from a rejection
+    /// without parsing an envelope it does not know. A caller that knows its
+    /// provider should override, and a provider that *can* surface a status
+    /// should route through `from_http_response` instead. Classifying at the
+    /// provider adapter, where the transport's own error types are visible, is
+    /// the real fix and is tracked separately.
+    ///
+    /// **Replay safety is a different question.** This method asks whether a
+    /// retry *could succeed*, not whether one is *safe*. A stream that died
+    /// after the request was written is retryable and may already have taken
+    /// effect — retrying it can bill a second completion and duplicate
+    /// whatever the model already caused. See
+    /// `AgentRun::rollback_model_call` in `rig-agent` for that axis; only the
+    /// caller can settle it.
+    ///
+    /// # Example
+    ///
+    /// With a hand-driven run, where the caller owns the send. Note that both
+    /// questions are answered before the turn is handed back:
     ///
     /// ```rust,ignore
     /// match request.send().await {
     ///     Ok(response) => { driver.model_response(&response)?; }
-    ///     Err(err) if err.is_retryable() => driver.rollback_model_call()?,
+    ///     // `nothing_was_sent` is the caller's own knowledge — a provider
+    ///     // idempotency key, a request log, or a transport that fails
+    ///     // before the write. `is_retryable` cannot supply it.
+    ///     Err(err) if err.is_retryable() && nothing_was_sent => {
+    ///         driver.rollback_model_call()?
+    ///     }
     ///     Err(err) => return Err(err.into()),
     /// }
     /// ```
@@ -175,9 +200,16 @@ impl CompletionError {
                     || status == http::StatusCode::TOO_MANY_REQUESTS
                     || status.is_server_error()
             }
-            // No status at all: a transport failure that never reached a
-            // response. Anything else is a local problem with the request.
-            None => matches!(self, Self::HttpError(_)),
+            None => match self {
+                // The transport owns this call: it knows which of its own
+                // failures are deterministic.
+                Self::HttpError(error) => error.is_transient(),
+                // A provider body with no status. Rig cannot tell throttling
+                // from rejection without knowing the provider's envelope, so
+                // it does not guess. Documented above as a known gap — do not
+                // "fix" it by defaulting to true.
+                _ => false,
+            },
         }
     }
 }
@@ -1362,10 +1394,49 @@ mod tests {
 
         /// A transport failure may never have reached the provider at all.
         #[test]
-        fn transport_failures_without_a_status_are_retryable() {
-            let error =
-                CompletionError::HttpError(http_client::Error::Instance("connection reset".into()));
-            assert!(error.is_retryable());
+        fn transient_transport_failures_are_retryable() {
+            for error in [
+                CompletionError::HttpError(http_client::Error::Instance("connection reset".into())),
+                CompletionError::HttpError(http_client::Error::StreamEnded),
+            ] {
+                assert!(error.is_retryable(), "{error} should be retryable");
+            }
+        }
+
+        /// The failure this guards against is unbounded: a driver following
+        /// the documented pattern hands the turn back on every retryable
+        /// error, so a *deterministic* failure classified retryable is a loop
+        /// with no exit. An API key with a trailing newline reaches
+        /// `bearer_auth_header` and produces exactly this.
+        #[test]
+        fn deterministic_transport_failures_are_not_retryable() {
+            let invalid_header = http::HeaderValue::from_str("Bearer secret\n")
+                .expect_err("a header value with a newline is rejected");
+
+            let errors = [
+                CompletionError::HttpError(http_client::Error::InvalidHeaderValue(invalid_header)),
+                CompletionError::HttpError(http_client::Error::NoHeaders),
+                CompletionError::HttpError(http_client::Error::InvalidContentType(
+                    http::HeaderValue::from_static("text/plain"),
+                )),
+            ];
+            for error in errors {
+                assert!(
+                    !error.is_retryable(),
+                    "{error} is deterministic and must not be retried"
+                );
+            }
+        }
+
+        /// Documented gap: providers on non-HTTP transports (Bedrock, Vertex,
+        /// gRPC Gemini) report errors as a body with no status, so rig cannot
+        /// tell throttling from rejection. The conservative `false` is
+        /// deliberate — do not "fix" it by defaulting to true; fix it at the
+        /// provider adapter, where the transport's own error types are visible.
+        #[test]
+        fn a_statusless_provider_body_is_not_classified() {
+            let error = CompletionError::from_provider_body("ThrottlingException");
+            assert!(!error.is_retryable());
         }
 
         /// A 2xx carrying a provider-authored error envelope completed and was

@@ -49,12 +49,13 @@
 //! - **Sending it.** The caller owns the send, so the caller is the only party
 //!   that learns it failed. [`AgentDriver::rollback_model_call`] hands the turn
 //!   back — refunding it and returning the run to preparing — and the next
-//!   `next_step` yields a freshly prepared request. This is *at-least-once*: if
-//!   the request reached the provider and only its reply was lost, retrying
-//!   bills a second completion, and only the caller can tell those apart. Use
+//!   `next_step` yields a freshly prepared request. Deciding to use it takes
+//!   two answers, not one:
 //!   [`CompletionError::is_retryable`](crate::completion::CompletionError::is_retryable)
-//!   to decide, and bound the attempts yourself — the driver runs no IO and
-//!   owns no clock.
+//!   says whether a retry *could succeed*, and only the caller can say whether
+//!   one is *safe* — a request that reached the provider and lost only its
+//!   reply will be billed twice. Bound the attempts yourself; the driver runs
+//!   no IO and owns no clock.
 //!
 //! Tool *implementations* are live objects and cannot be serialized: the
 //! resuming process rebuilds the same `Agent` and the driver takes a fresh
@@ -281,9 +282,7 @@ impl AgentDriver {
                 // Peek, prepare, *then* commit. Reading the inputs consumes
                 // nothing, so everything fallible below happens while the run
                 // is still fully intact.
-                let ModelCallInputs {
-                    prompt, history, ..
-                } = self.run.peek_model_call()?;
+                let ModelCallInputs { prompt, history } = self.run.peek_model_call()?;
                 // Pin Tool output mode once committed (#1928), mirroring the
                 // runner: read the run's committed name into preparation, and
                 // store the resolved name back (fill-once).
@@ -354,26 +353,33 @@ impl AgentDriver {
     /// registry snapshot, new patch — rather than a replay of a request whose
     /// tool snapshot has since gone stale.
     ///
-    /// ```rust,no_run
-    /// # use rig_agent::agent::{AgentDriver, DriveStep};
-    /// # async fn example(driver: &mut AgentDriver) -> Result<(), Box<dyn std::error::Error>> {
+    /// Two questions decide whether to roll back, and the library answers only
+    /// the first: *could a retry succeed?* — which
+    /// [`CompletionError::is_retryable`](crate::completion::CompletionError::is_retryable)
+    /// classifies — and *is a retry safe?*, which nothing here can know. A
+    /// stream that died after the request was written is retryable and not
+    /// replay-safe: rolling back on the first question alone bills a second
+    /// completion and repeats whatever the model already caused. Only the
+    /// caller can establish the second, through provider-side idempotency, its
+    /// own record of what was transmitted, or a transport that fails before
+    /// the write.
+    ///
+    /// ```rust,ignore
     /// if let DriveStep::SendRequest { request, .. } = driver.next_step().await? {
     ///     match request.send().await {
     ///         Ok(response) => { driver.model_response(&response)?; }
-    ///         // Nothing was produced: give the turn back and try again.
-    ///         Err(err) if err.is_retryable() => driver.rollback_model_call()?,
+    ///         // `nothing_was_sent` is the caller's own knowledge; the driver
+    ///         // cannot supply it, and `is_retryable` does not answer it.
+    ///         Err(err) if err.is_retryable() && nothing_was_sent => {
+    ///             driver.rollback_model_call()?
+    ///         }
     ///         Err(err) => return Err(err.into()),
     ///     }
     /// }
-    /// # Ok(())
-    /// # }
     /// ```
     ///
-    /// See [`AgentRun::rollback_model_call`] for the full semantics — in
-    /// particular that this is **at-least-once**: if the request reached the
-    /// provider and only its reply was lost, retrying bills a second
-    /// completion. The driver cannot tell the two apart. Bounding attempts is
-    /// yours to do; the driver runs no IO and owns no clock.
+    /// See [`AgentRun::rollback_model_call`] for the full semantics. Bounding
+    /// attempts is yours to do; the driver runs no IO and owns no clock.
     pub fn rollback_model_call(&mut self) -> Result<(), PromptError> {
         self.run.rollback_model_call()?;
         // Drop the cached dispatch target too: the retry is a new turn and
@@ -1300,6 +1306,7 @@ mod tests {
     }
 
     /// Resuming is about dispatch, not about validating a request that will
+    /// never be built. A `tool_choice` the resuming process could not satisfy
     /// must not pre-empt the drift report, and must not defeat the opt-out
     /// that exists precisely for this situation.
     #[tokio::test]

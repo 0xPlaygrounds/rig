@@ -1593,9 +1593,16 @@ Because the caller owns the send, the caller also owns recovering from a failed
 one: `AgentDriver::rollback_model_call()` hands a turn back when its request
 could not be sent or its reply is known to be lost, refunding the turn and
 returning the run to preparing so the next step yields a freshly prepared
-request. It is at-least-once — a request that reached the provider and lost only
-its reply will be billed twice on retry — so pair it with
-`CompletionError::is_retryable()` and bound the attempts yourself. Runs driven
+request.
+
+Deciding to use it takes two answers, not one. `CompletionError::is_retryable()`
+(new in `rig-core`) says whether a retry *could succeed* — transport failures
+that could resolve on their own, and provider statuses of 408, 409, 429 or 5xx.
+It does **not** say whether a retry is *safe*: a stream that died after the
+request was written is retryable and may already have taken effect, so rolling
+back on retryability alone bills a second completion. Only you can settle that,
+through provider-side idempotency, your own record of what was transmitted, or a
+transport that fails before the write. Bound the attempts yourself. Runs driven
 by `Agent::runner` are unaffected; the runner still fails the prompt.
 
 Two behavior changes on the driver's resume path, both narrowing what dispatch

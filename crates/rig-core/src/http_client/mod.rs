@@ -52,6 +52,40 @@ impl Error {
             _ => None,
         }
     }
+
+    /// Whether this transport failure could plausibly resolve on its own.
+    ///
+    /// Answers one question only — *could a retry succeed?* — and deliberately
+    /// not *is a retry safe?*: a stream that died after the request was
+    /// written is transient and may already have taken effect. Callers pairing
+    /// this with a retry must settle replay safety separately.
+    ///
+    /// Deterministic failures are excluded by name. A header the client
+    /// refused, a request that could not be constructed, or a response whose
+    /// content type is wrong will fail identically on every attempt, and
+    /// retrying them is how a caller ends up in a loop it cannot leave. The
+    /// remainder — the transport's own opaque failures — default to transient,
+    /// because rig cannot see inside them and a connection that dropped is the
+    /// overwhelmingly common case.
+    ///
+    /// Matched exhaustively on purpose: a variant added later must be
+    /// classified deliberately rather than inherit a default.
+    pub(crate) fn is_transient(&self) -> bool {
+        match self {
+            // The connection or the stream failed. The request may never have
+            // been seen — or may have been seen and its reply lost.
+            Self::StreamEnded | Self::Instance(_) => true,
+            // Deterministic: the request, the header, our use of the client,
+            // or the provider's content type is wrong, and will be wrong again.
+            Self::Protocol(_)
+            | Self::InvalidHeaderValue(_)
+            | Self::NoHeaders
+            | Self::InvalidContentType(_) => false,
+            // Carried by status classification instead; see
+            // `CompletionError::is_retryable`.
+            Self::InvalidStatusCode(_) | Self::InvalidStatusCodeWithMessage(..) => false,
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

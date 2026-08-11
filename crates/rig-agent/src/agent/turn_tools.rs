@@ -58,6 +58,27 @@ pub struct TurnToolNames {
 }
 
 impl TurnToolNames {
+    /// The names a turn advertised: the executable registry tools, and the
+    /// tools the active `tool_choice` allowed the model to call.
+    ///
+    /// A hand-driver that prepares its own requests commits these with
+    /// [`AgentRun::commit_model_call`](super::run::AgentRun::commit_model_call);
+    /// this is how it builds them. The type is `#[non_exhaustive]` because it
+    /// is serialized run state and will gain fields, which is why a struct
+    /// literal will not do — the constructor is the stable way in. (Contrast
+    /// [`ModelCallInputs`](super::run::ModelCallInputs), which is deliberately
+    /// exhaustive so that destructuring it keeps working: the two types answer
+    /// different questions and keep different answers.)
+    pub fn new(
+        executable: impl IntoIterator<Item = impl Into<String>>,
+        allowed: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        Self {
+            executable: executable.into_iter().map(Into::into).collect(),
+            allowed: allowed.into_iter().map(Into::into).collect(),
+        }
+    }
+
     /// Assemble the [`ModelTurn`] for a completion response received on the
     /// turn these names were advertised for. The single construction site for
     /// driver-facing turns, so the two name sets can never be transposed by a
@@ -212,7 +233,10 @@ impl TurnTools {
     ///
     /// Honors [`PendingToolCall::preresolved_result`] — a call suppressed by
     /// invalid tool-call recovery returns its pre-resolved content without
-    /// executing anything or touching `context`. Otherwise the call dispatches
+    /// executing anything. It still clears `context`'s dispatch result: the
+    /// suppressed call published no metadata, so leaving the *previous* call's
+    /// in place would attribute it to this one, and a loop over a turn's calls
+    /// reads that metadata per call. Otherwise the call dispatches
     /// through this turn's snapshot via [`execute`](Self::execute) and the
     /// result is assembled into the [`UserContent`] tool-result value that
     /// [`AgentDriver::tool_results`](super::AgentDriver::tool_results) (or
@@ -227,6 +251,10 @@ impl TurnTools {
         context: &mut ToolContext,
     ) -> UserContent {
         if let Some(result) = &call.preresolved_result {
+            // Every dispatch surface clears first; this one dispatches nothing
+            // but is still a call in the turn's sequence, so it must not
+            // inherit the previous call's result metadata.
+            context.clear_dispatch_result();
             return result.clone();
         }
         let name = &call.tool_call.function.name;
@@ -333,6 +361,62 @@ mod tests {
             None,
             "the rejection must not leave the previous dispatch's metadata behind"
         );
+    }
+
+    /// A suppressed call dispatches nothing, but it is still a call in the
+    /// turn's sequence: a loop reading per-call metadata must not see the
+    /// previous call's attributed to it.
+    #[tokio::test]
+    async fn preresolved_call_clears_stale_context_metadata() {
+        use crate::agent::run::PendingToolCall;
+        use rig_core::message::{ToolCall, ToolFunction, ToolResultContent, UserContent};
+
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .tool(MetadataTool)
+            .build();
+        let mut driver = agent.drive("go");
+        let tools = match driver.next_step().await.expect("prepare succeeds") {
+            DriveStep::SendRequest { tools, .. } => tools,
+            other => panic!("expected SendRequest, got {other:?}"),
+        };
+
+        let mut context = ToolContext::new();
+        let result = tools.execute("metadata", "{}", &mut context).await;
+        assert!(result.is_success());
+        assert_eq!(context.result::<Marker>(), Some(&Marker("published")));
+
+        // The next call in the same turn was suppressed by invalid tool-call
+        // recovery, so it carries a pre-resolved result.
+        let suppressed = PendingToolCall {
+            tool_call: ToolCall::from_wire(
+                "call_2",
+                ToolFunction::new("metadata".to_string(), json!({})),
+            ),
+            preresolved_result: Some(UserContent::tool_result(
+                "call_2",
+                "metadata",
+                vec![ToolResultContent::text("not executed")],
+            )),
+            internal_call_id: None,
+        };
+        let _ = tools.execute_call(&suppressed, &mut context).await;
+        assert_eq!(
+            context.result::<Marker>(),
+            None,
+            "a suppressed call must not inherit the previous call's metadata"
+        );
+    }
+
+    /// `commit_model_call` is public and takes this type, so a hand-driver
+    /// outside the crate must be able to build one. `#[non_exhaustive]` blocks
+    /// a struct literal there, which is what the constructor is for.
+    #[test]
+    fn advertised_names_are_constructible_without_a_struct_literal() {
+        use super::TurnToolNames;
+
+        let names = TurnToolNames::new(["add", "subtract"], ["add"]);
+        assert!(names.executable.contains("subtract"));
+        assert!(names.allowed.contains("add") && !names.allowed.contains("subtract"));
     }
 
     /// The advertised names are the authority, not the snapshot. Pair a

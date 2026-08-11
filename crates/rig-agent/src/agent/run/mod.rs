@@ -905,14 +905,26 @@ impl AgentRun {
     /// [`TurnTools`](crate::agent::TurnTools) exists to prevent. The retry
     /// therefore takes a fresh snapshot, a fresh patch, and the same history.
     ///
-    /// # This is at-least-once
+    /// # Retryable is not replay-safe
     ///
-    /// If the request *did* reach the provider and only its reply was lost,
-    /// rolling back and re-sending bills a second completion. Nothing in the
-    /// run can distinguish "never arrived" from "arrived, reply lost" — only
-    /// the caller can, through provider-side idempotency or its own record of
-    /// what was transmitted. Roll back when you know the call produced
-    /// nothing; when you do not know, prefer failing the run.
+    /// Two independent questions decide whether to roll back, and only the
+    /// first has a library answer:
+    ///
+    /// 1. **Could a retry succeed?** A property of the failure.
+    ///    [`CompletionError::is_retryable`](crate::completion::CompletionError::is_retryable)
+    ///    answers it.
+    /// 2. **Is a retry safe?** Did the request already take effect? Nothing in
+    ///    the run can tell "never arrived" from "arrived, reply lost", and
+    ///    neither can `is_retryable` — a stream that died *after* the request
+    ///    was written is highly retryable and not replay-safe at all.
+    ///
+    /// Rolling back on question 1 alone is at-least-once: a request that
+    /// reached the provider and lost only its reply is billed twice, and any
+    /// side effect the model already caused happens again. Only the caller can
+    /// settle question 2 — through provider-side idempotency, its own record
+    /// of what was transmitted, or a transport that fails before the write.
+    /// Roll back when you know the call produced nothing; when you do not
+    /// know, prefer failing the run.
     ///
     /// Usage accounting is preserved either way. Tokens the provider already
     /// billed stay in [`Self::usage`] and [`Self::completion_calls`], and a
@@ -1186,9 +1198,7 @@ impl AgentRun {
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
         match self.advance()? {
             Advance::NeedsModelCall => {
-                let ModelCallInputs {
-                    prompt, history, ..
-                } = self.peek_model_call()?;
+                let ModelCallInputs { prompt, history } = self.peek_model_call()?;
                 let turn = self.commit_model_call(None, None)?;
                 Ok(AgentRunStep::CallModel {
                     prompt,
