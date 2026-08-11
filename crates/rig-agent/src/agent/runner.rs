@@ -1623,8 +1623,8 @@ mod migrated_tests {
     use crate::agent::{
         CompletionCallAction, CompletionCallEvent, HookStack, InvalidToolCallAction,
         InvalidToolCallContext, ModelTurnAction, ModelTurnFinished, ObservationAction,
-        StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
-        ToolResultEvent,
+        ReasoningDelta, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
+        ToolResultAction, ToolResultEvent,
     };
 
     use std::sync::{
@@ -1764,6 +1764,14 @@ mod migrated_tests {
         }
         async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
             self.record(StepEventKind::TextDelta);
+            ObservationAction::continue_run()
+        }
+        async fn on_reasoning_delta(
+            &self,
+            _: &HookContext,
+            _: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.record(StepEventKind::ReasoningDelta);
             ObservationAction::continue_run()
         }
         async fn on_tool_call_delta(
@@ -8202,6 +8210,7 @@ mod migrated_tests {
     async fn reasoning_only_turn_does_not_gain_stream_response_finish() {
         let hook = RecordingHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning_delta("think"),
             MockStreamEvent::reasoning("think"),
             MockStreamEvent::final_response_with_total_tokens(0),
         ]]))
@@ -8223,6 +8232,11 @@ mod migrated_tests {
             hook.count(StepEventKind::ModelTurnFinished),
             1,
             "the accepted reasoning-only turn still fires ModelTurnFinished"
+        );
+        assert_eq!(
+            hook.count(StepEventKind::ReasoningDelta),
+            1,
+            "the reasoning fragment is observed once and its completed restatement is not a delta"
         );
     }
 

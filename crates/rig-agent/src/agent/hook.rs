@@ -25,10 +25,11 @@
 //! tool-result stop omits result content from telemetry.
 //!
 //! Blocking and streaming agents share model-turn, request, tool-call, and
-//! tool-result resolution. Streaming adds delta-specific observations, but
-//! shared lifecycle actions have identical semantics on both surfaces. Streamed
-//! deltas are provisional until the model turn is accepted; a retry is surfaced
-//! as [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
+//! tool-result resolution. Streaming adds text, reasoning, and tool-call delta
+//! observations, but shared lifecycle actions have identical semantics on both
+//! surfaces. Streamed deltas are provisional until the model turn is accepted;
+//! a retry is surfaced as
+//! [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
 //! so consumers can discard the rejected turn's deltas.
 //!
 //! # Example
@@ -605,6 +606,21 @@ pub struct TextDelta<'a> {
     pub aggregated: &'a str,
 }
 
+/// Streaming reasoning delta.
+#[derive(Clone, Copy)]
+pub struct ReasoningDelta<'a> {
+    /// Rig-generated correlator for this reasoning part. It is stable across
+    /// the part's deltas and eventual completed reasoning item, but is never
+    /// persisted as a provider-issued reasoning id.
+    pub id: &'a str,
+    /// Provider-issued durable reasoning item id, when the wire provides one.
+    pub provider_id: Option<&'a str>,
+    /// Newly received reasoning fragment.
+    pub delta: &'a str,
+    /// Reasoning text accumulated for this reasoning part through this delta.
+    pub aggregated: &'a str,
+}
+
 /// Streaming tool-call delta.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
@@ -643,6 +659,7 @@ pub enum StepEventKind {
     ToolCall,
     ToolResult,
     TextDelta,
+    ReasoningDelta,
     ToolCallDelta,
     StreamResponseFinish,
 }
@@ -1140,6 +1157,19 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
+    /// Observes a reasoning delta from a streaming response.
+    ///
+    /// The aggregate is scoped to the reasoning part identified by the event's
+    /// correlator. Like all streamed deltas, it remains provisional until the
+    /// model turn is accepted. The default action continues the run.
+    fn on_reasoning_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ReasoningDelta<'_>,
+    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+        async { ObservationAction::Continue }
+    }
+
     /// Observes an argument delta for a streaming tool call.
     ///
     /// The default action continues the run.
@@ -1210,6 +1240,11 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         &'a self,
         ctx: &'a HookContext,
         event: TextDelta<'a>,
+    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    fn reasoning_delta<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: ReasoningDelta<'a>,
     ) -> WasmBoxedFuture<'a, ObservationAction>;
     fn tool_call_delta<'a>(
         &'a self,
@@ -1286,6 +1321,13 @@ where
         event: TextDelta<'a>,
     ) -> WasmBoxedFuture<'a, ObservationAction> {
         Box::pin(self.on_text_delta(ctx, event))
+    }
+    fn reasoning_delta<'a>(
+        &'a self,
+        ctx: &'a HookContext,
+        event: ReasoningDelta<'a>,
+    ) -> WasmBoxedFuture<'a, ObservationAction> {
+        Box::pin(self.on_reasoning_delta(ctx, event))
     }
     fn tool_call_delta<'a>(
         &'a self,
@@ -1516,6 +1558,19 @@ impl AgentHook for HookStack {
     async fn on_text_delta(&self, ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
         for hook in &self.hooks {
             let action = hook.text_delta(ctx, event).await;
+            if !matches!(action, ObservationAction::Continue) {
+                return action;
+            }
+        }
+        ObservationAction::Continue
+    }
+    async fn on_reasoning_delta(
+        &self,
+        ctx: &HookContext,
+        event: ReasoningDelta<'_>,
+    ) -> ObservationAction {
+        for hook in &self.hooks {
+            let action = hook.reasoning_delta(ctx, event).await;
             if !matches!(action, ObservationAction::Continue) {
                 return action;
             }
@@ -2042,6 +2097,19 @@ mod migrated_tests {
                 ObservationAction::continue_run()
             }
         }
+
+        async fn on_reasoning_delta(
+            &self,
+            _ctx: &HookContext,
+            _event: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.log.lock().expect("log").push(self.label);
+            if self.stop {
+                ObservationAction::stop("stop")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
     }
 
     struct ObservesOnly(StepEventKind);
@@ -2184,6 +2252,43 @@ mod migrated_tests {
             ObservationAction::Stop(_)
         ));
         assert_eq!(*log.lock().unwrap(), vec![1]);
+    }
+
+    #[tokio::test]
+    async fn reasoning_delta_observation_preserves_nested_order_and_stop() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut inner = HookStack::with(ObservationRecorder {
+            label: 1,
+            log: log.clone(),
+            stop: false,
+        });
+        inner.push(ObservationRecorder {
+            label: 2,
+            log: log.clone(),
+            stop: true,
+        });
+        let mut outer = HookStack::with(inner);
+        outer.push(ObservationRecorder {
+            label: 3,
+            log: log.clone(),
+            stop: false,
+        });
+
+        assert!(matches!(
+            outer
+                .on_reasoning_delta(
+                    &ctx(),
+                    ReasoningDelta {
+                        id: "corr_1",
+                        provider_id: Some("rs_1"),
+                        delta: "think",
+                        aggregated: "think",
+                    },
+                )
+                .await,
+            ObservationAction::Stop(_)
+        ));
+        assert_eq!(*log.lock().expect("log"), vec![1, 2]);
     }
 
     #[tokio::test]
@@ -2349,6 +2454,7 @@ mod migrated_tests {
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
             StepEventKind::TextDelta,
+            StepEventKind::ReasoningDelta,
             StepEventKind::ToolCallDelta,
             StepEventKind::StreamResponseFinish,
         ] {

@@ -433,6 +433,23 @@ impl StreamedTurnAssembler {
         &self.text
     }
 
+    /// Reasoning text accumulated for the currently pending part identified by
+    /// `correlator`.
+    ///
+    /// Completed parts are deliberately skipped: a later delta may reuse a
+    /// correlator after a completed restatement, in which case ingestion opens
+    /// a new pending part and this returns that new part's aggregate.
+    pub fn aggregated_reasoning(&self, correlator: &str) -> Option<&str> {
+        self.reasoning_parts.iter().find_map(|part| {
+            match (&part.state, part.correlator.as_deref()) {
+                (ReasoningPartState::Pending(text), Some(id)) if id == correlator => {
+                    Some(text.as_str())
+                }
+                _ => None,
+            }
+        })
+    }
+
     /// Normalize the provider aggregate into the content committed for this
     /// turn. The reasoning is supplied by the caller: the finish path drains
     /// its parts by value ([`Self::drain_reasoning`]) instead of cloning
@@ -1263,6 +1280,47 @@ mod tests {
 
     fn assembled_reasoning_of(asm: &StreamedTurnAssembler) -> Vec<Reasoning> {
         asm.partial_turn(None).reasoning
+    }
+
+    #[test]
+    fn aggregated_reasoning_delta_is_scoped_to_each_interleaved_part() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", None, "first "))
+            .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_a"), Some("first "));
+
+        asm.ingest(&reasoning_delta("corr_b", Some("rs_b"), "second"))
+            .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_b"), Some("second"));
+
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "part"))
+            .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_a"), Some("first part"));
+        assert_eq!(asm.aggregated_reasoning("corr_b"), Some("second"));
+        assert_eq!(asm.aggregated_reasoning("missing"), None);
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(reasoning[0].id.as_deref(), Some("rs_a"));
+        assert_eq!(reasoning[1].id.as_deref(), Some("rs_b"));
+    }
+
+    #[test]
+    fn aggregated_reasoning_delta_uses_a_new_pending_part_after_completion() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "old"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning(
+            "corr_a",
+            Some("rs_a"),
+            "old",
+            Some("sig"),
+        ))
+        .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_a"), None);
+
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_new"), "new"))
+            .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_a"), Some("new"));
     }
 
     #[test]
