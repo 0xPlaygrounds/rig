@@ -46,8 +46,14 @@ pub type StreamingResult =
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem, StreamingError>>>>;
 
+/// One event emitted by a multi-turn agent stream.
+///
+/// The public JSON format is adjacently tagged with camel-case variant names.
+/// Nested assistant and user events carry their own adjacent discriminator, so
+/// an assistant text item is represented as
+/// `{"type":"streamAssistantItem","content":{"type":"text","content":{"text":"hello"}}}`.
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", content = "content", rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum MultiTurnStreamItem {
     /// A streamed assistant content item — the content the **model emitted**:
@@ -1644,6 +1650,117 @@ pub async fn stream_to_stdout(
 }
 
 #[cfg(test)]
+mod stream_item_serde_tests {
+    use super::{CompletionCall, MultiTurnStreamItem, PromptResponse};
+    use crate::streaming::{StreamedAssistantContent, StreamedUserContent};
+    use rig_core::{
+        completion::Usage,
+        message::{ToolCall, ToolCallId, ToolFunction, ToolResult, ToolResultContent},
+    };
+    use serde_json::{Value, json};
+
+    fn tool_call() -> ToolCall {
+        ToolCall::new(
+            ToolCallId::new_or_mint("call_1"),
+            ToolFunction::new("lookup".to_owned(), json!({"query": "rig"})),
+        )
+    }
+
+    fn tool_result() -> ToolResult {
+        ToolResult {
+            call: ToolCallId::new_or_mint("call_1"),
+            provider: None,
+            name: "lookup".to_owned(),
+            content: vec![ToolResultContent::text("found")],
+        }
+    }
+
+    fn assert_wire_round_trip(item: MultiTurnStreamItem, expected: Value) {
+        let encoded = serde_json::to_value(&item).expect("serialize multi-turn stream item");
+        assert_eq!(encoded, expected);
+        let decoded: MultiTurnStreamItem =
+            serde_json::from_value(encoded).expect("deserialize multi-turn stream item");
+        assert_eq!(
+            serde_json::to_value(decoded).expect("re-serialize multi-turn stream item"),
+            expected
+        );
+    }
+
+    #[test]
+    fn every_multi_turn_stream_variant_uses_an_adjacent_payload() {
+        let assistant = StreamedAssistantContent::text("hello");
+        let assistant_json = serde_json::to_value(&assistant).expect("serialize assistant item");
+        assert_wire_round_trip(
+            MultiTurnStreamItem::StreamAssistantItem(assistant),
+            json!({
+                "type": "streamAssistantItem",
+                "content": assistant_json
+            }),
+        );
+
+        let call = tool_call();
+        assert_wire_round_trip(
+            MultiTurnStreamItem::ToolExecutionCommitted {
+                tool_call: call.clone(),
+                internal_call_id: "internal_1".to_owned(),
+            },
+            json!({
+                "type": "toolExecutionCommitted",
+                "content": {
+                    "tool_call": serde_json::to_value(&call).expect("serialize tool call"),
+                    "internal_call_id": "internal_1"
+                }
+            }),
+        );
+
+        let result = tool_result();
+        let user = StreamedUserContent::ToolResult {
+            tool_result: result,
+            internal_call_id: "internal_1".to_owned(),
+        };
+        let user_json = serde_json::to_value(&user).expect("serialize user item");
+        assert_wire_round_trip(
+            MultiTurnStreamItem::StreamUserItem(user),
+            json!({"type": "streamUserItem", "content": user_json}),
+        );
+
+        let completion_call = CompletionCall::new(2, Usage::new());
+        let completion_call_json =
+            serde_json::to_value(completion_call).expect("serialize completion call");
+        assert_wire_round_trip(
+            MultiTurnStreamItem::CompletionCall(completion_call),
+            json!({"type": "completionCall", "content": completion_call_json}),
+        );
+
+        assert_wire_round_trip(
+            MultiTurnStreamItem::ModelTurnRetried { turn: 3 },
+            json!({"type": "modelTurnRetried", "content": {"turn": 3}}),
+        );
+
+        let response = PromptResponse::new("done", Usage::new());
+        let response_json = serde_json::to_value(&response).expect("serialize prompt response");
+        assert_wire_round_trip(
+            MultiTurnStreamItem::FinalResponse(response),
+            json!({"type": "finalResponse", "content": response_json}),
+        );
+    }
+
+    #[test]
+    fn old_internal_stream_shapes_and_malformed_known_tags_fail() {
+        for old_or_invalid in [
+            json!({"type": "streamAssistantItem", "text": "old"}),
+            json!({"type": "modelTurnRetried", "turn": 3}),
+            json!({"type": "completionCall", "call_index": 3, "usage": null}),
+            json!({"content": {"turn": 3}}),
+            json!({"type": "future", "content": {}}),
+            json!({"type": "modelTurnRetried", "content": {"turn": "three"}}),
+        ] {
+            assert!(serde_json::from_value::<MultiTurnStreamItem>(old_or_invalid).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
 #[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod migrated_tests {
     use crate::agent::{
@@ -3067,15 +3184,17 @@ mod migrated_tests {
             value,
             serde_json::json!({
                 "type": "completionCall",
-                "call_index": 2,
-                "usage": {
-                    "input_tokens": 3,
-                    "output_tokens": 4,
-                    "total_tokens": 7,
-                    "cached_input_tokens": 0,
-                    "cache_creation_input_tokens": 0,
-                    "tool_use_prompt_tokens": 0,
-                    "reasoning_tokens": 0,
+                "content": {
+                    "call_index": 2,
+                    "usage": {
+                        "input_tokens": 3,
+                        "output_tokens": 4,
+                        "total_tokens": 7,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
                 }
             })
         );
@@ -3099,27 +3218,31 @@ mod migrated_tests {
             value,
             serde_json::json!({
                 "type": "completionCall",
-                "call_index": 3,
-                "usage": {
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "total_tokens": 0,
-                    "cached_input_tokens": 0,
-                    "cache_creation_input_tokens": 0,
-                    "tool_use_prompt_tokens": 0,
-                    "reasoning_tokens": 0,
+                "content": {
+                    "call_index": 3,
+                    "usage": {
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "cached_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
+                        "tool_use_prompt_tokens": 0,
+                        "reasoning_tokens": 0,
+                    }
                 }
             })
         );
 
-        // Stream items serialized before the Option encoding was dropped used
-        // `"usage": null`; they must still deserialize.
+        // CompletionCall's null-usage tolerance still applies inside the new
+        // adjacent event payload.
         let legacy: MultiTurnStreamItem = serde_json::from_value(serde_json::json!({
             "type": "completionCall",
-            "call_index": 3,
-            "usage": null
+            "content": {
+                "call_index": 3,
+                "usage": null
+            }
         }))
-        .expect("legacy null-usage event should deserialize");
+        .expect("null-usage event should deserialize");
         match legacy {
             MultiTurnStreamItem::CompletionCall(call) => {
                 assert_eq!(call, CompletionCall::new(3, Usage::new()));
@@ -3147,7 +3270,7 @@ mod migrated_tests {
         let value = serde_json::to_value(&item).expect("serialize final response");
 
         assert_eq!(
-            value.get("completion_calls"),
+            value.pointer("/content/completion_calls"),
             Some(&serde_json::json!([
                 {
                     "call_index": 0,

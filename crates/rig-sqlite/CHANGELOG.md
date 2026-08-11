@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(sqlite)* [**breaking**] `SqliteDistanceMetric` keeps its string representation but now uses explicit lowercase spellings (`"cosine"`, `"l2"`, `"l1"`); the former PascalCase Serde values no longer load.
+
 - *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged
 
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.39.0...rig-sqlite-v0.40.0) - 2026-07-10

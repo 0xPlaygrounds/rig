@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* [**breaking**] `MultiTurnStreamItem` now uses adjacent camel-case `"type"`/`"content"` tagging around the newly tagged `StreamedAssistantContent` and `StreamedUserContent` payloads, eliminating nested tag collisions and structural inference. Old internal/untagged stream-log records do not load. Persisted `AgentRun::tool_choice` uses rig-core's tagged `ToolChoice` object, and `OutputMode` now serializes as the explicit lowercase strings `"auto"`, `"tool"`, `"native"`, and `"prompted"` instead of PascalCase. `PromptResponse` itself gains no field-shape change here, but a `MultiTurnStreamItem::FinalResponse` record now wraps it under the outer `content` field; see MIGRATING.
+
 - *(agent)* [**breaking**] persisted histories and `AgentRun`/`PromptResponse` JSON carry rig-core's tagged assistant content (`{"type": "text", ...}`); the untagged shape does not load — see rig-core's entry and MIGRATING. The flatten `Some({})` round-trip artifact is gone, so `is_empty_assistant_turn`'s classification is identical before and after a persist/restore with no special-casing
 
-- *(agent)* [**behavior**] the streamed assembler counts the stream items it excludes from assembly that carry assistant content — replayed tagged assistant blocks (the tagged `AssistantContent` serialization is not a stream-item shape) and text items whose `additional_params` is malformed — and logs a single warning per turn, on every termination path, instead of one per stream item; `StreamedTurnAssembler::excluded_assistant_content` exposes the count, and the full decode-outcome contract is pinned by an enum-driven matrix test. A stream item whose text block carries stray sibling keys decodes as stream *text* — the text is assembled and only the stray keys drop
+- *(agent)* [**behavior**] the streamed assembler counts explicitly constructed `StreamedAssistantContent::Unknown` items that carry Rig-like assistant content and logs one warning per turn, on every termination path; `StreamedTurnAssembler::excluded_assistant_content` exposes the count. Public stream-event deserialization is now strict and tagged, so malformed known items fail at decode and provider-native items reach the assembler as `Unknown` only after provider classification.
 
 - *(agent)* [**breaking**] `PromptResponse::content` returns `&[AssistantContent]` instead of `&Vec<AssistantContent>`, matching its slice-returning siblings
 

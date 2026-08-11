@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- [**breaking**] Rig-owned public data-bearing Serde enums use explicit discriminators; multi-turn stream events use nested adjacent tags, and intentional unit enums use explicit lowercase strings. Old domain/event representations do not load; provider-native wire JSON is unchanged. See the crate changelogs and MIGRATING for exact shapes.
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/v0.40.0...v0.41.0) - 2026-07-28
 
 ### Added

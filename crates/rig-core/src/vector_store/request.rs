@@ -128,8 +128,10 @@ pub trait SearchFilter {
 ///
 /// Use for serialization, runtime inspection, or translating between backends via
 /// [`Filter::interpret`]. Prefer [`SearchFilter`] trait methods for writing queries.
+/// The JSON form is adjacently tagged; for example, `Filter::Eq("status", "ready")`
+/// is `{"type":"eq","content":["status","ready"]}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(tag = "type", content = "content", rename_all = "lowercase")]
 pub enum Filter<V>
 where
     V: std::fmt::Debug + Clone,
@@ -341,6 +343,69 @@ mod tests {
     use serde_json::json;
 
     type F = Filter<serde_json::Value>;
+
+    #[test]
+    fn canonical_filter_uses_an_explicit_adjacent_tag_for_every_variant() {
+        let cases = [
+            (
+                F::Eq("category".to_owned(), json!("fruit")),
+                json!({"type": "eq", "content": ["category", "fruit"]}),
+            ),
+            (
+                F::Gt("price".to_owned(), json!(5)),
+                json!({"type": "gt", "content": ["price", 5]}),
+            ),
+            (
+                F::Lt("price".to_owned(), json!(20)),
+                json!({"type": "lt", "content": ["price", 20]}),
+            ),
+            (
+                F::And(
+                    Box::new(F::Eq("category".to_owned(), json!("fruit"))),
+                    Box::new(F::Gt("price".to_owned(), json!(5))),
+                ),
+                json!({
+                    "type": "and",
+                    "content": [
+                        {"type": "eq", "content": ["category", "fruit"]},
+                        {"type": "gt", "content": ["price", 5]}
+                    ]
+                }),
+            ),
+            (
+                F::Or(
+                    Box::new(F::Lt("price".to_owned(), json!(20))),
+                    Box::new(F::Eq("category".to_owned(), json!("veg"))),
+                ),
+                json!({
+                    "type": "or",
+                    "content": [
+                        {"type": "lt", "content": ["price", 20]},
+                        {"type": "eq", "content": ["category", "veg"]}
+                    ]
+                }),
+            ),
+        ];
+
+        for (filter, expected) in cases {
+            let encoded = serde_json::to_value(&filter).expect("serialize canonical filter");
+            assert_eq!(encoded, expected);
+            let decoded: F = serde_json::from_value(encoded).expect("deserialize canonical filter");
+            assert_eq!(
+                serde_json::to_value(decoded).expect("re-serialize canonical filter"),
+                expected
+            );
+        }
+
+        for old_or_invalid in [
+            json!({"eq": ["category", "fruit"]}),
+            json!({"content": ["category", "fruit"]}),
+            json!({"type": "future", "content": ["category", "fruit"]}),
+            json!({"type": "eq", "content": ["category"]}),
+        ] {
+            assert!(serde_json::from_value::<F>(old_or_invalid).is_err());
+        }
+    }
 
     #[test]
     fn eq_matches_field_within_multi_field_document() {

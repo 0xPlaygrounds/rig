@@ -287,7 +287,11 @@ impl<'a> IntoIterator for &'a ModelList {
 ///
 /// This enum represents the various error conditions that may arise when
 /// attempting to retrieve the list of available models from an LLM provider.
+/// Its serialized Rig representation has a required snake-case `"type"`
+/// discriminator, for example
+/// `{"type":"api_error","status_code":429,"message":"limited"}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ModelListingError {
     /// The provider returned an error response with a status code
     ApiError {
@@ -615,22 +619,78 @@ mod tests {
     }
 
     #[test]
-    fn test_model_listing_error_serde() {
-        let error = ModelListingError::api_error(404, "Not found");
+    fn model_listing_error_uses_an_explicit_internal_tag_for_every_variant() {
+        let cases = [
+            (
+                ModelListingError::api_error(404, "Not found"),
+                serde_json::json!({
+                    "type": "api_error",
+                    "status_code": 404,
+                    "message": "Not found"
+                }),
+            ),
+            (
+                ModelListingError::request_error("Connection failed"),
+                serde_json::json!({
+                    "type": "request_error",
+                    "message": "Connection failed"
+                }),
+            ),
+            (
+                ModelListingError::parse_error("Invalid JSON"),
+                serde_json::json!({
+                    "type": "parse_error",
+                    "message": "Invalid JSON"
+                }),
+            ),
+            (
+                ModelListingError::auth_error("Invalid API key"),
+                serde_json::json!({
+                    "type": "auth_error",
+                    "message": "Invalid API key"
+                }),
+            ),
+            (
+                ModelListingError::rate_limit_error("Too many requests"),
+                serde_json::json!({
+                    "type": "rate_limit_error",
+                    "message": "Too many requests"
+                }),
+            ),
+            (
+                ModelListingError::service_unavailable("Maintenance mode"),
+                serde_json::json!({
+                    "type": "service_unavailable",
+                    "message": "Maintenance mode"
+                }),
+            ),
+            (
+                ModelListingError::unknown_error("Something went wrong"),
+                serde_json::json!({
+                    "type": "unknown_error",
+                    "message": "Something went wrong"
+                }),
+            ),
+        ];
 
-        let json = serde_json::to_string(&error).unwrap();
-        assert!(json.contains("ApiError"));
+        for (error, expected) in cases {
+            let encoded = serde_json::to_value(&error).expect("serialize model-listing error");
+            assert_eq!(encoded, expected);
+            let decoded: ModelListingError =
+                serde_json::from_value(encoded).expect("deserialize model-listing error");
+            assert_eq!(
+                serde_json::to_value(decoded).expect("re-serialize model-listing error"),
+                expected
+            );
+        }
 
-        let deserialized: ModelListingError = serde_json::from_str(&json).unwrap();
-        match deserialized {
-            ModelListingError::ApiError {
-                status_code,
-                message,
-            } => {
-                assert_eq!(status_code, 404);
-                assert_eq!(message, "Not found");
-            }
-            _ => panic!("Expected ApiError"),
+        for old_or_invalid in [
+            serde_json::json!({"ApiError": {"status_code": 404, "message": "old"}}),
+            serde_json::json!({"message": "missing tag"}),
+            serde_json::json!({"type": "future_error", "message": "unknown"}),
+            serde_json::json!({"type": "api_error", "status_code": "404", "message": "bad"}),
+        ] {
+            assert!(serde_json::from_value::<ModelListingError>(old_or_invalid).is_err());
         }
     }
 

@@ -24,7 +24,11 @@ use serde::{Deserialize, Serialize};
 /// routes to `Tool` only on providers whose native constraint would suppress
 /// tool calls, and keeps guaranteed `Native` structured output on providers that
 /// compose the two (e.g. OpenAI, Anthropic).
+///
+/// Serde represents these all-unit choices as the explicit lowercase strings
+/// `"auto"`, `"tool"`, `"native"`, and `"prompted"`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum OutputMode {
     /// Resolve at request time: [`OutputMode::Tool`] when the agent has an
@@ -52,4 +56,30 @@ pub enum OutputMode {
     /// deserializing. Useful for weak/local models that lack reliable tool calling
     /// or native structured output. (pydantic-ai `PromptedOutput`.)
     Prompted,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OutputMode;
+
+    #[test]
+    fn output_mode_uses_explicit_snake_case_strings() {
+        let cases = [
+            (OutputMode::Auto, "auto"),
+            (OutputMode::Tool, "tool"),
+            (OutputMode::Native, "native"),
+            (OutputMode::Prompted, "prompted"),
+        ];
+
+        for (mode, expected) in cases {
+            let encoded = serde_json::to_value(&mode).expect("serialize output mode");
+            assert_eq!(encoded, serde_json::json!(expected));
+            let decoded: OutputMode =
+                serde_json::from_value(encoded).expect("deserialize output mode");
+            assert_eq!(decoded, mode);
+        }
+
+        assert!(serde_json::from_value::<OutputMode>(serde_json::json!("Auto")).is_err());
+        assert!(serde_json::from_value::<OutputMode>(serde_json::json!("future")).is_err());
+    }
 }

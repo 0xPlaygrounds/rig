@@ -129,7 +129,10 @@ pub trait SqliteVectorStoreTable: Send + Sync + Clone {
 /// higher-is-better: [`SqliteDistanceMetric::Cosine`] returns cosine similarity
 /// (`1 - cosine_distance`), while [`SqliteDistanceMetric::L2`] and
 /// [`SqliteDistanceMetric::L1`] return the negative sqlite-vec distance.
+/// Its serialized spelling is explicit and lowercase: `"cosine"`, `"l2"`, or
+/// `"l1"`.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SqliteDistanceMetric {
     /// Cosine similarity, returned as `1 - cosine_distance`.
     #[default]
@@ -2348,6 +2351,25 @@ mod tests {
     use tokio_rusqlite::Connection;
 
     const SCORE_EPSILON: f64 = 1e-5;
+
+    #[test]
+    fn distance_metric_uses_explicit_lowercase_strings() {
+        for (metric, expected) in [
+            (SqliteDistanceMetric::Cosine, "cosine"),
+            (SqliteDistanceMetric::L2, "l2"),
+            (SqliteDistanceMetric::L1, "l1"),
+        ] {
+            let encoded = serde_json::to_value(metric).expect("serialize distance metric");
+            assert_eq!(encoded, serde_json::json!(expected));
+            let decoded: SqliteDistanceMetric =
+                serde_json::from_value(encoded).expect("deserialize distance metric");
+            assert_eq!(decoded, metric);
+        }
+
+        assert!(
+            serde_json::from_value::<SqliteDistanceMetric>(serde_json::json!("Cosine")).is_err()
+        );
+    }
 
     fn test_metadata_columns() -> Vec<SqliteMetadataColumn> {
         vec![SqliteMetadataColumn {
