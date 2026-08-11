@@ -1144,6 +1144,17 @@ fn anthropic_content_from_assistant_content(
 ) -> Result<Vec<Content>, MessageError> {
     match content {
         message::AssistantContent::Text(text) => {
+            // The same empty-block rule the Responses serializer applies:
+            // the API rejects empty text blocks, so an empty text block
+            // with no anthropic-deliverable content (raw server-tool
+            // content is the one extras shape this wire replays; foreign
+            // extras — e.g. a block annotated by the OpenAI Responses
+            // ingest — cannot reach this wire) produces no block at all.
+            // A message left with no blocks fails loudly and locally at
+            // the non-empty check below, never as a wire 400.
+            if text.text.is_empty() && extract_anthropic_raw_content(&text)?.is_none() {
+                return Ok(Vec::new());
+            }
             Ok(vec![anthropic_text_content_from_message_text(text)?])
         }
         message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
@@ -3391,6 +3402,42 @@ mod tests {
             "For the rest of this conversation, answer in Spanish."
         );
         assert_eq!(messages[2]["role"], "assistant");
+    }
+
+    #[test]
+    fn foreign_annotated_empty_text_produces_no_anthropic_block() {
+        // The Responses ingest mints empty text blocks whose params carry
+        // that wire's extras; the agent deliberately keeps them in history.
+        // Replayed here, they must vanish from the request — the API
+        // rejects empty text blocks and foreign extras cannot reach this
+        // wire — while sibling content converts unaffected.
+        let foreign_annotated_empty = message::AssistantContent::Text(message::Text {
+            text: String::new(),
+            additional_params: message::AdditionalParams::try_from_value(json!({
+                "openai_responses": {"annotations": [{"type": "url_citation"}]}
+            }))
+            .expect("object params"),
+        });
+        assert_eq!(
+            anthropic_content_from_assistant_content(foreign_annotated_empty.clone())
+                .expect("conversion succeeds"),
+            Vec::new(),
+            "a foreign-annotated empty block must produce no Anthropic content"
+        );
+
+        let message = message::Message::Assistant {
+            id: None,
+            content: vec![
+                foreign_annotated_empty,
+                message::AssistantContent::text("real answer"),
+            ],
+        };
+        let converted = Message::try_from(message).expect("message converts");
+        assert_eq!(converted.content.len(), 1, "only the real block survives");
+        assert!(matches!(
+            converted.content.first(),
+            Some(Content::Text { text, .. }) if text == "real answer"
+        ));
     }
 
     #[test]

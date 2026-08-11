@@ -588,43 +588,13 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                             text,
                             additional_params,
                         }) => {
-                            // Replay honors only *this wire's* extras: an
-                            // empty block annotated with them still replays,
-                            // while a bare or foreign-annotated empty block
-                            // is skipped — foreign extras cannot reach this
-                            // wire anyway, and an empty assistant item the
-                            // wire never sent risks a rejection.
-                            // Deliverability is part of the rule: the
-                            // id-less `AssistantInput` form is a bare
-                            // string and cannot carry extras, so an empty
-                            // block replays only when its own-wire extras
-                            // can actually ride (the id-carrying form).
-                            let own_extras_deliverable = id.is_some()
-                                && additional_params
-                                    .as_ref()
-                                    .and_then(|params| {
-                                        params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
-                                    })
-                                    .is_some();
-                            if text.is_empty() && !own_extras_deliverable {
+                            // The whole replay rule lives in
+                            // `assistant_text_replay_message`; `None` means
+                            // the block produces no wire item.
+                            let Some(message) =
+                                assistant_text_replay_message(id.clone(), text, additional_params)
+                            else {
                                 continue;
-                            }
-                            let message = if let Some(id) = id.clone() {
-                                Message::Assistant {
-                                    content: vec![AssistantContentType::Text(
-                                        AssistantContent::OutputText(
-                                            OutputText::from_message_text(text, additional_params),
-                                        ),
-                                    )],
-                                    id,
-                                    name: None,
-                                    status: ToolStatus::Completed,
-                                }
-                            } else {
-                                Message::AssistantInput {
-                                    content: text,
-                                    name: None,
-                                }
                             };
 
                             other_items.push(InputItem {
@@ -2699,20 +2669,8 @@ impl OutputText {
             return Self::new(text);
         };
         // The gate (`into_wire_extras`) collapses malformed-under-key to
-        // `None`; distinguishing malformed from absent for the warn is what
-        // the raw `get` is for. Only reachable via hand-built or
-        // mis-migrated history (ingest always writes an object): replay
-        // proceeds without the extras, loudly.
-        if let Some(non_object) = params
-            .get(OPENAI_RESPONSES_EXTRAS_KEY)
-            .filter(|value| !value.is_object())
-        {
-            tracing::warn!(
-                %non_object,
-                "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
-                 object — replaying the text block without its extras"
-            );
-        }
+        // "no extras"; loudness for that shape lives in
+        // `assistant_text_replay_message`, this fn's one production caller.
         let extras = params
             .into_wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
             .map(|map| {
@@ -2734,10 +2692,78 @@ impl OutputText {
     }
 }
 
+/// The one home for the assistant-text replay rule, shared by both request
+/// conversions. Returns the wire message for a rig text block, or `None`
+/// when the block produces no wire item at all.
+///
+/// The rule: replay honors only *this wire's* extras
+/// ([`OPENAI_RESPONSES_EXTRAS_KEY`]), and deliverability is part of it — the
+/// id-less `AssistantInput` form is a bare string that cannot carry extras,
+/// so an empty block replays only when the id-carrying form is available; a
+/// bare, foreign-annotated, or undeliverable empty block is skipped (its
+/// extras cannot reach this wire anyway, and an empty assistant item the
+/// wire never sent risks a rejection). Every quiet corridor is loud: a
+/// malformed value under the wire's key warns even when the block is
+/// skipped, and own-wire extras stranded on an id-less block warn as they
+/// drop.
+fn assistant_text_replay_message(
+    id: Option<String>,
+    text: String,
+    additional_params: Option<crate::message::AdditionalParams>,
+) -> Option<Message> {
+    // Malformed-under-key is loud on every path — the gate below collapses
+    // it to "no extras", so this is the one place that can still tell
+    // malformed from absent. Only reachable via hand-built or mis-migrated
+    // history (ingest always writes an object).
+    if let Some(non_object) = additional_params
+        .as_ref()
+        .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY))
+        .filter(|value| !value.is_object())
+    {
+        tracing::warn!(
+            %non_object,
+            "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
+             object — replaying without these extras"
+        );
+    }
+    let own_extras = additional_params
+        .as_ref()
+        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY))
+        .is_some();
+    if text.is_empty() && !(own_extras && id.is_some()) {
+        return None;
+    }
+    match id {
+        Some(id) => Some(Message::Assistant {
+            content: vec![AssistantContentType::Text(AssistantContent::OutputText(
+                OutputText::from_message_text(text, additional_params),
+            ))],
+            id,
+            name: None,
+            status: ToolStatus::Completed,
+        }),
+        None => {
+            if own_extras {
+                tracing::warn!(
+                    "own-wire extras cannot ride the id-less assistant form — \
+                     replaying the text without them"
+                );
+            }
+            Some(Message::AssistantInput {
+                content: text,
+                name: None,
+            })
+        }
+    }
+}
+
 /// Key under which an `output_text` block's wire extras (`annotations`,
 /// `logprobs`, future keys) ride on the generic
-/// [`Text::additional_params`](crate::message::Text) — captured
-/// unconditionally at ingest, replayed only by this wire's serializer.
+/// [`Text::additional_params`](crate::message::Text) — captured on the
+/// **blocking** response path, replayed only by this wire's serializer. The
+/// streaming adapter does not yet route annotation events into params, so a
+/// streamed turn's history carries no extras under this key (follow-up
+/// work, not a silent drop at replay: nothing was captured).
 pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
 
 impl From<AssistantContent> for completion::AssistantContent {
@@ -3000,40 +3026,15 @@ impl TryFrom<message::Message> for Vec<Message> {
                             text,
                             additional_params,
                         }) => {
-                            // Same rule as the sibling site above: replay
-                            // honors only this wire's extras; bare and
-                            // foreign-annotated empty blocks are skipped.
-                            // Deliverability is part of the rule: the
-                            // id-less `AssistantInput` form is a bare
-                            // string and cannot carry extras, so an empty
-                            // block replays only when its own-wire extras
-                            // can actually ride (the id-carrying form).
-                            let own_extras_deliverable = assistant_message_id.is_some()
-                                && additional_params
-                                    .as_ref()
-                                    .and_then(|params| {
-                                        params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
-                                    })
-                                    .is_some();
-                            if text.is_empty() && !own_extras_deliverable {
-                                continue;
-                            }
-                            if let Some(id) = assistant_message_id.clone() {
-                                messages.push(Message::Assistant {
-                                    id,
-                                    status: ToolStatus::Completed,
-                                    content: vec![AssistantContentType::Text(
-                                        AssistantContent::OutputText(
-                                            OutputText::from_message_text(text, additional_params),
-                                        ),
-                                    )],
-                                    name: None,
-                                });
-                            } else {
-                                messages.push(Message::AssistantInput {
-                                    content: text,
-                                    name: None,
-                                });
+                            // The whole replay rule lives in
+                            // `assistant_text_replay_message`; `None` means
+                            // the block produces no wire item.
+                            if let Some(message) = assistant_text_replay_message(
+                                assistant_message_id.clone(),
+                                text,
+                                additional_params,
+                            ) {
+                                messages.push(message);
                             }
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
