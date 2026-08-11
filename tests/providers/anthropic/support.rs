@@ -34,6 +34,42 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// Drive rig's Anthropic client against an Anthropic-*compatible* gateway
+/// rather than `api.anthropic.com`.
+///
+/// The code under test is still the Anthropic provider — only the endpoint
+/// differs. Gateways that reimplement the Messages API do not always reproduce
+/// Anthropic's own wire choices, and where they diverge the Anthropic adapter
+/// is what has to cope. Recording that divergence needs traffic from the
+/// gateway itself, so this wrapper points upstream at OpenRouter's Messages
+/// endpoint and records with `OPENROUTER_API_KEY`. Replay needs no key, like
+/// every other cassette.
+///
+/// Cassettes recorded through here live under `tests/cassettes/anthropic/` with
+/// the rest of the provider's scenarios; the gateway is an implementation
+/// detail of how the fixture was obtained, not a separate provider suite.
+pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette = ProviderCassette::start("anthropic", spec, OPENROUTER_MESSAGES_BASE_URL).await;
+    let client = anthropic::Client::builder()
+        .api_key(cassette.api_key("OPENROUTER_API_KEY"))
+        .base_url(cassette.base_url())
+        .build()
+        .expect("client should build");
+
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
+/// OpenRouter's Anthropic Messages endpoint, minus the `/v1/messages` suffix
+/// the Anthropic client appends itself.
+const OPENROUTER_MESSAGES_BASE_URL: &str = "https://openrouter.ai/api";
+
 pub(super) async fn with_anthropic_cassette_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
