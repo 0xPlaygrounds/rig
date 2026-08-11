@@ -116,6 +116,7 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
+pub use driver::{AgentDriver, DriveStep};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
@@ -124,9 +125,7 @@ pub use hook::{
     RetryRequest, RunId, Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall,
     ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
-pub use driver::{AgentDriver, DriveStep};
 pub use model::ModelHandle;
-pub use turn_tools::TurnTools;
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };
@@ -137,3 +136,4 @@ pub use prompt_request::{
 pub use rig_core::message::Text;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
 pub use runner::AgentRunner;
+pub use turn_tools::TurnTools;

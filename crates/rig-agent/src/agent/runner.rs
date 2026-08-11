@@ -34,7 +34,6 @@ use tracing::{Instrument, info_span, span::Id};
 
 use super::{
     completion::Agent,
-    turn_tools::PreparedCompletionRequest,
     hook::{
         AgentHook, CompletionCall, CompletionCallAction,
         CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
@@ -51,6 +50,7 @@ use super::{
         tool_result_output,
     },
     run::{AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurnOutcome, OutputMode, PendingToolCall},
+    turn_tools::PreparedCompletionRequest,
 };
 use rig_core::{
     memory::ConversationMemory,

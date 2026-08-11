@@ -175,8 +175,8 @@ impl TurnTools {
 
 #[cfg(test)]
 mod tests {
-    use crate::agent::{AgentBuilder, DriveStep};
     use crate::agent::run::OutputMode;
+    use crate::agent::{AgentBuilder, DriveStep};
     use crate::test_utils::MockCompletionModel;
     use crate::tool::{Tool, ToolContext, ToolErrorKind};
     use serde_json::json;

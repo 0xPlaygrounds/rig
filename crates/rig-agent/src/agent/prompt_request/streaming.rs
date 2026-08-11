@@ -5,7 +5,6 @@ use rig_core::{
 
 use crate::{
     agent::completion::build_prepared_completion_request,
-    agent::turn_tools::PreparedCompletionRequest,
     agent::hook::{
         AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
         ModelSelectionAction, ModelTurnFinished, ReasoningDelta, StepEventKind,
@@ -21,6 +20,7 @@ use crate::{
         append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
         resolve_completion_call, resolve_model_turn_action, run_single_tool,
     },
+    agent::turn_tools::PreparedCompletionRequest,
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
 };
