@@ -1401,7 +1401,7 @@ the current form is the only accepted representation.
 |---|---|---|
 | `ToolCallDeltaContent` | `{"Name":"lookup"}` | `{"type":"name","content":"lookup"}` |
 | `StreamedAssistantContent` | `{"text":"hello"}` | `{"type":"text","content":{"text":"hello"}}` |
-| `StreamedUserContent` | `{"tool_result":{"call":"call_1","provider":null,"name":"lookup","content":[{"type":"text","text":"ok"}]},"internal_call_id":"internal_1"}` | `{"type":"tool_result","content":{"tool_result":{"call":"call_1","provider":null,"name":"lookup","content":[{"type":"text","text":"ok"}]},"internal_call_id":"internal_1"}}` |
+| `StreamedUserContent` | `{"tool_result":{"call":"call_1","name":"lookup","content":[{"type":"text","text":"ok"}]},"internal_call_id":"internal_1"}` | `{"type":"tool_result","content":{"tool_result":{"call":"call_1","name":"lookup","content":[{"type":"text","text":"ok"}]},"internal_call_id":"internal_1"}}` |
 | `MultiTurnStreamItem` | `{"type":"streamAssistantItem","text":"hello"}` | `{"type":"streamAssistantItem","content":{"type":"text","content":{"text":"hello"}}}` |
 | `MediaType` | `{"Image":"png"}` | `{"type":"image","content":"png"}` |
 | `ToolChoice` | `"auto"`; `{"specific":{"function_names":["lookup"]}}` | `{"type":"auto"}`; `{"type":"specific","function_names":["lookup"]}` |
@@ -1412,7 +1412,13 @@ the current form is the only accepted representation.
 | `SqliteDistanceMetric` | `"Cosine"` | `"cosine"` |
 
 The adjacent forms use `content` for newtype and tuple payloads; unit variants
-omit it. `ToolChoice` and `ModelListingError` use an internal `type` field.
+omit it. **Struct variants also nest under `content`** — that covers most of the
+retagged stream enums (`StreamedAssistantContent::{ToolCall, ToolCallDelta,
+Reasoning, ReasoningDelta}` and `MultiTurnStreamItem::{ToolExecutionCommitted,
+ModelTurnRetried}`), whose fields move inside `content` rather than sitting
+beside `type`. `ToolChoice` and `ModelListingError` are the exception: they use
+an internal `type` field, so their struct-variant fields stay at the top level
+(see the `ToolChoice` row above).
 `OutputMode` and `SqliteDistanceMetric` remain intentional string-valued unit
 enums, but their spellings are now explicit rather than Rust's PascalCase
 names.

@@ -644,8 +644,32 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
         let mut tools = req.tools.into_iter().map(Tool::from).collect::<Vec<_>>();
         let tool_choice = match req.tool_choice {
             None | Some(ToolChoice::Auto) => None,
+            // `NONE` is deliberately NOT guarded on advertised tools. Cohere v2
+            // accepts `tool_choice: "NONE"` with no `tools` field (verified live
+            // against command-a-03-2025: HTTP 200), and "call nothing" is a
+            // meaningful instruction without a tool list — rejecting it locally
+            // would fail a request the provider honours.
             Some(ToolChoice::None) => Some(CohereToolChoice::None),
-            Some(ToolChoice::Required) => Some(CohereToolChoice::Required),
+            // `REQUIRED` is guarded, because the wire is asymmetric here: the same
+            // request without `tools` is rejected —
+            //   400 invalid request: tool_choice 'required' can only be specified
+            //       if 'tools' are specified
+            // `tools` carries `skip_serializing_if = "Vec::is_empty"` while
+            // `tool_choice` serializes independently, so an empty tool list would
+            // ship `{"tool_choice":"REQUIRED"}` with no `tools` key and earn that
+            // remote 400. Fail locally instead, matching the `Specific` arm below.
+            Some(ToolChoice::Required) => {
+                if tools.is_empty() {
+                    return Err(CompletionError::RequestError(
+                        "ToolChoice::Required needs at least one tool advertised in the \
+                         Cohere request: the API rejects tool_choice 'required' when no \
+                         tools are specified"
+                            .into(),
+                    ));
+                }
+
+                Some(CohereToolChoice::Required)
+            }
             Some(ToolChoice::Specific { function_names }) => {
                 if function_names.is_empty() {
                     return Err(CompletionError::RequestError(
@@ -1093,6 +1117,43 @@ mod tests {
 
         assert_eq!(request["tool_choice"], serde_json::json!("REQUIRED"));
         assert_eq!(serialized_tool_names(&request), vec!["alpha", "gamma"]);
+    }
+
+    /// The `Required`/`None` asymmetry mirrors Cohere v2's own asymmetry, verified
+    /// live against `command-a-03-2025`:
+    ///
+    /// | `tool_choice` with no `tools` | response |
+    /// |---|---|
+    /// | `REQUIRED` | `400 invalid request: tool_choice 'required' can only be specified if 'tools' are specified` |
+    /// | `NONE`     | `200` |
+    ///
+    /// So `Required` must fail locally rather than earn that 400, and `None` must
+    /// NOT be guarded — rejecting it would fail a request the provider honours.
+    /// A cassette cannot cover the `Required` half (the request never leaves), so
+    /// this is a unit test by necessity, per `tests/README.md`.
+    #[test]
+    fn cohere_required_tool_choice_needs_tools_but_none_does_not() {
+        let mut required = cohere_tool_choice_request(Some(ToolChoice::Required));
+        required.tools = Vec::new();
+        let error = CohereCompletionRequest::try_from(("command-a-03-2025", required))
+            .expect_err("Required with no advertised tools must fail locally");
+        assert!(
+            matches!(error, CompletionError::RequestError(ref message)
+                if message.to_string().contains("at least one tool advertised")),
+            "unexpected error: {error:?}"
+        );
+
+        let mut none = cohere_tool_choice_request(Some(ToolChoice::None));
+        none.tools = Vec::new();
+        let body = CohereCompletionRequest::try_from(("command-a-03-2025", none)).expect(
+            "None with no advertised tools is accepted by Cohere and must not fail locally",
+        );
+        let serialized = serde_json::to_value(&body).expect("body should serialize");
+        assert_eq!(serialized["tool_choice"], serde_json::json!("NONE"));
+        assert!(
+            serialized.get("tools").is_none(),
+            "an empty tool list stays off the wire: {serialized}"
+        );
     }
 
     #[test]
