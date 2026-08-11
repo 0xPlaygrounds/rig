@@ -79,6 +79,45 @@ pub(crate) fn ordered_streaming_assistant_content(
     ))
 }
 
+/// Whether a [`StreamedAssistantContent::Unknown`] payload is rig assistant
+/// content, so excluding it from assembly loses transcript content.
+///
+/// The predicate is the decoder itself — a payload that parses as a tagged
+/// [`AssistantContent`] block (`toolcall`/`reasoning`/`image` today, every
+/// future variant automatically) is a replayed assistant block, not a
+/// stream-item shape: the untagged stream variants carry different keys, so
+/// it lands in `Unknown` and its content would silently vanish. A dropped
+/// tool call additionally desyncs the turn — no pending call, no result.
+///
+/// Well-formed text does not reach this path: the tolerant block decode
+/// ignores unknown keys, so a tagged text block or a text item with stray
+/// sibling keys (0.41's flatten shape) decodes as
+/// `StreamedAssistantContent::Text` and its text is *assembled*, with only
+/// the stray keys dropped. The one way a text-carrying item can still land
+/// in `Unknown` is a *malformed known field* — a non-object
+/// `additional_params` fails the strict decode — and that item carries real
+/// text, so it counts too. Anything else in `Unknown` is a provider-native
+/// unmodeled item and stays quiet.
+///
+/// The whole outcome space is pinned by the decode-outcome matrix test
+/// (`decode_outcome_matrix_is_total_and_no_shape_is_silent`): assembled,
+/// excluded-and-counted, or excluded-quiet — no shape is silent.
+fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
+    // `&Value` is itself a `Deserializer`, so the probe allocates nothing —
+    // this runs on every `Unknown` item, and provider-native payloads can be
+    // large and frequent.
+    if AssistantContent::deserialize(payload).is_ok() {
+        return true;
+    }
+    // A string `text` alongside an `additional_params` key: a text item
+    // whose params were malformed enough to fail even the tolerant decode.
+    // Its text is real transcript content.
+    payload
+        .get("text")
+        .is_some_and(serde_json::Value::is_string)
+        && payload.get("additional_params").is_some()
+}
+
 pub(crate) fn assistant_text_items_from_choice(
     choice: &[AssistantContent],
 ) -> Vec<AssistantContent> {
@@ -330,6 +369,34 @@ pub struct StreamedTurnAssembler {
     pending_tool_calls: Vec<(ToolCall, String)>,
     delta_states: HashMap<String, ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
+    /// Replayed assistant blocks excluded from assembly this turn (see
+    /// [`unknown_payload_loses_assistant_content`]): counted per item,
+    /// surfaced as one warning when the guard drops.
+    excluded_assistant_content: ExclusionCount,
+}
+
+/// Count of replayed assistant blocks excluded from assembly in one turn.
+///
+/// The loudness contract lives on this guard's `Drop`, so it holds on
+/// *every* termination path — `finish`, stream errors, hook cancellation,
+/// abandonment, truncation — exactly once, and zero exclusions stay silent.
+/// A dedicated one-field guard (not a `Drop` impl on the assembler itself)
+/// keeps the assembler's fields freely movable.
+#[derive(Default)]
+struct ExclusionCount(usize);
+
+impl Drop for ExclusionCount {
+    fn drop(&mut self) {
+        if self.0 > 0 {
+            tracing::warn!(
+                excluded = self.0,
+                "stream items matching rig's tagged assistant-content \
+                 serialization were excluded from the assembled assistant \
+                 message — replayed assistant blocks are not stream-item \
+                 shapes, and their content is lost from assembled history"
+            );
+        }
+    }
 }
 
 impl StreamedTurnAssembler {
@@ -348,7 +415,16 @@ impl StreamedTurnAssembler {
             pending_tool_calls: Vec::new(),
             delta_states: HashMap::new(),
             pending_invalid: None,
+            excluded_assistant_content: ExclusionCount::default(),
         }
+    }
+
+    /// Replayed assistant blocks excluded from assembly so far this turn.
+    /// Zero on well-formed provider streams; non-zero means transcript
+    /// content was lost (one warning summarizes the count at
+    /// [`Self::finish`]).
+    pub fn excluded_assistant_content(&self) -> usize {
+        self.excluded_assistant_content.0
     }
 
     /// Aggregated assistant text streamed so far this turn (empty until the
@@ -638,11 +714,26 @@ impl StreamedTurnAssembler {
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
             }
-            StreamedAssistantContent::Unknown(_) => {
+            StreamedAssistantContent::Unknown(payload) => {
                 // Unmodeled provider item (e.g. a hosted-tool result): forward it
                 // to the consumer but do not fold it into the accumulated
                 // assistant message — there is no `AssistantContent::Unknown`, and
                 // it must not perturb text/tool-call/reasoning accumulation.
+                //
+                // The exclusion loses transcript content when the payload is
+                // rig assistant content (a replayed tagged block, not a
+                // stream-item shape). Counted here — text deltas arrive
+                // per-token, so per-item warns could flood the log — and
+                // surfaced as one warning at turn end; the payload itself
+                // stays redacted.
+                if unknown_payload_loses_assistant_content(payload.value()) {
+                    self.excluded_assistant_content.0 += 1;
+                    tracing::debug!(
+                        excluded = self.excluded_assistant_content.0,
+                        "stream item is a replayed assistant block, not a \
+                         stream-item shape; excluded from assembly"
+                    );
+                }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
         }
@@ -877,6 +968,193 @@ mod tests {
         ));
         // ... but perturbs no accumulation state used to build the assistant message.
         assert_eq!(asm.aggregated_text(), "answer");
+    }
+
+    /// The decode-outcome contract, as a total matrix: every stream-item
+    /// payload has exactly one of three outcomes — assembled,
+    /// excluded-and-counted (one warning at turn end), or excluded-quiet
+    /// (provider-native unmodeled) — and no shape is silent. `expected` is a
+    /// wildcard-free match, so a new shape class cannot compile without a
+    /// mandated outcome, and the coverage assert below fails until it also
+    /// has a fixture.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    enum ShapeClass {
+        WellFormedText,
+        UnknownKeyedText,
+        TaggedText,
+        TaggedRigBlock,
+        MalformedParamsText,
+        /// A provider-native frame that happens to carry a string `text`
+        /// key (e.g. an annotation event). Tolerance folds its text into
+        /// the message — the documented noise tradeoff: never losing real
+        /// text outranks occasionally ingesting a frame's caption.
+        ProviderNativeTextCarrying,
+        ProviderNativeUnmodeled,
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum ExpectedOutcome {
+        Assembled { text: &'static str },
+        ExcludedAndCounted,
+        ExcludedQuiet,
+    }
+
+    /// The matrix's outcome column. No wildcard arm — the compiler is the
+    /// missing-cell error.
+    fn expected(shape: ShapeClass) -> ExpectedOutcome {
+        match shape {
+            ShapeClass::WellFormedText
+            | ShapeClass::UnknownKeyedText
+            | ShapeClass::TaggedText
+            | ShapeClass::ProviderNativeTextCarrying => ExpectedOutcome::Assembled { text: "hi" },
+            ShapeClass::TaggedRigBlock | ShapeClass::MalformedParamsText => {
+                ExpectedOutcome::ExcludedAndCounted
+            }
+            ShapeClass::ProviderNativeUnmodeled => ExpectedOutcome::ExcludedQuiet,
+        }
+    }
+
+    /// The matrix's fixture rows. Every shape class appears at least once
+    /// (pinned by the coverage assert in the test); classes with several
+    /// wire spellings carry one fixture per spelling.
+    fn decode_matrix_cases() -> Vec<(ShapeClass, serde_json::Value)> {
+        vec![
+            (ShapeClass::WellFormedText, json!({"text": "hi"})),
+            (
+                ShapeClass::UnknownKeyedText,
+                json!({"text": "hi", "citations": ["stray"], "future": 1}),
+            ),
+            (
+                ShapeClass::TaggedText,
+                json!({"type": "text", "text": "hi"}),
+            ),
+            (
+                ShapeClass::TaggedRigBlock,
+                json!({"type": "toolcall", "id": "call_1",
+                       "function": {"name": "add", "arguments": {}}}),
+            ),
+            (
+                ShapeClass::TaggedRigBlock,
+                json!({"type": "reasoning", "id": null, "content": []}),
+            ),
+            (
+                ShapeClass::TaggedRigBlock,
+                json!({"type": "image", "data": {"type": "base64", "value": "aGk="}}),
+            ),
+            (
+                ShapeClass::MalformedParamsText,
+                json!({"text": "hi", "additional_params": []}),
+            ),
+            (
+                ShapeClass::MalformedParamsText,
+                json!({"type": "text", "text": "hi", "additional_params": []}),
+            ),
+            (
+                ShapeClass::ProviderNativeUnmodeled,
+                json!({"type": "web_search_call", "id": "ws_1"}),
+            ),
+            (
+                ShapeClass::ProviderNativeTextCarrying,
+                json!({"type": "output_text.annotation", "text": "hi"}),
+            ),
+            (ShapeClass::ProviderNativeUnmodeled, json!({"text": 42})),
+        ]
+    }
+
+    #[test]
+    fn decode_outcome_matrix_is_total_and_no_shape_is_silent() {
+        let cases = decode_matrix_cases();
+        // Vacuity floor: an emptied fixture table must fail loudly, not
+        // pass by checking nothing.
+        assert!(!cases.is_empty(), "decode_matrix_cases returned no rows");
+        // Coverage: every shape class has at least one fixture. Extend
+        // `witnesses` (and `decode_matrix_cases`) when adding a variant —
+        // `expected` already refuses to compile without a classification.
+        let witnesses = [
+            ShapeClass::WellFormedText,
+            ShapeClass::UnknownKeyedText,
+            ShapeClass::TaggedText,
+            ShapeClass::TaggedRigBlock,
+            ShapeClass::MalformedParamsText,
+            ShapeClass::ProviderNativeTextCarrying,
+            ShapeClass::ProviderNativeUnmodeled,
+        ];
+        for shape in witnesses {
+            assert!(
+                cases.iter().any(|(case_shape, _)| *case_shape == shape),
+                "no fixture for {shape:?} — add a row to decode_matrix_cases"
+            );
+        }
+
+        for (shape, payload) in cases {
+            let item = serde_json::from_value::<StreamedAssistantContent>(payload.clone())
+                .expect("stream-item decode is tolerant and must not fail");
+            let mut asm = assembler();
+            match expected(shape) {
+                ExpectedOutcome::Assembled { text } => {
+                    assert!(
+                        matches!(&item, StreamedAssistantContent::Text(t) if t.text == text),
+                        "{shape:?} must decode as stream text: {payload}"
+                    );
+                    asm.ingest(&item).expect("ingest");
+                    assert_eq!(asm.aggregated_text(), text, "{shape:?}: {payload}");
+                    assert_eq!(
+                        asm.excluded_assistant_content(),
+                        0,
+                        "{shape:?} must not count as excluded: {payload}"
+                    );
+                }
+                ExpectedOutcome::ExcludedAndCounted => {
+                    assert!(
+                        matches!(&item, StreamedAssistantContent::Unknown(_)),
+                        "{shape:?} must decode Unknown: {payload}"
+                    );
+                    asm.ingest(&item).expect("ingest");
+                    assert_eq!(asm.aggregated_text(), "", "{shape:?}: {payload}");
+                    assert_eq!(
+                        asm.excluded_assistant_content(),
+                        1,
+                        "{shape:?} loses assistant content and must be counted: {payload}"
+                    );
+                }
+                ExpectedOutcome::ExcludedQuiet => {
+                    assert!(
+                        matches!(&item, StreamedAssistantContent::Unknown(_)),
+                        "{shape:?} must decode Unknown: {payload}"
+                    );
+                    asm.ingest(&item).expect("ingest");
+                    assert_eq!(asm.aggregated_text(), "", "{shape:?}: {payload}");
+                    assert_eq!(
+                        asm.excluded_assistant_content(),
+                        0,
+                        "{shape:?} is provider-native and must stay quiet: {payload}"
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn choice_text_items_judge_annotation_by_presence() {
+        // `AdditionalParams` is non-empty by construction — an empty carrier
+        // is unrepresentable (`try_from_value(json!({}))` yields `None`) —
+        // so plain `is_some()` is the whole annotation rule and live and
+        // restored classification agree by type.
+        let unannotated = AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(json!({}))
+                .expect("object params"),
+        });
+        assert!(assistant_text_items_from_choice(&[unannotated]).is_empty());
+
+        // A genuinely annotated empty block is content and survives.
+        let annotated = AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                json!({"citations": [1]}),
+            )
+            .expect("object params"),
+        });
+        assert_eq!(assistant_text_items_from_choice(&[annotated]).len(), 1);
     }
 
     #[test]

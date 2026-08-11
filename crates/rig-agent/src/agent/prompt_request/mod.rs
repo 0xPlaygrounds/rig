@@ -625,11 +625,11 @@ pub(crate) fn invalid_tool_retry_user_message(
 ///   assistant message whose only part is an empty text block; it carries
 ///   nothing, and the agent curates it out of history exactly as it curates
 ///   a zero-part turn. The annotation guard is load-bearing: an *annotated*
-///   empty text block carries data and must not read as empty. "Unannotated"
-///   means no captured keys, not `None` — `Text::additional_params` is a
-///   serde flatten, which decodes an empty remainder as `Some({})`, so a
-///   suspended run restored from JSON carries `Some({})` where the live run
-///   carried `None`, and both must classify identically.
+///   empty text block carries data and must not read as empty. Annotation is
+///   a plain `is_some()`: [`rig_core::message::AdditionalParams`] is
+///   non-empty by construction, so `Some` always carries data, live and
+///   restored alike (pinned by
+///   `empty_turn_classification_survives_a_serde_round_trip`).
 ///
 /// This runs on turns flowing through the agent loop only. Caller-supplied
 /// `chat_history` is never filtered: an empty text block you replay goes to
@@ -643,16 +643,8 @@ pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
         && matches!(
             choice.first(),
             Some(AssistantContent::Text(text))
-                if text.text.is_empty() && has_no_annotations(text.additional_params.as_ref())
+                if text.text.is_empty() && text.additional_params.is_none()
         )
-}
-
-/// Whether a text block's flatten-captured params carry no data. `None` and
-/// the empty map are the same absence: the flatten decodes an empty JSON
-/// remainder as `Some({})`, so a serde round trip must not change how a
-/// block classifies.
-fn has_no_annotations(params: Option<&serde_json::Value>) -> bool {
-    params.is_none_or(|value| value.as_object().is_some_and(serde_json::Map::is_empty))
 }
 
 pub(crate) fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
@@ -1202,11 +1194,14 @@ mod tests {
 
     #[test]
     fn empty_turn_classification_survives_a_serde_round_trip() {
-        // `Text::additional_params` is a serde flatten, which decodes an
-        // empty JSON remainder as `Some({})` where the live value was
-        // `None`. A suspended run restored from JSON must classify its
-        // empty-text turn exactly like the live run did — and an
-        // *annotated* empty block must still read as content either way.
+        // A suspended run restored from JSON must classify its empty-text
+        // turn exactly like the live run did, whatever spelling of "no
+        // extras" the JSON carries, and an *annotated* empty block must
+        // still read as content either way. The serde canonicalization
+        // mechanics behind this (`{}`/`null` decode to `None`, empty params
+        // never serialize) are pinned where they live, by rig-core's
+        // `empty_params_canonicalize_to_none_in_both_serde_directions` —
+        // this test asserts classification only.
         let live = vec![AssistantContent::text("")];
         assert!(is_empty_assistant_turn(&live));
 
@@ -1218,9 +1213,37 @@ mod tests {
             "restored turn must classify like the live one: {round:?}"
         );
 
-        let annotated: Vec<AssistantContent> =
-            serde_json::from_value(serde_json::json!([{"text": "", "signature": "sig"}]))
-                .expect("deserialize annotated");
+        // An explicit `{}` or `null` in the JSON — the shape a mechanical
+        // migration script writes — classifies exactly like an absent field.
+        for empty_spelling in [serde_json::json!({}), serde_json::Value::Null] {
+            let migrated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
+                {"type": "text", "text": "", "additional_params": empty_spelling}
+            ]))
+            .expect("deserialize migrated");
+            assert!(is_empty_assistant_turn(&migrated));
+        }
+
+        // The old uncanonicalized-`Some({})` hazard is unrepresentable:
+        // `AdditionalParams` has no empty value, so the only way to spell
+        // "no extras" in memory is `None` and live/restored classification
+        // agree by construction.
+        let canonical_absent = vec![AssistantContent::Text(rig_core::message::Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                serde_json::json!({}),
+            )
+            .expect("object params"),
+        })];
+        assert!(is_empty_assistant_turn(&canonical_absent));
+        let restored: Vec<AssistantContent> =
+            serde_json::from_value(serde_json::to_value(&canonical_absent).expect("serialize"))
+                .expect("deserialize");
+        assert!(is_empty_assistant_turn(&restored));
+
+        let annotated: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
+            {"type": "text", "text": "", "additional_params": {"signature": "sig"}}
+        ]))
+        .expect("deserialize annotated");
         assert!(
             !is_empty_assistant_turn(&annotated),
             "an annotated empty block carries data: {annotated:?}"
@@ -1233,7 +1256,7 @@ mod tests {
         // pre-monoid Option encoding) must map to zero-valued usage. The
         // fixture otherwise uses the current shape — `content` is a required
         // field since the missing-`content` reconstruction was dropped.
-        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}],"content":[{"text":"ok"}]}"#;
+        let fixture = r#"{"output":"ok","usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null},{"call_index":1,"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"messages":[{"role":"user","content":[{"type":"text","text":"add things"}]}],"content":[{"type":"text","text":"ok"}]}"#;
 
         let response: PromptResponse =
             serde_json::from_str(fixture).expect("old-format response should deserialize");
@@ -1244,8 +1267,8 @@ mod tests {
                 CompletionCall::new(1, usage(3, 4))
             ]
         );
-        // The migrated `content` shape is a *bare* text object — no "type"
-        // key (see `a_stray_type_key_is_captured_not_a_tag` for why).
+        // `content` uses the tagged shape — assistant content is tagged like
+        // user content (see `the_type_key_is_the_tag_and_the_untagged_shape_does_not_load`).
         let [AssistantContent::Text(text)] = response.content() else {
             panic!("expected one text block, got {:?}", response.content());
         };
@@ -1253,14 +1276,13 @@ mod tests {
     }
 
     #[test]
-    fn a_stray_type_key_is_captured_not_a_tag() {
-        // The hazard MIGRATING's hand-migration recipe warns about, exercised:
-        // assistant content is untagged, so a `"type":"text"` key written by
-        // analogy with (tagged) user content is not a tag — the flatten
-        // captures it into `additional_params`, where it would be replayed to
-        // providers as a provider-specific field. Pinned so a future serde
-        // change that starts *rejecting* or *dropping* the key is a visible
-        // decision.
+    fn the_type_key_is_the_tag_and_the_untagged_shape_does_not_load() {
+        // Assistant content is tagged like user content: `"type"` is consumed
+        // as the discriminant, never captured into `additional_params`. And
+        // there is deliberately no untagged fallback — the bare shape 0.41
+        // serialized fails to deserialize (MIGRATING carries the recipe),
+        // pinned here so removing the tag requirement is a visible decision,
+        // not an accident.
         let tagged: Vec<AssistantContent> =
             serde_json::from_value(serde_json::json!([{"type": "text", "text": "ok"}]))
                 .expect("deserialize");
@@ -1268,11 +1290,10 @@ mod tests {
             panic!("expected one text block, got {tagged:?}");
         };
         assert_eq!(text.text, "ok");
-        assert_eq!(
-            text.additional_params,
-            Some(serde_json::json!({"type": "text"})),
-            "the stray key is flatten-captured, not consumed as a tag"
-        );
+        assert_eq!(text.additional_params, None, "the tag is not data");
+
+        serde_json::from_value::<Vec<AssistantContent>>(serde_json::json!([{"text": "ok"}]))
+            .expect_err("the untagged shape must not deserialize");
     }
 
     #[test]
@@ -2471,7 +2492,7 @@ mod tests {
 
     #[tokio::test]
     async fn prompt_request_preserves_metadata_only_text_turn_in_history() {
-        let metadata = json!({
+        let metadata = rig_core::message::AdditionalParams::try_from_value(json!({
             "citations": [{
                 "type": "web_search_result_location",
                 "cited_text": "Claude Shannon was born in 1916.",
@@ -2479,7 +2500,9 @@ mod tests {
                 "title": null,
                 "encrypted_index": "encrypted-reference"
             }]
-        });
+        }))
+        .expect("object params")
+        .expect("params carry data");
         let model =
             MockCompletionModel::new([MockTurn::from_content(AssistantContent::Text(Text {
                 text: String::new(),

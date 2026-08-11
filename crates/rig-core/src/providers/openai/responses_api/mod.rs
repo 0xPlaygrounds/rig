@@ -584,24 +584,17 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
 
                 for assistant_content in content {
                     match assistant_content {
-                        crate::message::AssistantContent::Text(Text { text, .. }) => {
-                            if text.is_empty() {
+                        crate::message::AssistantContent::Text(Text {
+                            text,
+                            additional_params,
+                        }) => {
+                            // The whole replay rule lives in
+                            // `assistant_text_replay_message`; `None` means
+                            // the block produces no wire item.
+                            let Some(message) =
+                                assistant_text_replay_message(id.clone(), text, additional_params)
+                            else {
                                 continue;
-                            }
-                            let message = if let Some(id) = id.clone() {
-                                Message::Assistant {
-                                    content: vec![AssistantContentType::Text(
-                                        AssistantContent::OutputText(Text::new(text)),
-                                    )],
-                                    id,
-                                    name: None,
-                                    status: ToolStatus::Completed,
-                                }
-                            } else {
-                                Message::AssistantInput {
-                                    content: text,
-                                    name: None,
-                                }
                             };
 
                             other_items.push(InputItem {
@@ -2637,9 +2630,141 @@ impl Message {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AssistantContent {
-    OutputText(Text),
+    OutputText(OutputText),
     Refusal { refusal: String },
 }
+
+/// Wire shape of a Responses `output_text` block — this wire's own type, not
+/// the rig-level [`Text`]. `text` is the payload; everything else OpenAI
+/// attaches at the same level (`annotations`, `logprobs`, future keys) is
+/// preserved verbatim so a decoded item re-serializes value-equal.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct OutputText {
+    pub text: String,
+    /// OpenAI's sibling keys, preserved verbatim for value-equal replay.
+    /// The `Map` form (not `Option<Value>`) makes absence and the empty map
+    /// one value, so a decoded bare block equals a request-assembled one.
+    #[serde(flatten, default, skip_serializing_if = "Map::is_empty")]
+    pub extras: Map<String, Value>,
+}
+
+impl OutputText {
+    /// A bare text block, as request assembly emits (no wire extras).
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            extras: Map::new(),
+        }
+    }
+
+    /// Rebuild a wire block from a rig text block, re-attaching only the
+    /// extras this wire recognizes as its own: the sibling keys captured off
+    /// an `output_text` block at ingest (see
+    /// [`From<AssistantContent> for completion::AssistantContent`]).
+    fn from_message_text(
+        text: impl Into<String>,
+        additional_params: Option<crate::message::AdditionalParams>,
+    ) -> Self {
+        let Some(params) = additional_params else {
+            return Self::new(text);
+        };
+        // The gate (`into_wire_extras`) collapses malformed-under-key to
+        // "no extras"; loudness for that shape lives in
+        // `assistant_text_replay_message`, this fn's one production caller.
+        let extras = params
+            .into_wire_extras(OPENAI_RESPONSES_EXTRAS_KEY)
+            .map(|map| {
+                map.into_iter()
+                    // The named field and the tag own `text`/`type`. Extras
+                    // ride a serde flatten, so an unfiltered key here would
+                    // serialize as a *duplicate* JSON key and last-wins
+                    // parsers would read history data as the block's text or
+                    // tag — ingest can never capture these keys, so dropping
+                    // them loses nothing.
+                    .filter(|(key, _)| key != "text" && key != "type")
+                    .collect()
+            })
+            .unwrap_or_default();
+        Self {
+            text: text.into(),
+            extras,
+        }
+    }
+}
+
+/// The one home for the assistant-text replay rule, shared by both request
+/// conversions. Returns the wire message for a rig text block, or `None`
+/// when the block produces no wire item at all.
+///
+/// The rule: replay honors only *this wire's* extras
+/// ([`OPENAI_RESPONSES_EXTRAS_KEY`]), and deliverability is part of it — the
+/// id-less `AssistantInput` form is a bare string that cannot carry extras,
+/// so an empty block replays only when the id-carrying form is available; a
+/// bare, foreign-annotated, or undeliverable empty block is skipped (its
+/// extras cannot reach this wire anyway, and an empty assistant item the
+/// wire never sent risks a rejection). Every quiet corridor is loud: a
+/// malformed value under the wire's key warns even when the block is
+/// skipped, and own-wire extras stranded on an id-less block warn as they
+/// drop.
+fn assistant_text_replay_message(
+    id: Option<String>,
+    text: String,
+    additional_params: Option<crate::message::AdditionalParams>,
+) -> Option<Message> {
+    // Malformed-under-key is loud on every path — the gate below collapses
+    // it to "no extras", so this is the one place that can still tell
+    // malformed from absent. Only reachable via hand-built or mis-migrated
+    // history (ingest always writes an object).
+    if let Some(non_object) = additional_params
+        .as_ref()
+        .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY))
+        .filter(|value| !value.is_object())
+    {
+        tracing::warn!(
+            %non_object,
+            "`additional_params[\"{OPENAI_RESPONSES_EXTRAS_KEY}\"]` must be a JSON \
+             object — replaying without these extras"
+        );
+    }
+    let own_extras = additional_params
+        .as_ref()
+        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY))
+        .is_some();
+    if text.is_empty() && !(own_extras && id.is_some()) {
+        return None;
+    }
+    match id {
+        Some(id) => Some(Message::Assistant {
+            content: vec![AssistantContentType::Text(AssistantContent::OutputText(
+                OutputText::from_message_text(text, additional_params),
+            ))],
+            id,
+            name: None,
+            status: ToolStatus::Completed,
+        }),
+        None => {
+            if own_extras {
+                tracing::warn!(
+                    "own-wire extras cannot ride the id-less assistant form — \
+                     replaying the text without them"
+                );
+            }
+            Some(Message::AssistantInput {
+                content: text,
+                name: None,
+            })
+        }
+    }
+}
+
+/// Key under which an `output_text` block's wire extras (`annotations`,
+/// `logprobs`, future keys) ride on the generic
+/// [`Text::additional_params`](crate::message::Text) — captured on the
+/// **blocking** response path, replayed only by this wire's serializer. The
+/// streaming adapter does not yet route annotation events into params, so a
+/// streamed turn's history carries no extras under this key (follow-up
+/// work, not a silent drop at replay: nothing was captured).
+pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
 
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
@@ -2647,8 +2772,28 @@ impl From<AssistantContent> for completion::AssistantContent {
             AssistantContent::Refusal { refusal } => {
                 completion::AssistantContent::Text(Text::new(refusal))
             }
-            AssistantContent::OutputText(Text { text, .. }) => {
-                completion::AssistantContent::Text(Text::new(text))
+            // Keep this destructuring exhaustive so new wire fields force an
+            // explicit capture-or-drop decision.
+            AssistantContent::OutputText(OutputText { text, extras }) => {
+                // Capture only extras that carry data: the wire stamps
+                // `"annotations": []` / `"logprobs": []` on every block, and
+                // empty carriers as params would change the replayed request
+                // bytes for content that carries nothing.
+                let extras: Map<String, Value> = extras
+                    .into_iter()
+                    .filter(|(_, value)| {
+                        !(value.is_null()
+                            || value.as_array().is_some_and(Vec::is_empty)
+                            || value.as_object().is_some_and(Map::is_empty))
+                    })
+                    .collect();
+                completion::AssistantContent::Text(Text {
+                    text,
+                    additional_params: crate::message::AdditionalParams::from_entries(
+                        (!extras.is_empty())
+                            .then_some((OPENAI_RESPONSES_EXTRAS_KEY, Value::Object(extras))),
+                    ),
+                })
             }
         }
     }
@@ -2877,24 +3022,19 @@ impl TryFrom<message::Message> for Vec<Message> {
 
                 for assistant_content in content {
                     match assistant_content {
-                        crate::message::AssistantContent::Text(Text { text, .. }) => {
-                            if text.is_empty() {
-                                continue;
-                            }
-                            if let Some(id) = assistant_message_id.clone() {
-                                messages.push(Message::Assistant {
-                                    id,
-                                    status: ToolStatus::Completed,
-                                    content: vec![AssistantContentType::Text(
-                                        AssistantContent::OutputText(Text::new(text)),
-                                    )],
-                                    name: None,
-                                });
-                            } else {
-                                messages.push(Message::AssistantInput {
-                                    content: text,
-                                    name: None,
-                                });
+                        crate::message::AssistantContent::Text(Text {
+                            text,
+                            additional_params,
+                        }) => {
+                            // The whole replay rule lives in
+                            // `assistant_text_replay_message`; `None` means
+                            // the block produces no wire item.
+                            if let Some(message) = assistant_text_replay_message(
+                                assistant_message_id.clone(),
+                                text,
+                                additional_params,
+                            ) {
+                                messages.push(message);
                             }
                         }
                         crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
@@ -2969,6 +3109,126 @@ mod tests {
     use crate::test_utils::MockCompletionModel;
     use serde_json::json;
     use std::collections::HashMap;
+
+    #[test]
+    fn output_text_extras_survive_generic_conversion_and_replay() {
+        // Ingest capture is unconditional: the wire's sibling keys ride the
+        // generic block under this wire's params key. Replay is gated: only
+        // this wire's serializer reads them back, value-equal.
+        let mut extras = Map::new();
+        extras.insert(
+            "annotations".to_string(),
+            json!([{"type": "url_citation", "url": "https://example.com"}]),
+        );
+        let wire = OutputText {
+            text: "cited".to_string(),
+            extras: extras.clone(),
+        };
+        let generic: completion::AssistantContent = AssistantContent::OutputText(wire).into();
+        let completion::AssistantContent::Text(text) = &generic else {
+            panic!("expected a text block, got: {generic:?}");
+        };
+        assert_eq!(
+            text.additional_params
+                .as_ref()
+                .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)),
+            Some(&Value::Object(extras.clone()))
+        );
+
+        let replayed =
+            OutputText::from_message_text(text.text.clone(), text.additional_params.clone());
+        assert_eq!(replayed.text, "cited");
+        assert_eq!(replayed.extras, extras);
+
+        // Extras ride a serde flatten, so the reserved keys the named field
+        // and the tag own must never replay from history — a duplicate JSON
+        // key would let persisted data shadow the block's real text or tag.
+        let hostile = message::AdditionalParams::try_from_value(json!({
+            OPENAI_RESPONSES_EXTRAS_KEY: {
+                "text": "evil",
+                "type": "evil_type",
+                "annotations": ["kept"],
+            }
+        }))
+        .expect("object params");
+        let replayed = OutputText::from_message_text("real", hostile.clone());
+        assert_eq!(replayed.text, "real");
+        assert!(replayed.extras.get("text").is_none());
+        assert!(replayed.extras.get("type").is_none());
+        assert_eq!(replayed.extras.get("annotations"), Some(&json!(["kept"])));
+        let wire = serde_json::to_value(&replayed).expect("serialize");
+        assert_eq!(wire.get("text"), Some(&json!("real")));
+
+        // Replay honors only this wire's extras: an empty text block
+        // annotated with a *foreign* wire's extras (the shape anthropic
+        // ingest writes for raw server-tool content) produces no Responses
+        // item at all — its extras cannot reach this wire, and an empty
+        // assistant item the wire never sent risks a rejection — while an
+        // `openai_responses`-annotated empty block still replays.
+        let foreign = message::Message::Assistant {
+            id: None,
+            content: vec![completion::AssistantContent::Text(message::Text {
+                text: String::new(),
+                additional_params: message::AdditionalParams::try_from_value(json!({
+                    "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
+                }))
+                .expect("object params"),
+            })],
+        };
+        let items: Vec<InputItem> = foreign.try_into().expect("convert");
+        assert!(
+            items.is_empty(),
+            "foreign-annotated empty block must produce no Responses item: {items:?}"
+        );
+
+        let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
+            id,
+            content: vec![completion::AssistantContent::Text(message::Text {
+                text: String::new(),
+                additional_params: message::AdditionalParams::try_from_value(json!({
+                    OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
+                }))
+                .expect("object params"),
+            })],
+        };
+        // With a message id, the Assistant form carries the extras.
+        let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
+            .try_into()
+            .expect("convert");
+        assert_eq!(
+            items.len(),
+            1,
+            "own-wire-annotated empty block must replay when deliverable: {items:?}"
+        );
+        let serialized = serde_json::to_value(&items).expect("serialize");
+        assert_eq!(
+            serialized[0]["content"][0]["annotations"],
+            json!(["kept"]),
+            "the replayed item must carry the extras: {serialized}"
+        );
+        // Without an id the only form is the bare-string `AssistantInput`,
+        // which cannot carry extras — an empty block is skipped rather than
+        // sent as a content-free item with its extras dropped.
+        let items: Vec<InputItem> = own_annotated_empty(None).try_into().expect("convert");
+        assert!(
+            items.is_empty(),
+            "undeliverable annotated empty block must be skipped: {items:?}"
+        );
+
+        // A bare block stays bare in both directions.
+        let bare: completion::AssistantContent =
+            AssistantContent::OutputText(OutputText::new("plain")).into();
+        let completion::AssistantContent::Text(text) = &bare else {
+            panic!("expected a text block, got: {bare:?}");
+        };
+        assert_eq!(text.additional_params, None);
+        assert!(
+            OutputText::from_message_text("plain", None)
+                .extras
+                .is_empty(),
+            "no params, no extras"
+        );
+    }
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
         crate::completion::Document {
@@ -4789,7 +5049,7 @@ mod tests {
         };
         assert!(matches!(
             content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
+            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4813,7 +5073,7 @@ mod tests {
         };
         assert!(matches!(
             content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
+            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4833,7 +5093,7 @@ mod tests {
         };
         assert!(matches!(
             content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. }))) if text == "final answer"
+            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
         ));
     }
 
@@ -4975,7 +5235,7 @@ mod tests {
         assert_eq!(id, "msg_123");
         assert!(matches!(
             content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(Text { text, .. })))
+            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. })))
                 if text == "final answer"
         ));
 

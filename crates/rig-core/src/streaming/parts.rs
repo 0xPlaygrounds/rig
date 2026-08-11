@@ -153,7 +153,7 @@ impl PartsAccumulator {
     pub(crate) fn text_start(
         &mut self,
         id: &StreamPartId,
-        additional_params: Option<serde_json::Value>,
+        additional_params: Option<crate::message::AdditionalParams>,
     ) {
         match self.text_ids.get(id) {
             Some(_) => {
@@ -185,16 +185,21 @@ impl PartsAccumulator {
 
     /// Merge provider metadata into the active text block, opening an empty
     /// block if none is active.
-    pub(crate) fn text_additional_params(&mut self, additional_params: serde_json::Value) {
-        if additional_params.is_null() {
-            return;
-        }
+    ///
+    /// [`crate::message::AdditionalParams`] is non-empty by construction, so
+    /// there is no empty-carrier case to filter: an arriving params value is
+    /// always data, and the stored-params invariant (`None` or data) holds by
+    /// type.
+    pub(crate) fn text_additional_params(
+        &mut self,
+        additional_params: crate::message::AdditionalParams,
+    ) {
         let index = self.ensure_text_block();
         let Some(AssistantContent::Text(text)) = self.parts.get_mut(index) else {
             return;
         };
         match text.additional_params.as_mut() {
-            Some(existing) => merge_text_additional_params(existing, additional_params),
+            Some(existing) => existing.merge(additional_params),
             None => text.additional_params = Some(additional_params),
         }
     }
@@ -853,34 +858,6 @@ fn attach_reasoning_signature(reasoning: &mut Reasoning, signature: String) {
             text: String::new(),
             signature: Some(signature),
         }),
-    }
-}
-
-/// Deep-merge streamed text metadata: arrays concatenate (citation deltas),
-/// objects merge recursively, scalars take the incoming value.
-fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serde_json::Value) {
-    match (existing, incoming) {
-        (serde_json::Value::Object(existing_map), serde_json::Value::Object(incoming_map)) => {
-            for (key, incoming_value) in incoming_map {
-                match existing_map.get_mut(&key) {
-                    Some(existing_value) => match (existing_value, incoming_value) {
-                        (
-                            serde_json::Value::Array(existing_array),
-                            serde_json::Value::Array(mut incoming_array),
-                        ) => existing_array.append(&mut incoming_array),
-                        (existing_value, incoming_value) => {
-                            merge_text_additional_params(existing_value, incoming_value);
-                        }
-                    },
-                    None => {
-                        existing_map.insert(key, incoming_value);
-                    }
-                }
-            }
-        }
-        (existing, incoming) => {
-            *existing = incoming;
-        }
     }
 }
 

@@ -3552,7 +3552,7 @@ mod migrated_tests {
         }
     }
 
-    fn text_metadata(content: &[AssistantContent]) -> Option<&serde_json::Value> {
+    fn text_metadata(content: &[AssistantContent]) -> Option<&rig_core::message::AdditionalParams> {
         content.iter().find_map(|item| match item {
             AssistantContent::Text(text) => text.additional_params.as_ref(),
             _ => None,
