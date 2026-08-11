@@ -390,12 +390,10 @@ async fn a_streamed_turn_drives_through_the_driver() {
         let streamed = assembler.finish(stream.message_id.clone(), &final_content);
 
         driver
-            .run_mut()
-            .record_streamed_completion_call(stream.usage())
+            .record_stream_usage(stream.usage())
             .expect("usage recorded");
         driver
-            .run_mut()
-            .streamed_turn(streamed)
+            .accept_streamed_turn(streamed)
             .expect("streamed turn accepted");
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;

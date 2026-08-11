@@ -895,11 +895,13 @@ async fn native_output_mode_uses_the_provider_constraint() {
 
 /// A hand-driven **streamed** turn goes through the driver, against real SSE.
 ///
-/// The streamed entry points live on `AgentRun` and take `&mut self`, so this
-/// is only expressible because the driver hands out `run_mut()`. Without it a
-/// streaming caller has to `into_run()` and rebuild the driver, which discards
-/// the per-turn snapshot cache and makes the driver treat a turn prepared in
-/// this very process as a resume — drift check included.
+/// The streamed turn enters through the driver's own ingress
+/// (`record_stream_usage` / `accept_streamed_turn`), so the turn stays paired
+/// with the snapshot that prepared it. Before those existed a streaming caller
+/// had to reach around the driver into the run, and the alternative — rebuild
+/// the driver from `into_run()` — discards the per-turn snapshot cache and
+/// makes the driver treat a turn prepared in this very process as a resume,
+/// drift check included.
 #[tokio::test]
 async fn a_streamed_turn_drives_through_the_driver() {
     with_openai_completions_cassette("agent_driver/streamed_turn", |client| async move {
@@ -929,12 +931,10 @@ async fn a_streamed_turn_drives_through_the_driver() {
         let streamed = assembler.finish(stream.message_id.clone(), &final_content);
 
         driver
-            .run_mut()
-            .record_streamed_completion_call(stream.usage())
+            .record_stream_usage(stream.usage())
             .expect("usage recorded");
         driver
-            .run_mut()
-            .streamed_turn(streamed)
+            .accept_streamed_turn(streamed)
             .expect("streamed turn accepted");
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;
@@ -977,12 +977,10 @@ async fn a_streamed_text_turn_finalizes_the_run() {
         let streamed = assembler.finish(stream.message_id.clone(), &final_content);
 
         driver
-            .run_mut()
-            .record_streamed_completion_call(stream.usage())
+            .record_stream_usage(stream.usage())
             .expect("usage recorded");
         driver
-            .run_mut()
-            .streamed_turn(streamed)
+            .accept_streamed_turn(streamed)
             .expect("streamed turn accepted");
 
         let response = expect_done(&mut driver).await;
@@ -1033,12 +1031,10 @@ async fn a_streamed_turn_honors_the_request_patch() {
         let streamed = assembler.finish(stream.message_id.clone(), &final_content);
 
         driver
-            .run_mut()
-            .record_streamed_completion_call(stream.usage())
+            .record_stream_usage(stream.usage())
             .expect("usage recorded");
         driver
-            .run_mut()
-            .streamed_turn(streamed)
+            .accept_streamed_turn(streamed)
             .expect("streamed turn accepted");
 
         let (pending, tools) = expect_execute_tools(&mut driver).await;
@@ -1108,12 +1104,10 @@ async fn a_truncated_stream_ends_the_turn_without_a_transport_error() {
         let final_content = stream.choice.clone();
         let streamed = assembler.finish(stream.message_id.clone(), &final_content);
         driver
-            .run_mut()
-            .record_streamed_completion_call(stream.usage())
+            .record_stream_usage(stream.usage())
             .expect("usage recorded");
         driver
-            .run_mut()
-            .streamed_turn(streamed)
+            .accept_streamed_turn(streamed)
             .expect("the truncated turn is still a turn");
     })
     .await;

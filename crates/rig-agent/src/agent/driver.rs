@@ -79,13 +79,17 @@ use rig_core::message::UserContent;
 
 use super::completion::{Agent, TurnBaseline, TurnRequest, build_prepared_completion_request};
 use super::model::ModelHandle;
-use super::run::{Advance, AgentRun, ModelCallInputs, ModelTurnOutcome, PendingToolCall};
+use super::run::{
+    Advance, AgentRun, ModelCallInputs, ModelTurnOutcome, PartialStreamedTurn, PendingToolCall,
+    StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
+};
 use super::runner::build_agent_run;
 use super::turn_tools::{PreparedCompletionRequest, TurnTools};
 use crate::agent::hook::{InvalidToolCallAction, RequestPatch};
+use crate::agent::prompt_request::CompletionCall;
 use crate::agent::prompt_request::PromptResponse;
 use crate::completion::{
-    CompletionError, CompletionRequestBuilder, CompletionResponse, Message, PromptError,
+    CompletionError, CompletionRequestBuilder, CompletionResponse, Message, PromptError, Usage,
 };
 use crate::tool::server::ToolRegistrySnapshot;
 use rig_core::wasm_compat::WasmBoxedFuture;
@@ -163,7 +167,7 @@ pub enum DriveStep {
         /// [`executable_tool_names`](TurnTools::executable_tool_names) and
         /// [`allowed_tool_names`](TurnTools::allowed_tool_names) here, then
         /// feed the assembled turn through
-        /// [`AgentDriver::run_mut`]. Destructuring this step as
+        /// [`AgentDriver::accept_streamed_turn`]. Destructuring this step as
         /// `SendRequest { request, .. }` is fine for a blocking loop and will
         /// leave a streaming one with no way to validate the model's calls.
         tools: TurnTools,
@@ -305,28 +309,46 @@ impl AgentDriver {
         &self.run
     }
 
-    /// Mutable access to the run, for the entry points the driver does not
-    /// wrap.
+    /// Record one provider completion call for a streamed turn.
     ///
-    /// A streamed turn is fed through [`AgentRun::record_streamed_completion_call`],
-    /// [`AgentRun::resolve_streamed_invalid_tool_call`] and
-    /// [`AgentRun::streamed_turn`], all of which need `&mut AgentRun`. Driving
-    /// a custom streaming transport is a headline use for this type, so the
-    /// access has to exist; without it a streaming caller would have to
-    /// [`Self::into_run`], drive the turn by hand, and rebuild the driver —
-    /// which discards the per-turn snapshot cache and makes the driver treat a
-    /// turn prepared in *this* process as a resume, drift check and all.
+    /// A streamed turn learns its usage from the provider's final stream event,
+    /// which arrives separately from the assembled turn — including for turns
+    /// abandoned by invalid tool-call recovery, where the stream is drained for
+    /// usage after the rollback. Exactly as
+    /// [`AgentRun::record_streamed_completion_call`], but through the driver so
+    /// the turn stays paired with the snapshot that prepared it.
+    pub fn record_stream_usage(&mut self, usage: Usage) -> Result<CompletionCall, PromptError> {
+        self.run.record_streamed_completion_call(usage)
+    }
+
+    /// Feed the assembled streamed turn for the pending
+    /// [`DriveStep::SendRequest`].
     ///
-    /// # Do not commit or roll back a model call through this
+    /// The streamed counterpart of [`Self::model_response`]: the run then
+    /// proceeds exactly as it would for a blocking turn, and the next
+    /// [`Self::next_step`] yields `ExecuteTools` or `Done` paired with this
+    /// turn's dispatch snapshot.
     ///
-    /// Use [`Self::next_step`] and [`Self::rollback_model_call`] for those.
-    /// They keep the driver's cached dispatch target in step with the turn the
-    /// run is on; committing a turn behind the driver's back would leave the
-    /// previous turn's snapshot cached and dispatch this turn's calls through
-    /// it. Feeding a *response* — streamed or otherwise — is safe, because it
-    /// belongs to the turn the cache already holds.
-    pub fn run_mut(&mut self) -> &mut AgentRun {
-        &mut self.run
+    /// Build the turn with a [`StreamedTurnAssembler`](super::run::StreamedTurnAssembler)
+    /// constructed from the [`TurnTools`] the matching `SendRequest` carried;
+    /// see that module's docs for the full streaming protocol.
+    pub fn accept_streamed_turn(&mut self, turn: StreamedTurn) -> Result<(), PromptError> {
+        self.run.streamed_turn(turn)
+    }
+
+    /// Resolve an invalid tool call surfaced mid-stream, exactly as
+    /// [`AgentRun::resolve_streamed_invalid_tool_call`].
+    ///
+    /// Answering while the stream is still open is the point: a doomed turn can
+    /// be abandoned without paying for the rest of the provider's output.
+    pub fn resolve_streamed_invalid_tool_call(
+        &mut self,
+        partial: &PartialStreamedTurn,
+        invalid: &StreamedInvalidToolCall,
+        action: InvalidToolCallAction,
+    ) -> Result<StreamedResolution, PromptError> {
+        self.run
+            .resolve_streamed_invalid_tool_call(partial, invalid, action)
     }
 
     /// Consume the driver, returning the run state.
