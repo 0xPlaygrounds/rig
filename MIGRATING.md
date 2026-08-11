@@ -1605,13 +1605,13 @@ through provider-side idempotency, your own record of what was transmitted, or a
 transport that fails before the write. Bound the attempts yourself. Runs driven
 by `Agent::runner` are unaffected; the runner still fails the prompt.
 
-Two behavior changes on the driver's resume path, both narrowing what dispatch
-will do: `TurnTools::execute` now refuses any name the turn did not advertise
-(previously a tool registered *after* a run was suspended could be dispatched
-through a turn that never advertised it), and a resumed snapshot resolves the
-advertised names explicitly instead of re-running retrieval for them, so a
-registered dynamic tool the new query does not rank is no longer reported as
-unregistered.
+Two things to know about dispatch on a resumed run, since both differ from what
+you might assume: `TurnTools::execute` refuses any name the turn did not
+advertise, so a tool registered *after* a run was suspended cannot be dispatched
+through a turn that never offered it to the model; and the resumed snapshot
+resolves the advertised names against the registry directly rather than
+re-running retrieval, so a registered dynamic tool is found whether or not a
+fresh query would rank it, and absence really does mean the tool is gone.
 
 An `Agent`'s default model is set at construction. Per-run overrides now go
 through `runner(...).using_model(...)`, `Agent::set_model`, or a

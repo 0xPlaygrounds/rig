@@ -143,9 +143,24 @@ pub enum DriveStep {
         /// `.record_content_telemetry(false)` on it to opt a hand-driven turn
         /// out.
         request: Box<CompletionRequestBuilder<ModelHandle>>,
-        /// The turn's advertised tool sets — informational here (the driver
-        /// assembles the model turn itself); the same value arrives on the
+        /// The turn's advertised tool sets.
+        ///
+        /// For a **blocking** send this is informational — the driver builds
+        /// the model turn itself when you hand the response to
+        /// [`AgentDriver::model_response`] — and the same value arrives on the
         /// following [`ExecuteTools`](Self::ExecuteTools) step for dispatch.
+        ///
+        /// For a **streamed** send it is required, and this is the only place
+        /// a driven turn can get it:
+        /// [`StreamedTurnAssembler::new`](super::run::StreamedTurnAssembler::new)
+        /// takes the turn's executable and allowed name sets, so build the
+        /// assembler from
+        /// [`executable_tool_names`](TurnTools::executable_tool_names) and
+        /// [`allowed_tool_names`](TurnTools::allowed_tool_names) here, then
+        /// feed the assembled turn through
+        /// [`AgentDriver::run_mut`]. Destructuring this step as
+        /// `SendRequest { request, .. }` is fine for a blocking loop and will
+        /// leave a streaming one with no way to validate the model's calls.
         tools: TurnTools,
         /// One-based index of this model call within the run.
         turn: usize,
