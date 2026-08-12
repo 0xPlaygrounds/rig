@@ -6,7 +6,7 @@ use super::runner::{
     AgentRunner, DEFAULT_INVALID_TOOL_CALL_RETRIES, DEFAULT_MAX_TURNS, build_agent_run,
 };
 use crate::{
-    agent::prompt_request::{streaming::StreamingPromptRequest, tool_result_output},
+    agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
         Chat, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse,
         Document, Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
@@ -22,7 +22,7 @@ use rig_core::{
     message::{ToolChoice, UserContent},
     wasm_compat::WasmCompatSend,
 };
-use std::{collections::BTreeSet, sync::Arc};
+use std::{borrow::Cow, collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
 
@@ -234,7 +234,10 @@ pub(crate) fn allowed_tool_names_for_choice(
 pub(crate) struct PreparedRequestInputs<'a> {
     pub(crate) model: &'a ModelHandle,
     pub(crate) prompt: Message,
-    pub(crate) chat_history: &'a [Message],
+    /// Borrowed for per-turn drivers that keep their history; owned for the
+    /// manual surface, whose `CallModel` step hands the driver a fresh `Vec`
+    /// that would otherwise be cloned and dropped.
+    pub(crate) chat_history: Cow<'a, [Message]>,
     pub(crate) preamble: Option<&'a str>,
     pub(crate) static_context: &'a [Document],
     pub(crate) temperature: Option<f64>,
@@ -245,17 +248,38 @@ pub(crate) struct PreparedRequestInputs<'a> {
     pub(crate) tool_server_handle: &'a ToolServerHandle,
     pub(crate) output_schema: Option<&'a schemars::Schema>,
     pub(crate) output_mode: &'a OutputMode,
-    /// The run's already-committed Tool-mode output-tool name, if any (#1928).
-    pub(crate) committed_output_tool: Option<&'a str>,
     pub(crate) output_tool_description: Option<&'a str>,
     pub(crate) augment_output_preamble: bool,
     pub(crate) request_patch: Option<&'a RequestPatch>,
 }
 
+/// Build a prepared request under `run`'s committed output-tool policy.
+///
+/// The single home for the #1928 read/commit pairing shared by the classic
+/// driver and [`Agent::prepare_completion_request`] — the only two callers of
+/// [`build_prepared_completion_request`]: the run's committed Tool-mode
+/// output-tool name feeds preparation (so a committed run cannot flip back to
+/// native on a later turn), and the name the prepared request actually
+/// advertises is committed back onto the run before it is returned.
+pub(crate) async fn build_prepared_completion_request_for_run(
+    run: &mut AgentRun,
+    inputs: PreparedRequestInputs<'_>,
+) -> Result<PreparedCompletionRequest, CompletionError> {
+    let committed_output_tool = run.output_tool_name();
+    let prepared = build_prepared_completion_request(inputs, committed_output_tool).await?;
+    run.set_output_tool_name(prepared.output_tool_name.clone());
+    Ok(prepared)
+}
+
 /// Helper function to build a completion request from agent components while
 /// preserving the executable Rig tool names sent to the provider.
+/// `committed_output_tool` is the run's already-committed Tool-mode
+/// output-tool name, if any (#1928); call through
+/// [`build_prepared_completion_request_for_run`] so the read/commit pairing
+/// stays in one place.
 pub(crate) async fn build_prepared_completion_request(
     inputs: PreparedRequestInputs<'_>,
+    committed_output_tool: Option<&str>,
 ) -> Result<PreparedCompletionRequest, CompletionError> {
     let PreparedRequestInputs {
         model,
@@ -271,7 +295,6 @@ pub(crate) async fn build_prepared_completion_request(
         tool_server_handle,
         output_schema,
         output_mode,
-        committed_output_tool,
         output_tool_description,
         augment_output_preamble,
         request_patch,
@@ -479,16 +502,17 @@ pub(crate) async fn build_prepared_completion_request(
     // *this turn only* (context-window compaction / summarization). The RAG query
     // text above deliberately still derives from the original `chat_history`, so
     // this changes only what is sent, never what is retrieved or persisted.
-    let messages_history: &[Message] = request_patch
-        .and_then(|o| o.history.as_deref())
-        .unwrap_or(chat_history);
-    let chat_history: Vec<Message> = if let Some(preamble) = &effective_preamble {
-        std::iter::once(Message::system(preamble.clone()))
-            .chain(messages_history.iter().cloned())
-            .collect()
-    } else {
-        messages_history.to_vec()
-    };
+    // `into_owned` moves an already-owned history (the manual surface) and
+    // clones a borrowed one (the classic driver, or a patched history).
+    let messages_history: Cow<'_, [Message]> =
+        match request_patch.and_then(|o| o.history.as_deref()) {
+            Some(patched) => Cow::Borrowed(patched),
+            None => chat_history,
+        };
+    let mut chat_history: Vec<Message> = messages_history.into_owned();
+    if let Some(preamble) = &effective_preamble {
+        chat_history.insert(0, Message::system(preamble.clone()));
+    }
 
     // In Tool mode, advertise the synthetic output tool to the provider (its name
     // is added to `allowed_tool_names` below but never to `executable_tool_names`,
@@ -690,15 +714,9 @@ impl PreparedAgentTurn {
         let args = json_utils::serialize_json_value(&tool_call.function.arguments);
         let result = self
             .tool_snapshot
-            .execute(&tool_call.function.name, &args, context)
+            .execute(&tool_call.function.name, args, context)
             .await;
-
-        tool_result_output(
-            tool_call.id.clone(),
-            tool_call.provider.clone(),
-            tool_call.function.name.clone(),
-            result.output().clone(),
-        )
+        call.result_content(result.output().clone())
     }
 }
 
@@ -878,13 +896,12 @@ impl Agent {
     /// `agent.new_run(prompt).max_turns(10)`.
     ///
     /// Pair it with [`Agent::prepare_completion_request`], which prepares each
-    /// model call under the same policy and commits the run's structured-output
-    /// tool expectation. Overriding seeded policy afterwards (for example
-    /// [`AgentRun::with_tool_choice`]) desynchronizes the run from the
-    /// requests that method prepares, which always carry the agent's baseline.
-    /// [`AgentRun::new`] remains available for intentionally custom runs; such
-    /// callers own keeping the run's policy (tool choice, output validation,
-    /// output-tool name) consistent with the requests they prepare.
+    /// model call under the **run's** policy — including a later
+    /// [`AgentRun::with_tool_choice`] override — and commits the run's
+    /// structured-output tool expectation. [`AgentRun::new`] remains available
+    /// for intentionally custom runs; such callers own keeping the run's
+    /// policy (tool choice, output validation, output-tool name) consistent
+    /// with the requests they prepare.
     pub fn new_run(&self, prompt: impl Into<Message>) -> AgentRun {
         // Same policy defaults as `AgentRunner::from_agent` (shared constants,
         // so the two cannot drift) and the same single construction site
@@ -915,16 +932,16 @@ impl Agent {
     /// tool, or [`ToolChoice::Specific`] naming an unknown tool) fails here,
     /// before any provider IO.
     ///
-    /// `run` keeps request preparation and run policy paired for structured
-    /// output: preparation reads the run's committed output-tool name so a run
+    /// `run` keeps request preparation and run policy paired. For structured
+    /// output, preparation reads the run's committed output-tool name so a run
     /// that committed to Tool-mode output on an earlier turn cannot flip back
     /// to native later, and commits the name this request advertises back onto
     /// the run — exactly as the classic driver does — so the run's output-tool
-    /// interception matches what the model was told. Nothing else about the
-    /// run is read or advanced. The request always carries the agent's
-    /// *baseline* tool choice: overriding the seeded policy on the run (e.g.
-    /// [`AgentRun::with_tool_choice`]) makes the run classify calls under a
-    /// policy this request never advertised.
+    /// interception matches what the model was told. The advertised tool
+    /// choice is likewise the **run's** (seeded from the agent by
+    /// [`Agent::new_run`], and following an [`AgentRun::with_tool_choice`]
+    /// override), so the run always classifies calls under the policy the
+    /// provider actually saw. Nothing else about the run is read or advanced.
     ///
     /// **Hook-free means hook-free.** This runs no hooks, appends no memory,
     /// opens no classic lifecycle or telemetry spans, and applies no tool
@@ -936,31 +953,37 @@ impl Agent {
     pub async fn prepare_completion_request(
         &self,
         prompt: impl Into<Message>,
-        history: &[Message],
+        history: Vec<Message>,
         run: &mut AgentRun,
     ) -> Result<PreparedAgentRequest, CompletionError> {
-        let committed_output_tool = run.output_tool_name().map(str::to_owned);
-        let prepared = build_prepared_completion_request(PreparedRequestInputs {
-            model: &self.model,
-            prompt: prompt.into(),
-            chat_history: history,
-            preamble: self.preamble.as_deref(),
-            static_context: &self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params.as_ref(),
-            record_telemetry_content: self.record_telemetry_content,
-            tool_choice: self.tool_choice.as_ref(),
-            tool_server_handle: &self.tool_server_handle,
-            output_schema: self.output_schema.as_ref(),
-            output_mode: &self.output_mode,
-            committed_output_tool: committed_output_tool.as_deref(),
-            output_tool_description: None,
-            augment_output_preamble: true,
-            request_patch: None,
-        })
+        // The run's tool choice — not the agent baseline — so a
+        // `with_tool_choice` override on the run reaches the provider and the
+        // run never classifies calls under a policy the request didn't carry.
+        // Cloned up front because the inputs below cannot borrow `run` while
+        // the wrapper holds it mutably.
+        let tool_choice = run.tool_choice().cloned();
+        let prepared = build_prepared_completion_request_for_run(
+            run,
+            PreparedRequestInputs {
+                model: &self.model,
+                prompt: prompt.into(),
+                chat_history: Cow::Owned(history),
+                preamble: self.preamble.as_deref(),
+                static_context: &self.static_context,
+                temperature: self.temperature,
+                max_tokens: self.max_tokens,
+                additional_params: self.additional_params.as_ref(),
+                record_telemetry_content: self.record_telemetry_content,
+                tool_choice: tool_choice.as_ref(),
+                tool_server_handle: &self.tool_server_handle,
+                output_schema: self.output_schema.as_ref(),
+                output_mode: &self.output_mode,
+                output_tool_description: None,
+                augment_output_preamble: true,
+                request_patch: None,
+            },
+        )
         .await?;
-        run.set_output_tool_name(prepared.output_tool_name.clone());
 
         let PreparedCompletionRequest {
             builder,
@@ -1581,7 +1604,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go");
         let (prompt, history) = first_call_model(&mut run);
         let (builder, _turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -1629,7 +1652,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go").max_turns(2);
         let (prompt, history) = first_call_model(&mut run);
         let (builder, turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -1657,7 +1680,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go").max_turns(2);
         let (prompt, history) = first_call_model(&mut run);
         let (builder, turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -1761,7 +1784,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go").max_turns(2);
         let (prompt, history) = first_call_model(&mut run);
         let (builder, turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -1826,7 +1849,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go").max_turns(2);
         let (prompt, history) = first_call_model(&mut run);
         let (builder, turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -1853,6 +1876,74 @@ mod agent_run_surface_tests {
     }
 
     #[tokio::test]
+    async fn run_tool_choice_override_reaches_the_prepared_request() {
+        // The run — not the agent baseline — is the source of truth for tool
+        // choice: an `AgentRun::with_tool_choice` override after `new_run`
+        // must reach the provider request and the run's allowed set alike.
+        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
+            "call-1",
+            "subtract",
+            json!({"x": 5, "y": 2}),
+        )]);
+        let agent = AgentBuilder::new(model.clone())
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Auto)
+            .build();
+
+        let mut run = agent
+            .new_run("go")
+            .max_turns(2)
+            .with_tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            });
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let response = builder.send().await.expect("mock send");
+
+        // The provider saw the override, not the agent's Auto baseline...
+        let requests = model.requests();
+        let request = requests.first().expect("one request");
+        assert_eq!(
+            request.tool_choice,
+            Some(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+        );
+
+        // ...and the run classifies under that same policy: the executable
+        // `subtract` call is disallowed by the overridden choice.
+        match run
+            .model_response(turn.model_turn(response))
+            .expect("model response accepted")
+        {
+            ModelTurnOutcome::NeedsResolution(context) => {
+                assert_eq!(context.tool_name, "subtract");
+            }
+            other => panic!("expected NeedsResolution under the override, got {other:?}"),
+        }
+
+        // An override that is impossible against the agent's tools still
+        // fails before provider IO.
+        let model = MockCompletionModel::text("unused");
+        let agent = AgentBuilder::new(model.clone()).tool(MockAddTool).build();
+        let mut run = agent.new_run("go").with_tool_choice(ToolChoice::Specific {
+            function_names: vec!["missing".to_string()],
+        });
+        let (prompt, history) = first_call_model(&mut run);
+        let error = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect_err("an impossible override must fail locally");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert_eq!(model.request_count(), 0, "no provider IO may happen");
+    }
+
+    #[tokio::test]
     async fn seeded_run_validates_output_against_the_agent_schema() {
         // `new_run` seeds the run's output validation from the agent's schema:
         // an output-tool call missing a required field is re-prompted (within
@@ -1873,7 +1964,7 @@ mod agent_run_surface_tests {
                     prompt, history, ..
                 } => {
                     let (builder, turn) = agent
-                        .prepare_completion_request(prompt, &history, &mut run)
+                        .prepare_completion_request(prompt, history, &mut run)
                         .await
                         .expect("preparation succeeds")
                         .into_parts();
@@ -1917,7 +2008,7 @@ mod agent_run_surface_tests {
                     prompt, history, ..
                 }) => {
                     let (builder, turn) = agent
-                        .prepare_completion_request(prompt, &history, &mut run)
+                        .prepare_completion_request(prompt, history, &mut run)
                         .await
                         .expect("preparation succeeds")
                         .into_parts();
@@ -1958,7 +2049,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go").max_turns(2);
         let (prompt, history) = first_call_model(&mut run);
         let (builder, turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -1986,7 +2077,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go");
         let (prompt, history) = first_call_model(&mut run);
         let error = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect_err("Required with no tools must fail locally");
         assert!(matches!(error, CompletionError::RequestError(_)));
@@ -2003,7 +2094,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go");
         let (prompt, history) = first_call_model(&mut run);
         let error = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect_err("Specific naming an unknown tool must fail locally");
         assert!(matches!(error, CompletionError::RequestError(_)));
@@ -2041,7 +2132,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go");
         let (prompt, history) = first_call_model(&mut run);
         let (builder, _turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -2101,7 +2192,7 @@ mod agent_run_surface_tests {
                     prompt, history, ..
                 } => {
                     let (builder, turn) = agent
-                        .prepare_completion_request(prompt, &history, &mut run)
+                        .prepare_completion_request(prompt, history, &mut run)
                         .await
                         .expect("preparation succeeds")
                         .into_parts();
@@ -2166,7 +2257,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("go");
         let (prompt, history) = first_call_model(&mut run);
         let (_builder, turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -2216,7 +2307,7 @@ mod agent_run_surface_tests {
         let mut run = agent.new_run("What is 2 + 5?").max_turns(2);
         let (prompt, history) = first_call_model(&mut run);
         let (builder, turn) = agent
-            .prepare_completion_request(prompt, &history, &mut run)
+            .prepare_completion_request(prompt, history, &mut run)
             .await
             .expect("preparation succeeds")
             .into_parts();
@@ -2246,12 +2337,9 @@ mod agent_run_surface_tests {
             let result = handle
                 .execute(&call.tool_call.function.name, &args, &mut context)
                 .await;
-            results.push(UserContent::tool_result_for(
-                call.tool_call.id.clone(),
-                call.tool_call.provider.clone(),
-                call.tool_call.function.name.clone(),
-                result.output().clone().into_content(),
-            ));
+            // `result_content` applies the id/provider/name correlation so
+            // the resume path never copies those fields by hand.
+            results.push(call.result_content(result.output().clone()));
         }
         resumed.tool_results(results).expect("results accepted");
 
@@ -2262,7 +2350,7 @@ mod agent_run_surface_tests {
             other => panic!("expected CallModel, got {other:?}"),
         };
         let (builder, turn) = rebuilt
-            .prepare_completion_request(prompt, &history, &mut resumed)
+            .prepare_completion_request(prompt, history, &mut resumed)
             .await
             .expect("preparation succeeds")
             .into_parts();

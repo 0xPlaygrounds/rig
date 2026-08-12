@@ -207,6 +207,28 @@ pub struct PendingToolCall {
     pub internal_call_id: Option<String>,
 }
 
+impl PendingToolCall {
+    /// Correlate an executed tool's output with this call, producing the
+    /// tool-result content [`AgentRun::tool_results`] expects.
+    ///
+    /// This applies the same correlation every built-in dispatch surface
+    /// does — the result carries this call's id, provider call id, and
+    /// executed tool name — so a manual driver (for example one finishing a
+    /// resumed run through
+    /// [`Agent::tool_server_handle`](crate::agent::Agent::tool_server_handle))
+    /// never copies those fields by hand. It does not consult
+    /// [`preresolved_result`](Self::preresolved_result); return that content
+    /// directly instead of executing anything when it is set.
+    pub fn result_content(&self, output: crate::tool::ToolOutput) -> UserContent {
+        UserContent::tool_result_for(
+            self.tool_call.id.clone(),
+            self.tool_call.provider.clone(),
+            self.tool_call.function.name.clone(),
+            output.into_content(),
+        )
+    }
+}
+
 /// A completed model turn fed back to [`AgentRun::model_response`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -489,6 +511,15 @@ impl AgentRun {
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
         self
+    }
+
+    /// The tool choice active for this run, if any. Request preparation for a
+    /// manually driven run reads this — never the agent baseline directly —
+    /// so the policy advertised to the provider always matches the policy the
+    /// run enforces, even after [`Self::with_tool_choice`] overrides the
+    /// seeded value.
+    pub(crate) fn tool_choice(&self) -> Option<&ToolChoice> {
+        self.tool_choice.as_ref()
     }
 
     /// Set the synthetic output-tool name for Tool output mode (see #1928).

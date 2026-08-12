@@ -570,6 +570,26 @@ pub(crate) struct ToolDispatch {
     pub(crate) context: ToolContext,
 }
 
+impl ToolDispatch {
+    /// Publish this dispatch's outcome to the caller-owned context and return
+    /// its result: the dispatch's result metadata is adopted, while the
+    /// caller's inbound values are untouched.
+    ///
+    /// The shared completion half of the context-hygiene contract used by
+    /// every `execute` surface
+    /// ([`ToolServerHandle::execute`](crate::tool::server::ToolServerHandle::execute),
+    /// [`ToolSet::execute`], and the registry-snapshot execute behind
+    /// [`PreparedAgentTurn::execute_call`](crate::agent::PreparedAgentTurn::execute_call)).
+    /// Callers must run [`ToolContext::clear_dispatch_result`] **before**
+    /// starting the dispatch — not here — so a dispatch future that is
+    /// cancelled mid-flight cannot leave the previous dispatch's stale
+    /// metadata behind (pinned by the cancelled-dispatch hygiene tests).
+    pub(crate) fn publish(self, context: &mut ToolContext) -> ToolResult {
+        context.accept_dispatch_result(self.context);
+        self.result
+    }
+}
+
 /// Execute a resolved registry entry through the single dispatch boundary.
 ///
 /// Every surface enters here with its caller-owned context. The helper clones
@@ -724,14 +744,12 @@ impl ToolSet {
         args: impl Into<String>,
         context: &mut ToolContext,
     ) -> ToolResult {
+        // Clear BEFORE dispatching (not in `publish`): a cancelled dispatch
+        // must not leave the previous dispatch's stale metadata behind.
         context.clear_dispatch_result();
         let tool = self.get(name).cloned();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = dispatch_tool(name, args.into(), tool, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        let dispatch = dispatch_tool(name, args.into(), tool, context).await;
+        dispatch.publish(context)
     }
 
     /// Documents describing all registered tools.

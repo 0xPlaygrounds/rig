@@ -58,7 +58,6 @@ use rig::agent::{
     Agent, AgentHook, HookContext, InvalidToolCallAction, ToolCall as ToolCallEvent, ToolCallAction,
 };
 use rig::completion::CompletionModel;
-use rig::message::UserContent;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::{Tool, ToolContext};
@@ -167,7 +166,7 @@ async fn main() -> Result<()> {
                 // tool definitions, and tool choice; impossible tool choices
                 // fail here, before any provider IO.
                 let (request, turn_pairing) = agent
-                    .prepare_completion_request(prompt, &history, &mut run)
+                    .prepare_completion_request(prompt, history, &mut run)
                     .await?
                     .into_parts();
                 // The caller owns the send (its transport, retries, and
@@ -239,7 +238,7 @@ async fn main() -> Result<()> {
                 prompt, history, ..
             } => {
                 let (request, turn_pairing) = agent
-                    .prepare_completion_request(prompt, &history, &mut run)
+                    .prepare_completion_request(prompt, history, &mut run)
                     .await?
                     .into_parts();
                 let response = request.send().await?;
@@ -279,23 +278,21 @@ async fn main() -> Result<()> {
         match run.next_step()? {
             AgentRunStep::CallTools { calls } => {
                 let mut results = Vec::with_capacity(calls.len());
-                for call in calls {
+                for call in &calls {
                     // Tool calls suppressed by invalid tool-call recovery come
                     // with a pre-resolved result and must not be executed.
-                    if let Some(result) = call.preresolved_result {
-                        results.push(result);
+                    if let Some(result) = &call.preresolved_result {
+                        results.push(result.clone());
                         continue;
                     }
                     let name = &call.tool_call.function.name;
                     let args = call.tool_call.function.arguments.to_string();
                     println!("→ executing {name}({args}) via the live handle");
                     let result = handle.execute(name, &args, &mut context).await;
-                    results.push(UserContent::tool_result_for(
-                        call.tool_call.id.clone(),
-                        call.tool_call.provider.clone(),
-                        name.clone(),
-                        result.output().clone().into_content(),
-                    ));
+                    // `result_content` correlates the executed tool's output
+                    // with this call (id, provider call id, tool name), so
+                    // none of those fields are copied by hand.
+                    results.push(call.result_content(result.output().clone()));
                 }
                 run.tool_results(results)?;
             }
@@ -303,7 +300,7 @@ async fn main() -> Result<()> {
                 prompt, history, ..
             } => {
                 let (request, turn_pairing) = agent
-                    .prepare_completion_request(prompt, &history, &mut run)
+                    .prepare_completion_request(prompt, history, &mut run)
                     .await?
                     .into_parts();
                 let response = request.send().await?;

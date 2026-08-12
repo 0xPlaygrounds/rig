@@ -53,35 +53,34 @@ impl ToolRegistrySnapshot {
     }
 
     /// Dispatch through the exact implementation advertised for this turn.
+    /// Takes owned args so a caller that already built the serialized payload
+    /// moves it instead of re-copying it.
     pub(crate) async fn dispatch(
         &self,
         tool_name: &str,
-        args: &str,
+        args: impl Into<String>,
         context: &ToolContext,
     ) -> ToolDispatch {
         let tool = self.tools.get(tool_name).cloned();
-        dispatch_tool(tool_name, args.to_string(), tool, context).await
+        dispatch_tool(tool_name, args.into(), tool, context).await
     }
 
     /// Execute a pinned tool through the canonical structured path.
     ///
     /// Mirrors [`ToolServerHandle::execute`] against this snapshot's pinned
-    /// handles: clears result metadata from the previous dispatch, runs one
-    /// isolated dispatch, and publishes the new dispatch's result metadata
-    /// back to `context`.
+    /// handles; [`ToolDispatch::publish`] owns the shared completion half of
+    /// the context-hygiene contract.
     pub(crate) async fn execute(
         &self,
         tool_name: &str,
-        args: &str,
+        args: impl Into<String>,
         context: &mut ToolContext,
     ) -> ToolResult {
+        // Clear BEFORE dispatching (not in `publish`): a cancelled dispatch
+        // must not leave the previous dispatch's stale metadata behind.
         context.clear_dispatch_result();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = self.dispatch(tool_name, args, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        let dispatch = self.dispatch(tool_name, args, context).await;
+        dispatch.publish(context)
     }
 }
 
@@ -447,13 +446,11 @@ impl ToolServerHandle {
         args: &str,
         context: &mut ToolContext,
     ) -> ToolResult {
+        // Clear BEFORE dispatching (not in `publish`): a cancelled dispatch
+        // must not leave the previous dispatch's stale metadata behind.
         context.clear_dispatch_result();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = self.dispatch(tool_name, args, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        let dispatch = self.dispatch(tool_name, args, context).await;
+        dispatch.publish(context)
     }
 
     /// Run one isolated dispatch and retain its full context for agent hooks.
