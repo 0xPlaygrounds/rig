@@ -23,11 +23,12 @@
 
 use crate::client::{self, BearerAuth, DebugExt, ModelLister, Provider};
 use crate::http_client::HttpClientExt;
-use crate::model::{Model, ModelList, ModelListingError};
+use crate::model::{ModelList, ModelListingError};
 use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
 };
 use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
+use crate::providers::internal::model_listing::ListModelEntry;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// OpenAI-compatible base URL.
@@ -142,20 +143,6 @@ const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
     &["/v1", "/v1/"],
     "/anthropic/v1",
 );
-
-#[derive(Debug, serde::Deserialize)]
-struct ListModelEntry {
-    id: String,
-    owned_by: String,
-}
-
-impl From<ListModelEntry> for Model {
-    fn from(value: ListModelEntry) -> Self {
-        let mut model = Model::from_id(value.id);
-        model.owned_by = Some(value.owned_by);
-        model
-    }
-}
 
 /// [`ModelLister`] implementation for the Xiaomi MiMo API (`GET /models`).
 #[derive(Clone)]

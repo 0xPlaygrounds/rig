@@ -348,15 +348,7 @@ impl PartsAccumulator {
                             ))
                     );
                     if part_already_signed {
-                        let index = self.push_reasoning_part(Reasoning {
-                            id: None,
-                            content: vec![ReasoningContent::Text {
-                                text: String::new(),
-                                signature: Some(signature),
-                            }],
-                        });
-                        self.finished_reasoning.insert(id.clone(), index);
-                        return self.reasoning_at(index);
+                        return self.finish_signature_only(id, signature);
                     }
                     attach_signature(self.parts.get_mut(index), signature);
                     return self.reasoning_at(index);
@@ -366,42 +358,49 @@ impl PartsAccumulator {
                 (None, None) => return None,
                 // A whole block under a finished key is a NEW sibling part
                 // reusing the key.
-                (Some(mut restatement), signature) => {
-                    if let Some(signature) = signature {
-                        attach_reasoning_signature(&mut restatement, signature);
-                    }
-                    let index = self.push_reasoning_part(restatement);
-                    self.finished_reasoning.insert(id.clone(), index);
-                    return self.reasoning_at(index);
+                (Some(restatement), signature) => {
+                    return self.finish_restated(id, restatement, signature);
                 }
             }
         }
 
         // Never-seen key: create the part whole from the end payload.
         match (restatement, signature) {
-            (Some(mut restatement), signature) => {
-                if let Some(signature) = signature {
-                    attach_reasoning_signature(&mut restatement, signature);
-                }
-                let index = self.push_reasoning_part(restatement);
-                self.finished_reasoning.insert(id.clone(), index);
-                self.reasoning_at(index)
-            }
-            (None, Some(signature)) => {
-                // Signature-only stream: replay-required provider state with
-                // nothing streamed to sign. Record it alone.
-                let index = self.push_reasoning_part(Reasoning {
-                    id: None,
-                    content: vec![ReasoningContent::Text {
-                        text: String::new(),
-                        signature: Some(signature),
-                    }],
-                });
-                self.finished_reasoning.insert(id.clone(), index);
-                self.reasoning_at(index)
-            }
+            (Some(restatement), signature) => self.finish_restated(id, restatement, signature),
+            // Signature-only stream: replay-required provider state with
+            // nothing streamed to sign. Record it alone.
+            (None, Some(signature)) => self.finish_signature_only(id, signature),
             (None, None) => None,
         }
+    }
+
+    /// Record a whole reasoning block as a finished part under `id`.
+    fn finish_restated(
+        &mut self,
+        id: &StreamPartId,
+        mut restatement: Reasoning,
+        signature: Option<String>,
+    ) -> Option<Reasoning> {
+        if let Some(signature) = signature {
+            attach_reasoning_signature(&mut restatement, signature);
+        }
+        let index = self.push_reasoning_part(restatement);
+        self.finished_reasoning.insert(id.clone(), index);
+        self.reasoning_at(index)
+    }
+
+    /// Record a signature with no chain-of-thought as its own finished part
+    /// under `id`.
+    fn finish_signature_only(&mut self, id: &StreamPartId, signature: String) -> Option<Reasoning> {
+        let index = self.push_reasoning_part(Reasoning {
+            id: None,
+            content: vec![ReasoningContent::Text {
+                text: String::new(),
+                signature: Some(signature),
+            }],
+        });
+        self.finished_reasoning.insert(id.clone(), index);
+        self.reasoning_at(index)
     }
 
     fn open_fresh_reasoning(

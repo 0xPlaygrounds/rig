@@ -12,3 +12,22 @@ pub enum AuthError {
     #[error(transparent)]
     Http(#[from] reqwest::Error),
 }
+
+/// Platform config directory used for on-disk OAuth/token caches
+/// (`APPDATA` on Windows; `XDG_CONFIG_HOME` falling back to `~/.config`
+/// elsewhere).
+pub(crate) fn config_dir() -> Option<std::path::PathBuf> {
+    use std::path::PathBuf;
+
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA").map(PathBuf::from)
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
+    }
+}

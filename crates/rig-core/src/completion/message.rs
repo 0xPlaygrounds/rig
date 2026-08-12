@@ -185,12 +185,6 @@ impl Reasoning {
         }
     }
 
-    /// Set or clear the provider reasoning ID.
-    pub fn optional_id(mut self, id: Option<String>) -> Self {
-        self.id = id;
-        self
-    }
-
     /// Set a provider reasoning ID.
     pub fn with_id(mut self, id: String) -> Self {
         self.id = Some(id);
@@ -605,29 +599,28 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    /// A call with an explicit correlation handle and no provider-issued id.
-    pub fn new(id: ToolCallId, function: ToolFunction) -> Self {
+    fn assemble(provider: Option<ProviderCallId>, function: ToolFunction) -> Self {
         Self {
-            id,
-            provider: None,
+            id: ToolCallId::for_provider(provider.as_ref()),
+            provider,
             function,
             signature: None,
             additional_params: None,
         }
     }
 
+    /// A call with an explicit correlation handle and no provider-issued id.
+    pub fn new(id: ToolCallId, function: ToolFunction) -> Self {
+        Self {
+            id,
+            ..Self::assemble(None, function)
+        }
+    }
+
     /// The single-identifier provider boundary: adopt the wire's id when it
     /// issued one, mint when it did not (empty or absent ids mint).
     pub fn from_wire(wire_id: impl Into<String>, function: ToolFunction) -> Self {
-        let provider = ProviderCallId::new(wire_id);
-        let id = ToolCallId::for_provider(provider.as_ref());
-        Self {
-            id,
-            provider,
-            function,
-            signature: None,
-            additional_params: None,
-        }
+        Self::assemble(ProviderCallId::new(wire_id), function)
     }
 
     /// The dual-identifier provider boundary (OpenAI Responses): `item_id`
@@ -638,18 +631,9 @@ impl ToolCall {
         call_id: impl Into<String>,
         function: ToolFunction,
     ) -> Self {
-        let provider = ProviderCallId::new(call_id).map(|provider| {
-            let item_id = item_id.into();
-            provider.with_item_id(item_id)
-        });
-        let id = ToolCallId::for_provider(provider.as_ref());
-        Self {
-            id,
-            provider,
-            function,
-            signature: None,
-            additional_params: None,
-        }
+        let provider =
+            ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id.into()));
+        Self::assemble(provider, function)
     }
 
     /// Attach provider-issued identifiers.
@@ -1075,30 +1059,6 @@ pub struct Image {
     pub additional_params: Option<AdditionalParams>,
 }
 
-impl Image {
-    pub fn try_into_url(self) -> Result<String, MessageError> {
-        match self.data {
-            DocumentSourceKind::Url(url) => Ok(url),
-            DocumentSourceKind::Base64(data) => {
-                let Some(media_type) = self.media_type else {
-                    return Err(MessageError::ConversionError(
-                        "A media type is required to create a valid base64-encoded image URL"
-                            .to_string(),
-                    ));
-                };
-
-                Ok(format!(
-                    "data:image/{ty};base64,{data}",
-                    ty = media_type.to_mime_type()
-                ))
-            }
-            unknown => Err(MessageError::ConversionError(format!(
-                "Tried to convert unknown type to a URL: {unknown:?}"
-            ))),
-        }
-    }
-}
-
 /// The kind of image source (to be used).
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
@@ -1135,19 +1095,9 @@ impl DocumentSourceKind {
         Self::FileId(file_id.to_string())
     }
 
-    /// Create a raw byte source.
-    pub fn raw(bytes: impl Into<Vec<u8>>) -> Self {
-        Self::Raw(bytes.into())
-    }
-
     /// Create a string-backed source.
     pub fn string(input: &str) -> Self {
         Self::String(input.into())
-    }
-
-    /// Create an unknown source placeholder.
-    pub fn unknown() -> Self {
-        Self::Unknown
     }
 
     /// Return the contained URL, base64 string, or file ID, if this source stores one.
@@ -1362,14 +1312,6 @@ impl Message {
         }
     }
 
-    /// Helper constructor to make creating assistant messages easier.
-    pub fn assistant_with_id(id: String, text: impl Into<String>) -> Self {
-        Message::Assistant {
-            id: Some(id),
-            content: vec![AssistantContent::text(text)],
-        }
-    }
-
     /// Helper constructor to make creating tool result messages easier.
     /// `call` is the answered call's correlation handle — echo
     /// [`ToolCall::id`]; it is never recorded as a provider-issued
@@ -1510,12 +1452,7 @@ impl UserContent {
     ) -> Self {
         let provider = ProviderCallId::new(wire_id);
         let call = ToolCallId::for_provider(provider.as_ref());
-        UserContent::ToolResult(ToolResult {
-            call,
-            provider,
-            name: name.into(),
-            content,
-        })
+        Self::tool_result_for(call, provider, name, content)
     }
 
     /// Tool result content answering a specific call — the form the agent
@@ -1547,12 +1484,7 @@ impl UserContent {
     ) -> Self {
         let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
         let call = ToolCallId::for_provider(provider.as_ref());
-        UserContent::ToolResult(ToolResult {
-            call,
-            provider,
-            name: name.into(),
-            content,
-        })
+        Self::tool_result_for(call, provider, name, content)
     }
 }
 

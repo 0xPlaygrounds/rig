@@ -653,20 +653,17 @@ impl StreamedTurnAssembler {
                 internal_call_id,
             } => {
                 if !self.allowed_tool_names.contains(&tool_call.function.name) {
-                    let invalid = StreamedInvalidToolCall {
-                        tool_call: tool_call.clone(),
-                        internal_call_id: internal_call_id.clone(),
-                        args: Some(json_utils::serialize_json_value(
+                    return Ok(self.surface_invalid_call(
+                        tool_call.clone(),
+                        internal_call_id.clone(),
+                        Some(json_utils::serialize_json_value(
                             &tool_call.function.arguments,
                         )),
-                        executable_tool_names: self.executable_tool_names.clone(),
-                        allowed_tool_names: self.allowed_tool_names.clone(),
-                    };
-                    self.pending_invalid = Some(PendingInvalid::FullCall {
-                        tool_call: Box::new(tool_call.clone()),
-                        internal_call_id: internal_call_id.clone(),
-                    });
-                    return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
+                        PendingInvalid::FullCall {
+                            tool_call: Box::new(tool_call.clone()),
+                            internal_call_id: internal_call_id.clone(),
+                        },
+                    ));
                 }
 
                 self.pending_tool_calls
@@ -686,18 +683,16 @@ impl StreamedTurnAssembler {
                                 .get(&key)
                                 .map(|state| state.buffered_arguments.join(""))
                                 .unwrap_or_default();
-                            let invalid = StreamedInvalidToolCall {
-                                tool_call: self
-                                    .name_delta_diagnostic_tool_call(name, &buffered_args),
-                                internal_call_id: internal_call_id.clone(),
-                                args: Some(buffered_args),
-                                executable_tool_names: self.executable_tool_names.clone(),
-                                allowed_tool_names: self.allowed_tool_names.clone(),
-                            };
-                            self.pending_invalid = Some(PendingInvalid::NameDelta {
-                                internal_call_id: internal_call_id.clone(),
-                            });
-                            return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
+                            let tool_call =
+                                self.name_delta_diagnostic_tool_call(name, &buffered_args);
+                            return Ok(self.surface_invalid_call(
+                                tool_call,
+                                internal_call_id.clone(),
+                                Some(buffered_args),
+                                PendingInvalid::NameDelta {
+                                    internal_call_id: internal_call_id.clone(),
+                                },
+                            ));
                         }
 
                         Ok(self.validate_delta_name(&key, name.clone()))
@@ -849,6 +844,26 @@ impl StreamedTurnAssembler {
             allowed_tool_names: self.allowed_tool_names,
             internal_call_ids,
         }
+    }
+
+    /// Park resolution on `pending` and surface the rejected call to the
+    /// caller as an [`StreamedTurnEvent::InvalidToolCall`].
+    fn surface_invalid_call(
+        &mut self,
+        tool_call: ToolCall,
+        internal_call_id: String,
+        args: Option<String>,
+        pending: PendingInvalid,
+    ) -> Vec<StreamedTurnEvent> {
+        let invalid = StreamedInvalidToolCall {
+            tool_call,
+            internal_call_id,
+            args,
+            executable_tool_names: self.executable_tool_names.clone(),
+            allowed_tool_names: self.allowed_tool_names.clone(),
+        };
+        self.pending_invalid = Some(pending);
+        vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]
     }
 
     fn name_delta_diagnostic_tool_call(&self, name: &str, buffered_args: &str) -> ToolCall {

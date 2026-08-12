@@ -368,18 +368,6 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             self.insert_document(f(&doc), doc, embeddings);
         }
     }
-
-    /// Get the document by its id and deserialize it into the given type.
-    pub fn get_document<T: for<'a> Deserialize<'a>>(
-        &self,
-        id: &str,
-    ) -> Result<Option<T>, VectorStoreError> {
-        Ok(self
-            .embeddings
-            .get(id)
-            .map(|(doc, _)| serde_json::from_str(&serde_json::to_string(doc)?))
-            .transpose()?)
-    }
 }
 
 /// RankingItem(distance, document_id, serializable document, embeddings document)

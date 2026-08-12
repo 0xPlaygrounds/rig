@@ -21,8 +21,7 @@ use crate::http_client::HttpClientExt;
 use crate::json_utils;
 use crate::json_utils::string_or_vec;
 use crate::message::{
-    AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError,
-    MimeType, Text,
+    Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError, MimeType, Text,
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 
@@ -2241,13 +2240,6 @@ impl From<Output> for Vec<completion::AssistantContent> {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct OutputReasoning {
-    id: String,
-    summary: Vec<ReasoningSummary>,
-    status: ToolStatus,
-}
-
 /// An OpenAI Responses API tool call. A call ID will be returned that must be used when creating a tool result to send back to OpenAI as a message input, otherwise an error will be received.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct OutputFunctionCall {
@@ -2908,233 +2900,6 @@ pub enum UserContent {
     },
 }
 
-fn flush_responses_user_content(messages: &mut Vec<Message>, pending: &mut Vec<UserContent>) {
-    // An empty flush is a legal no-op — it fires between consecutive
-    // tool-result groups — not a conversion error. This early return is
-    // the only emptiness decision here; the pushed content is non-empty
-    // because of it.
-    if pending.is_empty() {
-        return;
-    }
-
-    messages.push(Message::User {
-        content: std::mem::take(pending),
-        name: None,
-    });
-}
-
-fn responses_user_content(content: message::UserContent) -> Result<UserContent, MessageError> {
-    match content {
-        message::UserContent::Text(message::Text { text, .. }) => {
-            Ok(UserContent::InputText { text })
-        }
-        message::UserContent::Image(message::Image {
-            data,
-            detail,
-            media_type,
-            ..
-        }) => {
-            let url = match data {
-                DocumentSourceKind::Base64(data) => {
-                    let media_type = media_type
-                        .map(|media_type| media_type.to_mime_type().to_string())
-                        .unwrap_or_default();
-                    format!("data:{media_type};base64,{data}")
-                }
-                DocumentSourceKind::Url(url) => url,
-                DocumentSourceKind::Raw(_) => {
-                    return Err(MessageError::ConversionError(
-                        "Raw files not supported, encode as base64 first".into(),
-                    ));
-                }
-                doc => {
-                    return Err(MessageError::ConversionError(format!(
-                        "Unsupported document type: {doc}"
-                    )));
-                }
-            };
-
-            Ok(UserContent::InputImage {
-                image_url: url,
-                detail: detail.unwrap_or_default(),
-            })
-        }
-        message::UserContent::Document(message::Document {
-            data: DocumentSourceKind::FileId(file_id),
-            ..
-        }) => Ok(UserContent::InputFile {
-            file_id: Some(file_id),
-            file_url: None,
-            file_data: None,
-            filename: None,
-        }),
-        message::UserContent::Document(message::Document {
-            media_type: Some(DocumentMediaType::PDF),
-            data,
-            ..
-        }) => {
-            let (file_data, file_url, filename) = match data {
-                DocumentSourceKind::Base64(data) => (
-                    Some(format!("data:application/pdf;base64,{data}")),
-                    None,
-                    Some("document.pdf".to_string()),
-                ),
-                DocumentSourceKind::Url(url) => (None, Some(url), None),
-                DocumentSourceKind::Raw(_) => {
-                    return Err(MessageError::ConversionError(
-                        "Raw files not supported, encode as base64 first".into(),
-                    ));
-                }
-                doc => {
-                    return Err(MessageError::ConversionError(format!(
-                        "Unsupported document type: {doc}"
-                    )));
-                }
-            };
-
-            Ok(UserContent::InputFile {
-                file_id: None,
-                file_url,
-                file_data,
-                filename,
-            })
-        }
-        message::UserContent::Document(message::Document {
-            data: DocumentSourceKind::Base64(text),
-            ..
-        }) => Ok(UserContent::InputText { text }),
-        message::UserContent::Audio(message::Audio {
-            data: DocumentSourceKind::Base64(data),
-            media_type,
-            ..
-        }) => Ok(UserContent::Audio {
-            input_audio: InputAudio {
-                data,
-                format: media_type.unwrap_or(AudioMediaType::MP3),
-            },
-        }),
-        message::UserContent::Audio(_) => Err(MessageError::ConversionError(
-            "Audio must be base64 encoded data".into(),
-        )),
-        _ => Err(MessageError::ConversionError(
-            "Unsupported user content for OpenAI Responses API".into(),
-        )),
-    }
-}
-
-fn responses_tool_result(tool_result: message::ToolResult) -> Result<Message, MessageError> {
-    let tool_call_id = tool_result.wire_call_id().to_owned();
-    let output = responses_tool_result_output(tool_result.content)?;
-
-    Ok(Message::ToolResult {
-        tool_call_id,
-        output,
-    })
-}
-
-impl TryFrom<message::Message> for Vec<Message> {
-    type Error = message::MessageError;
-
-    fn try_from(message: message::Message) -> Result<Self, Self::Error> {
-        match message {
-            message::Message::System { content } => Ok(vec![Message::System {
-                content: vec![content.into()],
-                name: None,
-            }]),
-            message::Message::User { content } => {
-                let mut messages = Vec::new();
-                let mut pending = Vec::new();
-
-                for content in content {
-                    match content {
-                        message::UserContent::ToolResult(tool_result) => {
-                            flush_responses_user_content(&mut messages, &mut pending);
-                            messages.push(responses_tool_result(tool_result)?);
-                        }
-                        content => pending.push(responses_user_content(content)?),
-                    }
-                }
-
-                flush_responses_user_content(&mut messages, &mut pending);
-                Ok(messages)
-            }
-            message::Message::Assistant {
-                content,
-                id: assistant_message_id,
-            } => {
-                let mut messages = Vec::new();
-
-                for assistant_content in content {
-                    match assistant_content {
-                        crate::message::AssistantContent::Text(Text {
-                            text,
-                            additional_params,
-                        }) => {
-                            // The whole replay rule lives in
-                            // `assistant_text_replay_message`; `None` means
-                            // the block produces no wire item.
-                            if let Some(message) = assistant_text_replay_message(
-                                assistant_message_id.clone(),
-                                text,
-                                additional_params,
-                            ) {
-                                messages.push(message);
-                            }
-                        }
-                        crate::message::AssistantContent::ToolCall(crate::message::ToolCall {
-                            id,
-                            provider,
-                            function,
-                            ..
-                        }) => {
-                            let (call_id, item_id) = match provider {
-                                Some(provider) => {
-                                    let item_id = provider.item_id.clone().unwrap_or_default();
-                                    (provider.call_id, item_id)
-                                }
-                                None => (id.into_string(), String::new()),
-                            };
-                            messages.push(Message::Assistant {
-                                content: vec![AssistantContentType::ToolCall(OutputFunctionCall {
-                                    call_id,
-                                    arguments: function.arguments.into(),
-                                    id: item_id,
-                                    name: function.name,
-                                    status: ToolStatus::Completed,
-                                })],
-                                id: assistant_message_id.clone().unwrap_or_default(),
-                                name: None,
-                                status: ToolStatus::Completed,
-                            });
-                        }
-                        crate::message::AssistantContent::Reasoning(reasoning) => {
-                            if let Some(openai_reasoning) = openai_reasoning_from_core(&reasoning)?
-                            {
-                                messages.push(Message::Assistant {
-                                    content: vec![AssistantContentType::Reasoning(
-                                        openai_reasoning,
-                                    )],
-                                    id: assistant_message_id.clone().unwrap_or_default(),
-                                    name: None,
-                                    status: ToolStatus::Completed,
-                                });
-                            }
-                        }
-                        crate::message::AssistantContent::Image(_) => {
-                            return Err(MessageError::ConversionError(
-                                "Assistant image content is not supported in OpenAI Responses API"
-                                    .into(),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(messages)
-            }
-        }
-    }
-}
-
 impl FromStr for UserContent {
     type Err = Infallible;
 
@@ -3324,16 +3089,25 @@ mod tests {
             ],
         };
 
-        let messages = Vec::<Message>::try_from(input).expect("message conversion");
+        let items = Vec::<InputItem>::try_from(input).expect("input item conversion");
 
         assert!(matches!(
-            messages.as_slice(),
+            items.as_slice(),
             [
-                Message::User { content: before, .. },
-                Message::ToolResult { tool_call_id, .. },
-                Message::User { content: after, .. },
+                InputItem {
+                    input: InputContent::Message(Message::User { content: before, .. }),
+                    ..
+                },
+                InputItem {
+                    input: InputContent::FunctionCallOutput(ToolResult { call_id, .. }),
+                    ..
+                },
+                InputItem {
+                    input: InputContent::Message(Message::User { content: after, .. }),
+                    ..
+                },
             ] if matches!(before.first(), Some(UserContent::InputText { text }) if text == "before")
-                && tool_call_id == "call-id"
+                && call_id == "call-id"
                 && matches!(after.first(), Some(UserContent::InputText { text }) if text == "after")
         ));
     }
@@ -3482,15 +3256,6 @@ mod tests {
         for (content, expected) in cases {
             let input = rig_tool_result(content);
 
-            let messages: Vec<Message> = input.clone().try_into().expect("message conversion");
-            assert!(matches!(
-                messages.as_slice(),
-                [Message::ToolResult {
-                    output: ToolResultOutput::Text(output),
-                    ..
-                }] if output == &expected
-            ));
-
             let items: Vec<InputItem> = input.try_into().expect("input item conversion");
             assert!(matches!(
                 items.as_slice(),
@@ -3530,15 +3295,6 @@ mod tests {
                 text: "second".to_string(),
             },
         ]);
-
-        let messages: Vec<Message> = input.clone().try_into().expect("message conversion");
-
-        match messages.as_slice() {
-            [Message::ToolResult { output, .. }] => {
-                assert_eq!(output, &expected);
-            }
-            other => panic!("expected one tool result, got {other:?}"),
-        }
 
         let items: Vec<InputItem> = input.try_into().expect("input item conversion");
 
@@ -3639,12 +3395,6 @@ mod tests {
                         && after == r#"{"after":true}"#)
             ));
         };
-
-        let messages: Vec<Message> = input.clone().try_into().expect("message conversion");
-        match messages.as_slice() {
-            [Message::ToolResult { output, .. }] => assert_output(output),
-            other => panic!("expected one rich tool result, got {other:?}"),
-        }
 
         let items: Vec<InputItem> = input.try_into().expect("input item conversion");
         match items.as_slice() {
@@ -5045,21 +4795,6 @@ mod tests {
     }
 
     #[test]
-    fn idless_reasoning_is_skipped_when_converting_responses_history() {
-        let assistant = message::Message::Assistant {
-            id: Some("msg_123".to_string()),
-            content: vec![message::AssistantContent::Reasoning(
-                message::Reasoning::new("provider reasoning"),
-            )],
-        };
-
-        let converted = Vec::<Message>::try_from(assistant)
-            .expect("idless reasoning should degrade gracefully");
-
-        assert!(converted.is_empty());
-    }
-
-    #[test]
     fn idless_reasoning_only_is_skipped_without_empty_input_item() {
         let assistant = completion::Message::Assistant {
             id: None,
@@ -5072,29 +4807,6 @@ mod tests {
             .expect("idless reasoning should degrade gracefully");
 
         assert!(converted.is_empty());
-    }
-
-    #[test]
-    fn idless_reasoning_plus_text_preserves_text_for_responses_history() {
-        let assistant = message::Message::Assistant {
-            id: Some("msg_123".to_string()),
-            content: vec![
-                message::AssistantContent::Reasoning(message::Reasoning::new("provider reasoning")),
-                message::AssistantContent::Text(Text::new("final answer")),
-            ],
-        };
-
-        let converted =
-            Vec::<Message>::try_from(assistant).expect("assistant history should convert");
-
-        assert_eq!(converted.len(), 1);
-        let Message::Assistant { content, .. } = &converted[0] else {
-            panic!("expected assistant message");
-        };
-        assert!(matches!(
-            content.first(),
-            Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
-        ));
     }
 
     #[test]
@@ -5166,55 +4878,6 @@ mod tests {
         assert_eq!(serialized["content"], json!("final answer"));
         assert!(serialized.get("id").is_none());
         assert!(serialized.get("status").is_none());
-    }
-
-    #[test]
-    fn idless_message_assistant_text_replays_as_easy_input_message() {
-        let assistant = message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::Text(Text::new("final answer"))],
-        };
-
-        let converted =
-            Vec::<Message>::try_from(assistant).expect("assistant history should convert");
-
-        assert_eq!(converted.len(), 1);
-        let Message::AssistantInput { content, .. } = &converted[0] else {
-            panic!("expected assistant input message");
-        };
-        assert_eq!(content, "final answer");
-
-        let serialized = serde_json::to_value(&converted[0])
-            .expect("assistant message should serialize to JSON");
-        assert_eq!(serialized["role"], json!("assistant"));
-        assert_eq!(serialized["content"], json!("final answer"));
-        assert!(serialized.get("id").is_none());
-        assert!(serialized.get("status").is_none());
-    }
-
-    #[test]
-    fn structured_reasoning_with_id_still_converts_for_responses_history() {
-        let assistant = message::Message::Assistant {
-            id: Some("msg_123".to_string()),
-            content: vec![message::AssistantContent::Reasoning(message::Reasoning {
-                id: Some("rs_123".to_string()),
-                content: vec![message::ReasoningContent::Summary(
-                    "structured summary".to_string(),
-                )],
-            })],
-        };
-
-        let converted =
-            Vec::<Message>::try_from(assistant).expect("structured reasoning should still convert");
-
-        assert_eq!(converted.len(), 1);
-        let Message::Assistant { content, .. } = &converted[0] else {
-            panic!("expected assistant message");
-        };
-        assert!(matches!(
-            content.first(),
-            Some(AssistantContentType::Reasoning(OpenAIReasoning { id, .. })) if id == "rs_123"
-        ));
     }
 
     #[test]
@@ -5395,30 +5058,6 @@ mod tests {
         assert_eq!(token_usage.output_tokens, 25);
         assert_eq!(token_usage.reasoning_tokens, 4);
         assert_eq!(token_usage.total_tokens, 38);
-    }
-
-    #[test]
-    fn file_id_document_serializes_as_input_file_content() {
-        let message = message::Message::User {
-            content: vec![message::UserContent::Document(message::Document {
-                data: DocumentSourceKind::FileId("file_abc".to_string()),
-                media_type: None,
-                additional_params: None,
-            })],
-        };
-
-        let converted: Vec<Message> = message.try_into().expect("conversion should succeed");
-        let Message::User { content, .. } = &converted[0] else {
-            panic!("expected user message");
-        };
-
-        let json = serde_json::to_value(content.first().expect("first content"))
-            .expect("serialize content");
-
-        assert_eq!(json["type"], "input_file");
-        assert_eq!(json["file_id"], "file_abc");
-        assert!(json.get("file_data").is_none());
-        assert!(json.get("file_url").is_none());
     }
 
     #[test]
@@ -5750,11 +5389,9 @@ mod tests {
 
     // Regression tests for issue #1429: `file_url` and `filename` are mutually
     // exclusive on OpenAI's Responses API (400 `mutually_exclusive_parameters`),
-    // so URL-backed PDFs must not carry the hardcoded `filename`. PR #1432
-    // fixed the `TryFrom<message::Message> for Vec<Message>` conversion; these
-    // tests also cover the `TryFrom<crate::completion::Message> for
-    // Vec<InputItem>` path that `CompletionModel::completion()` requests
-    // actually go through.
+    // so URL-backed PDFs must not carry the hardcoded `filename`. These tests
+    // cover the `TryFrom<crate::completion::Message> for Vec<InputItem>` path
+    // that `CompletionModel::completion()` requests actually go through.
     //
     // See <https://platform.openai.com/docs/guides/pdf-files> for the
     // `input_file` content part and its `file_url` / `file_data` / `file_id`
@@ -5843,14 +5480,6 @@ mod tests {
         let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))
             .expect("request should convert");
         let json = serde_json::to_value(&request).expect("request should serialize");
-        assert_url_only_input_file(&sole_input_file(&json));
-    }
-
-    #[test]
-    fn url_pdf_via_vec_message_path_omits_filename() {
-        let messages = Vec::<Message>::try_from(url_pdf_message())
-            .expect("URL PDF should convert to messages");
-        let json = serde_json::to_value(&messages).expect("messages should serialize");
         assert_url_only_input_file(&sole_input_file(&json));
     }
 

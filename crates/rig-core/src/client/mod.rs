@@ -615,22 +615,29 @@ impl<Ext, H> Client<Ext, H>
 where
     Ext: Provider,
 {
-    /// Build a provider-customized POST request for a regular HTTP endpoint.
-    pub fn post<S>(&self, path: S) -> http_client::Result<Builder>
-    where
-        S: AsRef<str>,
-    {
-        let uri = self
-            .ext
-            .build_uri(&self.base_url, path.as_ref(), Transport::Http);
+    fn request(
+        &self,
+        method: http::Method,
+        path: &str,
+        transport: Transport,
+    ) -> http_client::Result<Builder> {
+        let uri = self.ext.build_uri(&self.base_url, path, transport);
 
-        let mut req = Request::post(uri);
+        let mut req = Request::builder().method(method).uri(uri);
 
         if let Some(hs) = req.headers_mut() {
             hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
         }
 
         self.ext.with_custom(req)
+    }
+
+    /// Build a provider-customized POST request for a regular HTTP endpoint.
+    pub fn post<S>(&self, path: S) -> http_client::Result<Builder>
+    where
+        S: AsRef<str>,
+    {
+        self.request(http::Method::POST, path.as_ref(), Transport::Http)
     }
 
     /// Build a provider-customized POST request for an SSE endpoint.
@@ -638,17 +645,7 @@ where
     where
         S: AsRef<str>,
     {
-        let uri = self
-            .ext
-            .build_uri(&self.base_url, path.as_ref(), Transport::Sse);
-
-        let mut req = Request::post(uri);
-
-        if let Some(hs) = req.headers_mut() {
-            hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
-        }
-
-        self.ext.with_custom(req)
+        self.request(http::Method::POST, path.as_ref(), Transport::Sse)
     }
 
     /// Build a provider-customized GET request for an SSE endpoint.
@@ -656,17 +653,7 @@ where
     where
         S: AsRef<str>,
     {
-        let uri = self
-            .ext
-            .build_uri(&self.base_url, path.as_ref(), Transport::Sse);
-
-        let mut req = Request::get(uri);
-
-        if let Some(hs) = req.headers_mut() {
-            hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
-        }
-
-        self.ext.with_custom(req)
+        self.request(http::Method::GET, path.as_ref(), Transport::Sse)
     }
 
     /// Build a provider-customized GET request for a regular HTTP endpoint.
@@ -674,17 +661,7 @@ where
     where
         S: AsRef<str>,
     {
-        let uri = self
-            .ext
-            .build_uri(&self.base_url, path.as_ref(), Transport::Http);
-
-        let mut req = Request::get(uri);
-
-        if let Some(hs) = req.headers_mut() {
-            hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
-        }
-
-        self.ext.with_custom(req)
+        self.request(http::Method::GET, path.as_ref(), Transport::Http)
     }
 }
 

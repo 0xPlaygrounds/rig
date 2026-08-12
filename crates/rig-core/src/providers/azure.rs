@@ -31,7 +31,6 @@ use crate::{
     embeddings::{self, EmbeddingError},
     providers::openai,
 };
-use serde::Deserialize;
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -317,56 +316,6 @@ fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
         TEXT_EMBEDDING_3_LARGE => Some(3_072),
         TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),
         _ => None,
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingResponse {
-    pub object: String,
-    pub data: Vec<EmbeddingData>,
-    pub model: String,
-    pub usage: Usage,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EmbeddingData {
-    pub object: String,
-    pub embedding: Vec<f64>,
-    pub index: usize,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct Usage {
-    pub prompt_tokens: usize,
-    pub total_tokens: usize,
-}
-
-impl From<&Usage> for crate::completion::Usage {
-    fn from(usage: &Usage) -> Self {
-        crate::providers::internal::completion_usage(
-            usage.prompt_tokens as u64,
-            // Azure's embeddings usage reports only prompt and total counts;
-            // the completion count is the remainder.
-            usage.total_tokens.saturating_sub(usage.prompt_tokens) as u64,
-            usage.total_tokens as u64,
-            0,
-        )
-    }
-}
-
-impl From<Usage> for crate::completion::Usage {
-    fn from(usage: Usage) -> Self {
-        Self::from(&usage)
-    }
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
     }
 }
 

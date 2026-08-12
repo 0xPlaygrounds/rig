@@ -821,16 +821,140 @@ pub mod interactions_api_types {
         }
     }
 
-    /// Groups Google Search tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct GoogleSearchExchange {
+    /// Groups tool calls and results of one built-in tool family for a single
+    /// interaction.
+    #[derive(Clone, Debug)]
+    pub struct Exchange<C, R> {
         /// Call identifier used to match calls to results.
         pub call_id: Option<String>,
-        /// One or more Google Search tool calls.
-        pub calls: Vec<GoogleSearchCallContent>,
-        /// One or more Google Search tool results.
-        pub results: Vec<GoogleSearchResultContent>,
+        /// One or more tool calls.
+        pub calls: Vec<C>,
+        /// One or more tool results.
+        pub results: Vec<R>,
     }
+
+    impl<C, R> Default for Exchange<C, R> {
+        fn default() -> Self {
+            Self {
+                call_id: None,
+                calls: Vec::new(),
+                results: Vec::new(),
+            }
+        }
+    }
+
+    /// A tool call content type that carries an optional call identifier.
+    trait ExchangeCall {
+        fn id(&self) -> Option<&str>;
+    }
+
+    /// A tool result content type that carries an optional call identifier.
+    trait ExchangeResult {
+        fn call_id(&self) -> Option<&str>;
+    }
+
+    macro_rules! impl_exchange_ids {
+        ($call:ty, $result:ty) => {
+            impl ExchangeCall for $call {
+                fn id(&self) -> Option<&str> {
+                    self.id.as_deref()
+                }
+            }
+            impl ExchangeResult for $result {
+                fn call_id(&self) -> Option<&str> {
+                    self.call_id.as_deref()
+                }
+            }
+        };
+    }
+
+    impl_exchange_ids!(GoogleSearchCallContent, GoogleSearchResultContent);
+    impl_exchange_ids!(UrlContextCallContent, UrlContextResultContent);
+    impl_exchange_ids!(CodeExecutionCallContent, CodeExecutionResultContent);
+
+    /// Pairs tool calls with their results by call_id.
+    ///
+    /// When a call_id is missing, results are grouped with the most recent
+    /// call (identified or not) as a best-effort fallback.
+    fn pair_exchanges<C, R>(
+        contents: &[Content],
+        as_call: impl Fn(&Content) -> Option<&C>,
+        as_result: impl Fn(&Content) -> Option<&R>,
+    ) -> Vec<Exchange<C, R>>
+    where
+        C: Clone + ExchangeCall,
+        R: Clone + ExchangeResult,
+    {
+        let mut exchanges: Vec<Exchange<C, R>> = Vec::new();
+        let mut last_call_index: Option<usize> = None;
+        let position_of = |exchanges: &[Exchange<C, R>], call_id: &str| {
+            exchanges
+                .iter()
+                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+        };
+
+        for content in contents {
+            if let Some(call) = as_call(content) {
+                let index = match call.id() {
+                    Some(call_id) => match position_of(&exchanges, call_id) {
+                        Some(index) => {
+                            if let Some(exchange) = exchanges.get_mut(index) {
+                                exchange.calls.push(call.clone());
+                            }
+                            index
+                        }
+                        None => {
+                            exchanges.push(Exchange {
+                                call_id: Some(call_id.to_string()),
+                                calls: vec![call.clone()],
+                                results: Vec::new(),
+                            });
+                            exchanges.len() - 1
+                        }
+                    },
+                    None => {
+                        exchanges.push(Exchange {
+                            call_id: None,
+                            calls: vec![call.clone()],
+                            results: Vec::new(),
+                        });
+                        exchanges.len() - 1
+                    }
+                };
+                last_call_index = Some(index);
+            } else if let Some(result) = as_result(content) {
+                if let Some(call_id) = result.call_id() {
+                    if let Some(index) = position_of(&exchanges, call_id) {
+                        if let Some(exchange) = exchanges.get_mut(index) {
+                            exchange.results.push(result.clone());
+                        }
+                    } else {
+                        exchanges.push(Exchange {
+                            call_id: Some(call_id.to_string()),
+                            calls: Vec::new(),
+                            results: vec![result.clone()],
+                        });
+                    }
+                } else if let Some(index) = last_call_index {
+                    if let Some(exchange) = exchanges.get_mut(index) {
+                        exchange.results.push(result.clone());
+                    }
+                } else {
+                    exchanges.push(Exchange {
+                        call_id: None,
+                        calls: Vec::new(),
+                        results: vec![result.clone()],
+                    });
+                    last_call_index = Some(exchanges.len() - 1);
+                }
+            }
+        }
+
+        exchanges
+    }
+
+    /// Groups Google Search tool calls and results for a single interaction.
+    pub type GoogleSearchExchange = Exchange<GoogleSearchCallContent, GoogleSearchResultContent>;
 
     impl GoogleSearchExchange {
         /// Collects all queries from the stored Google Search tool calls.
@@ -859,15 +983,7 @@ pub mod interactions_api_types {
     }
 
     /// Groups URL context tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct UrlContextExchange {
-        /// Call identifier used to match calls to results.
-        pub call_id: Option<String>,
-        /// One or more URL context tool calls.
-        pub calls: Vec<UrlContextCallContent>,
-        /// One or more URL context tool results.
-        pub results: Vec<UrlContextResultContent>,
-    }
+    pub type UrlContextExchange = Exchange<UrlContextCallContent, UrlContextResultContent>;
 
     impl UrlContextExchange {
         /// Collects all URLs from the stored URL context tool calls.
@@ -896,15 +1012,7 @@ pub mod interactions_api_types {
     }
 
     /// Groups code execution tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct CodeExecutionExchange {
-        /// Call identifier used to match calls to results.
-        pub call_id: Option<String>,
-        /// One or more code execution tool calls.
-        pub calls: Vec<CodeExecutionCallContent>,
-        /// One or more code execution tool results.
-        pub results: Vec<CodeExecutionResultContent>,
-    }
+    pub type CodeExecutionExchange = Exchange<CodeExecutionCallContent, CodeExecutionResultContent>;
 
     impl CodeExecutionExchange {
         /// Collects all code snippets from the stored code execution tool calls.
@@ -942,74 +1050,17 @@ pub mod interactions_api_types {
         /// When a call_id is missing, results are grouped with the most recent
         /// call (identified or not) as a best-effort fallback.
         pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
-            let mut exchanges: Vec<GoogleSearchExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
-
-            for content in &output_contents {
-                match content {
-                    Content::GoogleSearchCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(GoogleSearchExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(GoogleSearchExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::GoogleSearchResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(GoogleSearchExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(GoogleSearchExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            exchanges
+            pair_exchanges(
+                &self.output_contents(),
+                |content| match content {
+                    Content::GoogleSearchCall(call) => Some(call),
+                    _ => None,
+                },
+                |content| match content {
+                    Content::GoogleSearchResult(result) => Some(result),
+                    _ => None,
+                },
+            )
         }
 
         /// Collects Google Search tool call contents from the interaction outputs.
@@ -1049,74 +1100,17 @@ pub mod interactions_api_types {
         /// When a call_id is missing, results are grouped with the most recent
         /// call (identified or not) as a best-effort fallback.
         pub fn url_context_exchanges(&self) -> Vec<UrlContextExchange> {
-            let mut exchanges: Vec<UrlContextExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
-
-            for content in &output_contents {
-                match content {
-                    Content::UrlContextCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(UrlContextExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(UrlContextExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::UrlContextResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(UrlContextExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(UrlContextExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            exchanges
+            pair_exchanges(
+                &self.output_contents(),
+                |content| match content {
+                    Content::UrlContextCall(call) => Some(call),
+                    _ => None,
+                },
+                |content| match content {
+                    Content::UrlContextResult(result) => Some(result),
+                    _ => None,
+                },
+            )
         }
 
         /// Collects URL context tool call contents from the interaction outputs.
@@ -1156,74 +1150,17 @@ pub mod interactions_api_types {
         /// When a call_id is missing, results are grouped with the most recent
         /// call (identified or not) as a best-effort fallback.
         pub fn code_execution_exchanges(&self) -> Vec<CodeExecutionExchange> {
-            let mut exchanges: Vec<CodeExecutionExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
-
-            for content in &output_contents {
-                match content {
-                    Content::CodeExecutionCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(CodeExecutionExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(CodeExecutionExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::CodeExecutionResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(CodeExecutionExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(CodeExecutionExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            exchanges
+            pair_exchanges(
+                &self.output_contents(),
+                |content| match content {
+                    Content::CodeExecutionCall(call) => Some(call),
+                    _ => None,
+                },
+                |content| match content {
+                    Content::CodeExecutionResult(result) => Some(result),
+                    _ => None,
+                },
+            )
         }
 
         /// Collects code execution tool call contents from the interaction outputs.

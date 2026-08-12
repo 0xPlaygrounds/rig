@@ -51,37 +51,6 @@ client::impl_provider_client!(
     base_url_env_first = "DOUBLEWORD_BASE_URL",
 );
 
-pub mod doubleword_api_types {
-    use serde::Deserialize;
-
-    impl ApiErrorResponse {
-        pub fn message(&self) -> String {
-            self.error.message.clone()
-        }
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct ApiErrorResponse {
-        pub error: ApiError,
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct ApiError {
-        pub message: String,
-        #[serde(default)]
-        pub r#type: Option<String>,
-        #[serde(default)]
-        pub code: Option<String>,
-    }
-
-    #[derive(Debug, Deserialize)]
-    #[serde(untagged)]
-    pub enum ApiResponse<T> {
-        Ok(T),
-        Error(ApiErrorResponse),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     #[test]

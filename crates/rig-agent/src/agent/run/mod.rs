@@ -649,16 +649,7 @@ impl AgentRun {
         let RunState::ResolvingToolCalls(resolving) = &self.state else {
             return None;
         };
-        let AssistantContent::ToolCall(tool_call) = resolving.items.get(resolving.next_index)?
-        else {
-            return None;
-        };
-        if resolving
-            .allowed_tool_names
-            .contains(&tool_call.function.name)
-        {
-            return None;
-        }
+        let tool_call = pending_invalid_call(resolving)?;
 
         Some(InvalidToolCallContext {
             tool_name: tool_call.function.name.clone(),

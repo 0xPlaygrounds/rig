@@ -570,6 +570,16 @@ pub(crate) struct ToolDispatch {
     pub(crate) context: ToolContext,
 }
 
+impl ToolDispatch {
+    /// Publish the dispatch's result metadata back to the caller's context and
+    /// surface the result. Mutations to the tool's inbound snapshot are
+    /// discarded.
+    pub(crate) fn publish_to(self, context: &mut ToolContext) -> ToolResult {
+        context.accept_dispatch_result(self.context);
+        self.result
+    }
+}
+
 /// Execute a resolved registry entry through the single dispatch boundary.
 ///
 /// Every surface enters here with its caller-owned context. The helper clones
@@ -726,12 +736,8 @@ impl ToolSet {
     ) -> ToolResult {
         context.clear_dispatch_result();
         let tool = self.get(name).cloned();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = dispatch_tool(name, args.into(), tool, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        let dispatch = dispatch_tool(name, args.into(), tool, context).await;
+        dispatch.publish_to(context)
     }
 
     /// Documents describing all registered tools.

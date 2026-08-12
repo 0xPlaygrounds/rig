@@ -528,17 +528,9 @@ impl Default for Usage {
 impl Add for Usage {
     type Output = Self;
 
-    fn add(self, other: Self) -> Self::Output {
-        Self {
-            input_tokens: self.input_tokens + other.input_tokens,
-            output_tokens: self.output_tokens + other.output_tokens,
-            total_tokens: self.total_tokens + other.total_tokens,
-            cached_input_tokens: self.cached_input_tokens + other.cached_input_tokens,
-            cache_creation_input_tokens: self.cache_creation_input_tokens
-                + other.cache_creation_input_tokens,
-            tool_use_prompt_tokens: self.tool_use_prompt_tokens + other.tool_use_prompt_tokens,
-            reasoning_tokens: self.reasoning_tokens + other.reasoning_tokens,
-        }
+    fn add(mut self, other: Self) -> Self::Output {
+        self += other;
+        self
     }
 }
 
@@ -872,28 +864,21 @@ impl CompletionRequest {
     pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
         let mut chat_history = self.chat_history.clone();
         if let Some(documents) = self.normalized_documents() {
-            let insert_at = chat_history
-                .iter()
-                .position(|message| !matches!(message, Message::System { .. }))
-                .unwrap_or(chat_history.len());
-            chat_history.insert(insert_at, documents);
+            insert_after_leading_system(&mut chat_history, documents);
         }
         chat_history
     }
+}
 
-    /// Adds a provider-hosted tool by storing it in `additional_params.tools`.
-    pub fn with_provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
-        self.additional_params =
-            merge_provider_tools_into_additional_params(self.additional_params, vec![tool]);
-        self
-    }
-
-    /// Adds provider-hosted tools by storing them in `additional_params.tools`.
-    pub fn with_provider_tools(mut self, tools: Vec<ProviderToolDefinition>) -> Self {
-        self.additional_params =
-            merge_provider_tools_into_additional_params(self.additional_params, tools);
-        self
-    }
+/// Insert `message` at the first non-system position so document context lands
+/// after any leading system messages; telemetry and the sent request must
+/// agree on this placement.
+fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
+    let insert_at = chat_history
+        .iter()
+        .position(|message| !matches!(message, Message::System { .. }))
+        .unwrap_or(chat_history.len());
+    chat_history.insert(insert_at, message);
 }
 
 fn merge_provider_tools_into_additional_params(
@@ -1203,11 +1188,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         chat_history.push(self.prompt.clone());
 
         if let Some(documents) = CompletionRequest::normalized_documents_from(&self.documents) {
-            let insert_at = chat_history
-                .iter()
-                .position(|message| !matches!(message, Message::System { .. }))
-                .unwrap_or(chat_history.len());
-            chat_history.insert(insert_at, documents);
+            insert_after_leading_system(&mut chat_history, documents);
         }
 
         chat_history

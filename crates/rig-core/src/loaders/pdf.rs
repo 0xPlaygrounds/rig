@@ -160,6 +160,25 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     }
 }
 
+/// Extract each page's text, paired with its zero-based page number.
+fn page_texts(doc: &Document) -> Vec<(usize, Result<String, PdfLoaderError>)> {
+    doc.page_iter()
+        .enumerate()
+        .map(|(page_no, _)| {
+            (
+                page_no,
+                doc.extract_text(&[page_no as u32 + 1])
+                    .map_err(PdfLoaderError::PdfError),
+            )
+        })
+        .collect()
+}
+
+/// Concatenate the text of every page, failing on the first unreadable page.
+fn all_text(doc: &Document) -> Result<String, PdfLoaderError> {
+    page_texts(doc).into_iter().map(|(_, text)| text).collect()
+}
+
 impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     /// Directly reads the contents of the pdfs within the iterator returned by
     ///  [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir].
@@ -182,19 +201,7 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     /// ```
     pub fn read(self) -> PdfFileLoader<'a, Result<String, PdfLoaderError>> {
         PdfFileLoader {
-            iterator: Box::new(self.iterator.map(|res| {
-                let doc = res.load()?;
-                Ok(doc
-                    .page_iter()
-                    .enumerate()
-                    .map(|(page_no, _)| {
-                        doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
-                    })
-                    .collect::<Result<Vec<String>, PdfLoaderError>>()?
-                    .into_iter()
-                    .collect::<String>())
-            })),
+            iterator: Box::new(self.iterator.map(|res| all_text(&res.load()?))),
         }
     }
 
@@ -222,22 +229,7 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
         PdfFileLoader {
             iterator: Box::new(self.iterator.map(|res| {
                 let (path, doc) = res.load_with_path()?;
-                println!(
-                    "Loaded {:?} PDF: {:?}",
-                    path,
-                    doc.page_iter().collect::<Vec<_>>()
-                );
-                let content = doc
-                    .page_iter()
-                    .enumerate()
-                    .map(|(page_no, _)| {
-                        doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
-                    })
-                    .collect::<Result<Vec<String>, PdfLoaderError>>()?
-                    .into_iter()
-                    .collect::<String>();
-
+                let content = all_text(&doc)?;
                 Ok((path, content))
             })),
         }
@@ -270,12 +262,9 @@ impl<'a> PdfFileLoader<'a, Document> {
     pub fn by_page(self) -> PdfFileLoader<'a, Result<String, PdfLoaderError>> {
         PdfFileLoader {
             iterator: Box::new(self.iterator.flat_map(|doc| {
-                doc.page_iter()
-                    .enumerate()
-                    .map(|(page_no, _)| {
-                        doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
-                    })
+                page_texts(&doc)
+                    .into_iter()
+                    .map(|(_, text)| text)
                     .collect::<Vec<_>>()
             })),
         }
@@ -313,21 +302,7 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     /// ```
     pub fn by_page(self) -> PdfFileLoader<'a, ByPage> {
         PdfFileLoader {
-            iterator: Box::new(self.iterator.map(|(path, doc)| {
-                (
-                    path,
-                    doc.page_iter()
-                        .enumerate()
-                        .map(|(page_no, _)| {
-                            (
-                                page_no,
-                                doc.extract_text(&[page_no as u32 + 1])
-                                    .map_err(PdfLoaderError::PdfError),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })),
+            iterator: Box::new(self.iterator.map(|(path, doc)| (path, page_texts(&doc)))),
         }
     }
 }
@@ -448,13 +423,6 @@ impl<'a> PdfFileLoader<'a, Vec<u8>> {
     pub fn from_bytes(bytes: Vec<u8>) -> PdfFileLoader<'a, Vec<u8>> {
         PdfFileLoader {
             iterator: Box::new(vec![bytes].into_iter()),
-        }
-    }
-
-    /// Ingest multiple byte arrays.
-    pub fn from_bytes_multi(bytes_vec: Vec<Vec<u8>>) -> PdfFileLoader<'a, Vec<u8>> {
-        PdfFileLoader {
-            iterator: Box::new(bytes_vec.into_iter()),
         }
     }
 
