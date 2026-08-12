@@ -13,28 +13,50 @@
 /// objects such as `{"error": {"message": ...}}`), so anything that isn't a
 /// valid success payload is treated as an error envelope and the raw body is
 /// preserved for the caller; `message` is only used for logging.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug)]
 pub(crate) struct ApiErrorResponse {
-    #[serde(
-        default,
-        alias = "error",
-        deserialize_with = "crate::providers::internal::envelope::error_message_or_value"
-    )]
     pub(crate) message: String,
 }
 
-/// Accept either a plain string message or any other JSON shape (nested error
-/// objects, arrays), stringifying the latter so the envelope never fails to
-/// decode on an unexpected error spelling.
-pub(crate) fn error_message_or_value<'de, D>(deserializer: D) -> Result<String, D::Error>
+impl<'de> serde::Deserialize<'de> for ApiErrorResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self {
+            message: error_message(deserializer)?,
+        })
+    }
+}
+
+/// Extract a loggable error message from an error-envelope object.
+///
+/// Accepts `{"message": ...}`, `{"error": ...}`, and bodies carrying BOTH
+/// keys (a field-level `alias = "error"` would reject those as a duplicate
+/// field); the non-null `error` key wins since it is the canonical provider
+/// error object. String values pass through, any other JSON shape (nested
+/// error objects, arrays) is stringified, and a body with neither key still
+/// classifies as an error envelope with an empty message — the raw body is
+/// what callers preserve.
+pub(crate) fn error_message<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
-    Ok(match value {
-        serde_json::Value::String(message) => message,
-        other => other.to_string(),
-    })
+    let serde_json::Value::Object(body) = value else {
+        return Err(serde::de::Error::custom(
+            "error envelope must be a JSON object",
+        ));
+    };
+    Ok(body
+        .get("error")
+        .filter(|value| !value.is_null())
+        .or_else(|| body.get("message"))
+        .map(|value| match value {
+            serde_json::Value::String(message) => message.clone(),
+            other => other.to_string(),
+        })
+        .unwrap_or_default())
 }
 
 /// A decoded provider response envelope: either the success payload or the
@@ -58,5 +80,42 @@ impl<T> ProviderEnvelope for crate::providers::openai::client::ApiResponse<T> {
             Self::Ok(value) => Ok(value),
             Self::Err(error) => Err(error.message),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::providers::openai::client::ApiResponse;
+
+    #[derive(Debug, serde::Deserialize)]
+    struct Success {
+        #[allow(dead_code)]
+        text: String,
+    }
+
+    fn classify(body: &str) -> String {
+        match serde_json::from_str::<ApiResponse<Success>>(body).expect("body must decode") {
+            ApiResponse::Err(error) => error.message,
+            ApiResponse::Ok(_) => panic!("error body must classify as the error envelope"),
+        }
+    }
+
+    /// A body carrying BOTH `message` and `error` must still classify as the
+    /// error envelope (a field-level `alias = "error"` rejected it as a
+    /// duplicate field), with the canonical `error` object winning.
+    #[test]
+    fn dual_message_and_error_keys_classify_as_the_error_envelope() {
+        assert_eq!(
+            classify(r#"{"message":"quota exceeded","error":{"code":"429"}}"#),
+            r#"{"code":"429"}"#
+        );
+    }
+
+    #[test]
+    fn null_error_key_falls_back_to_message() {
+        assert_eq!(
+            classify(r#"{"error":null,"message":"over capacity"}"#),
+            "over capacity"
+        );
     }
 }

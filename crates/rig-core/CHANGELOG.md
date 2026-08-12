@@ -73,11 +73,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(openrouter)* `max_tokens` reaches the wire — the request builder hardcoded `max_tokens: None`, silently dropping the caller's configured value on every request; a regression test asserts the serialized body carries it
 
-- *(providers)* error envelopes in azure, groq, hyperbolic, cohere, voyageai, and anthropic tolerate an OpenAI-style nested `{"error":{...}}` body — previously such a body failed both untagged arms and surfaced as a serde `JsonError` instead of a classified provider error; the raw body still flows through `from_http_response` unchanged
+- *(providers)* error envelopes in azure, groq, hyperbolic, cohere, voyageai, anthropic, and openai tolerate an OpenAI-style nested `{"error":{...}}` body AND a body carrying both `message` and `error` keys — previously a nested body failed both untagged arms (and a dual-key body was a serde duplicate-field error) and surfaced as a `JsonError` instead of a classified provider error; the non-null `error` key wins as the canonical provider error object, and the raw body still flows through `from_http_response` unchanged
+
+- *(azure)* [**behavior**] transcription sends the request's `language` form field — the hand-rolled request silently dropped a caller's `.language(..)` while the public builder exposed it, leaving Azure Whisper to auto-detect
+
+- *(transcription)* [**behavior**] string-valued `additional_params` go onto the multipart form verbatim for openai/groq/azure — they were serialized with `Value::to_string`, so `{"response_format": "verbose_json"}` reached the wire JSON-quoted (`"verbose_json"`) and was rejected or ignored; non-string values stay JSON-encoded
 
 - *(telemetry)* [**behavior**] the openai responses API, ollama, chatgpt, xai, and copilot unary paths record usage through the shared span helpers, so `cache_creation.input_tokens`, `tool_use_prompt_tokens`, and `reasoning_tokens` are now recorded and all-zero usage is suppressed per `Usage::has_values()` (previously hand-rolled records wrote literal zeros and missed those fields)
 
-- *(model-listing)* [**behavior**] every `GET /models` implementation pre-maps a transport-level `InvalidStatusCodeWithMessage` into `ModelListingError::api_error_with_context` (provider/path/status/body preserved) — previously only deepseek and xiaomimimo did, and the other providers lost that context
+- *(model-listing)* [**behavior**] every `GET /models` implementation — including copilot's auth-derived listing, via the shared `map_transport_error` — pre-maps a transport-level `InvalidStatusCodeWithMessage` into `ModelListingError::api_error_with_context` (provider/path/status/body preserved); previously only deepseek and xiaomimimo did, and the other providers lost that context
 
 - *(anthropic)* a streamed turn's `Usage::input_tokens` prefers the terminal `message_delta` and falls back to `message_start`, instead of always reading `message_start`. Anthropic proper reports the count on both frames and they agree, so nothing changes there; Anthropic-*compatible* gateways need not, and OpenRouter's Messages endpoint can send `input_tokens: 0` on `message_start` with the real count on `message_delta` (observed when it routes to an Amazon Bedrock upstream) — which silently surfaced as `Usage { input_tokens: 0 }`, worse than a missing value for a consumer sizing a context window from it. A zero on the delta is read as "not reported" so a gateway with the inverse split cannot erase a count `message_start` got right
 

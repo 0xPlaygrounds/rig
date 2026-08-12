@@ -127,30 +127,7 @@ impl ProviderClient for Client {
 }
 
 #[cfg(any(feature = "image", feature = "audio"))]
-use serde::Deserialize;
-
-#[cfg(any(feature = "image", feature = "audio"))]
-use crate::providers::internal::envelope::ApiErrorResponse;
-
-#[cfg(any(feature = "image", feature = "audio"))]
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
-#[cfg(any(feature = "image", feature = "audio"))]
-impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T> {
-    type Payload = T;
-
-    fn into_payload(self) -> Result<T, String> {
-        match self {
-            Self::Ok(value) => Ok(value),
-            Self::Err(error) => Err(error.message),
-        }
-    }
-}
+use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
 // Hyperbolic Completion API

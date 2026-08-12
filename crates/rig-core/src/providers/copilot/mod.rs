@@ -1355,7 +1355,13 @@ where
         )
         .body(http_client::NoBody)?;
 
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
+        let response = self.client.send::<_, Vec<u8>>(req).await.map_err(|error| {
+            crate::providers::internal::model_listing::map_transport_error(
+                MODEL_LISTING_PROVIDER,
+                MODEL_LISTING_PATH,
+                error,
+            )
+        })?;
 
         if !response.status().is_success() {
             let status_code = response.status().as_u16();

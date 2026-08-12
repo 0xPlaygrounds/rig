@@ -69,7 +69,6 @@ where
             request,
             TranscriptionFields {
                 model: Some(&self.model),
-                send_language: true,
             },
         )?;
 

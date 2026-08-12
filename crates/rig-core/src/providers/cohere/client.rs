@@ -87,17 +87,24 @@ impl ProviderClient for Client {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct ApiErrorResponse {
     /// Provider error message; tolerant of `{"message": "..."}`,
-    /// `{"error": "..."}`, and nested `{"error": {"message": ...}}` shapes.
-    /// Used for logging only — the raw body is preserved on the returned error.
-    #[serde(
-        default,
-        alias = "error",
-        deserialize_with = "crate::providers::internal::envelope::error_message_or_value"
-    )]
+    /// `{"error": "..."}`, nested `{"error": {"message": ...}}`, and bodies
+    /// carrying both keys. Used for logging only — the raw body is preserved
+    /// on the returned error.
     pub message: String,
+}
+
+impl<'de> Deserialize<'de> for ApiErrorResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self {
+            message: crate::providers::internal::envelope::error_message(deserializer)?,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]

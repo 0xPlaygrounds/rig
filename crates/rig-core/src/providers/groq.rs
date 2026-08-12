@@ -140,25 +140,7 @@ impl ProviderClient for Client {
     }
 }
 
-use crate::providers::internal::envelope::ApiErrorResponse;
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
-impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T> {
-    type Payload = T;
-
-    fn into_payload(self) -> Result<T, String> {
-        match self {
-            Self::Ok(value) => Ok(value),
-            Self::Err(error) => Err(error.message),
-        }
-    }
-}
+use crate::providers::openai::client::ApiResponse;
 
 fn apply_native_tools_to_additional_params(
     extra: &mut Map<String, Value>,
@@ -310,7 +292,6 @@ where
             request,
             crate::providers::internal::transcription::TranscriptionFields {
                 model: Some(&self.model),
-                send_language: true,
             },
         )?;
 

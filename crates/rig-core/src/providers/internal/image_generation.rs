@@ -39,7 +39,7 @@ where
     let response = client.send::<_, Bytes>(req).await?;
 
     let status = response.status();
-    let response_body = response.into_body().into_future().await?.to_vec();
+    let response_body = response.into_body().into_future().await?;
 
     if !status.is_success() {
         return Err(ImageGenerationError::from_http_response(

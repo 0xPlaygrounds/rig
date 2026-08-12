@@ -306,25 +306,7 @@ impl ProviderClient for Client {
     }
 }
 
-use crate::providers::internal::envelope::ApiErrorResponse;
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
-
-impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T> {
-    type Payload = T;
-
-    fn into_payload(self) -> Result<T, String> {
-        match self {
-            Self::Ok(value) => Ok(value),
-            Self::Err(error) => Err(error.message),
-        }
-    }
-}
+use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
 // Azure OpenAI Embedding API
@@ -397,9 +379,10 @@ impl std::fmt::Display for Usage {
 
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-    ndims: usize,
+    /// The shared OpenAI-compatible embeddings driver, built once at
+    /// construction; the wrapper only preserves Azure's historical
+    /// `Option<usize>` ndims constructor signatures.
+    inner: openai::embedding::GenericEmbeddingModel<AzureExt, T>,
 }
 
 impl openai::embedding::OpenAIEmbeddingsCompatible for AzureExt {
@@ -419,22 +402,6 @@ impl openai::embedding::OpenAIEmbeddingsCompatible for AzureExt {
     }
 }
 
-impl<T> EmbeddingModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// The shared OpenAI-compatible embeddings driver, built from this
-    /// model's fields so the provider-facing constructor signatures stay
-    /// unchanged.
-    fn generic(&self) -> openai::embedding::GenericEmbeddingModel<AzureExt, T> {
-        openai::embedding::GenericEmbeddingModel::new(
-            self.client.clone(),
-            self.model.clone(),
-            self.ndims,
-        )
-    }
-}
-
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
 where
     T: HttpClientExt + Default + Clone + 'static,
@@ -448,7 +415,7 @@ where
     }
 
     fn ndims(&self) -> usize {
-        self.ndims
+        self.inner.ndims()
     }
 
     async fn embed_texts(
@@ -456,7 +423,7 @@ where
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
-        self.generic().embed_texts(documents).await
+        self.inner.embed_texts(documents).await
     }
 
     async fn embed_texts_with_usage(
@@ -464,7 +431,7 @@ where
         documents: impl IntoIterator<Item = String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
         let documents: Vec<String> = documents.into_iter().collect();
-        self.generic().embed_texts_with_usage(documents).await
+        self.inner.embed_texts_with_usage(documents).await
     }
 }
 
@@ -476,19 +443,17 @@ impl<T> EmbeddingModel<T> {
             .unwrap_or_default();
 
         Self {
-            client,
-            model,
-            ndims,
+            inner: openai::embedding::GenericEmbeddingModel::new(client, model, ndims),
         }
     }
 
     pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
-        let ndims = ndims.unwrap_or_default();
-
         Self {
-            client,
-            model: model.into(),
-            ndims,
+            inner: openai::embedding::GenericEmbeddingModel::with_model(
+                client,
+                model,
+                ndims.unwrap_or_default(),
+            ),
         }
     }
 }
@@ -592,14 +557,11 @@ where
         transcription::TranscriptionError,
     > {
         // Azure addresses the deployment through the URL, so no `model` form
-        // field is sent; the hand-rolled request also never sent `language`,
-        // and that wire shape is preserved here.
+        // field is sent. `language` IS sent when set — the endpoint accepts
+        // it, and the old hand-rolled request dropping it was a bug.
         let form = crate::providers::internal::transcription::transcription_form(
             request,
-            crate::providers::internal::transcription::TranscriptionFields {
-                model: None,
-                send_language: false,
-            },
+            crate::providers::internal::transcription::TranscriptionFields { model: None },
         )?;
 
         crate::providers::internal::transcription::send_transcription::<

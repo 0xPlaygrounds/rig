@@ -21,6 +21,30 @@ pub(crate) struct DataEnvelope<Entry> {
     pub(crate) data: Vec<Entry>,
 }
 
+/// Map a transport-level send error into listing-flavored context: an
+/// [`http_client::Error::InvalidStatusCodeWithMessage`] (backends that reject
+/// non-2xx before handing back a response) keeps the provider label, path,
+/// status, and body preview, exactly like a non-2xx status on a returned
+/// response. Shared with listings that build their own request (copilot's
+/// auth-derived base URL cannot go through [`get_json`]).
+pub(crate) fn map_transport_error(
+    provider_name: &str,
+    path: &str,
+    error: http_client::Error,
+) -> ModelListingError {
+    match error {
+        http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
+            ModelListingError::api_error_with_context(
+                provider_name,
+                path,
+                status.as_u16(),
+                message.as_bytes(),
+            )
+        }
+        other => ModelListingError::from(other),
+    }
+}
+
 /// GET `path` and decode the response body as `T`, with listing-flavored
 /// error context.
 ///
@@ -44,17 +68,7 @@ where
     let response = client
         .send::<_, Vec<u8>>(req)
         .await
-        .map_err(|error| match error {
-            http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-                ModelListingError::api_error_with_context(
-                    provider_name,
-                    path,
-                    status.as_u16(),
-                    message.as_bytes(),
-                )
-            }
-            other => ModelListingError::from(other),
-        })?;
+        .map_err(|error| map_transport_error(provider_name, path, error))?;
 
     if !response.status().is_success() {
         let status_code = response.status().as_u16();

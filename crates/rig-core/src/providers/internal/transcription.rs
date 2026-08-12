@@ -23,9 +23,6 @@ pub(crate) struct TranscriptionFields<'a> {
     /// addresses the model through the URL instead — Azure targets a
     /// deployment, not a model name.
     pub model: Option<&'a str>,
-    /// Whether the request's `language` is sent as a form field. Azure's
-    /// hand-rolled request never sent it, so its wire shape is preserved.
-    pub send_language: bool,
 }
 
 /// Builds the multipart body shared by OpenAI-style transcription endpoints.
@@ -44,9 +41,7 @@ pub(crate) fn transcription_form(
 
     body = body.part(Part::bytes("file", request.data).filename(request.filename));
 
-    if fields.send_language
-        && let Some(language) = request.language
-    {
+    if let Some(language) = request.language {
         body = body.text("language", language);
     }
 
@@ -67,7 +62,14 @@ pub(crate) fn transcription_form(
         })?;
 
         for (key, value) in params {
-            body = body.text(key.to_owned(), value.to_string());
+            // String values go on the form verbatim — `Value::to_string`
+            // would send them JSON-quoted (`"verbose_json"`), which providers
+            // reject or ignore. Non-string values stay JSON-encoded.
+            let value = match value {
+                serde_json::Value::String(text) => text.clone(),
+                other => other.to_string(),
+            };
+            body = body.text(key.to_owned(), value);
         }
     }
 
@@ -99,7 +101,7 @@ where
     let response = client.send_multipart::<Bytes>(req).await?;
 
     let status = response.status();
-    let response_body = response.into_body().into_future().await?.to_vec();
+    let response_body = response.into_body().into_future().await?;
 
     if status.is_success() {
         match serde_json::from_slice::<A>(&response_body)?.into_payload() {
@@ -157,20 +159,16 @@ mod tests {
     fn form_field_shape_per_provider() {
         let cases = [
             (
-                "openai/groq: model in body, language sent",
+                "openai/groq: model in body",
                 TranscriptionFields {
                     model: Some("whisper-1"),
-                    send_language: true,
                 },
                 &["model", "file", "language", "prompt", "temperature"][..],
             ),
             (
-                "azure: model addressed through the URL, no language field",
-                TranscriptionFields {
-                    model: None,
-                    send_language: false,
-                },
-                &["file", "prompt", "temperature"][..],
+                "azure: model addressed through the URL",
+                TranscriptionFields { model: None },
+                &["file", "language", "prompt", "temperature"][..],
             ),
         ];
 
@@ -186,7 +184,6 @@ mod tests {
             request(),
             TranscriptionFields {
                 model: Some("whisper-1"),
-                send_language: true,
             },
         )
         .expect("form should build");
@@ -221,7 +218,6 @@ mod tests {
             request,
             TranscriptionFields {
                 model: Some("whisper-1"),
-                send_language: true,
             },
         )
         .expect("form should build");
@@ -241,15 +237,16 @@ mod tests {
             request,
             TranscriptionFields {
                 model: Some("whisper-1"),
-                send_language: true,
             },
         )
         .expect("form should build");
 
-        // Values are serialized with `Value::to_string`, so strings stay quoted.
+        // String values go on the form verbatim (a JSON-quoted
+        // `"verbose_json"` would be rejected or ignored by the provider);
+        // non-string values stay JSON-encoded.
         let body = encoded(form);
         assert!(
-            body.contains(&text_field("response_format", "\"verbose_json\"")),
+            body.contains(&text_field("response_format", "verbose_json")),
             "{body}"
         );
         assert!(
@@ -267,7 +264,6 @@ mod tests {
             request,
             TranscriptionFields {
                 model: Some("whisper-1"),
-                send_language: true,
             },
         )
         .expect_err("non-object additional params should be rejected");
