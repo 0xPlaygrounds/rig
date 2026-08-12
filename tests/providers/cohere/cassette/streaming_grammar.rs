@@ -5,11 +5,14 @@
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
-use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall};
+use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolChoice};
 use rig::prelude::*;
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
 
-use super::super::support::{IntegerSubtract, with_cohere_cassette};
+use super::super::{
+    CASSETTE_MODEL,
+    support::{IntegerSubtract, with_cohere_cassette},
+};
 
 /// Cohere's reasoning-capable Command model, which streams `thinking`-bearing
 /// content deltas before the answer text (the F8 cohere variant).
@@ -200,6 +203,65 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
                 reasoning_index < tool_call_index,
                 "the thinking block precedes the tool call on this wire, got {:?}",
                 run.choice
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn required_tool_choice_streams_tool_call() {
+    with_cohere_cassette(
+        "streaming_grammar/required_tool_choice_streams_tool_call",
+        |client| async move {
+            let model = client.completion_model(CASSETTE_MODEL);
+            let request = model
+                .completion_request("Use the subtract tool to calculate 8 - 3.")
+                .tool(rig::tool::tool_definition(&IntegerSubtract))
+                .tool_choice(ToolChoice::Required)
+                .max_tokens(128)
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert!(run.text.is_empty(), "tool-only turn should not emit text");
+            assert_eq!(run.tool_calls.len(), 1, "expected one streamed tool call");
+            assert_eq!(run.tool_calls[0].function.name, "subtract");
+            assert_eq!(
+                run.tool_calls[0].function.arguments,
+                serde_json::json!({"x": 8, "y": 3})
+            );
+            assert_eq!(
+                run.response
+                    .as_ref()
+                    .and_then(|response| response.finish_reason.as_ref()),
+                Some(&FinishReason::ToolCalls)
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn none_tool_choice_streams_text() {
+    with_cohere_cassette(
+        "streaming_grammar/none_tool_choice_streams_text",
+        |client| async move {
+            let model = client.completion_model(CASSETTE_MODEL);
+            let request = model
+                .completion_request("Calculate 8 - 3. Answer directly without calling a tool.")
+                .tool(rig::tool::tool_definition(&IntegerSubtract))
+                .tool_choice(ToolChoice::None)
+                .max_tokens(32)
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert!(!run.text.trim().is_empty(), "NONE should stream text");
+            assert!(run.tool_calls.is_empty(), "NONE must suppress tool calls");
+            assert_eq!(
+                run.response
+                    .as_ref()
+                    .and_then(|response| response.finish_reason.as_ref()),
+                Some(&FinishReason::Stop)
             );
         },
     )

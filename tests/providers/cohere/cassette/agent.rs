@@ -1,11 +1,13 @@
 //! Cassette-backed Cohere non-streaming completion coverage.
 
-use rig::completion::{CompletionModel, Prompt};
+use rig::completion::{AssistantContent, CompletionModel, Message, Prompt};
 use rig::prelude::*;
 use rig::providers::cohere::completion::FinishReason;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
-use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
+use crate::support::{
+    BASIC_PREAMBLE, BASIC_PROMPT, assert_contains_any_case_insensitive, assert_nonempty_response,
+};
 
 #[tokio::test]
 async fn completion_smoke() {
@@ -87,6 +89,123 @@ async fn usage_is_reported_from_token_counts() {
 
             assert_eq!(response.usage.cached_input_tokens, cached as u64);
             assert_eq!(expected_usage, response.usage);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn max_tokens_sets_max_tokens_finish_reason() {
+    with_cohere_cassette(
+        "agent/max_tokens_sets_max_tokens_finish_reason",
+        |client| async move {
+            let model = client.completion_model(CASSETTE_MODEL);
+            let request = model
+                .completion_request("Write a detailed fifty-word description of the ocean.")
+                .max_tokens(4)
+                .build();
+
+            let response = model
+                .raw_completion(request)
+                .await
+                .expect("capped completion should succeed");
+
+            assert_eq!(response.finish_reason, FinishReason::MaxTokens);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn multiturn_history_is_accepted() {
+    with_cohere_cassette("agent/multiturn_history_is_accepted", |client| async move {
+        let model = client.completion_model(CASSETTE_MODEL);
+        let request = model
+            .completion_request("What code word did I ask you to remember?")
+            .message(Message::user(
+                "Remember the code word cobalt-orchid for my next question.",
+            ))
+            .message(Message::assistant(
+                "Understood. I will remember the code word cobalt-orchid.",
+            ))
+            .max_tokens(32)
+            .build();
+
+        let response = model
+            .completion(request)
+            .await
+            .expect("multi-turn history should be accepted");
+        let text = response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect::<String>();
+
+        assert_contains_any_case_insensitive(&text, &["cobalt-orchid", "cobalt orchid"]);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn stop_sequences_are_forwarded() {
+    with_cohere_cassette("agent/stop_sequences_are_forwarded", |client| async move {
+        let model = client.completion_model(CASSETTE_MODEL);
+        let request = model
+            .completion_request("Output exactly this sequence: alpha<END>omega")
+            .temperature(0.0)
+            .max_tokens(32)
+            .additional_params(serde_json::json!({
+                "seed": 7,
+                "stop_sequences": ["<END>"]
+            }))
+            .build();
+
+        let response = model
+            .raw_completion(request)
+            .await
+            .expect("stop sequence request should succeed");
+
+        assert_eq!(response.finish_reason, FinishReason::StopSequence);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn sampling_parameters_are_forwarded() {
+    with_cohere_cassette(
+        "agent/sampling_parameters_are_forwarded",
+        |client| async move {
+            let model = client.completion_model(CASSETTE_MODEL);
+            let request = model
+                .completion_request("Reply with one short sentence about rain.")
+                .temperature(0.2)
+                .max_tokens(24)
+                .additional_params(serde_json::json!({
+                    "seed": 11,
+                    "p": 0.8,
+                    "k": 20,
+                    "frequency_penalty": 0.1,
+                    "presence_penalty": 0.1
+                }))
+                .build();
+
+            let response = model
+                .completion(request)
+                .await
+                .expect("documented sampling parameters should be accepted");
+            let text = response
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect::<String>();
+
+            assert_nonempty_response(&text);
         },
     )
     .await;

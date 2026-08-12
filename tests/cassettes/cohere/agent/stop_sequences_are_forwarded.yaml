@@ -1,0 +1,16 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":32,"messages":[{"content":[{"text":"Output exactly this sequence: alpha<END>omega","type":"text"}],"role":"user"}],"model":"command-a-03-2025","seed":7,"stop_sequences":["<END>"],"temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"STOP_SEQUENCE","id":"cec28054-8780-4218-b9a3-c7709b03606b","message":{"content":[{"text":"alpha","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":10,"output_tokens":1},"cached_tokens":448,"tokens":{"input_tokens":505,"output_tokens":9}}}'

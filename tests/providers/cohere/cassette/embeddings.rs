@@ -21,3 +21,38 @@ async fn embed_texts_smoke() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn embed_search_query_smoke() {
+    with_cohere_cassette("embeddings/embed_search_query_smoke", |client| async move {
+        let model = client.embedding_model(cohere::EMBED_ENGLISH_LIGHT_V3, "search_query");
+        assert_eq!(model.ndims(), 384);
+
+        let embeddings = model
+            .embed_texts(["Where can I find coffee near the office?".to_string()])
+            .await
+            .expect("search query embedding should succeed");
+
+        assert_embeddings_nonempty_and_consistent(&embeddings, 1);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn embed_classification_smoke() {
+    with_cohere_cassette(
+        "embeddings/embed_classification_smoke",
+        |client| async move {
+            let model = client.embedding_model(cohere::EMBED_ENGLISH_LIGHT_V3, "classification");
+            assert_eq!(model.ndims(), 384);
+
+            let embeddings = model
+                .embed_texts(["The package arrived early and in perfect condition.".to_string()])
+                .await
+                .expect("classification embedding should succeed");
+
+            assert_embeddings_nonempty_and_consistent(&embeddings, 1);
+        },
+    )
+    .await;
+}

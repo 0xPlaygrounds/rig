@@ -671,6 +671,21 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
             .map(CohereToolChoice::try_from)
             .transpose()?;
 
+        // Count tools supplied through the provider escape hatch as well as
+        // typed tools so REQUIRED remains usable with Cohere-specific schemas.
+        let has_tools = !req.tools.is_empty()
+            || req
+                .additional_params
+                .as_ref()
+                .and_then(|params| params.get("tools"))
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|tools| !tools.is_empty());
+        if matches!(tool_choice, Some(CohereToolChoice::Required)) && !has_tools {
+            return Err(CompletionError::RequestError(
+                "Cohere requires at least one tool when tool_choice is REQUIRED".into(),
+            ));
+        }
+
         Ok(Self {
             model: model.to_string(),
             messages: full_history,
@@ -1149,6 +1164,72 @@ mod tests {
                 "expected a request error for {unsupported:?}, got {error:?}"
             );
         }
+    }
+
+    /// Invalid REQUIRED requests cannot produce a cassette because validation
+    /// must stop them before the HTTP boundary.
+    #[tokio::test]
+    async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_sent() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let http_client = RecordingHttpClient::new("{}");
+        let client = crate::providers::cohere::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.completion_model(crate::providers::cohere::COMMAND_A_03_2025);
+        let request = model
+            .completion_request("hello")
+            .tool_choice(ToolChoice::Required)
+            .build();
+
+        let error = model
+            .completion(request)
+            .await
+            .expect_err("REQUIRED without tools should fail locally");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        let message = error.to_string();
+        assert!(
+            message.contains("at least one tool") && message.contains("REQUIRED"),
+            "unexpected error: {error:?}"
+        );
+        assert!(
+            http_client.requests().is_empty(),
+            "invalid requests must fail before reaching the HTTP client"
+        );
+    }
+
+    /// This internal unit test protects the raw provider-parameter escape hatch;
+    /// cassette coverage exercises the public typed-tool path instead.
+    #[test]
+    fn required_tool_choice_accepts_raw_tools_from_additional_params() {
+        let request = crate::completion::CompletionRequestBuilder::new(
+            crate::test_utils::MockCompletionModel::default(),
+            "hello",
+        )
+        .tool_choice(ToolChoice::Required)
+        .additional_params(serde_json::json!({
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "ping",
+                    "description": "Return pong",
+                    "parameters": {"type": "object", "properties": {}}
+                }
+            }]
+        }))
+        .build();
+
+        let request = CohereCompletionRequest::try_from(("command-a-03-2025", request))
+            .expect("raw Cohere tools should satisfy REQUIRED");
+        let body = serde_json::to_value(request).expect("request should serialize");
+
+        assert_eq!(body["tool_choice"], serde_json::json!("REQUIRED"));
+        assert_eq!(body["tools"].as_array().map(Vec::len), Some(1));
     }
 
     #[test]
