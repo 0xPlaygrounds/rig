@@ -1212,9 +1212,11 @@ setters rather than at provider call sites.
 
 Both invariants also hold through `Deserialize`: the two types deserialize
 via a wire-shape mirror that funnels through `new(...)` and the setters, so
-a persisted `"finish_reason": "stop"` alongside a tool-call choice comes
-back as `ToolCalls` and a persisted `""` identifier comes back as `None`.
-The serialized wire format is unchanged.
+a persisted `"finish_reason": {"type": "stop"}` alongside a tool-call choice
+comes back as `ToolCalls` and a persisted `""` identifier comes back as
+`None`. The normalized finish-reason representation itself changes in this
+release; see "Rig-owned serializable enums have explicit discriminators"
+below. Provider-native finish-reason fields remain unchanged.
 
 Corrupt stream frames (payloads that are not valid JSON) are now surfaced as
 `Err` items on the stream instead of being logged and silently skipped; the
@@ -1354,20 +1356,100 @@ Run it once over your store at migration time; the runtime load path stays
 tolerant on purpose (loudness at the migration boundary, not on every
 restore).
 
-**Streaming events**: `StreamedAssistantContent` is a tolerant decode with an
-`Unknown` catch-all. A stream item whose text block carries stray sibling
-keys — 0.41's flatten shape, or a relay stamping bookkeeping keys onto text
-items — decodes as stream *text* with the stray keys dropped: the text is
-assembled, nothing is excluded. A replayed **tagged** assistant block
-(`toolcall`/`reasoning`/`image` — the tagged `AssistantContent`
-serialization is not a stream-item shape) decodes as `Unknown` and is
-excluded from assembly, as is a text item whose `additional_params` is
-malformed (a non-object — the strict decode rejects the known field); the
-**agent assembler** — the one rig component that ingests replayed stream
-events — counts both kinds of exclusion and logs a single `tracing` warning
-per turn, on every termination path
-(`StreamedTurnAssembler::excluded_assistant_content` exposes the count). A consumer assembling self-deserialized events with its
-own logic gets no warning and should apply the same check itself.
+**Streaming events** now declare their identity instead of inferring it from
+object shape. `StreamedAssistantContent` and `StreamedUserContent` use adjacent
+snake-case `type`/`content` fields, while `MultiTurnStreamItem` uses the same
+adjacent layout with camel-case outer tags:
+
+```json
+{
+  "type": "streamAssistantItem",
+  "content": {
+    "type": "text",
+    "content": {"text": "hello"}
+  }
+}
+```
+
+An unmodeled provider event is representable only through the explicit
+`Unknown` variant. Its raw value is preserved inside the adjacent wrapper,
+even when the payload has keys that resemble a known Rig event:
+
+```json
+{
+  "type": "unknown",
+  "content": {
+    "type": "provider.future_event",
+    "text": "opaque provider content",
+    "kind": "final"
+  }
+}
+```
+
+Provider adapters classify native frames first and construct this variant;
+arbitrary provider JSON is not deserialized directly into a Rig stream event.
+A known Rig tag with malformed content is a decode error and never falls
+through to `Unknown`.
+
+### Rig-owned serializable enums have explicit discriminators
+
+The remaining public, data-bearing Rig enums now use explicit tags too. These
+are clean serialization breaks: every old form in the table fails to load, and
+the current form is the only accepted representation.
+
+| Type | Before | Current |
+|---|---|---|
+| `ToolCallDeltaContent` | `{"Name":"lookup"}` | `{"type":"name","content":"lookup"}` |
+| `StreamedAssistantContent` | `{"text":"hello"}` | `{"type":"text","content":{"text":"hello"}}` |
+| `StreamedUserContent` | `{"tool_result":{"call":"call_1","name":"lookup","content":[{"type":"text","text":"ok"}]},"internal_call_id":"internal_1"}` | `{"type":"tool_result","content":{"tool_result":{"call":"call_1","name":"lookup","content":[{"type":"text","text":"ok"}]},"internal_call_id":"internal_1"}}` |
+| `MultiTurnStreamItem` | `{"type":"streamAssistantItem","text":"hello"}` | `{"type":"streamAssistantItem","content":{"type":"text","content":{"text":"hello"}}}` |
+| `MediaType` | `{"Image":"png"}` | `{"type":"image","content":"png"}` |
+| `ToolChoice` | `"auto"`; `{"specific":{"function_names":["lookup"]}}` | `{"type":"auto"}`; `{"type":"specific","function_names":["lookup"]}` |
+| `FinishReason` | `"stop"`; `{"other":"RECITATION"}` | `{"type":"stop"}`; `{"type":"other","content":"RECITATION"}` |
+| `Filter<V>` | `{"eq":["status","ready"]}` | `{"type":"eq","content":["status","ready"]}` |
+| `ModelListingError` | `{"ApiError":{"status_code":429,"message":"limited"}}` | `{"type":"api_error","status_code":429,"message":"limited"}` |
+| `OutputMode` | `"Auto"` | `"auto"` |
+| `SqliteDistanceMetric` | `"Cosine"` | `"cosine"` |
+
+The adjacent forms use `content` for newtype and tuple payloads; unit variants
+omit it. **Struct variants also nest under `content`** — that covers most of the
+retagged stream enums (`StreamedAssistantContent::{ToolCall, ToolCallDelta,
+Reasoning, ReasoningDelta}` and `MultiTurnStreamItem::{ToolExecutionCommitted,
+ModelTurnRetried}`), whose fields move inside `content` rather than sitting
+beside `type`. `ToolChoice` and `ModelListingError` are the exception: they use
+an internal `type` field, so their struct-variant fields stay at the top level
+(see the `ToolChoice` row above).
+`OutputMode` and `SqliteDistanceMetric` remain intentional string-valued unit
+enums, but their spellings are now explicit rather than Rust's PascalCase
+names.
+
+Persistence impact follows where these values are embedded:
+
+- Persisted `AgentRun` and directly serialized `CompletionRequest` values carry
+  `ToolChoice` and require its tagged form.
+- Serialized `CompletionResponse` and `StreamFinal` values carry the new
+  `FinishReason` form. `PromptResponse` has no new field shape from this
+  change, but a `MultiTurnStreamItem::FinalResponse` stream-log record now
+  wraps the whole response under the outer `content` field.
+- The public OpenAI-compatible raw terminal record
+  `openai::completion::streaming::StreamingCompletionResponse<U>` carries the
+  normalized `FinishReason` form too. This also affects its Mistral, Groq,
+  DeepSeek, and OpenRouter aliases when those values are serialized directly.
+- Recorded multi-turn stream events, standalone media-type values, serialized
+  vector-store filters, model-listing errors, agent output-mode values, and
+  SQLite metric configuration need the corresponding rewrite above.
+
+Provider HTTP request/response and SSE payload JSON is otherwise unchanged.
+Provider-native wire enums retain the upstream schema (including genuine
+untagged unions and scalar finish reasons); conversions map between those wire
+types and these Rig-owned values at the boundary. The exception is a Cohere v2
+Chat correction:
+`ToolChoice::Auto` now omits `tool_choice`, `None` and `Required` serialize as the
+native `"NONE"` and `"REQUIRED"` scalars, and `Specific` filters the advertised
+tools to the requested names and sends `"REQUIRED"`. Existing explicitly tagged
+Rig domain enums (`Message`, `UserContent`, `AssistantContent`,
+`ReasoningContent`, `ToolResultContent`, and `DocumentSourceKind`) are
+unchanged.
 
 ### Two pre-`Vec` serde accommodations are gone
 

@@ -1,0 +1,24 @@
+# Public untagged Serde enums whose JSON representation is provider-owned.
+#
+# Format: `path suffix | enum name | one-line justification`.
+# Every entry must identify an upstream success/error, scalar/object, or
+# post-classification wire union. Stale entries fail the policy test.
+
+providers/cohere/client.rs | ApiResponse | Cohere unary endpoints return either the documented success body or provider error envelope.
+providers/doubleword/client.rs | ApiResponse | Doubleword unary endpoints return either the documented success body or provider error envelope.
+providers/gemini/client.rs | ApiResponse | Gemini unary endpoints return either the documented success body or provider error envelope.
+providers/gemini/interactions_api/mod.rs | InteractionInput | Gemini Interactions accepts text, content objects, or step/content arrays as the upstream input union.
+providers/gemini/interactions_api/mod.rs | ThoughtSummaryContent | Gemini Interactions owns this text-or-image thought-summary content union.
+providers/gemini/interactions_api/mod.rs | ToolChoice | Gemini Interactions defines tool choice as a strategy string or allowed-tools configuration object.
+providers/huggingface/completion.rs | ApiResponse | Hugging Face owns the success/error response union used by its inference API.
+providers/mira.rs | CompletionResponse | Mira owns the alternate unary completion response bodies represented by this wire union.
+providers/openai/completion/mod.rs | ToolResultContentValue | OpenAI accepts either text or structured tool-result content at this request field.
+providers/openai/responses_api/mod.rs | AssistantContentType | OpenAI Responses defines assistant content as its own text-or-refusal wire union.
+providers/openai/responses_api/mod.rs | ToolResultOutput | OpenAI Responses accepts either a scalar or content-list tool output.
+providers/openai/responses_api/mod.rs | ToolChoice | OpenAI Responses defines tool choice as a scalar-or-object request union.
+providers/openai/responses_api/streaming.rs | StreamingCompletionChunk | OpenAI Responses stream envelopes are decoded through the known-tag classifier before this wire union.
+providers/openrouter/completion.rs | ProviderSort | OpenRouter defines provider sorting as a strategy string or threshold object.
+providers/openrouter/completion.rs | ThroughputThreshold | OpenRouter defines throughput thresholds as numeric or percentile objects.
+providers/openrouter/completion.rs | LatencyThreshold | OpenRouter defines latency thresholds as numeric or percentile objects.
+providers/xai/api.rs | Content | xAI owns this string-or-content-list request/response wire field.
+providers/xai/api.rs | ApiResponse | xAI unary endpoints return either the documented success body or provider error envelope.

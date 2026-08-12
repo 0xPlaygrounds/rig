@@ -2305,6 +2305,35 @@ mod tests {
     }
 
     #[test]
+    fn persisted_agent_run_uses_the_tagged_tool_choice_shape() {
+        let run = AgentRun::new("find it").with_tool_choice(ToolChoice::Specific {
+            function_names: vec!["lookup".to_owned()],
+        });
+        let encoded = serde_json::to_value(&run).expect("serialize agent run");
+        assert_eq!(
+            encoded["tool_choice"],
+            json!({"type": "specific", "function_names": ["lookup"]})
+        );
+
+        let restored: AgentRun =
+            serde_json::from_value(encoded.clone()).expect("deserialize agent run");
+        assert_eq!(
+            restored.tool_choice,
+            Some(ToolChoice::Specific {
+                function_names: vec!["lookup".to_owned()]
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(restored).expect("re-serialize agent run"),
+            encoded
+        );
+
+        let mut old = encoded;
+        old["tool_choice"] = json!({"specific": {"function_names": ["lookup"]}});
+        assert!(serde_json::from_value::<AgentRun>(old).is_err());
+    }
+
+    #[test]
     fn agent_run_deserializes_pre_monoid_suspended_state() {
         // Pins `CompletionCall.usage`'s null tolerance on a suspended run:
         // `"usage": null` (the pre-monoid Option encoding) must map to

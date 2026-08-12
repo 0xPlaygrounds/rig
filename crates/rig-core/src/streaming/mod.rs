@@ -62,8 +62,14 @@ impl Default for PauseControl {
     }
 }
 
-/// The content of a tool call delta - either the tool name or argument data
+/// The content of a tool call delta - either the tool name or argument data.
+///
+/// Its Rig event representation is adjacently tagged, for example
+/// `{"type":"name","content":"lookup"}`. Provider adapters construct this
+/// value after decoding their native stream; this representation is never sent
+/// to a provider.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", content = "content", rename_all = "snake_case")]
 pub enum ToolCallDeltaContent {
     /// Tool/function name emitted by the provider.
     Name(String),
@@ -156,9 +162,9 @@ impl ToolInputEnd {
 
 /// Discriminant for [`StreamFinal`].
 ///
-/// [`StreamedAssistantContent`] is `#[serde(untagged)]` and its
-/// [`StreamedAssistantContent::Unknown`] variant matches any JSON value, so the
-/// terminal record needs a field that identifies it structurally.
+/// The field remains part of the terminal record even though
+/// [`StreamedAssistantContent`] now has its own explicit discriminator: it
+/// makes a standalone serialized [`StreamFinal`] self-describing too.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StreamFinalKind {
@@ -311,7 +317,7 @@ impl StreamFinal {
 /// including the discriminating `kind` field — and [`From`] funnels it through
 /// [`StreamFinal::new`] and the setters, so every deserialized value satisfies
 /// the same invariants as a constructed one. Serialization stays derived on
-/// [`StreamFinal`] itself, so the wire format is unchanged.
+/// [`StreamFinal`] itself; this mirror does not define a second representation.
 #[derive(Deserialize)]
 struct StreamFinalRepr {
     kind: StreamFinalKind,
@@ -394,7 +400,7 @@ impl From<serde_json::Value> for UnknownPayload {
 
 #[cfg(test)]
 mod unknown_payload_tests {
-    use super::UnknownPayload;
+    use super::{RawStreamingChoice, StreamedAssistantContent, UnknownPayload};
 
     /// The redaction is a property of the type: no Debug rendering — direct,
     /// via a containing derive, or through a `warn!(?value)` capture — can
@@ -405,6 +411,18 @@ mod unknown_payload_tests {
             "secret_field": "SENSITIVE-CONTENT",
         }));
         let rendered = format!("{payload:?}");
+        assert!(!rendered.contains("SENSITIVE-CONTENT"));
+        assert!(!rendered.contains("secret_field"));
+        assert!(rendered.contains("redacted"));
+
+        let raw = RawStreamingChoice::<()>::Unknown(payload.clone());
+        let rendered = format!("{raw:?}");
+        assert!(!rendered.contains("SENSITIVE-CONTENT"));
+        assert!(!rendered.contains("secret_field"));
+        assert!(rendered.contains("redacted"));
+
+        let public = StreamedAssistantContent::Unknown(payload);
+        let rendered = format!("{public:?}");
         assert!(!rendered.contains("SENSITIVE-CONTENT"));
         assert!(!rendered.contains("secret_field"));
         assert!(rendered.contains("redacted"));
@@ -1681,20 +1699,24 @@ mod tests {
 
         let encoded = serde_json::to_value(StreamedAssistantContent::Final(final_record.clone()))
             .expect("serialize final item");
-        assert_eq!(encoded["kind"], serde_json::json!("final"));
+        assert_eq!(encoded["type"], serde_json::json!("final"));
+        assert_eq!(encoded["content"]["kind"], serde_json::json!("final"));
 
         let decoded = serde_json::from_value::<StreamedAssistantContent>(encoded)
             .expect("deserialize final item");
         assert_eq!(decoded, StreamedAssistantContent::Final(final_record));
 
-        // An unmodeled provider item must still land in `Unknown` rather than
-        // being mistaken for a terminal record.
+        // An unmodeled provider item uses the explicit domain escape hatch and
+        // cannot be mistaken for a terminal record even if it resembles one.
         let provider_item = serde_json::json!({
             "provider_native_event": "future_terminal",
             "usage": {"total_tokens": 10}
         });
-        let decoded = serde_json::from_value::<StreamedAssistantContent>(provider_item.clone())
-            .expect("deserialize unknown item");
+        let decoded = serde_json::from_value::<StreamedAssistantContent>(serde_json::json!({
+            "type": "unknown",
+            "content": provider_item.clone()
+        }))
+        .expect("deserialize unknown item");
         assert_eq!(
             decoded,
             StreamedAssistantContent::Unknown(provider_item.into())
@@ -2760,9 +2782,14 @@ mod tests {
     }
 }
 
-/// Describes responses from a streamed provider response which is either text, a tool call or a final usage response.
+/// Describes one typed item emitted by a streamed provider response.
+///
+/// Every variant carries an explicit `"type"` discriminator and an adjacent
+/// `"content"` payload. Provider-native items that Rig does not model use the
+/// explicit [`Self::Unknown`] variant; arbitrary untagged JSON is not a Rig
+/// stream-item representation.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(untagged)]
+#[serde(tag = "type", content = "content", rename_all = "snake_case")]
 pub enum StreamedAssistantContent {
     /// Text delta emitted by the assistant.
     Text(Text),
@@ -2821,9 +2848,8 @@ pub enum StreamedAssistantContent {
     /// e.g. an OpenAI Responses hosted-tool result (`web_search_call`,
     /// `file_search_call`, `computer_call`, `code_interpreter_call`). It is
     /// yielded to the consumer for inspection/forwarding but is not added to the
-    /// accumulated assistant message or persisted history. Kept last because the
-    /// enum is `#[serde(untagged)]` and the transparent payload wrapper
-    /// matches anything, so earlier (typed) variants must be tried first.
+    /// accumulated assistant message or persisted history. Its payload remains
+    /// opaque and value-equal under the adjacent `content` wrapper.
     Unknown(UnknownPayload),
 }
 
@@ -2839,9 +2865,14 @@ impl StreamedAssistantContent {
     }
 }
 
-/// Streamed user content. This content is primarily used to represent tool results from tool calls made during a multi-turn/step agent prompt.
+/// Streamed user content.
+///
+/// This content is primarily used to represent tool results from tool calls
+/// made during a multi-turn/step agent prompt. The discriminator is explicit
+/// even while there is only one variant, so adding a future variant cannot
+/// silently change structural deserialization.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(untagged)]
+#[serde(tag = "type", content = "content", rename_all = "snake_case")]
 pub enum StreamedUserContent {
     /// Tool result emitted during a multi-turn streaming agent loop.
     ToolResult {
@@ -2860,5 +2891,205 @@ impl StreamedUserContent {
             tool_result,
             internal_call_id,
         }
+    }
+}
+
+#[cfg(test)]
+mod streamed_content_serde_tests {
+    use super::{
+        StreamFinal, StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent,
+        UnknownPayload,
+    };
+    use crate::{
+        completion::Usage,
+        message::{
+            Reasoning, Text, ToolCall, ToolCallId, ToolFunction, ToolResult, ToolResultContent,
+        },
+    };
+    use serde_json::{Value, json};
+
+    fn tool_call() -> ToolCall {
+        ToolCall::new(
+            ToolCallId::new_or_mint("call_1"),
+            ToolFunction::new("lookup".to_owned(), json!({"query": "rig"})),
+        )
+    }
+
+    fn tool_result() -> ToolResult {
+        ToolResult {
+            call: ToolCallId::new_or_mint("call_1"),
+            provider: None,
+            name: "lookup".to_owned(),
+            content: vec![ToolResultContent::text("found")],
+        }
+    }
+
+    fn assert_assistant_round_trip(value: StreamedAssistantContent, expected: Value) {
+        let encoded = serde_json::to_value(&value).expect("serialize streamed assistant item");
+        assert_eq!(encoded, expected);
+        let decoded: StreamedAssistantContent =
+            serde_json::from_value(encoded).expect("deserialize streamed assistant item");
+        assert_eq!(decoded, value);
+    }
+
+    #[test]
+    fn tool_call_delta_content_is_adjacently_tagged() {
+        for (value, expected) in [
+            (
+                ToolCallDeltaContent::Name("lookup".to_owned()),
+                json!({"type": "name", "content": "lookup"}),
+            ),
+            (
+                ToolCallDeltaContent::Delta("{\"query\":".to_owned()),
+                json!({"type": "delta", "content": "{\"query\":"}),
+            ),
+        ] {
+            let encoded = serde_json::to_value(&value).expect("serialize tool-call delta");
+            assert_eq!(encoded, expected);
+            let decoded: ToolCallDeltaContent =
+                serde_json::from_value(encoded).expect("deserialize tool-call delta");
+            assert_eq!(decoded, value);
+        }
+
+        for old_or_invalid in [
+            json!({"Name": "lookup"}),
+            json!({"type": "name"}),
+            json!({"type": "future", "content": "lookup"}),
+        ] {
+            assert!(serde_json::from_value::<ToolCallDeltaContent>(old_or_invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn every_streamed_assistant_variant_has_an_explicit_adjacent_tag() {
+        assert_assistant_round_trip(
+            StreamedAssistantContent::Text(Text::new("hello")),
+            json!({"type": "text", "content": {"text": "hello"}}),
+        );
+
+        let call = tool_call();
+        assert_assistant_round_trip(
+            StreamedAssistantContent::ToolCall {
+                tool_call: call.clone(),
+                internal_call_id: "internal_1".to_owned(),
+            },
+            json!({
+                "type": "tool_call",
+                "content": {
+                    "tool_call": serde_json::to_value(&call).expect("serialize tool call"),
+                    "internal_call_id": "internal_1"
+                }
+            }),
+        );
+
+        assert_assistant_round_trip(
+            StreamedAssistantContent::ToolCallDelta {
+                internal_call_id: "internal_1".to_owned(),
+                content: ToolCallDeltaContent::Name("lookup".to_owned()),
+            },
+            json!({
+                "type": "tool_call_delta",
+                "content": {
+                    "internal_call_id": "internal_1",
+                    "content": {"type": "name", "content": "lookup"}
+                }
+            }),
+        );
+
+        let reasoning = Reasoning::new("think");
+        assert_assistant_round_trip(
+            StreamedAssistantContent::Reasoning {
+                reasoning: reasoning.clone(),
+                id: "reasoning_1".to_owned(),
+            },
+            json!({
+                "type": "reasoning",
+                "content": {
+                    "reasoning": serde_json::to_value(&reasoning).expect("serialize reasoning"),
+                    "id": "reasoning_1"
+                }
+            }),
+        );
+
+        assert_assistant_round_trip(
+            StreamedAssistantContent::ReasoningDelta {
+                id: "reasoning_1".to_owned(),
+                provider_id: Some("provider_reasoning_1".to_owned()),
+                reasoning: "thi".to_owned(),
+            },
+            json!({
+                "type": "reasoning_delta",
+                "content": {
+                    "id": "reasoning_1",
+                    "provider_id": "provider_reasoning_1",
+                    "reasoning": "thi"
+                }
+            }),
+        );
+
+        let final_record = StreamFinal::new("test-provider", Usage::new());
+        assert_assistant_round_trip(
+            StreamedAssistantContent::Final(final_record.clone()),
+            json!({
+                "type": "final",
+                "content": serde_json::to_value(&final_record).expect("serialize final record")
+            }),
+        );
+
+        let unknown = json!({
+            "type": "provider_event",
+            "text": "must stay opaque",
+            "reasoning": "opaque",
+            "tool_call": {"name": "opaque"},
+            "kind": "final"
+        });
+        assert_assistant_round_trip(
+            StreamedAssistantContent::Unknown(UnknownPayload::new(unknown.clone())),
+            json!({"type": "unknown", "content": unknown}),
+        );
+    }
+
+    #[test]
+    fn streamed_assistant_known_tags_fail_loudly_and_old_shapes_do_not_load() {
+        for old_or_invalid in [
+            json!({"text": "old untagged text"}),
+            json!({"kind": "final", "usage": Usage::new(), "provider": "old"}),
+            json!({"content": {"text": "missing tag"}}),
+            json!({"type": "text", "content": {"text": 17}}),
+            json!({"type": "future", "content": {"text": "opaque"}}),
+        ] {
+            assert!(serde_json::from_value::<StreamedAssistantContent>(old_or_invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn streamed_user_content_is_explicitly_tagged() {
+        let result = tool_result();
+        let value = StreamedUserContent::ToolResult {
+            tool_result: result.clone(),
+            internal_call_id: "internal_1".to_owned(),
+        };
+        let encoded = serde_json::to_value(&value).expect("serialize streamed user item");
+        assert_eq!(
+            encoded,
+            json!({
+                "type": "tool_result",
+                "content": {
+                    "tool_result": serde_json::to_value(&result).expect("serialize tool result"),
+                    "internal_call_id": "internal_1"
+                }
+            })
+        );
+        let decoded: StreamedUserContent =
+            serde_json::from_value(encoded).expect("deserialize streamed user item");
+        assert_eq!(decoded, value);
+
+        assert!(
+            serde_json::from_value::<StreamedUserContent>(json!({
+                "tool_result": result,
+                "internal_call_id": "internal_1"
+            }))
+            .is_err()
+        );
     }
 }

@@ -220,8 +220,14 @@ impl ProviderToolDefinition {
 /// as [`FinishReason::Other`], leaving the caller to decide whether a
 /// failure-flagged-but-parseable turn is usable. Statuses that arrive with no
 /// usable output surface as errors instead.
+///
+/// When this normalized Rig value is serialized, it uses an adjacent `"type"`
+/// / `"content"` representation: `Stop` is `{"type":"stop"}` and
+/// `Other("RECITATION")` is
+/// `{"type":"other","content":"RECITATION"}`. Provider-native finish-reason
+/// fields remain strings and are mapped at the provider boundary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "type", content = "content", rename_all = "snake_case")]
 pub enum FinishReason {
     /// Natural end of the response.
     Stop,
@@ -413,13 +419,13 @@ impl CompletionResponse {
 /// Wire-shape mirror of [`CompletionResponse`], used only for deserialization.
 ///
 /// Serde must never construct an invariant-bearing value structurally: a plain
-/// derive would let `"finish_reason":"stop"` skip
+/// derive would let `"finish_reason":{"type":"stop"}` skip
 /// [`FinishReason::reconcile_with_output`] and `"message_id":""` skip the
 /// empty-string filtering. This mirror deserializes the exact wire shape and
 /// [`From`] funnels it through [`CompletionResponse::new`] and the `with_*`
 /// setters, so every deserialized value satisfies the same invariants as a
 /// constructed one. Serialization stays derived on [`CompletionResponse`]
-/// itself, so the wire format is unchanged.
+/// itself.
 #[derive(Deserialize)]
 struct CompletionResponseRepr {
     choice: Vec<AssistantContent>,
@@ -1277,6 +1283,44 @@ mod tests {
     use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
     use crate::message::AssistantContent;
 
+    #[test]
+    fn finish_reason_uses_an_explicit_adjacent_tag_for_every_variant() {
+        let cases = [
+            (FinishReason::Stop, serde_json::json!({"type": "stop"})),
+            (FinishReason::Length, serde_json::json!({"type": "length"})),
+            (
+                FinishReason::ToolCalls,
+                serde_json::json!({"type": "tool_calls"}),
+            ),
+            (
+                FinishReason::ContentFilter,
+                serde_json::json!({"type": "content_filter"}),
+            ),
+            (
+                FinishReason::Other("provider_stop".to_owned()),
+                serde_json::json!({"type": "other", "content": "provider_stop"}),
+            ),
+        ];
+
+        for (value, expected) in cases {
+            let encoded = serde_json::to_value(&value).expect("serialize finish reason");
+            assert_eq!(encoded, expected);
+            let decoded: FinishReason =
+                serde_json::from_value(encoded).expect("deserialize finish reason");
+            assert_eq!(decoded, value);
+        }
+
+        for old_or_invalid in [
+            serde_json::json!("stop"),
+            serde_json::json!({"other": "provider_stop"}),
+            serde_json::json!({"content": "provider_stop"}),
+            serde_json::json!({"type": "other"}),
+            serde_json::json!({"type": "future"}),
+        ] {
+            assert!(serde_json::from_value::<FinishReason>(old_or_invalid).is_err());
+        }
+    }
+
     mod message_content_validation {
         use super::super::CompletionRequest;
         use crate::message::{AssistantContent, Message, UserContent};
@@ -1466,7 +1510,7 @@ mod tests {
     }
 
     /// Serde must not be a back door around `reconcile_with_output`: a
-    /// persisted `"stop"` next to a tool-call choice deserializes as
+    /// persisted tagged `stop` next to a tool-call choice deserializes as
     /// `ToolCalls`, exactly as if it had gone through the setter.
     #[test]
     fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
@@ -1476,7 +1520,7 @@ mod tests {
             "example",
         ))
         .expect("serialize response");
-        encoded["finish_reason"] = serde_json::json!("stop");
+        encoded["finish_reason"] = serde_json::json!({"type": "stop"});
 
         let decoded =
             serde_json::from_value::<CompletionResponse>(encoded).expect("deserialize response");

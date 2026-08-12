@@ -1234,7 +1234,13 @@ pub enum ContentFormat {
 }
 
 /// Helper enum that tracks the media type of the content.
+///
+/// The Rig-owned JSON form is adjacently tagged, for example
+/// `{"type":"image","content":"png"}`. Provider conversions map this value
+/// to each provider's native MIME/type fields rather than forwarding this
+/// object.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", content = "content", rename_all = "lowercase")]
 pub enum MediaType {
     Image(ImageMediaType),
     Audio(AudioMediaType),
@@ -2056,8 +2062,14 @@ impl From<ToolResultContent> for Message {
     }
 }
 
+/// Controls which tools a model may call.
+///
+/// The Rig-owned JSON form uses a required snake-case `"type"` discriminator:
+/// `{"type":"auto"}` or
+/// `{"type":"specific","function_names":["lookup"]}`. Provider request
+/// converters translate it to the provider's native tool-choice schema.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolChoice {
     #[default]
     Auto,
@@ -2138,6 +2150,88 @@ mod tests {
                 panic!("expected a user message");
             };
             assert!(content.is_empty());
+        }
+    }
+
+    mod tagged_domain_enums {
+        use super::super::{
+            AudioMediaType, DocumentMediaType, ImageMediaType, MediaType, ToolChoice,
+            VideoMediaType,
+        };
+        use serde_json::{Value, json};
+
+        #[test]
+        fn media_type_uses_an_explicit_adjacent_tag_for_every_variant() {
+            let cases = [
+                (
+                    MediaType::Image(ImageMediaType::PNG),
+                    json!({"type": "image", "content": "png"}),
+                ),
+                (
+                    MediaType::Audio(AudioMediaType::MP3),
+                    json!({"type": "audio", "content": "mp3"}),
+                ),
+                (
+                    MediaType::Document(DocumentMediaType::PDF),
+                    json!({"type": "document", "content": "pdf"}),
+                ),
+                (
+                    MediaType::Video(VideoMediaType::MP4),
+                    json!({"type": "video", "content": "mp4"}),
+                ),
+            ];
+
+            for (value, expected) in cases {
+                let encoded = serde_json::to_value(&value).expect("serialize media type");
+                assert_eq!(encoded, expected);
+                let decoded: MediaType =
+                    serde_json::from_value(encoded).expect("deserialize media type");
+                assert_eq!(decoded, value);
+            }
+
+            for old_or_invalid in [
+                json!({"Image": "png"}),
+                json!({"content": "png"}),
+                json!({"type": "future", "content": "png"}),
+            ] {
+                assert!(serde_json::from_value::<MediaType>(old_or_invalid).is_err());
+            }
+        }
+
+        #[test]
+        fn tool_choice_uses_an_explicit_internal_tag_for_every_variant() {
+            let cases: [(ToolChoice, Value); 4] = [
+                (ToolChoice::Auto, json!({"type": "auto"})),
+                (ToolChoice::None, json!({"type": "none"})),
+                (ToolChoice::Required, json!({"type": "required"})),
+                (
+                    ToolChoice::Specific {
+                        function_names: vec!["search".to_owned(), "lookup".to_owned()],
+                    },
+                    json!({
+                        "type": "specific",
+                        "function_names": ["search", "lookup"]
+                    }),
+                ),
+            ];
+
+            for (value, expected) in cases {
+                let encoded = serde_json::to_value(&value).expect("serialize tool choice");
+                assert_eq!(encoded, expected);
+                let decoded: ToolChoice =
+                    serde_json::from_value(encoded).expect("deserialize tool choice");
+                assert_eq!(decoded, value);
+            }
+
+            for old_or_invalid in [
+                json!("auto"),
+                json!({"specific": {"function_names": ["search"]}}),
+                json!({"function_names": ["search"]}),
+                json!({"type": "future"}),
+                json!({"type": "specific", "function_names": "search"}),
+            ] {
+                assert!(serde_json::from_value::<ToolChoice>(old_or_invalid).is_err());
+            }
         }
     }
 
