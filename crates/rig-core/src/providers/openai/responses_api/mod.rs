@@ -2173,26 +2173,10 @@ impl<'de> Deserialize<'de> for Output {
 impl From<Output> for Vec<completion::AssistantContent> {
     fn from(value: Output) -> Self {
         let res: Vec<completion::AssistantContent> = match value {
-            Output::Message(OutputMessage { content, phase, .. }) => {
-                // `phase` is message-level wire data with no rig-level slot, so
-                // it rides the first text block's captured extras (the same
-                // vehicle as `annotations`); request assembly hoists it back to
-                // the message level (see `assistant_text_replay_message`).
-                let mut content = content;
-                if let Some(phase) = phase
-                    && let Some(OutputText { extras, .. }) =
-                        content.iter_mut().find_map(|block| match block {
-                            AssistantContent::OutputText(output) => Some(output),
-                            _ => None,
-                        })
-                {
-                    extras.insert("phase".to_string(), Value::String(phase));
-                }
-                content
-                    .into_iter()
-                    .map(completion::AssistantContent::from)
-                    .collect()
-            }
+            Output::Message(OutputMessage { content, .. }) => content
+                .into_iter()
+                .map(completion::AssistantContent::from)
+                .collect(),
             Output::FunctionCall(OutputFunctionCall {
                 id,
                 arguments,
@@ -2585,6 +2569,41 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .output
             .iter()
             .cloned()
+            .map(|item| {
+                // `phase` is message-level wire data with no rig-level slot, so
+                // ingest parks it in the first text block's captured extras
+                // (the same vehicle as `annotations`); request assembly hoists
+                // it back to the message level (`assistant_text_replay_message`).
+                // Gated to OpenAI proper: recorded traffic proves OpenAI
+                // accepts the replayed field, while the other consumers of this
+                // wire (ChatGPT, Copilot, xAI) have no such recording, and
+                // replaying an unverified field would change their request
+                // bytes on speculation.
+                if provider == "openai"
+                    && let Output::Message(OutputMessage {
+                        content,
+                        phase: Some(phase),
+                        ..
+                    }) = &item
+                    && content
+                        .iter()
+                        .any(|block| matches!(block, AssistantContent::OutputText(_)))
+                {
+                    let mut item = item.clone();
+                    if let Output::Message(OutputMessage { content, .. }) = &mut item
+                        && let Some(OutputText { extras, .. }) =
+                            content.iter_mut().find_map(|block| match block {
+                                AssistantContent::OutputText(output) => Some(output),
+                                _ => None,
+                            })
+                    {
+                        extras.insert("phase".to_string(), Value::String(phase.clone()));
+                    }
+                    item
+                } else {
+                    item
+                }
+            })
             .flat_map(<Vec<completion::AssistantContent>>::from)
             .collect();
         let has_structured_reasoning = response
