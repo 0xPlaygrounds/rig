@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"include_reasoning":true,"messages":[{"content":[{"text":"Reason carefully before giving a concise final answer.","type":"text"}],"role":"system"},{"content":"How many positive integers n < 400 are divisible by 6 but not by 9? Think through the counting carefully, then answer with only the integer.","role":"user"}],"model":"openai/gpt-5.2","reasoning":{"effort":"medium"},"stream":true}'
+  body: '{"include_reasoning":true,"max_tokens":4096,"messages":[{"content":[{"text":"Reason carefully before giving a concise final answer.","type":"text"}],"role":"system"},{"content":"How many positive integers n < 400 are divisible by 6 but not by 9? Think through the counting carefully, then answer with only the integer.","role":"user"}],"model":"openai/gpt-5.2","reasoning":{"effort":"medium"},"stream":true}'
 then:
   status: 200
   header:

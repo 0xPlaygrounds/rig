@@ -280,21 +280,23 @@ impl ProviderClient for CompletionsClient {
 /// `error`, nested objects), so anything that isn't a valid success payload
 /// is treated as an error envelope and the raw body is preserved for the
 /// caller; `message` is only used for logging.
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct ApiErrorResponse {
-    #[serde(default, alias = "error", deserialize_with = "error_message_or_value")]
     pub(crate) message: String,
 }
 
-fn error_message_or_value<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(match value {
-        serde_json::Value::String(message) => message,
-        other => other.to_string(),
-    })
+// Manual impl (not a field-level `alias = "error"`): the alias makes serde
+// treat `message` and `error` as one field, so a body carrying both keys
+// fails as a duplicate field instead of classifying as this envelope.
+impl<'de> Deserialize<'de> for ApiErrorResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self {
+            message: crate::providers::internal::envelope::error_message(deserializer)?,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]

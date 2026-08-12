@@ -1,7 +1,7 @@
-use bytes::Bytes;
-
-use crate::http_client::multipart::Part;
-use crate::http_client::{HttpClientExt, MultipartForm};
+use crate::http_client::HttpClientExt;
+use crate::providers::internal::transcription::{
+    TranscriptionFields, send_transcription, transcription_form,
+};
 use crate::providers::openai::{Client, client::ApiResponse};
 use crate::transcription;
 use crate::transcription::TranscriptionError;
@@ -65,62 +65,19 @@ where
         transcription::TranscriptionResponse<Self::Response>,
         transcription::TranscriptionError,
     > {
-        let data = request.data;
+        let form = transcription_form(
+            request,
+            TranscriptionFields {
+                model: Some(&self.model),
+            },
+        )?;
 
-        let mut body = MultipartForm::new()
-            .text("model", self.model.clone())
-            .part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(language) = request.language {
-            body = body.text("language", language);
-        }
-
-        if let Some(prompt) = request.prompt {
-            body = body.text("prompt", prompt.clone());
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-
-            for (key, value) in params {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
-
-        let req = self
-            .client
-            .post("/audio/transcriptions")?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send_multipart::<Bytes>(req).await?;
-
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-        if status.is_success() {
-            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => {
-                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
-                    Err(TranscriptionError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
-        } else {
-            let str = String::from_utf8_lossy(&response_body).to_string();
-            Err(TranscriptionError::from_http_response(status, str))
-        }
+        send_transcription::<_, ApiResponse<TranscriptionResponse>>(
+            &self.client,
+            self.client.post("/audio/transcriptions")?,
+            form,
+        )
+        .await
     }
 }
 

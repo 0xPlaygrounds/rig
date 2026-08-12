@@ -280,11 +280,6 @@ impl<H> AnthropicClientBuilder<H> {
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct ListModelsResponse {
-    data: Vec<ListModelEntry>,
-}
-
-#[derive(Debug, serde::Deserialize)]
 struct ListModelEntry {
     id: String,
     owned_by: String,
@@ -315,43 +310,12 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(|error| match error {
-                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-                    ModelListingError::api_error_with_context(
-                        "Xiaomi MiMo",
-                        path,
-                        status.as_u16(),
-                        message.as_bytes(),
-                    )
-                }
-                other => ModelListingError::from(other),
-            })?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "Xiaomi MiMo",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("Xiaomi MiMo", path, &error, &body)
-        })?;
-
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
+        crate::providers::internal::model_listing::list_models::<ListModelEntry, _, _>(
+            &self.client,
+            "Xiaomi MiMo",
+            "/models",
+        )
+        .await
     }
 }
 

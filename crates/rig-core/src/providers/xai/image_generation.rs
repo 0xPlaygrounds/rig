@@ -1,9 +1,9 @@
 use super::api::ApiResponse;
 use super::client::Client;
 use crate::http_client::HttpClientExt;
+use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
-use crate::{http_client, image_generation};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
@@ -14,6 +14,17 @@ use serde_json::json;
 // ================================================================
 pub const GROK_IMAGINE_IMAGE: &str = "grok-imagine-image";
 pub const GROK_IMAGINE_IMAGE_PRO: &str = "grok-imagine-image-pro";
+
+impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T> {
+    type Payload = T;
+
+    fn into_payload(self) -> Result<T, String> {
+        match self {
+            Self::Ok(value) => Ok(value),
+            Self::Error(error) => Err(error.message()),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ImageGenerationData {
@@ -91,30 +102,15 @@ where
             merge_inplace(&mut request, additional_params);
         }
 
-        let body = serde_json::to_vec(&request)?;
-
-        let request = self
-            .client
-            .post("/v1/images/generations")?
-            .body(body)
-            .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-        let response = self.client.send(request).await?;
-
-        let status = response.status();
-        let text = http_client::text(response).await?;
-
-        if !status.is_success() {
-            return Err(ImageGenerationError::from_http_response(status, text));
-        }
-
-        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&text)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Error(err) => {
-                tracing::warn!(message = %err.message(), "provider returned an error response");
-                Err(ImageGenerationError::from_http_response(status, text))
-            }
-        }
+        crate::providers::internal::image_generation::send_image_generation::<
+            _,
+            ApiResponse<ImageGenerationResponse>,
+        >(
+            &self.client,
+            self.client.post("/v1/images/generations")?,
+            request,
+        )
+        .await
     }
 }
 

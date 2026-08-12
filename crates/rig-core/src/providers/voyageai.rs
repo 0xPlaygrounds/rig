@@ -143,9 +143,24 @@ pub struct Usage {
     pub total_tokens: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct ApiErrorResponse {
+    /// Provider error message; tolerant of `{"message": "..."}`,
+    /// `{"error": "..."}`, nested `{"error": {"message": ...}}`, and bodies
+    /// carrying both keys. Used for logging only — the raw body is preserved
+    /// on the returned error.
     pub(crate) message: String,
+}
+
+impl<'de> Deserialize<'de> for ApiErrorResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self {
+            message: crate::providers::internal::envelope::error_message(deserializer)?,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]

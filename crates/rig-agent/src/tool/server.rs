@@ -238,39 +238,39 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
+    /// Register through `add`, then drop any stale MCP managed-generation
+    /// entry so the (re)registered name follows last-registration-wins.
+    async fn register(&self, add: impl FnOnce(&mut ToolSet) -> String) {
+        let mut state = self.0.write().await;
+        let _name = add(&mut state.toolset);
+        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+        state.managed_generations.remove(&_name);
+    }
+
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
     pub async fn add_tool<T>(&self, tool: T)
     where
         T: Tool + 'static,
     {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+        self.register(|toolset| toolset.add_tool(tool)).await
     }
 
     /// Register a runtime-defined static tool.
     pub async fn add_dynamic_tool(&self, tool: DynamicTool) {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_dynamic_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+        self.register(|toolset| toolset.add_dynamic_tool(tool))
+            .await
     }
 
     /// Register a context-free dynamic tool through the classic adapter.
     pub async fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_portable_dynamic_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+        self.register(|toolset| toolset.add_portable_dynamic_tool(tool))
+            .await
     }
 
     #[cfg(all(feature = "rmcp", test))]
     pub(crate) async fn add_erased_tool(&self, tool: Arc<dyn ErasedTool>) {
-        let mut state = self.0.write().await;
-        let name = state.toolset.add_erased(tool);
-        state.managed_generations.remove(&name);
+        self.register(|toolset| toolset.add_erased(tool)).await
     }
 
     /// Atomically install the initial tools owned by one MCP handler.

@@ -54,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(providers)* [**breaking**] the Anthropic and OpenAI Responses streaming event enums no longer carry `#[serde(other)]`: unrecognized events triage as `Unknown` in the classify layer, and a known tag with a defective payload is a decode error instead of a silent absorb
 - *(providers)* [**behavior**] gemini (REST/interactions/gRPC), vertex and ollama no longer fabricate durable tool-call ids — not from an index and not from the tool name, so two calls to the same tool in one turn stay distinct; an id-less call carries a minted `ToolCallId` with `provider: None`, replays with the wire id absent on optional-id wires, and the function name a replayed tool result needs travels as the required `ToolResult::name`
 
+- *(providers)* provider plumbing consolidation: `GET /models` listing, OpenAI-wire multipart transcription (openai/groq/azure), image generation, audio generation, OpenAI-wire embeddings (azure/doubleword), and the tolerant provider-error envelope now share `providers::internal` drivers, and copilot's duplicated chat-completions streaming profile/wire types and unary response conversion are deleted in favor of openai's shared path. Wire shapes are preserved and pinned by new form/body tests (azure transcription still omits `model`/`language` and posts to its deployment path); copilot's chat route gains openai's tolerant streaming dialect (defaulted tool-call `index`, object-or-string `arguments`, array-of-parts deltas) and `reasoning`/`reasoning_details` handling on both surfaces
+
 ### Added
 
 - *(streaming)* `wire::classify_typed_event` extends the decode-then-validate policy to typed-transport wires (bedrock, candle, gemini-grpc): modeled variants are `Known`, the SDK's non-exhaustive/unrecognized variants are `Unknown`, SDK decode errors are `Corrupt` — a typed transport earns no policy exemption
@@ -66,6 +68,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(completion)* add public `ProviderCapabilities`, replacing `CompletionModel::composes_native_output_with_tools`
 
 ### Fixed
+
+- *(azure, doubleword)* embeddings report real token usage — both providers implemented only `embed_texts` and fell through to the zero-usage `embed_texts_with_usage` default; they now ride the shared OpenAI-compatible embeddings path, which parses `usage` (including `prompt_tokens_details.cached_tokens`). Azure's deployment-URL request shape (no `model` field, `dimensions` still sent) and doubleword's never-sends-dimensions wire are pinned by tests
+
+- *(openrouter)* `max_tokens` reaches the wire — the request builder hardcoded `max_tokens: None`, silently dropping the caller's configured value on every request; a regression test asserts the serialized body carries it
+
+- *(providers)* error envelopes in azure, groq, hyperbolic, cohere, voyageai, anthropic, and openai tolerate an OpenAI-style nested `{"error":{...}}` body AND a body carrying both `message` and `error` keys — previously a nested body failed both untagged arms (and a dual-key body was a serde duplicate-field error) and surfaced as a `JsonError` instead of a classified provider error; the non-null `error` key wins as the canonical provider error object, and the raw body still flows through `from_http_response` unchanged
+
+- *(azure)* [**behavior**] transcription sends the request's `language` form field — the hand-rolled request silently dropped a caller's `.language(..)` while the public builder exposed it, leaving Azure Whisper to auto-detect
+
+- *(transcription)* [**behavior**] string-valued `additional_params` go onto the multipart form verbatim for openai/groq/azure — they were serialized with `Value::to_string`, so `{"response_format": "verbose_json"}` reached the wire JSON-quoted (`"verbose_json"`) and was rejected or ignored; non-string values stay JSON-encoded
+
+- *(telemetry)* [**behavior**] the openai responses API, ollama, chatgpt, xai, and copilot unary paths record usage through the shared span helpers, so `cache_creation.input_tokens`, `tool_use_prompt_tokens`, and `reasoning_tokens` are now recorded and all-zero usage is suppressed per `Usage::has_values()` (previously hand-rolled records wrote literal zeros and missed those fields)
+
+- *(model-listing)* [**behavior**] every `GET /models` implementation — including copilot's auth-derived listing, via the shared `map_transport_error` — pre-maps a transport-level `InvalidStatusCodeWithMessage` into `ModelListingError::api_error_with_context` (provider/path/status/body preserved); previously only deepseek and xiaomimimo did, and the other providers lost that context
 
 - *(anthropic)* a streamed turn's `Usage::input_tokens` prefers the terminal `message_delta` and falls back to `message_start`, instead of always reading `message_start`. Anthropic proper reports the count on both frames and they agree, so nothing changes there; Anthropic-*compatible* gateways need not, and OpenRouter's Messages endpoint can send `input_tokens: 0` on `message_start` with the real count on `message_delta` (observed when it routes to an Amazon Bedrock upstream) — which silently surfaced as `Usage { input_tokens: 0 }`, worse than a missing value for a consumer sizing a context window from it. A zero on the delta is read as "not reported" so a gateway with the inverse split cannot erase a count `message_start` got right
 

@@ -127,21 +127,7 @@ impl ProviderClient for Client {
 }
 
 #[cfg(any(feature = "image", feature = "audio"))]
-use serde::Deserialize;
-
-#[cfg(any(feature = "image", feature = "audio"))]
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[cfg(any(feature = "image", feature = "audio"))]
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
+use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
 // Hyperbolic Completion API
@@ -288,37 +274,18 @@ mod image_generation {
                 merge_inplace(&mut request, params);
             }
 
-            let body = serde_json::to_vec(&request)?;
-
-            let request = self
-                .client
-                .post("/v1/image/generation")?
-                .header("Content-Type", "application/json")
-                .body(body)
-                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, bytes::Bytes>(request).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(ImageGenerationError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(ImageGenerationError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body),
-                    ))
-                }
-            }
+            // The explicit Content-Type header the hand-rolled request set is
+            // supplied by `Client::send` for every JSON request, so the wire
+            // shape is unchanged.
+            crate::providers::internal::image_generation::send_image_generation::<
+                _,
+                ApiResponse<ImageGenerationResponse>,
+            >(
+                &self.client,
+                self.client.post("/v1/image/generation")?,
+                request,
+            )
+            .await
         }
     }
 }

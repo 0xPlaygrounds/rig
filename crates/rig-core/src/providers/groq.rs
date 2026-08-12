@@ -11,7 +11,6 @@
 //! # Ok(())
 //! # }
 //! ```
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -21,9 +20,8 @@ use crate::client::{
     ProviderClient,
 };
 use crate::completion::CompletionError;
-use crate::http_client::multipart::Part;
-use crate::http_client::{self, HttpClientExt, MultipartForm};
-use crate::transcription::{self, TranscriptionError};
+use crate::http_client::{self, HttpClientExt};
+use crate::transcription::{self};
 
 // ================================================================
 // Main Groq Client
@@ -142,17 +140,7 @@ impl ProviderClient for Client {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
+use crate::providers::openai::client::ApiResponse;
 
 fn apply_native_tools_to_additional_params(
     extra: &mut Map<String, Value>,
@@ -300,65 +288,22 @@ where
         transcription::TranscriptionResponse<Self::Response>,
         transcription::TranscriptionError,
     > {
-        let data = request.data;
+        let form = crate::providers::internal::transcription::transcription_form(
+            request,
+            crate::providers::internal::transcription::TranscriptionFields {
+                model: Some(&self.model),
+            },
+        )?;
 
-        let mut body = MultipartForm::new()
-            .text("model", self.model.clone())
-            .part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(language) = request.language {
-            body = body.text("language", language);
-        }
-
-        if let Some(prompt) = request.prompt {
-            body = body.text("prompt", prompt.clone());
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-
-            for (key, value) in params {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
-
-        let req = self
-            .client
-            .post("/audio/transcriptions")?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send_multipart::<Bytes>(req).await?;
-
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-
-        if status.is_success() {
-            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => {
-                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
-                    Err(TranscriptionError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_body).to_string(),
-            ))
-        }
+        crate::providers::internal::transcription::send_transcription::<
+            _,
+            ApiResponse<TranscriptionResponse>,
+        >(
+            &self.client,
+            self.client.post("/audio/transcriptions")?,
+            form,
+        )
+        .await
     }
 }
 
@@ -368,6 +313,34 @@ mod tests {
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
     use crate::{completion::CompletionRequestBuilder, test_utils::MockCompletionModel};
+
+    /// An OpenAI-style nested error body (`{"error": {"message": ...}}`) on a
+    /// 2xx status must classify as the error envelope — not fail both untagged
+    /// arms and surface as a serde error that loses the provider body.
+    #[test]
+    fn nested_error_object_parses_as_the_error_envelope() {
+        #[derive(serde::Deserialize)]
+        struct Success {
+            #[allow(dead_code)]
+            choices: Vec<serde_json::Value>,
+        }
+
+        let nested = r#"{"error":{"message":"model not found","type":"invalid_request_error"}}"#;
+        match serde_json::from_str::<super::ApiResponse<Success>>(nested)
+            .expect("nested error envelope should deserialize")
+        {
+            super::ApiResponse::Err(err) => assert!(err.message.contains("model not found")),
+            super::ApiResponse::Ok(_) => panic!("error body must classify as the error envelope"),
+        }
+
+        let plain = r#"{"error":"over capacity"}"#;
+        match serde_json::from_str::<super::ApiResponse<Success>>(plain)
+            .expect("string error envelope should deserialize")
+        {
+            super::ApiResponse::Err(err) => assert_eq!(err.message, "over capacity"),
+            super::ApiResponse::Ok(_) => panic!("error body must classify as the error envelope"),
+        }
+    }
 
     #[test]
     fn groq_request_maps_output_schema_max_tokens_and_specific_tool_choice() {

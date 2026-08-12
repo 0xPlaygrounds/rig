@@ -31,15 +31,12 @@ use crate::completion::{self, CompletionError};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
-use crate::providers::internal::openai_chat_completions_compatible::{
-    self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleToolCallChunk,
-};
-use crate::providers::internal::wire;
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
 use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{
+    CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
+};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::StreamExt;
 use http::Request;
@@ -628,75 +625,79 @@ pub struct ChatChoice {
 /// Stable descriptor name reported on normalized Copilot responses.
 pub const PROVIDER_NAME: &str = "copilot";
 
+impl From<ChatChoice> for openai::completion::Choice {
+    fn from(choice: ChatChoice) -> Self {
+        Self {
+            index: choice.index,
+            message: choice.message,
+            logprobs: choice.logprobs,
+            // OpenAI's normalization treats an empty `finish_reason` as
+            // absent, so Copilot's optional field folds onto it losslessly.
+            finish_reason: choice.finish_reason.unwrap_or_default(),
+        }
+    }
+}
+
+impl From<ChatCompletionResponse> for openai::completion::CompletionResponse {
+    fn from(response: ChatCompletionResponse) -> Self {
+        Self {
+            id: response.id,
+            object: response.object.unwrap_or_default(),
+            created: response.created.unwrap_or_default(),
+            model: response.model,
+            system_fingerprint: response.system_fingerprint,
+            choices: response.choices.into_iter().map(Into::into).collect(),
+            usage: response.usage,
+        }
+    }
+}
+
 impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse {
     type Error = CompletionError;
 
     fn try_from(response: ChatCompletionResponse) -> Result<Self, Self::Error> {
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
+        // Copilot's chat route speaks OpenAI's chat-completions wire (with a
+        // few fields optional), so normalization is OpenAI's, under Copilot's
+        // own provider name.
+        openai::completion::CompletionResponse::from(response).normalize(PROVIDER_NAME)
+    }
+}
 
-        // Captured before `choice` is shadowed by the normalized content below.
-        let finish_reason = choice
-            .finish_reason
-            .as_deref()
-            .filter(|reason| !reason.is_empty())
-            .map(openai_chat_completions_compatible::map_openai_finish_reason);
+impl ProviderResponseExt for ChatCompletionResponse {
+    type OutputMessage = ChatChoice;
+    type Usage = openai::completion::Usage;
 
-        let content = match &choice.message {
-            openai::completion::Message::Assistant {
-                content,
-                tool_calls,
-                ..
-            } => {
-                let mut content = content
-                    .iter()
-                    .filter_map(|c| {
-                        let s = match c {
-                            openai::completion::AssistantContent::Text { text } => text,
-                            openai::completion::AssistantContent::Refusal { refusal } => refusal,
-                        };
-                        if s.is_empty() {
-                            None
-                        } else {
-                            Some(completion::AssistantContent::text(s))
-                        }
-                    })
-                    .collect::<Vec<_>>();
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.clone())
+    }
 
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
-                                call.function.arguments.clone(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
-                Ok(content)
-            }
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a valid message or tool call".into(),
-            )),
-        }?;
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.clone())
+    }
 
-        let choice = crate::message::require_non_empty_response(content)?;
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.choices.clone()
+    }
 
-        let usage = response
-            .usage
-            .as_ref()
-            .map(|usage| usage.to_normalized())
-            .unwrap_or_default();
+    fn get_text_response(&self) -> Option<String> {
+        let response = self
+            .choices
+            .iter()
+            .filter_map(|choice| {
+                openai::completion::assistant_message_text_response(&choice.message)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
 
-        Ok(
-            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_response_id(response.id.as_str())
-                .with_model(response.model.as_str())
-                .with_optional_finish_reason(finish_reason),
-        )
+        if response.is_empty() {
+            None
+        } else {
+            Some(response)
+        }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        self.usage.clone()
     }
 }
 
@@ -855,17 +856,13 @@ where
                 match serde_json::from_str::<ChatApiResponse<ChatCompletionResponse>>(&body)? {
                     ChatApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record("gen_ai.response.id", response.id.as_str());
-                        span.record("gen_ai.response.model", response.model.as_str());
-                        if let Some(usage) = &response.usage {
-                            let normalized = usage.to_normalized();
-                            span.record("gen_ai.usage.input_tokens", normalized.input_tokens);
-                            span.record("gen_ai.usage.output_tokens", normalized.output_tokens);
-                            span.record(
-                                "gen_ai.usage.cache_read.input_tokens",
-                                normalized.cached_input_tokens,
-                            );
-                        }
+                        span.record_response_metadata(&response);
+                        let usage = response
+                            .usage
+                            .as_ref()
+                            .map(|usage| usage.to_normalized())
+                            .unwrap_or_default();
+                        span.record_token_usage(&usage);
 
                         Ok(response)
                     }
@@ -919,16 +916,7 @@ where
                 span.record("gen_ai.response.id", response.id.as_str());
                 span.record("gen_ai.response.model", response.model.as_str());
                 if let Some(usage) = &response.usage {
-                    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-                    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-                    span.record(
-                        "gen_ai.usage.cache_read.input_tokens",
-                        usage
-                            .input_tokens_details
-                            .as_ref()
-                            .map(|details| details.cached_tokens)
-                            .unwrap_or(0),
-                    );
+                    span.record_token_usage(&usage.into());
                 }
 
                 Ok(response)
@@ -1135,6 +1123,9 @@ pub struct EmbeddingModel<H = reqwest::Client> {
 #[derive(Deserialize)]
 struct CopilotEmbeddingResponse {
     data: Vec<CopilotEmbeddingData>,
+    // Copilot fronts several vendors, so usage is not guaranteed on the wire.
+    #[serde(default)]
+    usage: Option<openai::completion::Usage>,
 }
 
 #[derive(Deserialize)]
@@ -1184,6 +1175,15 @@ where
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
+        let documents = documents.into_iter().collect::<Vec<_>>();
+        let response = self.embed_texts_with_usage(documents).await?;
+        Ok(response.embeddings)
+    }
+
+    async fn embed_texts_with_usage(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
         let documents = documents.into_iter().collect::<Vec<_>>();
         let auth = self
             .client
@@ -1258,7 +1258,15 @@ where
                 }
             };
 
-            Ok(body
+            // Embeddings consume only prompt tokens, so a missing usage
+            // payload normalizes to the documented zero-usage sentinel.
+            let usage = body
+                .usage
+                .as_ref()
+                .map(|usage| usage.to_normalized())
+                .unwrap_or_default();
+
+            let embeddings = body
                 .data
                 .into_iter()
                 .zip(documents.into_iter())
@@ -1270,7 +1278,9 @@ where
                         .filter_map(|n| n.as_f64())
                         .collect(),
                 })
-                .collect())
+                .collect();
+
+            Ok(embeddings::EmbeddingResponse { embeddings, usage })
         } else {
             let text = http_client::text(response).await?;
             Err(EmbeddingError::from_http_response(status, text))
@@ -1345,7 +1355,13 @@ where
         )
         .body(http_client::NoBody)?;
 
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
+        let response = self.client.send::<_, Vec<u8>>(req).await.map_err(|error| {
+            crate::providers::internal::model_listing::map_transport_error(
+                MODEL_LISTING_PROVIDER,
+                MODEL_LISTING_PATH,
+                error,
+            )
+        })?;
 
         if !response.status().is_success() {
             let status_code = response.status().as_u16();
@@ -1373,132 +1389,6 @@ where
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct ChatStreamingFunction {
-    name: Option<String>,
-    arguments: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-struct ChatStreamingToolCall {
-    index: usize,
-    id: Option<String>,
-    function: ChatStreamingFunction,
-}
-
-impl From<&ChatStreamingToolCall> for CompatibleToolCallChunk {
-    fn from(value: &ChatStreamingToolCall) -> Self {
-        Self {
-            index: value.index,
-            id: value.id.clone(),
-            name: value.function.name.clone(),
-            arguments: value.function.arguments.clone(),
-        }
-    }
-}
-
-#[derive(Deserialize, Debug, Default)]
-struct ChatStreamingDelta {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    #[serde(default, deserialize_with = "crate::json_utils::null_or_vec")]
-    tool_calls: Vec<ChatStreamingToolCall>,
-}
-
-#[derive(Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
-enum ChatFinishReason {
-    ToolCalls,
-    Stop,
-    ContentFilter,
-    Length,
-    #[serde(untagged)]
-    Other(String),
-}
-
-#[derive(Deserialize, Debug)]
-struct ChatStreamingChoice {
-    // Defaulted for delta-less choices (e.g. Azure-style content-filter
-    // prelude chunks); an empty delta with no finish reason is a no-op frame.
-    #[serde(default)]
-    delta: ChatStreamingDelta,
-    finish_reason: Option<ChatFinishReason>,
-}
-
-#[derive(Deserialize, Debug)]
-struct ChatStreamingChunk {
-    id: Option<String>,
-    model: Option<String>,
-    choices: Vec<ChatStreamingChoice>,
-    usage: Option<openai::completion::Usage>,
-}
-
-#[derive(Clone, Copy)]
-struct CopilotChatCompatibleProfile;
-
-impl CompatibleStreamProfile for CopilotChatCompatibleProfile {
-    type Usage = openai::completion::Usage;
-    type Detail = ();
-    type FinalResponse = CopilotStreamingResponse;
-
-    fn classify_chunk(
-        &self,
-        data: &str,
-    ) -> wire::WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
-        // Classification only — the unknown/corrupt policy (warn-skip vs.
-        // in-band `Err` item) lives in the shared driver, not here.
-        wire::classify_chat_completions_frame::<ChatStreamingChunk>(data).map(|data| {
-            openai_chat_completions_compatible::normalize_first_choice_chunk(
-                data.id,
-                data.model,
-                data.usage,
-                &data.choices,
-                |choice| CompatibleChoiceData {
-                    finish_reason: match choice.finish_reason.as_ref() {
-                        Some(ChatFinishReason::ToolCalls) => {
-                            CompatibleFinishReason::Reported(completion::FinishReason::ToolCalls)
-                        }
-                        Some(ChatFinishReason::Stop) => {
-                            CompatibleFinishReason::Reported(completion::FinishReason::Stop)
-                        }
-                        Some(ChatFinishReason::Length) => {
-                            CompatibleFinishReason::Reported(completion::FinishReason::Length)
-                        }
-                        Some(ChatFinishReason::ContentFilter) => CompatibleFinishReason::Reported(
-                            completion::FinishReason::ContentFilter,
-                        ),
-                        Some(ChatFinishReason::Other(value)) => CompatibleFinishReason::Reported(
-                            openai_chat_completions_compatible::map_openai_finish_reason(value),
-                        ),
-                        None => CompatibleFinishReason::Absent,
-                    },
-                    text: choice.delta.content.clone(),
-                    reasoning: choice.delta.reasoning_content.clone(),
-                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
-                        &choice.delta.tool_calls,
-                    ),
-                    details: Vec::new(),
-                },
-            )
-        })
-    }
-
-    fn build_final_response(
-        &self,
-        terminal: openai_chat_completions_compatible::CompatibleTerminal<Self::Usage>,
-    ) -> Self::FinalResponse {
-        CopilotStreamingResponse::Chat(
-            openai::completion::streaming::StreamingCompletionResponse::from_terminal(terminal),
-        )
-    }
-
-    fn uses_distinct_tool_call_eviction(&self) -> bool {
-        true
-    }
-}
-
 async fn send_copilot_chat_raw_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
@@ -1506,12 +1396,21 @@ async fn send_copilot_chat_raw_streaming_request<T>(
 where
     T: HttpClientExt + Clone + 'static,
 {
-    openai_chat_completions_compatible::send_compatible_raw_streaming_request(
-        http_client,
-        req,
-        CopilotChatCompatibleProfile,
-    )
-    .await
+    // Copilot's `/chat/completions` route relays OpenAI's chat-completions
+    // SSE wire verbatim, so OpenAI's shared streaming profile (tolerant
+    // deserializers, reasoning handling, finish-reason mapping) is the event
+    // interpreter — only the auth/transport in the caller and the
+    // route-carrying terminal wrapper below are Copilot-specific.
+    let raw =
+        openai::completion::streaming::send_compatible_raw_streaming_request(http_client, req)
+            .await?;
+    let stream = raw.map(|item| {
+        item.and_then(|choice| {
+            choice.try_map_final(|response| Ok(CopilotStreamingResponse::Chat(response)))
+        })
+    });
+
+    Ok(Box::pin(stream))
 }
 
 fn default_token_dir() -> Option<PathBuf> {

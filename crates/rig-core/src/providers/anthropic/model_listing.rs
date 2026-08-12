@@ -1,8 +1,8 @@
 use crate::{
     client::ModelLister,
-    http_client::{self, HttpClientExt},
+    http_client::HttpClientExt,
     model::{Model, ModelList, ModelListingError},
-    providers::anthropic::Client,
+    providers::{anthropic::Client, internal},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
@@ -54,24 +54,8 @@ where
                 None => "/v1/models".to_string(),
             };
 
-            let req = self.client.get(&path)?.body(http_client::NoBody)?;
-            let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-            if !response.status().is_success() {
-                let status_code = response.status().as_u16();
-                let body = response.into_body().await?;
-                return Err(ModelListingError::api_error_with_context(
-                    "Anthropic",
-                    &path,
-                    status_code,
-                    &body,
-                ));
-            }
-
-            let body = response.into_body().await?;
-            let page: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-                ModelListingError::parse_error_with_context("Anthropic", &path, &error, &body)
-            })?;
+            let page: ListModelsResponse =
+                internal::model_listing::get_json(&self.client, "Anthropic", &path).await?;
 
             all_models.extend(page.data.into_iter().map(Model::from));
 
