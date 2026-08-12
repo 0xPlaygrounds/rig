@@ -320,12 +320,12 @@ impl From<&CompletionResponse> for Usage {
     fn from(response: &CompletionResponse) -> Usage {
         let input_tokens = response.prompt_eval_count.unwrap_or(0);
         let output_tokens = response.eval_count.unwrap_or(0);
-
-        let mut usage = Usage::new();
-        usage.input_tokens = input_tokens;
-        usage.output_tokens = output_tokens;
-        usage.total_tokens = input_tokens + output_tokens;
-        usage
+        crate::providers::internal::completion_usage(
+            input_tokens,
+            output_tokens,
+            input_tokens + output_tokens,
+            0,
+        )
     }
 }
 
@@ -1427,38 +1427,8 @@ impl From<crate::message::ToolCall> for ToolCall {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct SystemContent {
-    #[serde(default)]
-    r#type: SystemContentType,
-    text: String,
-}
-
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum SystemContentType {
-    #[default]
-    Text,
-}
-
-impl From<String> for SystemContent {
-    fn from(s: String) -> Self {
-        SystemContent {
-            r#type: SystemContentType::default(),
-            text: s,
-        }
-    }
-}
-
-impl FromStr for SystemContent {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(SystemContent {
-            r#type: SystemContentType::default(),
-            text: s.to_string(),
-        })
-    }
-}
+// Byte-for-byte the same wire shape as OpenAI's system content part; reuse it.
+pub use crate::providers::openai::completion::{SystemContent, SystemContentType};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct AssistantContent {

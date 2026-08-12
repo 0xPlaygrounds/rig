@@ -494,48 +494,48 @@ pub enum Citation {
     Unknown(serde_json::Value),
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct CharLocationCitationFields {
     cited_text: String,
     document_index: usize,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     document_title: Option<String>,
     start_char_index: usize,
     end_char_index: usize,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct PageLocationCitationFields {
     cited_text: String,
     document_index: usize,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     document_title: Option<String>,
     start_page_number: u32,
     end_page_number: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct ContentBlockLocationCitationFields {
     cited_text: String,
     document_index: usize,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     document_title: Option<String>,
     start_block_index: usize,
     end_block_index: usize,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct SearchResultLocationCitationFields {
     cited_text: String,
     source: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     title: Option<String>,
     search_result_index: usize,
     start_block_index: usize,
     end_block_index: usize,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct WebSearchResultLocationCitationFields {
     cited_text: String,
     url: String,
@@ -548,7 +548,19 @@ impl Serialize for Citation {
     where
         S: serde::Serializer,
     {
-        let mut value = serde_json::Map::new();
+        /// Serialize the per-variant DTO and insert the wire `type` tag.
+        fn tagged<S, T>(serializer: S, tag: &str, fields: &T) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+            T: Serialize,
+        {
+            let mut value = serde_json::to_value(fields).map_err(serde::ser::Error::custom)?;
+            if let serde_json::Value::Object(obj) = &mut value {
+                obj.insert("type".into(), serde_json::json!(tag));
+            }
+            value.serialize(serializer)
+        }
+
         match self {
             Citation::CharLocation {
                 cited_text,
@@ -556,57 +568,51 @@ impl Serialize for Citation {
                 document_title,
                 start_char_index,
                 end_char_index,
-            } => {
-                value.insert("type".into(), serde_json::json!("char_location"));
-                value.insert("cited_text".into(), serde_json::json!(cited_text));
-                value.insert("document_index".into(), serde_json::json!(document_index));
-                if let Some(document_title) = document_title {
-                    value.insert("document_title".into(), serde_json::json!(document_title));
-                }
-                value.insert(
-                    "start_char_index".into(),
-                    serde_json::json!(start_char_index),
-                );
-                value.insert("end_char_index".into(), serde_json::json!(end_char_index));
-            }
+            } => tagged(
+                serializer,
+                "char_location",
+                &CharLocationCitationFields {
+                    cited_text: cited_text.clone(),
+                    document_index: *document_index,
+                    document_title: document_title.clone(),
+                    start_char_index: *start_char_index,
+                    end_char_index: *end_char_index,
+                },
+            ),
             Citation::PageLocation {
                 cited_text,
                 document_index,
                 document_title,
                 start_page_number,
                 end_page_number,
-            } => {
-                value.insert("type".into(), serde_json::json!("page_location"));
-                value.insert("cited_text".into(), serde_json::json!(cited_text));
-                value.insert("document_index".into(), serde_json::json!(document_index));
-                if let Some(document_title) = document_title {
-                    value.insert("document_title".into(), serde_json::json!(document_title));
-                }
-                value.insert(
-                    "start_page_number".into(),
-                    serde_json::json!(start_page_number),
-                );
-                value.insert("end_page_number".into(), serde_json::json!(end_page_number));
-            }
+            } => tagged(
+                serializer,
+                "page_location",
+                &PageLocationCitationFields {
+                    cited_text: cited_text.clone(),
+                    document_index: *document_index,
+                    document_title: document_title.clone(),
+                    start_page_number: *start_page_number,
+                    end_page_number: *end_page_number,
+                },
+            ),
             Citation::ContentBlockLocation {
                 cited_text,
                 document_index,
                 document_title,
                 start_block_index,
                 end_block_index,
-            } => {
-                value.insert("type".into(), serde_json::json!("content_block_location"));
-                value.insert("cited_text".into(), serde_json::json!(cited_text));
-                value.insert("document_index".into(), serde_json::json!(document_index));
-                if let Some(document_title) = document_title {
-                    value.insert("document_title".into(), serde_json::json!(document_title));
-                }
-                value.insert(
-                    "start_block_index".into(),
-                    serde_json::json!(start_block_index),
-                );
-                value.insert("end_block_index".into(), serde_json::json!(end_block_index));
-            }
+            } => tagged(
+                serializer,
+                "content_block_location",
+                &ContentBlockLocationCitationFields {
+                    cited_text: cited_text.clone(),
+                    document_index: *document_index,
+                    document_title: document_title.clone(),
+                    start_block_index: *start_block_index,
+                    end_block_index: *end_block_index,
+                },
+            ),
             Citation::SearchResultLocation {
                 cited_text,
                 source,
@@ -614,42 +620,37 @@ impl Serialize for Citation {
                 search_result_index,
                 start_block_index,
                 end_block_index,
-            } => {
-                value.insert("type".into(), serde_json::json!("search_result_location"));
-                value.insert("cited_text".into(), serde_json::json!(cited_text));
-                value.insert("source".into(), serde_json::json!(source));
-                if let Some(title) = title {
-                    value.insert("title".into(), serde_json::json!(title));
-                }
-                value.insert(
-                    "search_result_index".into(),
-                    serde_json::json!(search_result_index),
-                );
-                value.insert(
-                    "start_block_index".into(),
-                    serde_json::json!(start_block_index),
-                );
-                value.insert("end_block_index".into(), serde_json::json!(end_block_index));
-            }
+            } => tagged(
+                serializer,
+                "search_result_location",
+                &SearchResultLocationCitationFields {
+                    cited_text: cited_text.clone(),
+                    source: source.clone(),
+                    title: title.clone(),
+                    search_result_index: *search_result_index,
+                    start_block_index: *start_block_index,
+                    end_block_index: *end_block_index,
+                },
+            ),
             Citation::WebSearchResultLocation {
                 cited_text,
                 url,
                 title,
                 encrypted_index,
-            } => {
-                value.insert(
-                    "type".into(),
-                    serde_json::json!("web_search_result_location"),
-                );
-                value.insert("cited_text".into(), serde_json::json!(cited_text));
-                value.insert("url".into(), serde_json::json!(url));
-                value.insert("title".into(), serde_json::json!(title));
-                value.insert("encrypted_index".into(), serde_json::json!(encrypted_index));
-            }
-            Citation::Unknown(raw) => return raw.serialize(serializer),
+            } => tagged(
+                serializer,
+                "web_search_result_location",
+                // `title` stays a plain field here: the wire writes it even
+                // when `None` (as an explicit `"title": null`).
+                &WebSearchResultLocationCitationFields {
+                    cited_text: cited_text.clone(),
+                    url: url.clone(),
+                    title: title.clone(),
+                    encrypted_index: encrypted_index.clone(),
+                },
+            ),
+            Citation::Unknown(raw) => raw.serialize(serializer),
         }
-
-        serde_json::Value::Object(value).serialize(serializer)
     }
 }
 
@@ -1801,81 +1802,14 @@ impl TryFrom<message::ToolChoice> for ToolChoice {
 ///
 /// Source: <https://docs.anthropic.com/en/docs/build-with-claude/structured-outputs#json-schema-limitations>
 fn sanitize_schema(schema: &mut serde_json::Value) {
-    use serde_json::Value;
-
-    if let Value::Object(obj) = schema {
-        let is_object_schema = obj.get("type") == Some(&Value::String("object".to_string()))
-            || obj.contains_key("properties");
-
-        if is_object_schema && !obj.contains_key("additionalProperties") {
-            obj.insert("additionalProperties".to_string(), Value::Bool(false));
-        }
-
-        if let Some(Value::Object(properties)) = obj.get("properties") {
-            let prop_keys = properties.keys().cloned().map(Value::String).collect();
-            obj.insert("required".to_string(), Value::Array(prop_keys));
-        }
-
-        // Anthropic does not support numerical constraints on integer/number types.
-        let is_numeric_schema = obj.get("type") == Some(&Value::String("integer".to_string()))
-            || obj.get("type") == Some(&Value::String("number".to_string()));
-
-        if is_numeric_schema {
-            for key in [
-                "minimum",
-                "maximum",
-                "exclusiveMinimum",
-                "exclusiveMaximum",
-                "multipleOf",
-            ] {
-                obj.remove(key);
-            }
-        }
-
-        if let Some(defs) = obj.get_mut("$defs")
-            && let Value::Object(defs_obj) = defs
-        {
-            for (_, def_schema) in defs_obj.iter_mut() {
-                sanitize_schema(def_schema);
-            }
-        }
-
-        if let Some(properties) = obj.get_mut("properties")
-            && let Value::Object(props) = properties
-        {
-            for (_, prop_value) in props.iter_mut() {
-                sanitize_schema(prop_value);
-            }
-        }
-
-        if let Some(items) = obj.get_mut("items") {
-            sanitize_schema(items);
-        }
-
-        // Anthropic doesn't support oneOf, convert to anyOf
-        if let Some(one_of) = obj.remove("oneOf") {
-            match obj.get_mut("anyOf") {
-                Some(Value::Array(existing)) => {
-                    if let Value::Array(mut incoming) = one_of {
-                        existing.append(&mut incoming);
-                    }
-                }
-                _ => {
-                    obj.insert("anyOf".to_string(), one_of);
-                }
-            }
-        }
-
-        for key in ["anyOf", "allOf"] {
-            if let Some(variants) = obj.get_mut(key)
-                && let Value::Array(variants_array) = variants
-            {
-                for variant in variants_array.iter_mut() {
-                    sanitize_schema(variant);
-                }
-            }
-        }
-    }
+    crate::providers::internal::schema::sanitize_schema(
+        schema,
+        crate::providers::internal::schema::SanitizeOptions {
+            strip_ref_siblings: false,
+            inject_empty_properties: false,
+            strip_numeric_constraints: true,
+        },
+    );
 }
 
 /// Output format specifier for Anthropic's structured output.

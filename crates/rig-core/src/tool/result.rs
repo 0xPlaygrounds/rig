@@ -32,45 +32,38 @@ pub enum ToolErrorKind {
     Other,
 }
 
-impl ToolErrorKind {
-    /// Stable machine-readable name.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::InvalidArgs => "invalid_args",
-            Self::Timeout => "timeout",
-            Self::Cancelled => "cancelled",
-            Self::NotFound => "not_found",
-            Self::PermissionDenied => "permission_denied",
-            Self::RateLimited => "rate_limited",
-            Self::Provider => "provider",
-            Self::Network => "network",
-            Self::Other => "other",
-        }
-    }
-
-    const fn default_retryable(self) -> Option<bool> {
-        match self {
-            Self::Timeout | Self::RateLimited | Self::Network => Some(true),
-            Self::InvalidArgs | Self::Cancelled | Self::NotFound | Self::PermissionDenied => {
-                Some(false)
+// One row per kind: (stable name, default retryability, default model
+// feedback). The macro emits the three parallel accessors from the single
+// table so a new kind cannot update one and miss another.
+macro_rules! kind_defaults {
+    ($($variant:ident => ($name:literal, $retryable:expr, $feedback:literal)),+ $(,)?) => {
+        impl ToolErrorKind {
+            /// Stable machine-readable name.
+            pub const fn as_str(self) -> &'static str {
+                match self { $(Self::$variant => $name,)+ }
             }
-            Self::Provider | Self::Other => None,
-        }
-    }
 
-    const fn default_model_feedback(self) -> &'static str {
-        match self {
-            Self::InvalidArgs => "tool arguments were invalid",
-            Self::Timeout => "tool execution timed out",
-            Self::Cancelled => "tool execution was cancelled",
-            Self::NotFound => "the requested tool or resource was not found",
-            Self::PermissionDenied => "the tool denied the request",
-            Self::RateLimited => "the tool was rate limited; try again later",
-            Self::Provider => "the tool provider failed",
-            Self::Network => "the tool could not reach its upstream service",
-            Self::Other => "the tool failed",
+            const fn default_retryable(self) -> Option<bool> {
+                match self { $(Self::$variant => $retryable,)+ }
+            }
+
+            const fn default_model_feedback(self) -> &'static str {
+                match self { $(Self::$variant => $feedback,)+ }
+            }
         }
-    }
+    };
+}
+
+kind_defaults! {
+    InvalidArgs => ("invalid_args", Some(false), "tool arguments were invalid"),
+    Timeout => ("timeout", Some(true), "tool execution timed out"),
+    Cancelled => ("cancelled", Some(false), "tool execution was cancelled"),
+    NotFound => ("not_found", Some(false), "the requested tool or resource was not found"),
+    PermissionDenied => ("permission_denied", Some(false), "the tool denied the request"),
+    RateLimited => ("rate_limited", Some(true), "the tool was rate limited; try again later"),
+    Provider => ("provider", None, "the tool provider failed"),
+    Network => ("network", Some(true), "the tool could not reach its upstream service"),
+    Other => ("other", None, "the tool failed"),
 }
 
 impl std::fmt::Display for ToolErrorKind {

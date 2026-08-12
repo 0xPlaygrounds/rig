@@ -17,7 +17,6 @@ use serde_json::Value;
 use crate::client::{self, BearerAuth, DebugExt, ModelLister, Provider, ProviderClient};
 use crate::http_client::HttpClientExt;
 use crate::model::{ModelList, ModelListingError};
-use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
@@ -340,60 +339,44 @@ pub enum ToolType {
 /// wire type.
 impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
-        let response = self;
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
+        use crate::providers::internal::openai_chat_completions_compatible as compat;
 
-        let finish_reason = Some(choice.finish_reason.as_str())
-            .filter(|reason| !reason.is_empty())
-            .map(map_openai_finish_reason);
-
-        let content = match &choice.message {
-            Message::Assistant {
-                content,
-                tool_calls,
-                reasoning_content,
-                ..
-            } => {
-                let mut content = if content.trim().is_empty() {
-                    vec![]
-                } else {
-                    vec![completion::AssistantContent::text(content)]
-                };
-
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
+        let usage = crate::completion::Usage::from(&self.usage);
+        compat::normalize_openai_response(
+            provider,
+            &self.choices,
+            self.id.as_deref(),
+            self.model.as_deref(),
+            usage,
+            |choice| choice.finish_reason.as_str(),
+            |choice| match &choice.message {
+                Message::Assistant {
+                    content,
+                    tool_calls,
+                    reasoning_content,
+                    ..
+                } => {
+                    let mut content = compat::text_then_tool_calls(
+                        content,
+                        content.trim().is_empty(),
+                        tool_calls.iter().map(|call| {
+                            (
+                                call.id.as_str(),
+                                call.function.name.as_str(),
                                 call.function.arguments.clone(),
                             )
-                        })
-                        .collect::<Vec<_>>(),
-                );
+                        }),
+                    );
 
-                if let Some(reasoning_content) = reasoning_content {
-                    content.push(completion::AssistantContent::reasoning(reasoning_content));
+                    if let Some(reasoning_content) = reasoning_content {
+                        content.push(completion::AssistantContent::reasoning(reasoning_content));
+                    }
+
+                    Some(content)
                 }
-
-                Ok(content)
-            }
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a valid message or tool call".into(),
-            )),
-        }?;
-
-        let choice = crate::message::require_non_empty_response(content)?;
-
-        let usage = crate::completion::Usage::from(&response.usage);
-
-        Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_response_id(response.id.as_deref())
-            .with_optional_model(response.model.as_deref())
-            .with_optional_finish_reason(finish_reason))
+                _ => None,
+            },
+        )
     }
 }
 

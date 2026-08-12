@@ -376,23 +376,6 @@ impl From<completion::ToolDefinition> for ToolDefinition {
     }
 }
 
-// ================================================================
-// Error Types
-// ================================================================
-
-/// API error response
-#[derive(Debug, Deserialize)]
-pub struct ApiError {
-    pub error: String,
-    pub code: String,
-}
-
-impl ApiError {
-    pub fn message(&self) -> String {
-        format!("Code `{}`: {}", self.code, self.error)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{Content, Message, Role};
@@ -608,11 +591,4 @@ mod tests {
                 if !call_id.is_empty() && name == "my_tool"
         ));
     }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum ApiResponse<T> {
-    Ok(T),
-    Error(ApiError),
 }

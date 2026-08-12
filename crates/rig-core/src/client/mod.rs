@@ -933,6 +933,33 @@ where
     }
 }
 
+// Every single-model capability client impl on `Client<Ext, H>` shares the
+// same shape: gate on the matching `Capabilities` slot, name the model type,
+// and construct it with `M::make`. The macro keeps the per-capability
+// variation (trait, slot, associated type, method, extra model bounds, and
+// feature gate) in one invocation each. `CompletionClient` (different
+// constructor protocol) and `EmbeddingsClient` (extra `_with_ndims` method)
+// stay hand-written below.
+macro_rules! impl_capability_client {
+    (
+        $(#[cfg(feature = $feature:literal)])?
+        $client_trait:ident { $slot:ident, $assoc:ident, $method:ident, $model_trait:ident $(+ $extra:path)* }
+    ) => {
+        $(#[cfg(feature = $feature)])?
+        impl<M, Ext, H> $client_trait for Client<Ext, H>
+        where
+            Ext: Capabilities<H, $slot = Capable<M>>,
+            M: $model_trait<Client = Self> $(+ $extra)*,
+        {
+            type $assoc = M;
+
+            fn $method(&self, model: impl Into<String>) -> Self::$assoc {
+                M::make(self, model)
+            }
+        }
+    };
+}
+
 impl<M, Ext, H> CompletionClient for Client<Ext, H>
 where
     Ext: Capabilities<H, Completion = Capable<M>>,
@@ -965,55 +992,39 @@ where
     }
 }
 
-impl<M, Ext, H> RerankingClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, Rerank = Capable<M>>,
-    M: RerankModel<Client = Self>,
-{
-    type RerankModel = M;
+impl_capability_client!(RerankingClient {
+    Rerank,
+    RerankModel,
+    rerank_model,
+    RerankModel
+});
 
-    fn rerank_model(&self, model: impl Into<String>) -> Self::RerankModel {
-        M::make(self, model)
+impl_capability_client!(TranscriptionClient {
+    Transcription,
+    TranscriptionModel,
+    transcription_model,
+    TranscriptionModel + WasmCompatSend
+});
+
+impl_capability_client!(
+    #[cfg(feature = "image")]
+    ImageGenerationClient {
+        ImageGeneration,
+        ImageGenerationModel,
+        image_generation_model,
+        ImageGenerationModel
     }
-}
+);
 
-impl<M, Ext, H> TranscriptionClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, Transcription = Capable<M>>,
-    M: TranscriptionModel<Client = Self> + WasmCompatSend,
-{
-    type TranscriptionModel = M;
-
-    fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel {
-        M::make(self, model)
+impl_capability_client!(
+    #[cfg(feature = "audio")]
+    AudioGenerationClient {
+        AudioGeneration,
+        AudioGenerationModel,
+        audio_generation_model,
+        AudioGenerationModel
     }
-}
-
-#[cfg(feature = "image")]
-impl<M, Ext, H> ImageGenerationClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, ImageGeneration = Capable<M>>,
-    M: ImageGenerationModel<Client = Self>,
-{
-    type ImageGenerationModel = M;
-
-    fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel {
-        M::make(self, model)
-    }
-}
-
-#[cfg(feature = "audio")]
-impl<M, Ext, H> AudioGenerationClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, AudioGeneration = Capable<M>>,
-    M: AudioGenerationModel<Client = Self>,
-{
-    type AudioGenerationModel = M;
-
-    fn audio_generation_model(&self, model: impl Into<String>) -> Self::AudioGenerationModel {
-        M::make(self, model)
-    }
-}
+);
 
 impl<M, Ext, H> ModelListingClient for Client<Ext, H>
 where

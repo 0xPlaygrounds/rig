@@ -956,6 +956,30 @@ fn report_from_response(
     })
 }
 
+/// Require the extended run's accumulated message history and validate
+/// canonical tool call/result correlation over it.
+fn correlated_messages<'a>(
+    scenario: &'static str,
+    response: &'a crate::agent::PromptResponse,
+) -> Result<&'a [Message], ScenarioError> {
+    let messages = response.messages.as_deref().ok_or_else(|| {
+        ScenarioError::contract(scenario, "extended run omitted accumulated message history")
+    })?;
+    validate_tool_correlation(scenario, messages)?;
+    Ok(messages)
+}
+
+/// [`correlated_messages`], flattened into every tool-result value in history.
+fn correlated_result_values(
+    scenario: &'static str,
+    response: &crate::agent::PromptResponse,
+) -> Result<Vec<serde_json::Value>, ScenarioError> {
+    Ok(correlated_messages(scenario, response)?
+        .iter()
+        .flat_map(tool_result_values)
+        .collect())
+}
+
 fn value_matches_integer(value: &serde_json::Value, expected: i64) -> bool {
     value.as_i64() == Some(expected)
         || value
@@ -1003,10 +1027,7 @@ where
     } else {
         "parallel_tools"
     };
-    let messages = response.messages.as_deref().ok_or_else(|| {
-        ScenarioError::contract(scenario, "extended run omitted accumulated message history")
-    })?;
-    validate_tool_correlation(scenario, messages)?;
+    let messages = correlated_messages(scenario, &response)?;
 
     let Some((call_index, calls)) = messages.iter().enumerate().find_map(|(index, message)| {
         let Message::Assistant { content, .. } = message else {
@@ -1087,14 +1108,7 @@ where
         .max_turns(2)
         .extended_details()
         .await?;
-    let messages = response.messages.as_deref().ok_or_else(|| {
-        ScenarioError::contract(SCENARIO, "extended run omitted accumulated message history")
-    })?;
-    validate_tool_correlation(SCENARIO, messages)?;
-    let values = messages
-        .iter()
-        .flat_map(tool_result_values)
-        .collect::<Vec<_>>();
+    let values = correlated_result_values(SCENARIO, &response)?;
     if calls.load(Ordering::SeqCst) != 1
         || !values
             .iter()
@@ -1139,14 +1153,7 @@ where
         .max_turns(3)
         .extended_details()
         .await?;
-    let messages = response.messages.as_deref().ok_or_else(|| {
-        ScenarioError::contract(SCENARIO, "extended run omitted accumulated message history")
-    })?;
-    validate_tool_correlation(SCENARIO, messages)?;
-    let values = messages
-        .iter()
-        .flat_map(tool_result_values)
-        .collect::<Vec<_>>();
+    let values = correlated_result_values(SCENARIO, &response)?;
     let expected_config = serde_json::to_value(ConfigOutput {
         service: "cassette-lab".to_string(),
         max_retries: 3,
@@ -1225,10 +1232,7 @@ where
             ),
         ));
     }
-    let messages = response.messages.as_deref().ok_or_else(|| {
-        ScenarioError::contract(SCENARIO, "extended run omitted accumulated message history")
-    })?;
-    validate_tool_correlation(SCENARIO, messages)?;
+    correlated_messages(SCENARIO, &response)?;
     report_from_response(SCENARIO, started, 1, response)
 }
 

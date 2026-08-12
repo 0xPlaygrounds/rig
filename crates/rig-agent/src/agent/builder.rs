@@ -462,27 +462,6 @@ impl AgentBuilder<NoToolConfig> {
         self.into_tool_builder().tool(tool)
     }
 
-    /// Add one runtime-defined tool to the agent.
-    pub fn dynamic_tool(self, tool: DynamicTool) -> AgentBuilder<WithBuilderTools> {
-        self.into_tool_builder().dynamic_tool(tool)
-    }
-
-    /// Add one context-free dynamic tool through the classic registry adapter.
-    pub fn portable_dynamic_tool(
-        self,
-        tool: PortableDynamicTool,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.into_tool_builder().portable_dynamic_tool(tool)
-    }
-
-    /// Add runtime-defined tools to the agent.
-    ///
-    /// This is useful when tool definitions and callbacks are constructed at runtime.
-    /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<WithBuilderTools> {
-        self.into_tool_builder().dynamic_tools(tools)
-    }
-
     /// Add an MCP tool (from `rmcp`) to the agent, bounded by
     /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     /// (see issue #1914). Use [`rmcp_tool_with_timeout`](Self::rmcp_tool_with_timeout)
@@ -516,6 +495,45 @@ impl AgentBuilder<NoToolConfig> {
         self.rmcp_tools_with_timeout(vec![tool], client, timeout)
     }
 
+    /// Build the agent with no tools configured.
+    ///
+    /// An empty `ToolServer` will be created for the agent.
+    pub fn build(self) -> Agent {
+        self.build_agent(|_| ToolServer::new().run())
+    }
+}
+
+/// Generate the `NoToolConfig` tool methods that transition into the
+/// `WithBuilderTools` state by forwarding verbatim through
+/// [`AgentBuilder::into_tool_builder`] to the `WithBuilderTools` method of the
+/// same name. Doc comments live at each invocation; `tool` (generic over the
+/// tool type) and the single-tool rmcp helpers stay hand-written above.
+macro_rules! forward_into_tool_builder {
+    ($( $(#[$attr:meta])* $name:ident ( $($arg:ident : $ty:ty),* $(,)? ) );* $(;)?) => {
+        impl AgentBuilder<NoToolConfig> {
+            $(
+                $(#[$attr])*
+                pub fn $name(self, $($arg: $ty),*) -> AgentBuilder<WithBuilderTools> {
+                    self.into_tool_builder().$name($($arg),*)
+                }
+            )*
+        }
+    };
+}
+
+forward_into_tool_builder! {
+    /// Add one runtime-defined tool to the agent.
+    dynamic_tool(tool: DynamicTool);
+
+    /// Add one context-free dynamic tool through the classic registry adapter.
+    portable_dynamic_tool(tool: PortableDynamicTool);
+
+    /// Add runtime-defined tools to the agent.
+    ///
+    /// This is useful when tool definitions and callbacks are constructed at runtime.
+    /// Transitions the builder to the `WithBuilderTools` state.
+    dynamic_tools(tools: Vec<DynamicTool>);
+
     /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
     /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
     /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
@@ -524,13 +542,7 @@ impl AgentBuilder<NoToolConfig> {
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tools(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    }
+    rmcp_tools(tools: Vec<rmcp::model::Tool>, client: rmcp::service::ServerSink);
 
     /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
     /// issue #1914).
@@ -541,52 +553,20 @@ impl AgentBuilder<NoToolConfig> {
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tools_with_timeout(
-        self,
+    rmcp_tools_with_timeout(
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<std::time::Duration>>,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
-    }
-
-    /// Transition into the `WithBuilderTools` state carrying the given built
-    /// MCP tools.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    fn with_rmcp_toolset(self, built: Vec<RmcpTool>) -> AgentBuilder<WithBuilderTools> {
-        let mut tools = ToolSet::default();
-        for tool in built {
-            tools.add_erased(std::sync::Arc::new(tool));
-        }
-        self.with_tool_state(WithBuilderTools {
-            tools,
-            retrieval_indexes: vec![],
-        })
-    }
+        timeout: impl Into<Option<std::time::Duration>>
+    );
 
     /// Configure tools retrieved from a vector index for each prompt.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn retrieved_tools(
-        self,
+    retrieved_tools(
         sample: usize,
         index: impl VectorStoreIndexDyn + Send + Sync + 'static,
-        toolset: ToolSet,
-    ) -> AgentBuilder<WithBuilderTools> {
-        let mut tools = ToolSet::default();
-        tools.add_retrievable_tools(toolset);
-        self.with_tool_state(WithBuilderTools {
-            tools,
-            retrieval_indexes: vec![(sample, Arc::new(index))],
-        })
-    }
-
-    /// Build the agent with no tools configured.
-    ///
-    /// An empty `ToolServer` will be created for the agent.
-    pub fn build(self) -> Agent {
-        self.build_agent(|_| ToolServer::new().run())
-    }
+        toolset: ToolSet
+    );
 }
 
 impl AgentBuilder<WithToolServerHandle> {
