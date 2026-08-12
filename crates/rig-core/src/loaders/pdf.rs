@@ -426,6 +426,13 @@ impl<'a> PdfFileLoader<'a, Vec<u8>> {
         }
     }
 
+    /// Ingest multiple byte arrays.
+    pub fn from_bytes_multi(bytes_vec: Vec<Vec<u8>>) -> PdfFileLoader<'a, Vec<u8>> {
+        PdfFileLoader {
+            iterator: Box::new(bytes_vec.into_iter()),
+        }
+    }
+
     /// Use this once you've created the loader to load the document in.
     pub fn load(self) -> PdfFileLoader<'a, Result<Document, PdfLoaderError>> {
         PdfFileLoader {
@@ -562,6 +569,32 @@ mod tests {
         assert_eq!(
             actual,
             vec![
+                "Page\n1\n".to_string(),
+                "Page\n2\n".to_string(),
+                "Page\n3\n".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_pdf_loader_bytes_multi() {
+        let dummy = std::fs::read(fixture_path("dummy.pdf")).unwrap();
+        let pages = std::fs::read(fixture_path("pages.pdf")).unwrap();
+
+        let loader = PdfFileLoader::from_bytes_multi(vec![dummy, pages]);
+
+        let actual = loader
+            .load()
+            .ignore_errors()
+            .by_page()
+            .ignore_errors()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                "Test\nPDF\nDocument\n".to_string(),
                 "Page\n1\n".to_string(),
                 "Page\n2\n".to_string(),
                 "Page\n3\n".to_string(),
