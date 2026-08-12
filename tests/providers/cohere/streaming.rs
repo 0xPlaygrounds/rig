@@ -13,7 +13,7 @@ use crate::support::{
 async fn streaming_smoke() {
     let client = cohere::Client::from_env().expect("client should build");
     let agent = client
-        .agent(cohere::COMMAND)
+        .agent(cohere::COMMAND_A_03_2025)
         .preamble(STREAMING_PREAMBLE)
         .build();
 

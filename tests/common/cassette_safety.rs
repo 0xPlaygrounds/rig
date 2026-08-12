@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use syn::visit::{self, Visit};
-use syn::{Expr, ExprCall, ExprLit, Lit};
+use syn::{Expr, ExprCall, ExprLit, ItemFn, Lit};
 
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cassettes");
 
@@ -71,6 +71,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         ],
     },
     ProviderCassetteSuite {
+        provider: "cohere",
+        source_dir: "tests/providers/cohere/cassette",
+        wrapper_names: &["with_cohere_cassette"],
+    },
+    ProviderCassetteSuite {
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &["with_gemini_cassette", "with_gemini_interactions_cassette"],
@@ -119,9 +124,6 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/perplexity/cassette",
         wrapper_names: &["with_perplexity_cassette"],
     },
-    // NOTE(#2258): `tests/providers/cohere/cassette` is written but ready-to-record
-    // (no COHERE_API_KEY in the environment); register it here once its
-    // cassettes are recorded and the `#[ignore]` markers are dropped.
     ProviderCassetteSuite {
         provider: "mistralrs",
         source_dir: "tests/providers/mistralrs/cassette",
@@ -420,6 +422,17 @@ struct CassetteScenarioVisitor<'a> {
 }
 
 impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
+    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
+        // A `#[ignore]`d test documents that its cassette isn't recorded yet
+        // (e.g. no provider API key available to record with); don't require
+        // a file for scenarios it references.
+        if node.attrs.iter().any(|attr| attr.path().is_ident("ignore")) {
+            return;
+        }
+
+        visit::visit_item_fn(self, node);
+    }
+
     fn visit_expr_call(&mut self, node: &'ast ExprCall) {
         if let Some(wrapper_name) = cassette_wrapper_name(node)
             && self.wrapper_names.contains(&wrapper_name.as_str())

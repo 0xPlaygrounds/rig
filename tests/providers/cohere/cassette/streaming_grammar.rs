@@ -2,20 +2,14 @@
 //! through the *normalized* path: the aggregated
 //! [`StreamingCompletionResponse::choice`], the terminal [`StreamFinal`]
 //! record, usage, and finish reason.
-//!
-//! **Ready-to-record**: the test is written but no cassette exists yet — the
-//! environment has no `COHERE_API_KEY`. Record with:
-//! `RIG_PROVIDER_TEST_MODE=record COHERE_API_KEY=... cargo test --test cohere streaming_grammar -- --test-threads=1 --ignored`
-//! then drop the `#[ignore]` markers and register the suite in
-//! `tests/common/cassette_safety.rs` (`PROVIDER_CASSETTE_SUITES`).
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
-use rig::message::{AssistantContent, Reasoning, ReasoningContent};
+use rig::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall};
 use rig::prelude::*;
 use rig::streaming::{StreamFinal, StreamedAssistantContent};
 
-use super::super::support::with_cohere_cassette;
+use super::super::support::{IntegerSubtract, with_cohere_cassette};
 
 /// Cohere's reasoning-capable Command model, which streams `thinking`-bearing
 /// content deltas before the answer text (the F8 cohere variant).
@@ -25,6 +19,7 @@ struct StreamRun {
     text: String,
     reasoning_delta: String,
     reasoning_blocks: Vec<Reasoning>,
+    tool_calls: Vec<ToolCall>,
     finals: Vec<StreamFinal>,
     choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
@@ -35,6 +30,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         text: String::new(),
         reasoning_delta: String::new(),
         reasoning_blocks: Vec::new(),
+        tool_calls: Vec::new(),
         finals: Vec::new(),
         choice: vec![AssistantContent::text("")],
         response: None,
@@ -52,6 +48,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
             StreamedAssistantContent::ReasoningDelta { reasoning, .. } => {
                 run.reasoning_delta.push_str(&reasoning);
             }
+            StreamedAssistantContent::ToolCall { tool_call, .. } => run.tool_calls.push(tool_call),
             StreamedAssistantContent::Final(response) => run.finals.push(response),
             _ => {}
         }
@@ -68,7 +65,6 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
 /// A `thinking`-bearing stream: the thinking deltas aggregate into one
 /// reasoning part that survives as a discrete sibling of the answer text.
 #[tokio::test]
-#[ignore = "no credentials to record"]
 async fn thinking_stream_keeps_reasoning_and_text_discrete() {
     with_cohere_cassette("streaming_grammar/thinking_stream", |client| async move {
         let model = client.completion_model(REASONING_MODEL);
@@ -140,5 +136,72 @@ async fn thinking_stream_keeps_reasoning_and_text_discrete() {
             "aggregated text should match the streamed text exactly"
         );
     })
+    .await;
+}
+
+/// A tool call interrupting an open thinking block: the `ToolCallStart`
+/// handler synthesizes the reasoning block's boundary end before the tool
+/// call starts (`MintedReasoningLifecycle::emit_chunk`, #2262 phase A) — this
+/// pins that path against real Cohere traffic rather than only mocked SSE.
+#[tokio::test]
+async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
+    with_cohere_cassette(
+        "streaming_grammar/reasoning_then_tool_call",
+        |client| async move {
+            let model = client.completion_model(REASONING_MODEL);
+            let request = model
+                .completion_request(
+                    "Think it through, then call the subtract tool to compute 2 - 5. \
+                     Do not answer with normal text before the tool call.",
+                )
+                .max_tokens(1024)
+                .tool(rig::tool::tool_definition(&IntegerSubtract))
+                .build();
+            let run = drain_stream(model.stream(request).await.expect("stream should start")).await;
+
+            assert_eq!(
+                run.finals.len(),
+                1,
+                "stream should yield exactly one terminal record"
+            );
+            let terminal = run
+                .response
+                .as_ref()
+                .expect("aggregated stream should retain the terminal record");
+            assert_eq!(
+                terminal.finish_reason.as_ref(),
+                Some(&FinishReason::ToolCalls),
+                "unexpected finish reason"
+            );
+            assert!(
+                !run.reasoning_delta.is_empty() || !run.reasoning_blocks.is_empty(),
+                "reasoning model should surface thinking before the tool call"
+            );
+            assert_eq!(
+                run.tool_calls.len(),
+                1,
+                "turn should stream exactly one tool call"
+            );
+            assert_eq!(run.tool_calls[0].function.name, "subtract");
+
+            // Discrete parts: the reasoning block closes before the tool
+            // call opens in the aggregated choice — the boundary end the
+            // adapter synthesizes is the boundary the choice keeps.
+            let parts: Vec<&AssistantContent> = run.choice.iter().collect();
+            let reasoning_index = parts
+                .iter()
+                .position(|content| matches!(content, AssistantContent::Reasoning(_)))
+                .expect("aggregated choice should keep the thinking block");
+            let tool_call_index = parts
+                .iter()
+                .position(|content| matches!(content, AssistantContent::ToolCall(_)))
+                .expect("aggregated choice should keep the tool call");
+            assert!(
+                reasoning_index < tool_call_index,
+                "the thinking block precedes the tool call on this wire, got {:?}",
+                run.choice
+            );
+        },
+    )
     .await;
 }
