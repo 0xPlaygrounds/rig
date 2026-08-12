@@ -19,7 +19,7 @@ pub mod streaming;
 
 pub use client::{ApiErrorResponse, ApiResponse, Client};
 pub use completion::CompletionModel;
-pub use embeddings::EmbeddingModel;
+pub use embeddings::{EmbeddingModel, ImageEmbeddingModel};
 
 // ================================================================
 // Cohere Completion Models
