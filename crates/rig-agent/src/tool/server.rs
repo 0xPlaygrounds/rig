@@ -62,6 +62,27 @@ impl ToolRegistrySnapshot {
         let tool = self.tools.get(tool_name).cloned();
         dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
+
+    /// Execute a pinned tool through the canonical structured path.
+    ///
+    /// Mirrors [`ToolServerHandle::execute`] against this snapshot's pinned
+    /// handles: clears result metadata from the previous dispatch, runs one
+    /// isolated dispatch, and publishes the new dispatch's result metadata
+    /// back to `context`.
+    pub(crate) async fn execute(
+        &self,
+        tool_name: &str,
+        args: &str,
+        context: &mut ToolContext,
+    ) -> ToolResult {
+        context.clear_dispatch_result();
+        let ToolDispatch {
+            result,
+            context: dispatch_context,
+        } = self.dispatch(tool_name, args, context).await;
+        context.accept_dispatch_result(dispatch_context);
+        result
+    }
 }
 
 /// Shared state behind a `ToolServerHandle`.

@@ -225,6 +225,16 @@ pub struct AgentRunner {
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
+/// Default total model-call budget when the agent does not configure one.
+/// Shared by [`AgentRunner::from_agent`] and
+/// [`Agent::new_run`](crate::agent::Agent::new_run) so the runner and the
+/// manual-driver surface seed identical run policy.
+pub(crate) const DEFAULT_MAX_TURNS: usize = 1;
+
+/// Default budget for invalid tool-call retries. Shared like
+/// [`DEFAULT_MAX_TURNS`].
+pub(crate) const DEFAULT_INVALID_TOOL_CALL_RETRIES: usize = 0;
+
 impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
     /// stack. Prefer [`Agent::runner`].
@@ -232,8 +242,8 @@ impl AgentRunner {
         Self {
             prompt: prompt.into(),
             chat_history: None,
-            max_turns: agent.default_max_turns.unwrap_or(1),
-            max_invalid_tool_call_retries: 0,
+            max_turns: agent.default_max_turns.unwrap_or(DEFAULT_MAX_TURNS),
+            max_invalid_tool_call_retries: DEFAULT_INVALID_TOOL_CALL_RETRIES,
             model: agent.model.clone(),
             agent_name: agent.name.clone(),
             preamble: agent.preamble.clone(),

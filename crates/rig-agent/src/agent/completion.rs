@@ -2,7 +2,9 @@ use super::hook::{HookStack, RequestPatch};
 use super::model::ModelHandle;
 use super::prompt_request::{self, PromptRequest};
 use super::run::{AgentRun, ModelTurn, OutputMode, PendingToolCall};
-use super::runner::AgentRunner;
+use super::runner::{
+    AgentRunner, DEFAULT_INVALID_TOOL_CALL_RETRIES, DEFAULT_MAX_TURNS, build_agent_run,
+};
 use crate::{
     agent::prompt_request::{streaming::StreamingPromptRequest, tool_result_output},
     completion::{
@@ -12,7 +14,7 @@ use crate::{
     json_utils,
     streaming::{StreamingChat, StreamingPrompt},
     tool::{
-        ToolContext, ToolDispatch,
+        ToolContext,
         server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
     },
 };
@@ -222,28 +224,58 @@ pub(crate) fn allowed_tool_names_for_choice(
     Ok(allowed)
 }
 
+/// Inputs to [`build_prepared_completion_request`], as named fields.
+///
+/// The parameter list carries several adjacent same-typed values (three
+/// `Option<&str>`, two `bool`s); positional passing would let a call site
+/// silently transpose them (e.g. `committed_output_tool` with
+/// `output_tool_description`, breaking Tool-mode pinning) with no compiler
+/// signal. Named fields make every call site self-checking.
+pub(crate) struct PreparedRequestInputs<'a> {
+    pub(crate) model: &'a ModelHandle,
+    pub(crate) prompt: Message,
+    pub(crate) chat_history: &'a [Message],
+    pub(crate) preamble: Option<&'a str>,
+    pub(crate) static_context: &'a [Document],
+    pub(crate) temperature: Option<f64>,
+    pub(crate) max_tokens: Option<u64>,
+    pub(crate) additional_params: Option<&'a serde_json::Value>,
+    pub(crate) record_telemetry_content: bool,
+    pub(crate) tool_choice: Option<&'a ToolChoice>,
+    pub(crate) tool_server_handle: &'a ToolServerHandle,
+    pub(crate) output_schema: Option<&'a schemars::Schema>,
+    pub(crate) output_mode: &'a OutputMode,
+    /// The run's already-committed Tool-mode output-tool name, if any (#1928).
+    pub(crate) committed_output_tool: Option<&'a str>,
+    pub(crate) output_tool_description: Option<&'a str>,
+    pub(crate) augment_output_preamble: bool,
+    pub(crate) request_patch: Option<&'a RequestPatch>,
+}
+
 /// Helper function to build a completion request from agent components while
 /// preserving the executable Rig tool names sent to the provider.
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn build_prepared_completion_request(
-    model: &ModelHandle,
-    prompt: Message,
-    chat_history: &[Message],
-    preamble: Option<&str>,
-    static_context: &[Document],
-    temperature: Option<f64>,
-    max_tokens: Option<u64>,
-    additional_params: Option<&serde_json::Value>,
-    record_telemetry_content: bool,
-    tool_choice: Option<&ToolChoice>,
-    tool_server_handle: &ToolServerHandle,
-    output_schema: Option<&schemars::Schema>,
-    output_mode: &OutputMode,
-    committed_output_tool: Option<&str>,
-    output_tool_description: Option<&str>,
-    augment_output_preamble: bool,
-    request_patch: Option<&RequestPatch>,
+    inputs: PreparedRequestInputs<'_>,
 ) -> Result<PreparedCompletionRequest, CompletionError> {
+    let PreparedRequestInputs {
+        model,
+        prompt,
+        chat_history,
+        preamble,
+        static_context,
+        temperature,
+        max_tokens,
+        additional_params,
+        record_telemetry_content,
+        tool_choice,
+        tool_server_handle,
+        output_schema,
+        output_mode,
+        committed_output_tool,
+        output_tool_description,
+        augment_output_preamble,
+        request_patch,
+    } = inputs;
     // Apply a per-turn request patch (the merged patch from every `CompletionCall`
     // hook): each set field replaces the agent's configured value for this turn,
     // unset fields inherit it, `additional_params` is shallow-merged, and
@@ -647,21 +679,19 @@ impl PreparedAgentTurn {
         call: &PendingToolCall,
         context: &mut ToolContext,
     ) -> UserContent {
-        context.clear_dispatch_result();
         if let Some(result) = &call.preresolved_result {
+            // Same context hygiene as a real dispatch: stale result metadata
+            // from a previous dispatch must not survive a pre-resolved call.
+            context.clear_dispatch_result();
             return result.clone();
         }
 
         let tool_call = &call.tool_call;
         let args = json_utils::serialize_json_value(&tool_call.function.arguments);
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = self
+        let result = self
             .tool_snapshot
-            .dispatch(&tool_call.function.name, &args, context)
+            .execute(&tool_call.function.name, &args, context)
             .await;
-        context.accept_dispatch_result(dispatch_context);
 
         tool_result_output(
             tool_call.id.clone(),
@@ -856,10 +886,19 @@ impl Agent {
     /// callers own keeping the run's policy (tool choice, output validation,
     /// output-tool name) consistent with the requests they prepare.
     pub fn new_run(&self, prompt: impl Into<Message>) -> AgentRun {
-        // Seed through the runner's own construction path so the two can never
-        // drift: `AgentRunner::from_agent` derives the policy defaults from the
-        // agent, and `build_run` is the single run-construction site.
-        AgentRunner::from_agent(self, prompt).build_run(None)
+        // Same policy defaults as `AgentRunner::from_agent` (shared constants,
+        // so the two cannot drift) and the same single construction site
+        // (`build_agent_run`) — without materializing a throwaway runner,
+        // which would deep-clone static context, preamble, and params only to
+        // discard them.
+        build_agent_run(
+            prompt.into(),
+            self.default_max_turns.unwrap_or(DEFAULT_MAX_TURNS),
+            DEFAULT_INVALID_TOOL_CALL_RETRIES,
+            self.output_schema.as_ref(),
+            None,
+            self.tool_choice.clone(),
+        )
     }
 
     /// Prepare one fully configured, hook-free provider request from this
@@ -901,25 +940,25 @@ impl Agent {
         run: &mut AgentRun,
     ) -> Result<PreparedAgentRequest, CompletionError> {
         let committed_output_tool = run.output_tool_name().map(str::to_owned);
-        let prepared = build_prepared_completion_request(
-            &self.model,
-            prompt.into(),
-            history,
-            self.preamble.as_deref(),
-            &self.static_context,
-            self.temperature,
-            self.max_tokens,
-            self.additional_params.as_ref(),
-            self.record_telemetry_content,
-            self.tool_choice.as_ref(),
-            &self.tool_server_handle,
-            self.output_schema.as_ref(),
-            &self.output_mode,
-            committed_output_tool.as_deref(),
-            None,
-            true,
-            None,
-        )
+        let prepared = build_prepared_completion_request(PreparedRequestInputs {
+            model: &self.model,
+            prompt: prompt.into(),
+            chat_history: history,
+            preamble: self.preamble.as_deref(),
+            static_context: &self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params.as_ref(),
+            record_telemetry_content: self.record_telemetry_content,
+            tool_choice: self.tool_choice.as_ref(),
+            tool_server_handle: &self.tool_server_handle,
+            output_schema: self.output_schema.as_ref(),
+            output_mode: &self.output_mode,
+            committed_output_tool: committed_output_tool.as_deref(),
+            output_tool_description: None,
+            augment_output_preamble: true,
+            request_patch: None,
+        })
         .await?;
         run.set_output_tool_name(prepared.output_tool_name.clone());
 

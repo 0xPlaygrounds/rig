@@ -272,11 +272,12 @@ async fn main() -> Result<()> {
     let agent = build_agent(model);
     let mut run: AgentRun = serde_json::from_str(&suspended)?;
     let handle = agent.tool_server_handle();
+    // As in Part 1: one tool context for the whole (resumed) run.
+    let mut context = ToolContext::new();
 
     loop {
         match run.next_step()? {
             AgentRunStep::CallTools { calls } => {
-                let mut context = ToolContext::new();
                 let mut results = Vec::with_capacity(calls.len());
                 for call in calls {
                     // Tool calls suppressed by invalid tool-call recovery come
