@@ -9,6 +9,7 @@ mod cassette {
     mod image;
     mod messages_behaviors;
     mod messages_sessions;
+    mod messages_strict_tools;
     mod messages_thinking;
     mod messages_tool_args;
     mod messages_tool_choice;
@@ -25,6 +26,11 @@ mod cassette {
     mod streaming;
     mod streaming_grammar;
     mod streaming_tools;
+    mod strict_schema_formats;
+    mod strict_schema_integrations;
+    mod strict_schema_limits;
+    mod strict_schema_matrix;
+    mod strict_schema_streaming;
     mod structured_output;
     mod think_tool;
     mod think_tool_with_other_tools;

@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Call union_boundary and set every union_00 through union_15 field to null.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"any"},"tools":[{"description":"Exercise the strict union-parameter boundary.","input_schema":{"additionalProperties":false,"properties":{"union_00":{"type":["string","null"]},"union_01":{"type":["string","null"]},"union_02":{"type":["string","null"]},"union_03":{"type":["string","null"]},"union_04":{"type":["string","null"]},"union_05":{"type":["string","null"]},"union_06":{"type":["string","null"]},"union_07":{"type":["string","null"]},"union_08":{"type":["string","null"]},"union_09":{"type":["string","null"]},"union_10":{"type":["string","null"]},"union_11":{"type":["string","null"]},"union_12":{"type":["string","null"]},"union_13":{"type":["string","null"]},"union_14":{"type":["string","null"]},"union_15":{"type":["string","null"]}},"required":["union_00","union_01","union_02","union_03","union_04","union_05","union_06","union_07","union_08","union_09","union_10","union_11","union_12","union_13","union_14","union_15"],"type":"object"},"name":"union_boundary","strict":true}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"Schema is too complex for compilation. Try reducing the number of tools or simplifying tool schemas.","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'
