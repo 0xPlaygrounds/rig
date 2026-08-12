@@ -659,7 +659,13 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
             // ship `{"tool_choice":"REQUIRED"}` with no `tools` key and earn that
             // remote 400. Fail locally instead, matching the `Specific` arm below.
             Some(ToolChoice::Required) => {
-                if tools.is_empty() {
+                // `additional_params` is `#[serde(flatten)]`, and the typed `tools`
+                // field carries `skip_serializing_if = "Vec::is_empty"` — so a
+                // caller who advertises tools only through the escape hatch still
+                // ships a well-formed request with a `tools` key, and the local
+                // guard must not reject it. Only the case the API actually
+                // rejects — no tools on the wire at all — fails here.
+                if tools.is_empty() && !carries_tools(req.additional_params.as_ref()) {
                     return Err(CompletionError::RequestError(
                         "ToolChoice::Required needs at least one tool advertised in the \
                          Cohere request: the API rejects tool_choice 'required' when no \
@@ -687,7 +693,14 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
                     .cloned()
                     .collect::<Vec<_>>();
 
-                if !missing.is_empty() {
+                // Same escape hatch as the `Required` arm: when tools arrive only
+                // through flattened `additional_params`, `available` is an
+                // incomplete view of what the request advertises, and validating
+                // against it would reject names the provider can see. Skip the
+                // check rather than reject on partial information.
+                let sees_every_tool = !carries_tools(req.additional_params.as_ref());
+
+                if sees_every_tool && !missing.is_empty() {
                     return Err(CompletionError::RequestError(
                         format!(
                             "ToolChoice::Specific requested tool names not advertised in the \
@@ -714,6 +727,20 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
             additional_params: req.additional_params,
         })
     }
+}
+
+/// Whether flattened `additional_params` advertises tools of its own.
+///
+/// `CohereCompletionRequest::additional_params` is `#[serde(flatten)]`, so a
+/// `"tools"` key there lands at the top level of the request body — and because
+/// the typed `tools` field is `skip_serializing_if = "Vec::is_empty"`, it can be
+/// the *only* `tools` key on the wire. Local `tool_choice` validation must
+/// therefore treat it as advertised tools, or it rejects requests Cohere honours.
+fn carries_tools(additional_params: Option<&serde_json::Value>) -> bool {
+    additional_params
+        .and_then(|params| params.get("tools"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|tools| !tools.is_empty())
 }
 
 impl<T> CompletionModel<T>
@@ -1154,6 +1181,43 @@ mod tests {
             serialized.get("tools").is_none(),
             "an empty tool list stays off the wire: {serialized}"
         );
+    }
+
+    /// Tools can reach the wire through flattened `additional_params` instead of
+    /// the typed field. Because `tools` carries
+    /// `skip_serializing_if = "Vec::is_empty"`, that can be the *only* `tools`
+    /// key in the body — a well-formed request Cohere honours. The local
+    /// `tool_choice` guards must not reject it on a partial view.
+    #[test]
+    fn tool_choice_guards_see_tools_supplied_through_additional_params() {
+        let escape_hatch = serde_json::json!({
+            "tools": [{
+                "type": "function",
+                "function": { "name": "hatch", "description": "", "parameters": {} }
+            }]
+        });
+
+        let mut required = cohere_tool_choice_request(Some(ToolChoice::Required));
+        required.tools = Vec::new();
+        required.additional_params = Some(escape_hatch.clone());
+        let body = CohereCompletionRequest::try_from(("command-a-03-2025", required))
+            .expect("Required must not reject tools advertised via additional_params");
+        let serialized = serde_json::to_value(&body).expect("body should serialize");
+        assert_eq!(serialized["tool_choice"], serde_json::json!("REQUIRED"));
+        assert!(
+            serialized["tools"].is_array(),
+            "the flattened tools must still reach the wire: {serialized}"
+        );
+
+        // Same for `Specific`: validating requested names against an incomplete
+        // view of the advertised set would reject names the provider can see.
+        let mut specific = cohere_tool_choice_request(Some(ToolChoice::Specific {
+            function_names: vec!["hatch".to_string()],
+        }));
+        specific.tools = Vec::new();
+        specific.additional_params = Some(escape_hatch);
+        CohereCompletionRequest::try_from(("command-a-03-2025", specific))
+            .expect("Specific must not reject names it cannot see");
     }
 
     #[test]

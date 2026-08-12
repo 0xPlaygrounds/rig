@@ -334,12 +334,41 @@ fn rig_owned_public_data_bearing_enums_declare_a_representation() {
 
     let mut violations = Vec::new();
     let mut visited_wire_mirrors = Vec::new();
-    collect_representation_violations(
-        &workspace,
-        &workspace.join("crates"),
-        &mut violations,
-        &mut visited_wire_mirrors,
-    );
+    let mut visited = Vec::new();
+    // Both roots, matching the untagged ban. Scanning only `crates/` left the
+    // workspace-root `src/` — the published `rig` facade — outside the wall, so a
+    // public data-bearing enum added there would have fallen back to implicit
+    // external tagging and passed silently.
+    for relative in SOURCE_ROOTS {
+        let root = workspace.join(relative);
+        assert!(
+            root.is_dir(),
+            "domain policy root moved or vanished: {}",
+            root.display()
+        );
+        collect_representation_violations(
+            &workspace,
+            &root,
+            &mut violations,
+            &mut visited_wire_mirrors,
+            &mut visited,
+        );
+    }
+
+    // Floor files, mirroring the untagged ban's own guard: without this the scan
+    // could silently stop reaching the surface it exists to police — which is
+    // exactly how the missing `src/` root went unnoticed.
+    for required in [
+        "crates/rig-core/src/completion/message.rs",
+        "crates/rig-core/src/streaming/mod.rs",
+        "crates/rig-core/src/vector_store/request.rs",
+        "crates/rig-core/src/model/listing.rs",
+    ] {
+        assert!(
+            visited.iter().any(|path| path.ends_with(required)),
+            "representation scan did not visit required floor file `{required}`"
+        );
+    }
 
     assert!(
         violations.is_empty(),
@@ -367,6 +396,7 @@ fn collect_representation_violations(
     dir: &Path,
     violations: &mut Vec<String>,
     visited_wire_mirrors: &mut Vec<String>,
+    visited: &mut Vec<String>,
 ) {
     for entry in std::fs::read_dir(dir).expect("source directory should be readable") {
         let entry = entry.expect("source entry should be readable");
@@ -379,6 +409,7 @@ fn collect_representation_violations(
                     &path,
                     violations,
                     visited_wire_mirrors,
+                    visited,
                 );
             }
             continue;
@@ -395,9 +426,18 @@ fn collect_representation_violations(
 
         // Only rig-owned surface: `src/providers/` mirrors provider wires, whose
         // shapes belong to the provider.
-        if !relative.contains("/src/") || relative.contains("/src/providers/") {
+        //
+        // The root test is `starts_with("src/") || contains("/src/")`: the
+        // workspace-root `src/` (the published `rig` facade) has no leading
+        // slash, so a `contains("/src/")` test alone silently excluded it even
+        // once that root was scanned.
+        let under_src = relative.starts_with("src/") || relative.contains("/src/");
+        let under_providers =
+            relative.starts_with("src/providers/") || relative.contains("/src/providers/");
+        if !under_src || under_providers {
             continue;
         }
+        visited.push(relative.clone());
         if let Some((wire_path, _)) = WIRE_MIRROR_PATHS
             .iter()
             .find(|(wire_path, _)| relative.ends_with(wire_path))

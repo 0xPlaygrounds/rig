@@ -1068,7 +1068,7 @@ mod tests {
             "stream_item_matrix_cases returned no rows"
         );
         // Coverage: every shape class has at least one fixture. Extend
-        // `witnesses` (and `decode_matrix_cases`) when adding a variant —
+        // `witnesses` (and `stream_item_matrix_cases`) when adding a variant —
         // `expected` already refuses to compile without a classification.
         let witnesses = [
             ShapeClass::StreamText,
@@ -1081,7 +1081,7 @@ mod tests {
         for shape in witnesses {
             assert!(
                 cases.iter().any(|(case_shape, _)| *case_shape == shape),
-                "no fixture for {shape:?} — add a row to decode_matrix_cases"
+                "no fixture for {shape:?} — add a row to stream_item_matrix_cases"
             );
         }
 
