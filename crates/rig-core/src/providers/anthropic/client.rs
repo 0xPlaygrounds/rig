@@ -3,10 +3,7 @@ use http::{HeaderName, HeaderValue};
 
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
-    client::{
-        self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
+    client::{self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder},
     http_client::{self, HttpClientExt},
     providers::anthropic::model_listing::AnthropicModelLister,
 };
@@ -104,33 +101,12 @@ impl ProviderBuilder for AnthropicBuilder {
 
 impl DebugExt for AnthropicExt {}
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        let base_url = crate::client::optional_env_var("ANTHROPIC_BASE_URL")?;
-        let key = crate::client::required_env_var("ANTHROPIC_API_KEY")?;
-
-        let mut builder = Self::builder().api_key(key);
-
-        if let Some(base) = base_url {
-            builder = builder.base_url(&base);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
+client::impl_provider_client!(
+    Client,
+    input = String,
+    api_key_env = "ANTHROPIC_API_KEY",
+    base_url_env_first = "ANTHROPIC_BASE_URL",
+);
 
 /// Create a new anthropic client using the builder
 ///

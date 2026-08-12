@@ -1,10 +1,7 @@
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
+use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
-use crate::http_client::{self, HttpClientExt};
+use crate::http_client::HttpClientExt;
 use crate::rerank;
 use crate::rerank::RerankError;
 use bytes::Bytes;
@@ -46,43 +43,17 @@ impl<H> Capabilities<H> for VoyageExt {
 
 impl DebugExt for VoyageExt {}
 
-impl ProviderBuilder for VoyageBuilder {
-    type Extension<H>
-        = VoyageExt
-    where
-        H: HttpClientExt;
-    type ApiKey = VoyageApiKey;
-
-    const BASE_URL: &'static str = VOYAGEAI_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(VoyageExt)
-    }
-}
+client::impl_default_provider_builder!(
+    VoyageBuilder => VoyageExt,
+    api_key = VoyageApiKey,
+    base_url = VOYAGEAI_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<VoyageExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<VoyageBuilder, VoyageApiKey, H>;
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new OpenAI client from the `OPENAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("VOYAGE_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = String, api_key_env = "VOYAGE_API_KEY");
 
 impl<T> EmbeddingModel<T> {
     pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {

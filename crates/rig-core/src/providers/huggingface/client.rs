@@ -1,6 +1,5 @@
 use crate::client::{
     self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
 };
 use crate::http_client;
 #[cfg(feature = "image")]
@@ -201,21 +200,7 @@ impl ProviderBuilder for HuggingFaceBuilder {
     }
 }
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("HUGGINGFACE_API_KEY")?;
-
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = String, api_key_env = "HUGGINGFACE_API_KEY",);
 
 impl<H> ClientBuilder<H> {
     pub fn subprovider(mut self, subprovider: SubProvider) -> Self {

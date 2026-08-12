@@ -12,9 +12,8 @@
 //! # }
 //! ```
 
-use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
-use crate::client::{BearerAuth, ProviderClient};
-use crate::http_client::{self, HttpClientExt};
+use crate::client::BearerAuth;
+use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -88,43 +87,21 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
     }
 }
 
-impl ProviderBuilder for HyperbolicBuilder {
-    type Extension<H>
-        = HyperbolicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = HyperbolicApiKey;
-
-    const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(HyperbolicExt)
-    }
-}
+client::impl_default_provider_builder!(
+    HyperbolicBuilder => HyperbolicExt,
+    api_key = HyperbolicApiKey,
+    base_url = HYPERBOLIC_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HyperbolicBuilder, HyperbolicApiKey, H>;
 
-impl ProviderClient for Client {
-    type Input = HyperbolicApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("HYPERBOLIC_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(
+    Client,
+    input = HyperbolicApiKey,
+    api_key_env = "HYPERBOLIC_API_KEY",
+);
 
 #[cfg(any(feature = "image", feature = "audio"))]
 use crate::providers::openai::client::ApiResponse;

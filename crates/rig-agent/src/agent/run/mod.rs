@@ -108,6 +108,38 @@ fn unknown_tool_call_error(
     }
 }
 
+struct InvalidToolCallDiagnostic<'a> {
+    tool_call: &'a ToolCall,
+    executable_tool_names: &'a BTreeSet<String>,
+    allowed_tool_names: &'a BTreeSet<String>,
+    history: &'a [Message],
+}
+
+impl InvalidToolCallDiagnostic<'_> {
+    fn unknown(&self, tool_name: String) -> PromptError {
+        unknown_tool_call_error(
+            tool_name,
+            self.executable_tool_names.iter().cloned().collect(),
+            self.allowed_tool_names.iter().cloned().collect(),
+            self.history.to_vec(),
+        )
+    }
+
+    fn unknown_current(&self) -> PromptError {
+        self.unknown(self.tool_call.function.name.clone())
+    }
+
+    fn cancelled(&self, reason: String) -> PromptError {
+        PromptError::prompt_cancelled(self.history.to_vec(), reason)
+    }
+}
+
+enum ValidatedInvalidToolCallAction {
+    Retry { feedback: String },
+    Repair { tool_name: String },
+    Skip { reason: String },
+}
+
 /// Default number of times Tool output mode re-prompts the model for valid
 /// structured output before finalizing best-effort (see #1928). Mirrors
 /// pydantic-ai's default output-retry budget of 1.
@@ -924,6 +956,48 @@ impl AgentRun {
         }));
     }
 
+    /// Validate the recovery policy shared by buffered and streamed turns.
+    /// Medium-specific rollback, repair, and skip effects remain at the call
+    /// sites; rejection, retry budgeting, and tool-choice checks live here so
+    /// the two surfaces cannot drift.
+    fn validate_invalid_tool_call_action(
+        &mut self,
+        action: InvalidToolCallAction,
+        diagnostic: InvalidToolCallDiagnostic<'_>,
+    ) -> Result<ValidatedInvalidToolCallAction, PromptError> {
+        let result = match action {
+            InvalidToolCallAction::Fail => Err(diagnostic.unknown_current()),
+            InvalidToolCallAction::Retry { feedback } => {
+                if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
+                    Err(diagnostic.unknown_current())
+                } else {
+                    self.invalid_tool_call_retries += 1;
+                    Ok(ValidatedInvalidToolCallAction::Retry { feedback })
+                }
+            }
+            InvalidToolCallAction::Repair { tool_name } => {
+                if diagnostic.allowed_tool_names.contains(&tool_name) {
+                    Ok(ValidatedInvalidToolCallAction::Repair { tool_name })
+                } else {
+                    Err(diagnostic.unknown(tool_name))
+                }
+            }
+            InvalidToolCallAction::Stop { reason } => Err(diagnostic.cancelled(reason)),
+            InvalidToolCallAction::Skip { reason } => {
+                if matches!(self.tool_choice, Some(ToolChoice::None)) {
+                    Err(diagnostic.unknown_current())
+                } else {
+                    Ok(ValidatedInvalidToolCallAction::Skip { reason })
+                }
+            }
+        };
+
+        if result.is_err() {
+            self.state = RunState::Failed;
+        }
+        result
+    }
+
     /// Answer a pending [`ModelTurnOutcome::NeedsResolution`].
     ///
     /// Applies the agent loop's recovery semantics:
@@ -971,29 +1045,18 @@ impl AgentRun {
         };
 
         let diagnostic_history = self.diagnostic_history(&resolving);
-        let executable_tool_names: Vec<String> =
-            resolving.executable_tool_names.iter().cloned().collect();
-        let allowed_tool_names: Vec<String> =
-            resolving.allowed_tool_names.iter().cloned().collect();
+        let action = self.validate_invalid_tool_call_action(
+            action,
+            InvalidToolCallDiagnostic {
+                tool_call: &tool_call,
+                executable_tool_names: &resolving.executable_tool_names,
+                allowed_tool_names: &resolving.allowed_tool_names,
+                history: &diagnostic_history,
+            },
+        )?;
 
         match action {
-            InvalidToolCallAction::Fail => Err(unknown_tool_call_error(
-                tool_call.function.name,
-                executable_tool_names,
-                allowed_tool_names,
-                diagnostic_history,
-            )),
-            InvalidToolCallAction::Retry { feedback } => {
-                if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                    return Err(unknown_tool_call_error(
-                        tool_call.function.name,
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
-                self.invalid_tool_call_retries += 1;
-
+            ValidatedInvalidToolCallAction::Retry { feedback } => {
                 self.new_messages.push(Message::Assistant {
                     id: resolving.message_id.clone(),
                     content: resolving.original_choice.clone(),
@@ -1012,15 +1075,7 @@ impl AgentRun {
                 self.state = RunState::PreparingRequest;
                 Ok(ModelTurnOutcome::TurnRetried)
             }
-            InvalidToolCallAction::Repair { tool_name } => {
-                if !allowed_tool_names.contains(&tool_name) {
-                    return Err(unknown_tool_call_error(
-                        tool_name,
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
+            ValidatedInvalidToolCallAction::Repair { tool_name } => {
                 if let Some(AssistantContent::ToolCall(tool_call)) =
                     resolving.items.get_mut(resolving.next_index)
                 {
@@ -1030,19 +1085,7 @@ impl AgentRun {
                 self.state = RunState::ResolvingToolCalls(resolving);
                 self.advance_resolution()
             }
-            InvalidToolCallAction::Stop { reason } => {
-                self.state = RunState::Failed;
-                Err(PromptError::prompt_cancelled(diagnostic_history, reason))
-            }
-            InvalidToolCallAction::Skip { reason } => {
-                if matches!(self.tool_choice, Some(ToolChoice::None)) {
-                    return Err(unknown_tool_call_error(
-                        tool_call.function.name,
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
+            ValidatedInvalidToolCallAction::Skip { reason } => {
                 let user_content = UserContent::tool_result_for(
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
@@ -1306,32 +1349,18 @@ impl AgentRun {
 
         let diagnostic_history =
             self.streamed_diagnostic_history(partial, Some(invalid.tool_call.clone()));
-        let executable_tool_names: Vec<String> =
-            invalid.executable_tool_names.iter().cloned().collect();
-        let allowed_tool_names: Vec<String> = invalid.allowed_tool_names.iter().cloned().collect();
+        let action = self.validate_invalid_tool_call_action(
+            action,
+            InvalidToolCallDiagnostic {
+                tool_call: &invalid.tool_call,
+                executable_tool_names: &invalid.executable_tool_names,
+                allowed_tool_names: &invalid.allowed_tool_names,
+                history: &diagnostic_history,
+            },
+        )?;
 
         match action {
-            InvalidToolCallAction::Fail => {
-                self.state = RunState::Failed;
-                Err(unknown_tool_call_error(
-                    invalid.tool_call.function.name.clone(),
-                    executable_tool_names,
-                    allowed_tool_names,
-                    diagnostic_history,
-                ))
-            }
-            InvalidToolCallAction::Retry { feedback } => {
-                if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                    self.state = RunState::Failed;
-                    return Err(unknown_tool_call_error(
-                        invalid.tool_call.function.name.clone(),
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
-                self.invalid_tool_call_retries += 1;
-
+            ValidatedInvalidToolCallAction::Retry { feedback } => {
                 let Some((assistant_message, user_message)) =
                     partial.rollback_messages(invalid.tool_call.clone(), feedback)
                 else {
@@ -1349,33 +1378,10 @@ impl AgentRun {
                     skipped_tool_result: None,
                 })
             }
-            InvalidToolCallAction::Repair { tool_name } => {
-                if !invalid.allowed_tool_names.contains(&tool_name) {
-                    self.state = RunState::Failed;
-                    return Err(unknown_tool_call_error(
-                        tool_name,
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
+            ValidatedInvalidToolCallAction::Repair { tool_name } => {
                 Ok(StreamedResolution::Repaired { tool_name })
             }
-            InvalidToolCallAction::Stop { reason } => {
-                self.state = RunState::Failed;
-                Err(PromptError::prompt_cancelled(diagnostic_history, reason))
-            }
-            InvalidToolCallAction::Skip { reason } => {
-                if matches!(self.tool_choice, Some(ToolChoice::None)) {
-                    self.state = RunState::Failed;
-                    return Err(unknown_tool_call_error(
-                        invalid.tool_call.function.name.clone(),
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
-
+            ValidatedInvalidToolCallAction::Skip { reason } => {
                 // Synthetic skip reason: emit verbatim text, matching the
                 // non-streamed `resolve_invalid_tool_call` skip path (parity) and
                 // avoiding re-parsing a rejection message as structured output.

@@ -324,6 +324,152 @@ pub trait ProviderBuilder: Sized + Default + Clone {
     }
 }
 
+// These implementations are declarations of associated types and constants,
+// so ordinary helper functions cannot express the repeated structure. Keeping
+// the variation points in one invocation makes each provider's configuration
+// visible without duplicating the generic builder plumbing.
+macro_rules! impl_default_provider_builder {
+    (
+        $builder:ty => $extension:ty,
+        api_key = $api_key:ty,
+        base_url = $base_url:expr
+        $(, finish = $finish:path, state = $state:ident)? $(,)?
+    ) => {
+        impl $crate::client::ProviderBuilder for $builder {
+            type Extension<H>
+                = $extension
+            where
+                H: $crate::http_client::HttpClientExt;
+            type ApiKey = $api_key;
+
+            const BASE_URL: &'static str = $base_url;
+
+            fn build<H>(
+                _builder: &$crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+            ) -> $crate::http_client::Result<Self::Extension<H>>
+            where
+                H: $crate::http_client::HttpClientExt,
+            {
+                Ok(<$extension>::default())
+            }
+
+            $(
+                fn finish<H>(
+                    &self,
+                    builder: $crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+                ) -> $crate::http_client::Result<
+                    $crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+                > {
+                    $finish(&self.$state, builder)
+                }
+            )?
+        }
+    };
+}
+pub(crate) use impl_default_provider_builder;
+
+// ProviderClient is implemented for concrete client aliases, which likewise
+// cannot be factored into a function. The optional base-URL form captures the
+// only common construction variation without hiding provider-specific auth.
+macro_rules! impl_provider_client {
+    (
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal,
+        base_url_env_first = $base_url_env:literal $(,)?
+    ) => {
+        $crate::client::impl_provider_client!(@with_base
+            $client,
+            input = $input,
+            api_key_env = $api_key_env,
+            configuration = {
+                let base_url = $crate::client::optional_env_var($base_url_env)?;
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                (api_key, base_url)
+            }
+        );
+    };
+    (
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal,
+        base_url_env = $base_url_env:literal $(,)?
+    ) => {
+        $crate::client::impl_provider_client!(@with_base
+            $client,
+            input = $input,
+            api_key_env = $api_key_env,
+            configuration = {
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                let base_url = $crate::client::optional_env_var($base_url_env)?;
+                (api_key, base_url)
+            }
+        );
+    };
+    (
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal,
+        base_url = $base_url:expr $(,)?
+    ) => {
+        $crate::client::impl_provider_client!(@with_base
+            $client,
+            input = $input,
+            api_key_env = $api_key_env,
+            configuration = {
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                (api_key, $base_url)
+            }
+        );
+    };
+    (@with_base
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal,
+        configuration = $configuration:block
+    ) => {
+        impl $crate::client::ProviderClient for $client {
+            type Input = $input;
+            type Error = $crate::client::ProviderClientError;
+
+            #[doc = concat!("Create this provider client from the `", $api_key_env, "` environment variable.")]
+            fn from_env() -> Result<Self, Self::Error> {
+                let (api_key, base_url) = $configuration;
+                let mut builder = Self::builder().api_key(api_key);
+                if let Some(base_url) = base_url {
+                    builder = builder.base_url(base_url);
+                }
+                builder.build().map_err(Into::into)
+            }
+
+            fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+                Self::new(input).map_err(Into::into)
+            }
+        }
+    };
+    (
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal $(,)?
+    ) => {
+        impl $crate::client::ProviderClient for $client {
+            type Input = $input;
+            type Error = $crate::client::ProviderClientError;
+
+            #[doc = concat!("Create this provider client from the `", $api_key_env, "` environment variable.")]
+            fn from_env() -> Result<Self, Self::Error> {
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                Self::new(api_key).map_err(Into::into)
+            }
+
+            fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+                Self::new(input).map_err(Into::into)
+            }
+        }
+    };
+}
+pub(crate) use impl_provider_client;
+
 /// `new` is pinned to `H = reqwest::Client` so the call site infers without an explicit `H`
 /// annotation. Callers who want a different backend should go through [`Client::builder`] and
 /// chain [`ClientBuilder::http_client`] before [`ClientBuilder::build`].

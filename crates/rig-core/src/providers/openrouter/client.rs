@@ -1,10 +1,4 @@
-use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
-    http_client,
-};
+use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
 use http::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -46,40 +40,17 @@ impl<H> Capabilities<H> for OpenRouterExt {
 
 impl DebugExt for OpenRouterExt {}
 
-impl ProviderBuilder for OpenRouterExtBuilder {
-    type Extension<H>
-        = OpenRouterExt
-    where
-        H: http_client::HttpClientExt;
-    type ApiKey = OpenRouterApiKey;
+client::impl_default_provider_builder!(
+    OpenRouterExtBuilder => OpenRouterExt,
+    api_key = OpenRouterApiKey,
+    base_url = OPENROUTER_API_BASE_URL,
+);
 
-    const BASE_URL: &'static str = OPENROUTER_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: http_client::HttpClientExt,
-    {
-        Ok(OpenRouterExt)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = OpenRouterApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new openrouter client from the `OPENROUTER_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("OPENROUTER_API_KEY")?;
-
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(
+    Client,
+    input = OpenRouterApiKey,
+    api_key_env = "OPENROUTER_API_KEY",
+);
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct Usage {
