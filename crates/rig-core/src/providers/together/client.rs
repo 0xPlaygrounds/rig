@@ -1,4 +1,4 @@
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 
 // ================================================================
 // Together AI Client
@@ -41,18 +41,11 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Together
     }
 }
 
-impl<H> Capabilities<H> for TogetherExt {
-    type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    TogetherExt,
+    completion = super::CompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+);
 
 client::impl_default_provider_builder!(
     TogetherExtBuilder => TogetherExt,

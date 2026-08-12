@@ -12,7 +12,7 @@
 //! # }
 //! ```
 use crate::client::BearerAuth;
-use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, DebugExt, Provider};
 use crate::completion::CompletionError;
 use crate::providers::openai;
 
@@ -78,18 +78,7 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
     }
 }
 
-impl<H> Capabilities<H> for PerplexityExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Transcription = Nothing;
-    type Embeddings = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(PerplexityExt, completion = CompletionModel<H>);
 
 impl DebugExt for PerplexityExt {}
 

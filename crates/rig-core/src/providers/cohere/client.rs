@@ -1,6 +1,6 @@
 use crate::{
     Embed,
-    client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider},
+    client::{self, BearerAuth, DebugExt, Provider},
     embeddings::EmbeddingsBuilder,
     http_client::HttpClientExt,
     wasm_compat::*,
@@ -30,18 +30,11 @@ impl Provider for CohereExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for CohereExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    CohereExt,
+    completion = CompletionModel<H>,
+    embeddings = EmbeddingModel<H>,
+);
 
 impl DebugExt for CohereExt {}
 

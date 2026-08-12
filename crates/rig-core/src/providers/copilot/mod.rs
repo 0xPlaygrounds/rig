@@ -23,8 +23,7 @@
 mod auth;
 
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
-    ProviderClient, Transport,
+    self, ApiKey, DebugExt, ModelLister, Provider, ProviderBuilder, ProviderClient, Transport,
 };
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
@@ -190,17 +189,12 @@ impl Provider for CopilotExt {
     const VERIFY_PATH: &'static str = "";
 }
 
-impl<H> Capabilities<H> for CopilotExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type Transcription = Nothing;
-    type ModelListing = Capable<CopilotModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    CopilotExt,
+    completion = CompletionModel<H>,
+    embeddings = EmbeddingModel<H>,
+    model_listing = CopilotModelLister<H>,
+);
 
 impl DebugExt for CopilotExt {}
 

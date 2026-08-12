@@ -93,7 +93,7 @@ where
     T: JsonSchema + for<'de> Deserialize<'de> + WasmCompatSend + WasmCompatSync,
 {
     extractor: &'a Extractor<T>,
-    model: ModelHandle,
+    model: Option<ModelHandle>,
 }
 
 impl<T> Extractor<T>
@@ -113,7 +113,15 @@ where
     pub fn using_model(&self, model: ModelHandle) -> ExtractorRun<'_, T> {
         ExtractorRun {
             extractor: self,
-            model,
+            model: Some(model),
+        }
+    }
+
+    /// A run with no model override: the extractor's own default model.
+    fn default_run(&self) -> ExtractorRun<'_, T> {
+        ExtractorRun {
+            extractor: self,
+            model: None,
         }
     }
 
@@ -135,8 +143,7 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text.into(), vec![], None).await?;
-        Ok(data)
+        self.default_run().extract(text).await
     }
 
     /// Attempts to extract data from the given text with a number of retries.
@@ -150,8 +157,9 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self.retry_extract(text.into(), chat_history, None).await?;
-        Ok(data)
+        self.default_run()
+            .extract_with_chat_history(text, chat_history)
+            .await
     }
 
     /// Attempts to extract data from the given text with a number of retries,
@@ -171,8 +179,7 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text.into(), vec![], None).await?;
-        Ok(ExtractionResponse { data, usage })
+        self.default_run().extract_with_usage(text).await
     }
 
     /// Attempts to extract data from the given text with a number of retries,
@@ -194,8 +201,9 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self.retry_extract(text.into(), chat_history, None).await?;
-        Ok(ExtractionResponse { data, usage })
+        self.default_run()
+            .extract_with_chat_history_with_usage(text, chat_history)
+            .await
     }
 
     /// Runs the extraction with the retry semantics shared by all public
@@ -304,11 +312,7 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self
-            .extractor
-            .retry_extract(text.into(), vec![], Some(&self.model))
-            .await?;
-        Ok(data)
+        Ok(self.extract_with_usage(text).await?.data)
     }
 
     /// Extract structured data with chat history and the run-local model.
@@ -317,11 +321,10 @@ where
         text: impl Into<Message> + WasmCompatSend,
         chat_history: Vec<Message>,
     ) -> Result<T, ExtractionError> {
-        let (data, _usage) = self
-            .extractor
-            .retry_extract(text.into(), chat_history, Some(&self.model))
-            .await?;
-        Ok(data)
+        Ok(self
+            .extract_with_chat_history_with_usage(text, chat_history)
+            .await?
+            .data)
     }
 
     /// Extract structured data and usage with the run-local model.
@@ -329,11 +332,8 @@ where
         &self,
         text: impl Into<Message> + WasmCompatSend,
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
-        let (data, usage) = self
-            .extractor
-            .retry_extract(text.into(), vec![], Some(&self.model))
-            .await?;
-        Ok(ExtractionResponse { data, usage })
+        self.extract_with_chat_history_with_usage(text, vec![])
+            .await
     }
 
     /// Extract structured data with chat history and usage using the run-local model.
@@ -344,7 +344,7 @@ where
     ) -> Result<ExtractionResponse<T>, ExtractionError> {
         let (data, usage) = self
             .extractor
-            .retry_extract(text.into(), chat_history, Some(&self.model))
+            .retry_extract(text.into(), chat_history, self.model.as_ref())
             .await?;
         Ok(ExtractionResponse { data, usage })
     }

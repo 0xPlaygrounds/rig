@@ -22,7 +22,7 @@
 //!     .build()
 //!     .expect("Failed to build Moonshot client");
 //! ```
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
 };
@@ -77,30 +77,12 @@ impl_anthropic_compatible_builder!(
     base_url = ANTHROPIC_API_BASE_URL,
 );
 
-impl<H> Capabilities<H> for MoonshotExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(MoonshotExt, completion = CompletionModel<H>);
 
-impl<H> Capabilities<H> for MoonshotAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<MoonshotAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    MoonshotAnthropicExt,
+    completion = super::anthropic::completion::GenericCompletionModel<MoonshotAnthropicExt, H>,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =

@@ -3,7 +3,7 @@ use http::{HeaderName, HeaderValue};
 
 use super::completion::{ANTHROPIC_VERSION_LATEST, CompletionModel};
 use crate::{
-    client::{self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder},
+    client::{self, ApiKey, DebugExt, Provider, ProviderBuilder},
     http_client::{self, HttpClientExt},
     providers::anthropic::model_listing::AnthropicModelLister,
 };
@@ -19,18 +19,11 @@ impl Provider for AnthropicExt {
     const VERIFY_PATH: &'static str = "/v1/models";
 }
 
-impl<H> Capabilities<H> for AnthropicExt {
-    type Completion = Capable<CompletionModel<H>>;
-
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Capable<AnthropicModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    AnthropicExt,
+    completion = CompletionModel<H>,
+    model_listing = AnthropicModelLister<H>,
+);
 
 #[derive(Debug, Clone)]
 pub struct AnthropicBuilder {

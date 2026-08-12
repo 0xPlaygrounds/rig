@@ -1,6 +1,4 @@
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, Transport,
-};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, Transport};
 use crate::http_client::{self};
 use crate::providers::gemini::model_listing::{GeminiInteractionsModelLister, GeminiModelLister};
 use serde::Deserialize;
@@ -108,31 +106,22 @@ impl Provider for GeminiInteractionsExt {
     }
 }
 
-impl<H> Capabilities<H> for GeminiExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Capable<super::embedding::EmbeddingModel<H>>;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Capable<GeminiModelLister<H>>;
+client::impl_capabilities!(
+    GeminiExt,
+    completion = super::completion::CompletionModel<H>,
+    embeddings = super::embedding::EmbeddingModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    model_listing = GeminiModelLister<H>,
+    image_generation = super::image_generation::ImageGenerationModel<H>,
+);
 
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl<H> Capabilities<H> for GeminiInteractionsExt {
-    type Completion = Capable<super::interactions_api::InteractionsCompletionModel<H>>;
-    type Embeddings = Capable<super::embedding::EmbeddingModel<H>>;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Capable<GeminiInteractionsModelLister<H>>;
-
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    GeminiInteractionsExt,
+    completion = super::interactions_api::InteractionsCompletionModel<H>,
+    embeddings = super::embedding::EmbeddingModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    model_listing = GeminiInteractionsModelLister<H>,
+);
 
 impl ProviderBuilder for GeminiBuilder {
     type Extension<H>

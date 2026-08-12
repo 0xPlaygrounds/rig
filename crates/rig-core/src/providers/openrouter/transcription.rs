@@ -85,20 +85,11 @@ impl TryFrom<TranscriptionResponse>
 // Model
 // ================================================================
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
+pub type TranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::GenericTranscriptionModel<
+        crate::providers::openrouter::client::OpenRouterExt,
+        T,
+    >;
 
 fn infer_format_from_filename(filename: &str) -> String {
     std::path::Path::new(filename)

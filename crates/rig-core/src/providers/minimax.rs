@@ -21,7 +21,7 @@
 //! let model = client.completion_model(minimax::MINIMAX_M2);
 //! ```
 
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
 };
@@ -87,30 +87,15 @@ impl Provider for MiniMaxAnthropicExt {
     const VERIFY_PATH: &'static str = "/v1/models";
 }
 
-impl<H> Capabilities<H> for MiniMaxExt {
-    type Completion = Capable<super::openai::completion::GenericCompletionModel<MiniMaxExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    MiniMaxExt,
+    completion = super::openai::completion::GenericCompletionModel<MiniMaxExt, H>,
+);
 
-impl<H> Capabilities<H> for MiniMaxAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<MiniMaxAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    MiniMaxAnthropicExt,
+    completion = super::anthropic::completion::GenericCompletionModel<MiniMaxAnthropicExt, H>,
+);
 
 impl DebugExt for MiniMaxExt {}
 impl DebugExt for MiniMaxAnthropicExt {}

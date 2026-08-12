@@ -21,6 +21,28 @@ pub(crate) struct DataEnvelope<Entry> {
     pub(crate) data: Vec<Entry>,
 }
 
+/// The standard OpenAI-style listing entry (OpenAI, Mistral, DeepSeek,
+/// Xiaomi MiMo). `id` is the one field every listing carries; the rest are
+/// optional so providers that omit them still decode. Providers whose
+/// entries genuinely diverge keep their own DTO.
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct ListModelEntry {
+    pub(crate) id: String,
+    pub(crate) name: Option<String>,
+    pub(crate) created: Option<u64>,
+    pub(crate) owned_by: Option<String>,
+}
+
+impl From<ListModelEntry> for Model {
+    fn from(value: ListModelEntry) -> Self {
+        let mut model = Model::from_id(value.id);
+        model.name = value.name;
+        model.created_at = value.created;
+        model.owned_by = value.owned_by;
+        model
+    }
+}
+
 /// Map a transport-level send error into listing-flavored context: an
 /// [`http_client::Error::InvalidStatusCodeWithMessage`] (backends that reject
 /// non-2xx before handing back a response) keeps the provider label, path,
@@ -102,4 +124,24 @@ where
     let envelope: DataEnvelope<Entry> = get_json(client, provider_name, path).await?;
     let models = envelope.data.into_iter().map(Into::into).collect();
     Ok(ModelList::new(models))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ListModelEntry;
+    use crate::model::Model;
+
+    /// `id` is the one required field: an entry that carries nothing else
+    /// (some OpenAI-compatible gateways omit `created`/`owned_by`) still
+    /// decodes, mapping the absent fields to `None` on the `Model`.
+    #[test]
+    fn minimal_entry_decodes_with_id_alone() {
+        let entry: ListModelEntry =
+            serde_json::from_str(r#"{"id":"gpt-test"}"#).expect("minimal entry should decode");
+        let model = Model::from(entry);
+        assert_eq!(model.id, "gpt-test");
+        assert_eq!(model.name, None);
+        assert_eq!(model.created_at, None);
+        assert_eq!(model.owned_by, None);
+    }
 }

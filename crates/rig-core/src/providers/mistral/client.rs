@@ -1,5 +1,5 @@
 use crate::{
-    client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider},
+    client::{self, BearerAuth, DebugExt, Provider},
     providers::mistral::MistralModelLister,
 };
 use serde::{Deserialize, Serialize};
@@ -97,19 +97,13 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
     }
 }
 
-impl<H> Capabilities<H> for MistralExt {
-    type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-
-    type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Capable<MistralModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    MistralExt,
+    completion = super::CompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+    transcription = super::TranscriptionModel<H>,
+    model_listing = MistralModelLister<H>,
+);
 
 impl DebugExt for MistralExt {}
 

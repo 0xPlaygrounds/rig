@@ -559,22 +559,11 @@ where
                     // consistent even if the per-turn tool set changes (#1928).
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let mut prepared = match build_prepared_completion_request(
+                        &runner,
                         &selected_model,
                         prompt.clone(),
                         &history,
-                        runner.preamble.as_deref(),
-                        &runner.static_context,
-                        runner.temperature,
-                        runner.max_tokens,
-                        runner.additional_params.as_ref(),
-                        runner.record_telemetry_content,
-                        runner.tool_choice.as_ref(),
-                        &runner.tool_server_handle,
-                        runner.output_schema.as_ref(),
-                        &runner.output_mode,
                         committed_output_tool.as_deref(),
-                        runner.output_tool_description.as_deref(),
-                        runner.augment_output_preamble,
                         request_patch.as_ref(),
                     )
                     .await
@@ -1043,6 +1032,22 @@ impl StreamingTurnSource {
             has_hooks: !hooks.is_empty(),
         }
     }
+
+    /// Record a completed model turn's canonical output onto the agent and
+    /// chat spans. Only self-created agent spans receive `gen_ai.completion`,
+    /// so neither surface pollutes a caller-supplied span.
+    fn record_turn_telemetry(
+        &self,
+        agent_span: &tracing::Span,
+        chat_span: &tracing::Span,
+        choice: &[AssistantContent],
+        record_content: bool,
+    ) {
+        if self.created_agent_span && self.record_telemetry_content {
+            agent_span.record("gen_ai.completion", assistant_text_from_choice(choice));
+        }
+        rig_core::telemetry::record_model_output(chat_span, choice, record_content);
+    }
 }
 
 impl TurnSource for StreamingTurnSource {
@@ -1444,13 +1449,8 @@ impl TurnSource for StreamingTurnSource {
                         // final and content telemetry were visible before the
                         // cancellation. Preserve that behavior while Retry
                         // alone suppresses the provisional final.
-                        if self.created_agent_span && self.record_telemetry_content {
-                            agent_span.record(
-                                "gen_ai.completion",
-                                assistant_text_from_choice(&canonical_choice),
-                            );
-                        }
-                        rig_core::telemetry::record_model_output(
+                        self.record_turn_telemetry(
+                            agent_span,
                             &chat_span,
                             &canonical_choice,
                             runner.record_telemetry_content,
@@ -1470,13 +1470,8 @@ impl TurnSource for StreamingTurnSource {
 
             // Only hook-accepted canonical output belongs in content telemetry.
             // Keep caller-owned spans untouched, matching the blocking source.
-            if self.created_agent_span && self.record_telemetry_content {
-                agent_span.record(
-                    "gen_ai.completion",
-                    assistant_text_from_choice(&canonical_choice),
-                );
-            }
-            rig_core::telemetry::record_model_output(
+            self.record_turn_telemetry(
+                agent_span,
                 &chat_span,
                 &canonical_choice,
                 runner.record_telemetry_content,

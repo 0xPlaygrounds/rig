@@ -22,7 +22,7 @@
 //! let glm_4_6 = client.completion_model(zai::GLM_4_6);
 //! ```
 
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
 };
@@ -86,30 +86,15 @@ impl Provider for ZAiAnthropicExt {
     const VERIFY_PATH: &'static str = "/v1/models";
 }
 
-impl<H> Capabilities<H> for ZAiExt {
-    type Completion = Capable<super::openai::completion::GenericCompletionModel<ZAiExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    ZAiExt,
+    completion = super::openai::completion::GenericCompletionModel<ZAiExt, H>,
+);
 
-impl<H> Capabilities<H> for ZAiAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<ZAiAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    ZAiAnthropicExt,
+    completion = super::anthropic::completion::GenericCompletionModel<ZAiAnthropicExt, H>,
+);
 
 impl DebugExt for ZAiExt {}
 impl DebugExt for ZAiAnthropicExt {}

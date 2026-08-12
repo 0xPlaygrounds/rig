@@ -1,4 +1,4 @@
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct XAiExt;
@@ -19,18 +19,12 @@ impl Provider for XAiExt {
     const VERIFY_PATH: &'static str = "/v1/api-key";
 }
 
-impl<H> Capabilities<H> for XAiExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    XAiExt,
+    completion = super::completion::CompletionModel<H>,
+    image_generation = super::image_generation::ImageGenerationModel<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
 impl DebugExt for XAiExt {}
 

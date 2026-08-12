@@ -216,28 +216,31 @@ pub(crate) fn allowed_tool_names_for_choice(
     Ok(allowed)
 }
 
-/// Helper function to build a completion request from agent components while
-/// preserving the executable Rig tool names sent to the provider.
-#[allow(clippy::too_many_arguments)]
+/// Helper function to build a completion request from the runner's configured
+/// baseline while preserving the executable Rig tool names sent to the
+/// provider. Only the per-turn inputs — the selected model, prompt, history,
+/// committed output tool, and hook patch — arrive as parameters; everything
+/// else is read off the runner.
 pub(crate) async fn build_prepared_completion_request(
+    runner: &crate::agent::AgentRunner,
     model: &ModelHandle,
     prompt: Message,
     chat_history: &[Message],
-    preamble: Option<&str>,
-    static_context: &[Document],
-    temperature: Option<f64>,
-    max_tokens: Option<u64>,
-    additional_params: Option<&serde_json::Value>,
-    record_telemetry_content: bool,
-    tool_choice: Option<&ToolChoice>,
-    tool_server_handle: &ToolServerHandle,
-    output_schema: Option<&schemars::Schema>,
-    output_mode: &OutputMode,
     committed_output_tool: Option<&str>,
-    output_tool_description: Option<&str>,
-    augment_output_preamble: bool,
     request_patch: Option<&RequestPatch>,
 ) -> Result<PreparedCompletionRequest, CompletionError> {
+    let preamble = runner.preamble.as_deref();
+    let static_context = &runner.static_context;
+    let temperature = runner.temperature;
+    let max_tokens = runner.max_tokens;
+    let additional_params = runner.additional_params.as_ref();
+    let record_telemetry_content = runner.record_telemetry_content;
+    let tool_choice = runner.tool_choice.as_ref();
+    let tool_server_handle = &runner.tool_server_handle;
+    let output_schema = runner.output_schema.as_ref();
+    let output_mode = &runner.output_mode;
+    let output_tool_description = runner.output_tool_description.as_deref();
+    let augment_output_preamble = runner.augment_output_preamble;
     // Apply a per-turn request patch (the merged patch from every `CompletionCall`
     // hook): each set field replaces the agent's configured value for this turn,
     // unset fields inherit it, `additional_params` is shallow-merged, and

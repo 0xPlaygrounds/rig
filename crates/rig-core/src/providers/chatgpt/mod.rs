@@ -18,10 +18,7 @@
 
 mod auth;
 
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient, Transport,
-};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, ProviderClient, Transport};
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
@@ -169,17 +166,7 @@ impl responses_api::ResponsesProviderExt for ChatGPTExt {
     }
 }
 
-impl<H> Capabilities<H> for ChatGPTExt {
-    type Completion = Capable<ResponsesCompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(ChatGPTExt, completion = ResponsesCompletionModel<H>);
 
 impl DebugExt for ChatGPTExt {}
 

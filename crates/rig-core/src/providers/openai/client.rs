@@ -1,6 +1,6 @@
 use super::responses_api::{ResponsesProviderExt, SystemInstructionsPlacement};
 use crate::{
-    client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider},
+    client::{self, BearerAuth, DebugExt, Provider},
     http_client::HttpClientExt,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -68,29 +68,25 @@ impl Provider for OpenAICompletionsExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for OpenAIResponsesExt {
-    type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-    type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Capable<super::OpenAIModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OpenAIResponsesExt,
+    completion = super::responses_api::ResponsesCompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+    transcription = super::TranscriptionModel<H>,
+    model_listing = super::OpenAIModelLister<H>,
+    image_generation = super::ImageGenerationModel<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
-impl<H> Capabilities<H> for OpenAICompletionsExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Capable<super::GenericEmbeddingModel<OpenAICompletionsExt, H>>;
-    type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Capable<super::OpenAIModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OpenAICompletionsExt,
+    completion = super::completion::CompletionModel<H>,
+    embeddings = super::GenericEmbeddingModel<OpenAICompletionsExt, H>,
+    transcription = super::TranscriptionModel<H>,
+    model_listing = super::OpenAIModelLister<H>,
+    image_generation = super::ImageGenerationModel<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
 impl DebugExt for OpenAIResponsesExt {}
 
