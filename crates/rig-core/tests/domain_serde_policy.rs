@@ -71,43 +71,45 @@ struct PublicEnum {
 fn public_enums(path: &Path, source: &str) -> Result<Vec<PublicEnum>, syn::Error> {
     let file = syn::parse_file(source)?;
     let mut found = Vec::new();
-    collect_enums(path, &file.items, &mut found);
+    collect_enums(&file.items, &mut found)?;
+    let _ = path;
     Ok(found)
 }
 
 /// Descends `mod { … }` blocks: rig declares whole provider wire surfaces in
 /// inline modules (`pub mod gemini_api_types { … }`), and a scanner that only
 /// looked at top-level items would silently exempt every enum inside them.
-fn collect_enums(path: &Path, items: &[syn::Item], found: &mut Vec<PublicEnum>) {
+fn collect_enums(items: &[syn::Item], found: &mut Vec<PublicEnum>) -> Result<(), syn::Error> {
     for item in items {
         match item {
             syn::Item::Mod(module) => {
                 if let Some((_, nested)) = &module.content {
-                    collect_enums(path, nested, found);
+                    collect_enums(nested, found)?;
                 }
             }
             syn::Item::Enum(item) => {
                 if !matches!(item.vis, syn::Visibility::Public(_)) {
                     continue;
                 }
+                let keys = serde_keys(&item.attrs)?;
                 found.push(PublicEnum {
                     name: item.ident.to_string(),
                     line: item.ident.span().start().line,
-                    derives_serde: derives_serde(&item.attrs),
+                    derives_serde: derives_serde(&item.attrs)?,
                     data_bearing: item
                         .variants
                         .iter()
                         .any(|variant| !matches!(variant.fields, syn::Fields::Unit)),
-                    declares_representation: serde_keys(&item.attrs)
+                    declares_representation: keys
                         .iter()
                         .any(|key| key == "tag" || key == "untagged"),
-                    untagged: serde_keys(&item.attrs).iter().any(|key| key == "untagged"),
+                    untagged: keys.iter().any(|key| key == "untagged"),
                 });
             }
             _ => {}
         }
     }
-    let _ = path;
+    Ok(())
 }
 
 /// Whether a `#[derive(...)]` list names `Serialize` or `Deserialize`.
@@ -115,20 +117,27 @@ fn collect_enums(path: &Path, items: &[syn::Item], found: &mut Vec<PublicEnum>) 
 /// Only `derive` attributes are inspected, so a doc comment or an unrelated
 /// attribute mentioning the word cannot make a non-serde enum look serialized.
 /// The path's last segment is compared, so `serde::Serialize` counts.
-fn derives_serde(attrs: &[syn::Attribute]) -> bool {
-    let mut found = false;
+///
+/// Parse errors propagate rather than being swallowed — see [`serde_keys`] for
+/// what swallowing one costs.
+fn derives_serde(attrs: &[syn::Attribute]) -> Result<bool, syn::Error> {
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("derive")) {
-        let _ = attr.parse_nested_meta(|meta| {
-            if let Some(last) = meta.path.segments.last()
-                && (last.ident == "Serialize" || last.ident == "Deserialize")
-            {
-                found = true;
-            }
-            // A derive entry never carries a value; consume nothing.
-            Ok(())
-        });
+        // A bare `#[derive]` carries no list; nothing to read.
+        if matches!(attr.meta, syn::Meta::Path(_)) {
+            continue;
+        }
+        let derived = attr.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+        )?;
+        if derived.iter().any(|path| {
+            path.segments
+                .last()
+                .is_some_and(|last| last.ident == "Serialize" || last.ident == "Deserialize")
+        }) {
+            return Ok(true);
+        }
     }
-    found
+    Ok(false)
 }
 
 /// The metadata keys of every enum-level `#[serde(...)]` attribute.
@@ -136,22 +145,42 @@ fn derives_serde(attrs: &[syn::Attribute]) -> bool {
 /// Keys only — `tag = "type"` yields `tag`, and a *value* of `"untagged"` or
 /// `"stage"` yields nothing. That distinction is the whole point: it is what a
 /// substring probe over source text cannot make.
-fn serde_keys(attrs: &[syn::Attribute]) -> Vec<String> {
+///
+/// Parsed as a comma-separated list of [`syn::Meta`], which admits all three
+/// container-attribute forms serde documents: a bare path (`untagged`), a
+/// name-value (`tag = "type"`), and a **nested list** (`bound(serialize = "…")`,
+/// `rename(serialize = "wire")`).
+///
+/// The nested form is why this reads `Meta` rather than driving
+/// `parse_nested_meta` with a callback. That callback consumed `key = value` but
+/// not `key(...)`, so serde-legal input like
+///
+/// ```ignore
+/// #[serde(bound(serialize = "T: Serialize"), untagged)]
+/// ```
+///
+/// failed mid-parse — and because the error was discarded with `let _ = …`, every
+/// key *after* the nested entry went unseen. `untagged` was therefore invisible,
+/// which in a provider directory (excluded from the positive representation scan)
+/// let an enum bypass the untagged allowlist entirely. Errors now propagate: an
+/// attribute this scanner cannot read must fail the test, never quietly narrow it.
+fn serde_keys(attrs: &[syn::Attribute]) -> Result<Vec<String>, syn::Error> {
     let mut keys = Vec::new();
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("serde")) {
-        let _ = attr.parse_nested_meta(|meta| {
-            if let Some(ident) = meta.path.get_ident() {
+        // A bare `#[serde]` carries no keys.
+        if matches!(attr.meta, syn::Meta::Path(_)) {
+            continue;
+        }
+        let entries = attr.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+        )?;
+        for entry in entries {
+            if let Some(ident) = entry.path().get_ident() {
                 keys.push(ident.to_string());
             }
-            // `tag = "type"` and `content = "content"` carry a value; swallow it
-            // so parsing continues to the next key.
-            if meta.input.peek(syn::Token![=]) {
-                let _: syn::Expr = meta.value()?.parse()?;
-            }
-            Ok(())
-        });
+        }
     }
-    keys
+    Ok(keys)
 }
 
 /// [`public_enums`] with a parse failure turned into a test failure.
@@ -496,6 +525,68 @@ fn ast_scanner_reports_untagged_from_the_attribute_not_the_text() {
             .collect::<Vec<_>>(),
         vec!["PublicWire"],
         "parsed: {parsed:#?}"
+    );
+}
+
+/// Serde's documented **nested** container-attribute forms, which a
+/// `parse_nested_meta` callback could not consume.
+///
+/// Both were reproduced before the fix. `bound(...)` / `rename(...)` made the
+/// parse fail mid-attribute, and because that error was discarded, every key
+/// after the nested entry went unseen:
+///
+/// - `#[serde(bound(...), untagged)]` reported `untagged = false` — a **silent**
+///   bypass of the untagged allowlist, and provider directories are excluded from
+///   the positive representation scan, so nothing else would have caught it
+/// - `#[serde(rename(...), tag = "type")]` reported no representation — a
+///   spurious violation
+#[test]
+fn ast_scanner_reads_nested_serde_metadata() {
+    let source = r#"
+        #[derive(serde::Serialize, serde::Deserialize)]
+        #[serde(bound(serialize = "T: serde::Serialize"), untagged)]
+        pub enum NestedThenUntagged<T> { A(T) }
+
+        #[derive(serde::Serialize, serde::Deserialize)]
+        #[serde(rename(serialize = "wire"), tag = "type")]
+        pub enum NestedThenTag { A(u32) }
+
+        #[derive(serde::Serialize, serde::Deserialize)]
+        #[serde(bound(serialize = "T: serde::Serialize"))]
+        pub enum NestedOnly<T> { A(T) }
+    "#;
+
+    let parsed = public_enums(Path::new("probe.rs"), source).expect("probe should parse");
+    let by_name = |name: &str| {
+        parsed
+            .iter()
+            .find(|found| found.name == name)
+            .unwrap_or_else(|| panic!("{name} missing from {parsed:#?}"))
+    };
+
+    assert!(
+        by_name("NestedThenUntagged").untagged,
+        "a key after a nested entry must still be seen, or the untagged allowlist \
+         is bypassed silently: {parsed:#?}"
+    );
+    assert!(by_name("NestedThenTag").declares_representation);
+    // `bound` alone is neither a tag nor untagged, so this one legitimately owes
+    // a representation.
+    assert!(!by_name("NestedOnly").declares_representation);
+    assert!(!by_name("NestedOnly").untagged);
+}
+
+/// A malformed attribute is a hard failure, not a quiet narrowing of the policy.
+#[test]
+fn ast_scanner_propagates_attribute_parse_errors() {
+    let source = r#"
+        #[derive(serde::Serialize)]
+        #[serde(tag = )]
+        pub enum BrokenAttribute { A(u32) }
+    "#;
+    assert!(
+        public_enums(Path::new("probe.rs"), source).is_err(),
+        "an unreadable serde attribute must fail the scan"
     );
 }
 
