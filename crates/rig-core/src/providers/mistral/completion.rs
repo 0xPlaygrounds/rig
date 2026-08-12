@@ -114,11 +114,18 @@ fn classify_request_content_part(
 /// Normalize one serialized request message `content` value for Mistral.
 ///
 /// Mistral takes text-only content as a plain string, so text parts are joined
-/// into one; parts belonging to Mistral's own chunk schema (images, prompt
-/// audio) keep the array so they reach the API intact. Content Mistral cannot
-/// represent — documents converted to OpenAI `file` parts, video — fails here
-/// instead of being flattened away, which used to return an ordinary
-/// completion built from a request the caller never made.
+/// into one. The two chunk types it shares with the OpenAI-compatible
+/// conversion stay in the array, each rendered the way Mistral's own schema
+/// names it: `image_url` forwards untouched, because `ImageURLChunk` accepts an
+/// `ImageURL` of `url` plus optional `detail`; `input_audio` collapses to its
+/// base64 payload, because `AudioChunk` carries that string directly and has no
+/// slot for a sibling `format` — the same normalization `mistral-common`
+/// applies to OpenAI-shaped `{data, format}` input. Restoring the object form
+/// there would build a body Mistral cannot parse.
+///
+/// Content Mistral cannot represent — documents converted to OpenAI `file`
+/// parts, video — fails here instead of being flattened away, which used to
+/// return an ordinary completion built from a request the caller never made.
 pub(super) fn normalize_request_content(
     content: &mut serde_json::Value,
 ) -> Result<(), CompletionError> {
@@ -599,10 +606,14 @@ mod tests {
             .expect("image content must stay an array of chunks");
         assert_eq!(content.len(), 3);
         assert_eq!(content[0]["text"], "What is in this picture?");
-        assert_eq!(content[1]["type"], "image_url");
         assert_eq!(
-            content[1]["image_url"]["url"],
-            "https://example.com/cat.png"
+            content[1],
+            serde_json::json!({
+                "type": "image_url",
+                "image_url": {"url": "https://example.com/cat.png", "detail": "auto"}
+            }),
+            "Mistral's `ImageURLChunk` takes an `ImageURL` of `url` plus optional \
+             `detail`, so the nested pair must survive finalization unreshaped"
         );
         assert_eq!(content[2]["type"], "image_url");
         assert_eq!(
@@ -714,7 +725,15 @@ mod tests {
         );
     }
 
-    /// Streaming shares the request finalization, so it must fail the same way.
+    /// Streaming shares the request finalization, so it must fail the same way,
+    /// and a rejected turn never becomes a stream that could be sent.
+    ///
+    /// The captured-request list cannot witness that: `RecordingHttpClient`
+    /// answers `send_streaming` without recording, so `requests()` stays empty
+    /// either way. The error's position is the discriminator instead — content
+    /// Mistral can carry returns a stream handle here and only fails once the
+    /// absent transport is polled — which is what the control below pins, so
+    /// the document's `Err` can only have come from finalization.
     #[tokio::test]
     async fn streaming_rejects_document_content_before_sending() {
         let http_client = RecordingHttpClient::new("{}");
@@ -727,7 +746,13 @@ mod tests {
             .expect("streaming must fail instead of dropping the document");
 
         assert!(matches!(error, CompletionError::RequestError(_)));
-        assert!(http_client.requests().is_empty());
+        assert!(
+            model
+                .stream(user_request(vec![message::UserContent::text("Hello!")]))
+                .await
+                .is_ok(),
+            "representable content must still open a stream, or the rejection above proves nothing"
+        );
     }
 
     /// The rejection is narrow: an ordinary text prompt still completes, and
