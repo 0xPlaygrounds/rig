@@ -84,6 +84,14 @@ anyhow = { workspace = true }
 # sequence laws panic in ALL of rig's own suites while staying log-only in
 # downstream builds.
 rig-core = { path = ".", features = ["test-utils"] }
+# AST scanner for the public Serde enum representation policy
+# (tests/domain_serde_policy.rs) — the policy must read real syntax, not
+# text heuristics: substring probes over source were defeated by ordinary
+# prose and by braces in doc comments.
+syn = { workspace = true, features = ["full", "parsing"] }
+# `span-locations` gives enum declarations real line numbers in violation
+# reports; without it every span reports line 1.
+proc-macro2 = { workspace = true, features = ["span-locations"] }
 # identity-leak compile-fail tests (tests/identity_leak.rs)
 trybuild = "1.0"
 # streaming identity/merge law property tests

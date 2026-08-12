@@ -5,7 +5,7 @@
 //! are allowed only when their exact type and upstream-owned shape are recorded
 //! in `domain_serde_policy_allowlist.txt`.
 
-#![allow(clippy::expect_used)]
+#![allow(clippy::expect_used, clippy::panic)]
 
 use std::path::{Path, PathBuf};
 
@@ -40,295 +40,133 @@ fn parse_allowlist(raw: &str) -> Vec<AllowlistEntry> {
         .collect()
 }
 
-/// Every `pub enum` in `source` that derives a Serde trait, has at least one
-/// data-bearing variant, and declares **no** representation (`tag` or
-/// `untagged`) — so Serde falls back to implicit external tagging
-/// (`{"VariantName": …}`), decided by variant order rather than by a stable
-/// discriminator.
+/// One public enum, as the compiler's own parse sees it.
+#[derive(Debug, Clone)]
+struct PublicEnum {
+    name: String,
+    line: usize,
+    /// A `#[derive(...)]` list naming `Serialize` or `Deserialize`.
+    derives_serde: bool,
+    /// Any variant with named or unnamed fields.
+    data_bearing: bool,
+    /// An enum-level `#[serde(...)]` carrying the `tag` or `untagged` key.
+    declares_representation: bool,
+    /// An enum-level `#[serde(untagged)]` specifically.
+    untagged: bool,
+}
+
+/// Every lexically public enum in `source`, read from the AST.
 ///
-/// This is the check [`public_untagged_enums`] cannot make. That one blacklists
-/// one attribute; every enum #2281 retagged (`MediaType`, `ToolChoice`,
-/// `FinishReason`, `Filter`, `ModelListingError`, `ToolCallDeltaContent`) carried
-/// **no** `untagged` attribute at all and sailed past it. Verified against
-/// `03643160^`: this scanner flags exactly those six there and none on the
-/// retagged tree.
-fn public_enums_without_representation(source: &str) -> Vec<(String, usize)> {
+/// This deliberately does not scan text. Two successive text scanners were
+/// defeated in review by things that look nothing like code: an enum documented
+/// "Two-stage handshake" exempted itself because `stage` contains `tag`, and a
+/// brace inside a doc comment unbalanced the body matcher in both directions.
+/// Every such fix trades one substring hazard for the next — `#[serde(rename =
+/// "stage")]` would still fool a `contains("tag")` probe. The parser is the only
+/// thing that agrees with rustc about what an attribute is.
+///
+/// A parse failure is a hard error, never a skip: a file the scanner cannot read
+/// is a file the policy is not enforcing, and that must not be able to look like
+/// compliance.
+fn public_enums(path: &Path, source: &str) -> Result<Vec<PublicEnum>, syn::Error> {
+    let file = syn::parse_file(source)?;
     let mut found = Vec::new();
-    let mut cursor = 0;
-
-    while let Some(relative) = source[cursor..].find("pub enum ") {
-        let declaration = cursor + relative;
-        cursor = declaration + "pub enum ".len();
-
-        // `pub enum` must open the line: a match arm or string literal mentioning
-        // it is prose, not a declaration.
-        let line_start = source[..declaration]
-            .rfind('\n')
-            .map_or(0, |index| index + 1);
-        if !source[line_start..declaration].trim().is_empty() {
-            continue;
-        }
-
-        let name = source[cursor..]
-            .chars()
-            .take_while(|character| character.is_ascii_alphanumeric() || *character == '_')
-            .collect::<String>();
-        if name.is_empty() {
-            continue;
-        }
-
-        let attributes = attribute_block_before(source, line_start);
-        if !attributes.contains("Serialize") && !attributes.contains("Deserialize") {
-            continue;
-        }
-        // A declared representation is the whole point of the policy; either
-        // spelling satisfies it (`untagged` is separately policed by
-        // `public_untagged_enums` and its allowlist).
-        if attributes.contains("tag") || attributes.contains("untagged") {
-            continue;
-        }
-
-        let Some(body) = enum_body(source, declaration) else {
-            // An unbalanced body means the scanner cannot see the variants. Report
-            // it rather than skipping: a silent skip reads as a pass, which is one
-            // of the two ways the original scanner could go quietly blind.
-            found.push((
-                format!("{name} (UNPARSED BODY — scanner could not match braces)"),
-                source[..declaration].lines().count(),
-            ));
-            continue;
-        };
-        if has_data_bearing_variant(&body) {
-            found.push((name, source[..declaration].lines().count()));
-        }
-    }
-
-    found
+    collect_enums(path, &file.items, &mut found);
+    Ok(found)
 }
 
-/// The attribute lines directly above `offset` — **attributes only**, never doc
-/// comments or prose.
-///
-/// The callers probe this with `contains("Serialize")` / `contains("tag")`, so
-/// admitting prose is not cosmetic: any enum whose rustdoc happened to contain
-/// `tag` as a substring — `stage`, `advantage`, `vintage`, or the word "tagged"
-/// itself — was silently exempted from the wall, which is exactly the regression
-/// class the wall exists to catch. Blank lines and doc comments are *skipped*
-/// rather than ending the block, because both may legally sit between an
-/// attribute and its declaration; only real code ends it.
-fn attribute_block_before(source: &str, offset: usize) -> String {
-    let mut lines: Vec<&str> = Vec::new();
-    // Attributes are read bottom-up, so a multi-line `#[serde(\n … \n)]` arrives
-    // tail-first: collect until its opening `#[`.
-    let mut inside_multiline_attribute = false;
-
-    for line in source[..offset].lines().rev() {
-        let trimmed = line.trim();
-
-        if inside_multiline_attribute {
-            lines.push(line);
-            if trimmed.starts_with("#[") {
-                inside_multiline_attribute = false;
+/// Descends `mod { … }` blocks: rig declares whole provider wire surfaces in
+/// inline modules (`pub mod gemini_api_types { … }`), and a scanner that only
+/// looked at top-level items would silently exempt every enum inside them.
+fn collect_enums(path: &Path, items: &[syn::Item], found: &mut Vec<PublicEnum>) {
+    for item in items {
+        match item {
+            syn::Item::Mod(module) => {
+                if let Some((_, nested)) = &module.content {
+                    collect_enums(path, nested, found);
+                }
             }
-            continue;
-        }
-
-        if trimmed.is_empty() || trimmed.starts_with("//") {
-            continue;
-        }
-        if trimmed.starts_with("#[") && trimmed.ends_with(']') {
-            lines.push(line);
-            continue;
-        }
-        if trimmed.ends_with(']') {
-            lines.push(line);
-            inside_multiline_attribute = true;
-            continue;
-        }
-
-        // Real code: the attribute block is over.
-        break;
-    }
-
-    lines.reverse();
-    lines.join("\n")
-}
-
-/// `line` with any trailing `//` comment removed, ignoring `//` inside a string
-/// literal.
-///
-/// Brace matching must not count braces that only appear in prose: a variant
-/// documented as ``/// Rendered as `{`.`` otherwise unbalances the scan, which
-/// either exempts the enum (the depth never returns to zero, so every later
-/// variant reads as nested and the enum looks fieldless) or runs the body match
-/// past the closing brace and reports a spurious `UNPARSED BODY` failure.
-fn strip_line_comment(line: &str) -> &str {
-    let bytes = line.as_bytes();
-    let mut in_string = false;
-    let mut index = 0;
-    while let Some(byte) = bytes.get(index) {
-        match byte {
-            b'\\' if in_string => index += 1,
-            b'"' => in_string = !in_string,
-            b'/' if !in_string && bytes.get(index + 1) == Some(&b'/') => return &line[..index],
+            syn::Item::Enum(item) => {
+                if !matches!(item.vis, syn::Visibility::Public(_)) {
+                    continue;
+                }
+                found.push(PublicEnum {
+                    name: item.ident.to_string(),
+                    line: item.ident.span().start().line,
+                    derives_serde: derives_serde(&item.attrs),
+                    data_bearing: item
+                        .variants
+                        .iter()
+                        .any(|variant| !matches!(variant.fields, syn::Fields::Unit)),
+                    declares_representation: serde_keys(&item.attrs)
+                        .iter()
+                        .any(|key| key == "tag" || key == "untagged"),
+                    untagged: serde_keys(&item.attrs).iter().any(|key| key == "untagged"),
+                });
+            }
             _ => {}
         }
-        index += 1;
     }
-    line
+    let _ = path;
 }
 
-/// The `{ … }` body of the enum declared at `declaration`, brace-matched.
-fn enum_body(source: &str, declaration: usize) -> Option<String> {
-    // Match braces over a comment-stripped view so a `{` in a doc comment cannot
-    // run the scan past the enum's closing brace. The body is only consumed by
-    // `has_data_bearing_variant`, which is line-based, so returning the stripped
-    // text loses nothing.
-    let mut depth = 0usize;
-    let mut body = Vec::new();
-    let mut started = false;
-
-    for line in source[declaration..].lines() {
-        let code = strip_line_comment(line);
-        let mut captured = String::new();
-
-        for character in code.chars() {
-            match character {
-                '{' => {
-                    depth += 1;
-                    if !started {
-                        started = true;
-                        continue;
-                    }
-                }
-                '}' => {
-                    depth = depth.saturating_sub(1);
-                    if started && depth == 0 {
-                        body.push(captured);
-                        return Some(body.join("\n"));
-                    }
-                }
-                _ => {}
-            }
-            if started {
-                captured.push(character);
-            }
-        }
-
-        if started {
-            body.push(captured);
-        }
-    }
-
-    None
-}
-
-/// Whether any variant carries data — `Variant(T)` or `Variant { .. }`.
+/// Whether a `#[derive(...)]` list names `Serialize` or `Deserialize`.
 ///
-/// A fieldless enum serializes as a plain string and needs no discriminator, so
-/// the policy does not apply to it.
-fn has_data_bearing_variant(body: &str) -> bool {
-    let mut depth = 0usize;
-    for line in body.lines() {
-        // Strip comments *before* counting: a doc comment containing an
-        // unbalanced brace would otherwise pin `depth` above zero for the rest of
-        // the enum, making every later variant read as nested and the enum as
-        // fieldless — silently exempting it.
-        let code = strip_line_comment(line);
-        let trimmed = code.trim();
-        // Only consider variants at the enum's own nesting level; a struct
-        // variant's fields are not themselves variants.
-        let at_top_level = depth == 0;
-        depth = depth
-            .saturating_add(trimmed.matches('{').count())
-            .saturating_sub(trimmed.matches('}').count());
-
-        if !at_top_level || trimmed.is_empty() {
-            continue;
-        }
-        let without_attribute = if trimmed.starts_with("#[") {
-            match trimmed.find(']') {
-                Some(end) => trimmed[end + 1..].trim(),
-                None => continue,
+/// Only `derive` attributes are inspected, so a doc comment or an unrelated
+/// attribute mentioning the word cannot make a non-serde enum look serialized.
+/// The path's last segment is compared, so `serde::Serialize` counts.
+fn derives_serde(attrs: &[syn::Attribute]) -> bool {
+    let mut found = false;
+    for attr in attrs.iter().filter(|attr| attr.path().is_ident("derive")) {
+        let _ = attr.parse_nested_meta(|meta| {
+            if let Some(last) = meta.path.segments.last()
+                && (last.ident == "Serialize" || last.ident == "Deserialize")
+            {
+                found = true;
             }
-        } else {
-            trimmed
-        };
-        let mut characters = without_attribute.chars();
-        if !characters.next().is_some_and(|c| c.is_ascii_uppercase()) {
-            continue;
-        }
-        let rest: String = characters.collect();
-        let name_end = rest
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .unwrap_or(rest.len());
-        if matches!(
-            rest[name_end..].trim_start().chars().next(),
-            Some('(' | '{')
-        ) {
-            return true;
-        }
+            // A derive entry never carries a value; consume nothing.
+            Ok(())
+        });
     }
-    false
+    found
 }
 
-fn public_untagged_enums(source: &str) -> Vec<(String, usize)> {
-    let mut found = Vec::new();
-    let mut cursor = 0;
-
-    while let Some(relative_start) = source[cursor..].find("#[serde") {
-        let start = cursor + relative_start;
-        cursor = start + "#[serde".len();
-
-        // Attribute markers in rustdoc or string literals are prose, not code.
-        let line_start = source[..start].rfind('\n').map_or(0, |index| index + 1);
-        if !source[line_start..start].trim().is_empty() {
-            continue;
-        }
-
-        let Some(relative_end) = source[start..].find(']') else {
-            continue;
-        };
-        let end = start + relative_end + 1;
-        let attribute: String = source[start..end]
-            .chars()
-            .filter(|character| !character.is_whitespace())
-            .collect();
-        if !attribute.starts_with("#[serde(") || !attribute.contains("untagged") {
-            continue;
-        }
-
-        // A serde enum attribute is followed by any remaining attributes and
-        // then the declaration. Stop at a semicolon so a non-enum item cannot
-        // make the scanner drift into a later declaration.
-        let after = &source[end..];
-        let brace = after.find('{');
-        let semicolon = after.find(';');
-        let declaration_end = match (brace, semicolon) {
-            (Some(brace), Some(semicolon)) if semicolon < brace => continue,
-            (Some(brace), _) => brace,
-            (None, _) => continue,
-        };
-        let declaration = &after[..declaration_end];
-        let Some(name_start) = declaration.find("pub enum ") else {
-            continue;
-        };
-        // A variant-level serde attribute can be followed by the closing brace
-        // of its enum and then an unrelated public enum. It is not an enum
-        // representation attribute and must not be attributed to the later type.
-        if declaration[..name_start].contains('}') {
-            continue;
-        }
-        let name = declaration[name_start + "pub enum ".len()..]
-            .chars()
-            .take_while(|character| character.is_ascii_alphanumeric() || *character == '_')
-            .collect::<String>();
-        if !name.is_empty() {
-            found.push((name, source[..start].lines().count()));
-        }
+/// The metadata keys of every enum-level `#[serde(...)]` attribute.
+///
+/// Keys only — `tag = "type"` yields `tag`, and a *value* of `"untagged"` or
+/// `"stage"` yields nothing. That distinction is the whole point: it is what a
+/// substring probe over source text cannot make.
+fn serde_keys(attrs: &[syn::Attribute]) -> Vec<String> {
+    let mut keys = Vec::new();
+    for attr in attrs.iter().filter(|attr| attr.path().is_ident("serde")) {
+        let _ = attr.parse_nested_meta(|meta| {
+            if let Some(ident) = meta.path.get_ident() {
+                keys.push(ident.to_string());
+            }
+            // `tag = "type"` and `content = "content"` carry a value; swallow it
+            // so parsing continues to the next key.
+            if meta.input.peek(syn::Token![=]) {
+                let _: syn::Expr = meta.value()?.parse()?;
+            }
+            Ok(())
+        });
     }
+    keys
+}
 
-    found
+/// [`public_enums`] with a parse failure turned into a test failure.
+///
+/// Requirement 7 of the policy: a file the scanner cannot parse is a file the
+/// policy is not enforcing, so it must never read as compliance.
+fn parsed_enums(path: &Path, source: &str) -> Vec<PublicEnum> {
+    public_enums(path, source).unwrap_or_else(|error| {
+        panic!(
+            "domain Serde policy could not parse {} as Rust: {error}. \
+             A file the scanner cannot read is a file the policy is not enforcing; \
+             fix the parse or narrow SKIPPED_DIRS deliberately.",
+            path.display()
+        )
+    })
 }
 
 fn scan_rust_sources(
@@ -359,7 +197,11 @@ fn scan_rust_sources(
             .replace('\\', "/");
         visited.push(relative.clone());
         let source = std::fs::read_to_string(&path).expect("source file should be readable");
-        for (enum_name, line) in public_untagged_enums(&source) {
+        for found in parsed_enums(&path, &source)
+            .into_iter()
+            .filter(|found| found.untagged)
+        {
+            let (enum_name, line) = (found.name, found.line);
             if let Some(entry) = allowlist.iter_mut().find(|entry| {
                 relative.ends_with(&entry.path_suffix) && enum_name == entry.enum_name
             }) {
@@ -536,116 +378,102 @@ fn collect_representation_violations(
         }
 
         let source = std::fs::read_to_string(&path).expect("source file should be readable");
-        for (enum_name, line) in public_enums_without_representation(&source) {
-            violations.push(format!("{relative}:{line} {enum_name}"));
+        for found in parsed_enums(&path, &source).into_iter().filter(|found| {
+            found.derives_serde && found.data_bearing && !found.declares_representation
+        }) {
+            violations.push(format!("{relative}:{} {}", found.line, found.name));
         }
     }
 }
 
 #[test]
-fn representation_scanner_flags_implicit_external_tagging_only_when_data_bearing() {
+fn ast_scanner_reads_syntax_not_text() {
     let source = r#"
-        #[derive(serde::Serialize, serde::Deserialize)]
-        pub enum ImplicitlyTagged { Text(String), Image { url: String } }
-
-        /// Fieldless enums serialize as plain strings and need no discriminator.
-        #[derive(serde::Serialize, serde::Deserialize)]
-        pub enum PlainStrings { Alpha, Beta }
-
-        #[derive(serde::Serialize, serde::Deserialize)]
-        #[serde(tag = "type", content = "content")]
-        pub enum Declared { Text(String) }
-
-        #[derive(Debug)]
-        pub enum NotSerde { Text(String) }
-
-        #[derive(serde::Serialize)]
-        pub enum StructVariantFieldsAreNotVariants {
-            Only { lowercase_field: String },
-        }
-    "#;
-
-    let flagged = public_enums_without_representation(source);
-    assert_eq!(
-        flagged
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect::<Vec<_>>(),
-        vec!["ImplicitlyTagged", "StructVariantFieldsAreNotVariants"],
-        "flagged: {flagged:?}"
-    );
-}
-
-/// Three ways the representation wall could be defeated or made to cry wolf,
-/// all found by review of the wall itself. Each was reproduced before the fix:
-/// the first two returned `[]` (silently exempt) and the third returned an
-/// `UNPARSED BODY` violation (spurious CI failure).
-#[test]
-fn representation_scanner_is_not_fooled_by_prose_blank_lines_or_braces_in_comments() {
-    // The wall probes the attribute block with `contains("tag")`. Admitting doc
-    // comments meant any enum whose prose contained `tag` as a substring —
-    // `stage`, `advantage`, `vintage` — exempted itself.
-    let prose = r#"
-        /// Two-stage handshake result.
+        /// Two-stage handshake result. Mentions untagged and tagged in prose.
         #[derive(serde::Serialize, serde::Deserialize)]
         pub enum StageProse { A(u32) }
-    "#;
-    assert_eq!(
-        public_enums_without_representation(prose)
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect::<Vec<_>>(),
-        vec!["StageProse"],
-        "an enum must not exempt itself through the word `stage` in its rustdoc"
-    );
 
-    // A blank line between the derive and the declaration is legal Rust; it used
-    // to empty the attribute block, fail the `Serialize` probe, and skip the enum.
-    let blank_line = "
         #[derive(serde::Serialize, serde::Deserialize)]
 
-        pub enum BlankLine { A(u32) }
-    ";
-    assert_eq!(
-        public_enums_without_representation(blank_line)
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect::<Vec<_>>(),
-        vec!["BlankLine"],
-    );
+        pub enum BlankLineBeforeDeclaration { A(u32) }
 
-    // A brace in a doc comment must not unbalance either brace scanner. This enum
-    // is correctly tagged, so the right answer is "no violation" — previously it
-    // reported UNPARSED BODY.
-    let brace_in_comment = r#"
+        #[derive(serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "snake_case")]
+        pub enum RenameIsNotARepresentation { A(u32) }
+
+        /// A value that merely spells a representation is not one.
+        #[derive(serde::Serialize, serde::Deserialize)]
+        #[serde(rename = "untagged")]
+        pub enum ValueSaysUntagged { A(u32) }
+
         #[derive(serde::Serialize, serde::Deserialize)]
         #[serde(tag = "type", content = "content")]
-        pub enum BraceDoc {
+        pub enum Declared {
             /// Rendered as `{` in the output.
             A(u32),
         }
 
         #[derive(serde::Serialize, serde::Deserialize)]
-        pub enum FollowsTheBraceDoc { B(u32) }
+        pub enum FieldlessNeedsNothing { Alpha, Beta }
+
+        #[derive(Debug)]
+        pub enum NotSerde { A(u32) }
+
+        #[derive(serde::Serialize, serde::Deserialize)]
+        enum PrivateDetail { A(u32) }
+
+        pub mod nested {
+            #[derive(serde::Serialize, serde::Deserialize)]
+            pub enum InsideAnInlineModule { A(u32) }
+        }
     "#;
+
+    let parsed = public_enums(Path::new("probe.rs"), source).expect("probe should parse");
+    let needs_representation = parsed
+        .iter()
+        .filter(|found| found.derives_serde && found.data_bearing && !found.declares_representation)
+        .map(|found| found.name.as_str())
+        .collect::<Vec<_>>();
+
     assert_eq!(
-        public_enums_without_representation(brace_in_comment)
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect::<Vec<_>>(),
-        vec!["FollowsTheBraceDoc"],
-        "the braced doc comment must neither fail its own enum nor hide the next one"
+        needs_representation,
+        vec![
+            // Prose containing `tag` is prose. `stage` is not a representation.
+            "StageProse",
+            // A blank line between the derive and the declaration is legal Rust.
+            "BlankLineBeforeDeclaration",
+            // `rename_all` is a key, but not `tag`/`untagged`.
+            "RenameIsNotARepresentation",
+            // `rename = "untagged"` is a *value*; only keys count.
+            "ValueSaysUntagged",
+            // An inline module is still rig's surface.
+            "InsideAnInlineModule",
+        ],
+        "parsed: {parsed:#?}"
     );
 
-    // A `//` inside a string literal is not a comment.
-    assert_eq!(
-        strip_line_comment(r#"    #[serde(rename = "http://x")] // trailing"#),
-        r#"    #[serde(rename = "http://x")] "#
+    // A brace in a doc comment is invisible to the parser, so `Declared` neither
+    // fails nor hides its neighbours.
+    assert!(parsed.iter().any(|found| found.name == "Declared"
+        && found.declares_representation
+        && found.data_bearing));
+    // Fieldless enums serialize as plain strings; the policy does not apply.
+    assert!(
+        parsed
+            .iter()
+            .any(|found| found.name == "FieldlessNeedsNothing" && !found.data_bearing)
     );
+    // Only `#[derive(...)]` decides serde-ness, and only `pub` is public.
+    assert!(
+        parsed
+            .iter()
+            .any(|found| found.name == "NotSerde" && !found.derives_serde)
+    );
+    assert!(!parsed.iter().any(|found| found.name == "PrivateDetail"));
 }
 
 #[test]
-fn policy_scanner_recognizes_multiline_attributes_and_only_public_enums() {
+fn ast_scanner_reports_untagged_from_the_attribute_not_the_text() {
     let source = r#"
         /// Prose mentioning #[serde(untagged)] is ignored.
         #[derive(serde::Deserialize)]
@@ -659,8 +487,22 @@ fn policy_scanner_recognizes_multiline_attributes_and_only_public_enums() {
         enum PrivateDetail { Text(String) }
     "#;
 
+    let parsed = public_enums(Path::new("probe.rs"), source).expect("probe should parse");
     assert_eq!(
-        public_untagged_enums(source),
-        vec![("PublicWire".to_owned(), 4)]
+        parsed
+            .iter()
+            .filter(|found| found.untagged)
+            .map(|found| found.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["PublicWire"],
+        "parsed: {parsed:#?}"
+    );
+}
+
+#[test]
+fn ast_scanner_treats_an_unparsable_file_as_a_failure() {
+    assert!(
+        public_enums(Path::new("broken.rs"), "pub enum Broken { ").is_err(),
+        "a file the scanner cannot parse must not read as compliance"
     );
 }
