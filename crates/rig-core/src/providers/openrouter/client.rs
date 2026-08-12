@@ -1,4 +1,4 @@
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use http::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
@@ -25,18 +25,14 @@ impl Provider for OpenRouterExt {
     const VERIFY_PATH: &'static str = "/key";
 }
 
-impl<H> Capabilities<H> for OpenRouterExt {
-    type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Capable<super::OpenRouterModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OpenRouterExt,
+    completion = super::CompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    model_listing = super::OpenRouterModelLister<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
 impl DebugExt for OpenRouterExt {}
 

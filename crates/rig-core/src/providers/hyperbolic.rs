@@ -13,7 +13,7 @@
 //! ```
 
 use crate::client::BearerAuth;
-use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, DebugExt, Provider};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -33,17 +33,12 @@ impl Provider for HyperbolicExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for HyperbolicExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    HyperbolicExt,
+    completion = CompletionModel<H>,
+    image_generation = ImageGenerationModel<H>,
+    audio_generation = AudioGenerationModel<H>,
+);
 
 impl DebugExt for HyperbolicExt {}
 

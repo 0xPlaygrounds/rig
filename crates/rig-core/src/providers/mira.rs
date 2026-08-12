@@ -7,7 +7,7 @@
 //! let client = mira::Client::new("YOUR_API_KEY");
 //!
 //! ```
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::{
@@ -32,19 +32,7 @@ impl Provider for MiraExt {
     const VERIFY_PATH: &'static str = "/user-credits";
 }
 
-impl<H> Capabilities<H> for MiraExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(MiraExt, completion = CompletionModel<H>);
 
 impl DebugExt for MiraExt {}
 

@@ -21,9 +21,7 @@
 //! let model = client.completion_model(xiaomimimo::MIMO_V2_5_PRO);
 //! ```
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
-};
+use crate::client::{self, BearerAuth, DebugExt, ModelLister, Provider};
 use crate::http_client::HttpClientExt;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::anthropic::client::{
@@ -84,30 +82,16 @@ impl Provider for XiaomiMimoAnthropicExt {
     const VERIFY_PATH: &'static str = "/v1/models";
 }
 
-impl<H> Capabilities<H> for XiaomiMimoExt {
-    type Completion = Capable<super::openai::completion::GenericCompletionModel<XiaomiMimoExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Capable<XiaomiMimoModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    XiaomiMimoExt,
+    completion = super::openai::completion::GenericCompletionModel<XiaomiMimoExt, H>,
+    model_listing = XiaomiMimoModelLister<H>,
+);
 
-impl<H> Capabilities<H> for XiaomiMimoAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<XiaomiMimoAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    XiaomiMimoAnthropicExt,
+    completion = super::anthropic::completion::GenericCompletionModel<XiaomiMimoAnthropicExt, H>,
+);
 
 impl DebugExt for XiaomiMimoExt {}
 impl DebugExt for XiaomiMimoAnthropicExt {}

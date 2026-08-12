@@ -1,4 +1,4 @@
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 
 // ================================================================
 // Doubleword Client
@@ -32,18 +32,11 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Doublewo
     type Response = crate::providers::openai::CompletionResponse;
 }
 
-impl<H> Capabilities<H> for DoublewordExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    DoublewordExt,
+    completion = super::completion::CompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+);
 
 client::impl_default_provider_builder!(
     DoublewordExtBuilder => DoublewordExt,

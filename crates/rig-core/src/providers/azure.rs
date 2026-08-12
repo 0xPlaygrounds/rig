@@ -24,10 +24,7 @@
 
 use std::fmt::Debug;
 
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, ProviderClient};
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 use crate::{
@@ -87,17 +84,13 @@ impl Provider for AzureExt {
     const VERIFY_PATH: &'static str = "";
 }
 
-impl<H> Capabilities<H> for AzureExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type Transcription = Capable<TranscriptionModel<H>>;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    AzureExt,
+    completion = CompletionModel<H>,
+    embeddings = EmbeddingModel<H>,
+    transcription = TranscriptionModel<H>,
+    audio_generation = AudioGenerationModel<H>,
+);
 
 impl ProviderBuilder for AzureExtBuilder {
     type Extension<H>

@@ -1,4 +1,4 @@
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
 use crate::http_client::HttpClientExt;
@@ -28,18 +28,11 @@ impl Provider for VoyageExt {
     const VERIFY_PATH: &'static str = "";
 }
 
-impl<H> Capabilities<H> for VoyageExt {
-    type Completion = Nothing;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type Rerank = Capable<RerankModel<H>>;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-}
+client::impl_capabilities!(
+    VoyageExt,
+    embeddings = EmbeddingModel<H>,
+    rerank = RerankModel<H>,
+);
 
 impl DebugExt for VoyageExt {}
 

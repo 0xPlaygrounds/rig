@@ -11,6 +11,7 @@ use bytes::Bytes;
 use serde::de::DeserializeOwned;
 
 use super::envelope::ProviderEnvelope;
+use crate::client::Client;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm};
 use crate::transcription::{self, TranscriptionError, TranscriptionRequest};
@@ -77,6 +78,27 @@ where
             form,
         )
         .await
+    }
+}
+
+/// The client-plus-model wrapper behind each provider's public
+/// `TranscriptionModel` alias. Only the transcription conversation itself is
+/// provider-specific, so the storage and constructor live here once; each
+/// provider keeps its own [`TranscriptionModel`](transcription::TranscriptionModel)
+/// impl on its alias.
+#[derive(Clone)]
+pub struct GenericTranscriptionModel<Ext, H = reqwest::Client> {
+    pub(crate) client: Client<Ext, H>,
+    /// Name of the model (e.g.: `whisper-1`)
+    pub model: String,
+}
+
+impl<Ext, H> GenericTranscriptionModel<Ext, H> {
+    pub fn new(client: Client<Ext, H>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
     }
 }
 

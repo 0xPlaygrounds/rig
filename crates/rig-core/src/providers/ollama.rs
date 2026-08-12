@@ -38,9 +38,7 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderClient,
-};
+use crate::client::{self, ApiKey, DebugExt, ModelLister, Nothing, Provider, ProviderClient};
 use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
@@ -121,18 +119,12 @@ impl Provider for OllamaExt {
     const VERIFY_PATH: &'static str = "api/tags";
 }
 
-impl<H> Capabilities<H> for OllamaExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Transcription = Nothing;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type ModelListing = Capable<OllamaModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OllamaExt,
+    completion = CompletionModel<H>,
+    embeddings = EmbeddingModel<H>,
+    model_listing = OllamaModelLister<H>,
+);
 
 impl DebugExt for OllamaExt {}
 

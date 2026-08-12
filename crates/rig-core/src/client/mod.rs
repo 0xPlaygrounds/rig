@@ -368,6 +368,39 @@ macro_rules! impl_default_provider_builder {
 }
 pub(crate) use impl_default_provider_builder;
 
+// A provider's Capabilities impl is a pure associated-type table where every
+// slot a provider does not support is `Nothing`. The named optional slots
+// keep each provider's invocation down to what it actually supports, and the
+// macro owns the feature gating on the image/audio slots.
+macro_rules! impl_capabilities {
+    (
+        $ext:ty
+        $(, completion = $completion:ty)?
+        $(, embeddings = $embeddings:ty)?
+        $(, transcription = $transcription:ty)?
+        $(, model_listing = $model_listing:ty)?
+        $(, image_generation = $image_generation:ty)?
+        $(, audio_generation = $audio_generation:ty)?
+        $(, rerank = $rerank:ty)?
+        $(,)?
+    ) => {
+        impl<H> $crate::client::Capabilities<H> for $ext {
+            type Completion = $crate::client::impl_capabilities!(@slot $($completion)?);
+            type Embeddings = $crate::client::impl_capabilities!(@slot $($embeddings)?);
+            type Transcription = $crate::client::impl_capabilities!(@slot $($transcription)?);
+            type ModelListing = $crate::client::impl_capabilities!(@slot $($model_listing)?);
+            #[cfg(feature = "image")]
+            type ImageGeneration = $crate::client::impl_capabilities!(@slot $($image_generation)?);
+            #[cfg(feature = "audio")]
+            type AudioGeneration = $crate::client::impl_capabilities!(@slot $($audio_generation)?);
+            type Rerank = $crate::client::impl_capabilities!(@slot $($rerank)?);
+        }
+    };
+    (@slot $model:ty) => { $crate::client::Capable<$model> };
+    (@slot) => { $crate::client::Nothing };
+}
+pub(crate) use impl_capabilities;
+
 // ProviderClient is implemented for concrete client aliases, which likewise
 // cannot be factored into a function. The optional base-URL form captures the
 // only common construction variation without hiding provider-specific auth.

@@ -441,6 +441,16 @@ impl AgentBuilder<NoToolConfig> {
         self.with_tool_state(WithToolServerHandle { handle })
     }
 
+    /// Transition into the `WithBuilderTools` state with no tools yet; every
+    /// tool-adding method below is the `WithBuilderTools` method after this
+    /// one-way step.
+    fn into_tool_builder(self) -> AgentBuilder<WithBuilderTools> {
+        self.with_tool_state(WithBuilderTools {
+            tools: ToolSet::default(),
+            retrieval_indexes: vec![],
+        })
+    }
+
     /// Add a static tool to the agent.
     ///
     /// This transitions the builder to the `WithBuilderTools` state, where
@@ -449,17 +459,12 @@ impl AgentBuilder<NoToolConfig> {
     where
         T: Tool + 'static,
     {
-        let mut tools = ToolSet::default();
-        tools.add_tool(tool);
-        self.with_tool_state(WithBuilderTools {
-            tools,
-            retrieval_indexes: vec![],
-        })
+        self.into_tool_builder().tool(tool)
     }
 
     /// Add one runtime-defined tool to the agent.
     pub fn dynamic_tool(self, tool: DynamicTool) -> AgentBuilder<WithBuilderTools> {
-        self.dynamic_tools(vec![tool])
+        self.into_tool_builder().dynamic_tool(tool)
     }
 
     /// Add one context-free dynamic tool through the classic registry adapter.
@@ -467,7 +472,7 @@ impl AgentBuilder<NoToolConfig> {
         self,
         tool: PortableDynamicTool,
     ) -> AgentBuilder<WithBuilderTools> {
-        self.dynamic_tool(DynamicTool::from_portable(tool))
+        self.into_tool_builder().portable_dynamic_tool(tool)
     }
 
     /// Add runtime-defined tools to the agent.
@@ -475,11 +480,7 @@ impl AgentBuilder<NoToolConfig> {
     /// This is useful when tool definitions and callbacks are constructed at runtime.
     /// Transitions the builder to the `WithBuilderTools` state.
     pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<WithBuilderTools> {
-        let tools = ToolSet::from_dynamic_tools(tools);
-        self.with_tool_state(WithBuilderTools {
-            tools,
-            retrieval_indexes: vec![],
-        })
+        self.into_tool_builder().dynamic_tools(tools)
     }
 
     /// Add an MCP tool (from `rmcp`) to the agent, bounded by
@@ -512,7 +513,7 @@ impl AgentBuilder<NoToolConfig> {
         client: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> AgentBuilder<WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, timeout.into()))
+        self.rmcp_tools_with_timeout(vec![tool], client, timeout)
     }
 
     /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::openai;
-use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
@@ -75,18 +75,11 @@ impl openai::completion::OpenAICompatibleProvider for GroqExt {
     }
 }
 
-impl<H> Capabilities<H> for GroqExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Capable<TranscriptionModel<H>>;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    GroqExt,
+    completion = CompletionModel<H>,
+    transcription = TranscriptionModel<H>,
+);
 
 impl DebugExt for GroqExt {}
 
