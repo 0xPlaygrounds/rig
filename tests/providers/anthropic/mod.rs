@@ -22,6 +22,7 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod request_override;
+    mod stop_sequences;
     mod streaming;
     mod streaming_grammar;
     mod streaming_tools;
