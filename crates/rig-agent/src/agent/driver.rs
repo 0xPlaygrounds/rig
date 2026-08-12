@@ -34,11 +34,15 @@
 //!
 //! # Durability
 //!
-//! The serializable state is *all* of the state: the driver holds nothing it
-//! could lose. Serialize [`AgentDriver::run`] at any step boundary — while
+//! The serializable state is *all* of the state: what the driver holds besides
+//! the run is a tool-registry snapshot cache, rebuilt on demand, and the
+//! resume-time [`ResumedToolDrift`] policy the resuming process itself stated.
+//! Neither is anything a suspending process recorded, so neither can be lost
+//! by serializing. Serialize [`AgentDriver::run`] at any step boundary — while
 //! tool calls are pending, or while a model call is in flight with a
 //! long-running or queued provider — and resume in another process with
-//! [`Agent::drive_run`]. Every step is a resume point, including
+//! [`Agent::drive_run`] or [`Agent::resume_run`]. Every step is a resume point,
+//! including
 //! [`DriveStep::SendRequest`]: the turn's advertised tool names travel with
 //! the run, so the resuming process validates the model's reply against the
 //! set the request actually carried rather than against whatever its registry
@@ -66,7 +70,7 @@
 //! registry snapshot to dispatch pending calls through. If that snapshot no
 //! longer contains a pending call's tool, the driver surfaces an error instead
 //! of silently feeding a not-found result to the model (see
-//! [`AgentDriver::allow_missing_resumed_tools`]) — the model chose that tool
+//! [`ResumedToolDrift`]) — the model chose that tool
 //! from a registry this process no longer has, and re-prompting cannot fix
 //! deployment drift. If you suspend runs across deploys, version your agent
 //! definitions alongside the serialized run; the run's own format is versioned
@@ -118,14 +122,50 @@ impl Agent {
     /// Hand-drive an existing [`AgentRun`] with this agent's configuration —
     /// the resume path for a run deserialized in a new process, or the entry
     /// point for a custom-configured run (which is taken as-is, not re-seeded).
+    ///
+    /// Resumed pending calls whose tools this process no longer registers are
+    /// reported as drift. To dispatch them anyway, resume with
+    /// [`Agent::resume_run`] and [`ResumedToolDrift::Dispatch`].
     pub fn drive_run(&self, run: AgentRun) -> AgentDriver {
+        self.resume_run(run, ResumedToolDrift::Reject)
+    }
+
+    /// Hand-drive an existing [`AgentRun`], stating how this process handles
+    /// tool drift in the run it is resuming.
+    ///
+    /// The policy is an argument here rather than a setting on the driver
+    /// because it is the resuming process's decision and nothing else records
+    /// it: a driver that carried it would answer one way for a run driven
+    /// straight through and another for the same run resumed from a payload,
+    /// with nothing on the run to say which. Naming it at the point of
+    /// resuming is the only place a caller cannot forget it.
+    pub fn resume_run(&self, run: AgentRun, drift: ResumedToolDrift) -> AgentDriver {
         AgentDriver {
             agent: self.clone(),
             run,
             snapshot: None,
-            allow_missing_resumed_tools: false,
+            drift,
         }
     }
+}
+
+/// How a resumed run treats pending tool calls whose tools this process no
+/// longer registers.
+///
+/// Resume-time policy, deliberately not serialized with the run: the process
+/// that suspended a run cannot know what registry a later one will have, so it
+/// has no standing to decide how that process handles its own drift.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ResumedToolDrift {
+    /// Surface the drift as an error naming the missing tools. The model chose
+    /// them from a registry this process no longer has, and re-prompting
+    /// cannot fix a deployment mismatch.
+    #[default]
+    Reject,
+    /// Dispatch the calls anyway, feeding the resulting not-found results to
+    /// the model.
+    Dispatch,
 }
 
 /// What the caller must do next to advance an [`AgentDriver`].
@@ -248,8 +288,9 @@ impl TurnPreparation {
 }
 
 /// Hand-drives one [`AgentRun`] with one [`Agent`]'s configuration. Built by
-/// [`Agent::drive`] / [`Agent::drive_run`]; see the [module docs](self) for
-/// the driving protocol and the boundary with [`AgentRunner`](super::AgentRunner).
+/// [`Agent::drive`] / [`Agent::drive_run`] / [`Agent::resume_run`]; see the
+/// [module docs](self) for the driving protocol and the boundary with
+/// [`AgentRunner`](super::AgentRunner).
 pub struct AgentDriver {
     agent: Agent,
     run: AgentRun,
@@ -261,7 +302,11 @@ pub struct AgentDriver {
     /// through the exact implementations the provider was shown, and is
     /// rebuilt on demand when a resumed run reaches its pending tool calls.
     snapshot: Option<Arc<ToolRegistrySnapshot>>,
-    allow_missing_resumed_tools: bool,
+    /// How this process handles drift in a run it resumed — the one thing
+    /// besides the cache above that is not on [`Self::run`], because it is
+    /// this process's decision about a payload rather than anything the
+    /// suspending process recorded. Stated at [`Agent::resume_run`].
+    drift: ResumedToolDrift,
 }
 
 impl AgentDriver {
@@ -287,15 +332,6 @@ impl AgentDriver {
     /// budget, so raise [`Self::max_turns`] alongside it.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
         self.run = self.run.max_invalid_tool_call_retries(retries);
-        self
-    }
-
-    /// Opt out of the resumed-run drift check: dispatch pending calls whose
-    /// tools are missing from this process's registry anyway, feeding the
-    /// resulting not-found errors to the model instead of surfacing the drift
-    /// to the caller. See the [module docs](self) on durability.
-    pub fn allow_missing_resumed_tools(mut self) -> Self {
-        self.allow_missing_resumed_tools = true;
         self
     }
 
@@ -600,7 +636,7 @@ impl AgentDriver {
         snapshot.retain_names(&names.executable);
         let snapshot = Arc::new(snapshot);
 
-        if !self.allow_missing_resumed_tools {
+        if matches!(self.drift, ResumedToolDrift::Reject) {
             let missing: Vec<&str> = calls
                 .iter()
                 .filter(|call| call.preresolved_result.is_none())
@@ -618,8 +654,8 @@ impl AgentDriver {
                     format!(
                         "resumed run has pending tool calls {missing:?} that are no longer \
                          registered in this process; register the tools on the agent before \
-                         resuming, or call `allow_missing_resumed_tools()` to dispatch anyway \
-                         and feed not-found results to the model"
+                         resuming, or resume with `ResumedToolDrift::Dispatch` to dispatch \
+                         anyway and feed not-found results to the model"
                     )
                     .into(),
                 )));
@@ -994,13 +1030,13 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("add"), "error names the tool: {message}");
         assert!(
-            message.contains("allow_missing_resumed_tools"),
+            message.contains("ResumedToolDrift::Dispatch"),
             "error names the opt-out: {message}"
         );
 
         // The opt-out dispatches anyway and yields a not-found result.
         let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
-        let mut driver = bare_agent.drive_run(run).allow_missing_resumed_tools();
+        let mut driver = bare_agent.resume_run(run, ResumedToolDrift::Dispatch);
         let (calls, tools) = expect_execute_tools!(driver);
         let mut context = ToolContext::new();
         let result = tools
@@ -1673,18 +1709,60 @@ mod tests {
             .expect_err("the missing pending tool must surface");
         let message = err.to_string();
         assert!(
-            message.contains("add") && message.contains("allow_missing_resumed_tools"),
+            message.contains("add") && message.contains("ResumedToolDrift::Dispatch"),
             "drift must be reported, not the unsatisfiable tool choice: {message}"
         );
 
         let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
-        let mut driver = bare_agent.drive_run(run).allow_missing_resumed_tools();
+        let mut driver = bare_agent.resume_run(run, ResumedToolDrift::Dispatch);
         let (calls, tools) = expect_execute_tools!(driver);
         let mut context = ToolContext::new();
         let result = tools.execute_call(&calls[0], &mut context).await;
         assert!(
             matches!(result, UserContent::ToolResult(_)),
             "the opt-out must dispatch and produce a tool result"
+        );
+    }
+
+    /// Criterion: `Dispatch` is not merely "no error" — the not-found result
+    /// has to reach the model, which is the whole reason to choose it.
+    #[tokio::test]
+    async fn dispatched_drift_feeds_the_not_found_result_to_the_model() {
+        let model = MockCompletionModel::new([
+            MockTurn::tool_call("call_1", "add", json!({"x": 2, "y": 5})),
+            MockTurn::text("I could not add those."),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .build();
+        let mut driver = agent.drive("what is 2 + 5?");
+        let (request, _, _) = expect_send!(driver);
+        let response = request.send().await.expect("scripted turn");
+        expect_continue(driver.model_response(&response).expect("turn accepted"));
+        let _ = expect_execute_tools!(driver);
+        let serialized = serde_json::to_string(driver.run()).expect("run serializes");
+
+        let bare_agent = AgentBuilder::new(MockCompletionModel::new([MockTurn::text(
+            "I could not add those.",
+        )]))
+        .default_max_turns(2)
+        .build();
+        let run: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
+        let mut driver = bare_agent.resume_run(run, ResumedToolDrift::Dispatch);
+
+        let (calls, tools) = expect_execute_tools!(driver);
+        let mut context = ToolContext::new();
+        let results = vec![tools.execute_call(&calls[0], &mut context).await];
+        driver.tool_results(results).expect("results accepted");
+
+        // The next request carries the not-found result: the model is told the
+        // tool is gone rather than left waiting on a call nobody answered.
+        let (request, _, _) = expect_send!(driver);
+        let history = format!("{:?}", request.build().chat_history);
+        assert!(
+            history.contains("not advertised") || history.contains("not found"),
+            "the model must see why the call produced nothing: {history}"
         );
     }
 

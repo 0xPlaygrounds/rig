@@ -116,7 +116,9 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
-pub use driver::{AgentDriver, DriveStep, TurnPreparation, TurnPreparationContext};
+pub use driver::{
+    AgentDriver, DriveStep, ResumedToolDrift, TurnPreparation, TurnPreparationContext,
+};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
