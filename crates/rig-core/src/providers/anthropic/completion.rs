@@ -1751,12 +1751,15 @@ impl<T> GenericCompletionModel<super::client::AnthropicExt, T>
 where
     T: HttpClientExt,
 {
-    /// Enable strict schema validation for every Rig-generated tool.
+    /// Enable Anthropic strict tool use for every Rig-generated tool.
     ///
     /// Anthropic constrains tool inputs to the supported JSON Schema subset
     /// when `strict: true` is present on a tool definition. Rig sanitizes each
     /// generated tool schema for that subset and leaves provider-specific tools
-    /// supplied through `additional_params` unchanged.
+    /// supplied through `additional_params` unchanged. Unsupported validation
+    /// keywords are retained only as model guidance in schema descriptions;
+    /// neither Anthropic nor Rig enforces those original constraints, so
+    /// validate tool inputs before execution when those constraints matter.
     ///
     /// Anthropic caches compiled schemas for up to 24 hours. Do not include PHI
     /// in schema property names, enum or const values, or regex patterns. See
@@ -1863,8 +1866,74 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 /// preserved. Unsupported validation keywords are moved into descriptions as
 /// model guidance instead of reaching the constrained-decoding compiler.
 fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
-    let original = std::mem::take(schema);
+    let mut original = std::mem::take(schema);
+    inline_local_root_reference(&mut original);
+    // Anthropic requires a tool's top-level input schema to declare an object
+    // type even when standard JSON Schema would infer it from `properties` or
+    // a resolved root reference. Nested schemas do not have this tool-input
+    // restriction.
+    if let serde_json::Value::Object(source) = &mut original
+        && !source.contains_key("type")
+        && (source.contains_key("properties") || source.contains_key("$ref"))
+    {
+        source.insert(
+            "type".to_string(),
+            serde_json::Value::String("object".to_string()),
+        );
+    }
     *schema = transform_strict_tool_schema(original);
+}
+
+/// Anthropic requires a tool input's root to have `type: object`, but rejects
+/// `type` beside `$ref`. Resolve local root references before transformation so
+/// both requirements can be met while retaining definitions needed by nested
+/// references.
+fn inline_local_root_reference(schema: &mut serde_json::Value) {
+    let mut seen = std::collections::BTreeSet::new();
+    loop {
+        let Some(reference) = schema
+            .get("$ref")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+        else {
+            return;
+        };
+        let Some(pointer) = reference.strip_prefix('#') else {
+            return;
+        };
+        if !seen.insert(reference.clone()) {
+            return;
+        }
+        let Some(serde_json::Value::Object(mut referenced)) = schema.pointer(pointer).cloned()
+        else {
+            return;
+        };
+
+        for keyword in ["$defs", "definitions"] {
+            let Some(root_definitions) = schema.get(keyword).cloned() else {
+                continue;
+            };
+            let definitions = match (root_definitions, referenced.remove(keyword)) {
+                (
+                    serde_json::Value::Object(mut root_definitions),
+                    Some(serde_json::Value::Object(local_definitions)),
+                ) => {
+                    root_definitions.extend(local_definitions);
+                    serde_json::Value::Object(root_definitions)
+                }
+                (_, Some(local_definitions)) => local_definitions,
+                (root_definitions, None) => root_definitions,
+            };
+            referenced.insert(keyword.to_string(), definitions);
+        }
+        for keyword in ["description", "title"] {
+            if let Some(annotation) = schema.get(keyword).cloned() {
+                referenced.entry(keyword.to_string()).or_insert(annotation);
+            }
+        }
+
+        *schema = serde_json::Value::Object(referenced);
+    }
 }
 
 fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value {
@@ -1937,7 +2006,12 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
         }
     }
 
-    if schema_has_type(schema_type.as_ref(), "object") || source.contains_key("properties") {
+    let has_properties = source.contains_key("properties");
+    let properties_imply_object = schema_type.is_none() && has_properties;
+    if properties_imply_object {
+        strict.insert("type".to_string(), Value::String("object".to_string()));
+    }
+    if schema_has_type(schema_type.as_ref(), "object") || has_properties {
         let properties = match source.remove("properties") {
             Some(Value::Object(properties)) => properties
                 .into_iter()

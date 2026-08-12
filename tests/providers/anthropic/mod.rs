@@ -26,6 +26,11 @@ mod cassette {
     mod streaming;
     mod streaming_grammar;
     mod streaming_tools;
+    mod strict_schema_formats;
+    mod strict_schema_integrations;
+    mod strict_schema_limits;
+    mod strict_schema_matrix;
+    mod strict_schema_streaming;
     mod structured_output;
     mod think_tool;
     mod think_tool_with_other_tools;
