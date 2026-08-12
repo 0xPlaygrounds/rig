@@ -29,6 +29,55 @@
 //! [`Agent::runner`](crate::agent::Agent::runner); constructing an `AgentRun`
 //! directly is not an alternate way to execute an `Agent`.
 //!
+//! # Driving a run with a configured `Agent`
+//!
+//! A manual driver can still use an already-built `Agent` as its configuration
+//! and tool source without duplicating either:
+//!
+//! - [`Agent::new_run`](crate::agent::Agent::new_run) seeds a run with the
+//!   agent's durable run policy;
+//! - [`Agent::prepare_completion_request`](crate::agent::Agent::prepare_completion_request)
+//!   prepares one fully configured, hook-free provider request straight from a
+//!   [`AgentRunStep::CallModel`] step, returning a
+//!   [`PreparedAgentRequest`](crate::agent::PreparedAgentRequest) whose
+//!   [`PreparedAgentTurn`](crate::agent::PreparedAgentTurn) half pairs the
+//!   response and the turn's tool calls with the exact name-set metadata and
+//!   implementation snapshot that request carried;
+//! - after a cross-process resume, the rebuilt agent's live
+//!   [`Agent::tool_server_handle`](crate::agent::Agent::tool_server_handle)
+//!   dispatches the pending calls under live-registry semantics.
+//!
+//! ```text
+//! Agent
+//!   | new_run(prompt)
+//!   +-------------------------------> AgentRun            (durable policy)
+//!   |
+//!   | prepare_completion_request(prompt, history, &mut run)
+//!   v
+//! PreparedAgentRequest
+//!   | into_parts()
+//!   +----> request                    caller sends through its transport
+//!   `----> PreparedAgentTurn          (in-process, one issued turn)
+//!           | model_turn(response)    exact name-set metadata
+//!           ` execute_call(...)       exact pinned implementation snapshot
+//!
+//! After cross-process resume only:
+//! rebuilt Agent::tool_server_handle() live dispatch, live-registry semantics
+//! ```
+//!
+//! This surface is hook-free by design: no hooks fire, no memory is appended,
+//! no classic lifecycle or telemetry spans open, and no tool concurrency or
+//! approval policy applies — behavior that exists only as a hook (including
+//! passive dynamic context) simply does not happen here. Manual driving makes
+//! the caller own: provider IO and transport behavior, retry bounds and replay
+//! safety, result conversion and correlation, persistence timing, registry
+//! consistency across deploys, any approval/hook policy, and memory/telemetry.
+//! No durability exists beyond what `AgentRun` already provides: the prepared
+//! request and turn are in-process values for one issued request, while the
+//! serializable `AgentRun` remains the only durable state.
+//! [`AgentRunner`](crate::agent::AgentRunner) remains the only
+//! batteries-included runtime.
+//!
 //! [`crate::completion::Prompt::prompt`] and
 //! [`Agent::runner`](crate::agent::Agent::runner) drive this machine internally;
 //! the same machine can be driven by hand for custom provider control flow:
@@ -156,6 +205,28 @@ pub struct PendingToolCall {
     /// tool-call deltas. Drivers generate a fresh ID when absent.
     #[serde(default)]
     pub internal_call_id: Option<String>,
+}
+
+impl PendingToolCall {
+    /// Correlate an executed tool's output with this call, producing the
+    /// tool-result content [`AgentRun::tool_results`] expects.
+    ///
+    /// This applies the same correlation every built-in dispatch surface
+    /// does — the result carries this call's id, provider call id, and
+    /// executed tool name — so a manual driver (for example one finishing a
+    /// resumed run through
+    /// [`Agent::tool_server_handle`](crate::agent::Agent::tool_server_handle))
+    /// never copies those fields by hand. It does not consult
+    /// [`preresolved_result`](Self::preresolved_result); return that content
+    /// directly instead of executing anything when it is set.
+    pub fn result_content(&self, output: crate::tool::ToolOutput) -> UserContent {
+        UserContent::tool_result_for(
+            self.tool_call.id.clone(),
+            self.tool_call.provider.clone(),
+            self.tool_call.function.name.clone(),
+            output.into_content(),
+        )
+    }
 }
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
@@ -440,6 +511,15 @@ impl AgentRun {
     pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.tool_choice = Some(tool_choice);
         self
+    }
+
+    /// The tool choice active for this run, if any. Request preparation for a
+    /// manually driven run reads this — never the agent baseline directly —
+    /// so the policy advertised to the provider always matches the policy the
+    /// run enforces, even after [`Self::with_tool_choice`] overrides the
+    /// seeded value.
+    pub(crate) fn tool_choice(&self) -> Option<&ToolChoice> {
+        self.tool_choice.as_ref()
     }
 
     /// Set the synthetic output-tool name for Tool output mode (see #1928).

@@ -1,20 +1,28 @@
 use super::hook::{HookStack, RequestPatch};
 use super::model::ModelHandle;
 use super::prompt_request::{self, PromptRequest};
-use super::run::OutputMode;
-use super::runner::AgentRunner;
+use super::run::{AgentRun, ModelTurn, OutputMode, PendingToolCall};
+use super::runner::{
+    AgentRunner, DEFAULT_INVALID_TOOL_CALL_RETRIES, DEFAULT_MAX_TURNS, build_agent_run,
+};
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
-        Prompt, PromptError, ToolDefinition, TypedPrompt,
+        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, CompletionResponse,
+        Document, Message, Prompt, PromptError, ToolDefinition, TypedPrompt,
     },
     json_utils,
     streaming::{StreamingChat, StreamingPrompt},
-    tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
+    tool::{
+        ToolContext,
+        server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
+    },
 };
-use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
-use std::{collections::BTreeSet, sync::Arc};
+use rig_core::{
+    message::{ToolChoice, UserContent},
+    wasm_compat::WasmCompatSend,
+};
+use std::{borrow::Cow, collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
 
@@ -216,28 +224,81 @@ pub(crate) fn allowed_tool_names_for_choice(
     Ok(allowed)
 }
 
+/// Inputs to [`build_prepared_completion_request`], as named fields.
+///
+/// The parameter list carries several adjacent same-typed values (three
+/// `Option<&str>`, two `bool`s); positional passing would let a call site
+/// silently transpose them (e.g. `committed_output_tool` with
+/// `output_tool_description`, breaking Tool-mode pinning) with no compiler
+/// signal. Named fields make every call site self-checking.
+pub(crate) struct PreparedRequestInputs<'a> {
+    pub(crate) model: &'a ModelHandle,
+    pub(crate) prompt: Message,
+    /// Borrowed for per-turn drivers that keep their history; owned for the
+    /// manual surface, whose `CallModel` step hands the driver a fresh `Vec`
+    /// that would otherwise be cloned and dropped.
+    pub(crate) chat_history: Cow<'a, [Message]>,
+    pub(crate) preamble: Option<&'a str>,
+    pub(crate) static_context: &'a [Document],
+    pub(crate) temperature: Option<f64>,
+    pub(crate) max_tokens: Option<u64>,
+    pub(crate) additional_params: Option<&'a serde_json::Value>,
+    pub(crate) record_telemetry_content: bool,
+    pub(crate) tool_choice: Option<&'a ToolChoice>,
+    pub(crate) tool_server_handle: &'a ToolServerHandle,
+    pub(crate) output_schema: Option<&'a schemars::Schema>,
+    pub(crate) output_mode: &'a OutputMode,
+    pub(crate) output_tool_description: Option<&'a str>,
+    pub(crate) augment_output_preamble: bool,
+    pub(crate) request_patch: Option<&'a RequestPatch>,
+}
+
+/// Build a prepared request under `run`'s committed output-tool policy.
+///
+/// The single home for the #1928 read/commit pairing shared by the classic
+/// driver and [`Agent::prepare_completion_request`] — the only two callers of
+/// [`build_prepared_completion_request`]: the run's committed Tool-mode
+/// output-tool name feeds preparation (so a committed run cannot flip back to
+/// native on a later turn), and the name the prepared request actually
+/// advertises is committed back onto the run before it is returned.
+pub(crate) async fn build_prepared_completion_request_for_run(
+    run: &mut AgentRun,
+    inputs: PreparedRequestInputs<'_>,
+) -> Result<PreparedCompletionRequest, CompletionError> {
+    let committed_output_tool = run.output_tool_name();
+    let prepared = build_prepared_completion_request(inputs, committed_output_tool).await?;
+    run.set_output_tool_name(prepared.output_tool_name.clone());
+    Ok(prepared)
+}
+
 /// Helper function to build a completion request from agent components while
 /// preserving the executable Rig tool names sent to the provider.
-#[allow(clippy::too_many_arguments)]
+/// `committed_output_tool` is the run's already-committed Tool-mode
+/// output-tool name, if any (#1928); call through
+/// [`build_prepared_completion_request_for_run`] so the read/commit pairing
+/// stays in one place.
 pub(crate) async fn build_prepared_completion_request(
-    model: &ModelHandle,
-    prompt: Message,
-    chat_history: &[Message],
-    preamble: Option<&str>,
-    static_context: &[Document],
-    temperature: Option<f64>,
-    max_tokens: Option<u64>,
-    additional_params: Option<&serde_json::Value>,
-    record_telemetry_content: bool,
-    tool_choice: Option<&ToolChoice>,
-    tool_server_handle: &ToolServerHandle,
-    output_schema: Option<&schemars::Schema>,
-    output_mode: &OutputMode,
+    inputs: PreparedRequestInputs<'_>,
     committed_output_tool: Option<&str>,
-    output_tool_description: Option<&str>,
-    augment_output_preamble: bool,
-    request_patch: Option<&RequestPatch>,
 ) -> Result<PreparedCompletionRequest, CompletionError> {
+    let PreparedRequestInputs {
+        model,
+        prompt,
+        chat_history,
+        preamble,
+        static_context,
+        temperature,
+        max_tokens,
+        additional_params,
+        record_telemetry_content,
+        tool_choice,
+        tool_server_handle,
+        output_schema,
+        output_mode,
+        output_tool_description,
+        augment_output_preamble,
+        request_patch,
+    } = inputs;
     // Apply a per-turn request patch (the merged patch from every `CompletionCall`
     // hook): each set field replaces the agent's configured value for this turn,
     // unset fields inherit it, `additional_params` is shallow-merged, and
@@ -441,16 +502,17 @@ pub(crate) async fn build_prepared_completion_request(
     // *this turn only* (context-window compaction / summarization). The RAG query
     // text above deliberately still derives from the original `chat_history`, so
     // this changes only what is sent, never what is retrieved or persisted.
-    let messages_history: &[Message] = request_patch
-        .and_then(|o| o.history.as_deref())
-        .unwrap_or(chat_history);
-    let chat_history: Vec<Message> = if let Some(preamble) = &effective_preamble {
-        std::iter::once(Message::system(preamble.clone()))
-            .chain(messages_history.iter().cloned())
-            .collect()
-    } else {
-        messages_history.to_vec()
-    };
+    // `into_owned` moves an already-owned history (the manual surface) and
+    // clones a borrowed one (the classic driver, or a patched history).
+    let messages_history: Cow<'_, [Message]> =
+        match request_patch.and_then(|o| o.history.as_deref()) {
+            Some(patched) => Cow::Borrowed(patched),
+            None => chat_history,
+        };
+    let mut chat_history: Vec<Message> = messages_history.into_owned();
+    if let Some(preamble) = &effective_preamble {
+        chat_history.insert(0, Message::system(preamble.clone()));
+    }
 
     // In Tool mode, advertise the synthetic output tool to the provider (its name
     // is added to `allowed_tool_names` below but never to `executable_tool_names`,
@@ -523,6 +585,139 @@ pub(crate) async fn build_prepared_completion_request(
         allowed_tool_names,
         output_tool_name,
     })
+}
+
+/// One fully configured, hook-free provider request prepared from an
+/// [`Agent`], paired with the exact turn metadata the request was built with.
+///
+/// Produced by [`Agent::prepare_completion_request`] for callers manually
+/// driving the sans-IO [`AgentRun`] state machine. Split it with
+/// [`into_parts`](Self::into_parts): the request half is sent (or built and
+/// sent through a custom transport), while the [`PreparedAgentTurn`] half must
+/// outlive the send so the response and the turn's tool calls can be paired
+/// with the metadata and implementations this exact request advertised.
+///
+/// The pair is in-process state for one issued request. It is deliberately not
+/// serializable and claims no durability: the durable state of a manual loop is
+/// the [`AgentRun`] itself. After a cross-process resume, rebuild the agent and
+/// dispatch pending calls through [`Agent::tool_server_handle`] instead.
+pub struct PreparedAgentRequest {
+    builder: CompletionRequestBuilder<ModelHandle>,
+    turn: PreparedAgentTurn,
+}
+
+impl std::fmt::Debug for PreparedAgentRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedAgentRequest")
+            .field("turn", &self.turn)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PreparedAgentRequest {
+    /// Split into the sendable request builder and the turn pairing.
+    ///
+    /// A consuming split, because sending consumes the builder while the turn
+    /// must outlive the send. The returned builder is fully configured from the
+    /// agent's baseline; send it as-is with
+    /// [`send`](CompletionRequestBuilder::send) (or
+    /// [`build`](CompletionRequestBuilder::build) it for a custom transport).
+    /// Modifying it further is caller-owned risk: the paired
+    /// [`PreparedAgentTurn`] keeps describing the request *as prepared*.
+    pub fn into_parts(self) -> (CompletionRequestBuilder<ModelHandle>, PreparedAgentTurn) {
+        (self.builder, self.turn)
+    }
+}
+
+/// The turn-pairing half of a [`PreparedAgentRequest`]: the executable and
+/// allowed tool-name sets captured during preparation, plus the exact registry
+/// snapshot whose definitions were sent to the provider.
+///
+/// It owns exactly two operations — [`model_turn`](Self::model_turn) to convert
+/// the provider's response into a [`ModelTurn`] carrying the captured name
+/// sets, and [`execute_call`](Self::execute_call) to execute the resulting
+/// [`AgentRunStep::CallTools`](super::run::AgentRunStep::CallTools) calls
+/// through the pinned implementations. Tool registrations changed *after*
+/// preparation are invisible to this turn: a replaced implementation still
+/// dispatches to the one whose definition was sent, and a newly registered tool
+/// is rejected even though the live registry has it.
+///
+/// In-process only, for the one request it was prepared with. It is not
+/// serializable; after a cross-process resume use the rebuilt agent's live
+/// [`Agent::tool_server_handle`], which follows current registry state instead.
+pub struct PreparedAgentTurn {
+    /// Exact implementations behind this turn's provider definitions.
+    tool_snapshot: Arc<ToolRegistrySnapshot>,
+    executable_tool_names: BTreeSet<String>,
+    allowed_tool_names: BTreeSet<String>,
+}
+
+impl std::fmt::Debug for PreparedAgentTurn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedAgentTurn")
+            .field("executable_tool_names", &self.executable_tool_names)
+            .field("allowed_tool_names", &self.allowed_tool_names)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PreparedAgentTurn {
+    /// Convert the provider's response into the [`ModelTurn`] to feed
+    /// [`AgentRun::model_response`], supplying the executable and allowed
+    /// tool-name sets captured when the request was prepared.
+    ///
+    /// This removes the manual driver's name-set hazard: the caller never
+    /// re-derives either set from the live registry or orders
+    /// [`ModelTurn::new`]'s two same-typed set arguments by hand.
+    pub fn model_turn(&self, response: CompletionResponse) -> ModelTurn {
+        ModelTurn::new(
+            response.message_id,
+            response.choice,
+            response.usage,
+            self.executable_tool_names.clone(),
+            self.allowed_tool_names.clone(),
+        )
+    }
+
+    /// Execute one pending tool call from this turn's
+    /// [`AgentRunStep::CallTools`](super::run::AgentRunStep::CallTools) step,
+    /// returning the correlated tool-result content for
+    /// [`AgentRun::tool_results`].
+    ///
+    /// A call carrying a
+    /// [`preresolved_result`](PendingToolCall::preresolved_result) (from
+    /// invalid tool-call recovery) is returned unchanged without executing or
+    /// invoking anything. Every other call dispatches through the registry
+    /// snapshot pinned at preparation, never the live registry: a name outside
+    /// the prepared turn's executable set — including a tool registered after
+    /// preparation — is rejected with a not-found tool result rather than
+    /// executed.
+    ///
+    /// Like every dispatch surface, this clears result metadata left in
+    /// `context` by a previous dispatch before resolving the call (including
+    /// on the pre-resolved path) and publishes the new dispatch's result
+    /// metadata back into it. It runs no hooks, applies no concurrency policy,
+    /// and records no telemetry.
+    pub async fn execute_call(
+        &self,
+        call: &PendingToolCall,
+        context: &mut ToolContext,
+    ) -> UserContent {
+        if let Some(result) = &call.preresolved_result {
+            // Same context hygiene as a real dispatch: stale result metadata
+            // from a previous dispatch must not survive a pre-resolved call.
+            context.clear_dispatch_result();
+            return result.clone();
+        }
+
+        let tool_call = &call.tool_call;
+        let args = json_utils::serialize_json_value(&tool_call.function.arguments);
+        let result = self
+            .tool_snapshot
+            .execute(&tool_call.function.name, args, context)
+            .await;
+        call.result_content(result.output().clone())
+    }
 }
 
 /// Struct representing an LLM agent. An agent is an LLM model combined with a preamble
@@ -667,6 +862,144 @@ impl Agent {
         prompt: Option<String>,
     ) -> Result<Vec<ToolDefinition>, ToolServerError> {
         self.tool_server_handle.get_tool_defs(prompt).await
+    }
+
+    /// Returns an owned clone of the live handle to the tool registry this
+    /// agent's tools (from `.tool()` / `.dynamic_tools()` / a shared
+    /// [`ToolServer`](crate::tool::server::ToolServer)) are registered in.
+    ///
+    /// Most callers want [`Agent::runner`], which executes tools with hooks,
+    /// memory, telemetry, and the classic concurrency and invalid-call
+    /// policies. Dispatching directly through this handle runs none of those.
+    ///
+    /// The handle is **live**: it observes registry changes made after this
+    /// call (registrations, replacements, removals). That makes it the
+    /// capability available after a cross-process resume — rebuild the agent
+    /// and dispatch an [`AgentRun`]'s pending tool calls through the rebuilt
+    /// registry under live-registry semantics. In contrast, the prepared turn
+    /// from [`Agent::prepare_completion_request`] **pins** the definitions and
+    /// implementations advertised for one issued request and never sees later
+    /// registry changes.
+    pub fn tool_server_handle(&self) -> ToolServerHandle {
+        self.tool_server_handle.clone()
+    }
+
+    /// Create a sans-IO [`AgentRun`] seeded with this agent's durable run
+    /// policy: the default turn budget, tool choice, and structured-output
+    /// validation schema, exactly as [`Agent::runner`] would seed its internal
+    /// run.
+    ///
+    /// This is construction, not execution: the returned run holds no model,
+    /// tools, hooks, memory, or telemetry, and the caller drives it by hand
+    /// (see the [`run`](super::run) module docs). Because it is a plain
+    /// [`AgentRun`], the run's builder methods keep working on it, e.g.
+    /// `agent.new_run(prompt).max_turns(10)`.
+    ///
+    /// Pair it with [`Agent::prepare_completion_request`], which prepares each
+    /// model call under the **run's** policy — including a later
+    /// [`AgentRun::with_tool_choice`] override — and commits the run's
+    /// structured-output tool expectation. [`AgentRun::new`] remains available
+    /// for intentionally custom runs; such callers own keeping the run's
+    /// policy (tool choice, output validation, output-tool name) consistent
+    /// with the requests they prepare.
+    pub fn new_run(&self, prompt: impl Into<Message>) -> AgentRun {
+        // Same policy defaults as `AgentRunner::from_agent` (shared constants,
+        // so the two cannot drift) and the same single construction site
+        // (`build_agent_run`) — without materializing a throwaway runner,
+        // which would deep-clone static context, preamble, and params only to
+        // discard them.
+        build_agent_run(
+            prompt.into(),
+            self.default_max_turns.unwrap_or(DEFAULT_MAX_TURNS),
+            DEFAULT_INVALID_TOOL_CALL_RETRIES,
+            self.output_schema.as_ref(),
+            None,
+            self.tool_choice.clone(),
+        )
+    }
+
+    /// Prepare one fully configured, hook-free provider request from this
+    /// agent's baseline configuration, for a caller manually driving an
+    /// [`AgentRun`].
+    ///
+    /// Feed it directly from an
+    /// [`AgentRunStep::CallModel`](super::run::AgentRunStep::CallModel) step:
+    /// pass that step's `prompt` and `history` unchanged, plus the run being
+    /// driven. The request carries the agent's preamble, static context,
+    /// sampling parameters, additional provider parameters, resolved tool
+    /// definitions, tool choice, and structured-output constraint. An
+    /// impossible tool choice ([`ToolChoice::Required`] with no advertised
+    /// tool, or [`ToolChoice::Specific`] naming an unknown tool) fails here,
+    /// before any provider IO.
+    ///
+    /// `run` keeps request preparation and run policy paired. For structured
+    /// output, preparation reads the run's committed output-tool name so a run
+    /// that committed to Tool-mode output on an earlier turn cannot flip back
+    /// to native later, and commits the name this request advertises back onto
+    /// the run — exactly as the classic driver does — so the run's output-tool
+    /// interception matches what the model was told. The advertised tool
+    /// choice is likewise the **run's** (seeded from the agent by
+    /// [`Agent::new_run`], and following an [`AgentRun::with_tool_choice`]
+    /// override), so the run always classifies calls under the policy the
+    /// provider actually saw. Nothing else about the run is read or advanced.
+    ///
+    /// **Hook-free means hook-free.** This runs no hooks, appends no memory,
+    /// opens no classic lifecycle or telemetry spans, and applies no tool
+    /// concurrency or invalid-call policy. Behavior that exists only as a hook
+    /// — including passive dynamic context from
+    /// [`AgentBuilder::dynamic_context`](crate::agent::AgentBuilder::dynamic_context)
+    /// — simply does not happen on this surface. It also does not send the
+    /// request, execute tools, or create or advance the run.
+    pub async fn prepare_completion_request(
+        &self,
+        prompt: impl Into<Message>,
+        history: Vec<Message>,
+        run: &mut AgentRun,
+    ) -> Result<PreparedAgentRequest, CompletionError> {
+        // The run's tool choice — not the agent baseline — so a
+        // `with_tool_choice` override on the run reaches the provider and the
+        // run never classifies calls under a policy the request didn't carry.
+        // Cloned up front because the inputs below cannot borrow `run` while
+        // the wrapper holds it mutably.
+        let tool_choice = run.tool_choice().cloned();
+        let prepared = build_prepared_completion_request_for_run(
+            run,
+            PreparedRequestInputs {
+                model: &self.model,
+                prompt: prompt.into(),
+                chat_history: Cow::Owned(history),
+                preamble: self.preamble.as_deref(),
+                static_context: &self.static_context,
+                temperature: self.temperature,
+                max_tokens: self.max_tokens,
+                additional_params: self.additional_params.as_ref(),
+                record_telemetry_content: self.record_telemetry_content,
+                tool_choice: tool_choice.as_ref(),
+                tool_server_handle: &self.tool_server_handle,
+                output_schema: self.output_schema.as_ref(),
+                output_mode: &self.output_mode,
+                output_tool_description: None,
+                augment_output_preamble: true,
+                request_patch: None,
+            },
+        )
+        .await?;
+
+        let PreparedCompletionRequest {
+            builder,
+            tool_snapshot,
+            executable_tool_names,
+            allowed_tool_names,
+            output_tool_name: _,
+        } = prepared;
+        Ok(PreparedAgentRequest {
+            builder,
+            turn: PreparedAgentTurn {
+                tool_snapshot,
+                executable_tool_names,
+                allowed_tool_names,
+            },
+        })
     }
 }
 
@@ -1165,5 +1498,869 @@ mod tests {
 
         let executable = tool_names(&["final_result", "final_result_1"]);
         assert_eq!(pick_output_tool_name(&executable), "final_result_2");
+    }
+}
+
+/// Tests for the minimal configured-`AgentRun` integration surface:
+/// [`Agent::tool_server_handle`], [`Agent::new_run`],
+/// [`Agent::prepare_completion_request`], [`PreparedAgentRequest`], and
+/// [`PreparedAgentTurn`].
+#[cfg(test)]
+mod agent_run_surface_tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        agent::{
+            AgentBuilder,
+            hook::InvalidToolCallAction,
+            hook::{AgentHook, CompletionCall, CompletionCallAction, HookContext},
+            run::{AgentRunStep, ModelTurnOutcome},
+        },
+        test_utils::{MockAddTool, MockCompletionModel, MockSubtractTool, MockTurn},
+        tool::{DynamicTool, Tool, ToolExecutionError, ToolOutput},
+    };
+    use rig_core::message::{ToolCall, ToolFunction, ToolResultContent};
+
+    /// Concatenated literal text of a tool-result `UserContent`.
+    fn result_text(content: &UserContent) -> String {
+        let UserContent::ToolResult(result) = content else {
+            panic!("expected a tool result, got {content:?}");
+        };
+        result
+            .content
+            .iter()
+            .filter_map(ToolResultContent::as_text)
+            .collect()
+    }
+
+    /// Advance a fresh run to its first `CallModel` step.
+    fn first_call_model(run: &mut AgentRun) -> (Message, Vec<Message>) {
+        match run.next_step().expect("first step") {
+            AgentRunStep::CallModel {
+                prompt, history, ..
+            } => (prompt, history),
+            other => panic!("expected CallModel, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_server_handle_sees_and_executes_agent_built_tools() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+            .tool(MockAddTool)
+            .build();
+
+        let handle = agent.tool_server_handle();
+        let defs = handle.get_tool_defs(None).await.expect("tool definitions");
+        assert!(defs.iter().any(|def| def.name == "add"));
+
+        let mut context = ToolContext::new();
+        let result = handle
+            .execute("add", r#"{"x":2,"y":3}"#, &mut context)
+            .await;
+        assert_eq!(result.output().render(), "5");
+    }
+
+    #[tokio::test]
+    async fn tool_server_handle_sees_and_executes_dynamic_tools() {
+        let echo = DynamicTool::new(
+            "echo",
+            "Echoes its arguments",
+            json!({"type": "object", "properties": {}}),
+            |_context, args| Box::pin(async move { Ok(ToolOutput::json(args)) }),
+        );
+        let agent = AgentBuilder::new(MockCompletionModel::text("done"))
+            .dynamic_tools(vec![echo])
+            .build();
+
+        let handle = agent.tool_server_handle();
+        let defs = handle.get_tool_defs(None).await.expect("tool definitions");
+        assert!(defs.iter().any(|def| def.name == "echo"));
+
+        let mut context = ToolContext::new();
+        let result = handle
+            .execute("echo", r#"{"hello":"world"}"#, &mut context)
+            .await;
+        assert_eq!(result.output().render(), r#"{"hello":"world"}"#);
+    }
+
+    #[tokio::test]
+    async fn prepared_request_carries_the_agent_baseline() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .preamble("You are the baseline preamble")
+            .context("baseline context document")
+            .temperature(0.3)
+            .max_tokens(77)
+            .additional_params(json!({"top_p": 0.5}))
+            .tool_choice(ToolChoice::Auto)
+            .tool(MockAddTool)
+            .build();
+
+        let mut run = agent.new_run("go");
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, _turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let request = builder.build();
+
+        assert!(request.chat_history.iter().any(|message| matches!(
+            message,
+            Message::System { content } if content == "You are the baseline preamble"
+        )));
+        assert!(
+            request
+                .documents
+                .iter()
+                .any(|document| document.text == "baseline context document")
+        );
+        assert_eq!(request.temperature, Some(0.3));
+        assert_eq!(request.max_tokens, Some(77));
+        assert_eq!(request.additional_params, Some(json!({"top_p": 0.5})));
+        assert_eq!(request.tool_choice, Some(ToolChoice::Auto));
+        assert!(request.tools.iter().any(|tool| tool.name == "add"));
+    }
+
+    #[tokio::test]
+    async fn model_turn_hands_off_the_exact_name_sets() {
+        // Two executable tools plus a restrictive Specific tool choice. The
+        // test never reconstructs either name set by hand: the sets reach the
+        // run exclusively through `PreparedAgentTurn::model_turn`.
+        let build_agent = |model: MockCompletionModel| {
+            AgentBuilder::new(model)
+                .tool(MockAddTool)
+                .tool(MockSubtractTool)
+                .tool_choice(ToolChoice::Specific {
+                    function_names: vec!["add".to_string()],
+                })
+                .build()
+        };
+
+        // An allowed call ("add") is accepted and reaches CallTools.
+        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
+            "call-1",
+            "add",
+            json!({"x": 1, "y": 2}),
+        )]);
+        let agent = build_agent(model);
+        let mut run = agent.new_run("go").max_turns(2);
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let response = builder.send().await.expect("mock send");
+        let outcome = run
+            .model_response(turn.model_turn(response))
+            .expect("model response accepted");
+        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+        match run.next_step().expect("next step") {
+            AgentRunStep::CallTools { calls } => {
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].tool_call.function.name, "add");
+            }
+            other => panic!("expected CallTools, got {other:?}"),
+        }
+
+        // A disallowed call ("subtract" — executable but outside the Specific
+        // allow-list) is flagged for resolution.
+        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
+            "call-2",
+            "subtract",
+            json!({"x": 5, "y": 2}),
+        )]);
+        let agent = build_agent(model);
+        let mut run = agent.new_run("go").max_turns(2);
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let response = builder.send().await.expect("mock send");
+        let outcome = run
+            .model_response(turn.model_turn(response))
+            .expect("model response accepted");
+        match outcome {
+            ModelTurnOutcome::NeedsResolution(context) => {
+                assert_eq!(context.tool_name, "subtract");
+                assert!(context.available_tools.contains(&"subtract".to_string()));
+                assert!(!context.allowed_tools.contains(&"subtract".to_string()));
+            }
+            other => panic!("expected NeedsResolution, got {other:?}"),
+        }
+    }
+
+    #[derive(Clone)]
+    struct ProbeA;
+
+    impl Tool for ProbeA {
+        const NAME: &'static str = "probe";
+        type Error = ToolExecutionError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "Implementation A".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({"type": "object", "properties": {}})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
+            Ok("A".to_string())
+        }
+    }
+
+    #[derive(Clone)]
+    struct ProbeB;
+
+    impl Tool for ProbeB {
+        const NAME: &'static str = "probe";
+        type Error = ToolExecutionError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "Implementation B".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({"type": "object", "properties": {}})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
+            Ok("B".to_string())
+        }
+    }
+
+    #[derive(Clone)]
+    struct LateTool;
+
+    impl Tool for LateTool {
+        const NAME: &'static str = "late";
+        type Error = ToolExecutionError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "Registered after preparation".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({"type": "object", "properties": {}})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
+            Ok("late".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn prepared_turn_executes_through_the_pinned_snapshot() {
+        let model =
+            MockCompletionModel::from_turns([MockTurn::tool_call("call-1", "probe", json!({}))]);
+        let agent = AgentBuilder::new(model).tool(ProbeA).build();
+        let mut run = agent.new_run("go").max_turns(2);
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let response = builder.send().await.expect("mock send");
+        run.model_response(turn.model_turn(response))
+            .expect("model response accepted");
+        let AgentRunStep::CallTools { calls } = run.next_step().expect("next step") else {
+            panic!("expected CallTools");
+        };
+
+        // Mutate the live registry AFTER preparation: replace `probe` with
+        // implementation B and register a brand-new tool.
+        let handle = agent.tool_server_handle();
+        handle.add_tool(ProbeB).await;
+        handle.add_tool(LateTool).await;
+
+        // The prepared turn still executes implementation A...
+        let mut context = ToolContext::new();
+        let result = turn.execute_call(&calls[0], &mut context).await;
+        assert_eq!(result_text(&result), "A");
+
+        // ...while the live handle now dispatches implementation B.
+        let live = handle.execute("probe", "{}", &mut context).await;
+        assert_eq!(live.output().render(), "B");
+
+        // A tool registered after preparation is rejected by the prepared
+        // turn even though the live registry has it.
+        let late_call = PendingToolCall {
+            tool_call: ToolCall::from_wire("call-2", ToolFunction::new("late".into(), json!({}))),
+            preresolved_result: None,
+            internal_call_id: None,
+        };
+        let rejected = turn.execute_call(&late_call, &mut context).await;
+        assert!(
+            result_text(&rejected).contains("not found"),
+            "post-preparation registration must be rejected: {rejected:?}"
+        );
+    }
+
+    #[derive(serde::Deserialize, schemars::JsonSchema)]
+    #[allow(dead_code)]
+    struct Summary {
+        answer: String,
+    }
+
+    #[tokio::test]
+    async fn seeded_run_and_prepared_request_agree_on_output_policy() {
+        // Schema-configured agent with a real tool on a provider that does not
+        // compose native structured output with tools: output mode resolves to
+        // Tool. The run must intercept exactly the output tool the request
+        // advertises — proving `new_run` + `prepare_completion_request` agree.
+        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
+            "call-1",
+            "final_result",
+            json!({"answer": "42"}),
+        )]);
+        let agent = AgentBuilder::new(model.clone())
+            .tool(MockAddTool)
+            .output_schema::<Summary>()
+            .build();
+
+        let mut run = agent.new_run("go").max_turns(2);
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+
+        // Preparation committed the output-tool expectation onto the run.
+        assert_eq!(run.output_tool_name(), Some("final_result"));
+
+        let response = builder.send().await.expect("mock send");
+        run.model_response(turn.model_turn(response))
+            .expect("model response accepted");
+
+        // The request advertised the synthetic output tool (Tool mode, no
+        // native constraint), and the run finalizes by intercepting its call.
+        let requests = model.requests();
+        let request = requests.first().expect("one request sent");
+        assert!(request.tools.iter().any(|tool| tool.name == "final_result"));
+        assert!(request.output_schema.is_none());
+        match run.next_step().expect("final step") {
+            AgentRunStep::Done(response) => {
+                assert_eq!(response.output, r#"{"answer":"42"}"#);
+            }
+            other => panic!("expected Done via output-tool interception, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn run_tool_choice_override_reaches_the_prepared_request() {
+        // The run — not the agent baseline — is the source of truth for tool
+        // choice: an `AgentRun::with_tool_choice` override after `new_run`
+        // must reach the provider request and the run's allowed set alike.
+        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
+            "call-1",
+            "subtract",
+            json!({"x": 5, "y": 2}),
+        )]);
+        let agent = AgentBuilder::new(model.clone())
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .tool_choice(ToolChoice::Auto)
+            .build();
+
+        let mut run = agent
+            .new_run("go")
+            .max_turns(2)
+            .with_tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            });
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let response = builder.send().await.expect("mock send");
+
+        // The provider saw the override, not the agent's Auto baseline...
+        let requests = model.requests();
+        let request = requests.first().expect("one request");
+        assert_eq!(
+            request.tool_choice,
+            Some(ToolChoice::Specific {
+                function_names: vec!["add".to_string()],
+            })
+        );
+
+        // ...and the run classifies under that same policy: the executable
+        // `subtract` call is disallowed by the overridden choice.
+        match run
+            .model_response(turn.model_turn(response))
+            .expect("model response accepted")
+        {
+            ModelTurnOutcome::NeedsResolution(context) => {
+                assert_eq!(context.tool_name, "subtract");
+            }
+            other => panic!("expected NeedsResolution under the override, got {other:?}"),
+        }
+
+        // An override that is impossible against the agent's tools still
+        // fails before provider IO.
+        let model = MockCompletionModel::text("unused");
+        let agent = AgentBuilder::new(model.clone()).tool(MockAddTool).build();
+        let mut run = agent.new_run("go").with_tool_choice(ToolChoice::Specific {
+            function_names: vec!["missing".to_string()],
+        });
+        let (prompt, history) = first_call_model(&mut run);
+        let error = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect_err("an impossible override must fail locally");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert_eq!(model.request_count(), 0, "no provider IO may happen");
+    }
+
+    #[tokio::test]
+    async fn seeded_run_validates_output_against_the_agent_schema() {
+        // `new_run` seeds the run's output validation from the agent's schema:
+        // an output-tool call missing a required field is re-prompted (within
+        // the default output-retry budget) instead of finalized as-is.
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "final_result", json!({"wrong_field": true})),
+            MockTurn::tool_call("call-2", "final_result", json!({"answer": "42"})),
+        ]);
+        let agent = AgentBuilder::new(model.clone())
+            .tool(MockAddTool)
+            .output_schema::<Summary>()
+            .build();
+
+        let mut run = agent.new_run("go").max_turns(3);
+        loop {
+            match run.next_step().expect("step") {
+                AgentRunStep::CallModel {
+                    prompt, history, ..
+                } => {
+                    let (builder, turn) = agent
+                        .prepare_completion_request(prompt, history, &mut run)
+                        .await
+                        .expect("preparation succeeds")
+                        .into_parts();
+                    let response = builder.send().await.expect("mock send");
+                    run.model_response(turn.model_turn(response))
+                        .expect("model response accepted");
+                }
+                AgentRunStep::CallTools { calls } => {
+                    panic!("output-tool calls must be intercepted, got {calls:?}")
+                }
+                AgentRunStep::Done(response) => {
+                    assert_eq!(response.output, r#"{"answer":"42"}"#);
+                    break;
+                }
+            }
+        }
+        assert_eq!(
+            model.request_count(),
+            2,
+            "the incomplete output must be re-prompted exactly once"
+        );
+    }
+
+    #[tokio::test]
+    async fn seeded_run_uses_agent_turn_budget_and_retry_budget() {
+        // `new_run` seeds the agent's `default_max_turns`: with a budget of 2,
+        // a third model call fails with MaxTurnsError { max_turns: 2 }.
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "add", json!({"x": 1, "y": 1})),
+            MockTurn::tool_call("call-2", "add", json!({"x": 2, "y": 2})),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .default_max_turns(2)
+            .build();
+
+        let mut run = agent.new_run("go");
+        let error = loop {
+            match run.next_step() {
+                Ok(AgentRunStep::CallModel {
+                    prompt, history, ..
+                }) => {
+                    let (builder, turn) = agent
+                        .prepare_completion_request(prompt, history, &mut run)
+                        .await
+                        .expect("preparation succeeds")
+                        .into_parts();
+                    let response = builder.send().await.expect("mock send");
+                    run.model_response(turn.model_turn(response))
+                        .expect("model response accepted");
+                }
+                Ok(AgentRunStep::CallTools { calls }) => {
+                    let mut results = Vec::with_capacity(calls.len());
+                    for call in &calls {
+                        // Execution source is irrelevant here; the budget is
+                        // the subject under test.
+                        results.push(UserContent::tool_result_for(
+                            call.tool_call.id.clone(),
+                            call.tool_call.provider.clone(),
+                            call.tool_call.function.name.clone(),
+                            vec![ToolResultContent::text("2")],
+                        ));
+                    }
+                    run.tool_results(results).expect("results accepted");
+                }
+                Ok(AgentRunStep::Done(response)) => {
+                    panic!("run must exhaust its turn budget, got {response:?}")
+                }
+                Err(error) => break error,
+            }
+        };
+        assert!(
+            matches!(error, PromptError::MaxTurnsError { max_turns: 2, .. }),
+            "expected the agent-seeded budget of 2, got {error:?}"
+        );
+
+        // `new_run` also seeds the runner's default invalid-call retry budget
+        // of zero: a Retry resolution is immediately rejected.
+        let model =
+            MockCompletionModel::from_turns([MockTurn::tool_call("call-1", "bogus", json!({}))]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let mut run = agent.new_run("go").max_turns(2);
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let response = builder.send().await.expect("mock send");
+        let ModelTurnOutcome::NeedsResolution(context) = run
+            .model_response(turn.model_turn(response))
+            .expect("model response accepted")
+        else {
+            panic!("an unknown tool call must need resolution");
+        };
+        assert_eq!(context.tool_name, "bogus");
+        let error = run
+            .resolve_invalid_tool_call(InvalidToolCallAction::retry("use a real tool"))
+            .expect_err("a zero retry budget must reject Retry");
+        assert!(matches!(error, PromptError::UnknownToolCall { .. }));
+    }
+
+    #[tokio::test]
+    async fn impossible_tool_choice_fails_before_provider_io() {
+        // Required with no tools at all.
+        let model = MockCompletionModel::text("unused");
+        let agent = AgentBuilder::new(model.clone())
+            .tool_choice(ToolChoice::Required)
+            .build();
+        let mut run = agent.new_run("go");
+        let (prompt, history) = first_call_model(&mut run);
+        let error = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect_err("Required with no tools must fail locally");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert_eq!(model.request_count(), 0, "no provider IO may happen");
+
+        // Specific naming an unknown tool.
+        let model = MockCompletionModel::text("unused");
+        let agent = AgentBuilder::new(model.clone())
+            .tool(MockAddTool)
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["missing".to_string()],
+            })
+            .build();
+        let mut run = agent.new_run("go");
+        let (prompt, history) = first_call_model(&mut run);
+        let error = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect_err("Specific naming an unknown tool must fail locally");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert_eq!(model.request_count(), 0, "no provider IO may happen");
+    }
+
+    /// A completion-call hook that counts invocations and visibly patches the
+    /// request, to pin the hook-free boundary.
+    #[derive(Clone, Default)]
+    struct CountingPatchHook(Arc<AtomicUsize>);
+
+    impl AgentHook for CountingPatchHook {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: CompletionCall<'_>,
+        ) -> CompletionCallAction {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            CompletionCallAction::Patch(RequestPatch {
+                preamble: Some("patched by hook".to_string()),
+                ..Default::default()
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn prepare_completion_request_runs_no_hooks() {
+        let hook = CountingPatchHook::default();
+        let model = MockCompletionModel::text("done");
+        let agent = AgentBuilder::new(model.clone())
+            .preamble("baseline preamble")
+            .add_hook(hook.clone())
+            .build();
+
+        let mut run = agent.new_run("go");
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, _turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let request = builder.build();
+
+        assert_eq!(hook.0.load(Ordering::SeqCst), 0, "no hook may fire");
+        assert!(
+            request.chat_history.iter().any(|message| matches!(
+                message,
+                Message::System { content } if content == "baseline preamble"
+            )),
+            "the baseline preamble must be untouched by the hook patch"
+        );
+    }
+
+    /// Guard: the same hook still fires (and patches) under `AgentRunner`.
+    #[tokio::test]
+    async fn completion_call_hook_still_fires_under_the_runner() {
+        let hook = CountingPatchHook::default();
+        let model = MockCompletionModel::text("done");
+        let agent = AgentBuilder::new(model.clone())
+            .preamble("baseline preamble")
+            .add_hook(hook.clone())
+            .build();
+
+        agent.runner("go").run().await.expect("runner succeeds");
+
+        assert_eq!(hook.0.load(Ordering::SeqCst), 1, "the hook must fire once");
+        let requests = model.requests();
+        let request = requests.first().expect("one request");
+        assert!(
+            request.chat_history.iter().any(|message| matches!(
+                message,
+                Message::System { content } if content == "patched by hook"
+            )),
+            "the runner must apply the hook's patch"
+        );
+    }
+
+    #[tokio::test]
+    async fn full_manual_round_trip_through_the_new_surface() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "add", json!({"x": 2, "y": 5})),
+            MockTurn::text("7"),
+        ]);
+        let agent = AgentBuilder::new(model)
+            .preamble("You are a calculator")
+            .tool(MockAddTool)
+            .build();
+
+        let mut run = agent.new_run("What is 2 + 5?").max_turns(2);
+        let mut prepared_turn: Option<PreparedAgentTurn> = None;
+        let mut context = ToolContext::new();
+        loop {
+            match run.next_step().expect("step") {
+                AgentRunStep::CallModel {
+                    prompt, history, ..
+                } => {
+                    let (builder, turn) = agent
+                        .prepare_completion_request(prompt, history, &mut run)
+                        .await
+                        .expect("preparation succeeds")
+                        .into_parts();
+                    let response = builder.send().await.expect("mock send");
+                    let outcome = run
+                        .model_response(turn.model_turn(response))
+                        .expect("model response accepted");
+                    assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
+                    prepared_turn = Some(turn);
+                }
+                AgentRunStep::CallTools { calls } => {
+                    let turn = prepared_turn.as_ref().expect("turn retained across send");
+                    let mut results = Vec::with_capacity(calls.len());
+                    for call in &calls {
+                        results.push(turn.execute_call(call, &mut context).await);
+                    }
+                    run.tool_results(results).expect("results accepted");
+                }
+                AgentRunStep::Done(response) => {
+                    assert_eq!(response.output, "7");
+                    assert_eq!(response.completion_calls.len(), 2);
+                    break;
+                }
+            }
+        }
+    }
+
+    /// A tool named `add` that fails the test if its body ever runs.
+    #[derive(Clone, Default)]
+    struct MustNotRunTool(Arc<AtomicUsize>);
+
+    impl Tool for MustNotRunTool {
+        const NAME: &'static str = "add";
+        type Error = ToolExecutionError;
+        type Args = serde_json::Value;
+        type Output = String;
+
+        fn description(&self) -> String {
+            "Must not execute".into()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            json!({"type": "object", "properties": {}})
+        }
+
+        async fn call(
+            &self,
+            _context: &mut ToolContext,
+            _args: Self::Args,
+        ) -> Result<Self::Output, Self::Error> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok("executed".to_string())
+        }
+    }
+
+    #[tokio::test]
+    async fn preresolved_calls_execute_nothing_and_clear_stale_metadata() {
+        let executions = Arc::new(AtomicUsize::new(0));
+        let agent = AgentBuilder::new(MockCompletionModel::text("unused"))
+            .tool(MustNotRunTool(executions.clone()))
+            .build();
+        let mut run = agent.new_run("go");
+        let (prompt, history) = first_call_model(&mut run);
+        let (_builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+
+        let tool_call = ToolCall::from_wire("call-1", ToolFunction::new("add".into(), json!({})));
+        let preresolved = UserContent::tool_result_for(
+            tool_call.id.clone(),
+            tool_call.provider.clone(),
+            "add".to_string(),
+            vec![ToolResultContent::text("already handled")],
+        );
+        let call = PendingToolCall {
+            tool_call,
+            preresolved_result: Some(preresolved.clone()),
+            internal_call_id: None,
+        };
+
+        // Seed the context with stale metadata from a previous dispatch.
+        let mut context = ToolContext::new();
+        context.insert_result("stale".to_string());
+
+        let result = turn.execute_call(&call, &mut context).await;
+        assert_eq!(result_text(&result), "already handled");
+        assert_eq!(
+            executions.load(Ordering::SeqCst),
+            0,
+            "a pre-resolved call must execute nothing"
+        );
+        assert!(
+            context.result::<String>().is_none(),
+            "stale dispatch metadata must be cleared on the pre-resolved path"
+        );
+    }
+
+    /// Guard: cross-process resume finishes pending calls through a rebuilt
+    /// agent's live `tool_server_handle()`, asserting only what the existing
+    /// API promises (no snapshot survival, no drift detection).
+    #[tokio::test]
+    async fn cross_process_resume_finishes_via_the_live_handle() {
+        // "Process one": drive to CallTools, then suspend.
+        let model = MockCompletionModel::from_turns([MockTurn::tool_call(
+            "call-1",
+            "add",
+            json!({"x": 2, "y": 5}),
+        )]);
+        let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+        let mut run = agent.new_run("What is 2 + 5?").max_turns(2);
+        let (prompt, history) = first_call_model(&mut run);
+        let (builder, turn) = agent
+            .prepare_completion_request(prompt, history, &mut run)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let response = builder.send().await.expect("mock send");
+        run.model_response(turn.model_turn(response))
+            .expect("model response accepted");
+        let AgentRunStep::CallTools { .. } = run.next_step().expect("next step") else {
+            panic!("expected CallTools");
+        };
+        let suspended = serde_json::to_string(&run).expect("run serializes");
+
+        // "Process two": rebuild an equivalent agent, deserialize the run, and
+        // finish through the live handle. The prepared turn did not survive.
+        let model = MockCompletionModel::from_turns([MockTurn::text("7")]);
+        let rebuilt = AgentBuilder::new(model).tool(MockAddTool).build();
+        let mut resumed: AgentRun = serde_json::from_str(&suspended).expect("run deserializes");
+
+        let AgentRunStep::CallTools { calls } = resumed.next_step().expect("re-emitted step")
+        else {
+            panic!("resumed run must re-emit the pending tool calls");
+        };
+        let handle = rebuilt.tool_server_handle();
+        let mut context = ToolContext::new();
+        let mut results = Vec::with_capacity(calls.len());
+        for call in &calls {
+            let args = json_utils::serialize_json_value(&call.tool_call.function.arguments);
+            let result = handle
+                .execute(&call.tool_call.function.name, &args, &mut context)
+                .await;
+            // `result_content` applies the id/provider/name correlation so
+            // the resume path never copies those fields by hand.
+            results.push(call.result_content(result.output().clone()));
+        }
+        resumed.tool_results(results).expect("results accepted");
+
+        let (prompt, history) = match resumed.next_step().expect("follow-up step") {
+            AgentRunStep::CallModel {
+                prompt, history, ..
+            } => (prompt, history),
+            other => panic!("expected CallModel, got {other:?}"),
+        };
+        let (builder, turn) = rebuilt
+            .prepare_completion_request(prompt, history, &mut resumed)
+            .await
+            .expect("preparation succeeds")
+            .into_parts();
+        let response = builder.send().await.expect("mock send");
+        resumed
+            .model_response(turn.model_turn(response))
+            .expect("model response accepted");
+        match resumed.next_step().expect("final step") {
+            AgentRunStep::Done(response) => assert_eq!(response.output, "7"),
+            other => panic!("expected Done, got {other:?}"),
+        }
     }
 }

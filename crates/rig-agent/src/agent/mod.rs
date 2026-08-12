@@ -113,7 +113,7 @@ mod tool;
 pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
-pub use completion::Agent;
+pub use completion::{Agent, PreparedAgentRequest, PreparedAgentTurn};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
