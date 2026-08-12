@@ -27,6 +27,7 @@ mod cassette {
     mod hook_stress_tools;
     #[cfg(feature = "image")]
     mod image_generation;
+    mod image_input;
     mod interactions_api;
     mod models;
     mod multi_turn_streaming;

@@ -16,6 +16,7 @@ mod cassette {
     mod multi_extract;
     mod openai_compatible_reasoning_content;
     mod permission_control;
+    mod phase_roundtrip;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
     mod regression_suite;

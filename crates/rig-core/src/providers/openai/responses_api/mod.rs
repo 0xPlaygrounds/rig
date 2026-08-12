@@ -2349,6 +2349,11 @@ pub struct OutputMessage {
     pub status: ResponseStatus,
     /// The actual message content
     pub content: Vec<AssistantContent>,
+    /// The generation phase OpenAI stamps on the item (e.g. `final_answer`).
+    /// OpenAI documents that follow-up requests should replay it — dropping
+    /// it can degrade performance (issue #2269).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
 }
 
 /// The role of an output message.
@@ -2564,6 +2569,41 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .output
             .iter()
             .cloned()
+            .map(|item| {
+                // `phase` is message-level wire data with no rig-level slot, so
+                // ingest parks it in the first text block's captured extras
+                // (the same vehicle as `annotations`); request assembly hoists
+                // it back to the message level (`assistant_text_replay_message`).
+                // Gated to OpenAI proper: recorded traffic proves OpenAI
+                // accepts the replayed field, while the other consumers of this
+                // wire (ChatGPT, Copilot, xAI) have no such recording, and
+                // replaying an unverified field would change their request
+                // bytes on speculation.
+                if provider == "openai"
+                    && let Output::Message(OutputMessage {
+                        content,
+                        phase: Some(phase),
+                        ..
+                    }) = &item
+                    && content
+                        .iter()
+                        .any(|block| matches!(block, AssistantContent::OutputText(_)))
+                {
+                    let mut item = item.clone();
+                    if let Output::Message(OutputMessage { content, .. }) = &mut item
+                        && let Some(OutputText { extras, .. }) =
+                            content.iter_mut().find_map(|block| match block {
+                                AssistantContent::OutputText(output) => Some(output),
+                                _ => None,
+                            })
+                    {
+                        extras.insert("phase".to_string(), Value::String(phase.clone()));
+                    }
+                    item
+                } else {
+                    item
+                }
+            })
             .flat_map(<Vec<completion::AssistantContent>>::from)
             .collect();
         let has_structured_reasoning = response
@@ -2638,6 +2678,11 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         status: ToolStatus,
+        /// The generation phase captured off the wire message at ingest,
+        /// replayed because OpenAI documents that dropping it can degrade
+        /// performance (issue #2269).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        phase: Option<String>,
     },
     #[serde(rename = "assistant", skip_deserializing)]
     AssistantInput {
@@ -2724,8 +2769,11 @@ impl OutputText {
                     // serialize as a *duplicate* JSON key and last-wins
                     // parsers would read history data as the block's text or
                     // tag — ingest can never capture these keys, so dropping
-                    // them loses nothing.
-                    .filter(|(key, _)| key != "text" && key != "type")
+                    // them loses nothing. `phase` is message-level data that
+                    // ingest parks in the block extras; replay hoists it back
+                    // to the message (see `assistant_text_replay_message`), so
+                    // it must not also serialize at the content level.
+                    .filter(|(key, _)| key != "text" && key != "type" && key != "phase")
                     .collect()
             })
             .unwrap_or_default();
@@ -2777,6 +2825,14 @@ fn assistant_text_replay_message(
     if text.is_empty() && !(own_extras && id.is_some()) {
         return None;
     }
+    // Hoist the parked message-level `phase` back to where the wire wants it
+    // (ingest stores it in the block extras; see `From<Output>`).
+    let phase = additional_params
+        .as_ref()
+        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY))
+        .and_then(|extras| extras.get("phase"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
     match id {
         Some(id) => Some(Message::Assistant {
             content: vec![AssistantContentType::Text(AssistantContent::OutputText(
@@ -2785,6 +2841,7 @@ fn assistant_text_replay_message(
             id,
             name: None,
             status: ToolStatus::Completed,
+            phase,
         }),
         None => {
             if own_extras {
@@ -3105,6 +3162,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                 id: assistant_message_id.clone().unwrap_or_default(),
                                 name: None,
                                 status: ToolStatus::Completed,
+                                phase: None,
                             });
                         }
                         crate::message::AssistantContent::Reasoning(reasoning) => {
@@ -3117,6 +3175,7 @@ impl TryFrom<message::Message> for Vec<Message> {
                                     id: assistant_message_id.clone().unwrap_or_default(),
                                     name: None,
                                     status: ToolStatus::Completed,
+                                    phase: None,
                                 });
                             }
                         }
