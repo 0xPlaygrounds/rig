@@ -62,6 +62,110 @@ where
         .unwrap_or_default())
 }
 
+/// Content chunk type Mistral carries for images, used by the Pixtral models.
+const IMAGE_CHUNK_TYPE: &str = "image_url";
+/// Content chunk type Mistral carries for prompt audio, used by the
+/// audio-input models that report `prompt_audio_seconds` usage.
+const AUDIO_CHUNK_TYPE: &str = "input_audio";
+
+/// How one serialized content part of a request message relates to Mistral's
+/// message content schema.
+enum RequestContentPart {
+    /// Text-bearing part that folds into Mistral's plain-string `content`.
+    Text,
+    /// Image part whose OpenAI-compatible shape is also valid for Mistral.
+    Image,
+    /// Audio part that needs conversion to Mistral's string payload.
+    Audio,
+}
+
+/// Classify a serialized OpenAI-compatible content part for Mistral's request
+/// schema, rejecting parts Mistral has no chunk for.
+fn classify_request_content_part(
+    part: &serde_json::Value,
+) -> Result<RequestContentPart, CompletionError> {
+    // Textuality is decided per key, matching the shared flattening helper
+    // this guards, so the two cannot disagree about what counts as text.
+    if part
+        .get("text")
+        .and_then(serde_json::Value::as_str)
+        .is_some()
+        || part
+            .get("refusal")
+            .and_then(serde_json::Value::as_str)
+            .is_some()
+    {
+        return Ok(RequestContentPart::Text);
+    }
+
+    match part.get("type").and_then(serde_json::Value::as_str) {
+        Some(IMAGE_CHUNK_TYPE) => Ok(RequestContentPart::Image),
+        Some(AUDIO_CHUNK_TYPE) => Ok(RequestContentPart::Audio),
+        kind => Err(crate::message::MessageError::ConversionError(format!(
+            "Mistral does not support `{}` message content; Mistral messages carry text, \
+             `{IMAGE_CHUNK_TYPE}`, and `{AUDIO_CHUNK_TYPE}` chunks only. Convert the content to \
+             text before sending it.",
+            kind.unwrap_or("untyped"),
+        ))
+        .into()),
+    }
+}
+
+/// Normalize one serialized request message `content` value for Mistral.
+///
+/// Mistral takes text-only content as a plain string, so text parts are joined
+/// into one; parts belonging to Mistral's own chunk schema (images, prompt
+/// audio) keep the array so they reach the API intact. Content Mistral cannot
+/// represent — documents converted to OpenAI `file` parts, video — fails here
+/// instead of being flattened away, which used to return an ordinary
+/// completion built from a request the caller never made.
+pub(super) fn normalize_request_content(
+    content: &mut serde_json::Value,
+) -> Result<(), CompletionError> {
+    let Some(parts) = content.as_array_mut() else {
+        return Ok(());
+    };
+
+    let mut has_chunk = false;
+    for part in parts.iter_mut() {
+        match classify_request_content_part(part)? {
+            RequestContentPart::Text => {}
+            RequestContentPart::Image => has_chunk = true,
+            RequestContentPart::Audio => {
+                // Rig first serializes through the OpenAI-compatible shape:
+                // `input_audio: { data, format }`. Mistral's native AudioChunk
+                // instead requires `input_audio` to be the base64/URL string
+                // itself, so translate rather than forwarding an invalid body.
+                let input_audio = part.get_mut(AUDIO_CHUNK_TYPE).ok_or_else(|| {
+                    crate::message::MessageError::ConversionError(
+                        "Mistral `input_audio` content is missing its payload".to_string(),
+                    )
+                })?;
+                if let Some(data) = input_audio
+                    .get("data")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+                {
+                    *input_audio = serde_json::Value::String(data);
+                } else if !input_audio.is_string() {
+                    return Err(crate::message::MessageError::ConversionError(
+                        "Mistral `input_audio` content must contain base64 data or a URL"
+                            .to_string(),
+                    )
+                    .into());
+                }
+                has_chunk = true;
+            }
+        }
+    }
+
+    if !has_chunk {
+        openai::completion::flatten_text_content_parts(content, "", false);
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Choice {
     pub index: usize,
@@ -242,7 +346,59 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::openai::completion::OpenAICompatibleProvider;
+    use crate::client::CompletionClient;
+    use crate::completion::{CompletionModel as _, CompletionRequestBuilder};
+    use crate::message;
+    use crate::providers::openai::completion::{
+        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
+    };
+    use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
+
+    /// Convert a Rig request the way Mistral's completion path does and
+    /// finalize the serialized body, so the assertions see exactly what the
+    /// provider would put on the wire — or the error raised in its place.
+    fn finalized_body(
+        request: crate::completion::CompletionRequest,
+    ) -> Result<serde_json::Value, CompletionError> {
+        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: MISTRAL_SMALL.to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: MistralExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: MistralExt::SUPPORTS_TOOLS,
+        })?;
+        let mut body = serde_json::to_value(request)?;
+        MistralExt.finalize_request_body(&mut body)?;
+        Ok(body)
+    }
+
+    /// A one-turn request whose user message carries `content`.
+    fn user_request(content: Vec<message::UserContent>) -> crate::completion::CompletionRequest {
+        CompletionRequestBuilder::new(
+            MockCompletionModel::default(),
+            message::Message::User { content },
+        )
+        .build()
+    }
+
+    fn pdf_document() -> message::UserContent {
+        message::UserContent::Document(message::Document {
+            data: message::DocumentSourceKind::Base64("JVBERi0xLjQK".to_string()),
+            media_type: Some(message::DocumentMediaType::PDF),
+            additional_params: None,
+        })
+    }
+
+    fn mistral_client(
+        http_client: RecordingHttpClient,
+    ) -> crate::providers::mistral::Client<RecordingHttpClient> {
+        crate::providers::mistral::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("client should build")
+    }
 
     #[test]
     fn deserializes_response_with_array_and_null_content() {
@@ -400,5 +556,209 @@ mod tests {
         );
         assert_eq!(body["messages"][3]["content"], "");
         assert_eq!(body["messages"][3]["prefix"], false);
+    }
+
+    /// Text-only requests keep reaching Mistral as plain-string content, which
+    /// is what the flattening this change guards exists for.
+    #[test]
+    fn finalize_flattens_text_only_content_including_text_documents() {
+        let mut request = user_request(vec![
+            message::UserContent::text("First."),
+            message::UserContent::text("Second."),
+            message::UserContent::Document(message::Document {
+                data: message::DocumentSourceKind::String("# Notes".to_string()),
+                media_type: None,
+                additional_params: None,
+            }),
+        ]);
+        request.preamble = Some("Be brief.".to_string());
+
+        let body = finalized_body(request).expect("text-only content should finalize");
+
+        assert_eq!(body["messages"][0]["content"], "Be brief.");
+        assert_eq!(body["messages"][1]["content"], "First.Second.# Notes");
+    }
+
+    /// Mistral's Pixtral models take `image_url` chunks, so an image must reach
+    /// the wire instead of being flattened out of the message.
+    #[test]
+    fn finalize_keeps_image_chunks_alongside_text() {
+        let body = finalized_body(user_request(vec![
+            message::UserContent::text("What is in this picture?"),
+            message::UserContent::image_url("https://example.com/cat.png", None, None),
+            message::UserContent::image_base64(
+                "iVBORw0KGgo=",
+                Some(message::ImageMediaType::PNG),
+                None,
+            ),
+        ]))
+        .expect("image content should finalize");
+
+        let content = body["messages"][0]["content"]
+            .as_array()
+            .expect("image content must stay an array of chunks");
+        assert_eq!(content.len(), 3);
+        assert_eq!(content[0]["text"], "What is in this picture?");
+        assert_eq!(content[1]["type"], "image_url");
+        assert_eq!(
+            content[1]["image_url"]["url"],
+            "https://example.com/cat.png"
+        );
+        assert_eq!(content[2]["type"], "image_url");
+        assert_eq!(
+            content[2]["image_url"]["url"],
+            "data:image/png;base64,iVBORw0KGgo="
+        );
+    }
+
+    /// Mistral's audio-input models take `input_audio` chunks — the reason its
+    /// usage payload reports `prompt_audio_seconds` at all.
+    #[test]
+    fn finalize_keeps_audio_chunks_alongside_text() {
+        let body = finalized_body(user_request(vec![
+            message::UserContent::text("Transcribe this."),
+            message::UserContent::audio("SUQzBAA=", Some(message::AudioMediaType::MP3)),
+        ]))
+        .expect("audio content should finalize");
+
+        let content = body["messages"][0]["content"]
+            .as_array()
+            .expect("audio content must stay an array of chunks");
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["text"], "Transcribe this.");
+        assert_eq!(content[1]["type"], "input_audio");
+        assert_eq!(content[1]["input_audio"], "SUQzBAA=");
+    }
+
+    /// Documents convert to OpenAI's `file` content part, which has no Mistral
+    /// equivalent: the request must fail rather than complete without the
+    /// document. Not a cassette test — the point of the fix is that no request
+    /// is built, so there is no traffic to record.
+    #[test]
+    fn finalize_rejects_document_content_instead_of_dropping_it() {
+        let error = finalized_body(user_request(vec![pdf_document()]))
+            .expect_err("a PDF document must not be dropped from the request");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        let rendered = error.to_string();
+        assert!(rendered.contains("`file`"), "{rendered}");
+        assert!(rendered.contains("Mistral"), "{rendered}");
+
+        let error = finalized_body(user_request(vec![message::UserContent::Document(
+            message::Document {
+                data: message::DocumentSourceKind::FileId("file_abc".to_string()),
+                media_type: None,
+                additional_params: None,
+            },
+        )]))
+        .expect_err("a file-id document must not be dropped from the request");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+    }
+
+    /// The text of a mixed message is no consolation prize: dropping only the
+    /// unrepresentable part would still answer a prompt the caller never sent.
+    #[test]
+    fn finalize_rejects_mixed_text_and_document_content() {
+        let error = finalized_body(user_request(vec![
+            message::UserContent::text("Summarize the attached report."),
+            pdf_document(),
+        ]))
+        .expect_err("mixed text and document content must not silently lose the document");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+    }
+
+    /// Video has no Mistral chunk either, and an unknown part type must fail
+    /// closed so a future content type cannot start disappearing silently.
+    #[test]
+    fn finalize_rejects_video_and_unrecognized_chunks() {
+        let error = finalized_body(user_request(vec![message::UserContent::video(
+            "AAAAIGZ0eXA=",
+            Some(message::VideoMediaType::MP4),
+        )]))
+        .expect_err("video content must not be dropped from the request");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+
+        let mut body = serde_json::json!({
+            "model": MISTRAL_SMALL,
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "document_url", "document_url": "https://example.com/x.pdf"}]
+            }]
+        });
+        let error = MistralExt
+            .finalize_request_body(&mut body)
+            .expect_err("unrecognized chunks must not be dropped from the request");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+    }
+
+    /// End-to-end guard for the reported symptom: the caller used to get an
+    /// ordinary completion built from a request its content never reached.
+    #[tokio::test]
+    async fn completion_rejects_document_content_before_sending() {
+        let http_client = RecordingHttpClient::new("{}");
+        let model = mistral_client(http_client.clone()).completion_model(MISTRAL_SMALL);
+
+        let error = model
+            .completion(user_request(vec![
+                message::UserContent::text("Summarize the attached report."),
+                pdf_document(),
+            ]))
+            .await
+            .expect_err("completion must fail instead of dropping the document");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(
+            http_client.requests().is_empty(),
+            "no request may be sent once content cannot be represented"
+        );
+    }
+
+    /// Streaming shares the request finalization, so it must fail the same way.
+    #[tokio::test]
+    async fn streaming_rejects_document_content_before_sending() {
+        let http_client = RecordingHttpClient::new("{}");
+        let model = mistral_client(http_client.clone()).completion_model(MISTRAL_SMALL);
+
+        let error = model
+            .stream(user_request(vec![pdf_document()]))
+            .await
+            .err()
+            .expect("streaming must fail instead of dropping the document");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        assert!(http_client.requests().is_empty());
+    }
+
+    /// The rejection is narrow: an ordinary text prompt still completes, and
+    /// still leaves Rig as Mistral's plain-string `content`.
+    #[tokio::test]
+    async fn completion_sends_text_only_content_as_a_plain_string() {
+        let response = r#"{
+            "id": "cmpl-1",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "mistral-small-latest",
+            "system_fingerprint": null,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "Hello there."},
+                "logprobs": null,
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+        }"#;
+        let http_client = RecordingHttpClient::new(response);
+        let model = mistral_client(http_client.clone()).completion_model(MISTRAL_SMALL);
+
+        let completion = model
+            .completion(user_request(vec![message::UserContent::text("Hello!")]))
+            .await
+            .expect("text-only completion should succeed");
+
+        assert_eq!(completion.model.as_deref(), Some(MISTRAL_SMALL));
+        let sent: serde_json::Value = serde_json::from_slice(&http_client.requests()[0].body)
+            .expect("request body should be JSON");
+        assert_eq!(sent["messages"][0]["content"], "Hello!");
     }
 }

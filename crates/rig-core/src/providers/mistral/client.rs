@@ -68,11 +68,12 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
                 let is_assistant =
                     message.get("role").and_then(serde_json::Value::as_str) == Some("assistant");
 
-                // Mistral takes message `content` as a plain string.
+                // Mistral takes text-only message `content` as a plain string
+                // and carries its own image/audio chunks as an array; content
+                // types it has no chunk for fail the request here rather than
+                // reaching the API with the content removed.
                 if let Some(content) = message.get_mut("content") {
-                    crate::providers::openai::completion::flatten_text_content_parts(
-                        content, "", false,
-                    );
+                    super::completion::normalize_request_content(content)?;
                 }
 
                 if is_assistant {
