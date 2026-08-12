@@ -299,7 +299,7 @@ where
     /// Inserts one node per embedding, flattening the document's JSON fields
     /// onto the node alongside the embedding (`embedding_property`) and its
     /// source text (`embedded_text`). Nodes are written under the index's
-    /// `node_label`, defaulting to [`DEFAULT_NODE_LABEL`].
+    /// `node_label`, defaulting to the `Document` label.
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
