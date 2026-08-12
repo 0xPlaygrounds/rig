@@ -1,9 +1,9 @@
-use super::api::ApiResponse;
 use super::client::Client;
 use crate::http_client::HttpClientExt;
 use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
+use crate::providers::openai::client::ApiResponse;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
@@ -14,17 +14,6 @@ use serde_json::json;
 // ================================================================
 pub const GROK_IMAGINE_IMAGE: &str = "grok-imagine-image";
 pub const GROK_IMAGINE_IMAGE_PRO: &str = "grok-imagine-image-pro";
-
-impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T> {
-    type Payload = T;
-
-    fn into_payload(self) -> Result<T, String> {
-        match self {
-            Self::Ok(value) => Ok(value),
-            Self::Error(error) => Err(error.message()),
-        }
-    }
-}
 
 #[derive(Debug, Deserialize)]
 pub struct ImageGenerationData {
@@ -160,7 +149,7 @@ mod tests {
     async fn image_generation_2xx_error_envelope_preserves_status_and_body() {
         use crate::test_utils::RecordingHttpClient;
 
-        // Deserializes to `ApiResponse::Error(ApiError { error, code })` on a 200 OK.
+        // Deserializes to `ApiResponse::Err(ApiErrorResponse)` on a 200 OK.
         let body = r#"{"error":"boom","code":"503"}"#;
         let http_client = RecordingHttpClient::new(body);
         let client = crate::providers::xai::Client::builder()

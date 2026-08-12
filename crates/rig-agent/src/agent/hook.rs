@@ -1442,6 +1442,21 @@ where
     A::CONTINUE
 }
 
+/// Generate the `HookStack` methods whose dispatch is exactly
+/// [`first_non_continue`] over the erased hooks: `(on_* name, erased name,
+/// event type, action type)`, mirroring `for_each_boxed_hook_event!`. The
+/// genuinely chaining events (`on_model_select`, `on_completion_call`,
+/// `on_invalid_tool_call`, `on_tool_call`, `on_tool_result`) stay hand-written.
+macro_rules! stack_first_non_continue {
+    ($($on:ident, $erased:ident, $event:ident, $action:ident;)+) => {
+        $(
+            async fn $on(&self, ctx: &HookContext, event: $event<'_>) -> $action {
+                first_non_continue(&self.hooks, |hook| hook.$erased(ctx, event)).await
+            }
+        )+
+    };
+}
+
 impl AgentHook for HookStack {
     fn on_model_select(
         &self,
@@ -1490,19 +1505,13 @@ impl AgentHook for HookStack {
         }
     }
 
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: CompletionResponse<'_>,
-    ) -> ObservationAction {
-        first_non_continue(&self.hooks, |hook| hook.completion_response(ctx, event)).await
-    }
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        event: ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
-        first_non_continue(&self.hooks, |hook| hook.model_turn_finished(ctx, event)).await
+    stack_first_non_continue! {
+        on_completion_response, completion_response, CompletionResponse, ObservationAction;
+        on_model_turn_finished, model_turn_finished, ModelTurnFinished, ModelTurnAction;
+        on_text_delta, text_delta, TextDelta, ObservationAction;
+        on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction;
+        on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction;
+        on_stream_response_finish, stream_response_finish, StreamResponseFinish, ObservationAction;
     }
     async fn on_invalid_tool_call(
         &self,
@@ -1544,30 +1553,6 @@ impl AgentHook for HookStack {
             }
         }
         effective.map_or(ToolResultAction::Keep, ToolResultAction::Rewrite)
-    }
-    async fn on_text_delta(&self, ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
-        first_non_continue(&self.hooks, |hook| hook.text_delta(ctx, event)).await
-    }
-    async fn on_reasoning_delta(
-        &self,
-        ctx: &HookContext,
-        event: ReasoningDelta<'_>,
-    ) -> ObservationAction {
-        first_non_continue(&self.hooks, |hook| hook.reasoning_delta(ctx, event)).await
-    }
-    async fn on_tool_call_delta(
-        &self,
-        ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        first_non_continue(&self.hooks, |hook| hook.tool_call_delta(ctx, event)).await
-    }
-    async fn on_stream_response_finish(
-        &self,
-        ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        first_non_continue(&self.hooks, |hook| hook.stream_response_finish(ctx, event)).await
     }
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))

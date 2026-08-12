@@ -77,19 +77,9 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     ///
     /// Uses BruteForce index strategy by default. For custom index strategies, use [InMemoryVectorStore::builder].
     pub fn from_documents(documents: impl IntoIterator<Item = (D, Vec<Embedding>)>) -> Self {
-        let mut store = HashMap::new();
-        documents
-            .into_iter()
-            .enumerate()
-            .for_each(|(i, (doc, embeddings))| {
-                store.insert(format!("doc{i}"), (doc, embeddings));
-            });
-
-        Self {
-            embeddings: store,
-            index_strategy: IndexStrategy::default(),
-            lsh_index: None,
-        }
+        let mut store = Self::from_builder(HashMap::new(), IndexStrategy::default());
+        store.add_documents(documents);
+        store
     }
 
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings with ids.
@@ -98,16 +88,9 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     pub fn from_documents_with_ids(
         documents: impl IntoIterator<Item = (impl ToString, D, Vec<Embedding>)>,
     ) -> Self {
-        let mut store = HashMap::new();
-        documents.into_iter().for_each(|(i, doc, embeddings)| {
-            store.insert(i.to_string(), (doc, embeddings));
-        });
-
-        Self {
-            embeddings: store,
-            index_strategy: IndexStrategy::default(),
-            lsh_index: None,
-        }
+        let mut store = Self::from_builder(HashMap::new(), IndexStrategy::default());
+        store.add_documents_with_ids(documents);
+        store
     }
 
     /// Create a new [InMemoryVectorStore] from documents and their corresponding embeddings.
@@ -118,16 +101,19 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         documents: impl IntoIterator<Item = (D, Vec<Embedding>)>,
         f: fn(&D) -> String,
     ) -> Self {
-        let mut store = HashMap::new();
-        documents.into_iter().for_each(|(doc, embeddings)| {
-            store.insert(f(&doc), (doc, embeddings));
-        });
+        let mut store = Self::from_builder(HashMap::new(), IndexStrategy::default());
+        store.add_documents_with_id_f(documents, f);
+        store
+    }
 
-        Self {
-            embeddings: store,
-            index_strategy: IndexStrategy::default(),
-            lsh_index: None,
+    /// Insert a single document, keeping the LSH index (when enabled) in sync.
+    fn insert_document(&mut self, id: String, doc: D, embeddings: Vec<Embedding>) {
+        if let Some(ref mut lsh_index) = self.lsh_index {
+            for embedding in embeddings.iter() {
+                lsh_index.insert(id.clone(), &embedding.vec);
+            }
         }
+        self.embeddings.insert(id, (doc, embeddings));
     }
 
     /// Tests whether a document satisfies the (optional) metadata filter.
@@ -303,7 +289,7 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
 
         // Convert to BinaryHeap format using the original HashMap keys
         for (distance, candidate_id, doc, embed_doc) in scored_docs {
-            if let Some((id_ref, _)) = self.embeddings.iter().find(|(k, _)| **k == candidate_id) {
+            if let Some((id_ref, _)) = self.embeddings.get_key_value(&candidate_id) {
                 docs.push(Reverse(RankingItem(distance, id_ref, doc, embed_doc)));
             }
         }
@@ -356,21 +342,9 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
     /// is the index of the document.
     pub fn add_documents(&mut self, documents: impl IntoIterator<Item = (D, Vec<Embedding>)>) {
         let current_index = self.embeddings.len();
-        documents
-            .into_iter()
-            .enumerate()
-            .for_each(|(index, (doc, embeddings))| {
-                let id = format!("doc{}", index + current_index);
-                self.embeddings
-                    .insert(id.clone(), (doc, embeddings.clone()));
-
-                // Update LSH index if it exists
-                if let Some(ref mut lsh_index) = self.lsh_index {
-                    for embedding in embeddings.iter() {
-                        lsh_index.insert(id.clone(), &embedding.vec);
-                    }
-                }
-            });
+        for (index, (doc, embeddings)) in documents.into_iter().enumerate() {
+            self.insert_document(format!("doc{}", index + current_index), doc, embeddings);
+        }
     }
 
     /// Add documents and their corresponding embeddings to the store with ids.
@@ -378,38 +352,20 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         &mut self,
         documents: impl IntoIterator<Item = (impl ToString, D, Vec<Embedding>)>,
     ) {
-        documents.into_iter().for_each(|(id, doc, embeddings)| {
-            let id_str = id.to_string();
-            self.embeddings
-                .insert(id_str.clone(), (doc, embeddings.clone()));
-
-            // Update LSH index if it exists
-            if let Some(ref mut lsh_index) = self.lsh_index {
-                for embedding in embeddings.iter() {
-                    lsh_index.insert(id_str.clone(), &embedding.vec);
-                }
-            }
-        });
+        for (id, doc, embeddings) in documents {
+            self.insert_document(id.to_string(), doc, embeddings);
+        }
     }
 
     /// Add documents and their corresponding embeddings to the store.
     /// Document ids are generated using the provided function.
     pub fn add_documents_with_id_f(
         &mut self,
-        documents: Vec<(D, Vec<Embedding>)>,
+        documents: impl IntoIterator<Item = (D, Vec<Embedding>)>,
         f: fn(&D) -> String,
     ) {
         for (doc, embeddings) in documents {
-            let id = f(&doc);
-            self.embeddings
-                .insert(id.clone(), (doc, embeddings.clone()));
-
-            // Update LSH index if it exists
-            if let Some(ref mut lsh_index) = self.lsh_index {
-                for embedding in embeddings.iter() {
-                    lsh_index.insert(id.clone(), &embedding.vec);
-                }
-            }
+            self.insert_document(f(&doc), doc, embeddings);
         }
     }
 

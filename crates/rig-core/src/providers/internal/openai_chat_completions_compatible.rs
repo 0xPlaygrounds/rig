@@ -70,6 +70,68 @@ pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
     }
 }
 
+/// Shared skeleton for normalizing an OpenAI-shaped *non-streaming* chat
+/// completion response (OpenAI, DeepSeek, Mistral): first choice or error,
+/// empty-string `finish_reason` treated as absent then mapped through
+/// [`map_openai_finish_reason`], non-assistant messages rejected, and the
+/// normalized response assembled with id/model/finish-reason metadata.
+///
+/// The per-provider deltas stay at the call site: `assistant_content` extracts
+/// the provider's own message shape (returning `None` for a non-assistant
+/// message), and `usage`/`id`/`model` are computed by the caller.
+pub(crate) fn normalize_openai_response<C>(
+    provider: &str,
+    choices: &[C],
+    id: Option<&str>,
+    model: Option<&str>,
+    usage: Usage,
+    finish_reason: impl for<'a> FnOnce(&'a C) -> &'a str,
+    assistant_content: impl FnOnce(&C) -> Option<Vec<crate::completion::AssistantContent>>,
+) -> Result<crate::completion::CompletionResponse, CompletionError> {
+    let choice = choices.first().ok_or_else(|| {
+        CompletionError::ResponseError("Response contained no choices".to_owned())
+    })?;
+
+    let finish_reason = Some(finish_reason(choice))
+        .filter(|reason| !reason.is_empty())
+        .map(map_openai_finish_reason);
+
+    let content = assistant_content(choice).ok_or_else(|| {
+        CompletionError::ResponseError(
+            "Response did not contain a valid message or tool call".into(),
+        )
+    })?;
+
+    let choice = crate::message::require_non_empty_response(content)?;
+
+    Ok(
+        crate::completion::CompletionResponse::new(choice, usage, provider)
+            .with_optional_response_id(id)
+            .with_optional_model(model)
+            .with_optional_finish_reason(finish_reason),
+    )
+}
+
+/// Text-then-tool-calls assistant content for wire messages carrying a single
+/// content string plus a tool-call list (DeepSeek, Mistral). `text_is_empty`
+/// is provider policy — DeepSeek trims before testing, Mistral does not — so
+/// the caller evaluates its own predicate.
+pub(crate) fn text_then_tool_calls<'a>(
+    text: &str,
+    text_is_empty: bool,
+    tool_calls: impl IntoIterator<Item = (&'a str, &'a str, serde_json::Value)>,
+) -> Vec<crate::completion::AssistantContent> {
+    let mut content = if text_is_empty {
+        vec![]
+    } else {
+        vec![crate::completion::AssistantContent::text(text)]
+    };
+    content.extend(tool_calls.into_iter().map(|(id, name, arguments)| {
+        crate::completion::AssistantContent::tool_call(id, name, arguments)
+    }));
+    content
+}
+
 /// A chunk's terminal reason, as reported by an OpenAI-compatible provider.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CompatibleFinishReason {

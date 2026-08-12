@@ -287,9 +287,10 @@ impl<'a> IntoIterator for &'a ModelList {
 ///
 /// This enum represents the various error conditions that may arise when
 /// attempting to retrieve the list of available models from an LLM provider.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
 pub enum ModelListingError {
     /// The provider returned an error response with a status code
+    #[error("API error (status {status_code}): {message}")]
     ApiError {
         /// HTTP status code
         status_code: u16,
@@ -298,36 +299,42 @@ pub enum ModelListingError {
     },
 
     /// Failed to send the request to the provider
+    #[error("Request error: {message}")]
     RequestError {
         /// Description of the request error
         message: String,
     },
 
     /// Failed to parse the provider's response
+    #[error("Parse error: {message}")]
     ParseError {
         /// Description of the parsing error
         message: String,
     },
 
     /// Authentication failed (invalid API key, etc.)
+    #[error("Authentication error: {message}")]
     AuthError {
         /// Authentication error details
         message: String,
     },
 
     /// Rate limit was exceeded
+    #[error("Rate limit error: {message}")]
     RateLimitError {
         /// Rate limit error details
         message: String,
     },
 
     /// The provider service is temporarily unavailable
+    #[error("Service unavailable: {message}")]
     ServiceUnavailable {
         /// Unavailable error details
         message: String,
     },
 
     /// An unexpected error occurred
+    #[error("Unknown error: {message}")]
     UnknownError {
         /// Details of the unknown error
         message: String,
@@ -447,25 +454,6 @@ impl ModelListingError {
         }
     }
 }
-
-impl fmt::Display for ModelListingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ApiError {
-                status_code,
-                message,
-            } => write!(f, "API error (status {}): {}", status_code, message),
-            Self::RequestError { message } => write!(f, "Request error: {}", message),
-            Self::ParseError { message } => write!(f, "Parse error: {}", message),
-            Self::AuthError { message } => write!(f, "Authentication error: {}", message),
-            Self::RateLimitError { message } => write!(f, "Rate limit error: {}", message),
-            Self::ServiceUnavailable { message } => write!(f, "Service unavailable: {}", message),
-            Self::UnknownError { message } => write!(f, "Unknown error: {}", message),
-        }
-    }
-}
-
-impl std::error::Error for ModelListingError {}
 
 impl From<crate::http_client::Error> for ModelListingError {
     fn from(e: crate::http_client::Error) -> Self {

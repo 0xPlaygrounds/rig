@@ -1390,106 +1390,76 @@ impl Message {
     }
 }
 
+// The media helper constructors differ only in the wrapped content variant,
+// the `DocumentSourceKind` constructor, and the accepted data type; the macro
+// stamps them out while keeping each method's public signature and rustdoc
+// intact. `Image(...)` rows additionally take the `detail` parameter.
+macro_rules! media_ctors {
+    () => {};
+    (
+        $(#[$meta:meta])* $name:ident => Image($kind:ident: $data:ty);
+        $($rest:tt)*
+    ) => {
+        $(#[$meta])*
+        pub fn $name(
+            data: impl Into<$data>,
+            media_type: Option<ImageMediaType>,
+            detail: Option<ImageDetail>,
+        ) -> Self {
+            Self::Image(Image {
+                data: DocumentSourceKind::$kind(data.into()),
+                media_type,
+                detail,
+                additional_params: None,
+            })
+        }
+        media_ctors! { $($rest)* }
+    };
+    (
+        $(#[$meta:meta])* $name:ident => $variant:ident($mt:ty, $kind:ident: $data:ty);
+        $($rest:tt)*
+    ) => {
+        $(#[$meta])*
+        pub fn $name(data: impl Into<$data>, media_type: Option<$mt>) -> Self {
+            Self::$variant($variant {
+                data: DocumentSourceKind::$kind(data.into()),
+                media_type,
+                additional_params: None,
+            })
+        }
+        media_ctors! { $($rest)* }
+    };
+}
+
 impl UserContent {
     /// Helper constructor to make creating user text content easier.
     pub fn text(text: impl Into<String>) -> Self {
         UserContent::Text(text.into().into())
     }
 
-    /// Helper constructor to make creating user image content easier.
-    pub fn image_base64(
-        data: impl Into<String>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        UserContent::Image(Image {
-            data: DocumentSourceKind::Base64(data.into()),
-            media_type,
-            detail,
-            additional_params: None,
-        })
-    }
-
-    /// Helper constructor to make creating user image content from raw unencoded bytes easier.
-    pub fn image_raw(
-        data: impl Into<Vec<u8>>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        UserContent::Image(Image {
-            data: DocumentSourceKind::Raw(data.into()),
-            media_type,
-            detail,
-            ..Default::default()
-        })
-    }
-
-    /// Helper constructor to make creating user image content easier.
-    pub fn image_url(
-        url: impl Into<String>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        UserContent::Image(Image {
-            data: DocumentSourceKind::Url(url.into()),
-            media_type,
-            detail,
-            additional_params: None,
-        })
-    }
-
-    /// Helper constructor to make creating user audio content easier.
-    pub fn audio(data: impl Into<String>, media_type: Option<AudioMediaType>) -> Self {
-        UserContent::Audio(Audio {
-            data: DocumentSourceKind::Base64(data.into()),
-            media_type,
-            additional_params: None,
-        })
-    }
-
-    /// Helper constructor to make creating user audio content from raw unencoded bytes easier.
-    pub fn audio_raw(data: impl Into<Vec<u8>>, media_type: Option<AudioMediaType>) -> Self {
-        UserContent::Audio(Audio {
-            data: DocumentSourceKind::Raw(data.into()),
-            media_type,
-            ..Default::default()
-        })
-    }
-
-    /// Helper to create an audio resource from a URL
-    pub fn audio_url(url: impl Into<String>, media_type: Option<AudioMediaType>) -> Self {
-        UserContent::Audio(Audio {
-            data: DocumentSourceKind::Url(url.into()),
-            media_type,
-            ..Default::default()
-        })
-    }
-
-    /// Helper constructor to make creating user video content easier.
-    pub fn video(data: impl Into<String>, media_type: Option<VideoMediaType>) -> Self {
-        UserContent::Video(Video {
-            data: DocumentSourceKind::Base64(data.into()),
-            media_type,
-            additional_params: None,
-        })
-    }
-
-    /// Helper constructor to make creating user video content from raw unencoded bytes easier.
-    pub fn video_raw(data: impl Into<Vec<u8>>, media_type: Option<VideoMediaType>) -> Self {
-        UserContent::Video(Video {
-            data: DocumentSourceKind::Raw(data.into()),
-            media_type,
-            ..Default::default()
-        })
-    }
-
-    /// Helper to create a video resource from a URL
-    pub fn video_url(url: impl Into<String>, media_type: Option<VideoMediaType>) -> Self {
-        UserContent::Video(Video {
-            data: DocumentSourceKind::Url(url.into()),
-            media_type,
-            ..Default::default()
-        })
+    media_ctors! {
+        /// Helper constructor to make creating user image content easier.
+        image_base64 => Image(Base64: String);
+        /// Helper constructor to make creating user image content from raw unencoded bytes easier.
+        image_raw => Image(Raw: Vec<u8>);
+        /// Helper constructor to make creating user image content easier.
+        image_url => Image(Url: String);
+        /// Helper constructor to make creating user audio content easier.
+        audio => Audio(AudioMediaType, Base64: String);
+        /// Helper constructor to make creating user audio content from raw unencoded bytes easier.
+        audio_raw => Audio(AudioMediaType, Raw: Vec<u8>);
+        /// Helper to create an audio resource from a URL
+        audio_url => Audio(AudioMediaType, Url: String);
+        /// Helper constructor to make creating user video content easier.
+        video => Video(VideoMediaType, Base64: String);
+        /// Helper constructor to make creating user video content from raw unencoded bytes easier.
+        video_raw => Video(VideoMediaType, Raw: Vec<u8>);
+        /// Helper to create a video resource from a URL
+        video_url => Video(VideoMediaType, Url: String);
+        /// Helper to create a document from raw unencoded bytes
+        document_raw => Document(DocumentMediaType, Raw: Vec<u8>);
+        /// Helper to create a document from a URL
+        document_url => Document(DocumentMediaType, Url: String);
     }
 
     /// Helper constructor to make creating user document content easier.
@@ -1500,24 +1470,6 @@ impl UserContent {
             data: DocumentSourceKind::string(&data),
             media_type,
             additional_params: None,
-        })
-    }
-
-    /// Helper to create a document from raw unencoded bytes
-    pub fn document_raw(data: impl Into<Vec<u8>>, media_type: Option<DocumentMediaType>) -> Self {
-        UserContent::Document(Document {
-            data: DocumentSourceKind::Raw(data.into()),
-            media_type,
-            ..Default::default()
-        })
-    }
-
-    /// Helper to create a document from a URL
-    pub fn document_url(url: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
-        UserContent::Document(Document {
-            data: DocumentSourceKind::Url(url.into()),
-            media_type,
-            ..Default::default()
         })
     }
 
@@ -1610,18 +1562,9 @@ impl AssistantContent {
         AssistantContent::Text(text.into().into())
     }
 
-    /// Helper constructor to make creating assistant image content easier.
-    pub fn image_base64(
-        data: impl Into<String>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        AssistantContent::Image(Image {
-            data: DocumentSourceKind::Base64(data.into()),
-            media_type,
-            detail,
-            additional_params: None,
-        })
+    media_ctors! {
+        /// Helper constructor to make creating assistant image content easier.
+        image_base64 => Image(Base64: String);
     }
 
     /// Helper constructor to make creating assistant tool call content easier.
@@ -1676,46 +1619,13 @@ impl ToolResultContent {
         ToolResultContent::Json { value }
     }
 
-    /// Helper constructor to make tool result images from a base64-encoded string.
-    pub fn image_base64(
-        data: impl Into<String>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        ToolResultContent::Image(Image {
-            data: DocumentSourceKind::Base64(data.into()),
-            media_type,
-            detail,
-            additional_params: None,
-        })
-    }
-
-    /// Helper constructor to make tool result images from a base64-encoded string.
-    pub fn image_raw(
-        data: impl Into<Vec<u8>>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        ToolResultContent::Image(Image {
-            data: DocumentSourceKind::Raw(data.into()),
-            media_type,
-            detail,
-            ..Default::default()
-        })
-    }
-
-    /// Helper constructor to make tool result images from a URL.
-    pub fn image_url(
-        url: impl Into<String>,
-        media_type: Option<ImageMediaType>,
-        detail: Option<ImageDetail>,
-    ) -> Self {
-        ToolResultContent::Image(Image {
-            data: DocumentSourceKind::Url(url.into()),
-            media_type,
-            detail,
-            additional_params: None,
-        })
+    media_ctors! {
+        /// Helper constructor to make tool result images from a base64-encoded string.
+        image_base64 => Image(Base64: String);
+        /// Helper constructor to make tool result images from a base64-encoded string.
+        image_raw => Image(Raw: Vec<u8>);
+        /// Helper constructor to make tool result images from a URL.
+        image_url => Image(Url: String);
     }
 }
 
@@ -1731,17 +1641,9 @@ impl MimeType for MediaType {
     fn from_mime_type(mime_type: &str) -> Option<Self> {
         ImageMediaType::from_mime_type(mime_type)
             .map(MediaType::Image)
-            .or_else(|| {
-                DocumentMediaType::from_mime_type(mime_type)
-                    .map(MediaType::Document)
-                    .or_else(|| {
-                        AudioMediaType::from_mime_type(mime_type)
-                            .map(MediaType::Audio)
-                            .or_else(|| {
-                                VideoMediaType::from_mime_type(mime_type).map(MediaType::Video)
-                            })
-                    })
-            })
+            .or_else(|| DocumentMediaType::from_mime_type(mime_type).map(MediaType::Document))
+            .or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
+            .or_else(|| VideoMediaType::from_mime_type(mime_type).map(MediaType::Video))
     }
 
     fn to_mime_type(&self) -> &'static str {
@@ -1754,122 +1656,71 @@ impl MimeType for MediaType {
     }
 }
 
-impl MimeType for ImageMediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        match mime_type {
-            "image/jpeg" => Some(ImageMediaType::JPEG),
-            "image/png" => Some(ImageMediaType::PNG),
-            "image/gif" => Some(ImageMediaType::GIF),
-            "image/webp" => Some(ImageMediaType::WEBP),
-            "image/heic" => Some(ImageMediaType::HEIC),
-            "image/heif" => Some(ImageMediaType::HEIF),
-            "image/svg+xml" => Some(ImageMediaType::SVG),
-            _ => None,
-        }
-    }
+// Emits both directions of a [`MimeType`] impl from a single pair list, so a
+// variant's parse and emit spellings cannot drift apart. Extra `| "alias"`
+// spellings parse to the same variant; only the first (canonical) string is
+// emitted by `to_mime_type`.
+macro_rules! impl_mime_type {
+    ($ty:ident { $($variant:ident => $canonical:literal $(| $alias:literal)*),+ $(,)? }) => {
+        impl MimeType for $ty {
+            fn from_mime_type(mime_type: &str) -> Option<Self> {
+                match mime_type {
+                    $($canonical $(| $alias)* => Some($ty::$variant),)+
+                    _ => None,
+                }
+            }
 
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            ImageMediaType::JPEG => "image/jpeg",
-            ImageMediaType::PNG => "image/png",
-            ImageMediaType::GIF => "image/gif",
-            ImageMediaType::WEBP => "image/webp",
-            ImageMediaType::HEIC => "image/heic",
-            ImageMediaType::HEIF => "image/heif",
-            ImageMediaType::SVG => "image/svg+xml",
+            fn to_mime_type(&self) -> &'static str {
+                match self {
+                    $($ty::$variant => $canonical,)+
+                }
+            }
         }
-    }
+    };
 }
 
-impl MimeType for DocumentMediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        match mime_type {
-            "application/pdf" => Some(DocumentMediaType::PDF),
-            "text/plain" => Some(DocumentMediaType::TXT),
-            "text/rtf" => Some(DocumentMediaType::RTF),
-            "text/html" => Some(DocumentMediaType::HTML),
-            "text/css" => Some(DocumentMediaType::CSS),
-            "text/md" | "text/markdown" => Some(DocumentMediaType::MARKDOWN),
-            "text/csv" => Some(DocumentMediaType::CSV),
-            "text/xml" => Some(DocumentMediaType::XML),
-            "application/x-javascript" | "text/x-javascript" => Some(DocumentMediaType::Javascript),
-            "application/x-python" | "text/x-python" => Some(DocumentMediaType::Python),
-            _ => None,
-        }
-    }
+impl_mime_type!(ImageMediaType {
+    JPEG => "image/jpeg",
+    PNG => "image/png",
+    GIF => "image/gif",
+    WEBP => "image/webp",
+    HEIC => "image/heic",
+    HEIF => "image/heif",
+    SVG => "image/svg+xml",
+});
 
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            DocumentMediaType::PDF => "application/pdf",
-            DocumentMediaType::TXT => "text/plain",
-            DocumentMediaType::RTF => "text/rtf",
-            DocumentMediaType::HTML => "text/html",
-            DocumentMediaType::CSS => "text/css",
-            DocumentMediaType::MARKDOWN => "text/markdown",
-            DocumentMediaType::CSV => "text/csv",
-            DocumentMediaType::XML => "text/xml",
-            DocumentMediaType::Javascript => "application/x-javascript",
-            DocumentMediaType::Python => "application/x-python",
-        }
-    }
-}
+impl_mime_type!(DocumentMediaType {
+    PDF => "application/pdf",
+    TXT => "text/plain",
+    RTF => "text/rtf",
+    HTML => "text/html",
+    CSS => "text/css",
+    MARKDOWN => "text/markdown" | "text/md",
+    CSV => "text/csv",
+    XML => "text/xml",
+    Javascript => "application/x-javascript" | "text/x-javascript",
+    Python => "application/x-python" | "text/x-python",
+});
 
-impl MimeType for AudioMediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self> {
-        match mime_type {
-            "audio/wav" => Some(AudioMediaType::WAV),
-            "audio/mp3" => Some(AudioMediaType::MP3),
-            "audio/aiff" => Some(AudioMediaType::AIFF),
-            "audio/aac" => Some(AudioMediaType::AAC),
-            "audio/ogg" => Some(AudioMediaType::OGG),
-            "audio/flac" => Some(AudioMediaType::FLAC),
-            "audio/m4a" => Some(AudioMediaType::M4A),
-            "audio/pcm16" => Some(AudioMediaType::PCM16),
-            "audio/pcm24" => Some(AudioMediaType::PCM24),
-            _ => None,
-        }
-    }
+impl_mime_type!(AudioMediaType {
+    WAV => "audio/wav",
+    MP3 => "audio/mp3",
+    AIFF => "audio/aiff",
+    AAC => "audio/aac",
+    OGG => "audio/ogg",
+    FLAC => "audio/flac",
+    M4A => "audio/m4a",
+    PCM16 => "audio/pcm16",
+    PCM24 => "audio/pcm24",
+});
 
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            AudioMediaType::WAV => "audio/wav",
-            AudioMediaType::MP3 => "audio/mp3",
-            AudioMediaType::AIFF => "audio/aiff",
-            AudioMediaType::AAC => "audio/aac",
-            AudioMediaType::OGG => "audio/ogg",
-            AudioMediaType::FLAC => "audio/flac",
-            AudioMediaType::M4A => "audio/m4a",
-            AudioMediaType::PCM16 => "audio/pcm16",
-            AudioMediaType::PCM24 => "audio/pcm24",
-        }
-    }
-}
-
-impl MimeType for VideoMediaType {
-    fn from_mime_type(mime_type: &str) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        match mime_type {
-            "video/avi" => Some(VideoMediaType::AVI),
-            "video/mp4" => Some(VideoMediaType::MP4),
-            "video/mpeg" => Some(VideoMediaType::MPEG),
-            "video/mov" => Some(VideoMediaType::MOV),
-            "video/webm" => Some(VideoMediaType::WEBM),
-            &_ => None,
-        }
-    }
-
-    fn to_mime_type(&self) -> &'static str {
-        match self {
-            VideoMediaType::AVI => "video/avi",
-            VideoMediaType::MP4 => "video/mp4",
-            VideoMediaType::MPEG => "video/mpeg",
-            VideoMediaType::MOV => "video/mov",
-            VideoMediaType::WEBM => "video/webm",
-        }
-    }
-}
+impl_mime_type!(VideoMediaType {
+    AVI => "video/avi",
+    MP4 => "video/mp4",
+    MPEG => "video/mpeg",
+    MOV => "video/mov",
+    WEBM => "video/webm",
+});
 
 impl std::str::FromStr for ImageDetail {
     type Err = ();

@@ -335,7 +335,7 @@ pub(crate) fn create_request_body(
     Ok(request)
 }
 
-fn split_system_messages_from_history(
+pub(super) fn split_system_messages_from_history(
     history: Vec<completion::Message>,
 ) -> (Vec<String>, Vec<completion::Message>) {
     let mut system = Vec::new();

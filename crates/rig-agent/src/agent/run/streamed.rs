@@ -340,12 +340,32 @@ struct ReasoningPart {
     state: ReasoningPartState,
 }
 
+#[derive(Clone)]
 enum ReasoningPartState {
     /// Delta text accumulated so far for a part with no completed block.
     Pending(String),
     /// The authoritative completed block (may carry signatures or encrypted
     /// content the deltas lacked).
     Completed(Reasoning),
+}
+
+/// Assemble one part's reasoning: a completed block as-is, a non-empty pending
+/// delta buffer as its own block carrying only the part's provider-issued id.
+fn reasoning_from_part(
+    state: ReasoningPartState,
+    provider_id: Option<String>,
+) -> Option<Reasoning> {
+    match state {
+        ReasoningPartState::Completed(reasoning) => Some(reasoning),
+        ReasoningPartState::Pending(text) if !text.is_empty() => {
+            let mut assembled = Reasoning::new(&text);
+            if let Some(id) = provider_id {
+                assembled = assembled.with_id(id);
+            }
+            Some(assembled)
+        }
+        ReasoningPartState::Pending(_) => None,
+    }
 }
 
 enum PendingInvalid {
@@ -495,27 +515,22 @@ impl StreamedTurnAssembler {
         // completed block always carries the whole content, the
         // accumulator having merged signatures before yielding). Checked
         // before the provider-id fallbacks so a signed restatement can
-        // never double-extend its own part.
-        let same_part = self
+        // never double-extend its own part. Failing that, the block
+        // supersedes a pending part sharing its durable provider id.
+        let replace_at = self
             .reasoning_parts
-            .iter_mut()
-            .find(|part| part.correlator.as_deref() == Some(correlator));
-        if let Some(part) = same_part {
-            if reasoning.id.is_some() {
-                part.provider_id = reasoning.id.clone();
-            }
-            part.state = ReasoningPartState::Completed(reasoning.clone());
-            return;
-        }
-
-        let superseded = self.reasoning_parts.iter_mut().find(|part| {
-            matches!(part.state, ReasoningPartState::Pending(_))
-                && matches!(
-                    (&part.provider_id, &reasoning.id),
-                    (Some(pending_id), Some(incoming_id)) if pending_id == incoming_id
-                )
-        });
-        if let Some(part) = superseded {
+            .iter()
+            .position(|part| part.correlator.as_deref() == Some(correlator))
+            .or_else(|| {
+                self.reasoning_parts.iter().position(|part| {
+                    matches!(part.state, ReasoningPartState::Pending(_))
+                        && matches!(
+                            (&part.provider_id, &reasoning.id),
+                            (Some(pending_id), Some(incoming_id)) if pending_id == incoming_id
+                        )
+                })
+            });
+        if let Some(part) = replace_at.and_then(|index| self.reasoning_parts.get_mut(index)) {
             if reasoning.id.is_some() {
                 part.provider_id = reasoning.id.clone();
             }
@@ -552,17 +567,7 @@ impl StreamedTurnAssembler {
     fn assembled_reasoning(&self) -> Vec<Reasoning> {
         self.reasoning_parts
             .iter()
-            .filter_map(|part| match &part.state {
-                ReasoningPartState::Completed(reasoning) => Some(reasoning.clone()),
-                ReasoningPartState::Pending(text) if !text.is_empty() => {
-                    let mut assembled = Reasoning::new(text);
-                    if let Some(id) = part.provider_id.clone() {
-                        assembled = assembled.with_id(id);
-                    }
-                    Some(assembled)
-                }
-                ReasoningPartState::Pending(_) => None,
-            })
+            .filter_map(|part| reasoning_from_part(part.state.clone(), part.provider_id.clone()))
             .collect()
     }
 
@@ -572,17 +577,7 @@ impl StreamedTurnAssembler {
     fn drain_reasoning(&mut self) -> Vec<Reasoning> {
         std::mem::take(&mut self.reasoning_parts)
             .into_iter()
-            .filter_map(|part| match part.state {
-                ReasoningPartState::Completed(reasoning) => Some(reasoning),
-                ReasoningPartState::Pending(text) if !text.is_empty() => {
-                    let mut assembled = Reasoning::new(&text);
-                    if let Some(id) = part.provider_id {
-                        assembled = assembled.with_id(id);
-                    }
-                    Some(assembled)
-                }
-                ReasoningPartState::Pending(_) => None,
-            })
+            .filter_map(|part| reasoning_from_part(part.state, part.provider_id))
             .collect()
     }
 

@@ -18,6 +18,7 @@ pub(crate) mod envelope;
 pub(crate) mod image_generation;
 pub(crate) mod model_listing;
 pub(crate) mod openai_chat_completions_compatible;
+pub(crate) mod schema;
 #[cfg(any(test, debug_assertions))]
 pub(crate) mod sequence_law;
 pub mod tool_call_bridge;

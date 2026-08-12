@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{Instrument, Level, enabled};
 
-use super::api::{ApiResponse, Message, ToolDefinition};
+use super::api::{Message, ToolDefinition};
 use super::client::Client;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
+use crate::providers::openai::client::ApiResponse;
 use crate::providers::openai::responses_api::ToolChoice;
 use crate::providers::openai::responses_api::{IncompleteDetailsReason, Output, ResponsesUsage};
 
@@ -339,8 +340,8 @@ where
 
                         Ok(response)
                     }
-                    ApiResponse::Error(error) => {
-                        tracing::warn!(message = %error.message(), "provider returned an error response");
+                    ApiResponse::Err(error) => {
+                        tracing::warn!(message = %error.message, "provider returned an error response");
                         Err(CompletionError::from_http_response(
                             status,
                             String::from_utf8_lossy(&response_body),
@@ -699,7 +700,7 @@ mod tests {
         use crate::completion::{CompletionError, CompletionModel as _};
         use crate::test_utils::RecordingHttpClient;
 
-        // Deserializes to `ApiResponse::Error(ApiError { error, code })` on a 200 OK.
+        // Deserializes to `ApiResponse::Err(ApiErrorResponse)` on a 200 OK.
         let body = r#"{"error":"boom","code":"503"}"#;
         let http_client = RecordingHttpClient::new(body);
         let client = crate::providers::xai::Client::builder()

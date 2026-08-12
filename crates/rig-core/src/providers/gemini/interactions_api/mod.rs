@@ -419,21 +419,7 @@ pub(crate) fn create_request_body(
     })
 }
 
-fn split_system_messages_from_history(
-    history: Vec<completion::Message>,
-) -> (Vec<String>, Vec<completion::Message>) {
-    let mut system = Vec::new();
-    let mut remaining = Vec::new();
-
-    for message in history {
-        match message {
-            completion::Message::System { content } => system.push(content),
-            other => remaining.push(other),
-        }
-    }
-
-    (system, remaining)
-}
+use super::completion::split_system_messages_from_history;
 
 async fn send_interaction_request<T>(
     client: &InteractionsClient<T>,
@@ -637,6 +623,23 @@ fn assistant_content_from_output(
     }
 }
 
+/// Shared preamble for Gemini Interactions media parts: require the media
+/// type, render its MIME string, and split the source into data/uri.
+fn media_parts<M: MimeType>(
+    data: message::DocumentSourceKind,
+    media_type: Option<M>,
+    kind: &str,
+) -> Result<(Option<String>, Option<String>, String), message::MessageError> {
+    let media_type = media_type.ok_or_else(|| {
+        message::MessageError::ConversionError(format!(
+            "Media type for {kind} is required for Gemini"
+        ))
+    })?;
+    let mime_type = media_type.to_mime_type().to_string();
+    let (data, uri) = split_data_uri(data)?;
+    Ok((data, uri, mime_type))
+}
+
 fn split_data_uri(
     src: message::DocumentSourceKind,
 ) -> Result<(Option<String>, Option<String>), message::MessageError> {
@@ -658,7 +661,7 @@ fn split_data_uri(
 
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
-    use super::split_data_uri;
+    use super::{media_parts, split_data_uri};
     use crate::completion::{CompletionError, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
@@ -1974,13 +1977,7 @@ pub mod interactions_api_types {
                 message::UserContent::Image(message::Image {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for image is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "image")?;
                     Ok(Self::Image(ImageContent {
                         data,
                         uri,
@@ -1991,13 +1988,7 @@ pub mod interactions_api_types {
                 message::UserContent::Audio(message::Audio {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for audio is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "audio")?;
                     Ok(Self::Audio(AudioContent {
                         data,
                         uri,
@@ -2007,13 +1998,7 @@ pub mod interactions_api_types {
                 message::UserContent::Video(message::Video {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for video is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "video")?;
                     Ok(Self::Video(VideoContent {
                         data,
                         uri,
@@ -2073,8 +2058,7 @@ pub mod interactions_api_types {
                             annotations: None,
                         }));
                     }
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, Some(media_type), "document")?;
                     Ok(Self::Document(DocumentContent {
                         data,
                         uri,
