@@ -7,6 +7,7 @@ mod cassette {
     mod empty_end_turn;
     mod error_envelope;
     mod image;
+    mod manual_cache_control;
     mod messages_behaviors;
     mod messages_sessions;
     mod messages_thinking;
