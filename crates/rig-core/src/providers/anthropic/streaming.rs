@@ -33,25 +33,32 @@ use std::collections::HashMap;
 /// streaming-only difference — an explicit `tool_choice: auto` when tools are
 /// advertised but the caller left the choice unset — is re-applied below so the
 /// streaming request bytes stay stable.
-fn create_streaming_request_body(
+fn create_streaming_request_body<Ext>(
     request_model: String,
     mut completion_request: CompletionRequest,
     max_tokens: u64,
     prompt_caching: bool,
     automatic_caching: bool,
     automatic_caching_ttl: Option<CacheTtl>,
-) -> Result<Value, CompletionError> {
+    strict_tools: bool,
+) -> Result<Value, CompletionError>
+where
+    Ext: AnthropicCompatibleProvider,
+{
     // The typed request's `TryFrom` requires `max_tokens`; feed it the value the
     // caller already resolved (the request's own value, else the model default).
     completion_request.max_tokens = Some(max_tokens);
 
-    let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-        model: &request_model,
-        request: completion_request,
-        prompt_caching,
-        automatic_caching,
-        automatic_caching_ttl,
-    })?;
+    let request = AnthropicCompletionRequest::try_from_params::<Ext>(
+        AnthropicRequestParams {
+            model: &request_model,
+            request: completion_request,
+            prompt_caching,
+            automatic_caching,
+            automatic_caching_ttl,
+        },
+        strict_tools,
+    )?;
 
     let mut body = serde_json::to_value(&request)?;
     if let Some(map) = body.as_object_mut() {
@@ -565,13 +572,14 @@ where
             ));
         };
 
-        let body = create_streaming_request_body(
+        let body = create_streaming_request_body::<Ext>(
             request_model,
             completion_request,
             max_tokens,
             self.prompt_caching,
             self.automatic_caching,
             self.automatic_caching_ttl.clone(),
+            self.strict_tools,
         )?;
 
         if enabled!(Level::TRACE) {
@@ -911,15 +919,17 @@ mod tests {
             }]
         });
 
-        let mut tools = build_tool_definitions(
-            vec![crate::completion::ToolDefinition {
-                name: "rig_tool".to_string(),
-                description: "Rig tool".to_string(),
-                parameters: json!({"type": "object", "properties": {}}),
-            }],
-            &mut additional_params,
-        )
-        .unwrap();
+        let mut tools =
+            build_tool_definitions::<crate::providers::anthropic::client::AnthropicExt>(
+                vec![crate::completion::ToolDefinition {
+                    name: "rig_tool".to_string(),
+                    description: "Rig tool".to_string(),
+                    parameters: json!({"type": "object", "properties": {}}),
+                }],
+                &mut additional_params,
+                false,
+            )
+            .unwrap();
         let mut system: Vec<SystemContent> = Vec::new();
         let mut messages: Vec<Message> = Vec::new();
         apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None).unwrap();
@@ -955,15 +965,17 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body = create_streaming_request_body(
-            CLAUDE_OPUS_4_8.to_string(),
-            request,
-            64,
-            false,
-            false,
-            None,
-        )
-        .expect("streaming request body should build");
+        let body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request,
+                64,
+                false,
+                false,
+                None,
+                false,
+            )
+            .expect("streaming request body should build");
 
         assert_eq!(body["system"][0]["text"], "System prompt");
         assert_eq!(body["system"][1]["text"], "Mid-conversation instruction");
@@ -1011,15 +1023,17 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let streaming_body = create_streaming_request_body(
-            CLAUDE_OPUS_4_8.to_string(),
-            request.clone(),
-            64,
-            false,
-            false,
-            None,
-        )
-        .expect("streaming request body should build");
+        let streaming_body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request.clone(),
+                64,
+                false,
+                false,
+                None,
+                false,
+            )
+            .expect("streaming request body should build");
 
         // The streaming endpoint flag is set.
         assert_eq!(streaming_body["stream"], serde_json::Value::Bool(true));
@@ -1079,21 +1093,70 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body = create_streaming_request_body(
-            CLAUDE_OPUS_4_8.to_string(),
-            request,
-            64,
-            false,
-            false,
-            None,
-        )
-        .expect("streaming request body should build");
+        let body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request,
+                64,
+                false,
+                false,
+                None,
+                false,
+            )
+            .expect("streaming request body should build");
 
         // Tools advertised + `tool_choice` unset must still carry the explicit
         // `auto` the streaming wire format has always sent (parity with recorded
         // fixtures), even though the blocking typed request omits it.
         assert_eq!(body["tool_choice"], json!({ "type": "auto" }));
         assert!(body["tools"].is_array());
+    }
+
+    #[test]
+    fn streaming_body_applies_strict_tool_opt_in() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec![RigMessage::user("Look this up")],
+            documents: vec![],
+            tools: vec![crate::completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Look up a value".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": { "query": { "type": "string" } },
+                    "required": ["query"]
+                }),
+            }],
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request,
+                64,
+                false,
+                false,
+                None,
+                true,
+            )
+            .expect("streaming request body should build");
+
+        assert_eq!(body["tools"][0]["strict"], true);
+        assert_eq!(
+            body["tools"][0]["input_schema"]["additionalProperties"],
+            false
+        );
+        assert_eq!(
+            body["tools"][0]["input_schema"]["required"],
+            json!(["query"])
+        );
     }
 
     #[test]
@@ -1116,15 +1179,17 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body = create_streaming_request_body(
-            CLAUDE_OPUS_4_8.to_string(),
-            request,
-            64,
-            false,
-            false,
-            None,
-        )
-        .expect("streaming request body should build");
+        let body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request,
+                64,
+                false,
+                false,
+                None,
+                false,
+            )
+            .expect("streaming request body should build");
 
         assert!(
             body.get("tool_choice").is_none(),
@@ -1140,15 +1205,17 @@ mod tests {
         });
         let top_level_cache_control =
             resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
-        let mut tools = build_tool_definitions(
-            vec![crate::completion::ToolDefinition {
-                name: "rig_tool".to_string(),
-                description: "Rig tool".to_string(),
-                parameters: json!({"type": "object", "properties": {}}),
-            }],
-            &mut additional_params,
-        )
-        .unwrap();
+        let mut tools =
+            build_tool_definitions::<crate::providers::anthropic::client::AnthropicExt>(
+                vec![crate::completion::ToolDefinition {
+                    name: "rig_tool".to_string(),
+                    description: "Rig tool".to_string(),
+                    parameters: json!({"type": "object", "properties": {}}),
+                }],
+                &mut additional_params,
+                false,
+            )
+            .unwrap();
         let mut system = vec![SystemContent::Text {
             text: "System prompt".to_string(),
             cache_control: None,

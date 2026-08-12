@@ -43,6 +43,13 @@ pub trait AnthropicCompatibleProvider: Provider {
         let _ = model;
         None
     }
+
+    /// Apply provider-specific strict tool-use behavior to a Rig-generated tool.
+    ///
+    /// Anthropic-compatible gateways do not necessarily implement Anthropic's
+    /// constrained tool schemas, so the default deliberately leaves tools
+    /// unchanged.
+    fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
 }
 
 impl AnthropicCompatibleProvider for super::client::AnthropicExt {
@@ -50,6 +57,11 @@ impl AnthropicCompatibleProvider for super::client::AnthropicExt {
 
     fn default_max_tokens(model: &str) -> Option<u64> {
         default_max_tokens_for_model(model)
+    }
+
+    fn enable_strict_tool_use(tool: &mut ToolDefinition) {
+        sanitize_strict_tool_schema(&mut tool.input_schema);
+        tool.strict = true;
     }
 }
 
@@ -176,11 +188,18 @@ pub struct ToolDefinition {
     pub name: String,
     pub description: Option<String>,
     pub input_schema: serde_json::Value,
+    /// Whether Anthropic must constrain tool arguments to `input_schema`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub strict: bool,
     /// Cache breakpoint marker. Set on the last tool in the array to cache
     /// the tools layer independently of the system prompt. Anthropic accepts
     /// up to 4 `cache_control` markers per request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<CacheControl>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 /// TTL for a cache control breakpoint.
@@ -1605,6 +1624,8 @@ pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest
     /// TTL for automatic caching. `None` uses the API default (5 minutes).
     /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
     pub automatic_caching_ttl: Option<CacheTtl>,
+    /// Whether Rig-generated tools request provider-supported strict validation.
+    pub strict_tools: bool,
 }
 
 /// Anthropic completion model.
@@ -1630,6 +1651,7 @@ where
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            strict_tools: false,
         }
     }
 
@@ -1642,6 +1664,7 @@ where
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            strict_tools: false,
         }
     }
 
@@ -1720,6 +1743,28 @@ where
     pub fn with_automatic_caching_1h(mut self) -> Self {
         self.automatic_caching = true;
         self.automatic_caching_ttl = Some(CacheTtl::OneHour);
+        self
+    }
+}
+
+impl<T> GenericCompletionModel<super::client::AnthropicExt, T>
+where
+    T: HttpClientExt,
+{
+    /// Enable strict schema validation for every Rig-generated tool.
+    ///
+    /// Anthropic constrains tool inputs to the supported JSON Schema subset
+    /// when `strict: true` is present on a tool definition. Rig sanitizes each
+    /// generated tool schema for that subset and leaves provider-specific tools
+    /// supplied through `additional_params` unchanged.
+    ///
+    /// Anthropic caches compiled schemas for up to 24 hours. Do not include PHI
+    /// in schema property names, enum or const values, or regex patterns. See
+    /// Anthropic's [structured output retention guidance](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#data-retention).
+    /// Anthropic also limits each request to 20 strict tools and applies
+    /// additional schema-complexity limits; see [schema complexity limits](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#schema-complexity-limits).
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
         self
     }
 }
@@ -1810,6 +1855,177 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
             strip_numeric_constraints: true,
         },
     );
+}
+
+/// Adapt a strict tool schema using Anthropic's SDK transformation policy.
+///
+/// Strict tools support optional parameters, so declared `required` lists are
+/// preserved. Unsupported validation keywords are moved into descriptions as
+/// model guidance instead of reaching the constrained-decoding compiler.
+fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
+    let original = std::mem::take(schema);
+    *schema = transform_strict_tool_schema(original);
+}
+
+fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value {
+    use serde_json::{Map, Value};
+
+    let Value::Object(mut source) = schema else {
+        return schema;
+    };
+    let mut strict = Map::new();
+
+    for keyword in ["$defs", "definitions"] {
+        if let Some(definitions) = source.remove(keyword) {
+            match definitions {
+                Value::Object(definitions) => {
+                    strict.insert(
+                        keyword.to_string(),
+                        Value::Object(
+                            definitions
+                                .into_iter()
+                                .map(|(name, schema)| (name, transform_strict_tool_schema(schema)))
+                                .collect(),
+                        ),
+                    );
+                }
+                definitions => {
+                    source.insert(keyword.to_string(), definitions);
+                }
+            }
+        }
+    }
+
+    if let Some(reference) = source.remove("$ref") {
+        strict.insert("$ref".to_string(), reference);
+        return Value::Object(strict);
+    }
+
+    let schema_type = source.remove("type");
+    let any_of = source.remove("anyOf");
+    let one_of = source.remove("oneOf");
+    let all_of = source.remove("allOf");
+    let alternatives = match (any_of, one_of, all_of) {
+        (Some(Value::Array(variants)), _, _) => Some(("anyOf", variants)),
+        (_, Some(Value::Array(variants)), _) => Some(("anyOf", variants)),
+        (_, _, Some(Value::Array(variants))) => Some(("allOf", variants)),
+        _ => None,
+    };
+    if let Some((keyword, variants)) = alternatives {
+        strict.insert(
+            keyword.to_string(),
+            Value::Array(
+                variants
+                    .into_iter()
+                    .map(transform_strict_tool_schema)
+                    .collect(),
+            ),
+        );
+    } else if let Some(schema_type) = schema_type.clone() {
+        strict.insert("type".to_string(), schema_type);
+    }
+
+    if let Some(Value::Array(values)) = source.remove("enum") {
+        strict.insert("enum".to_string(), Value::Array(values));
+    }
+    if let Some(constant) = source.remove("const") {
+        strict.insert("const".to_string(), constant);
+    }
+    for keyword in ["description", "title"] {
+        if let Some(Value::String(value)) = source.remove(keyword) {
+            strict.insert(keyword.to_string(), Value::String(value));
+        }
+    }
+
+    if schema_has_type(schema_type.as_ref(), "object") || source.contains_key("properties") {
+        let properties = match source.remove("properties") {
+            Some(Value::Object(properties)) => properties
+                .into_iter()
+                .map(|(name, schema)| (name, transform_strict_tool_schema(schema)))
+                .collect(),
+            _ => Map::new(),
+        };
+        strict.insert("properties".to_string(), Value::Object(properties));
+        source.remove("additionalProperties");
+        strict.insert("additionalProperties".to_string(), Value::Bool(false));
+        if let Some(Value::Array(required)) = source.remove("required") {
+            strict.insert("required".to_string(), Value::Array(required));
+        }
+    }
+
+    if schema_has_type(schema_type.as_ref(), "string")
+        && let Some(format) = source.remove("format")
+    {
+        const SUPPORTED_FORMATS: &[&str] = &[
+            "date-time",
+            "time",
+            "date",
+            "duration",
+            "email",
+            "hostname",
+            "uri",
+            "ipv4",
+            "ipv6",
+            "uuid",
+        ];
+        if format
+            .as_str()
+            .is_some_and(|format| SUPPORTED_FORMATS.contains(&format))
+        {
+            strict.insert("format".to_string(), format);
+        } else {
+            source.insert("format".to_string(), format);
+        }
+    }
+
+    if schema_has_type(schema_type.as_ref(), "array") {
+        if let Some(items) = source.remove("items") {
+            strict.insert("items".to_string(), transform_strict_tool_schema(items));
+        }
+        if let Some(min_items) = source.remove("minItems") {
+            if matches!(min_items.as_u64(), Some(0 | 1)) {
+                strict.insert("minItems".to_string(), min_items);
+            } else {
+                source.insert("minItems".to_string(), min_items);
+            }
+        }
+    }
+
+    if !source.is_empty() {
+        let hints = source
+            .into_iter()
+            .map(|(keyword, value)| {
+                let value = match value {
+                    Value::String(value) => value,
+                    value => value.to_string(),
+                };
+                format!("{keyword}: {value}")
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        let suffix = format!("{{{hints}}}");
+        match strict.get_mut("description") {
+            Some(Value::String(description)) => {
+                description.push_str("\n\n");
+                description.push_str(&suffix);
+            }
+            _ => {
+                strict.insert("description".to_string(), Value::String(suffix));
+            }
+        }
+    }
+
+    Value::Object(strict)
+}
+
+fn schema_has_type(schema_type: Option<&serde_json::Value>, expected: &str) -> bool {
+    match schema_type {
+        Some(serde_json::Value::String(schema_type)) => schema_type == expected,
+        Some(serde_json::Value::Array(schema_types)) => schema_types
+            .iter()
+            .any(|schema_type| schema_type.as_str() == Some(expected)),
+        _ => false,
+    }
 }
 
 /// Output format specifier for Anthropic's structured output.
@@ -2303,10 +2519,14 @@ pub struct AnthropicRequestParams<'a> {
     pub automatic_caching_ttl: Option<CacheTtl>,
 }
 
-impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
+impl AnthropicCompletionRequest {
+    pub(super) fn try_from_params<Ext>(
+        params: AnthropicRequestParams<'_>,
+        strict_tools: bool,
+    ) -> Result<Self, CompletionError>
+    where
+        Ext: AnthropicCompatibleProvider,
+    {
         let AnthropicRequestParams {
             model,
             request: mut req,
@@ -2344,7 +2564,8 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
             automatic_caching_ttl,
             &mut additional_params_payload,
         )?;
-        let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload)?;
+        let mut tools =
+            build_tool_definitions::<Ext>(req.tools, &mut additional_params_payload, strict_tools)?;
 
         // Convert system prompt to array format for cache_control support
         let mut system = if let Some(preamble) = req.preamble {
@@ -2401,6 +2622,14 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     }
 }
 
+impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
+    type Error = CompletionError;
+
+    fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
+        Self::try_from_params::<super::client::AnthropicExt>(params, false)
+    }
+}
+
 pub(super) fn extract_tools_from_additional_params(
     additional_params: &mut serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, CompletionError> {
@@ -2417,19 +2646,32 @@ pub(super) fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
-pub(super) fn build_tool_definitions(
+pub(super) fn build_tool_definitions<Ext>(
     tools: Vec<completion::ToolDefinition>,
     additional_params_payload: &mut serde_json::Value,
-) -> Result<Vec<serde_json::Value>, CompletionError> {
+    strict_tools: bool,
+) -> Result<Vec<serde_json::Value>, CompletionError>
+where
+    Ext: AnthropicCompatibleProvider,
+{
     let mut additional_tools = extract_tools_from_additional_params(additional_params_payload)?;
 
     let mut tools = tools
         .into_iter()
-        .map(|tool| ToolDefinition {
-            name: tool.name,
-            description: Some(tool.description),
-            input_schema: tool.parameters,
-            cache_control: None,
+        .map(|tool| {
+            let input_schema = tool.parameters;
+            let mut tool = ToolDefinition {
+                name: tool.name,
+                description: Some(tool.description),
+                input_schema,
+                strict: false,
+                cache_control: None,
+            };
+            if strict_tools {
+                Ext::enable_strict_tool_use(&mut tool);
+            }
+
+            tool
         })
         .map(serde_json::to_value)
         .collect::<Result<Vec<_>, _>>()?;
@@ -2481,13 +2723,16 @@ where
             }
         }
 
-        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-            model: &request_model,
-            request: completion_request,
-            prompt_caching: self.prompt_caching,
-            automatic_caching: self.automatic_caching,
-            automatic_caching_ttl: self.automatic_caching_ttl.clone(),
-        })?;
+        let request = AnthropicCompletionRequest::try_from_params::<Ext>(
+            AnthropicRequestParams {
+                model: &request_model,
+                request: completion_request,
+                prompt_caching: self.prompt_caching,
+                automatic_caching: self.automatic_caching,
+                automatic_caching_ttl: self.automatic_caching_ttl.clone(),
+            },
+            self.strict_tools,
+        )?;
 
         if enabled!(Level::TRACE) {
             tracing::trace!(
@@ -3116,6 +3361,172 @@ mod tests {
         }
     }
 
+    #[test]
+    fn rig_tools_are_non_strict_by_default() {
+        let request = completion_request_with_tools(vec![generic_tool("lookup")], None);
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        assert!(value["tools"][0].get("strict").is_none());
+        assert!(
+            value["tools"][0]["input_schema"]
+                .get("additionalProperties")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
+        let mut additional_params = serde_json::Value::Null;
+        let tools = build_tool_definitions::<crate::providers::minimax::MiniMaxAnthropicExt>(
+            vec![generic_tool("lookup")],
+            &mut additional_params,
+            true,
+        )
+        .unwrap();
+
+        assert!(tools[0].get("strict").is_none());
+        assert!(
+            tools[0]["input_schema"]
+                .get("additionalProperties")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
+        let mut tool = generic_tool("lookup");
+        tool.parameters = json!({
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 20,
+                    "pattern": "^[a-z]+$",
+                    "format": "uuid"
+                },
+                "kind": {
+                    "type": "string",
+                    "const": "lookup"
+                },
+                "legacy_filter": {
+                    "$ref": "#/definitions/LegacyFilter"
+                },
+                "options": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                        "limit": {
+                            "type": ["integer", "null"],
+                            "minimum": 1,
+                            "maximum": 100,
+                            "format": "uint32"
+                        }
+                    }
+                }
+            },
+            "definitions": {
+                "LegacyFilter": {
+                    "type": "object",
+                    "properties": {
+                        "term": { "type": "string" }
+                    }
+                }
+            },
+            "required": ["query"]
+        });
+        let request = completion_request_with_tools(
+            vec![tool],
+            Some(json!({
+                "tools": [{
+                    "type": "mcp_toolset",
+                    "name": "remote_tools"
+                }]
+            })),
+        );
+        let request = AnthropicCompletionRequest::try_from_params::<
+            crate::providers::anthropic::client::AnthropicExt,
+        >(
+            AnthropicRequestParams {
+                model: CLAUDE_SONNET_4_6,
+                request,
+                prompt_caching: false,
+                automatic_caching: false,
+                automatic_caching_ttl: None,
+            },
+            true,
+        )
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let rig_tool = &value["tools"][0];
+        assert_eq!(rig_tool["strict"], true);
+        assert_eq!(rig_tool["input_schema"]["additionalProperties"], false);
+        let required = rig_tool["input_schema"]["required"]
+            .as_array()
+            .expect("strict object schema should list required properties");
+        assert_eq!(required.len(), 1);
+        assert!(required.contains(&json!("query")));
+        assert_eq!(
+            rig_tool["input_schema"]["properties"]["options"]["additionalProperties"],
+            false
+        );
+        assert!(
+            rig_tool["input_schema"]["properties"]["options"]
+                .get("required")
+                .is_none()
+        );
+        let query = &rig_tool["input_schema"]["properties"]["query"];
+        assert_eq!(query["format"], "uuid");
+        for keyword in ["minLength", "maxLength", "pattern"] {
+            assert!(query.get(keyword).is_none());
+        }
+        let query_description = query["description"]
+            .as_str()
+            .expect("unsupported string constraints should become guidance");
+        for guidance in ["minLength: 2", "maxLength: 20", "pattern: ^[a-z]+$"] {
+            assert!(query_description.contains(guidance));
+        }
+        assert_eq!(
+            rig_tool["input_schema"]["properties"]["kind"]["const"],
+            "lookup"
+        );
+        assert_eq!(
+            rig_tool["input_schema"]["properties"]["legacy_filter"]["$ref"],
+            "#/definitions/LegacyFilter"
+        );
+        assert_eq!(
+            rig_tool["input_schema"]["definitions"]["LegacyFilter"]["additionalProperties"],
+            false
+        );
+        let limit = &rig_tool["input_schema"]["properties"]["options"]["properties"]["limit"];
+        assert!(limit.get("format").is_none());
+        assert!(
+            ["minimum", "maximum"]
+                .into_iter()
+                .all(|keyword| limit.get(keyword).is_none())
+        );
+        let limit_description = limit["description"]
+            .as_str()
+            .expect("unsupported numeric constraints should become guidance");
+        for guidance in ["minimum: 1", "maximum: 100", "format: uint32"] {
+            assert!(limit_description.contains(guidance));
+        }
+
+        let provider_tool = &value["tools"][1];
+        assert_eq!(provider_tool["type"], "mcp_toolset");
+        assert!(provider_tool.get("strict").is_none());
+    }
+
     fn system_has_cache_control(value: &serde_json::Value) -> bool {
         value["system"]
             .as_array()
@@ -3498,6 +3909,7 @@ mod tests {
             name: "cached_tool".to_string(),
             description: Some("Cached tool".to_string()),
             input_schema: json!({"type": "object"}),
+            strict: false,
             cache_control: Some(CacheControl::ephemeral()),
         };
 
@@ -3508,6 +3920,7 @@ mod tests {
             name: "uncached_tool".to_string(),
             description: Some("Uncached tool".to_string()),
             input_schema: json!({"type": "object"}),
+            strict: false,
             cache_control: None,
         };
 

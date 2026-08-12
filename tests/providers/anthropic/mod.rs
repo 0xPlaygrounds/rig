@@ -9,6 +9,7 @@ mod cassette {
     mod image;
     mod messages_behaviors;
     mod messages_sessions;
+    mod messages_strict_tools;
     mod messages_thinking;
     mod messages_tool_args;
     mod messages_tool_choice;
