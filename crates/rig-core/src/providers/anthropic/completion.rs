@@ -1868,6 +1868,7 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
+    flatten_root_all_of(&mut original);
     // Anthropic requires a tool's top-level input schema to declare an object
     // type even when standard JSON Schema would infer it from `properties` or
     // a resolved root reference. Nested schemas do not have this tool-input
@@ -1884,11 +1885,35 @@ fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     *schema = transform_strict_tool_schema(original);
 }
 
+/// Anthropic rejects `allOf` at the top level of a tool input even when every
+/// branch describes an object. Merge those object branches into the root while
+/// preserving per-property collisions as nested `allOf` constraints.
+fn flatten_root_all_of(schema: &mut serde_json::Value) {
+    use serde_json::{Map, Value};
+
+    let Value::Object(root) = schema else {
+        return;
+    };
+    let Some(all_of) = root.remove("allOf") else {
+        return;
+    };
+    let mut conflicting_constraints = Map::new();
+    merge_root_all_of(root, all_of, &mut conflicting_constraints);
+    if !conflicting_constraints.is_empty() {
+        root.insert(
+            "rootAllOfConstraints".to_string(),
+            Value::Object(conflicting_constraints),
+        );
+    }
+}
+
 /// Anthropic requires a tool input's root to have `type: object`, but rejects
 /// `type` beside `$ref`. Resolve local root references before transformation so
 /// both requirements can be met while retaining definitions needed by nested
 /// references.
 fn inline_local_root_reference(schema: &mut serde_json::Value) {
+    use serde_json::Value;
+
     let mut seen = std::collections::BTreeSet::new();
     loop {
         let Some(reference) = schema
@@ -1904,35 +1929,198 @@ fn inline_local_root_reference(schema: &mut serde_json::Value) {
         if !seen.insert(reference.clone()) {
             return;
         }
-        let Some(serde_json::Value::Object(mut referenced)) = schema.pointer(pointer).cloned()
-        else {
+        let Some(Value::Object(mut referenced)) = schema.pointer(pointer).cloned() else {
             return;
         };
+        let Some(mut root) = schema.as_object().cloned() else {
+            return;
+        };
+        root.remove("$ref");
 
         for keyword in ["$defs", "definitions"] {
-            let Some(root_definitions) = schema.get(keyword).cloned() else {
+            let Some(root_definitions) = root.remove(keyword) else {
                 continue;
             };
-            let definitions = match (root_definitions, referenced.remove(keyword)) {
-                (
-                    serde_json::Value::Object(mut root_definitions),
-                    Some(serde_json::Value::Object(local_definitions)),
-                ) => {
-                    root_definitions.extend(local_definitions);
-                    serde_json::Value::Object(root_definitions)
-                }
-                (_, Some(local_definitions)) => local_definitions,
-                (root_definitions, None) => root_definitions,
-            };
+            let definitions =
+                merge_document_definitions(root_definitions, referenced.remove(keyword));
             referenced.insert(keyword.to_string(), definitions);
         }
-        for keyword in ["description", "title"] {
-            if let Some(annotation) = schema.get(keyword).cloned() {
-                referenced.entry(keyword.to_string()).or_insert(annotation);
+
+        merge_root_reference_siblings(&mut referenced, root);
+
+        *schema = Value::Object(referenced);
+    }
+}
+
+fn merge_document_definitions(
+    root_definitions: serde_json::Value,
+    local_definitions: Option<serde_json::Value>,
+) -> serde_json::Value {
+    use serde_json::Value;
+
+    match (root_definitions, local_definitions) {
+        (Value::Object(root_definitions), Some(Value::Object(mut local_definitions))) => {
+            // Absolute JSON pointers still resolve from the document root.
+            // Keep those root targets authoritative when an inlined schema
+            // happens to define the same name locally.
+            local_definitions.extend(root_definitions);
+            Value::Object(local_definitions)
+        }
+        (root_definitions, _) => root_definitions,
+    }
+}
+
+/// Merge keywords adjacent to a root `$ref` into its resolved object. JSON
+/// Schema applies those siblings conjunctively; simply replacing the root with
+/// the referenced object would silently discard valid constraints.
+fn merge_root_reference_siblings(
+    referenced: &mut serde_json::Map<String, serde_json::Value>,
+    siblings: serde_json::Map<String, serde_json::Value>,
+) {
+    use serde_json::{Map, Value};
+
+    let mut conflicting_constraints = Map::new();
+    for (keyword, sibling) in siblings {
+        match keyword.as_str() {
+            "properties" => merge_schema_properties(referenced, sibling),
+            "required" => merge_required_properties(referenced, sibling),
+            "allOf" => merge_root_all_of(referenced, sibling, &mut conflicting_constraints),
+            // Anthropic rejects union combinators at the tool-input root. A
+            // conjunction between a referenced object and a union cannot be
+            // flattened without duplicating the whole base schema, so retain
+            // it as guidance instead of producing a guaranteed 400.
+            "anyOf" | "oneOf" => {
+                conflicting_constraints.insert(keyword, sibling);
+            }
+            // These describe the root document rather than adding a second
+            // validation constraint. Prefer the root-level annotation.
+            "description" | "title" | "$schema" | "$id" | "$comment" | "default" | "examples"
+            | "deprecated" | "readOnly" | "writeOnly" => {
+                referenced.insert(keyword, sibling);
+            }
+            _ => match referenced.get(&keyword) {
+                None => {
+                    referenced.insert(keyword, sibling);
+                }
+                Some(existing) if existing == &sibling => {}
+                Some(_) => {
+                    conflicting_constraints.insert(keyword, sibling);
+                }
+            },
+        }
+    }
+
+    if !conflicting_constraints.is_empty() {
+        // Anthropic rejects allOf at the top level of a tool input. Preserve
+        // constraints that cannot be structurally merged as model guidance,
+        // consistent with the rest of the strict-schema transformer.
+        referenced.insert(
+            "rootRefSiblingConstraints".to_string(),
+            Value::Object(conflicting_constraints),
+        );
+    }
+}
+
+fn merge_root_all_of(
+    schema: &mut serde_json::Map<String, serde_json::Value>,
+    sibling: serde_json::Value,
+    conflicting_constraints: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    use serde_json::Value;
+
+    let Value::Array(branches) = sibling else {
+        conflicting_constraints.insert("allOf".to_string(), sibling);
+        return;
+    };
+    let mut unsupported_branches = Vec::new();
+    for branch in branches {
+        match branch {
+            Value::Object(mut branch) => {
+                if branch.contains_key("$ref") {
+                    for keyword in ["$defs", "definitions"] {
+                        let Some(root_definitions) = schema.get(keyword).cloned() else {
+                            continue;
+                        };
+                        let definitions =
+                            merge_document_definitions(root_definitions, branch.remove(keyword));
+                        branch.insert(keyword.to_string(), definitions);
+                    }
+                    let mut branch = Value::Object(branch);
+                    inline_local_root_reference(&mut branch);
+                    match branch {
+                        Value::Object(branch) => merge_root_reference_siblings(schema, branch),
+                        branch => unsupported_branches.push(branch),
+                    }
+                } else {
+                    merge_root_reference_siblings(schema, branch);
+                }
+            }
+            branch => unsupported_branches.push(branch),
+        }
+    }
+    if !unsupported_branches.is_empty() {
+        conflicting_constraints.insert("allOf".to_string(), Value::Array(unsupported_branches));
+    }
+}
+
+fn merge_schema_properties(
+    schema: &mut serde_json::Map<String, serde_json::Value>,
+    sibling: serde_json::Value,
+) {
+    use serde_json::{Map, Value};
+
+    let Value::Object(sibling_properties) = sibling else {
+        schema.entry("properties".to_string()).or_insert(sibling);
+        return;
+    };
+    let properties = schema
+        .entry("properties".to_string())
+        .or_insert_with(|| Value::Object(Map::new()));
+    let Value::Object(properties) = properties else {
+        return;
+    };
+
+    for (name, sibling_schema) in sibling_properties {
+        match properties.remove(&name) {
+            None => {
+                properties.insert(name, sibling_schema);
+            }
+            Some(existing) if existing == sibling_schema => {
+                properties.insert(name, existing);
+            }
+            Some(existing) => {
+                properties.insert(
+                    name,
+                    Value::Object(Map::from_iter([(
+                        "allOf".to_string(),
+                        Value::Array(vec![existing, sibling_schema]),
+                    )])),
+                );
             }
         }
+    }
+}
 
-        *schema = serde_json::Value::Object(referenced);
+fn merge_required_properties(
+    schema: &mut serde_json::Map<String, serde_json::Value>,
+    sibling: serde_json::Value,
+) {
+    use serde_json::Value;
+
+    let Value::Array(sibling_required) = sibling else {
+        schema.entry("required".to_string()).or_insert(sibling);
+        return;
+    };
+    let required = schema
+        .entry("required".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()));
+    let Value::Array(required) = required else {
+        return;
+    };
+    for name in sibling_required {
+        if !required.contains(&name) {
+            required.push(name);
+        }
     }
 }
 
