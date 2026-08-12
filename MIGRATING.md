@@ -1389,6 +1389,52 @@ carried:
   "Persisted histories" bullet in the tool-call identity section above for
   what a legacy `call_id` key now means and how to migrate the JSON by hand.
 
+### The hook-free `AgentRun` integration surface is restored
+
+0.41 made every `Agent` field private and removed the raw
+`Completion`/`StreamingCompletion` implementations (see "[`AgentRunner` is the
+only execution path](#6-agentrunner-is-the-only-execution-path)"). That
+orphaned callers who hand-drive the public sans-IO `AgentRun` state machine:
+they could no longer use an already-built `Agent` as their manual loop's
+configuration and tool source. This release restores exactly that capability —
+`AgentRunner` remains the only batteries-included runtime, and no second
+coordinator exists.
+
+```text
+Normal configured execution:      agent.runner(prompt).max_turns(n).run().await
+Manual/custom AgentRun loop:      agent.new_run(...) + agent.prepare_completion_request(...)
+                                  + prepared_turn.model_turn(...) / .execute_call(...)
+After cross-process resume:       rebuilt_agent.tool_server_handle()
+Already-own-the-registry:         builder.tool_server_handle(handle) as today
+```
+
+- `Agent::new_run(prompt)` returns a plain `AgentRun` seeded with the agent's
+  durable run policy (default turn budget, tool choice, structured-output
+  validation), the same way `Agent::runner` seeds its internal run.
+- `Agent::prepare_completion_request(prompt, history, &mut run)` prepares one
+  fully configured provider request straight from an
+  `AgentRunStep::CallModel` step's fields. It validates impossible tool
+  choices before any provider IO, and keeps the run's structured-output-tool
+  expectation paired with what the request actually advertises.
+- The returned `PreparedAgentRequest` splits into the sendable request and a
+  `PreparedAgentTurn`, whose `model_turn(response)` supplies the exact
+  executable/allowed tool-name sets the request carried and whose
+  `execute_call(...)` dispatches through the exact implementation snapshot
+  whose definitions the provider saw. Both are in-process values for one
+  issued request — not serializable, no durability beyond the `AgentRun`.
+- `Agent::tool_server_handle()` returns an owned clone of the agent's live
+  registry handle — the capability to use after a cross-process resume, when
+  the agent is rebuilt and the prepared turn is gone.
+
+This entire surface is hook-free: no hooks, memory, telemetry, concurrency
+policy, or classic invalid-call policy runs — including passive dynamic
+context, which exists only as a hook. `AgentRun::new()` remains for
+intentionally custom runs; such callers own keeping run policy consistent with
+the requests they prepare. `DynamicTool` remains the replacement for
+`Box<dyn ToolDyn>`; `ToolDyn` is not restored. See
+`examples/agent_run_stepping` for a complete manual loop with a
+cross-process resume.
+
 ---
 
 ## 0.40 → 0.41
