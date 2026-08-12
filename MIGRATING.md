@@ -1572,14 +1572,35 @@ not an execution path — hooks, memory, retrieval policy, and telemetry still
 run only under `Agent::runner`. See `examples/agent_run_stepping` and
 `examples/agent_with_durable_approval`.
 
-A hand-driven turn gets per-turn configuration through
-`AgentDriver::request_patch(RequestPatch)` (or `set_request_patch` between
-steps) — the same `RequestPatch` the runner merges from its `CompletionCall`
-hooks, covering the per-turn preamble, sampling parameters, `tool_choice`,
-`active_tools` narrowing, extra context, and substituted history. A custom
-run's own `AgentRun::with_tool_choice` now also reaches the provider; before,
-it governed only the run's internal decisions while the request carried the
-agent's baseline.
+A hand-driven turn gets per-turn configuration from
+`AgentDriver::next_step_with`, whose callback receives the prompt, the history
+and the turn about to be prepared, and returns a `TurnPreparation` carrying the
+turn's `RequestPatch` and optionally a model:
+
+```rust
+let step = driver
+    .next_step_with(|ctx| {
+        Box::pin(async move {
+            Ok(TurnPreparation::with_patch(
+                RequestPatch::new().preamble(preamble_for(ctx.turn)),
+            ))
+        })
+    })
+    .await?;
+```
+
+That is the same `RequestPatch` the runner merges from its `CompletionCall`
+hooks — per-turn preamble, sampling parameters, `tool_choice`, `active_tools`
+narrowing, extra context, substituted history — and the callback runs *before*
+the turn is committed, so a decision that fails costs no turn. It is an input
+rather than driver state on purpose: configuration for a turn that has not
+happened yet is not run state, and a driver holding it would resume a
+serialized run with settings the suspending process never recorded. `next_step()`
+remains for turns that need none.
+
+A custom run's own `AgentRun::with_tool_choice` also reaches the provider;
+before, it governed only the run's internal decisions while the request carried
+the agent's baseline.
 
 **Serialized `AgentRun` state does not survive the upgrade.** Payloads now
 carry a `$schemaVersion` tag and a build reads only the version it writes, so a

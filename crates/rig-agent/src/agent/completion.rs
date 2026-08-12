@@ -261,10 +261,11 @@ pub(crate) struct TurnRequest<'a> {
     /// The run's already-committed Tool-mode output name, re-advertised so the
     /// mode cannot flip or re-pick a name mid-run (#1928).
     pub(crate) committed_output_tool: Option<&'a str>,
-    /// Per-turn overrides — from `CompletionCall` hooks in the runner, from
-    /// [`AgentDriver::request_patch`](crate::agent::AgentDriver::request_patch)
-    /// when hand-driven. The single seam through which a turn diverges from
-    /// the baseline.
+    /// Per-turn overrides — merged from `CompletionCall` hooks in the runner,
+    /// returned by
+    /// [`AgentDriver::next_step_with`](crate::agent::AgentDriver::next_step_with)'s
+    /// preparation callback when hand-driven. The single seam through which a
+    /// turn diverges from the baseline.
     pub(crate) patch: Option<&'a RequestPatch>,
 }
 
