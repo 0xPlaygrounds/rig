@@ -1465,7 +1465,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             model,
             messages: full_history,
             temperature: req.temperature,
-            max_tokens: None,
+            max_tokens: req.max_tokens,
             tools,
             tool_choice,
             additional_params,
@@ -1657,6 +1657,37 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "google/gemini-2.5-flash");
+    }
+
+    /// The caller's `max_tokens` must reach the serialized request body —
+    /// OpenRouter accepts `max_tokens` like OpenAI, and dropping it silently
+    /// removed the caller's output cap.
+    #[test]
+    fn openrouter_request_carries_caller_max_tokens() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec!["Hello".into()],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(512),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let openrouter_request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o-mini",
+            request,
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openrouter_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["max_tokens"], 512);
     }
 
     #[test]

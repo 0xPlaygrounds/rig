@@ -28,7 +28,7 @@ use crate::providers::openai::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
 };
 use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
@@ -522,8 +522,7 @@ where
         let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
 
         let span = tracing::Span::current();
-        span.record("gen_ai.response.id", &raw_response.id);
-        span.record("gen_ai.response.model", &raw_response.model);
+        span.record_response_metadata(&raw_response);
 
         Ok((raw_response, text))
     }
@@ -589,12 +588,7 @@ where
             async move {
                 let response = self.normalized_completion(request).await?;
                 let span = tracing::Span::current();
-                span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
-                span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
-                span.record(
-                    "gen_ai.usage.cache_read.input_tokens",
-                    response.usage.cached_input_tokens,
-                );
+                span.record_token_usage(&response.usage);
                 Ok(response)
             },
             span,

@@ -16,9 +16,9 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, acquire_agent_span,
-        append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
-        resolve_completion_call, resolve_model_turn_action, run_single_tool,
+        AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, append_run_messages,
+        build_chat_span, new_execute_tool_span, observe_action, resolve_completion_call,
+        resolve_model_turn_action, run_single_tool,
     },
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
@@ -1559,37 +1559,18 @@ impl AgentRunner {
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
     pub async fn stream(self) -> StreamingResult {
-        let (agent_span, created_agent_span) = acquire_agent_span(
-            self.agent_name_or_default(),
-            self.preamble.as_deref(),
-            self.record_telemetry_content,
-        );
+        let (agent_span, created_agent_span) = self.open_agent_span();
 
-        if self.record_telemetry_content
-            && let Some(text) = self.prompt.rag_text()
-        {
-            agent_span.record("gen_ai.prompt", text);
-        }
-
-        // When the caller passes explicit history, memory is fully bypassed for
-        // this request (no load AND no save). Otherwise, if a memory backend and
-        // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
-            Some(_) => (None, None),
-            None => match (&self.memory, &self.conversation_id) {
-                (Some(memory), Some(id)) => match memory.load(id).await {
-                    Ok(loaded) => (Some(loaded), Some((memory.clone(), id.clone()))),
-                    Err(err) => {
-                        let stream = async_stream::stream! {
-                            yield Err(StreamingError::from(err));
-                        };
-                        // Instrument under the agent span like the success path so
-                        // a load failure stays tied to invoke_agent.
-                        return Box::pin(stream.instrument(agent_span));
-                    }
-                },
-                _ => (None, None),
-            },
+        let (history_override, memory_handle) = match self.resolve_history_and_memory().await {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                let stream = async_stream::stream! {
+                    yield Err(StreamingError::from(err));
+                };
+                // Instrument under the agent span like the success path so
+                // a load failure stays tied to invoke_agent.
+                return Box::pin(stream.instrument(agent_span));
+            }
         };
 
         let run = self.build_run(history_override);

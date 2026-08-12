@@ -1261,7 +1261,7 @@ impl ProviderResponseExt for CompletionResponse {
     }
 }
 
-fn assistant_message_text_response(message: &Message) -> Option<String> {
+pub(crate) fn assistant_message_text_response(message: &Message) -> Option<String> {
     let Message::Assistant {
         content, refusal, ..
     } = message

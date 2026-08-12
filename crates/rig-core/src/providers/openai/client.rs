@@ -282,19 +282,12 @@ impl ProviderClient for CompletionsClient {
 /// caller; `message` is only used for logging.
 #[derive(Debug, Deserialize)]
 pub struct ApiErrorResponse {
-    #[serde(default, alias = "error", deserialize_with = "error_message_or_value")]
+    #[serde(
+        default,
+        alias = "error",
+        deserialize_with = "crate::providers::internal::envelope::error_message_or_value"
+    )]
     pub(crate) message: String,
-}
-
-fn error_message_or_value<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(match value {
-        serde_json::Value::String(message) => message,
-        other => other.to_string(),
-    })
 }
 
 #[derive(Debug, Deserialize)]

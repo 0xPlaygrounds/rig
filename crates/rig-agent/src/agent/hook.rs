@@ -1204,23 +1204,81 @@ impl AgentHook for () {
     }
 }
 
+/// The erased hook events whose dispatch is a plain `Box::pin(self.on_*(..))`.
+/// `model_select` (sync), `invalid_tool_call` (borrowed event), and `tool_call`
+/// (wraps the rewrite-salvage frame) are hand-written below.
+macro_rules! for_each_boxed_hook_event {
+    ($m:ident) => {
+        $m!(
+            completion_call,
+            on_completion_call,
+            CompletionCall,
+            CompletionCallAction
+        );
+        $m!(
+            completion_response,
+            on_completion_response,
+            CompletionResponse,
+            ObservationAction
+        );
+        $m!(
+            model_turn_finished,
+            on_model_turn_finished,
+            ModelTurnFinished,
+            ModelTurnAction
+        );
+        $m!(
+            tool_result,
+            on_tool_result,
+            ToolResultEvent,
+            ToolResultAction
+        );
+        $m!(text_delta, on_text_delta, TextDelta, ObservationAction);
+        $m!(
+            reasoning_delta,
+            on_reasoning_delta,
+            ReasoningDelta,
+            ObservationAction
+        );
+        $m!(
+            tool_call_delta,
+            on_tool_call_delta,
+            ToolCallDelta,
+            ObservationAction
+        );
+        $m!(
+            stream_response_finish,
+            on_stream_response_finish,
+            StreamResponseFinish,
+            ObservationAction
+        );
+    };
+}
+
+macro_rules! erased_hook_decl {
+    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+        fn $erased<'a>(
+            &'a self,
+            ctx: &'a HookContext,
+            event: $event<'a>,
+        ) -> WasmBoxedFuture<'a, $action>;
+    };
+}
+
+macro_rules! erased_hook_forward {
+    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+        fn $erased<'a>(
+            &'a self,
+            ctx: &'a HookContext,
+            event: $event<'a>,
+        ) -> WasmBoxedFuture<'a, $action> {
+            Box::pin(self.$on(ctx, event))
+        }
+    };
+}
+
 trait DynAgentHook: WasmCompatSend + WasmCompatSync {
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
-    fn completion_call<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction>;
-    fn completion_response<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn model_turn_finished<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ModelTurnAction>;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -1231,31 +1289,7 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         ctx: &'a HookContext,
         event: ToolCall<'a>,
     ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>;
-    fn tool_result<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction>;
-    fn text_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn reasoning_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ReasoningDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn tool_call_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn stream_response_finish<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
 
@@ -1267,27 +1301,6 @@ where
         self.on_model_select(ctx, event)
     }
 
-    fn completion_call<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction> {
-        Box::pin(self.on_completion_call(ctx, event))
-    }
-    fn completion_response<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_completion_response(ctx, event))
-    }
-    fn model_turn_finished<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ModelTurnAction> {
-        Box::pin(self.on_model_turn_finished(ctx, event))
-    }
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -1308,41 +1321,7 @@ where
             (action, frame.finish())
         })
     }
-    fn tool_result<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction> {
-        Box::pin(self.on_tool_result(ctx, event))
-    }
-    fn text_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_text_delta(ctx, event))
-    }
-    fn reasoning_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ReasoningDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_reasoning_delta(ctx, event))
-    }
-    fn tool_call_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_tool_call_delta(ctx, event))
-    }
-    fn stream_response_finish<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_stream_response_finish(ctx, event))
-    }
+    for_each_boxed_hook_event!(erased_hook_forward);
     fn observes(&self, kind: StepEventKind) -> bool {
         AgentHook::observes(self, kind)
     }
@@ -1425,16 +1404,42 @@ impl HookStack {
     }
 }
 
-async fn first_stop<I>(futures: I) -> ObservationAction
+/// An action with a neutral `Continue` state that observe-only and steering
+/// dispatch short-circuits on: the first non-`Continue` action wins and later
+/// hooks are not invoked.
+trait ShortCircuitAction: Sized {
+    const CONTINUE: Self;
+    fn is_continue(&self) -> bool;
+}
+
+impl ShortCircuitAction for ObservationAction {
+    const CONTINUE: Self = ObservationAction::Continue;
+    fn is_continue(&self) -> bool {
+        matches!(self, ObservationAction::Continue)
+    }
+}
+
+impl ShortCircuitAction for ModelTurnAction {
+    const CONTINUE: Self = ModelTurnAction::Continue;
+    fn is_continue(&self) -> bool {
+        matches!(self, ModelTurnAction::Continue)
+    }
+}
+
+/// Dispatches to each hook in registration order, returning the first action
+/// that is not `Continue` without invoking the remaining hooks.
+async fn first_non_continue<'a, A, F>(hooks: &'a [Arc<dyn DynAgentHook>], mut dispatch: F) -> A
 where
-    I: IntoIterator<Item = ObservationAction>,
+    A: ShortCircuitAction,
+    F: FnMut(&'a dyn DynAgentHook) -> WasmBoxedFuture<'a, A>,
 {
-    for action in futures {
-        if !matches!(action, ObservationAction::Continue) {
+    for hook in hooks {
+        let action = dispatch(hook.as_ref()).await;
+        if !action.is_continue() {
             return action;
         }
     }
-    ObservationAction::Continue
+    A::CONTINUE
 }
 
 impl AgentHook for HookStack {
@@ -1490,29 +1495,14 @@ impl AgentHook for HookStack {
         ctx: &HookContext,
         event: CompletionResponse<'_>,
     ) -> ObservationAction {
-        let mut actions = Vec::new();
-        for hook in &self.hooks {
-            let action = hook.completion_response(ctx, event).await;
-            let stop = !matches!(action, ObservationAction::Continue);
-            actions.push(action);
-            if stop {
-                break;
-            }
-        }
-        first_stop(actions).await
+        first_non_continue(&self.hooks, |hook| hook.completion_response(ctx, event)).await
     }
     async fn on_model_turn_finished(
         &self,
         ctx: &HookContext,
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
-        for hook in &self.hooks {
-            let action = hook.model_turn_finished(ctx, event).await;
-            if !matches!(action, ModelTurnAction::Continue) {
-                return action;
-            }
-        }
-        ModelTurnAction::Continue
+        first_non_continue(&self.hooks, |hook| hook.model_turn_finished(ctx, event)).await
     }
     async fn on_invalid_tool_call(
         &self,
@@ -1556,52 +1546,28 @@ impl AgentHook for HookStack {
         effective.map_or(ToolResultAction::Keep, ToolResultAction::Rewrite)
     }
     async fn on_text_delta(&self, ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.text_delta(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
+        first_non_continue(&self.hooks, |hook| hook.text_delta(ctx, event)).await
     }
     async fn on_reasoning_delta(
         &self,
         ctx: &HookContext,
         event: ReasoningDelta<'_>,
     ) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.reasoning_delta(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
+        first_non_continue(&self.hooks, |hook| hook.reasoning_delta(ctx, event)).await
     }
     async fn on_tool_call_delta(
         &self,
         ctx: &HookContext,
         event: ToolCallDelta<'_>,
     ) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.tool_call_delta(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
+        first_non_continue(&self.hooks, |hook| hook.tool_call_delta(ctx, event)).await
     }
     async fn on_stream_response_finish(
         &self,
         ctx: &HookContext,
         event: StreamResponseFinish<'_>,
     ) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.stream_response_finish(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
+        first_non_continue(&self.hooks, |hook| hook.stream_response_finish(ctx, event)).await
     }
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))

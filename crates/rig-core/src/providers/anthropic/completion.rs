@@ -2659,10 +2659,7 @@ where
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
+use crate::providers::internal::envelope::ApiErrorResponse;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

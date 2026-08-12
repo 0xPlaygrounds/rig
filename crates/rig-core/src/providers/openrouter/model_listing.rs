@@ -1,16 +1,11 @@
 use crate::{
     client::ModelLister,
-    http_client::{self, HttpClientExt},
+    http_client::HttpClientExt,
     model::{Model, ModelList, ModelListingError},
-    providers::openrouter::Client,
+    providers::{internal, openrouter::Client},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct ListModelsResponse {
-    data: Vec<ModelEntry>,
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,27 +47,11 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "OpenRouter",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("OpenRouter", path, &error, &body)
-        })?;
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
+        internal::model_listing::list_models::<ModelEntry, _, _>(
+            &self.client,
+            "OpenRouter",
+            "/models",
+        )
+        .await
     }
 }

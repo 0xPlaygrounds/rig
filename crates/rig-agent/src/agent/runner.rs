@@ -225,6 +225,13 @@ pub struct AgentRunner {
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
+/// The `(history_override, memory_handle)` pair resolved for one run by
+/// [`AgentRunner::resolve_history_and_memory`].
+pub(crate) type HistoryAndMemory = (
+    Option<Vec<Message>>,
+    Option<(Arc<dyn ConversationMemory>, String)>,
+);
+
 impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
     /// stack. Prefer [`Agent::runner`].
@@ -927,6 +934,17 @@ impl TurnSource for UnaryTurnSource {
         current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
+            // Content telemetry for the accepted provider turn. Called at each
+            // terminal site (stop, terminate, accept) rather than hoisted: a
+            // retried turn must not record output for the discarded attempt.
+            let record_accepted_turn = |run: &AgentRun| {
+                if runner.record_telemetry_content
+                    && let Some(choice) = run.accepted_turn_choice()
+                {
+                    rig_core::telemetry::record_model_output(&chat_span, &choice, true);
+                }
+            };
+
             let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
                 Ok(resp) => resp,
                 Err(err) => {
@@ -997,13 +1015,7 @@ impl TurnSource for UnaryTurnSource {
                                     )
                                     .await,
                             ) {
-                                if runner.record_telemetry_content
-                                    && let Some(choice) = run.accepted_turn_choice()
-                                {
-                                    rig_core::telemetry::record_model_output(
-                                        &chat_span, &choice, true,
-                                    );
-                                }
+                                record_accepted_turn(run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 return;
                             }
@@ -1022,13 +1034,7 @@ impl TurnSource for UnaryTurnSource {
                                 Ok(ModelTurnDecision::Advance) => {}
                                 Ok(ModelTurnDecision::Retried) => break,
                                 Ok(ModelTurnDecision::Terminate(reason)) => {
-                                    if runner.record_telemetry_content
-                                        && let Some(choice) = run.accepted_turn_choice()
-                                    {
-                                        rig_core::telemetry::record_model_output(
-                                            &chat_span, &choice, true,
-                                        );
-                                    }
+                                    record_accepted_turn(run);
                                     yield Err(StreamingError::Prompt(Box::new(
                                         run.cancel_error(reason),
                                     )));
@@ -1041,11 +1047,7 @@ impl TurnSource for UnaryTurnSource {
                             }
                         }
 
-                        if runner.record_telemetry_content
-                            && let Some(choice) = run.accepted_turn_choice()
-                        {
-                            rig_core::telemetry::record_model_output(&chat_span, &choice, true);
-                        }
+                        record_accepted_turn(run);
                         break;
                     }
                 }
@@ -1114,10 +1116,9 @@ impl AgentRunner {
         (result, observed)
     }
 
-    /// Drive the agent loop to completion, returning the aggregated
-    /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
-    /// to terminate cancels the run.
-    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+    /// Open the per-run agent span, recording the prompt when content
+    /// telemetry is enabled. Shared by the blocking and streaming surfaces.
+    pub(crate) fn open_agent_span(&self) -> (tracing::Span, bool) {
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
             self.preamble.as_deref(),
@@ -1130,20 +1131,36 @@ impl AgentRunner {
             agent_span.record("gen_ai.prompt", text);
         }
 
-        // When the caller passes explicit history, memory is fully bypassed for
-        // this run (no load AND no save). Otherwise, if a memory backend and
-        // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
-            Some(_) => (None, None),
+        (agent_span, created_agent_span)
+    }
+
+    /// Resolve the history override and memory handle for this run.
+    ///
+    /// When the caller passes explicit history, memory is fully bypassed
+    /// (no load AND no save). Otherwise, if a memory backend and conversation
+    /// id are both configured, prior history is loaded. Each surface adapts a
+    /// load failure to its own error channel.
+    pub(crate) async fn resolve_history_and_memory(
+        &self,
+    ) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
+        match &self.chat_history {
+            Some(_) => Ok((None, None)),
             None => match (&self.memory, &self.conversation_id) {
                 (Some(memory), Some(id)) => {
                     let loaded = memory.load(id).await?;
-                    (Some(loaded), Some((memory.clone(), id.clone())))
+                    Ok((Some(loaded), Some((memory.clone(), id.clone()))))
                 }
-                _ => (None, None),
+                _ => Ok((None, None)),
             },
-        };
+        }
+    }
 
+    /// Drive the agent loop to completion, returning the aggregated
+    /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
+    /// to terminate cancels the run.
+    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+        let (agent_span, created_agent_span) = self.open_agent_span();
+        let (history_override, memory_handle) = self.resolve_history_and_memory().await?;
         let run = self.build_run(history_override);
 
         // Fold the shared engine to its final response. The blocking surface

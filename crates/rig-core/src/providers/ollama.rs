@@ -48,7 +48,7 @@ use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal;
 use crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
@@ -348,6 +348,35 @@ impl From<&CompletionResponse> for Usage {
         usage.output_tokens = output_tokens;
         usage.total_tokens = input_tokens + output_tokens;
         usage
+    }
+}
+
+impl crate::telemetry::ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Message;
+    type Usage = Usage;
+
+    /// Ollama's chat API carries no response ID.
+    fn get_response_id(&self) -> Option<String> {
+        None
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.clone())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        vec![self.message.clone()]
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        match &self.message {
+            Message::Assistant { content, .. } if !content.is_empty() => Some(content.clone()),
+            _ => None,
+        }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        Some(Usage::from(self))
     }
 }
 
@@ -740,15 +769,8 @@ where
 
             let response: CompletionResponse = serde_json::from_slice(&response_body)?;
             let span = tracing::Span::current();
-            span.record("gen_ai.response.model", &response.model);
-            span.record(
-                "gen_ai.usage.input_tokens",
-                response.prompt_eval_count.unwrap_or_default(),
-            );
-            span.record(
-                "gen_ai.usage.output_tokens",
-                response.eval_count.unwrap_or_default(),
-            );
+            span.record_response_metadata(&response);
+            span.record_token_usage(&Usage::from(&response));
 
             if tracing::enabled!(tracing::Level::TRACE) {
                 tracing::trace!(target: "rig::completions",
