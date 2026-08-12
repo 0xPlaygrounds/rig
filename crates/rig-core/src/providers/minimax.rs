@@ -21,14 +21,11 @@
 //! let model = client.completion_model(minimax::MINIMAX_M2);
 //! ```
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
+    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
 };
+use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
 
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.minimax.io/v1";
@@ -90,30 +87,15 @@ impl Provider for MiniMaxAnthropicExt {
     const VERIFY_PATH: &'static str = "/v1/models";
 }
 
-impl<H> Capabilities<H> for MiniMaxExt {
-    type Completion = Capable<super::openai::completion::GenericCompletionModel<MiniMaxExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    MiniMaxExt,
+    completion = super::openai::completion::GenericCompletionModel<MiniMaxExt, H>,
+);
 
-impl<H> Capabilities<H> for MiniMaxAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<MiniMaxAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    MiniMaxAnthropicExt,
+    completion = super::anthropic::completion::GenericCompletionModel<MiniMaxAnthropicExt, H>,
+);
 
 impl DebugExt for MiniMaxExt {}
 impl DebugExt for MiniMaxAnthropicExt {}
@@ -126,50 +108,15 @@ impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {
     type Response = super::openai::CompletionResponse;
 }
 
-impl ProviderBuilder for MiniMaxBuilder {
-    type Extension<H>
-        = MiniMaxExt
-    where
-        H: HttpClientExt;
-    type ApiKey = MiniMaxApiKey;
-
-    const BASE_URL: &'static str = GLOBAL_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MiniMaxExt)
-    }
-}
-
-impl ProviderBuilder for MiniMaxAnthropicBuilder {
-    type Extension<H>
-        = MiniMaxAnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
-    const BASE_URL: &'static str = GLOBAL_ANTHROPIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(MiniMaxAnthropicExt)
-    }
-
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(&self.anthropic, builder)
-    }
-}
+client::impl_default_provider_builder!(
+    MiniMaxBuilder => MiniMaxExt,
+    api_key = MiniMaxApiKey,
+    base_url = GLOBAL_API_BASE_URL,
+);
+impl_anthropic_compatible_builder!(
+    MiniMaxAnthropicBuilder => MiniMaxAnthropicExt,
+    base_url = GLOBAL_ANTHROPIC_API_BASE_URL,
+);
 
 impl super::anthropic::completion::AnthropicCompatibleProvider for MiniMaxAnthropicExt {
     const PROVIDER_NAME: &'static str = "minimax";
@@ -179,88 +126,29 @@ impl super::anthropic::completion::AnthropicCompatibleProvider for MiniMaxAnthro
     }
 }
 
-impl ProviderClient for Client {
-    type Input = MiniMaxApiKey;
-    type Error = crate::client::ProviderClientError;
+client::impl_provider_client!(
+    Client,
+    input = MiniMaxApiKey,
+    api_key_env = "MINIMAX_API_KEY",
+    base_url_env = "MINIMAX_API_BASE",
+);
 
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MINIMAX_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
+client::impl_provider_client!(
+    AnthropicClient,
+    input = String,
+    api_key_env = "MINIMAX_API_KEY",
+    base_url =
+        ANTHROPIC_BASE_URLS.resolve_from_env("MINIMAX_ANTHROPIC_API_BASE", "MINIMAX_API_BASE")?,
+);
 
-        if let Some(base_url) = crate::client::optional_env_var("MINIMAX_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for AnthropicClient {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("MINIMAX_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) =
-            anthropic_base_override("MINIMAX_ANTHROPIC_API_BASE", "MINIMAX_API_BASE")?
-        {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
-
-fn anthropic_base_override(
-    primary_env: &'static str,
-    fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
-
-    Ok(resolve_anthropic_base_override(
-        primary.as_deref(),
-        fallback.as_deref(),
-    ))
-}
-
-fn resolve_anthropic_base_override(
-    primary: Option<&str>,
-    fallback: Option<&str>,
-) -> Option<String> {
-    primary
-        .map(str::to_owned)
-        .or_else(|| fallback.and_then(normalize_anthropic_base_url))
-}
-
-fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
-    if base_url.contains("/anthropic") {
-        return Some(base_url.to_owned());
-    }
-
-    match base_url.trim_end_matches('/') {
-        GLOBAL_API_BASE_URL => Some(GLOBAL_ANTHROPIC_API_BASE_URL.to_owned()),
-        CHINA_API_BASE_URL => Some(CHINA_ANTHROPIC_API_BASE_URL.to_owned()),
-        _ => {
-            let mut url = url::Url::parse(base_url).ok()?;
-            if !matches!(url.path(), "/v1" | "/v1/") {
-                return None;
-            }
-            url.set_path("/anthropic");
-            Some(url.to_string())
-        }
-    }
-}
+const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
+    &[
+        (GLOBAL_API_BASE_URL, GLOBAL_ANTHROPIC_API_BASE_URL),
+        (CHINA_API_BASE_URL, CHINA_ANTHROPIC_API_BASE_URL),
+    ],
+    &["/v1", "/v1/"],
+    "/anthropic",
+);
 
 impl<H> ClientBuilder<H> {
     pub fn global(self) -> Self {
@@ -280,36 +168,13 @@ impl<H> AnthropicClientBuilder<H> {
     pub fn china(self) -> Self {
         self.base_url(CHINA_ANTHROPIC_API_BASE_URL)
     }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        CHINA_ANTHROPIC_API_BASE_URL, CHINA_API_BASE_URL, GLOBAL_ANTHROPIC_API_BASE_URL,
-        GLOBAL_API_BASE_URL, normalize_anthropic_base_url, resolve_anthropic_base_override,
+        ANTHROPIC_BASE_URLS, CHINA_ANTHROPIC_API_BASE_URL, CHINA_API_BASE_URL,
+        GLOBAL_ANTHROPIC_API_BASE_URL, GLOBAL_API_BASE_URL,
     };
 
     #[test]
@@ -330,15 +195,19 @@ mod tests {
     #[test]
     fn normalize_openai_bases_to_anthropic_bases() {
         assert_eq!(
-            normalize_anthropic_base_url(GLOBAL_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize(GLOBAL_API_BASE_URL)
+                .as_deref(),
             Some(GLOBAL_ANTHROPIC_API_BASE_URL)
         );
         assert_eq!(
-            normalize_anthropic_base_url(CHINA_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS.normalize(CHINA_API_BASE_URL).as_deref(),
             Some(CHINA_ANTHROPIC_API_BASE_URL)
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/v1").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/v1")
+                .as_deref(),
             Some("https://proxy.example.com/anthropic")
         );
     }
@@ -346,14 +215,16 @@ mod tests {
     #[test]
     fn normalize_preserves_existing_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url(CHINA_ANTHROPIC_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize(CHINA_ANTHROPIC_API_BASE_URL)
+                .as_deref(),
             Some(CHINA_ANTHROPIC_API_BASE_URL)
         );
     }
 
     #[test]
     fn anthropic_primary_override_wins() {
-        let override_url = resolve_anthropic_base_override(
+        let override_url = ANTHROPIC_BASE_URLS.resolve(
             Some("https://primary.example.com/anthropic"),
             Some(CHINA_API_BASE_URL),
         );

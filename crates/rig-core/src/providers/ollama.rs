@@ -38,17 +38,14 @@
 //! # Ok(())
 //! # }
 //! ```
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
+use crate::client::{self, ApiKey, DebugExt, ModelLister, Nothing, Provider, ProviderClient};
 use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal;
 use crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
@@ -122,39 +119,20 @@ impl Provider for OllamaExt {
     const VERIFY_PATH: &'static str = "api/tags";
 }
 
-impl<H> Capabilities<H> for OllamaExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Transcription = Nothing;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type ModelListing = Capable<OllamaModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OllamaExt,
+    completion = CompletionModel<H>,
+    embeddings = EmbeddingModel<H>,
+    model_listing = OllamaModelLister<H>,
+);
 
 impl DebugExt for OllamaExt {}
 
-impl ProviderBuilder for OllamaBuilder {
-    type Extension<H>
-        = OllamaExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OllamaApiKey;
-
-    const BASE_URL: &'static str = OLLAMA_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OllamaExt)
-    }
-}
+client::impl_default_provider_builder!(
+    OllamaBuilder => OllamaExt,
+    api_key = OllamaApiKey,
+    base_url = OLLAMA_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<OllamaExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
@@ -348,6 +326,35 @@ impl From<&CompletionResponse> for Usage {
         usage.output_tokens = output_tokens;
         usage.total_tokens = input_tokens + output_tokens;
         usage
+    }
+}
+
+impl crate::telemetry::ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Message;
+    type Usage = Usage;
+
+    /// Ollama's chat API carries no response ID.
+    fn get_response_id(&self) -> Option<String> {
+        None
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.clone())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        vec![self.message.clone()]
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        match &self.message {
+            Message::Assistant { content, .. } if !content.is_empty() => Some(content.clone()),
+            _ => None,
+        }
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        Some(Usage::from(self))
     }
 }
 
@@ -740,15 +747,8 @@ where
 
             let response: CompletionResponse = serde_json::from_slice(&response_body)?;
             let span = tracing::Span::current();
-            span.record("gen_ai.response.model", &response.model);
-            span.record(
-                "gen_ai.usage.input_tokens",
-                response.prompt_eval_count.unwrap_or_default(),
-            );
-            span.record(
-                "gen_ai.usage.output_tokens",
-                response.eval_count.unwrap_or_default(),
-            );
+            span.record_response_metadata(&response);
+            span.record_token_usage(&Usage::from(&response));
 
             if tracing::enabled!(tracing::Level::TRACE) {
                 tracing::trace!(target: "rig::completions",

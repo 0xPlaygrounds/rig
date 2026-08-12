@@ -108,6 +108,38 @@ fn unknown_tool_call_error(
     }
 }
 
+struct InvalidToolCallDiagnostic<'a> {
+    tool_call: &'a ToolCall,
+    executable_tool_names: &'a BTreeSet<String>,
+    allowed_tool_names: &'a BTreeSet<String>,
+    history: &'a [Message],
+}
+
+impl InvalidToolCallDiagnostic<'_> {
+    fn unknown(&self, tool_name: String) -> PromptError {
+        unknown_tool_call_error(
+            tool_name,
+            self.executable_tool_names.iter().cloned().collect(),
+            self.allowed_tool_names.iter().cloned().collect(),
+            self.history.to_vec(),
+        )
+    }
+
+    fn unknown_current(&self) -> PromptError {
+        self.unknown(self.tool_call.function.name.clone())
+    }
+
+    fn cancelled(&self, reason: String) -> PromptError {
+        PromptError::prompt_cancelled(self.history.to_vec(), reason)
+    }
+}
+
+enum ValidatedInvalidToolCallAction {
+    Retry { feedback: String },
+    Repair { tool_name: String },
+    Skip { reason: String },
+}
+
 /// Default number of times Tool output mode re-prompts the model for valid
 /// structured output before finalizing best-effort (see #1928). Mirrors
 /// pydantic-ai's default output-retry budget of 1.
@@ -244,6 +276,27 @@ struct ResolvingState {
     recovered: bool,
     any_skipped: bool,
     has_tool_calls: bool,
+}
+
+/// The invalid tool call resolution is currently parked on, if any: the item
+/// at `next_index` when it is a tool call outside the allowed set.
+fn pending_invalid_call(resolving: &ResolvingState) -> Option<&ToolCall> {
+    match resolving.items.get(resolving.next_index) {
+        Some(AssistantContent::ToolCall(tool_call))
+            if !resolving
+                .allowed_tool_names
+                .contains(&tool_call.function.name) =>
+        {
+            Some(tool_call)
+        }
+        _ => None,
+    }
+}
+
+fn has_tool_calls(items: &[AssistantContent]) -> bool {
+    items
+        .iter()
+        .any(|item| matches!(item, AssistantContent::ToolCall(_)))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -869,9 +922,7 @@ impl AgentRun {
         self.record_completion_call(turn.usage);
 
         let items: Vec<AssistantContent> = turn.choice.clone();
-        let has_tool_calls = items
-            .iter()
-            .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+        let has_tool_calls = has_tool_calls(&items);
 
         self.state = RunState::ResolvingToolCalls(Box::new(ResolvingState {
             message_id: turn.message_id,
@@ -924,6 +975,48 @@ impl AgentRun {
         }));
     }
 
+    /// Validate the recovery policy shared by buffered and streamed turns.
+    /// Medium-specific rollback, repair, and skip effects remain at the call
+    /// sites; rejection, retry budgeting, and tool-choice checks live here so
+    /// the two surfaces cannot drift.
+    fn validate_invalid_tool_call_action(
+        &mut self,
+        action: InvalidToolCallAction,
+        diagnostic: InvalidToolCallDiagnostic<'_>,
+    ) -> Result<ValidatedInvalidToolCallAction, PromptError> {
+        let result = match action {
+            InvalidToolCallAction::Fail => Err(diagnostic.unknown_current()),
+            InvalidToolCallAction::Retry { feedback } => {
+                if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
+                    Err(diagnostic.unknown_current())
+                } else {
+                    self.invalid_tool_call_retries += 1;
+                    Ok(ValidatedInvalidToolCallAction::Retry { feedback })
+                }
+            }
+            InvalidToolCallAction::Repair { tool_name } => {
+                if diagnostic.allowed_tool_names.contains(&tool_name) {
+                    Ok(ValidatedInvalidToolCallAction::Repair { tool_name })
+                } else {
+                    Err(diagnostic.unknown(tool_name))
+                }
+            }
+            InvalidToolCallAction::Stop { reason } => Err(diagnostic.cancelled(reason)),
+            InvalidToolCallAction::Skip { reason } => {
+                if matches!(self.tool_choice, Some(ToolChoice::None)) {
+                    Err(diagnostic.unknown_current())
+                } else {
+                    Ok(ValidatedInvalidToolCallAction::Skip { reason })
+                }
+            }
+        };
+
+        if result.is_err() {
+            self.state = RunState::Failed;
+        }
+        result
+    }
+
     /// Answer a pending [`ModelTurnOutcome::NeedsResolution`].
     ///
     /// Applies the agent loop's recovery semantics:
@@ -943,57 +1036,29 @@ impl AgentRun {
         &mut self,
         action: InvalidToolCallAction,
     ) -> Result<ModelTurnOutcome, PromptError> {
-        // Take the resolving state; rejection paths below restore it so an
-        // out-of-protocol call does not corrupt a drivable run.
-        let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
-            RunState::ResolvingToolCalls(resolving) => resolving,
-            other => {
-                self.state = other;
-                return Err(self.protocol_violation(
-                    "resolve_invalid_tool_call called without a pending invalid tool call",
-                ));
-            }
-        };
-        let tool_call = match resolving.items.get(resolving.next_index) {
-            Some(AssistantContent::ToolCall(tool_call))
-                if !resolving
-                    .allowed_tool_names
-                    .contains(&tool_call.function.name) =>
-            {
-                tool_call.clone()
-            }
-            _ => {
-                self.state = RunState::ResolvingToolCalls(resolving);
-                return Err(self.protocol_violation(
-                    "resolve_invalid_tool_call called without a pending invalid tool call",
-                ));
-            }
+        let mut resolving = self.take_resolving(
+            "resolve_invalid_tool_call called without a pending invalid tool call",
+        )?;
+        let Some(tool_call) = pending_invalid_call(&resolving).cloned() else {
+            self.state = RunState::ResolvingToolCalls(resolving);
+            return Err(self.protocol_violation(
+                "resolve_invalid_tool_call called without a pending invalid tool call",
+            ));
         };
 
         let diagnostic_history = self.diagnostic_history(&resolving);
-        let executable_tool_names: Vec<String> =
-            resolving.executable_tool_names.iter().cloned().collect();
-        let allowed_tool_names: Vec<String> =
-            resolving.allowed_tool_names.iter().cloned().collect();
+        let action = self.validate_invalid_tool_call_action(
+            action,
+            InvalidToolCallDiagnostic {
+                tool_call: &tool_call,
+                executable_tool_names: &resolving.executable_tool_names,
+                allowed_tool_names: &resolving.allowed_tool_names,
+                history: &diagnostic_history,
+            },
+        )?;
 
         match action {
-            InvalidToolCallAction::Fail => Err(unknown_tool_call_error(
-                tool_call.function.name,
-                executable_tool_names,
-                allowed_tool_names,
-                diagnostic_history,
-            )),
-            InvalidToolCallAction::Retry { feedback } => {
-                if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                    return Err(unknown_tool_call_error(
-                        tool_call.function.name,
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
-                self.invalid_tool_call_retries += 1;
-
+            ValidatedInvalidToolCallAction::Retry { feedback } => {
                 self.new_messages.push(Message::Assistant {
                     id: resolving.message_id.clone(),
                     content: resolving.original_choice.clone(),
@@ -1012,15 +1077,7 @@ impl AgentRun {
                 self.state = RunState::PreparingRequest;
                 Ok(ModelTurnOutcome::TurnRetried)
             }
-            InvalidToolCallAction::Repair { tool_name } => {
-                if !allowed_tool_names.contains(&tool_name) {
-                    return Err(unknown_tool_call_error(
-                        tool_name,
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
+            ValidatedInvalidToolCallAction::Repair { tool_name } => {
                 if let Some(AssistantContent::ToolCall(tool_call)) =
                     resolving.items.get_mut(resolving.next_index)
                 {
@@ -1030,19 +1087,7 @@ impl AgentRun {
                 self.state = RunState::ResolvingToolCalls(resolving);
                 self.advance_resolution()
             }
-            InvalidToolCallAction::Stop { reason } => {
-                self.state = RunState::Failed;
-                Err(PromptError::prompt_cancelled(diagnostic_history, reason))
-            }
-            InvalidToolCallAction::Skip { reason } => {
-                if matches!(self.tool_choice, Some(ToolChoice::None)) {
-                    return Err(unknown_tool_call_error(
-                        tool_call.function.name,
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
+            ValidatedInvalidToolCallAction::Skip { reason } => {
                 let user_content = UserContent::tool_result_for(
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
@@ -1071,34 +1116,19 @@ impl AgentRun {
     /// disappear, a sibling output call can still finalize the turn, and
     /// response observers still receive the canonical response fields.
     pub(crate) fn ignore_invalid_tool_call(&mut self) -> Result<ModelTurnOutcome, PromptError> {
-        let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
-            RunState::ResolvingToolCalls(resolving) => resolving,
-            other => {
-                self.state = other;
-                return Err(self.protocol_violation(
-                    "ignore_invalid_tool_call called without a pending invalid tool call",
-                ));
-            }
-        };
+        let mut resolving = self.take_resolving(
+            "ignore_invalid_tool_call called without a pending invalid tool call",
+        )?;
 
-        match resolving.items.get(resolving.next_index) {
-            Some(AssistantContent::ToolCall(tool_call))
-                if !resolving
-                    .allowed_tool_names
-                    .contains(&tool_call.function.name) => {}
-            _ => {
-                self.state = RunState::ResolvingToolCalls(resolving);
-                return Err(self.protocol_violation(
-                    "ignore_invalid_tool_call called without a pending invalid tool call",
-                ));
-            }
+        if pending_invalid_call(&resolving).is_none() {
+            self.state = RunState::ResolvingToolCalls(resolving);
+            return Err(self.protocol_violation(
+                "ignore_invalid_tool_call called without a pending invalid tool call",
+            ));
         }
 
         resolving.items.remove(resolving.next_index);
-        resolving.has_tool_calls = resolving
-            .items
-            .iter()
-            .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+        resolving.has_tool_calls = has_tool_calls(&resolving.items);
         // Dropping the last item leaves the turn empty, which is now
         // representable. This used to push a fabricated empty-text part so the
         // content type stayed satisfied; `is_empty_assistant_turn` keeps such a
@@ -1162,18 +1192,24 @@ impl AgentRun {
         Ok(())
     }
 
+    /// Take the resolving state out of `self.state`, leaving `Failed` behind;
+    /// callers restore it on their rejection paths so an out-of-protocol call
+    /// does not corrupt a drivable run.
+    fn take_resolving(&mut self, violation: &str) -> Result<Box<ResolvingState>, PromptError> {
+        match std::mem::replace(&mut self.state, RunState::Failed) {
+            RunState::ResolvingToolCalls(resolving) => Ok(resolving),
+            other => {
+                self.state = other;
+                Err(self.protocol_violation(violation))
+            }
+        }
+    }
+
     /// Scan forward for the next invalid tool call; finish the turn when the
     /// scan completes.
     fn advance_resolution(&mut self) -> Result<ModelTurnOutcome, PromptError> {
-        let mut resolving = match std::mem::replace(&mut self.state, RunState::Failed) {
-            RunState::ResolvingToolCalls(resolving) => resolving,
-            other => {
-                self.state = other;
-                return Err(self.protocol_violation(
-                    "internal: advance_resolution outside of tool-call resolution",
-                ));
-            }
-        };
+        let mut resolving =
+            self.take_resolving("internal: advance_resolution outside of tool-call resolution")?;
         while let Some(item) = resolving.items.get(resolving.next_index) {
             match item {
                 AssistantContent::ToolCall(tool_call)
@@ -1306,76 +1342,29 @@ impl AgentRun {
 
         let diagnostic_history =
             self.streamed_diagnostic_history(partial, Some(invalid.tool_call.clone()));
-        let executable_tool_names: Vec<String> =
-            invalid.executable_tool_names.iter().cloned().collect();
-        let allowed_tool_names: Vec<String> = invalid.allowed_tool_names.iter().cloned().collect();
+        let action = self.validate_invalid_tool_call_action(
+            action,
+            InvalidToolCallDiagnostic {
+                tool_call: &invalid.tool_call,
+                executable_tool_names: &invalid.executable_tool_names,
+                allowed_tool_names: &invalid.allowed_tool_names,
+                history: &diagnostic_history,
+            },
+        )?;
 
         match action {
-            InvalidToolCallAction::Fail => {
-                self.state = RunState::Failed;
-                Err(unknown_tool_call_error(
-                    invalid.tool_call.function.name.clone(),
-                    executable_tool_names,
-                    allowed_tool_names,
-                    diagnostic_history,
-                ))
-            }
-            InvalidToolCallAction::Retry { feedback } => {
-                if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                    self.state = RunState::Failed;
-                    return Err(unknown_tool_call_error(
-                        invalid.tool_call.function.name.clone(),
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
-                self.invalid_tool_call_retries += 1;
-
-                let Some((assistant_message, user_message)) =
-                    partial.rollback_messages(invalid.tool_call.clone(), feedback)
-                else {
-                    self.state = RunState::Failed;
-                    return Err(PromptError::prompt_cancelled(
-                        diagnostic_history,
-                        "invalid tool call retry produced no retry messages",
-                    ));
-                };
-                self.new_messages.push(assistant_message);
-                self.new_messages.push(user_message);
-                self.rollback_pending = true;
-                self.state = RunState::PreparingRequest;
-                Ok(StreamedResolution::TurnAbandoned {
-                    skipped_tool_result: None,
-                })
-            }
-            InvalidToolCallAction::Repair { tool_name } => {
-                if !invalid.allowed_tool_names.contains(&tool_name) {
-                    self.state = RunState::Failed;
-                    return Err(unknown_tool_call_error(
-                        tool_name,
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
+            ValidatedInvalidToolCallAction::Retry { feedback } => self.abandon_streamed_turn(
+                partial,
+                invalid,
+                feedback,
+                diagnostic_history,
+                "invalid tool call retry produced no retry messages",
+                None,
+            ),
+            ValidatedInvalidToolCallAction::Repair { tool_name } => {
                 Ok(StreamedResolution::Repaired { tool_name })
             }
-            InvalidToolCallAction::Stop { reason } => {
-                self.state = RunState::Failed;
-                Err(PromptError::prompt_cancelled(diagnostic_history, reason))
-            }
-            InvalidToolCallAction::Skip { reason } => {
-                if matches!(self.tool_choice, Some(ToolChoice::None)) {
-                    self.state = RunState::Failed;
-                    return Err(unknown_tool_call_error(
-                        invalid.tool_call.function.name.clone(),
-                        executable_tool_names,
-                        allowed_tool_names,
-                        diagnostic_history,
-                    ));
-                }
-
+            ValidatedInvalidToolCallAction::Skip { reason } => {
                 // Synthetic skip reason: emit verbatim text, matching the
                 // non-streamed `resolve_invalid_tool_call` skip path (parity) and
                 // avoiding re-parsing a rejection message as structured output.
@@ -1385,24 +1374,46 @@ impl AgentRun {
                     name: invalid.tool_call.function.name.clone(),
                     content: vec![ToolResultContent::text(reason.clone())],
                 };
-                let Some((assistant_message, user_message)) =
-                    partial.rollback_messages(invalid.tool_call.clone(), reason)
-                else {
-                    self.state = RunState::Failed;
-                    return Err(PromptError::prompt_cancelled(
-                        diagnostic_history,
-                        "invalid tool call skip produced no recovery messages",
-                    ));
-                };
-                self.new_messages.push(assistant_message);
-                self.new_messages.push(user_message);
-                self.rollback_pending = true;
-                self.state = RunState::PreparingRequest;
-                Ok(StreamedResolution::TurnAbandoned {
-                    skipped_tool_result: Some(Box::new(skipped_tool_result)),
-                })
+                self.abandon_streamed_turn(
+                    partial,
+                    invalid,
+                    reason,
+                    diagnostic_history,
+                    "invalid tool call skip produced no recovery messages",
+                    Some(Box::new(skipped_tool_result)),
+                )
             }
         }
+    }
+
+    /// Shared rollback for the streamed Retry and Skip resolutions: push the
+    /// partial turn's rollback messages and abandon the turn, or fail the run
+    /// when the partial turn yields no rollback messages.
+    fn abandon_streamed_turn(
+        &mut self,
+        partial: &PartialStreamedTurn,
+        invalid: &StreamedInvalidToolCall,
+        feedback: String,
+        diagnostic_history: Vec<Message>,
+        no_messages_reason: &str,
+        skipped_tool_result: Option<Box<ToolResult>>,
+    ) -> Result<StreamedResolution, PromptError> {
+        let Some((assistant_message, user_message)) =
+            partial.rollback_messages(invalid.tool_call.clone(), feedback)
+        else {
+            self.state = RunState::Failed;
+            return Err(PromptError::prompt_cancelled(
+                diagnostic_history,
+                no_messages_reason,
+            ));
+        };
+        self.new_messages.push(assistant_message);
+        self.new_messages.push(user_message);
+        self.rollback_pending = true;
+        self.state = RunState::PreparingRequest;
+        Ok(StreamedResolution::TurnAbandoned {
+            skipped_tool_result,
+        })
     }
 
     /// Feed the assembled streamed turn for the pending
@@ -1429,10 +1440,7 @@ impl AgentRun {
             self.streamed_completion_call_recorded = true;
         }
 
-        let has_tool_calls = turn
-            .choice
-            .iter()
-            .any(|item| matches!(item, AssistantContent::ToolCall(_)));
+        let has_tool_calls = has_tool_calls(&turn.choice);
 
         for item in &turn.choice {
             let AssistantContent::ToolCall(tool_call) = item else {
@@ -2312,7 +2320,7 @@ mod tests {
         // current schema — the pre-provider-split `call_id` lift is gone
         // (its ignore-the-key behavior is pinned in rig-core's message
         // tests).
-        let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
+        let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":null}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":"call_1","function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"internal_call_id":null}]}}"#;
 
         let mut restored: AgentRun =
             serde_json::from_str(fixture).expect("old-format suspended run should deserialize");
@@ -2389,13 +2397,10 @@ mod tests {
         assert_eq!(resumed.output, uninterrupted.output);
         assert_eq!(resumed.usage, uninterrupted.usage);
         assert_eq!(resumed.completion_calls, uninterrupted.completion_calls);
-        // Compare messages by their serialized form: deserializing a message
-        // normalizes absent `additional_params` to an empty map, which is
-        // semantically identical and serializes identically.
-        assert_eq!(
-            serde_json::to_value(&resumed.messages).expect("messages should serialize"),
-            serde_json::to_value(&uninterrupted.messages).expect("messages should serialize"),
-        );
+        // Direct value comparison: with `additional_params` a named field,
+        // a restored message is identical to the live one — no serialized-form
+        // detour that would hide a round-trip divergence.
+        assert_eq!(resumed.messages, uninterrupted.messages);
     }
 
     #[test]

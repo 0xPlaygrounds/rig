@@ -90,11 +90,11 @@ impl TryFrom<MistralTranscriptionResponse>
     }
 }
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
+pub type TranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::GenericTranscriptionModel<
+        crate::providers::mistral::client::MistralExt,
+        T,
+    >;
 
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
@@ -164,15 +164,6 @@ where
                 status,
                 String::from_utf8_lossy(&response_bytes),
             ))
-        }
-    }
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
         }
     }
 }

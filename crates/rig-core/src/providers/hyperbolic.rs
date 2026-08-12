@@ -12,9 +12,8 @@
 //! # }
 //! ```
 
-use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
-use crate::client::{BearerAuth, ProviderClient};
-use crate::http_client::{self, HttpClientExt};
+use crate::client::BearerAuth;
+use crate::client::{self, DebugExt, Provider};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -34,17 +33,12 @@ impl Provider for HyperbolicExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for HyperbolicExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    HyperbolicExt,
+    completion = CompletionModel<H>,
+    image_generation = ImageGenerationModel<H>,
+    audio_generation = AudioGenerationModel<H>,
+);
 
 impl DebugExt for HyperbolicExt {}
 
@@ -88,60 +82,24 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
     }
 }
 
-impl ProviderBuilder for HyperbolicBuilder {
-    type Extension<H>
-        = HyperbolicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = HyperbolicApiKey;
-
-    const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(HyperbolicExt)
-    }
-}
+client::impl_default_provider_builder!(
+    HyperbolicBuilder => HyperbolicExt,
+    api_key = HyperbolicApiKey,
+    base_url = HYPERBOLIC_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HyperbolicBuilder, HyperbolicApiKey, H>;
 
-impl ProviderClient for Client {
-    type Input = HyperbolicApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("HYPERBOLIC_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(
+    Client,
+    input = HyperbolicApiKey,
+    api_key_env = "HYPERBOLIC_API_KEY",
+);
 
 #[cfg(any(feature = "image", feature = "audio"))]
-use serde::Deserialize;
-
-#[cfg(any(feature = "image", feature = "audio"))]
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[cfg(any(feature = "image", feature = "audio"))]
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
+use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
 // Hyperbolic Completion API
@@ -288,37 +246,18 @@ mod image_generation {
                 merge_inplace(&mut request, params);
             }
 
-            let body = serde_json::to_vec(&request)?;
-
-            let request = self
-                .client
-                .post("/v1/image/generation")?
-                .header("Content-Type", "application/json")
-                .body(body)
-                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, bytes::Bytes>(request).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(ImageGenerationError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(ImageGenerationError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body),
-                    ))
-                }
-            }
+            // The explicit Content-Type header the hand-rolled request set is
+            // supplied by `Client::send` for every JSON request, so the wire
+            // shape is unchanged.
+            crate::providers::internal::image_generation::send_image_generation::<
+                _,
+                ApiResponse<ImageGenerationResponse>,
+            >(
+                &self.client,
+                self.client.post("/v1/image/generation")?,
+                request,
+            )
+            .await
         }
     }
 }

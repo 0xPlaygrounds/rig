@@ -1261,7 +1261,7 @@ impl ProviderResponseExt for CompletionResponse {
     }
 }
 
-fn assistant_message_text_response(message: &Message) -> Option<String> {
+pub(crate) fn assistant_message_text_response(message: &Message) -> Option<String> {
     let Message::Assistant {
         content, refusal, ..
     } = message
@@ -1860,7 +1860,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         let history_has_tool_result = history_contains_tool_result(&full_history);
 
-        let (tools, tool_choice) = if supports_tools {
+        let (mut tools, tool_choice) = if supports_tools {
             let tool_choice = tool_choice.map(ToolChoice::try_from).transpose()?;
             let tools: Vec<ToolDefinition> = tools
                 .into_iter()
@@ -1879,6 +1879,55 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             }
             (Vec::new(), None)
         };
+
+        // `additional_params` is flattened into the serialized request, so a raw
+        // `tools` array left in it would silently replace the typed `tools`
+        // field (the body is built via `serde_json::to_value`, where the
+        // flattened key wins). Merge its function tools into the typed list
+        // instead, mirroring the Responses API path (issue #1890). Entries that
+        // are not function tools stay behind for the provider's
+        // `prepare_request` hook — Groq, for one, folds its native tools
+        // (`{"type": "browser_search"}`, ...) into `compound_custom` from there.
+        let mut additional_params = additional_params;
+        if supports_tools
+            && let Some(map) = additional_params
+                .as_mut()
+                .and_then(serde_json::Value::as_object_mut)
+            && let Some(raw_tools) = map.remove("tools")
+        {
+            let raw_tools =
+                serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|err| {
+                    CompletionError::RequestError(
+                        format!(
+                            "Invalid OpenAI Chat Completions `additional_params.tools` payload: {err}"
+                        )
+                        .into(),
+                    )
+                })?;
+            let mut remaining = Vec::new();
+            for raw_tool in raw_tools {
+                let is_function_tool =
+                    raw_tool.get("type").and_then(serde_json::Value::as_str) == Some("function");
+                if is_function_tool {
+                    let tool =
+                        serde_json::from_value::<ToolDefinition>(raw_tool).map_err(|err| {
+                            CompletionError::RequestError(
+                                format!(
+                                    "Invalid function tool in OpenAI Chat Completions \
+                                 `additional_params.tools`: {err}"
+                                )
+                                .into(),
+                            )
+                        })?;
+                    tools.push(tool);
+                } else {
+                    remaining.push(raw_tool);
+                }
+            }
+            if !remaining.is_empty() {
+                map.insert("tools".to_string(), serde_json::Value::Array(remaining));
+            }
+        }
 
         if output_schema.is_some() && !supports_response_format {
             tracing::warn!(
@@ -2849,6 +2898,67 @@ mod tests {
             serde_json::to_value(openai_request).expect("serialization should succeed");
 
         assert!(serialized.get("max_tokens").is_none());
+    }
+
+    /// A mixed `additional_params.tools` array splits by shape: function tools
+    /// merge into the typed `tools` field (issue #1890 — left in the flattened
+    /// params they replace the typed field at serialization), while
+    /// non-function entries stay behind for the provider's `prepare_request`
+    /// hook (Groq folds its native tools into `compound_custom` from there).
+    /// Not a cassette test: OpenAI proper rejects non-function chat tools, so
+    /// the retained-entry half cannot be recorded against the live API.
+    #[test]
+    fn additional_params_function_tools_merge_and_native_tools_stay() {
+        let request = CoreCompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec!["Hello".into()],
+            documents: vec![],
+            tools: vec![crate::completion::ToolDefinition {
+                name: "builder_tool".to_string(),
+                description: "from the builder".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            }],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: Some(serde_json::json!({
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "params_tool",
+                            "description": "from additional_params",
+                            "parameters": {"type": "object", "properties": {}}
+                        }
+                    },
+                    {"type": "browser_search"}
+                ]
+            })),
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("request conversion should succeed");
+
+        let names: Vec<&str> = openai_request
+            .tools
+            .iter()
+            .map(|tool| tool.function.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["builder_tool", "params_tool"]);
+        assert_eq!(
+            openai_request.additional_params,
+            Some(serde_json::json!({"tools": [{"type": "browser_search"}]}))
+        );
     }
 
     #[test]

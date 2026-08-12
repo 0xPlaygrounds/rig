@@ -1308,6 +1308,117 @@ merged `RequestPatch` and the previous model, and may pick a different handle
 per model call). `CompletionModel::capabilities()` is captured by value when
 the handle is created.
 
+### Assistant content is tagged and provider extras are a named field
+
+`AssistantContent` serializes with a `"type"` tag, exactly like `UserContent`
+always has:
+
+```json
+{"type": "text",      "text": "hello"}
+{"type": "toolcall",  "id": "call_1", "function": {"name": "add", "arguments": {}}}
+{"type": "reasoning", "id": null, "content": [...]}
+{"type": "image",     "data": ...}
+```
+
+The tag is **required** on deserialize, and there is no untagged fallback.
+**This breaks released data**: 0.41 serialized assistant content untagged, so
+a history or run persisted under 0.41 carries the bare shape
+(`{"text": "hello"}`) and fails to load with ``missing field `type` `` (the
+internally-tagged enum's wording — grep your logs for that, not for an
+untagged-enum error). Migrate stored assistant blocks by inserting the tag:
+
+- text block (`"text"` key) → add `"type": "text"`
+- tool call (`"id"` + `"function"` keys) → add `"type": "toolcall"`
+- reasoning (`"content"` list of reasoning blocks) → add `"type": "reasoning"`
+- image (`"data"` key, assistant side) → add `"type": "image"`
+
+The tag alone is not always enough: 0.41's flatten also wrote provider extras
+as top-level siblings on **assistant** text (anthropic citations, raw server
+tool content) and **assistant** images (openrouter response images always
+carry an `"openrouter"` extras object). Under this release those keys are
+**silently dropped on load** — an unknown key on a content block is ignored,
+never captured, never an error — so re-nest them under `additional_params` in
+the same pass, exactly as the user-content instructions below describe —
+`{"text": "…", "citations": […]}` becomes `{"type": "text", "text": "…",
+"additional_params": {"citations": […]}}`, and `{"data": …, "openrouter":
+{…}}` becomes `{"type": "image", "data": …, "additional_params":
+{"openrouter": {…}}}`. The missing *tag* is the loud migration signal; the
+un-re-nested extras are the quiet one. Verify your migration with the
+round-trip recipe at the end of this section.
+
+`additional_params` on every content block (`Text`, `Image`, `Audio`, `Video`,
+`Document`) is now a **named** field instead of a serde flatten, typed
+`Option<message::AdditionalParams>` — a newtype that is a non-empty JSON
+object *by construction* (build one with `AdditionalParams::from_entries`,
+`::new`, or `::try_from_value`; read with `::get`; `Some` always carries
+data). The wire shape is unchanged:
+
+```json
+{"type": "text", "text": "", "additional_params": {"citations": [...]}}
+```
+
+Two defect classes die with the flatten: a stray key can no longer be
+silently captured into `additional_params` and replayed to providers, and an
+absent field round-trips as `None` instead of the flatten's `Some({})`
+artifact — so turn-emptiness classification is identical before and after a
+persist/restore. The unknown-key policy is now **uniform and tolerant**
+across every content block (the five structs above plus `ToolCall` and
+`Reasoning`): a known field with the wrong shape is a loud decode error, an
+unknown key is ignored, and an unknown content-block *tag* is a loud error.
+Histories written by a newer rig therefore stay loadable by this one. The
+params remain provider-specific: a serializer replays only params it
+recognizes as its own wire's. The 0.41 helper family
+(`non_empty_params`, `params_carry_data`) is gone — the newtype carries the
+whole contract, and plain `is_none()`/`is_some()` are always correct.
+
+**Released *user*-content blocks need the same re-nesting.** 0.41's flatten
+wrote provider extras at the block's top level — e.g. an Anthropic document
+block serialized as `{"type": "document", "data": …, "title": "t",
+"citations": …}`. Those keys load silently dropped; re-nest every non-schema
+key under `additional_params`: `{"type": "document", "data": …,
+"additional_params": {"title": "t", "citations": …}}`. Cover the nested
+blocks too: a tool result's content list (`UserContent::ToolResult` →
+`ToolResultContent::Text`/`Image`) reuses these same structs, so flattened
+extras inside a persisted tool result drop the same way and need the same
+re-nesting. (An empty `"additional_params": {}` or `null` is fine — it
+canonicalizes to absent on load. Any other non-object value is a decode
+error: extras are a keyed namespace, so a re-nesting script that writes
+`"additional_params": []` or a bare string fails loudly instead of loading
+as an annotation no extractor can read.)
+
+**Verify the migration** with the round-trip recipe: load each persisted
+message tolerantly, re-serialize it, and ask
+[`message::keys_lost_in_round_trip`] for every key that did not survive —
+an empty result means the history migrated whole. (The canonical copy of
+this snippet is the compiled doc example on `keys_lost_in_round_trip`
+itself, so the recipe and the behavior cannot drift.)
+
+```rust
+let loaded: message::Message = serde_json::from_value(original.clone())?;
+let round_tripped = serde_json::to_value(&loaded)?;
+let lost = message::keys_lost_in_round_trip(&original, &round_tripped);
+assert!(lost.is_empty(), "keys dropped by tolerant load: {lost:?}");
+```
+
+Run it once over your store at migration time; the runtime load path stays
+tolerant on purpose (loudness at the migration boundary, not on every
+restore).
+
+**Streaming events**: `StreamedAssistantContent` is a tolerant decode with an
+`Unknown` catch-all. A stream item whose text block carries stray sibling
+keys — 0.41's flatten shape, or a relay stamping bookkeeping keys onto text
+items — decodes as stream *text* with the stray keys dropped: the text is
+assembled, nothing is excluded. A replayed **tagged** assistant block
+(`toolcall`/`reasoning`/`image` — the tagged `AssistantContent`
+serialization is not a stream-item shape) decodes as `Unknown` and is
+excluded from assembly, as is a text item whose `additional_params` is
+malformed (a non-object — the strict decode rejects the known field); the
+**agent assembler** — the one rig component that ingests replayed stream
+events — counts both kinds of exclusion and logs a single `tracing` warning
+per turn, on every termination path
+(`StreamedTurnAssembler::excluded_assistant_content` exposes the count). A consumer assembling self-deserialized events with its
+own logic gets no warning and should apply the same check itself.
+
 ### Two pre-`Vec` serde accommodations are gone
 
 Backwards compatibility with data persisted before this release is no longer
@@ -1320,12 +1431,10 @@ carried:
   `Option`.) This reaches further than standalone response values: `AgentRun`
   embeds a `PromptResponse` in its `Done` state, so a **persisted run** that
   reached `Done` before the field existed fails to load too — migrate stored
-  runs (add `"content": [{"text": <output>}]` to the embedded response)
-  before upgrading. Note the **absence** of a `"type"` key: assistant
-  content is untagged, and a stray `"type": "text"` would be flatten-captured
-  into the block's `additional_params` instead of acting as a tag — an
-  annotation the serializer never produces, silently replayed to providers
-  as a provider-specific text field on the next request.
+  runs (add `"content": [{"type": "text", "text": <output>}]` to the embedded
+  response) before upgrading. Assistant content is tagged with `"type"` in
+  this release, exactly like user content — see "Assistant content is tagged
+  and provider extras are a named field" below.
 - Pre-provider-split `ToolCall` JSON is no longer migrated on load — see the
   "Persisted histories" bullet in the tool-call identity section above for
   what a legacy `call_id` key now means and how to migrate the JSON by hand.

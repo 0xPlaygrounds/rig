@@ -1,10 +1,7 @@
 use super::responses_api::{ResponsesProviderExt, SystemInstructionsPlacement};
 use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
-    http_client::{self, HttpClientExt},
+    client::{self, BearerAuth, DebugExt, Provider},
+    http_client::HttpClientExt,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
@@ -71,71 +68,40 @@ impl Provider for OpenAICompletionsExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for OpenAIResponsesExt {
-    type Completion = Capable<super::responses_api::ResponsesCompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-    type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Capable<super::OpenAIModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OpenAIResponsesExt,
+    completion = super::responses_api::ResponsesCompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+    transcription = super::TranscriptionModel<H>,
+    model_listing = super::OpenAIModelLister<H>,
+    image_generation = super::ImageGenerationModel<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
-impl<H> Capabilities<H> for OpenAICompletionsExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Capable<super::GenericEmbeddingModel<OpenAICompletionsExt, H>>;
-    type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Capable<super::OpenAIModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    OpenAICompletionsExt,
+    completion = super::completion::CompletionModel<H>,
+    embeddings = super::GenericEmbeddingModel<OpenAICompletionsExt, H>,
+    transcription = super::TranscriptionModel<H>,
+    model_listing = super::OpenAIModelLister<H>,
+    image_generation = super::ImageGenerationModel<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
 impl DebugExt for OpenAIResponsesExt {}
 
 impl DebugExt for OpenAICompletionsExt {}
 
-impl ProviderBuilder for OpenAIResponsesExtBuilder {
-    type Extension<H>
-        = OpenAIResponsesExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OpenAIApiKey;
-
-    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OpenAIResponsesExt::default())
-    }
-}
-
-impl ProviderBuilder for OpenAICompletionsExtBuilder {
-    type Extension<H>
-        = OpenAICompletionsExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OpenAIApiKey;
-
-    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OpenAICompletionsExt::default())
-    }
-}
+client::impl_default_provider_builder!(
+    OpenAIResponsesExtBuilder => OpenAIResponsesExt,
+    api_key = OpenAIApiKey,
+    base_url = OPENAI_API_BASE_URL,
+);
+client::impl_default_provider_builder!(
+    OpenAICompletionsExtBuilder => OpenAICompletionsExt,
+    api_key = OpenAIApiKey,
+    base_url = OPENAI_API_BASE_URL,
+);
 
 impl<H> Client<H>
 where
@@ -229,72 +195,41 @@ where
     }
 }
 
-impl ProviderClient for Client {
-    type Input = OpenAIApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new OpenAI Responses API client from the `OPENAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let base_url = crate::client::optional_env_var("OPENAI_BASE_URL")?;
-        let api_key = crate::client::required_env_var("OPENAI_API_KEY")?;
-
-        let mut builder = Client::builder().api_key(&api_key);
-
-        if let Some(base) = base_url {
-            builder = builder.base_url(&base);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for CompletionsClient {
-    type Input = OpenAIApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new OpenAI Completions API client from the `OPENAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let base_url = crate::client::optional_env_var("OPENAI_BASE_URL")?;
-        let api_key = crate::client::required_env_var("OPENAI_API_KEY")?;
-
-        let mut builder = CompletionsClient::builder().api_key(&api_key);
-
-        if let Some(base) = base_url {
-            builder = builder.base_url(&base);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(
+    Client,
+    input = OpenAIApiKey,
+    api_key_env = "OPENAI_API_KEY",
+    base_url_env_first = "OPENAI_BASE_URL",
+);
+client::impl_provider_client!(
+    CompletionsClient,
+    input = OpenAIApiKey,
+    api_key_env = "OPENAI_API_KEY",
+    base_url_env_first = "OPENAI_BASE_URL",
+);
 
 /// Error envelope returned by OpenAI-compatible providers alongside 2xx
 /// statuses. Providers spell the message field differently (`message`,
 /// `error`, nested objects), so anything that isn't a valid success payload
 /// is treated as an error envelope and the raw body is preserved for the
 /// caller; `message` is only used for logging.
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct ApiErrorResponse {
-    #[serde(default, alias = "error", deserialize_with = "error_message_or_value")]
     pub(crate) message: String,
 }
 
-fn error_message_or_value<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(match value {
-        serde_json::Value::String(message) => message,
-        other => other.to_string(),
-    })
+// Manual impl (not a field-level `alias = "error"`): the alias makes serde
+// treat `message` and `error` as one field, so a body carrying both keys
+// fails as a duplicate field instead of classifying as this envelope.
+impl<'de> Deserialize<'de> for ApiErrorResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self {
+            message: crate::providers::internal::envelope::error_message(deserializer)?,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]

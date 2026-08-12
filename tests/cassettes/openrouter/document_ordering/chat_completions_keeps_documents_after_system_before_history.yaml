@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"Answer with the exact token from the document only.","type":"text"}],"role":"system"},{"content":"<file id: ordering-note>\nThe ordering token is violet-needle.\n</file>\n","role":"user"},{"content":[{"text":"Acknowledged.","type":"text"}],"role":"assistant"},{"content":"According to the document, what is the ordering token?","role":"user"}],"model":"openai/gpt-4o-mini","temperature":0.0}'
+  body: '{"max_tokens":32,"messages":[{"content":[{"text":"Answer with the exact token from the document only.","type":"text"}],"role":"system"},{"content":"<file id: ordering-note>\nThe ordering token is violet-needle.\n</file>\n","role":"user"},{"content":[{"text":"Acknowledged.","type":"text"}],"role":"assistant"},{"content":"According to the document, what is the ordering token?","role":"user"}],"model":"openai/gpt-4o-mini","temperature":0.0}'
 then:
   status: 200
   header:

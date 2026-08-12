@@ -1,7 +1,4 @@
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient, Transport,
-};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, Transport};
 use crate::http_client::{self};
 use crate::providers::gemini::model_listing::{GeminiInteractionsModelLister, GeminiModelLister};
 use serde::Deserialize;
@@ -109,31 +106,22 @@ impl Provider for GeminiInteractionsExt {
     }
 }
 
-impl<H> Capabilities<H> for GeminiExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Capable<super::embedding::EmbeddingModel<H>>;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Capable<GeminiModelLister<H>>;
+client::impl_capabilities!(
+    GeminiExt,
+    completion = super::completion::CompletionModel<H>,
+    embeddings = super::embedding::EmbeddingModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    model_listing = GeminiModelLister<H>,
+    image_generation = super::image_generation::ImageGenerationModel<H>,
+);
 
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl<H> Capabilities<H> for GeminiInteractionsExt {
-    type Completion = Capable<super::interactions_api::InteractionsCompletionModel<H>>;
-    type Embeddings = Capable<super::embedding::EmbeddingModel<H>>;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Capable<GeminiInteractionsModelLister<H>>;
-
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    GeminiInteractionsExt,
+    completion = super::interactions_api::InteractionsCompletionModel<H>,
+    embeddings = super::embedding::EmbeddingModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    model_listing = GeminiInteractionsModelLister<H>,
+);
 
 impl ProviderBuilder for GeminiBuilder {
     type Extension<H>
@@ -177,35 +165,12 @@ impl ProviderBuilder for GeminiInteractionsBuilder {
     }
 }
 
-impl ProviderClient for Client {
-    type Input = GeminiApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Google Gemini client from the `GEMINI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("GEMINI_API_KEY")?;
-        Self::new(api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for InteractionsClient {
-    type Input = GeminiApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Google Gemini interactions client from the `GEMINI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("GEMINI_API_KEY")?;
-        Self::new(api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = GeminiApiKey, api_key_env = "GEMINI_API_KEY",);
+client::impl_provider_client!(
+    InteractionsClient,
+    input = GeminiApiKey,
+    api_key_env = "GEMINI_API_KEY",
+);
 
 impl<H> Client<H> {
     /// Create an Interactions API client from this GenerateContent client.

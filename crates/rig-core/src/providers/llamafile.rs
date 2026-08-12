@@ -28,11 +28,7 @@
 //! # }
 //! ```
 
-use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    Transport,
-};
-use crate::http_client::{self, HttpClientExt};
+use crate::client::{self, DebugExt, Nothing, Provider, ProviderClient, Transport};
 use crate::providers::openai;
 
 // ================================================================
@@ -77,38 +73,19 @@ impl openai::embedding::OpenAIEmbeddingsCompatible for LlamafileExt {
     const PROVIDER_NAME: &'static str = "llamafile";
 }
 
-impl<H> Capabilities<H> for LlamafileExt {
-    type Completion = Capable<openai::completion::GenericCompletionModel<LlamafileExt, H>>;
-    type Embeddings = Capable<openai::embedding::GenericEmbeddingModel<LlamafileExt, H>>;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    LlamafileExt,
+    completion = openai::completion::GenericCompletionModel<LlamafileExt, H>,
+    embeddings = openai::embedding::GenericEmbeddingModel<LlamafileExt, H>,
+);
 
 impl DebugExt for LlamafileExt {}
 
-impl ProviderBuilder for LlamafileBuilder {
-    type Extension<H>
-        = LlamafileExt
-    where
-        H: HttpClientExt;
-    type ApiKey = Nothing;
-
-    const BASE_URL: &'static str = LLAMAFILE_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(LlamafileExt)
-    }
-}
+client::impl_default_provider_builder!(
+    LlamafileBuilder => LlamafileExt,
+    api_key = Nothing,
+    base_url = LLAMAFILE_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<LlamafileExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =

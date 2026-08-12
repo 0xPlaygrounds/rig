@@ -8,12 +8,20 @@
 //! crate-private.
 
 pub mod adapter;
+pub(crate) mod anthropic_compatible;
+#[cfg(feature = "audio")]
+pub(crate) mod audio_generation;
 pub(crate) mod auth;
 pub(crate) mod chunk_lifecycle;
+pub(crate) mod envelope;
+#[cfg(feature = "image")]
+pub(crate) mod image_generation;
+pub(crate) mod model_listing;
 pub(crate) mod openai_chat_completions_compatible;
 #[cfg(any(test, debug_assertions))]
 pub(crate) mod sequence_law;
 pub mod tool_call_bridge;
+pub(crate) mod transcription;
 pub mod wire;
 
 /// Fill empty [`ToolResult::name`](crate::message::ToolResult::name)s from

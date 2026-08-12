@@ -5,6 +5,7 @@ mod cassette {
     mod default_max_turns;
     mod document_file_id;
     mod empty_end_turn;
+    mod error_envelope;
     mod image;
     mod messages_behaviors;
     mod messages_sessions;
@@ -19,6 +20,7 @@ mod cassette {
     mod prompt_caching;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod regression_suite;
     mod request_override;
     mod streaming;
     mod streaming_grammar;

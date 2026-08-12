@@ -1,7 +1,7 @@
 use crate::audio_generation::{
     self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
 };
-use crate::http_client::{self, HttpClientExt};
+use crate::http_client::HttpClientExt;
 use crate::providers::openai::Client;
 use bytes::Bytes;
 use serde_json::json;
@@ -40,37 +40,19 @@ where
         &self,
         request: AudioGenerationRequest,
     ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
-        let body = serde_json::to_vec(&json!({
+        let body = json!({
             "model": self.model,
             "input": request.text,
             "voice": request.voice,
             "speed": request.speed,
-        }))?;
+        });
 
-        let req = self
-            .client
-            .post("/audio/speech")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let response = self.client.send(req).await?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let bytes: Bytes = response.into_body().await?;
-
-            return Err(AudioGenerationError::from_http_response(
-                status,
-                String::from_utf8_lossy(&bytes),
-            ));
-        }
-
-        let bytes: Bytes = response.into_body().await?;
-
-        Ok(AudioGenerationResponse {
-            audio: bytes.to_vec(),
-            response: bytes,
-        })
+        crate::providers::internal::audio_generation::send_audio_generation(
+            &self.client,
+            self.client.post("/audio/speech")?,
+            body,
+        )
+        .await
     }
 }
 

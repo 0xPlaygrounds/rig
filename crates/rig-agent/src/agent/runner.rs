@@ -62,7 +62,7 @@ use crate::{
     completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
     tool::{
-        ToolContext, ToolDispatch, ToolOutput, ToolResult,
+        ToolContext, ToolDispatch, ToolResult,
         server::{ToolRegistrySnapshot, ToolServerHandle},
     },
 };
@@ -140,50 +140,6 @@ pub(crate) fn resolve_model_turn_action(
     }
 }
 
-pub(crate) enum ToolCallDecision {
-    Proceed,
-    ProceedWith(serde_json::Value),
-    Skip(String),
-    Terminate(String),
-}
-
-pub(crate) fn tool_call_decision(action: ToolCallAction) -> ToolCallDecision {
-    match action {
-        ToolCallAction::Run => ToolCallDecision::Proceed,
-        ToolCallAction::Rewrite(args) => ToolCallDecision::ProceedWith(args),
-        ToolCallAction::Skip(reason) => ToolCallDecision::Skip(reason),
-        ToolCallAction::Stop(reason) => ToolCallDecision::Terminate(reason),
-    }
-}
-
-pub(crate) enum ToolResultDecision {
-    Keep,
-    Replace(ToolOutput),
-    Terminate(String),
-}
-
-pub(crate) fn tool_result_decision(action: ToolResultAction) -> ToolResultDecision {
-    match action {
-        ToolResultAction::Keep => ToolResultDecision::Keep,
-        ToolResultAction::Rewrite(result) => ToolResultDecision::Replace(result),
-        ToolResultAction::Stop(reason) => ToolResultDecision::Terminate(reason),
-    }
-}
-
-pub(crate) enum CompletionCallDecision {
-    Proceed,
-    Patch(RequestPatch),
-    Terminate(String),
-}
-
-pub(crate) fn completion_call_decision(action: CompletionCallAction) -> CompletionCallDecision {
-    match action {
-        CompletionCallAction::Continue => CompletionCallDecision::Proceed,
-        CompletionCallAction::Patch(patch) => CompletionCallDecision::Patch(patch),
-        CompletionCallAction::Stop(reason) => CompletionCallDecision::Terminate(reason),
-    }
-}
-
 /// A hook-aware driver over [`AgentRun`].
 ///
 /// Construct one from an [`Agent`] with [`Agent::runner`], attach hooks with
@@ -224,6 +180,13 @@ pub struct AgentRunner {
     pub(crate) hooks: HookStack,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
+
+/// The `(history_override, memory_handle)` pair resolved for one run by
+/// [`AgentRunner::resolve_history_and_memory`].
+pub(crate) type HistoryAndMemory = (
+    Option<Vec<Message>>,
+    Option<(Arc<dyn ConversationMemory>, String)>,
+);
 
 impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
@@ -600,21 +563,20 @@ pub(crate) async fn resolve_completion_call(
     history: &[Message],
     turn: usize,
 ) -> CompletionCallOutcome {
-    match completion_call_decision(
-        hooks
-            .on_completion_call(
-                ctx,
-                CompletionCall {
-                    prompt,
-                    history,
-                    turn,
-                },
-            )
-            .await,
-    ) {
-        CompletionCallDecision::Terminate(reason) => CompletionCallOutcome::Terminate(reason),
-        CompletionCallDecision::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
-        CompletionCallDecision::Proceed => CompletionCallOutcome::Proceed(None),
+    match hooks
+        .on_completion_call(
+            ctx,
+            CompletionCall {
+                prompt,
+                history,
+                turn,
+            },
+        )
+        .await
+    {
+        CompletionCallAction::Stop(reason) => CompletionCallOutcome::Terminate(reason),
+        CompletionCallAction::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
+        CompletionCallAction::Continue => CompletionCallOutcome::Proceed(None),
     }
 }
 
@@ -695,8 +657,8 @@ pub(crate) async fn run_single_tool(
     }
 
     // Resolve the `ToolCall` hook chain. A proceeding chain carries any
-    // `ToolCallAction::Rewrite` in the action itself (→ `ProceedWith`); a chain that a
-    // later hook short-circuits with `Skip`/`Terminate` salvages the accumulated
+    // `ToolCallAction::Rewrite` in the action itself; a chain that a later hook
+    // short-circuits with `Skip`/`Stop` salvages the accumulated
     // rewrite into `salvaged_rewrite` so it is *not* lost — the rewritten args
     // must still be reported on the skipped `ToolResult` and in tracing rather
     // than leaking the model's original args (see [`HookStack::resolve_tool_call`]).
@@ -731,14 +693,14 @@ pub(crate) async fn run_single_tool(
     // `ToolCallAction::Rewrite` replacement, or a salvaged rewrite) — surfaced in the
     // execution-commit event so a redaction rewrite does not leak. Unused for a skip.
     let mut skipped: Option<ToolResult> = None;
-    let effective_args: serde_json::Value = match tool_call_decision(action) {
-        ToolCallDecision::Terminate(reason) => {
+    let effective_args: serde_json::Value = match action {
+        ToolCallAction::Stop(reason) => {
             return Err(PromptError::prompt_cancelled(
                 error_history.to_vec(),
                 reason,
             ));
         }
-        ToolCallDecision::Skip(reason) => {
+        ToolCallAction::Skip(reason) => {
             tracing::info!(tool_name = tool_name, reason = reason, "Tool call rejected");
             // Synthetic rejection: `Skipped` outcome, message delivered verbatim.
             // Still fires the `ToolResult` hook so a policy observes the skip.
@@ -747,7 +709,7 @@ pub(crate) async fn run_single_tool(
             // (if any) so tracing/history stay consistent, though they go unused.
             salvaged_rewrite.unwrap_or_else(|| tool_call.function.arguments.clone())
         }
-        ToolCallDecision::ProceedWith(replacement) => {
+        ToolCallAction::Rewrite(replacement) => {
             // Proceeding rewrite: re-record the span so the trace, and the
             // downstream `ToolResult` event, reflect what the tool actually
             // received rather than what the model emitted.
@@ -761,7 +723,7 @@ pub(crate) async fn run_single_tool(
             );
             replacement
         }
-        ToolCallDecision::Proceed => tool_call.function.arguments.clone(),
+        ToolCallAction::Run => tool_call.function.arguments.clone(),
     };
 
     // Resolve the structured execution result and how the call surfaced. A skip
@@ -785,33 +747,31 @@ pub(crate) async fn run_single_tool(
     };
     // Presentation rewrites happen after execution. The raw structured result
     // and per-dispatch context remain unchanged for every hook.
-    let result_decision = tool_result_decision(
-        hooks
-            .on_tool_result(
-                ctx,
-                ToolResultEvent {
-                    tool_name,
-                    tool_call_id: Some(tool_call.id.as_str()),
-                    internal_call_id,
-                    args: &args,
-                    presentation: exec.output(),
-                    raw_result: &exec,
-                    tool_context: &dispatch_context,
-                },
-            )
-            .await,
-    );
+    let result_action = hooks
+        .on_tool_result(
+            ctx,
+            ToolResultEvent {
+                tool_name,
+                tool_call_id: Some(tool_call.id.as_str()),
+                internal_call_id,
+                args: &args,
+                presentation: exec.output(),
+                raw_result: &exec,
+                tool_context: &dispatch_context,
+            },
+        )
+        .await;
     // Outcome metadata describes the execution itself, while result content
     // follows the same presentation policy as the model. This keeps redaction
     // and stop hooks from leaking raw tool output through telemetry.
     record_tool_result(&tool_span, &exec);
 
-    match result_decision {
-        ToolResultDecision::Terminate(reason) => Err(PromptError::prompt_cancelled(
+    match result_action {
+        ToolResultAction::Stop(reason) => Err(PromptError::prompt_cancelled(
             error_history.to_vec(),
             reason,
         )),
-        ToolResultDecision::Replace(replacement) => {
+        ToolResultAction::Rewrite(replacement) => {
             if record_content {
                 tool_span.record("gen_ai.tool.call.result", replacement.render());
             }
@@ -825,7 +785,7 @@ pub(crate) async fn run_single_tool(
                 execution,
             })
         }
-        ToolResultDecision::Keep => {
+        ToolResultAction::Keep => {
             if record_content {
                 tool_span.record("gen_ai.tool.call.result", exec.output().render());
             }
@@ -927,6 +887,17 @@ impl TurnSource for UnaryTurnSource {
         current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
+            // Content telemetry for the accepted provider turn. Called at each
+            // terminal site (stop, terminate, accept) rather than hoisted: a
+            // retried turn must not record output for the discarded attempt.
+            let record_accepted_turn = |run: &AgentRun| {
+                if runner.record_telemetry_content
+                    && let Some(choice) = run.accepted_turn_choice()
+                {
+                    rig_core::telemetry::record_model_output(&chat_span, &choice, true);
+                }
+            };
+
             let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
                 Ok(resp) => resp,
                 Err(err) => {
@@ -997,13 +968,7 @@ impl TurnSource for UnaryTurnSource {
                                     )
                                     .await,
                             ) {
-                                if runner.record_telemetry_content
-                                    && let Some(choice) = run.accepted_turn_choice()
-                                {
-                                    rig_core::telemetry::record_model_output(
-                                        &chat_span, &choice, true,
-                                    );
-                                }
+                                record_accepted_turn(run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 return;
                             }
@@ -1022,13 +987,7 @@ impl TurnSource for UnaryTurnSource {
                                 Ok(ModelTurnDecision::Advance) => {}
                                 Ok(ModelTurnDecision::Retried) => break,
                                 Ok(ModelTurnDecision::Terminate(reason)) => {
-                                    if runner.record_telemetry_content
-                                        && let Some(choice) = run.accepted_turn_choice()
-                                    {
-                                        rig_core::telemetry::record_model_output(
-                                            &chat_span, &choice, true,
-                                        );
-                                    }
+                                    record_accepted_turn(run);
                                     yield Err(StreamingError::Prompt(Box::new(
                                         run.cancel_error(reason),
                                     )));
@@ -1041,11 +1000,7 @@ impl TurnSource for UnaryTurnSource {
                             }
                         }
 
-                        if runner.record_telemetry_content
-                            && let Some(choice) = run.accepted_turn_choice()
-                        {
-                            rig_core::telemetry::record_model_output(&chat_span, &choice, true);
-                        }
+                        record_accepted_turn(run);
                         break;
                     }
                 }
@@ -1114,10 +1069,9 @@ impl AgentRunner {
         (result, observed)
     }
 
-    /// Drive the agent loop to completion, returning the aggregated
-    /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
-    /// to terminate cancels the run.
-    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+    /// Open the per-run agent span, recording the prompt when content
+    /// telemetry is enabled. Shared by the blocking and streaming surfaces.
+    pub(crate) fn open_agent_span(&self) -> (tracing::Span, bool) {
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
             self.preamble.as_deref(),
@@ -1130,20 +1084,36 @@ impl AgentRunner {
             agent_span.record("gen_ai.prompt", text);
         }
 
-        // When the caller passes explicit history, memory is fully bypassed for
-        // this run (no load AND no save). Otherwise, if a memory backend and
-        // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
-            Some(_) => (None, None),
+        (agent_span, created_agent_span)
+    }
+
+    /// Resolve the history override and memory handle for this run.
+    ///
+    /// When the caller passes explicit history, memory is fully bypassed
+    /// (no load AND no save). Otherwise, if a memory backend and conversation
+    /// id are both configured, prior history is loaded. Each surface adapts a
+    /// load failure to its own error channel.
+    pub(crate) async fn resolve_history_and_memory(
+        &self,
+    ) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
+        match &self.chat_history {
+            Some(_) => Ok((None, None)),
             None => match (&self.memory, &self.conversation_id) {
                 (Some(memory), Some(id)) => {
                     let loaded = memory.load(id).await?;
-                    (Some(loaded), Some((memory.clone(), id.clone())))
+                    Ok((Some(loaded), Some((memory.clone(), id.clone()))))
                 }
-                _ => (None, None),
+                _ => Ok((None, None)),
             },
-        };
+        }
+    }
 
+    /// Drive the agent loop to completion, returning the aggregated
+    /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
+    /// to terminate cancels the run.
+    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+        let (agent_span, created_agent_span) = self.open_agent_span();
+        let (history_override, memory_handle) = self.resolve_history_and_memory().await?;
         let run = self.build_run(history_override);
 
         // Fold the shared engine to its final response. The blocking surface
@@ -1623,8 +1593,8 @@ mod migrated_tests {
     use crate::agent::{
         CompletionCallAction, CompletionCallEvent, HookStack, InvalidToolCallAction,
         InvalidToolCallContext, ModelTurnAction, ModelTurnFinished, ObservationAction,
-        StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
-        ToolResultEvent,
+        ReasoningDelta, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
+        ToolResultAction, ToolResultEvent,
     };
 
     use std::sync::{
@@ -1764,6 +1734,14 @@ mod migrated_tests {
         }
         async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
             self.record(StepEventKind::TextDelta);
+            ObservationAction::continue_run()
+        }
+        async fn on_reasoning_delta(
+            &self,
+            _: &HookContext,
+            _: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.record(StepEventKind::ReasoningDelta);
             ObservationAction::continue_run()
         }
         async fn on_tool_call_delta(
@@ -6922,23 +6900,6 @@ mod migrated_tests {
         let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
     }
 
-    /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that
-    /// carries the replacement arguments, and is named for fail-closed
-    /// diagnostics.
-    #[test]
-    fn rewrite_args_resolves_to_proceed_with_for_tool_call() {
-        let args = json!({"x": 1, "y": 2});
-        match super::tool_call_decision(ToolCallAction::rewrite(args.clone())) {
-            super::ToolCallDecision::ProceedWith(replacement) => assert_eq!(replacement, args),
-            _ => panic!("ToolCallAction::Rewrite should resolve to ProceedWith"),
-        }
-        // The typed convenience builds the same variant as the value constructor.
-        assert_eq!(
-            ToolCallAction::try_rewrite(&json!({"x": 1, "y": 2})).expect("serializes"),
-            ToolCallAction::rewrite(json!({"x": 1, "y": 2})),
-        );
-    }
-
     /// A hook that rewrites a *valid* tool call's arguments (`ToolCallAction::Rewrite`
     /// on `ToolCall`) is honored identically under `run()` and `stream()`: the
     /// tool executes with the replacement, so both drivers observe the same
@@ -7231,18 +7192,6 @@ mod migrated_tests {
         }
     }
 
-    /// `ToolResultAction::Rewrite` resolves to a `Replace` tool-result decision carrying
-    /// the replacement, and is named for fail-closed diagnostics.
-    #[test]
-    fn rewrite_result_resolves_to_replace_for_tool_result() {
-        match super::tool_result_decision(ToolResultAction::rewrite("redacted")) {
-            super::ToolResultDecision::Replace(result) => {
-                assert_eq!(result.as_text(), Some("redacted"))
-            }
-            _ => panic!("ToolResultAction::Rewrite should resolve to Replace"),
-        }
-    }
-
     /// A hook that rewrites a tool's result (`ToolResultAction::Rewrite` on
     /// `ToolResult`) is honored identically under `run()` and `stream()`: the
     /// model-visible history carries the replacement while the `ToolResult` event
@@ -7388,19 +7337,6 @@ mod migrated_tests {
 
     const OVERRIDE_PREAMBLE: &str = "overridden: critical-step instructions";
     const OVERRIDE_MAX_TOKENS: u64 = 512;
-
-    /// `CompletionCallAction::Patch` resolves to a `Patch` completion-call decision
-    /// carrying the patch, and is named for fail-closed diagnostics.
-    #[test]
-    fn patch_request_resolves_to_patch_for_completion_call() {
-        let patch = RequestPatch::new()
-            .temperature(0.25)
-            .tool_choice(ToolChoice::Required);
-        match super::completion_call_decision(CompletionCallAction::patch(patch.clone())) {
-            super::CompletionCallDecision::Patch(got) => assert_eq!(got, patch),
-            _ => panic!("PatchRequest should resolve to Patch for a completion call"),
-        }
-    }
 
     /// A `CompletionCallAction::Patch` hook patches the request for the turn identically
     /// under `run()` and `stream()`: the captured completion request shows the
@@ -8202,6 +8138,7 @@ mod migrated_tests {
     async fn reasoning_only_turn_does_not_gain_stream_response_finish() {
         let hook = RecordingHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning_delta("think"),
             MockStreamEvent::reasoning("think"),
             MockStreamEvent::final_response_with_total_tokens(0),
         ]]))
@@ -8223,6 +8160,11 @@ mod migrated_tests {
             hook.count(StepEventKind::ModelTurnFinished),
             1,
             "the accepted reasoning-only turn still fires ModelTurnFinished"
+        );
+        assert_eq!(
+            hook.count(StepEventKind::ReasoningDelta),
+            1,
+            "the reasoning fragment is observed once and its completed restatement is not a delta"
         );
     }
 

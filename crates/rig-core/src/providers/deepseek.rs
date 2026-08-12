@@ -14,12 +14,9 @@
 
 use serde_json::Value;
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
-    ProviderBuilder, ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
-use crate::model::{Model, ModelList, ModelListingError};
+use crate::client::{self, BearerAuth, DebugExt, ModelLister, Provider, ProviderClient};
+use crate::http_client::HttpClientExt;
+use crate::model::{ModelList, ModelListingError};
 use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
@@ -117,38 +114,19 @@ impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
     }
 }
 
-impl<H> Capabilities<H> for DeepSeekExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Capable<DeepSeekModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    DeepSeekExt,
+    completion = CompletionModel<H>,
+    model_listing = DeepSeekModelLister<H>,
+);
 
 impl DebugExt for DeepSeekExt {}
 
-impl ProviderBuilder for DeepSeekExtBuilder {
-    type Extension<H>
-        = DeepSeekExt
-    where
-        H: HttpClientExt;
-    type ApiKey = DeepSeekApiKey;
-
-    const BASE_URL: &'static str = DEEPSEEK_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(DeepSeekExt)
-    }
-}
+client::impl_default_provider_builder!(
+    DeepSeekExtBuilder => DeepSeekExt,
+    api_key = DeepSeekApiKey,
+    base_url = DEEPSEEK_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
@@ -419,25 +397,6 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct ListModelsResponse {
-    data: Vec<ListModelEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListModelEntry {
-    id: String,
-    owned_by: String,
-}
-
-impl From<ListModelEntry> for Model {
-    fn from(value: ListModelEntry) -> Self {
-        let mut model = Model::from_id(value.id);
-        model.owned_by = Some(value.owned_by);
-        model
-    }
-}
-
 /// [`ModelLister`] implementation for the DeepSeek API (`GET /models`).
 #[derive(Clone)]
 pub struct DeepSeekModelLister<H = reqwest::Client> {
@@ -455,43 +414,12 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(|error| match error {
-                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-                    ModelListingError::api_error_with_context(
-                        "DeepSeek",
-                        path,
-                        status.as_u16(),
-                        message.as_bytes(),
-                    )
-                }
-                other => ModelListingError::from(other),
-            })?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "DeepSeek",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("DeepSeek", path, &error, &body)
-        })?;
-
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
+        crate::providers::internal::model_listing::list_models::<
+            crate::providers::internal::model_listing::ListModelEntry,
+            _,
+            _,
+        >(&self.client, "DeepSeek", "/models")
+        .await
     }
 }
 
@@ -959,11 +887,12 @@ mod tests {
             ]
         }"#;
 
-        let response: ListModelsResponse =
-            serde_json::from_str(data).expect("list models response should deserialize");
+        let response: crate::providers::internal::model_listing::DataEnvelope<
+            crate::providers::internal::model_listing::ListModelEntry,
+        > = serde_json::from_str(data).expect("list models response should deserialize");
         assert_eq!(response.data.len(), 2);
         assert_eq!(response.data[0].id, "deepseek-chat");
-        assert_eq!(response.data[0].owned_by, "deepseek");
+        assert_eq!(response.data[0].owned_by.as_deref(), Some("deepseek"));
     }
 
     #[tokio::test]

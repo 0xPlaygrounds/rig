@@ -233,6 +233,31 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
     }
 }
 
+impl crate::telemetry::ProviderResponseExt for CompletionResponse {
+    type OutputMessage = Output;
+    type Usage = ResponsesUsage;
+
+    fn get_response_id(&self) -> Option<String> {
+        Some(self.id.clone()).filter(|id| !id.is_empty())
+    }
+
+    fn get_response_model_name(&self) -> Option<String> {
+        Some(self.model.clone()).filter(|model| !model.is_empty())
+    }
+
+    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
+        self.output.clone()
+    }
+
+    fn get_text_response(&self) -> Option<String> {
+        crate::providers::openai::responses_api::output_text_response(&self.output)
+    }
+
+    fn get_usage(&self) -> Option<Self::Usage> {
+        self.usage.clone()
+    }
+}
+
 // ================================================================
 // Completion Model
 // ================================================================
@@ -300,8 +325,7 @@ where
                 match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
                     ApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
-                        span.record("gen_ai.response.id", response.id.as_str());
-                        span.record("gen_ai.response.model", response.model.as_str());
+                        span.record_response_metadata(&response);
                         if let Some(usage) = &response.usage {
                             span.record_token_usage(&crate::completion::Usage::from(usage));
                         }

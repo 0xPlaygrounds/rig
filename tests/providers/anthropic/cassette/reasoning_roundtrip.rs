@@ -36,3 +36,18 @@ async fn nonstreaming() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn reasoning_delta_hook_streaming() {
+    with_anthropic_cassette("reasoning_delta_hook/streaming", |client| async move {
+        reasoning::run_reasoning_delta_hook_streaming(
+            client.completion_model(CLAUDE_SONNET_4_6),
+            serde_json::json!({
+                "thinking": { "type": "adaptive" }
+            }),
+            "anthropic",
+        )
+        .await;
+    })
+    .await;
+}

@@ -24,22 +24,14 @@
 
 use std::fmt::Debug;
 
-use super::openai::TranscriptionResponse;
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client::multipart::Part;
-use crate::http_client::{self, HttpClientExt, MultipartForm, bearer_auth_header};
-use crate::transcription::TranscriptionError;
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, ProviderClient};
+use crate::http_client::{self, HttpClientExt, bearer_auth_header};
+use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 use crate::{
     embeddings::{self, EmbeddingError},
     providers::openai,
-    transcription::{self},
 };
-use bytes::Bytes;
 use serde::Deserialize;
-use serde_json::json;
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -92,17 +84,13 @@ impl Provider for AzureExt {
     const VERIFY_PATH: &'static str = "";
 }
 
-impl<H> Capabilities<H> for AzureExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Capable<EmbeddingModel<H>>;
-    type Transcription = Capable<TranscriptionModel<H>>;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    AzureExt,
+    completion = CompletionModel<H>,
+    embeddings = EmbeddingModel<H>,
+    transcription = TranscriptionModel<H>,
+    audio_generation = AudioGenerationModel<H>,
+);
 
 impl ProviderBuilder for AzureExtBuilder {
     type Extension<H>
@@ -217,17 +205,6 @@ where
         &self.ext().api_version
     }
 
-    fn post_embedding(&self, deployment_id: &str) -> http_client::Result<http_client::Builder> {
-        let url = format!(
-            "{}/openai/deployments/{}/embeddings?api-version={}",
-            self.endpoint(),
-            deployment_id.trim_start_matches('/'),
-            self.api_version()
-        );
-
-        self.post(&url)
-    }
-
     #[cfg(feature = "audio")]
     fn post_audio_generation(
         &self,
@@ -321,17 +298,8 @@ impl ProviderClient for Client {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
+#[cfg(feature = "image")]
+use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
 // Azure OpenAI Embedding API
@@ -404,9 +372,27 @@ impl std::fmt::Display for Usage {
 
 #[derive(Clone)]
 pub struct EmbeddingModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-    ndims: usize,
+    /// The shared OpenAI-compatible embeddings driver, built once at
+    /// construction; the wrapper only preserves Azure's historical
+    /// `Option<usize>` ndims constructor signatures.
+    inner: openai::embedding::GenericEmbeddingModel<AzureExt, T>,
+}
+
+impl openai::embedding::OpenAIEmbeddingsCompatible for AzureExt {
+    const PROVIDER_NAME: &'static str = "azure.openai";
+
+    // Azure addresses the deployment through the URL, so the request body
+    // carries no `model` field.
+    const SENDS_MODEL_FIELD: bool = false;
+
+    fn embeddings_path_for_model(&self, model: &str) -> String {
+        format!(
+            "{}/openai/deployments/{}/embeddings?api-version={}",
+            self.endpoint,
+            model.trim_start_matches('/'),
+            self.api_version
+        )
+    }
 }
 
 impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
@@ -422,77 +408,23 @@ where
     }
 
     fn ndims(&self) -> usize {
-        self.ndims
+        self.inner.ndims()
     }
 
     async fn embed_texts(
         &self,
         documents: impl IntoIterator<Item = String>,
     ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents = documents.into_iter().collect::<Vec<_>>();
+        let documents: Vec<String> = documents.into_iter().collect();
+        self.inner.embed_texts(documents).await
+    }
 
-        let mut body = json!({
-            "input": documents,
-        });
-
-        let body_object = body.as_object_mut().ok_or_else(|| {
-            EmbeddingError::ResponseError("embedding request body must be a JSON object".into())
-        })?;
-
-        if self.ndims > 0 && self.model.as_str() != TEXT_EMBEDDING_ADA_002 {
-            body_object.insert("dimensions".to_owned(), json!(self.ndims));
-        }
-
-        let body = serde_json::to_vec(&body)?;
-
-        let req = self
-            .client
-            .post_embedding(self.model.as_str())?
-            .body(body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-
-        let response = self.client.send(req).await?;
-
-        let status = response.status();
-        if status.is_success() {
-            let response_body: Vec<u8> = response.into_body().await?;
-            let parsed: ApiResponse<EmbeddingResponse> = serde_json::from_slice(&response_body)?;
-
-            match parsed {
-                ApiResponse::Ok(response) => {
-                    tracing::info!(target: "rig",
-                        "Azure embedding token usage: {}",
-                        response.usage
-                    );
-
-                    if response.data.len() != documents.len() {
-                        return Err(EmbeddingError::ResponseError(
-                            "Response data length does not match input length".into(),
-                        ));
-                    }
-
-                    Ok(response
-                        .data
-                        .into_iter()
-                        .zip(documents.into_iter())
-                        .map(|(embedding, document)| embeddings::Embedding {
-                            document,
-                            vec: embedding.embedding,
-                        })
-                        .collect())
-                }
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(EmbeddingError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
-        } else {
-            let text = http_client::text(response).await?;
-            Err(EmbeddingError::from_http_response(status, text))
-        }
+    async fn embed_texts_with_usage(
+        &self,
+        documents: impl IntoIterator<Item = String>,
+    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
+        let documents: Vec<String> = documents.into_iter().collect();
+        self.inner.embed_texts_with_usage(documents).await
     }
 }
 
@@ -504,19 +436,17 @@ impl<T> EmbeddingModel<T> {
             .unwrap_or_default();
 
         Self {
-            client,
-            model,
-            ndims,
+            inner: openai::embedding::GenericEmbeddingModel::new(client, model, ndims),
         }
     }
 
     pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
-        let ndims = ndims.unwrap_or_default();
-
         Self {
-            client,
-            model: model.into(),
-            ndims,
+            inner: openai::embedding::GenericEmbeddingModel::with_model(
+                client,
+                model,
+                ndims.unwrap_or_default(),
+            ),
         }
     }
 }
@@ -585,93 +515,21 @@ impl openai::completion::OpenAICompatibleProvider for AzureExt {
 // Azure OpenAI Transcription API
 // ================================================================
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
-    pub model: String,
-}
+/// Azure OpenAI transcription model; `model` identifies the Azure deployment.
+pub type TranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+impl<T> OpenAiTranscriptionClient for Client<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Response = TranscriptionResponse;
-    type Client = Client<T>;
+    const MODEL_IN_FORM: bool = false;
 
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    fn transcription_request(
         &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        let data = request.data;
-
-        let mut body =
-            MultipartForm::new().part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(prompt) = request.prompt {
-            body = body.text("prompt", prompt.clone());
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-
-            for (key, value) in params {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
-
-        let req = self
-            .client
-            .post_transcription(&self.model)?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send_multipart::<Bytes>(req).await?;
-        let status = response.status();
-        let response_body = response.into_body().into_future().await?.to_vec();
-
-        if status.is_success() {
-            match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(api_error_response) => {
-                    tracing::warn!(message = %api_error_response.message, "provider returned an error response");
-                    Err(TranscriptionError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_body).to_string(),
-            ))
-        }
+        model: &str,
+    ) -> crate::http_client::Result<crate::http_client::Builder> {
+        self.post_transcription(model)
     }
 }
 
@@ -688,7 +546,6 @@ mod image_generation {
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::providers::azure::{ApiResponse, Client};
     use crate::providers::openai::ImageGenerationResponse;
-    use bytes::Bytes;
     use serde_json::json;
 
     #[derive(Clone)]
@@ -724,35 +581,15 @@ mod image_generation {
                 "response_format": "b64_json"
             });
 
-            let body = serde_json::to_vec(&request)?;
-
-            let req = self
-                .client
-                .post_image_generation(&self.model)?
-                .body(body)
-                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(ImageGenerationError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body).into_owned(),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(ImageGenerationError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body).into_owned(),
-                    ))
-                }
-            }
+            crate::providers::internal::image_generation::send_image_generation::<
+                _,
+                ApiResponse<ImageGenerationResponse>,
+            >(
+                &self.client,
+                self.client.post_image_generation(&self.model)?,
+                request,
+            )
+            .await
         }
     }
 }
@@ -811,30 +648,15 @@ mod audio_generation {
                 "speed": request.speed,
             });
 
-            let body = serde_json::to_vec(&request)?;
-
-            let req = self
-                .client
-                .post_audio_generation("/audio/speech")?
-                .header("Content-Type", "application/json")
-                .body(body)
-                .map_err(|e| AudioGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?;
-
-            if !status.is_success() {
-                return Err(AudioGenerationError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body).into_owned(),
-                ));
-            }
-
-            Ok(AudioGenerationResponse {
-                audio: response_body.to_vec(),
-                response: response_body,
-            })
+            // The explicit Content-Type header the hand-rolled request set is
+            // supplied by `Client::send` for every JSON request, so the wire
+            // shape is unchanged.
+            crate::providers::internal::audio_generation::send_audio_generation(
+                &self.client,
+                self.client.post_audio_generation("/audio/speech")?,
+                request,
+            )
+            .await
         }
     }
 }
@@ -960,6 +782,46 @@ mod azure_tests {
     }
 
     #[tokio::test]
+    async fn transcription_routes_deployment_in_url_not_multipart_body() {
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let http_client = RecordingHttpClient::new(r#"{"text":"transcribed"}"#);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_owned())
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = TranscriptionModel::new(client, "whisper-deployment");
+
+        let response = model
+            .transcription_request()
+            .data(vec![1, 2, 3])
+            .filename(Some("audio.mp3".to_owned()))
+            .send()
+            .await
+            .expect("transcription should succeed");
+
+        assert_eq!(response.text, "transcribed");
+        let request = http_client
+            .requests()
+            .into_iter()
+            .next()
+            .expect("request should be captured");
+        assert_eq!(
+            request.uri,
+            "https://example.openai.azure.com/openai/deployments/whisper-deployment/audio/translations?api-version=2024-10-21"
+        );
+        let body = String::from_utf8_lossy(&request.body);
+        assert!(!body.contains("name=\"model\""), "{body}");
+        assert!(
+            body.contains("name=\"file\"; filename=\"audio.mp3\""),
+            "{body}"
+        );
+    }
+
+    #[tokio::test]
     async fn embedding_http_non_success_preserves_status_and_body() {
         use crate::embeddings::EmbeddingModel as _;
         use crate::test_utils::RecordingHttpClient;
@@ -986,6 +848,52 @@ mod azure_tests {
             Some(http::StatusCode::BAD_REQUEST)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn embedding_preserves_deployment_url_and_body_and_reports_usage() {
+        use crate::embeddings::EmbeddingModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        let body = r#"{
+            "object": "list",
+            "model": "text-embedding-3-small",
+            "usage": { "prompt_tokens": 4, "total_tokens": 4 },
+            "data": [{ "object": "embedding", "index": 0, "embedding": [0.1, 0.2] }]
+        }"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_string())
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = super::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, None);
+
+        let response = model
+            .embed_texts_with_usage(vec!["Hello, world!".to_string()])
+            .await
+            .expect("embedding should succeed");
+
+        // Usage is now surfaced instead of the zero-usage default.
+        assert_eq!(response.usage.input_tokens, 4);
+        assert_eq!(response.usage.total_tokens, 4);
+        assert_eq!(response.embeddings.len(), 1);
+
+        // The deployment stays in the URL and the body carries no `model`
+        // field, matching the hand-rolled request this replaced.
+        let requests = http_client.requests();
+        assert_eq!(
+            requests[0].uri,
+            format!(
+                "https://example.openai.azure.com/openai/deployments/{TEXT_EMBEDDING_3_SMALL}/embeddings?api-version=2024-10-21"
+            )
+        );
+        let request_body: serde_json::Value =
+            serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
+        assert_eq!(request_body.get("model"), None);
+        assert_eq!(request_body["dimensions"], serde_json::json!(1_536));
+        assert_eq!(request_body["input"], serde_json::json!(["Hello, world!"]));
     }
 
     #[tokio::test]

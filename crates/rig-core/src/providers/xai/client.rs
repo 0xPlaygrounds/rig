@@ -1,10 +1,4 @@
-use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
-    http_client,
-};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct XAiExt;
@@ -25,54 +19,22 @@ impl Provider for XAiExt {
     const VERIFY_PATH: &'static str = "/v1/api-key";
 }
 
-impl<H> Capabilities<H> for XAiExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<super::audio_generation::AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    XAiExt,
+    completion = super::completion::CompletionModel<H>,
+    image_generation = super::image_generation::ImageGenerationModel<H>,
+    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+);
 
 impl DebugExt for XAiExt {}
 
-impl ProviderBuilder for XAiExtBuilder {
-    type Extension<H>
-        = XAiExt
-    where
-        H: http_client::HttpClientExt;
-    type ApiKey = XAiApiKey;
+client::impl_default_provider_builder!(
+    XAiExtBuilder => XAiExt,
+    api_key = XAiApiKey,
+    base_url = XAI_BASE_URL,
+);
 
-    const BASE_URL: &'static str = XAI_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: http_client::HttpClientExt,
-    {
-        Ok(XAiExt)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new xAI client from the `XAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("XAI_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = String, api_key_env = "XAI_API_KEY");
 #[cfg(test)]
 mod tests {
     #[test]

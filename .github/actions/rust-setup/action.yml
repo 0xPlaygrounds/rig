@@ -93,14 +93,45 @@ runs:
     # unchanged workspace members stop recompiling too. Opt-in per job: it
     # only pays off where workspace crates compile (it cannot cache
     # clippy-driver or rustdoc, which is why the clippy/doc jobs skip it).
+    #
+    # `version` is pinned deliberately. Left empty, the action resolves the
+    # release through an authenticated `repos.getLatestRelease` API call on
+    # every run of every sccache-enabled job — a network round-trip that has
+    # nothing to do with building rig and that took down a whole `main` run
+    # when a runner's egress proxy served a self-signed certificate
+    # (`HttpError: self-signed certificate`, run 31576834062). A pinned tag
+    # skips the call entirely and goes straight to the release asset, so the
+    # only remaining network dependency is the download itself.
+    #
+    # `disable_annotations` makes the action's post step return before it
+    # shells out to `sccache --show-stats`. That post step is not optional
+    # and runs even when the install failed, where `$SCCACHE_PATH` is unset
+    # and it dies with `Unable to locate executable file: undefined` — a
+    # second, independent job failure from the same root cause. Silencing it
+    # costs only the per-job cache-hit annotation.
+    #
+    # Together with `continue-on-error`, sccache is now strictly best-effort:
+    # if the download fails the job compiles without it (slower, still
+    # correct) instead of failing. The wrapper is exported only on success,
+    # because pointing RUSTC_WRAPPER at a binary that was never installed
+    # would break every subsequent cargo invocation.
     - name: Run sccache
+      id: sccache
       if: inputs.sccache == 'true'
+      continue-on-error: true
       uses: mozilla/sccache-action@v0.0.11
+      with:
+        version: v0.17.0
+        disable_annotations: "true"
 
     - name: Enable sccache as the rustc wrapper
       if: inputs.sccache == 'true'
       shell: bash
       run: |
+        if [ "${{ steps.sccache.outcome }}" != "success" ]; then
+          echo "::warning::sccache install failed; building without it"
+          exit 0
+        fi
         {
           echo "SCCACHE_GHA_ENABLED=true"
           echo "RUSTC_WRAPPER=sccache"

@@ -15,4 +15,4 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"O sol estava se pondo lentamente, lançando longas sombras pelo campo vazio.","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":17,"promptTokenCount":152,"promptTokensDetails":[{"modality":"AUDIO","tokenCount":138},{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":669,"totalTokenCount":838}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"夕阳缓缓落下，在空旷的田野上投下长长的影子。","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":18,"promptTokenCount":152,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14},{"modality":"AUDIO","tokenCount":138}],"serviceTier":"standard","thoughtsTokenCount":609,"totalTokenCount":779}}'

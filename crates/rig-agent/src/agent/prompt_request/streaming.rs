@@ -7,8 +7,8 @@ use crate::{
     agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
     agent::hook::{
         AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
-        ModelSelectionAction, ModelTurnFinished, StepEventKind, StreamResponseFinish, TextDelta,
-        ToolCallDelta,
+        ModelSelectionAction, ModelTurnFinished, ReasoningDelta, StepEventKind,
+        StreamResponseFinish, TextDelta, ToolCallDelta,
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
@@ -16,9 +16,9 @@ use crate::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     agent::runner::{
-        AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, acquire_agent_span,
-        append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
-        resolve_completion_call, resolve_model_turn_action, run_single_tool,
+        AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, append_run_messages,
+        build_chat_span, new_execute_tool_span, observe_action, resolve_completion_call,
+        resolve_model_turn_action, run_single_tool,
     },
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
@@ -559,22 +559,11 @@ where
                     // consistent even if the per-turn tool set changes (#1928).
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let mut prepared = match build_prepared_completion_request(
+                        &runner,
                         &selected_model,
                         prompt.clone(),
                         &history,
-                        runner.preamble.as_deref(),
-                        &runner.static_context,
-                        runner.temperature,
-                        runner.max_tokens,
-                        runner.additional_params.as_ref(),
-                        runner.record_telemetry_content,
-                        runner.tool_choice.as_ref(),
-                        &runner.tool_server_handle,
-                        runner.output_schema.as_ref(),
-                        &runner.output_mode,
                         committed_output_tool.as_deref(),
-                        runner.output_tool_description.as_deref(),
-                        runner.augment_output_preamble,
                         request_patch.as_ref(),
                     )
                     .await
@@ -1013,6 +1002,7 @@ pub(crate) struct StreamingTurnSource {
     /// Hot-path interest gates, computed once: skip building/dispatching the
     /// high-frequency delta events when no hook observes them.
     observes_text_delta: bool,
+    observes_reasoning_delta: bool,
     observes_tool_call_delta: bool,
     /// Whether any hook is present — gates building the (history-cloning)
     /// invalid-tool diagnostic context.
@@ -1037,9 +1027,26 @@ impl StreamingTurnSource {
             created_agent_span,
             record_telemetry_content,
             observes_text_delta: hooks.observes(StepEventKind::TextDelta),
+            observes_reasoning_delta: hooks.observes(StepEventKind::ReasoningDelta),
             observes_tool_call_delta: hooks.observes(StepEventKind::ToolCallDelta),
             has_hooks: !hooks.is_empty(),
         }
+    }
+
+    /// Record a completed model turn's canonical output onto the agent and
+    /// chat spans. Only self-created agent spans receive `gen_ai.completion`,
+    /// so neither surface pollutes a caller-supplied span.
+    fn record_turn_telemetry(
+        &self,
+        agent_span: &tracing::Span,
+        chat_span: &tracing::Span,
+        choice: &[AssistantContent],
+        record_content: bool,
+    ) {
+        if self.created_agent_span && self.record_telemetry_content {
+            agent_span.record("gen_ai.completion", assistant_text_from_choice(choice));
+        }
+        rig_core::telemetry::record_model_output(chat_span, choice, record_content);
     }
 }
 
@@ -1169,6 +1176,40 @@ impl TurnSource for StreamingTurnSource {
                                     run.cancel_error(reason),
                                 )));
                                 return;
+                            }
+                            if self.observes_reasoning_delta
+                                && let Some(StreamedAssistantContent::ReasoningDelta {
+                                    id,
+                                    provider_id,
+                                    reasoning,
+                                }) = item_slot.as_ref()
+                            {
+                                let Some(aggregated) = assembler.aggregated_reasoning(id) else {
+                                    yield Err(CompletionError::ResponseError(format!(
+                                        "reasoning delta `{id}` was ingested without a pending aggregate"
+                                    ))
+                                    .into());
+                                    return;
+                                };
+                                if let Some(reason) = observe_action(
+                                    runner
+                                        .hooks
+                                        .on_reasoning_delta(
+                                            hook_ctx,
+                                            ReasoningDelta {
+                                                id,
+                                                provider_id: provider_id.as_deref(),
+                                                delta: reasoning,
+                                                aggregated,
+                                            },
+                                        )
+                                        .await,
+                                ) {
+                                    yield Err(StreamingError::Prompt(Box::new(
+                                        run.cancel_error(reason),
+                                    )));
+                                    return;
+                                }
                             }
                             if let Some(item) = item_slot.take() {
                                 yield Ok(MultiTurnStreamItem::stream_item(item));
@@ -1408,13 +1449,8 @@ impl TurnSource for StreamingTurnSource {
                         // final and content telemetry were visible before the
                         // cancellation. Preserve that behavior while Retry
                         // alone suppresses the provisional final.
-                        if self.created_agent_span && self.record_telemetry_content {
-                            agent_span.record(
-                                "gen_ai.completion",
-                                assistant_text_from_choice(&canonical_choice),
-                            );
-                        }
-                        rig_core::telemetry::record_model_output(
+                        self.record_turn_telemetry(
+                            agent_span,
                             &chat_span,
                             &canonical_choice,
                             runner.record_telemetry_content,
@@ -1434,13 +1470,8 @@ impl TurnSource for StreamingTurnSource {
 
             // Only hook-accepted canonical output belongs in content telemetry.
             // Keep caller-owned spans untouched, matching the blocking source.
-            if self.created_agent_span && self.record_telemetry_content {
-                agent_span.record(
-                    "gen_ai.completion",
-                    assistant_text_from_choice(&canonical_choice),
-                );
-            }
-            rig_core::telemetry::record_model_output(
+            self.record_turn_telemetry(
+                agent_span,
                 &chat_span,
                 &canonical_choice,
                 runner.record_telemetry_content,
@@ -1523,37 +1554,18 @@ impl AgentRunner {
     /// `drive_agent`, so the two behave identically apart from the streamed
     /// delta events.
     pub async fn stream(self) -> StreamingResult {
-        let (agent_span, created_agent_span) = acquire_agent_span(
-            self.agent_name_or_default(),
-            self.preamble.as_deref(),
-            self.record_telemetry_content,
-        );
+        let (agent_span, created_agent_span) = self.open_agent_span();
 
-        if self.record_telemetry_content
-            && let Some(text) = self.prompt.rag_text()
-        {
-            agent_span.record("gen_ai.prompt", text);
-        }
-
-        // When the caller passes explicit history, memory is fully bypassed for
-        // this request (no load AND no save). Otherwise, if a memory backend and
-        // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
-            Some(_) => (None, None),
-            None => match (&self.memory, &self.conversation_id) {
-                (Some(memory), Some(id)) => match memory.load(id).await {
-                    Ok(loaded) => (Some(loaded), Some((memory.clone(), id.clone()))),
-                    Err(err) => {
-                        let stream = async_stream::stream! {
-                            yield Err(StreamingError::from(err));
-                        };
-                        // Instrument under the agent span like the success path so
-                        // a load failure stays tied to invoke_agent.
-                        return Box::pin(stream.instrument(agent_span));
-                    }
-                },
-                _ => (None, None),
-            },
+        let (history_override, memory_handle) = match self.resolve_history_and_memory().await {
+            Ok(resolved) => resolved,
+            Err(err) => {
+                let stream = async_stream::stream! {
+                    yield Err(StreamingError::from(err));
+                };
+                // Instrument under the agent span like the success path so
+                // a load failure stays tied to invoke_agent.
+                return Box::pin(stream.instrument(agent_span));
+            }
         };
 
         let run = self.build_run(history_override);
@@ -1647,8 +1659,9 @@ pub async fn stream_to_stdout(
 #[allow(irrefutable_let_patterns, unreachable_patterns)]
 mod migrated_tests {
     use crate::agent::{
-        InvalidToolCallAction, InvalidToolCallContext, ObservationAction, StreamResponseFinish,
-        TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
+        InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction, ModelTurnFinished,
+        ObservationAction, ReasoningDelta, StepEventKind, StreamResponseFinish, TextDelta,
+        ToolCall, ToolCallAction, ToolCallDelta,
     };
 
     use super::*;
@@ -3252,6 +3265,7 @@ mod migrated_tests {
     }
 
     type RecordedToolCallDelta = (String, Option<String>, String);
+    type RecordedReasoningDelta = (String, Option<String>, String, String);
 
     #[derive(Clone)]
     struct RepairDefaultApiHook;
@@ -3422,6 +3436,110 @@ mod migrated_tests {
         }
     }
 
+    #[derive(Clone, Default)]
+    struct RecordingReasoningDeltaHook {
+        deltas: Arc<Mutex<Vec<RecordedReasoningDelta>>>,
+    }
+
+    impl RecordingReasoningDeltaHook {
+        fn observed(&self) -> Vec<RecordedReasoningDelta> {
+            self.deltas
+                .lock()
+                .expect("reasoning delta hook records mutex was poisoned")
+                .clone()
+        }
+    }
+
+    impl AgentHook for RecordingReasoningDeltaHook {
+        async fn on_reasoning_delta(
+            &self,
+            _ctx: &HookContext,
+            event: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            let record = (
+                event.id.to_string(),
+                event.provider_id.map(str::to_string),
+                event.delta.to_string(),
+                event.aggregated.to_string(),
+            );
+            self.deltas
+                .lock()
+                .expect("reasoning delta hook records mutex was poisoned")
+                .push(record);
+            ObservationAction::continue_run()
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct TerminatingReasoningDeltaHook {
+        recorder: RecordingReasoningDeltaHook,
+    }
+
+    impl TerminatingReasoningDeltaHook {
+        fn observed(&self) -> Vec<RecordedReasoningDelta> {
+            self.recorder.observed()
+        }
+    }
+
+    impl AgentHook for TerminatingReasoningDeltaHook {
+        async fn on_reasoning_delta(
+            &self,
+            ctx: &HookContext,
+            event: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.recorder.on_reasoning_delta(ctx, event).await;
+            ObservationAction::stop("stop on reasoning delta")
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct UninterestedReasoningDeltaHook {
+        calls: Arc<AtomicU32>,
+    }
+
+    impl AgentHook for UninterestedReasoningDeltaHook {
+        async fn on_reasoning_delta(
+            &self,
+            _ctx: &HookContext,
+            _event: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            ObservationAction::stop("uninterested reasoning hook was dispatched")
+        }
+
+        fn observes(&self, kind: StepEventKind) -> bool {
+            kind != StepEventKind::ReasoningDelta
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RetryFirstReasoningTurnHook {
+        recorder: RecordingReasoningDeltaHook,
+        retried: Arc<AtomicBool>,
+    }
+
+    impl AgentHook for RetryFirstReasoningTurnHook {
+        async fn on_reasoning_delta(
+            &self,
+            ctx: &HookContext,
+            event: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.recorder.on_reasoning_delta(ctx, event).await
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            _event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            if self.retried.swap(true, Ordering::SeqCst) {
+                ModelTurnAction::continue_run()
+            } else {
+                ModelTurnAction::repeat()
+            }
+        }
+    }
+
     #[derive(Clone)]
     struct RecordingTextAndSkipInvalidToolHook {
         text: RecordingTextDeltaHook,
@@ -3552,7 +3670,7 @@ mod migrated_tests {
         }
     }
 
-    fn text_metadata(content: &[AssistantContent]) -> Option<&serde_json::Value> {
+    fn text_metadata(content: &[AssistantContent]) -> Option<&rig_core::message::AdditionalParams> {
         content.iter().find_map(|item| match item {
             AssistantContent::Text(text) => text.additional_params.as_ref(),
             _ => None,
@@ -5815,6 +5933,210 @@ mod migrated_tests {
             other => panic!("expected prompt streaming error, got {other:?}"),
         }
         assert_eq!(recorded.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_observes_interleaved_reasoning_deltas_before_unchanged_emit() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning_delta("first "),
+            MockStreamEvent::reasoning_delta_with_id("rs_b", "beta"),
+            MockStreamEvent::reasoning_delta("second"),
+            MockStreamEvent::reasoning("first second"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ]]);
+        let hook = RecordingReasoningDeltaHook::default();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("reason about this")
+            .add_hook(hook.clone())
+            .await;
+        let mut stream_deltas = Vec::new();
+        let mut completed_reasoning = 0;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ReasoningDelta {
+                        id,
+                        provider_id,
+                        reasoning,
+                    },
+                )) => stream_deltas.push((id, provider_id, reasoning)),
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::Reasoning { .. },
+                )) => completed_reasoning += 1,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(stream_deltas.len(), 3);
+        let first_id = stream_deltas[0].0.clone();
+        let second_id = stream_deltas[1].0.clone();
+        assert!(!first_id.is_empty());
+        assert!(!second_id.is_empty());
+        assert_ne!(first_id, second_id);
+        assert_eq!(stream_deltas[2].0, first_id);
+        assert_eq!(stream_deltas[0].1, None);
+        assert_eq!(stream_deltas[1].1.as_deref(), Some("rs_b"));
+        assert_eq!(stream_deltas[2].1, None);
+        assert_eq!(
+            stream_deltas
+                .iter()
+                .map(|(_, _, delta)| delta.as_str())
+                .collect::<Vec<_>>(),
+            vec!["first ", "beta", "second"]
+        );
+        assert_eq!(completed_reasoning, 1);
+        assert_eq!(
+            hook.observed(),
+            vec![
+                (
+                    first_id.clone(),
+                    None,
+                    "first ".to_string(),
+                    "first ".to_string(),
+                ),
+                (
+                    second_id,
+                    Some("rs_b".to_string()),
+                    "beta".to_string(),
+                    "beta".to_string(),
+                ),
+                (
+                    first_id,
+                    None,
+                    "second".to_string(),
+                    "first second".to_string(),
+                ),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_reasoning_delta_stop_prevents_emit_and_later_hook_dispatch() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning_delta_with_id("rs_1", "blocked"),
+            MockStreamEvent::reasoning_delta_with_id("rs_1", "later"),
+            MockStreamEvent::final_response_with_total_tokens(2),
+        ]]);
+        let stopping = TerminatingReasoningDeltaHook::default();
+        let later = RecordingReasoningDeltaHook::default();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("reason about this")
+            .add_hook(stopping.clone())
+            .add_hook(later.clone())
+            .await;
+        let mut saw_delta = false;
+        let mut saw_final_response = false;
+        let mut error_message = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ReasoningDelta { .. },
+                )) => saw_delta = true,
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final_response = true,
+                Ok(_) => {}
+                Err(err) => {
+                    error_message = Some(err.to_string());
+                    break;
+                }
+            }
+        }
+
+        let observed = stopping.observed();
+        assert_eq!(observed.len(), 1);
+        assert_eq!(observed[0].1.as_deref(), Some("rs_1"));
+        assert_eq!(observed[0].2, "blocked");
+        assert_eq!(observed[0].3, "blocked");
+        assert!(later.observed().is_empty());
+        assert!(!saw_delta);
+        assert!(!saw_final_response);
+        assert!(
+            error_message.as_deref().is_some_and(|message| message
+                .contains("PromptCancelled: stop on reasoning delta")),
+            "expected hook termination error, got {error_message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_skips_reasoning_delta_hook_without_observation_interest() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning_delta("visible"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ]]);
+        let hook = UninterestedReasoningDeltaHook::default();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("reason about this")
+            .add_hook(hook.clone())
+            .await;
+        let mut emitted = Vec::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ReasoningDelta { reasoning, .. },
+                )) => emitted.push(reasoning),
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(emitted, vec!["visible"]);
+        assert_eq!(hook.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn stream_prompt_reasoning_delta_hook_observes_retried_turns_as_provisional() {
+        let model = MockCompletionModel::from_stream_turns([
+            [
+                MockStreamEvent::reasoning_delta("rejected"),
+                MockStreamEvent::final_response_with_total_tokens(1),
+            ],
+            [
+                MockStreamEvent::reasoning_delta("accepted"),
+                MockStreamEvent::final_response_with_total_tokens(1),
+            ],
+        ]);
+        let hook = RetryFirstReasoningTurnHook::default();
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent
+            .stream_prompt("reason about this")
+            .add_hook(hook.clone())
+            .max_turns(2)
+            .await;
+        let mut order = Vec::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::ReasoningDelta { reasoning, .. },
+                )) => order.push(reasoning),
+                Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
+                    order.push(format!("retry:{turn}"));
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+                Ok(_) => {}
+                Err(err) => panic!("unexpected streaming error: {err:?}"),
+            }
+        }
+
+        assert_eq!(order, vec!["rejected", "retry:1", "accepted"]);
+        let observed = hook.recorder.observed();
+        assert_eq!(observed.len(), 2);
+        assert_eq!(observed[0].2, "rejected");
+        assert_eq!(observed[0].3, "rejected");
+        assert_eq!(observed[1].2, "accepted");
+        assert_eq!(observed[1].3, "accepted");
     }
 
     #[tokio::test]

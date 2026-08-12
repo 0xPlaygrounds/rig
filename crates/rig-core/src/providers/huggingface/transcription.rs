@@ -6,7 +6,6 @@ use crate::transcription::TranscriptionError;
 use crate::wasm_compat::WasmCompatSync;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use serde::Deserialize;
 use serde_json::json;
 
 pub const WHISPER_LARGE_V3: &str = "openai/whisper-large-v3";
@@ -14,39 +13,14 @@ pub const WHISPER_LARGE_V3_TURBO: &str = "openai/whisper-large-v3-turbo";
 
 pub const WHISPER_SMALL: &str = "openai/whisper-small";
 
-#[derive(Debug, Deserialize)]
-pub struct TranscriptionResponse {
-    pub text: String,
-}
+pub use crate::providers::openai::TranscriptionResponse;
 
-impl TryFrom<TranscriptionResponse>
-    for transcription::TranscriptionResponse<TranscriptionResponse>
-{
-    type Error = TranscriptionError;
+pub type TranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::GenericTranscriptionModel<
+        crate::providers::huggingface::client::HuggingFaceExt,
+        T,
+    >;
 
-    fn try_from(value: TranscriptionResponse) -> Result<Self, Self::Error> {
-        Ok(transcription::TranscriptionResponse {
-            text: value.text.clone(),
-            response: value,
-        })
-    }
-}
-
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
     T: HttpClientExt + Clone + WasmCompatSync + 'static,

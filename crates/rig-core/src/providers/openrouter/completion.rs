@@ -849,13 +849,14 @@ fn parse_data_uri(url: &str) -> Option<(&str, &str)> {
     url.strip_prefix("data:")?.split_once(";base64,")
 }
 
-fn openrouter_response_image_params() -> serde_json::Value {
-    serde_json::json!({
-        "openrouter": {
+fn openrouter_response_image_params() -> Option<message::AdditionalParams> {
+    message::AdditionalParams::from_entries([(
+        "openrouter",
+        serde_json::json!({
             OPENROUTER_RESPONSE_ONLY_KEY: true,
             OPENROUTER_RESPONSE_IMAGE_SOURCE_KEY: OPENROUTER_ASSISTANT_IMAGES_SOURCE,
-        }
-    })
+        }),
+    )])
 }
 
 fn response_image_to_assistant_content(image: &ResponseImage) -> completion::AssistantContent {
@@ -865,14 +866,14 @@ fn response_image_to_assistant_content(image: &ResponseImage) -> completion::Ass
             data: message::DocumentSourceKind::Base64(b64.to_string()),
             media_type: message::ImageMediaType::from_mime_type(mime),
             detail: None,
-            additional_params: Some(openrouter_response_image_params()),
+            additional_params: openrouter_response_image_params(),
         })
     } else {
         completion::AssistantContent::Image(message::Image {
             data: message::DocumentSourceKind::Url(url.clone()),
             media_type: None,
             detail: None,
-            additional_params: Some(openrouter_response_image_params()),
+            additional_params: openrouter_response_image_params(),
         })
     }
 }
@@ -881,7 +882,7 @@ fn is_openrouter_response_image(image: &message::Image) -> bool {
     image
         .additional_params
         .as_ref()
-        .and_then(|params| params.get("openrouter"))
+        .and_then(|params| params.wire_extras("openrouter"))
         .is_some_and(|params| {
             params
                 .get(OPENROUTER_RESPONSE_ONLY_KEY)
@@ -1464,7 +1465,7 @@ impl TryFrom<OpenRouterRequestParams<'_>> for OpenrouterCompletionRequest {
             model,
             messages: full_history,
             temperature: req.temperature,
-            max_tokens: None,
+            max_tokens: req.max_tokens,
             tools,
             tool_choice,
             additional_params,
@@ -1656,6 +1657,37 @@ mod tests {
             serde_json::to_value(openrouter_request).expect("serialization should succeed");
 
         assert_eq!(serialized["model"], "google/gemini-2.5-flash");
+    }
+
+    /// The caller's `max_tokens` must reach the serialized request body —
+    /// OpenRouter accepts `max_tokens` like OpenAI, and dropping it silently
+    /// removed the caller's output cap.
+    #[test]
+    fn openrouter_request_carries_caller_max_tokens() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec!["Hello".into()],
+            documents: vec![],
+            tools: vec![],
+            temperature: None,
+            max_tokens: Some(512),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let openrouter_request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
+            model: "openai/gpt-4o-mini",
+            request,
+            strict_tools: false,
+        })
+        .expect("request conversion should succeed");
+        let serialized =
+            serde_json::to_value(openrouter_request).expect("serialization should succeed");
+
+        assert_eq!(serialized["max_tokens"], 512);
     }
 
     #[test]

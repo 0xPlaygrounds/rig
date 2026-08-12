@@ -18,17 +18,14 @@
 
 mod auth;
 
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient, Transport,
-};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, ProviderClient, Transport};
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
 };
 use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
@@ -169,17 +166,7 @@ impl responses_api::ResponsesProviderExt for ChatGPTExt {
     }
 }
 
-impl<H> Capabilities<H> for ChatGPTExt {
-    type Completion = Capable<ResponsesCompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(ChatGPTExt, completion = ResponsesCompletionModel<H>);
 
 impl DebugExt for ChatGPTExt {}
 
@@ -522,8 +509,7 @@ where
         let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
 
         let span = tracing::Span::current();
-        span.record("gen_ai.response.id", &raw_response.id);
-        span.record("gen_ai.response.model", &raw_response.model);
+        span.record_response_metadata(&raw_response);
 
         Ok((raw_response, text))
     }
@@ -589,12 +575,7 @@ where
             async move {
                 let response = self.normalized_completion(request).await?;
                 let span = tracing::Span::current();
-                span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
-                span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
-                span.record(
-                    "gen_ai.usage.cache_read.input_tokens",
-                    response.usage.cached_input_tokens,
-                );
+                span.record_token_usage(&response.usage);
                 Ok(response)
             },
             span,

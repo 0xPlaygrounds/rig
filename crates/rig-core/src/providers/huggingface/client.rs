@@ -1,7 +1,4 @@
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
+use crate::client::{self, BearerAuth, DebugExt, Provider, ProviderBuilder};
 use crate::http_client;
 #[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
@@ -161,18 +158,12 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for HuggingF
     }
 }
 
-impl<H> Capabilities<H> for HuggingFaceExt {
-    type Completion = Capable<super::completion::CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Capable<super::transcription::TranscriptionModel<H>>;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<super::image_generation::ImageGenerationModel<H>>;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    HuggingFaceExt,
+    completion = super::completion::CompletionModel<H>,
+    transcription = super::transcription::TranscriptionModel<H>,
+    image_generation = super::image_generation::ImageGenerationModel<H>,
+);
 
 impl DebugExt for HuggingFaceExt {
     fn fields(&self) -> impl Iterator<Item = (&'static str, &dyn Debug)> {
@@ -201,21 +192,7 @@ impl ProviderBuilder for HuggingFaceBuilder {
     }
 }
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Huggingface client from the `HUGGINGFACE_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("HUGGINGFACE_API_KEY")?;
-
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = String, api_key_env = "HUGGINGFACE_API_KEY",);
 
 impl<H> ClientBuilder<H> {
     pub fn subprovider(mut self, subprovider: SubProvider) -> Self {
