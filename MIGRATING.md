@@ -1561,6 +1561,108 @@ response. For intentionally hook-free transport, start from
 for custom drivers. It holds no configured model, tools, memory, or hooks and is
 not an alternate execution path for configured agents.
 
+Reading a configured agent's request state back out (the 0.40 public fields,
+`agent.tool_server_handle`) has a supported replacement:
+`Agent::drive(prompt)` returns an `AgentDriver` that hand-drives the sans-IO
+`AgentRun` with the agent's own configuration — each `DriveStep::SendRequest`
+carries the fully configured completion request for the caller to send, and
+each `DriveStep::ExecuteTools` carries the `TurnTools` dispatch snapshot of
+the turn that advertised the calls. It is a configuration and pairing layer,
+not an execution path — hooks, memory, retrieval policy, and telemetry still
+run only under `Agent::runner`. See `examples/agent_run_stepping` and
+`examples/agent_with_durable_approval`.
+
+A hand-driven turn gets per-turn configuration from
+`AgentDriver::next_step_with`, whose callback receives the prompt, the history
+and the turn about to be prepared, and returns a `TurnPreparation` carrying the
+turn's `RequestPatch` and optionally a model:
+
+```rust
+let step = driver
+    .next_step_with(|ctx| {
+        Box::pin(async move {
+            Ok(TurnPreparation::with_patch(
+                RequestPatch::new().preamble(preamble_for(ctx.turn)),
+            ))
+        })
+    })
+    .await?;
+```
+
+That is the same `RequestPatch` the runner merges from its `CompletionCall`
+hooks — per-turn preamble, sampling parameters, `tool_choice`, `active_tools`
+narrowing, extra context, substituted history — and the callback runs *before*
+the turn is committed, so a decision that fails costs no turn. It is an input
+rather than driver state on purpose: configuration for a turn that has not
+happened yet is not run state, and a driver holding it would resume a
+serialized run with settings the suspending process never recorded. `next_step()`
+remains for turns that need none.
+
+A custom run's own `AgentRun::with_tool_choice` also reaches the provider;
+before, it governed only the run's internal decisions while the request carried
+the agent's baseline.
+
+**Serialized `AgentRun` state does not survive the upgrade.** Payloads now
+carry a `$schemaVersion` tag and a build reads only the version it writes, so a
+run suspended by an earlier release fails to deserialize with a named error
+rather than being reinterpreted against fields whose meaning moved. Drain
+in-flight suspended runs before upgrading, or discard them. In exchange, a run
+can now be suspended and resumed at *every* step boundary — including with a
+model call in flight — not only while tool calls are pending.
+
+Because the caller owns the send, the caller also owns recovering from a failed
+one: `AgentDriver::rollback_model_call()` hands a turn back when its request
+could not be sent or its reply is known to be lost, refunding the turn and
+returning the run to preparing so the next step yields a freshly prepared
+request.
+
+Deciding to use it takes two answers, not one. `CompletionError::is_retryable()`
+(new in `rig-core`) says whether a retry *could succeed* — transport failures
+that could resolve on their own, and provider statuses of 408, 409, 429 or 5xx.
+It does **not** say whether a retry is *safe*: a stream that died after the
+request was written is retryable and may already have taken effect, so rolling
+back on retryability alone bills a second completion. Only you can settle that,
+through provider-side idempotency, your own record of what was transmitted, or a
+transport that fails before the write. Bound the attempts yourself. Runs driven
+by `Agent::runner` are unaffected; the runner still fails the prompt.
+
+Two things to know about dispatch on a resumed run, since both differ from what
+you might assume: `TurnTools::execute` refuses any name the turn did not
+advertise, so a tool registered *after* a run was suspended cannot be dispatched
+through a turn that never offered it to the model; and the resumed snapshot
+resolves the advertised names against the registry directly rather than
+re-running retrieval, so a registered dynamic tool is found whether or not a
+fresh query would rank it, and absence really does mean the tool is gone.
+
+Absence is reported, not papered over: `Agent::drive_run` fails with the missing
+names rather than silently feeding not-found results to the model. To dispatch
+anyway, resume with `Agent::resume_run(run, ResumedToolDrift::Dispatch)`. The
+policy is an argument at the resume entry point rather than a setting on the
+driver, and it is deliberately not serialized with the run — the process that
+suspended a run cannot know what registry a later one will have, so it has no
+standing to decide how that process handles its own drift.
+
+**`StreamedTurnAssembler::new` takes one argument.** It was
+`new(executable_tool_names, allowed_tool_names)` — two same-typed
+`BTreeSet<String>` values, transposable at the call site — and is now
+`new(&TurnToolNames)`. Under `AgentDriver`, do not spell the names at all: call
+`tools.streamed_turn_assembler()` on the `TurnTools` the matching
+`DriveStep::SendRequest` carried. Elsewhere, wrap what you passed before:
+
+```rust
+// before
+StreamedTurnAssembler::new(executable, allowed)
+// after
+StreamedTurnAssembler::new(&TurnToolNames::new(executable, allowed))
+```
+
+Those names now govern *mid-stream* validation only. What a turn is finally
+allowed to call is answered by the run, from the metadata committed when its
+request was built, so a mis-built assembler can no longer get a tool dispatched
+that the request's `tool_choice` forbade — it can only forfeit the early exit
+the assembler exists to provide. Runs hand-driven through `AgentRun` commit no
+such metadata and keep validating against the names they carry.
+
 An `Agent`'s default model is set at construction. Per-run overrides now go
 through `runner(...).using_model(...)`, `Agent::set_model`, or a
 `ModelSelection` hook (see the "runtime model swapping" section for the

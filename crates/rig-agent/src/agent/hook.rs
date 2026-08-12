@@ -743,6 +743,15 @@ impl RequestPatch {
     }
 
     /// Sets the allow-list used to narrow the tools advertised for this turn.
+    ///
+    /// # This costs prompt-cache hits
+    ///
+    /// The tools array is part of the wire prefix providers cache on. Narrowing
+    /// it on one turn and not the next changes that prefix, so the following
+    /// turn cannot reuse the cached one — the saving from advertising fewer
+    /// tools is paid back, and then some, on every later turn of the run.
+    /// Narrow for a reason (a turn that must not reach a destructive tool),
+    /// not to trim tokens.
     pub fn active_tools<I, S>(mut self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,

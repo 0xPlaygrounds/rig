@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"What is 2 + 5?","type":"text"}],"role":"user"}],"model":"claude-this-model-does-not-exist","system":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing it yourself. After you have the tool results, reply with the final numeric answer in plain text.","type":"text"}]}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"model: claude-this-model-does-not-exist","type":"not_found_error"},"request_id":"req_REDACTED_1","type":"error"}'

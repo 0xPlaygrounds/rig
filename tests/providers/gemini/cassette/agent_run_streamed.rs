@@ -12,7 +12,7 @@ use rig::agent::run::{
 };
 use rig::agent::{
     AgentHook, InvalidToolCallAction, MultiTurnStreamItem, StreamingError,
-    ToolCall as ToolCallEvent, ToolCallAction,
+    ToolCall as ToolCallEvent, ToolCallAction, TurnToolNames,
 };
 use rig::completion::{PromptError, Usage};
 use rig::message::{Message, ToolChoice, ToolResult};
@@ -60,7 +60,11 @@ async fn run_streamed_turn(
         .stream()
         .await
         .expect("gemini stream should open");
-    let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
+    // A raw `AgentRun` commits no prepared-turn metadata, so these carried
+    // sets are what the machine validates against — the fallback arm of
+    // `AgentRun::streamed_turn`'s authority rule.
+    let mut assembler =
+        StreamedTurnAssembler::new(&TurnToolNames::new(executable.clone(), allowed.clone()));
     let mut recorded = false;
 
     while let Some(item) = stream.next().await {

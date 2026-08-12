@@ -33,7 +33,7 @@ use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
-    completion::{Agent, PreparedCompletionRequest},
+    completion::Agent,
     hook::{
         AgentHook, CompletionCall, CompletionCallAction,
         CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
@@ -49,9 +49,8 @@ use super::{
         },
         tool_result_output,
     },
-    run::{
-        AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
-    },
+    run::{AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurnOutcome, OutputMode, PendingToolCall},
+    turn_tools::PreparedCompletionRequest,
 };
 use rig_core::{
     memory::ConversationMemory,
@@ -935,13 +934,7 @@ impl TurnSource for UnaryTurnSource {
                 }
             };
 
-            let mut outcome = match run.model_response(ModelTurn::new(
-                resp.message_id.clone(),
-                resp.choice.clone(),
-                resp.usage,
-                prepared.executable_tool_names,
-                prepared.allowed_tool_names,
-            )) {
+            let mut outcome = match run.model_response(prepared.tools.model_turn(&resp)) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     yield Err(Box::new(err).into());

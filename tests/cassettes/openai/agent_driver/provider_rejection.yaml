@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing it yourself. After you have the tool results, reply with the final numeric answer in plain text.","type":"text"}],"role":"system"},{"content":"What is 2 + 5?","role":"user"}],"model":"gpt-4o-this-model-does-not-exist"}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":"model_not_found","message":"The model `gpt-4o-this-model-does-not-exist` does not exist or you do not have access to it.","param":null,"type":"invalid_request_error"}}'

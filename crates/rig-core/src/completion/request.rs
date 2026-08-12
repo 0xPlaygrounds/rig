@@ -114,6 +114,27 @@ pub enum CompletionError {
     /// Raw error response preserved from the completion model provider
     #[error("ProviderResponseError: {0}")]
     ProviderResponse(provider_response::ProviderResponseError),
+
+    /// The response stream failed after the request was accepted and before
+    /// the provider finished emitting it.
+    ///
+    /// Distinct from [`ProviderError`](Self::ProviderError) — rig's
+    /// unclassifiable bucket — because the *cause* is known even when the
+    /// provider's own error type is not: the connection or the stream broke
+    /// mid-response. Keeping that as its own variant is what lets
+    /// [`is_retryable`](Self::is_retryable) classify it at all; folding it into
+    /// a display string would destroy the classification while preserving only
+    /// the message.
+    ///
+    /// **Retryable, and not replay-safe.** The request reached the provider —
+    /// that is what "after the request was accepted" means — so a retry may
+    /// bill a second completion and repeat any side effect the model already
+    /// caused. This is the canonical instance of the two questions
+    /// `is_retryable` deliberately does not conflate; see its docs, and
+    /// `AgentRun::rollback_model_call` in `rig-agent` for the axis it cannot
+    /// answer for you.
+    #[error("StreamInterrupted: {0}")]
+    StreamInterrupted(String),
 }
 
 crate::provider_response::impl_provider_response_helpers!(CompletionError);
@@ -122,13 +143,115 @@ impl CompletionError {
     /// Maps an SSE transport error into a completion error without flattening HTTP failures.
     ///
     /// Non-success HTTP responses remain [`CompletionError::HttpError`] so provider response
-    /// helpers can read status and body. Other transport failures keep the existing
-    /// [`CompletionError::ProviderError`] display string behavior.
+    /// helpers can read status and body. A statusless failure the transport
+    /// reports as transient — the connection or the stream broke — becomes
+    /// [`CompletionError::StreamInterrupted`], which is what lets
+    /// [`is_retryable`](Self::is_retryable) classify it; every mid-stream
+    /// failure used to fold into [`CompletionError::ProviderError`], the
+    /// unclassifiable bucket, so a cut stream answered `false` on every
+    /// provider while the docs claimed otherwise.
+    ///
+    /// Deterministic statusless failures — a wrong content type, a request that
+    /// could not be built — keep the existing `ProviderError` behavior. They
+    /// arrive here from the same call sites but will fail identically on every
+    /// attempt, and widening `StreamInterrupted` to cover them would trade one
+    /// misclassification for another.
     pub(crate) fn from_stream_transport(error: http_client::Error) -> Self {
         if error.non_success_status().is_some() {
             Self::HttpError(error)
+        } else if error.is_transient() {
+            Self::StreamInterrupted(error.to_string())
         } else {
             Self::ProviderError(error.to_string())
+        }
+    }
+
+    /// Whether re-issuing an equivalent request could plausibly succeed.
+    ///
+    /// A conservative **floor**, not a verdict. `true` means rig can see a
+    /// reason to believe a retry could succeed; `false` means it cannot see
+    /// one — *not* that a retry is provably pointless. It is a default a
+    /// caller may override, and never a policy: backoff, attempt budgets, and
+    /// idempotency stay with the caller.
+    ///
+    /// # What it answers
+    ///
+    /// - A preserved provider status of `408` (request timeout), `409`
+    ///   (conflict), `429` (too many requests), or `5xx` — the same four
+    ///   classes the AI SDK treats as retryable by default.
+    /// - [`StreamInterrupted`](Self::StreamInterrupted): the response stream
+    ///   broke after the provider accepted the request. Retryable — and see
+    ///   the replay-safety note below, because this is the case where the two
+    ///   questions diverge most sharply.
+    /// - A transport failure with no status, when the transport itself
+    ///   reports one that could resolve on its own — a dropped connection.
+    ///   Deterministic transport failures — a header value the client refused,
+    ///   a request that could not be constructed, a wrong content type — are
+    ///   **not** retryable, because retrying them is how a caller ends up in a
+    ///   loop it cannot leave. (An API key with a trailing newline is the
+    ///   canonical example: it fails identically forever.)
+    /// - A 2xx carrying a provider-authored error envelope is not retryable:
+    ///   the call completed and the provider rejected it on its merits.
+    ///
+    /// # What it cannot answer
+    ///
+    /// **Providers reached over a non-HTTP transport** — AWS Bedrock, Vertex
+    /// AI, the gRPC Gemini client — report errors as a body with no status
+    /// (see `from_provider_body`). Throttling from those providers is
+    /// therefore classified `false` here: rig cannot tell it from a rejection
+    /// without parsing an envelope it does not know. A caller that knows its
+    /// provider should override, and a provider that *can* surface a status
+    /// should route through `from_http_response` instead. Classifying at the
+    /// provider adapter, where the transport's own error types are visible, is
+    /// the real fix and is tracked separately.
+    ///
+    /// **Replay safety is a different question.** This method asks whether a
+    /// retry *could succeed*, not whether one is *safe*. A stream that died
+    /// after the request was written is retryable and may already have taken
+    /// effect — retrying it can bill a second completion and duplicate
+    /// whatever the model already caused. See
+    /// `AgentRun::rollback_model_call` in `rig-agent` for that axis; only the
+    /// caller can settle it.
+    ///
+    /// # Example
+    ///
+    /// With a hand-driven run, where the caller owns the send. Note that both
+    /// questions are answered before the turn is handed back:
+    ///
+    /// ```rust,ignore
+    /// match request.send().await {
+    ///     Ok(response) => { driver.model_response(&response)?; }
+    ///     // `nothing_was_sent` is the caller's own knowledge — a provider
+    ///     // idempotency key, a request log, or a transport that fails
+    ///     // before the write. `is_retryable` cannot supply it.
+    ///     Err(err) if err.is_retryable() && nothing_was_sent => {
+    ///         driver.rollback_model_call()?
+    ///     }
+    ///     Err(err) => return Err(err.into()),
+    /// }
+    /// ```
+    pub fn is_retryable(&self) -> bool {
+        match self.provider_response_status() {
+            Some(status) => {
+                status == http::StatusCode::REQUEST_TIMEOUT
+                    || status == http::StatusCode::CONFLICT
+                    || status == http::StatusCode::TOO_MANY_REQUESTS
+                    || status.is_server_error()
+            }
+            None => match self {
+                // The transport owns this call: it knows which of its own
+                // failures are deterministic.
+                Self::HttpError(error) => error.is_transient(),
+                // The stream broke after the provider accepted the request.
+                // Retryable, and the one case where "could a retry succeed"
+                // and "is a retry safe" give different answers.
+                Self::StreamInterrupted(_) => true,
+                // A provider body with no status. Rig cannot tell throttling
+                // from rejection without knowing the provider's envelope, so
+                // it does not guess. Documented above as a known gap — do not
+                // "fix" it by defaulting to true.
+                _ => false,
+            },
         }
     }
 }
@@ -1276,6 +1399,204 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 mod tests {
     use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
     use crate::message::AssistantContent;
+
+    mod retryability {
+        use super::super::CompletionError;
+        use crate::http_client;
+        use http::StatusCode;
+
+        fn from_status(status: u16) -> CompletionError {
+            CompletionError::from_http_response(
+                StatusCode::from_u16(status).expect("valid status"),
+                "body",
+            )
+        }
+
+        /// The four classes that mean "the moment was wrong", not "the request
+        /// was wrong" — matching the AI SDK's default classification.
+        #[test]
+        fn transient_provider_statuses_are_retryable() {
+            for status in [408, 409, 429, 500, 502, 503, 504] {
+                assert!(
+                    from_status(status).is_retryable(),
+                    "{status} should be retryable"
+                );
+            }
+        }
+
+        #[test]
+        fn client_errors_are_not_retryable() {
+            for status in [400, 401, 403, 404, 422] {
+                assert!(
+                    !from_status(status).is_retryable(),
+                    "{status} should not be retryable"
+                );
+            }
+        }
+
+        /// A transport failure may never have reached the provider at all.
+        #[test]
+        fn transient_transport_failures_are_retryable() {
+            // Produced by `instance_error` on every blocking send path when the
+            // client's own request fails — the connection dropped.
+            let error =
+                CompletionError::HttpError(http_client::Error::Instance("connection reset".into()));
+            assert!(error.is_retryable(), "{error} should be retryable");
+        }
+
+        /// Produced by `from_stream_transport`, which every streaming provider
+        /// routes mid-stream failures through — anthropic, openai, gemini
+        /// (both APIs), cohere, and the openai-compatible shim.
+        ///
+        /// This case previously classified `false`: the statusless branch
+        /// folded into `ProviderError`, rig's unclassifiable bucket, so the
+        /// documented "a cut stream is retryable" guarantee was unreachable on
+        /// every provider. The test that claimed to cover it constructed
+        /// `HttpError(StreamEnded)`, a shape no production path produces.
+        #[test]
+        fn an_interrupted_stream_is_retryable() {
+            let error = CompletionError::from_stream_transport(http_client::Error::Instance(
+                "connection reset by peer".into(),
+            ));
+            assert!(
+                matches!(error, CompletionError::StreamInterrupted(_)),
+                "a statusless stream failure must keep its classification, got {error:?}"
+            );
+            assert!(error.is_retryable());
+        }
+
+        /// `StreamInterrupted` covers the *transient* statusless failures and
+        /// no more. A deterministic one arriving through the same call site —
+        /// a provider that answered with the wrong content type — keeps the
+        /// unclassifiable `ProviderError` behavior, because it will fail
+        /// identically on every attempt and widening the retryable variant to
+        /// cover it would trade one misclassification for another.
+        #[test]
+        fn a_deterministic_stream_failure_is_not_interrupted() {
+            let error =
+                CompletionError::from_stream_transport(http_client::Error::InvalidContentType(
+                    http::HeaderValue::from_static("application/json"),
+                ));
+            assert!(
+                matches!(error, CompletionError::ProviderError(_)),
+                "a deterministic stream failure must not become StreamInterrupted, got {error:?}"
+            );
+            assert!(!error.is_retryable());
+        }
+
+        /// A stream failure that *does* carry a status keeps going through the
+        /// status classification, so a mid-stream 400 stays non-retryable.
+        #[test]
+        fn a_stream_failure_with_a_status_is_classified_by_status() {
+            let rejected = CompletionError::from_stream_transport(
+                http_client::Error::InvalidStatusCodeWithMessage(
+                    http::StatusCode::BAD_REQUEST,
+                    "bad request".to_string(),
+                ),
+            );
+            assert!(!rejected.is_retryable());
+
+            let throttled = CompletionError::from_stream_transport(
+                http_client::Error::InvalidStatusCodeWithMessage(
+                    http::StatusCode::TOO_MANY_REQUESTS,
+                    "slow down".to_string(),
+                ),
+            );
+            assert!(throttled.is_retryable());
+        }
+
+        /// The new variant must not widen the unclassifiable bucket: a plain
+        /// `ProviderError` stays non-retryable.
+        #[test]
+        fn a_provider_error_remains_unclassifiable() {
+            assert!(!CompletionError::ProviderError("opaque".into()).is_retryable());
+        }
+
+        /// `StreamEnded` is the SSE layer's normal end-of-stream sentinel —
+        /// every provider matches it and breaks rather than surfacing it — and
+        /// its only error-producing sites are the wasm stub clients, where it
+        /// means the transport cannot send at all. Neither is transient.
+        #[test]
+        fn the_end_of_stream_sentinel_is_not_a_retryable_failure() {
+            let error = CompletionError::HttpError(http_client::Error::StreamEnded);
+            assert!(!error.is_retryable());
+        }
+
+        /// `Instance` carries both classes. A request the client refused to
+        /// build — a `base_url` missing its scheme is the canonical case —
+        /// fails identically forever, and retrying it is an unbounded loop.
+        #[tokio::test]
+        async fn a_client_side_build_failure_is_not_retryable() {
+            let reqwest_error = reqwest::Client::new()
+                .get("api.openai.com/v1/chat/completions") // no scheme
+                .send()
+                .await
+                .expect_err("reqwest refuses a schemeless URL");
+            assert!(
+                reqwest_error.is_builder(),
+                "expected a builder-kind error, got {reqwest_error:?}"
+            );
+
+            let error =
+                CompletionError::HttpError(http_client::Error::Instance(Box::new(reqwest_error)));
+            assert!(
+                !error.is_retryable(),
+                "a deterministic client error must not be retried: {error}"
+            );
+        }
+
+        /// The failure this guards against is unbounded: a driver following
+        /// the documented pattern hands the turn back on every retryable
+        /// error, so a *deterministic* failure classified retryable is a loop
+        /// with no exit. An API key with a trailing newline reaches
+        /// `bearer_auth_header` and produces exactly this.
+        #[test]
+        fn deterministic_transport_failures_are_not_retryable() {
+            let invalid_header = http::HeaderValue::from_str("Bearer secret\n")
+                .expect_err("a header value with a newline is rejected");
+
+            let errors = [
+                CompletionError::HttpError(http_client::Error::InvalidHeaderValue(invalid_header)),
+                CompletionError::HttpError(http_client::Error::NoHeaders),
+                CompletionError::HttpError(http_client::Error::InvalidContentType(
+                    http::HeaderValue::from_static("text/plain"),
+                )),
+            ];
+            for error in errors {
+                assert!(
+                    !error.is_retryable(),
+                    "{error} is deterministic and must not be retried"
+                );
+            }
+        }
+
+        /// Documented gap: providers on non-HTTP transports (Bedrock, Vertex,
+        /// gRPC Gemini) report errors as a body with no status, so rig cannot
+        /// tell throttling from rejection. The conservative `false` is
+        /// deliberate — do not "fix" it by defaulting to true; fix it at the
+        /// provider adapter, where the transport's own error types are visible.
+        #[test]
+        fn a_statusless_provider_body_is_not_classified() {
+            let error = CompletionError::from_provider_body("ThrottlingException");
+            assert!(!error.is_retryable());
+        }
+
+        /// A 2xx carrying a provider-authored error envelope completed and was
+        /// rejected on its merits; re-sending it changes nothing.
+        #[test]
+        fn a_provider_error_envelope_on_success_is_not_retryable() {
+            assert!(!from_status(200).is_retryable());
+        }
+
+        /// Local problems with the request or our parsing of the response are
+        /// deterministic.
+        #[test]
+        fn local_errors_are_not_retryable() {
+            assert!(!CompletionError::ResponseError("bad shape".into()).is_retryable());
+            assert!(!CompletionError::ProviderError("opaque".into()).is_retryable());
+            assert!(!CompletionError::RequestError("malformed".to_string().into()).is_retryable());
+        }
+    }
 
     mod message_content_validation {
         use super::super::CompletionRequest;

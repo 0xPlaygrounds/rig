@@ -28,16 +28,14 @@
 //! Requires `OPENAI_API_KEY`. Run with: `cargo run -p agent_with_durable_approval`
 
 use anyhow::Result;
-use rig::agent::InvalidToolCallAction;
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
-use rig::completion::CompletionModel;
+use rig::agent::run::{AgentRun, ModelTurnOutcome};
+use rig::agent::{DriveStep, InvalidToolCallAction};
 use rig::message::{ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::tool::{Tool, ToolSet};
+use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
-use std::collections::BTreeSet;
 
 // ---------------------------------------------------------------------------
 // One read-only tool and one side-effecting tool worth gating.
@@ -145,17 +143,20 @@ async fn ask(prompt: &str) -> Option<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // A serializable `AgentRun` is a sans-IO protocol primitive. This example
-    // intentionally supplies raw model transport and tool dispatch explicitly;
-    // configured `Agent` execution instead always goes through `AgentRunner`.
+    // A hand-driven run is a sans-IO protocol primitive: this loop owns the IO
+    // and no agent hooks run. The driver pairs each turn's request and tool
+    // dispatch with the configured `Agent`, so nothing about the agent's
+    // configuration is restated below.
     let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
-    let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
-                    Call one tool at a time.";
-    let tools = ToolSet::builder()
-        .static_tool(GetBalance)
-        .static_tool(TransferFunds)
+    let agent = rig::agent::AgentBuilder::new(model)
+        .preamble(
+            "You are a banking assistant. Use the tools to carry out the user's request. \
+             Call one tool at a time.",
+        )
+        .default_max_turns(10)
+        .tool(GetBalance)
+        .tool(TransferFunds)
         .build();
-    let tool_definitions = tools.get_tool_definitions();
 
     let prompt = "Check the balance of account A-1, then transfer $500 to account B-2.";
     println!("User: {prompt}");
@@ -164,53 +165,38 @@ async fn main() -> Result<()> {
     let state_path = std::env::temp_dir().join("rig_durable_approval.json");
     let _ = std::fs::remove_file(&state_path);
 
-    let mut run = AgentRun::new(prompt).max_turns(10);
+    let mut driver = agent.drive(prompt);
 
     loop {
-        match run.next_step()? {
-            AgentRunStep::CallModel {
-                prompt,
-                history,
-                turn,
-            } => {
+        match driver.next_step().await? {
+            DriveStep::SendRequest { request, turn, .. } => {
                 println!("\n→ model call #{turn}");
-                let response = model
-                    .completion_request(prompt)
-                    .messages(history)
-                    .preamble(preamble.to_string())
-                    .tools(tool_definitions.clone())
-                    .send()
-                    .await?;
-                let tool_names: BTreeSet<String> = tool_definitions
-                    .iter()
-                    .map(|def| def.name.clone())
-                    .collect();
-                let mut outcome = run.model_response(ModelTurn::new(
-                    response.message_id.clone(),
-                    response.choice.clone(),
-                    response.usage,
-                    tool_names.clone(),
-                    tool_names,
-                ))?;
+                let response = request.send().await?;
+                let mut outcome = driver.model_response(&response)?;
                 while let ModelTurnOutcome::NeedsResolution(context) = outcome {
                     eprintln!("model called unknown tool `{}`", context.tool_name);
-                    outcome = run.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
+                    outcome = driver.resolve_invalid_tool_call(InvalidToolCallAction::fail())?;
                 }
             }
 
-            AgentRunStep::CallTools { .. } => {
-                // DURABLE PAUSE. Persist the whole run, then reconstruct it from
-                // the file before deciding. The write→reload boundary below could
-                // be a separate process / request / much later — the resumed run
-                // re-emits the pending tool calls purely from serialized state.
-                std::fs::write(&state_path, serde_json::to_vec_pretty(&run)?)?;
+            DriveStep::ExecuteTools { .. } => {
+                // DURABLE PAUSE. Persist the run state, then rebuild the driver
+                // from the file before deciding. The write→reload boundary below
+                // could be a separate process / request / much later — the
+                // resumed driver re-emits the pending tool calls purely from
+                // serialized state, and re-derives its dispatch snapshot from
+                // the rebuilt agent (tool implementations are live objects; if
+                // a pending tool is missing from this process's registry the
+                // driver surfaces the drift as an error instead of dispatching).
+                std::fs::write(&state_path, serde_json::to_vec_pretty(driver.run())?)?;
                 println!("\n💾 run suspended to {}", state_path.display());
 
                 // ----- imagine the process exits here and resumes later -----
 
-                let mut resumed: AgentRun = serde_json::from_slice(&std::fs::read(&state_path)?)?;
-                let AgentRunStep::CallTools { calls } = resumed.next_step()? else {
-                    anyhow::bail!("resumed run must re-emit the pending tool calls");
+                let resumed: AgentRun = serde_json::from_slice(&std::fs::read(&state_path)?)?;
+                driver = agent.drive_run(resumed);
+                let DriveStep::ExecuteTools { calls, tools } = driver.next_step().await? else {
+                    anyhow::bail!("a resumed run re-emits its pending tool calls");
                 };
 
                 let mut results = Vec::new();
@@ -233,7 +219,7 @@ async fn main() -> Result<()> {
                     {
                         Some("a") | Some("approve") => {
                             let execution = tools
-                                .execute(&name, args, &mut rig::tool::ToolContext::new())
+                                .execute(&name, &args, &mut rig::tool::ToolContext::new())
                                 .await;
                             results.push(UserContent::tool_result_for(
                                 id,
@@ -252,7 +238,7 @@ async fn main() -> Result<()> {
                                     let execution = tools
                                         .execute(
                                             &name,
-                                            value.to_string(),
+                                            &value.to_string(),
                                             &mut rig::tool::ToolContext::new(),
                                         )
                                         .await;
@@ -307,12 +293,11 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
 
-                resumed.tool_results(results)?;
+                driver.tool_results(results)?;
                 let _ = std::fs::remove_file(&state_path);
-                run = resumed;
             }
 
-            AgentRunStep::Done(response) => {
+            DriveStep::Done(response) => {
                 println!("\n✓ {}", response.output);
                 return Ok(());
             }

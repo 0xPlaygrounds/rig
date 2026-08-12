@@ -6,33 +6,18 @@ use super::runner::AgentRunner;
 use crate::{
     agent::prompt_request::streaming::StreamingPromptRequest,
     completion::{
-        Chat, CompletionError, CompletionModel, CompletionRequestBuilder, Document, Message,
-        Prompt, PromptError, ToolDefinition, TypedPrompt,
+        Chat, CompletionError, CompletionModel, Document, Message, Prompt, PromptError,
+        ToolDefinition, TypedPrompt,
     },
     json_utils,
     streaming::{StreamingChat, StreamingPrompt},
-    tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
+    tool::server::{ToolServerError, ToolServerHandle},
 };
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
 use std::{collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
-
-/// A prepared completion request plus the executable Rig tool names advertised
-/// to the provider for this turn.
-pub(crate) struct PreparedCompletionRequest {
-    /// Builder carrying the selected model handle: request preparation ran
-    /// against this handle's captured capabilities, and the same handle
-    /// executes the prepared request.
-    pub(crate) builder: CompletionRequestBuilder<ModelHandle>,
-    /// Exact implementations behind this turn's provider definitions.
-    pub(crate) tool_snapshot: Arc<ToolRegistrySnapshot>,
-    pub(crate) executable_tool_names: BTreeSet<String>,
-    pub(crate) allowed_tool_names: BTreeSet<String>,
-    /// When Tool output mode is active, the name of the synthetic output tool
-    /// advertised to the model (allowed but not executable). See #1928.
-    pub(crate) output_tool_name: Option<String>,
-}
+use super::turn_tools::{PreparedCompletionRequest, TurnTools};
 
 /// Base name of the synthetic output tool used by [`OutputMode::Tool`].
 const DEFAULT_OUTPUT_TOOL_NAME: &str = "final_result";
@@ -216,28 +201,102 @@ pub(crate) fn allowed_tool_names_for_choice(
     Ok(allowed)
 }
 
+/// The configured baseline a turn is prepared against: everything that is a
+/// property of the *agent* rather than of the turn.
+///
+/// Grouping these is not cosmetic. Passed positionally they were a long tail of
+/// same-typed arguments — three `Option<&str>`-ish, two numeric options, two
+/// bools — that a caller could transpose without the compiler noticing. Named
+/// fields make each one say what it is at the call site.
+pub(crate) struct TurnBaseline<'a> {
+    /// The model this turn is prepared for. Preparation reads its captured
+    /// capabilities, and the same handle executes the prepared request — so a
+    /// caller selecting a model per turn passes the selected one here.
+    pub(crate) model: &'a ModelHandle,
+    pub(crate) preamble: Option<&'a str>,
+    pub(crate) static_context: &'a [Document],
+    pub(crate) temperature: Option<f64>,
+    pub(crate) max_tokens: Option<u64>,
+    pub(crate) additional_params: Option<&'a serde_json::Value>,
+    pub(crate) record_telemetry_content: bool,
+    pub(crate) tool_choice: Option<&'a ToolChoice>,
+    pub(crate) tool_server_handle: &'a ToolServerHandle,
+    pub(crate) output_schema: Option<&'a schemars::Schema>,
+    pub(crate) output_mode: &'a OutputMode,
+    /// Description advertised for the synthetic structured-output tool.
+    pub(crate) output_tool_description: Option<&'a str>,
+    /// Whether Tool output mode augments the preamble with output guidance.
+    pub(crate) augment_output_preamble: bool,
+}
+
+impl<'a> TurnBaseline<'a> {
+    /// The baseline as an agent configures it. `output_tool_description` and
+    /// `augment_output_preamble` are runner-level knobs, so they take their
+    /// defaults here.
+    pub(crate) fn from_agent(agent: &'a Agent) -> Self {
+        Self {
+            model: &agent.model,
+            preamble: agent.preamble.as_deref(),
+            static_context: &agent.static_context,
+            temperature: agent.temperature,
+            max_tokens: agent.max_tokens,
+            additional_params: agent.additional_params.as_ref(),
+            record_telemetry_content: agent.record_telemetry_content,
+            tool_choice: agent.tool_choice.as_ref(),
+            tool_server_handle: &agent.tool_server_handle,
+            output_schema: agent.output_schema.as_ref(),
+            output_mode: &agent.output_mode,
+            output_tool_description: None,
+            augment_output_preamble: true,
+        }
+    }
+}
+
+/// What distinguishes one turn from the next: the message to send, the history
+/// behind it, the run's committed output tool, and the per-turn patch layered
+/// over the baseline.
+pub(crate) struct TurnRequest<'a> {
+    pub(crate) prompt: Message,
+    pub(crate) chat_history: &'a [Message],
+    /// The run's already-committed Tool-mode output name, re-advertised so the
+    /// mode cannot flip or re-pick a name mid-run (#1928).
+    pub(crate) committed_output_tool: Option<&'a str>,
+    /// Per-turn overrides — merged from `CompletionCall` hooks in the runner,
+    /// returned by
+    /// [`AgentDriver::next_step_with`](crate::agent::AgentDriver::next_step_with)'s
+    /// preparation callback when hand-driven. The single seam through which a
+    /// turn diverges from the baseline.
+    pub(crate) patch: Option<&'a RequestPatch>,
+}
+
 /// Helper function to build a completion request from agent components while
 /// preserving the executable Rig tool names sent to the provider.
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn build_prepared_completion_request(
-    model: &ModelHandle,
-    prompt: Message,
-    chat_history: &[Message],
-    preamble: Option<&str>,
-    static_context: &[Document],
-    temperature: Option<f64>,
-    max_tokens: Option<u64>,
-    additional_params: Option<&serde_json::Value>,
-    record_telemetry_content: bool,
-    tool_choice: Option<&ToolChoice>,
-    tool_server_handle: &ToolServerHandle,
-    output_schema: Option<&schemars::Schema>,
-    output_mode: &OutputMode,
-    committed_output_tool: Option<&str>,
-    output_tool_description: Option<&str>,
-    augment_output_preamble: bool,
-    request_patch: Option<&RequestPatch>,
+    baseline: TurnBaseline<'_>,
+    turn: TurnRequest<'_>,
 ) -> Result<PreparedCompletionRequest, CompletionError> {
+    let TurnBaseline {
+        model,
+        preamble,
+        static_context,
+        temperature,
+        max_tokens,
+        additional_params,
+        record_telemetry_content,
+        tool_choice,
+        tool_server_handle,
+        output_schema,
+        output_mode,
+        output_tool_description,
+        augment_output_preamble,
+    } = baseline;
+    let TurnRequest {
+        prompt,
+        chat_history,
+        committed_output_tool,
+        patch: request_patch,
+    } = turn;
+
     // Apply a per-turn request patch (the merged patch from every `CompletionCall`
     // hook): each set field replaces the agent's configured value for this turn,
     // unset fields inherit it, `additional_params` is shallow-merged, and
@@ -518,10 +577,15 @@ pub(crate) async fn build_prepared_completion_request(
 
     Ok(PreparedCompletionRequest {
         builder: completion_request,
-        tool_snapshot: Arc::new(tool_snapshot),
-        executable_tool_names,
-        allowed_tool_names,
-        output_tool_name,
+        // The reconciled baseline-plus-patch choice, so no caller has to
+        // repeat the merge rule to learn what the request carries.
+        tool_choice: tool_choice.cloned(),
+        tools: TurnTools {
+            snapshot: Arc::new(tool_snapshot),
+            executable_tool_names: Arc::new(executable_tool_names),
+            allowed_tool_names: Arc::new(allowed_tool_names),
+            output_tool_name,
+        },
     })
 }
 

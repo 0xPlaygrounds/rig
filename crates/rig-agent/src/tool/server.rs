@@ -62,6 +62,22 @@ impl ToolRegistrySnapshot {
         let tool = self.tools.get(tool_name).cloned();
         dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
+
+    /// Execute through the snapshot's pinned implementation, publishing result
+    /// metadata back to `context`. The snapshot counterpart of
+    /// [`ToolServerHandle::execute`], sharing the same
+    /// clear → dispatch → publish sequence.
+    pub(crate) async fn execute(
+        &self,
+        tool_name: &str,
+        args: &str,
+        context: &mut ToolContext,
+    ) -> ToolResult {
+        context.clear_dispatch_result();
+        self.dispatch(tool_name, args, context)
+            .await
+            .publish_to(context)
+    }
 }
 
 /// Shared state behind a `ToolServerHandle`.
@@ -427,12 +443,9 @@ impl ToolServerHandle {
         context: &mut ToolContext,
     ) -> ToolResult {
         context.clear_dispatch_result();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = self.dispatch(tool_name, args, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        self.dispatch(tool_name, args, context)
+            .await
+            .publish_to(context)
     }
 
     /// Run one isolated dispatch and retain its full context for agent hooks.
@@ -475,6 +488,27 @@ impl ToolServerHandle {
         &self,
         prompt: Option<String>,
     ) -> Result<ToolRegistrySnapshot, ToolServerError> {
+        self.snapshot_tool_defs_including(prompt, &BTreeSet::new())
+            .await
+    }
+
+    /// Resolve a snapshot that also contains `required`, whatever retrieval
+    /// selected.
+    ///
+    /// Retrieval picks dynamic tools by similarity to the turn's query, so a
+    /// registered dynamic tool can be absent from a snapshot simply because
+    /// this query did not rank it. That is fine when the snapshot is deciding
+    /// what to *advertise*, and wrong when it must *dispatch* names a previous
+    /// turn already advertised — a resumed run's pending calls, for instance,
+    /// where "absent from this snapshot" would otherwise be indistinguishable
+    /// from "no longer registered". Naming them explicitly resolves them from
+    /// the registry directly; names that really are gone stay absent, so the
+    /// caller's drift check still sees the truth.
+    pub(crate) async fn snapshot_tool_defs_including(
+        &self,
+        prompt: Option<String>,
+        required: &BTreeSet<String>,
+    ) -> Result<ToolRegistrySnapshot, ToolServerError> {
         let retrieval_indexes = {
             let state = self.0.read().await;
             state.retrieval_indexes.clone()
@@ -516,6 +550,18 @@ impl ToolServerHandle {
                 .collect::<Vec<String>>()
         } else {
             Vec::new()
+        };
+
+        // Append the explicitly required names after the retrieved ones:
+        // `snapshot_registered_tools` keeps the first declaration of a
+        // duplicate, so a name retrieval already selected keeps its retrieval
+        // ordering and a name it missed is resolved from the registry here.
+        let dynamic_tool_ids = if required.is_empty() {
+            dynamic_tool_ids
+        } else {
+            let mut ids = dynamic_tool_ids;
+            ids.extend(required.iter().cloned());
+            ids
         };
 
         #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]

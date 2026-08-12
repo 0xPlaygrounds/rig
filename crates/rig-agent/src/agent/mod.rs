@@ -101,12 +101,14 @@
 //! ```
 mod builder;
 mod completion;
+pub mod driver;
 pub mod hook;
 pub mod model;
 pub(crate) mod prompt_request;
 pub mod run;
 pub mod runner;
 mod tool;
+mod turn_tools;
 
 /// Fallback display name used in telemetry spans and logs when an agent has no
 /// configured name.
@@ -114,6 +116,9 @@ pub(crate) const UNKNOWN_AGENT_NAME: &str = "Unnamed Agent";
 
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::Agent;
+pub use driver::{
+    AgentDriver, DriveStep, ResumedToolDrift, TurnPreparation, TurnPreparationContext,
+};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
@@ -131,5 +136,9 @@ pub use prompt_request::{
     TypedPromptRequest, TypedPromptResponse,
 };
 pub use rig_core::message::Text;
-pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};
+pub use run::{
+    Advance, AgentRun, AgentRunStep, ModelCallInputs, ModelTurn, ModelTurnOutcome, OutputMode,
+    PendingToolCall,
+};
 pub use runner::AgentRunner;
+pub use turn_tools::{PreparedTurnMetadata, TurnToolNames, TurnTools};

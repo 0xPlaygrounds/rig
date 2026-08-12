@@ -4,7 +4,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::completion::{PreparedCompletionRequest, build_prepared_completion_request},
+    agent::completion::{TurnBaseline, TurnRequest, build_prepared_completion_request},
     agent::hook::{
         AgentHook, HookContext, HookStack, InvalidToolCallAction, ModelSelection,
         ModelSelectionAction, ModelTurnFinished, ReasoningDelta, StepEventKind,
@@ -12,14 +12,15 @@ use crate::{
     },
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
-        AgentRun, AgentRunStep, PendingToolCall,
-        streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
+        AgentRun, PendingToolCall,
+        streamed::{StreamedResolution, StreamedTurnEvent},
     },
     agent::runner::{
         AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, acquire_agent_span,
         append_run_messages, build_chat_span, new_execute_tool_span, observe_action,
         resolve_completion_call, resolve_model_turn_action, run_single_tool,
     },
+    agent::turn_tools::PreparedCompletionRequest,
     streaming::{StreamedAssistantContent, StreamedUserContent, ToolCallDeltaContent},
     tool::{ToolContext, server::ToolRegistrySnapshot},
 };
@@ -30,7 +31,11 @@ use tracing_futures::Instrument;
 
 use super::{CompletionCall, PromptResponse, forward_prompt_setters};
 use crate::{
-    agent::{Agent, model::ModelHandle},
+    agent::{
+        Agent,
+        model::ModelHandle,
+        run::{Advance, ModelCallInputs},
+    },
     completion::{CompletionError, PromptError},
 };
 use rig_core::message::{Message, Text};
@@ -489,7 +494,12 @@ where
         let mut previous_model: Option<ModelHandle> = None;
 
         'outer: loop {
-            let step = match run.next_step() {
+            // `advance` never commits a model call: it reports that the run
+            // wants one and leaves the turn unspent. Everything fallible in the
+            // arm below — completion-call hooks, model selection, request
+            // preparation — therefore runs *before* the commit, so a stop or a
+            // failure costs no turn. `next_step` would have spent it first.
+            let step = match run.advance() {
                 Ok(step) => step,
                 Err(err) => {
                     store_error_usage(&runner, &run);
@@ -499,7 +509,16 @@ where
             };
 
             match step {
-                AgentRunStep::CallModel { prompt, history, turn } => {
+                Advance::NeedsModelCall => {
+                    let ModelCallInputs { prompt, history } = match run.peek_model_call() {
+                        Ok(inputs) => inputs,
+                        Err(err) => {
+                            store_error_usage(&runner, &run);
+                            yield Err(Box::new(err).into());
+                            break 'outer;
+                        }
+                    };
+                    let turn = run.turn() + 1;
                     drop(pending_tool_snapshot.take());
                     if runner.max_turns > 1 {
                         tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
@@ -559,23 +578,27 @@ where
                     // consistent even if the per-turn tool set changes (#1928).
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
                     let mut prepared = match build_prepared_completion_request(
-                        &selected_model,
-                        prompt.clone(),
-                        &history,
-                        runner.preamble.as_deref(),
-                        &runner.static_context,
-                        runner.temperature,
-                        runner.max_tokens,
-                        runner.additional_params.as_ref(),
-                        runner.record_telemetry_content,
-                        runner.tool_choice.as_ref(),
-                        &runner.tool_server_handle,
-                        runner.output_schema.as_ref(),
-                        &runner.output_mode,
-                        committed_output_tool.as_deref(),
-                        runner.output_tool_description.as_deref(),
-                        runner.augment_output_preamble,
-                        request_patch.as_ref(),
+                        TurnBaseline {
+                            model: &selected_model,
+                            preamble: runner.preamble.as_deref(),
+                            static_context: &runner.static_context,
+                            temperature: runner.temperature,
+                            max_tokens: runner.max_tokens,
+                            additional_params: runner.additional_params.as_ref(),
+                            record_telemetry_content: runner.record_telemetry_content,
+                            tool_choice: runner.tool_choice.as_ref(),
+                            tool_server_handle: &runner.tool_server_handle,
+                            output_schema: runner.output_schema.as_ref(),
+                            output_mode: &runner.output_mode,
+                            output_tool_description: runner.output_tool_description.as_deref(),
+                            augment_output_preamble: runner.augment_output_preamble,
+                        },
+                        TurnRequest {
+                            prompt: prompt.clone(),
+                            chat_history: &history,
+                            committed_output_tool: committed_output_tool.as_deref(),
+                            patch: request_patch.as_ref(),
+                        },
                     )
                     .await
                     {
@@ -586,8 +609,17 @@ where
                             break 'outer;
                         }
                     };
-                    run.set_output_tool_name(prepared.output_tool_name.clone());
-                    let turn_tool_snapshot = prepared.tool_snapshot.clone();
+                    // The request exists, so the turn is real: commit it with
+                    // what it resolved to. Everything that could have stopped
+                    // the run is behind us, and nothing after this point can
+                    // leave a turn spent against no request.
+                    let turn_metadata = prepared.turn_metadata();
+                    if let Err(err) = run.commit_model_call(Some(turn_metadata)) {
+                        store_error_usage(&runner, &run);
+                        yield Err(Box::new(err).into());
+                        break 'outer;
+                    }
+                    let turn_tool_snapshot = prepared.tools.snapshot.clone();
                     if runner.record_telemetry_content {
                         let input_messages = prepared.builder.messages_for_telemetry();
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
@@ -629,7 +661,7 @@ where
                     }
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
-                AgentRunStep::CallTools { calls } => {
+                Advance::CallTools(calls) => {
                     let Some(tool_snapshot) = pending_tool_snapshot.take() else {
                         store_error_usage(&runner, &run);
                         yield Err(StreamingError::Completion(CompletionError::ResponseError(
@@ -662,7 +694,7 @@ where
                         break 'outer;
                     }
                 }
-                AgentRunStep::Done(response) => {
+                Advance::Done(response) => {
                     // Run-completion marker, unifying the blocking and streaming
                     // drivers' run-finished logs into one shared event.
                     tracing::info!(
@@ -1081,10 +1113,7 @@ impl TurnSource for StreamingTurnSource {
             // `ModelTurnFinished` event carries the turn's usage.
             let mut last_usage = crate::completion::Usage::new();
 
-            let mut assembler = StreamedTurnAssembler::new(
-                prepared.executable_tool_names.clone(),
-                prepared.allowed_tool_names.clone(),
-            );
+            let mut assembler = prepared.tools.streamed_turn_assembler();
             let mut completion_call_emitted = false;
             let mut turn_abandoned = false;
             let mut provider_final_seen = false;
@@ -1692,6 +1721,7 @@ mod migrated_tests {
     use crate::agent::AgentBuilder;
     use crate::agent::hook::{AgentHook, HookContext};
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
+    use crate::agent::run::AgentRunStep;
     use crate::client::AgentClientExt;
     use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};

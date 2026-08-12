@@ -43,6 +43,7 @@ use rig_core::message::{
 
 use crate::{
     agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_message},
+    agent::turn_tools::TurnToolNames,
     completion::{CompletionError, Message, Usage},
     json_utils,
     streaming::{StreamedAssistantContent, ToolCallDeltaContent},
@@ -400,15 +401,27 @@ impl Drop for ExclusionCount {
 }
 
 impl StreamedTurnAssembler {
-    /// Create an assembler for one streamed turn with the tool names
+    /// Create an assembler for one streamed turn from the tool names
     /// advertised to the provider for that turn.
-    pub fn new(
-        executable_tool_names: BTreeSet<String>,
-        allowed_tool_names: BTreeSet<String>,
-    ) -> Self {
+    ///
+    /// Takes the paired [`TurnToolNames`] rather than two same-typed sets, so
+    /// the executable and allowed sets cannot be transposed here — the same
+    /// reason the blocking path assembles its `ModelTurn` from those names at
+    /// a single site. Under [`AgentDriver`](crate::agent::AgentDriver)
+    /// prefer [`TurnTools::streamed_turn_assembler`](crate::agent::TurnTools::streamed_turn_assembler),
+    /// which takes the names straight off the turn the matching
+    /// `SendRequest` carried.
+    ///
+    /// These names govern *mid-stream* validation only. What a turn is
+    /// finally allowed to do is answered by the run itself, from the metadata
+    /// committed when the request was built — see
+    /// [`AgentRun::streamed_turn`](super::AgentRun::streamed_turn) — so a
+    /// widened set here cannot get a forbidden call dispatched. It can only
+    /// cost the early exit this type exists to provide.
+    pub fn new(names: &TurnToolNames) -> Self {
         Self {
-            executable_tool_names,
-            allowed_tool_names,
+            executable_tool_names: names.executable.clone(),
+            allowed_tool_names: names.allowed.clone(),
             text: String::new(),
             saw_text: false,
             reasoning_parts: Vec::new(),
@@ -907,7 +920,7 @@ mod tests {
     }
 
     fn assembler() -> StreamedTurnAssembler {
-        StreamedTurnAssembler::new(tool_names(&["add"]), tool_names(&["add"]))
+        StreamedTurnAssembler::new(&TurnToolNames::new(["add"], ["add"]))
     }
 
     fn text_item(text: &str) -> StreamedAssistantContent {

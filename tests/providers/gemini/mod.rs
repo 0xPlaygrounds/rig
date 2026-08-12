@@ -5,6 +5,7 @@ mod tools_support;
 
 mod cassette {
     mod agent;
+    mod agent_driver;
     mod agent_run_recovery;
     mod agent_run_resume;
     mod agent_run_stepping;

@@ -52,6 +52,80 @@ impl Error {
             _ => None,
         }
     }
+
+    /// Whether this transport failure could plausibly resolve on its own.
+    ///
+    /// Answers one question only — *could a retry succeed?* — and deliberately
+    /// not *is a retry safe?*: a stream that died after the request was
+    /// written is transient and may already have taken effect. Callers pairing
+    /// this with a retry must settle replay safety separately.
+    ///
+    /// Deterministic failures are excluded by name. A header the client
+    /// refused, a request that could not be constructed, or a response whose
+    /// content type is wrong will fail identically on every attempt, and
+    /// retrying them is how a caller ends up in a loop it cannot leave. The
+    /// remainder — the transport's own opaque failures — default to transient,
+    /// because rig cannot see inside them and a connection that dropped is the
+    /// overwhelmingly common case.
+    ///
+    /// Matched exhaustively on purpose: a variant added later must be
+    /// classified deliberately rather than inherit a default.
+    pub(crate) fn is_transient(&self) -> bool {
+        match self {
+            // The client's own failure. Usually a connection that dropped, but
+            // not always — classify by what it actually wraps.
+            Self::Instance(error) => !is_deterministic_client_error(error.as_ref()),
+            // Deterministic: the request, the header, our use of the client,
+            // or the provider's content type is wrong, and will be wrong again.
+            Self::Protocol(_)
+            | Self::InvalidHeaderValue(_)
+            | Self::NoHeaders
+            | Self::InvalidContentType(_) => false,
+            // Not a failure worth retrying in either of its two roles: in the
+            // streaming layer it is the *normal* end-of-stream sentinel, which
+            // every provider matches and breaks on rather than surfacing as an
+            // error, and its only error-producing sites are the wasm stub
+            // clients, where it means "this transport cannot send at all".
+            Self::StreamEnded => false,
+            // Carried by status classification instead; see
+            // `CompletionError::is_retryable`.
+            Self::InvalidStatusCode(_) | Self::InvalidStatusCodeWithMessage(..) => false,
+        }
+    }
+}
+
+/// Whether a boxed client error is one that will fail identically on every
+/// attempt.
+///
+/// [`Error::Instance`] is the catch-all for the underlying HTTP client, and the
+/// client puts both classes in it: a connection reset (transient) and a request
+/// that could not be built or a URL it refused to parse (deterministic — a
+/// `base_url` missing its scheme fails forever, and retrying it is an unbounded
+/// loop for any caller driving off [`CompletionError::is_retryable`]).
+///
+/// The classification is not on the box's own type but on what it wraps, so the
+/// chain is walked to the bottom — a client error is frequently a wrapper. An
+/// unrecognised error defaults to transient: rig cannot see inside it, and a
+/// dropped connection is overwhelmingly the common case.
+#[cfg(not(target_family = "wasm"))]
+fn is_deterministic_client_error(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut current = Some(error);
+    while let Some(error) = current {
+        if let Some(reqwest_error) = error.downcast_ref::<reqwest::Error>()
+            && (reqwest_error.is_builder() || reqwest_error.is_redirect())
+        {
+            return true;
+        }
+        current = error.source();
+    }
+    false
+}
+
+/// wasm has no reqwest error to inspect, so nothing is recognised as
+/// deterministic and everything keeps the transient default.
+#[cfg(target_family = "wasm")]
+fn is_deterministic_client_error(_error: &(dyn std::error::Error + 'static)) -> bool {
+    false
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
