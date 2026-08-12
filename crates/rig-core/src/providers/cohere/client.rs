@@ -1,11 +1,8 @@
 use crate::{
     Embed,
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
+    client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider},
     embeddings::EmbeddingsBuilder,
-    http_client::{self, HttpClientExt},
+    http_client::HttpClientExt,
     wasm_compat::*,
 };
 
@@ -48,44 +45,13 @@ impl<H> Capabilities<H> for CohereExt {
 
 impl DebugExt for CohereExt {}
 
-impl ProviderBuilder for CohereBuilder {
-    type Extension<H>
-        = CohereExt
-    where
-        H: HttpClientExt;
-    type ApiKey = CohereApiKey;
+client::impl_default_provider_builder!(
+    CohereBuilder => CohereExt,
+    api_key = CohereApiKey,
+    base_url = "https://api.cohere.ai",
+);
 
-    const BASE_URL: &'static str = "https://api.cohere.ai";
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(CohereExt)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = CohereApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        let key = crate::client::required_env_var("COHERE_API_KEY")?;
-        Self::new(key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = CohereApiKey, api_key_env = "COHERE_API_KEY",);
 
 #[derive(Debug)]
 pub struct ApiErrorResponse {

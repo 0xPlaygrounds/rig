@@ -15,12 +15,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::openai::{self, TranscriptionResponse};
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
+use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
 use crate::completion::CompletionError;
-use crate::http_client::{self, HttpClientExt};
+use crate::http_client::HttpClientExt;
 use crate::transcription::{self};
 
 // ================================================================
@@ -93,24 +90,11 @@ impl<H> Capabilities<H> for GroqExt {
 
 impl DebugExt for GroqExt {}
 
-impl ProviderBuilder for GroqBuilder {
-    type Extension<H>
-        = GroqExt
-    where
-        H: HttpClientExt;
-    type ApiKey = GroqApiKey;
-
-    const BASE_URL: &'static str = GROQ_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(GroqExt)
-    }
-}
+client::impl_default_provider_builder!(
+    GroqBuilder => GroqExt,
+    api_key = GroqApiKey,
+    base_url = GROQ_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<GroqExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
@@ -125,20 +109,7 @@ pub type CompletionModel<H = reqwest::Client> =
 /// with the OpenAI Chat Completions path, usage payload included.
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Groq client from the `GROQ_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("GROQ_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = String, api_key_env = "GROQ_API_KEY");
 
 use crate::providers::openai::client::ApiResponse;
 

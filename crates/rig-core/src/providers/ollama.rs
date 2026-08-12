@@ -39,8 +39,7 @@
 //! # }
 //! ```
 use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
+    self, ApiKey, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider, ProviderClient,
 };
 use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
@@ -137,24 +136,11 @@ impl<H> Capabilities<H> for OllamaExt {
 
 impl DebugExt for OllamaExt {}
 
-impl ProviderBuilder for OllamaBuilder {
-    type Extension<H>
-        = OllamaExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OllamaApiKey;
-
-    const BASE_URL: &'static str = OLLAMA_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OllamaExt)
-    }
-}
+client::impl_default_provider_builder!(
+    OllamaBuilder => OllamaExt,
+    api_key = OllamaApiKey,
+    base_url = OLLAMA_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<OllamaExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =

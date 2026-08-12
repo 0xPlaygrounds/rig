@@ -29,10 +29,8 @@
 //! ```
 
 use crate::client::{
-    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    Transport,
+    self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderClient, Transport,
 };
-use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai;
 
 // ================================================================
@@ -91,24 +89,11 @@ impl<H> Capabilities<H> for LlamafileExt {
 
 impl DebugExt for LlamafileExt {}
 
-impl ProviderBuilder for LlamafileBuilder {
-    type Extension<H>
-        = LlamafileExt
-    where
-        H: HttpClientExt;
-    type ApiKey = Nothing;
-
-    const BASE_URL: &'static str = LLAMAFILE_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(LlamafileExt)
-    }
-}
+client::impl_default_provider_builder!(
+    LlamafileBuilder => LlamafileExt,
+    api_key = Nothing,
+    base_url = LLAMAFILE_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<LlamafileExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =

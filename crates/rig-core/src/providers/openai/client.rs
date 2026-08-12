@@ -1,10 +1,7 @@
 use super::responses_api::{ResponsesProviderExt, SystemInstructionsPlacement};
 use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
-    http_client::{self, HttpClientExt},
+    client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider},
+    http_client::HttpClientExt,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
@@ -99,43 +96,16 @@ impl DebugExt for OpenAIResponsesExt {}
 
 impl DebugExt for OpenAICompletionsExt {}
 
-impl ProviderBuilder for OpenAIResponsesExtBuilder {
-    type Extension<H>
-        = OpenAIResponsesExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OpenAIApiKey;
-
-    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OpenAIResponsesExt::default())
-    }
-}
-
-impl ProviderBuilder for OpenAICompletionsExtBuilder {
-    type Extension<H>
-        = OpenAICompletionsExt
-    where
-        H: HttpClientExt;
-    type ApiKey = OpenAIApiKey;
-
-    const BASE_URL: &'static str = OPENAI_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(OpenAICompletionsExt::default())
-    }
-}
+client::impl_default_provider_builder!(
+    OpenAIResponsesExtBuilder => OpenAIResponsesExt,
+    api_key = OpenAIApiKey,
+    base_url = OPENAI_API_BASE_URL,
+);
+client::impl_default_provider_builder!(
+    OpenAICompletionsExtBuilder => OpenAICompletionsExt,
+    api_key = OpenAIApiKey,
+    base_url = OPENAI_API_BASE_URL,
+);
 
 impl<H> Client<H>
 where
@@ -229,51 +199,18 @@ where
     }
 }
 
-impl ProviderClient for Client {
-    type Input = OpenAIApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new OpenAI Responses API client from the `OPENAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let base_url = crate::client::optional_env_var("OPENAI_BASE_URL")?;
-        let api_key = crate::client::required_env_var("OPENAI_API_KEY")?;
-
-        let mut builder = Client::builder().api_key(&api_key);
-
-        if let Some(base) = base_url {
-            builder = builder.base_url(&base);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for CompletionsClient {
-    type Input = OpenAIApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new OpenAI Completions API client from the `OPENAI_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let base_url = crate::client::optional_env_var("OPENAI_BASE_URL")?;
-        let api_key = crate::client::required_env_var("OPENAI_API_KEY")?;
-
-        let mut builder = CompletionsClient::builder().api_key(&api_key);
-
-        if let Some(base) = base_url {
-            builder = builder.base_url(&base);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(
+    Client,
+    input = OpenAIApiKey,
+    api_key_env = "OPENAI_API_KEY",
+    base_url_env_first = "OPENAI_BASE_URL",
+);
+client::impl_provider_client!(
+    CompletionsClient,
+    input = OpenAIApiKey,
+    api_key_env = "OPENAI_API_KEY",
+    base_url_env_first = "OPENAI_BASE_URL",
+);
 
 /// Error envelope returned by OpenAI-compatible providers alongside 2xx
 /// statuses. Providers spell the message field differently (`message`,

@@ -22,11 +22,7 @@
 //! let glm_4_6 = client.completion_model(zai::GLM_4_6);
 //! ```
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
+use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
 use crate::providers::anthropic::client::{
     AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
 };
@@ -125,50 +121,18 @@ impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
     type Response = super::openai::CompletionResponse;
 }
 
-impl ProviderBuilder for ZAiBuilder {
-    type Extension<H>
-        = ZAiExt
-    where
-        H: HttpClientExt;
-    type ApiKey = ZAiApiKey;
-
-    const BASE_URL: &'static str = GENERAL_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(ZAiExt)
-    }
-}
-
-impl ProviderBuilder for ZAiAnthropicBuilder {
-    type Extension<H>
-        = ZAiAnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
-    const BASE_URL: &'static str = ANTHROPIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(ZAiAnthropicExt)
-    }
-
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(&self.anthropic, builder)
-    }
-}
+client::impl_default_provider_builder!(
+    ZAiBuilder => ZAiExt,
+    api_key = ZAiApiKey,
+    base_url = GENERAL_API_BASE_URL,
+);
+client::impl_default_provider_builder!(
+    ZAiAnthropicBuilder => ZAiAnthropicExt,
+    api_key = AnthropicKey,
+    base_url = ANTHROPIC_API_BASE_URL,
+    finish = finish_anthropic_builder,
+    state = anthropic,
+);
 
 impl super::anthropic::completion::AnthropicCompatibleProvider for ZAiAnthropicExt {
     const PROVIDER_NAME: &'static str = "z.ai";
@@ -178,45 +142,19 @@ impl super::anthropic::completion::AnthropicCompatibleProvider for ZAiAnthropicE
     }
 }
 
-impl ProviderClient for Client {
-    type Input = ZAiApiKey;
-    type Error = crate::client::ProviderClientError;
+client::impl_provider_client!(
+    Client,
+    input = ZAiApiKey,
+    api_key_env = "ZAI_API_KEY",
+    base_url_env = "ZAI_API_BASE",
+);
 
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("ZAI_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) = crate::client::optional_env_var("ZAI_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for AnthropicClient {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("ZAI_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) = anthropic_base_override("ZAI_ANTHROPIC_API_BASE", "ZAI_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
+client::impl_provider_client!(
+    AnthropicClient,
+    input = String,
+    api_key_env = "ZAI_API_KEY",
+    base_url = anthropic_base_override("ZAI_ANTHROPIC_API_BASE", "ZAI_API_BASE")?,
+);
 
 fn anthropic_base_override(
     primary_env: &'static str,
