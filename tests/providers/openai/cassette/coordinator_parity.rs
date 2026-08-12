@@ -24,13 +24,24 @@
 //! is renumbered by the scrubber. So as of this suite's first recording the two
 //! coordinators agree completely on *what* they send.
 //!
-//! Where they still differ is *when* they commit a turn: the runner spends the
-//! turn before running its completion-call hooks, its model selection and its
+//! # What this suite guards, and what it cannot
+//!
+//! The commit boundary used to be the interesting divergence: the runner spent
+//! its turn before its completion-call hooks, its model selection and its
 //! request preparation, each of which can terminate the run, while the driver
-//! prepares first and commits last. That divergence is invisible here, because
-//! it changes no request — which is exactly why it survived several reviews,
-//! and why these tests pin the wire while the commit-boundary unit tests pin
-//! the rest.
+//! prepared first and committed last. That is fixed — both now commit only
+//! once a request exists — and the commit-boundary unit tests pin it, because
+//! it is invisible on the wire, which is exactly why it survived several
+//! reviews.
+//!
+//! What remains is **structural** duplication: two coordinators implementing
+//! one protocol, agreeing today because two code paths currently happen to
+//! agree. This suite detects the next disagreement; nothing here prevents one.
+//! Only consolidating the coordinators would, and until that lands these
+//! cassettes are the guard that makes the delay safe. They are therefore worth
+//! extending whenever either coordinator grows a behavior the four scenarios
+//! below do not exercise — hook termination, per-turn patches, structured
+//! output, recovery resolutions, resumed runs.
 
 use rig::agent::AgentRun;
 use rig::completion::PromptError;

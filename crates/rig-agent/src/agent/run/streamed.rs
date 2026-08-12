@@ -406,8 +406,8 @@ impl StreamedTurnAssembler {
     ///
     /// Takes the paired [`TurnToolNames`] rather than two same-typed sets, so
     /// the executable and allowed sets cannot be transposed here — the same
-    /// reason [`TurnToolNames::model_turn`] is the only construction site for
-    /// driver-facing blocking turns. Under [`AgentDriver`](crate::agent::AgentDriver)
+    /// reason the blocking path assembles its `ModelTurn` from those names at
+    /// a single site. Under [`AgentDriver`](crate::agent::AgentDriver)
     /// prefer [`TurnTools::streamed_turn_assembler`](crate::agent::TurnTools::streamed_turn_assembler),
     /// which takes the names straight off the turn the matching
     /// `SendRequest` carried.

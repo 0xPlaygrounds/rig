@@ -1634,6 +1634,35 @@ resolves the advertised names against the registry directly rather than
 re-running retrieval, so a registered dynamic tool is found whether or not a
 fresh query would rank it, and absence really does mean the tool is gone.
 
+Absence is reported, not papered over: `Agent::drive_run` fails with the missing
+names rather than silently feeding not-found results to the model. To dispatch
+anyway, resume with `Agent::resume_run(run, ResumedToolDrift::Dispatch)`. The
+policy is an argument at the resume entry point rather than a setting on the
+driver, and it is deliberately not serialized with the run — the process that
+suspended a run cannot know what registry a later one will have, so it has no
+standing to decide how that process handles its own drift.
+
+**`StreamedTurnAssembler::new` takes one argument.** It was
+`new(executable_tool_names, allowed_tool_names)` — two same-typed
+`BTreeSet<String>` values, transposable at the call site — and is now
+`new(&TurnToolNames)`. Under `AgentDriver`, do not spell the names at all: call
+`tools.streamed_turn_assembler()` on the `TurnTools` the matching
+`DriveStep::SendRequest` carried. Elsewhere, wrap what you passed before:
+
+```rust
+// before
+StreamedTurnAssembler::new(executable, allowed)
+// after
+StreamedTurnAssembler::new(&TurnToolNames::new(executable, allowed))
+```
+
+Those names now govern *mid-stream* validation only. What a turn is finally
+allowed to call is answered by the run, from the metadata committed when its
+request was built, so a mis-built assembler can no longer get a tool dispatched
+that the request's `tool_choice` forbade — it can only forfeit the early exit
+the assembler exists to provide. Runs hand-driven through `AgentRun` commit no
+such metadata and keep validating against the names they carry.
+
 An `Agent`'s default model is set at construction. Per-run overrides now go
 through `runner(...).using_model(...)`, `Agent::set_model`, or a
 `ModelSelection` hook (see the "runtime model swapping" section for the

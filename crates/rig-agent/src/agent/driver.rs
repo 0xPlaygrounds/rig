@@ -22,6 +22,15 @@
 //! advertise/dispatch skew happen; the driver owns it in one place while every
 //! side effect stays with the caller.
 //!
+//! One place for *callers*, not yet one place in the crate:
+//! [`AgentRunner`](super::AgentRunner) still implements the same protocol
+//! internally rather than driving this type, so two coordinators exist and can
+//! drift apart. They agree today, and the `coordinator_parity` cassettes keep
+//! them honest by recording each scenario through both and matching request
+//! bodies — but agreement checked by test is weaker than agreement by
+//! construction, and folding the runner onto the driver is the intended end
+//! state.
+//!
 //! It owns that pairing without *holding* it. Everything durable lives on the
 //! [`AgentRun`] — including what each committed turn resolved to — and the
 //! driver's only other field is a cache of the live registry snapshot, which

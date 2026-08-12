@@ -334,8 +334,9 @@ impl TurnTools {
     /// The assembler for this turn's provider stream, carrying the names this
     /// turn advertised.
     ///
-    /// The streaming counterpart of [`Self::model_turn`], and the way a
-    /// [`AgentDriver`](super::AgentDriver) caller should build one: it takes
+    /// The streaming counterpart of the blocking path's `ModelTurn` assembly,
+    /// and the way an [`AgentDriver`](super::AgentDriver) caller should build
+    /// an assembler: it takes
     /// the names off the turn the matching
     /// [`DriveStep::SendRequest`](super::DriveStep::SendRequest) carried, so
     /// there is no pair of same-typed sets for a caller to transpose or widen.
