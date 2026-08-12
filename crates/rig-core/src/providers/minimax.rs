@@ -23,8 +23,9 @@
 
 use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
 use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
+    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
 };
+use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
 
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.minimax.io/v1";
@@ -127,12 +128,9 @@ client::impl_default_provider_builder!(
     api_key = MiniMaxApiKey,
     base_url = GLOBAL_API_BASE_URL,
 );
-client::impl_default_provider_builder!(
+impl_anthropic_compatible_builder!(
     MiniMaxAnthropicBuilder => MiniMaxAnthropicExt,
-    api_key = AnthropicKey,
     base_url = GLOBAL_ANTHROPIC_API_BASE_URL,
-    finish = finish_anthropic_builder,
-    state = anthropic,
 );
 
 impl super::anthropic::completion::AnthropicCompatibleProvider for MiniMaxAnthropicExt {
@@ -154,49 +152,18 @@ client::impl_provider_client!(
     AnthropicClient,
     input = String,
     api_key_env = "MINIMAX_API_KEY",
-    base_url = anthropic_base_override("MINIMAX_ANTHROPIC_API_BASE", "MINIMAX_API_BASE")?,
+    base_url =
+        ANTHROPIC_BASE_URLS.resolve_from_env("MINIMAX_ANTHROPIC_API_BASE", "MINIMAX_API_BASE")?,
 );
 
-fn anthropic_base_override(
-    primary_env: &'static str,
-    fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
-
-    Ok(resolve_anthropic_base_override(
-        primary.as_deref(),
-        fallback.as_deref(),
-    ))
-}
-
-fn resolve_anthropic_base_override(
-    primary: Option<&str>,
-    fallback: Option<&str>,
-) -> Option<String> {
-    primary
-        .map(str::to_owned)
-        .or_else(|| fallback.and_then(normalize_anthropic_base_url))
-}
-
-fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
-    if base_url.contains("/anthropic") {
-        return Some(base_url.to_owned());
-    }
-
-    match base_url.trim_end_matches('/') {
-        GLOBAL_API_BASE_URL => Some(GLOBAL_ANTHROPIC_API_BASE_URL.to_owned()),
-        CHINA_API_BASE_URL => Some(CHINA_ANTHROPIC_API_BASE_URL.to_owned()),
-        _ => {
-            let mut url = url::Url::parse(base_url).ok()?;
-            if !matches!(url.path(), "/v1" | "/v1/") {
-                return None;
-            }
-            url.set_path("/anthropic");
-            Some(url.to_string())
-        }
-    }
-}
+const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
+    &[
+        (GLOBAL_API_BASE_URL, GLOBAL_ANTHROPIC_API_BASE_URL),
+        (CHINA_API_BASE_URL, CHINA_ANTHROPIC_API_BASE_URL),
+    ],
+    &["/v1", "/v1/"],
+    "/anthropic",
+);
 
 impl<H> ClientBuilder<H> {
     pub fn global(self) -> Self {
@@ -216,36 +183,13 @@ impl<H> AnthropicClientBuilder<H> {
     pub fn china(self) -> Self {
         self.base_url(CHINA_ANTHROPIC_API_BASE_URL)
     }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        CHINA_ANTHROPIC_API_BASE_URL, CHINA_API_BASE_URL, GLOBAL_ANTHROPIC_API_BASE_URL,
-        GLOBAL_API_BASE_URL, normalize_anthropic_base_url, resolve_anthropic_base_override,
+        ANTHROPIC_BASE_URLS, CHINA_ANTHROPIC_API_BASE_URL, CHINA_API_BASE_URL,
+        GLOBAL_ANTHROPIC_API_BASE_URL, GLOBAL_API_BASE_URL,
     };
 
     #[test]
@@ -266,15 +210,19 @@ mod tests {
     #[test]
     fn normalize_openai_bases_to_anthropic_bases() {
         assert_eq!(
-            normalize_anthropic_base_url(GLOBAL_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize(GLOBAL_API_BASE_URL)
+                .as_deref(),
             Some(GLOBAL_ANTHROPIC_API_BASE_URL)
         );
         assert_eq!(
-            normalize_anthropic_base_url(CHINA_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS.normalize(CHINA_API_BASE_URL).as_deref(),
             Some(CHINA_ANTHROPIC_API_BASE_URL)
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/v1").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/v1")
+                .as_deref(),
             Some("https://proxy.example.com/anthropic")
         );
     }
@@ -282,14 +230,16 @@ mod tests {
     #[test]
     fn normalize_preserves_existing_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url(CHINA_ANTHROPIC_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize(CHINA_ANTHROPIC_API_BASE_URL)
+                .as_deref(),
             Some(CHINA_ANTHROPIC_API_BASE_URL)
         );
     }
 
     #[test]
     fn anthropic_primary_override_wins() {
-        let override_url = resolve_anthropic_base_override(
+        let override_url = ANTHROPIC_BASE_URLS.resolve(
             Some("https://primary.example.com/anthropic"),
             Some(CHINA_API_BASE_URL),
         );

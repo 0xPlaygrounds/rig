@@ -8,6 +8,7 @@
 //! crate-private.
 
 pub mod adapter;
+pub(crate) mod anthropic_compatible;
 #[cfg(feature = "audio")]
 pub(crate) mod audio_generation;
 pub(crate) mod auth;

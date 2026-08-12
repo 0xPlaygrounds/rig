@@ -24,8 +24,9 @@
 
 use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
 use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
+    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
 };
+use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
 
 /// General-purpose OpenAI-compatible base URL.
 pub const GENERAL_API_BASE_URL: &str = "https://api.z.ai/api/paas/v4";
@@ -126,12 +127,9 @@ client::impl_default_provider_builder!(
     api_key = ZAiApiKey,
     base_url = GENERAL_API_BASE_URL,
 );
-client::impl_default_provider_builder!(
+impl_anthropic_compatible_builder!(
     ZAiAnthropicBuilder => ZAiAnthropicExt,
-    api_key = AnthropicKey,
     base_url = ANTHROPIC_API_BASE_URL,
-    finish = finish_anthropic_builder,
-    state = anthropic,
 );
 
 impl super::anthropic::completion::AnthropicCompatibleProvider for ZAiAnthropicExt {
@@ -153,51 +151,22 @@ client::impl_provider_client!(
     AnthropicClient,
     input = String,
     api_key_env = "ZAI_API_KEY",
-    base_url = anthropic_base_override("ZAI_ANTHROPIC_API_BASE", "ZAI_API_BASE")?,
+    base_url = ANTHROPIC_BASE_URLS.resolve_from_env("ZAI_ANTHROPIC_API_BASE", "ZAI_API_BASE")?,
 );
 
-fn anthropic_base_override(
-    primary_env: &'static str,
-    fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
-
-    Ok(resolve_anthropic_base_override(
-        primary.as_deref(),
-        fallback.as_deref(),
-    ))
-}
-
-fn resolve_anthropic_base_override(
-    primary: Option<&str>,
-    fallback: Option<&str>,
-) -> Option<String> {
-    primary
-        .map(str::to_owned)
-        .or_else(|| fallback.and_then(normalize_anthropic_base_url))
-}
-
-fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
-    if base_url.contains("/anthropic") {
-        return Some(base_url.to_owned());
-    }
-
-    match base_url.trim_end_matches('/') {
-        GENERAL_API_BASE_URL | CODING_API_BASE_URL => Some(ANTHROPIC_API_BASE_URL.to_owned()),
-        _ => {
-            let mut url = url::Url::parse(base_url).ok()?;
-            if !matches!(
-                url.path(),
-                "/api/paas/v4" | "/api/paas/v4/" | "/api/coding/paas/v4" | "/api/coding/paas/v4/"
-            ) {
-                return None;
-            }
-            url.set_path("/api/anthropic");
-            Some(url.to_string())
-        }
-    }
-}
+const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
+    &[
+        (GENERAL_API_BASE_URL, ANTHROPIC_API_BASE_URL),
+        (CODING_API_BASE_URL, ANTHROPIC_API_BASE_URL),
+    ],
+    &[
+        "/api/paas/v4",
+        "/api/paas/v4/",
+        "/api/coding/paas/v4",
+        "/api/coding/paas/v4/",
+    ],
+    "/api/anthropic",
+);
 
 impl<H> ClientBuilder<H> {
     pub fn general(self) -> Self {
@@ -213,36 +182,12 @@ impl<H> AnthropicClientBuilder<H> {
     pub fn general(self) -> Self {
         self.base_url(ANTHROPIC_API_BASE_URL)
     }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ANTHROPIC_API_BASE_URL, CODING_API_BASE_URL, GENERAL_API_BASE_URL,
-        normalize_anthropic_base_url, resolve_anthropic_base_override,
+        ANTHROPIC_API_BASE_URL, ANTHROPIC_BASE_URLS, CODING_API_BASE_URL, GENERAL_API_BASE_URL,
     };
 
     #[test]
@@ -263,19 +208,27 @@ mod tests {
     #[test]
     fn normalize_openai_style_bases_to_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url(GENERAL_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize(GENERAL_API_BASE_URL)
+                .as_deref(),
             Some(ANTHROPIC_API_BASE_URL)
         );
         assert_eq!(
-            normalize_anthropic_base_url(CODING_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize(CODING_API_BASE_URL)
+                .as_deref(),
             Some(ANTHROPIC_API_BASE_URL)
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/api/paas/v4").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/api/paas/v4")
+                .as_deref(),
             Some("https://proxy.example.com/api/anthropic")
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/api/coding/paas/v4").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/api/coding/paas/v4")
+                .as_deref(),
             Some("https://proxy.example.com/api/anthropic")
         );
     }
@@ -283,14 +236,16 @@ mod tests {
     #[test]
     fn normalize_preserves_existing_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/api/anthropic").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/api/anthropic")
+                .as_deref(),
             Some("https://proxy.example.com/api/anthropic")
         );
     }
 
     #[test]
     fn anthropic_primary_override_wins() {
-        let override_url = resolve_anthropic_base_override(
+        let override_url = ANTHROPIC_BASE_URLS.resolve(
             Some("https://primary.example.com/api/anthropic"),
             Some(GENERAL_API_BASE_URL),
         );

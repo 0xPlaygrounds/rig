@@ -169,8 +169,9 @@ impl HttpClientExt for RecordingHttpClient {
         U: From<Bytes> + WasmCompatSend + 'static,
     {
         let response = self.response_guard().clone();
-        let (parts, _body) = req.into_parts();
-        self.record_request(parts.uri.to_string(), parts.headers, Bytes::new());
+        let (parts, body) = req.into_parts();
+        let (_, body) = body.boundary("recording-http-client").encode();
+        self.record_request(parts.uri.to_string(), parts.headers, body);
 
         async move { Self::build_unary_response(response) }
     }
