@@ -3,10 +3,12 @@ mod support;
 mod regressions;
 
 mod cassette {
+    mod additional_params_tools;
     mod agent;
     mod chat_history;
     mod completions_api;
     mod document_ordering;
+    mod error_envelope;
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;
