@@ -189,6 +189,55 @@ where
 
     Ok(builder)
 }
+
+// The remaining compatible-client repetition is inherent builder methods and
+// a ProviderBuilder implementation, neither of which ordinary functions can
+// generate. Keep the actual header behavior in `finish_anthropic_builder` and
+// generate only this type-level plumbing.
+macro_rules! impl_anthropic_compatible_builder {
+    ($builder:ty => $extension:ty, base_url = $base_url:expr $(,)?) => {
+        $crate::client::impl_default_provider_builder!(
+            $builder => $extension,
+            api_key = $crate::providers::anthropic::client::AnthropicKey,
+            base_url = $base_url,
+            finish = $crate::providers::anthropic::client::finish_anthropic_builder,
+            state = anthropic,
+        );
+
+        impl<H>
+            $crate::client::ClientBuilder<
+                $builder,
+                $crate::providers::anthropic::client::AnthropicKey,
+                H,
+            >
+        {
+            pub fn anthropic_version(self, anthropic_version: &str) -> Self {
+                self.over_ext(|mut ext| {
+                    ext.anthropic.anthropic_version = anthropic_version.into();
+                    ext
+                })
+            }
+
+            pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
+                self.over_ext(|mut ext| {
+                    ext.anthropic
+                        .anthropic_betas
+                        .extend(anthropic_betas.iter().copied().map(String::from));
+                    ext
+                })
+            }
+
+            pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
+                self.over_ext(|mut ext| {
+                    ext.anthropic.anthropic_betas.push(anthropic_beta.into());
+                    ext
+                })
+            }
+        }
+    };
+}
+pub(crate) use impl_anthropic_compatible_builder;
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;

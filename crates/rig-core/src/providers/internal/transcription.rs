@@ -3,10 +3,9 @@
 //! OpenAI, Groq and Azure OpenAI all accept the same multipart body — the
 //! audio as a `file` part plus optional `language`, `prompt` and `temperature`
 //! fields and a flattened `additional_params` object — and answer with the
-//! same `{ text }` payload or error envelope. The per-provider differences are
-//! carried as data ([`TranscriptionFields`]) and as the provider's own
-//! envelope type (via [`ProviderEnvelope`]), so each provider keeps its exact
-//! wire behavior.
+//! same `{ text }` payload and OpenAI-style error envelope. The per-provider
+//! differences are limited to request routing and whether the model is sent as
+//! a form field.
 
 use bytes::Bytes;
 use serde::de::DeserializeOwned;
@@ -15,6 +14,71 @@ use super::envelope::ProviderEnvelope;
 use crate::http_client::multipart::Part;
 use crate::http_client::{self, HttpClientExt, MultipartForm};
 use crate::transcription::{self, TranscriptionError, TranscriptionRequest};
+
+/// Provider-specific request routing for the shared OpenAI-style model.
+pub(crate) trait OpenAiTranscriptionClient: HttpClientExt + Clone {
+    /// Whether the model is a multipart form field. Azure addresses the model
+    /// as a deployment in the request URL instead.
+    const MODEL_IN_FORM: bool;
+
+    fn transcription_request(&self, model: &str) -> http_client::Result<http_client::Builder>;
+}
+
+/// The common model shell for OpenAI, Groq, and Azure OpenAI transcription.
+/// Their response and multipart wire formats are identical; the client trait
+/// above retains the only variation, request routing.
+#[derive(Clone)]
+pub struct OpenAiTranscriptionModel<C> {
+    client: C,
+    /// Name of the transcription model or, for Azure OpenAI, deployment.
+    pub model: String,
+}
+
+impl<C> OpenAiTranscriptionModel<C> {
+    /// Create a transcription model backed by `client`.
+    pub fn new(client: C, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
+}
+
+impl<C> transcription::TranscriptionModel for OpenAiTranscriptionModel<C>
+where
+    C: OpenAiTranscriptionClient + 'static,
+{
+    type Response = crate::providers::openai::TranscriptionResponse;
+    type Client = C;
+
+    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
+        Self::new(client.clone(), model)
+    }
+
+    async fn transcription(
+        &self,
+        request: TranscriptionRequest,
+    ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
+        let form = transcription_form(
+            request,
+            TranscriptionFields {
+                model: C::MODEL_IN_FORM.then_some(self.model.as_str()),
+            },
+        )?;
+
+        send_transcription::<
+            _,
+            crate::providers::openai::client::ApiResponse<
+                crate::providers::openai::TranscriptionResponse,
+            >,
+        >(
+            &self.client,
+            self.client.transcription_request(&self.model)?,
+            form,
+        )
+        .await
+    }
+}
 
 /// The per-provider parts of an OpenAI-style transcription request.
 #[derive(Debug, Clone, Copy)]

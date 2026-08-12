@@ -62,7 +62,7 @@ use crate::{
     completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
     tool::{
-        ToolContext, ToolDispatch, ToolOutput, ToolResult,
+        ToolContext, ToolDispatch, ToolResult,
         server::{ToolRegistrySnapshot, ToolServerHandle},
     },
 };
@@ -137,50 +137,6 @@ pub(crate) fn resolve_model_turn_action(
             Ok(ModelTurnDecision::Retried)
         }
         ModelTurnAction::Stop(reason) => Ok(ModelTurnDecision::Terminate(reason)),
-    }
-}
-
-pub(crate) enum ToolCallDecision {
-    Proceed,
-    ProceedWith(serde_json::Value),
-    Skip(String),
-    Terminate(String),
-}
-
-pub(crate) fn tool_call_decision(action: ToolCallAction) -> ToolCallDecision {
-    match action {
-        ToolCallAction::Run => ToolCallDecision::Proceed,
-        ToolCallAction::Rewrite(args) => ToolCallDecision::ProceedWith(args),
-        ToolCallAction::Skip(reason) => ToolCallDecision::Skip(reason),
-        ToolCallAction::Stop(reason) => ToolCallDecision::Terminate(reason),
-    }
-}
-
-pub(crate) enum ToolResultDecision {
-    Keep,
-    Replace(ToolOutput),
-    Terminate(String),
-}
-
-pub(crate) fn tool_result_decision(action: ToolResultAction) -> ToolResultDecision {
-    match action {
-        ToolResultAction::Keep => ToolResultDecision::Keep,
-        ToolResultAction::Rewrite(result) => ToolResultDecision::Replace(result),
-        ToolResultAction::Stop(reason) => ToolResultDecision::Terminate(reason),
-    }
-}
-
-pub(crate) enum CompletionCallDecision {
-    Proceed,
-    Patch(RequestPatch),
-    Terminate(String),
-}
-
-pub(crate) fn completion_call_decision(action: CompletionCallAction) -> CompletionCallDecision {
-    match action {
-        CompletionCallAction::Continue => CompletionCallDecision::Proceed,
-        CompletionCallAction::Patch(patch) => CompletionCallDecision::Patch(patch),
-        CompletionCallAction::Stop(reason) => CompletionCallDecision::Terminate(reason),
     }
 }
 
@@ -607,21 +563,20 @@ pub(crate) async fn resolve_completion_call(
     history: &[Message],
     turn: usize,
 ) -> CompletionCallOutcome {
-    match completion_call_decision(
-        hooks
-            .on_completion_call(
-                ctx,
-                CompletionCall {
-                    prompt,
-                    history,
-                    turn,
-                },
-            )
-            .await,
-    ) {
-        CompletionCallDecision::Terminate(reason) => CompletionCallOutcome::Terminate(reason),
-        CompletionCallDecision::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
-        CompletionCallDecision::Proceed => CompletionCallOutcome::Proceed(None),
+    match hooks
+        .on_completion_call(
+            ctx,
+            CompletionCall {
+                prompt,
+                history,
+                turn,
+            },
+        )
+        .await
+    {
+        CompletionCallAction::Stop(reason) => CompletionCallOutcome::Terminate(reason),
+        CompletionCallAction::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
+        CompletionCallAction::Continue => CompletionCallOutcome::Proceed(None),
     }
 }
 
@@ -702,8 +657,8 @@ pub(crate) async fn run_single_tool(
     }
 
     // Resolve the `ToolCall` hook chain. A proceeding chain carries any
-    // `ToolCallAction::Rewrite` in the action itself (→ `ProceedWith`); a chain that a
-    // later hook short-circuits with `Skip`/`Terminate` salvages the accumulated
+    // `ToolCallAction::Rewrite` in the action itself; a chain that a later hook
+    // short-circuits with `Skip`/`Stop` salvages the accumulated
     // rewrite into `salvaged_rewrite` so it is *not* lost — the rewritten args
     // must still be reported on the skipped `ToolResult` and in tracing rather
     // than leaking the model's original args (see [`HookStack::resolve_tool_call`]).
@@ -738,14 +693,14 @@ pub(crate) async fn run_single_tool(
     // `ToolCallAction::Rewrite` replacement, or a salvaged rewrite) — surfaced in the
     // execution-commit event so a redaction rewrite does not leak. Unused for a skip.
     let mut skipped: Option<ToolResult> = None;
-    let effective_args: serde_json::Value = match tool_call_decision(action) {
-        ToolCallDecision::Terminate(reason) => {
+    let effective_args: serde_json::Value = match action {
+        ToolCallAction::Stop(reason) => {
             return Err(PromptError::prompt_cancelled(
                 error_history.to_vec(),
                 reason,
             ));
         }
-        ToolCallDecision::Skip(reason) => {
+        ToolCallAction::Skip(reason) => {
             tracing::info!(tool_name = tool_name, reason = reason, "Tool call rejected");
             // Synthetic rejection: `Skipped` outcome, message delivered verbatim.
             // Still fires the `ToolResult` hook so a policy observes the skip.
@@ -754,7 +709,7 @@ pub(crate) async fn run_single_tool(
             // (if any) so tracing/history stay consistent, though they go unused.
             salvaged_rewrite.unwrap_or_else(|| tool_call.function.arguments.clone())
         }
-        ToolCallDecision::ProceedWith(replacement) => {
+        ToolCallAction::Rewrite(replacement) => {
             // Proceeding rewrite: re-record the span so the trace, and the
             // downstream `ToolResult` event, reflect what the tool actually
             // received rather than what the model emitted.
@@ -768,7 +723,7 @@ pub(crate) async fn run_single_tool(
             );
             replacement
         }
-        ToolCallDecision::Proceed => tool_call.function.arguments.clone(),
+        ToolCallAction::Run => tool_call.function.arguments.clone(),
     };
 
     // Resolve the structured execution result and how the call surfaced. A skip
@@ -792,33 +747,31 @@ pub(crate) async fn run_single_tool(
     };
     // Presentation rewrites happen after execution. The raw structured result
     // and per-dispatch context remain unchanged for every hook.
-    let result_decision = tool_result_decision(
-        hooks
-            .on_tool_result(
-                ctx,
-                ToolResultEvent {
-                    tool_name,
-                    tool_call_id: Some(tool_call.id.as_str()),
-                    internal_call_id,
-                    args: &args,
-                    presentation: exec.output(),
-                    raw_result: &exec,
-                    tool_context: &dispatch_context,
-                },
-            )
-            .await,
-    );
+    let result_action = hooks
+        .on_tool_result(
+            ctx,
+            ToolResultEvent {
+                tool_name,
+                tool_call_id: Some(tool_call.id.as_str()),
+                internal_call_id,
+                args: &args,
+                presentation: exec.output(),
+                raw_result: &exec,
+                tool_context: &dispatch_context,
+            },
+        )
+        .await;
     // Outcome metadata describes the execution itself, while result content
     // follows the same presentation policy as the model. This keeps redaction
     // and stop hooks from leaking raw tool output through telemetry.
     record_tool_result(&tool_span, &exec);
 
-    match result_decision {
-        ToolResultDecision::Terminate(reason) => Err(PromptError::prompt_cancelled(
+    match result_action {
+        ToolResultAction::Stop(reason) => Err(PromptError::prompt_cancelled(
             error_history.to_vec(),
             reason,
         )),
-        ToolResultDecision::Replace(replacement) => {
+        ToolResultAction::Rewrite(replacement) => {
             if record_content {
                 tool_span.record("gen_ai.tool.call.result", replacement.render());
             }
@@ -832,7 +785,7 @@ pub(crate) async fn run_single_tool(
                 execution,
             })
         }
-        ToolResultDecision::Keep => {
+        ToolResultAction::Keep => {
             if record_content {
                 tool_span.record("gen_ai.tool.call.result", exec.output().render());
             }
@@ -6947,23 +6900,6 @@ mod migrated_tests {
         let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
     }
 
-    /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that
-    /// carries the replacement arguments, and is named for fail-closed
-    /// diagnostics.
-    #[test]
-    fn rewrite_args_resolves_to_proceed_with_for_tool_call() {
-        let args = json!({"x": 1, "y": 2});
-        match super::tool_call_decision(ToolCallAction::rewrite(args.clone())) {
-            super::ToolCallDecision::ProceedWith(replacement) => assert_eq!(replacement, args),
-            _ => panic!("ToolCallAction::Rewrite should resolve to ProceedWith"),
-        }
-        // The typed convenience builds the same variant as the value constructor.
-        assert_eq!(
-            ToolCallAction::try_rewrite(&json!({"x": 1, "y": 2})).expect("serializes"),
-            ToolCallAction::rewrite(json!({"x": 1, "y": 2})),
-        );
-    }
-
     /// A hook that rewrites a *valid* tool call's arguments (`ToolCallAction::Rewrite`
     /// on `ToolCall`) is honored identically under `run()` and `stream()`: the
     /// tool executes with the replacement, so both drivers observe the same
@@ -7256,18 +7192,6 @@ mod migrated_tests {
         }
     }
 
-    /// `ToolResultAction::Rewrite` resolves to a `Replace` tool-result decision carrying
-    /// the replacement, and is named for fail-closed diagnostics.
-    #[test]
-    fn rewrite_result_resolves_to_replace_for_tool_result() {
-        match super::tool_result_decision(ToolResultAction::rewrite("redacted")) {
-            super::ToolResultDecision::Replace(result) => {
-                assert_eq!(result.as_text(), Some("redacted"))
-            }
-            _ => panic!("ToolResultAction::Rewrite should resolve to Replace"),
-        }
-    }
-
     /// A hook that rewrites a tool's result (`ToolResultAction::Rewrite` on
     /// `ToolResult`) is honored identically under `run()` and `stream()`: the
     /// model-visible history carries the replacement while the `ToolResult` event
@@ -7413,19 +7337,6 @@ mod migrated_tests {
 
     const OVERRIDE_PREAMBLE: &str = "overridden: critical-step instructions";
     const OVERRIDE_MAX_TOKENS: u64 = 512;
-
-    /// `CompletionCallAction::Patch` resolves to a `Patch` completion-call decision
-    /// carrying the patch, and is named for fail-closed diagnostics.
-    #[test]
-    fn patch_request_resolves_to_patch_for_completion_call() {
-        let patch = RequestPatch::new()
-            .temperature(0.25)
-            .tool_choice(ToolChoice::Required);
-        match super::completion_call_decision(CompletionCallAction::patch(patch.clone())) {
-            super::CompletionCallDecision::Patch(got) => assert_eq!(got, patch),
-            _ => panic!("PatchRequest should resolve to Patch for a completion call"),
-        }
-    }
 
     /// A `CompletionCallAction::Patch` hook patches the request for the turn identically
     /// under `run()` and `stream()`: the captured completion request shows the

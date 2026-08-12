@@ -24,16 +24,15 @@
 
 use std::fmt::Debug;
 
-use super::openai::TranscriptionResponse;
 use crate::client::{
     self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
     ProviderClient,
 };
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
+use crate::providers::internal::transcription::OpenAiTranscriptionClient;
 use crate::{
     embeddings::{self, EmbeddingError},
     providers::openai,
-    transcription::{self},
 };
 use serde::Deserialize;
 // ================================================================
@@ -306,6 +305,7 @@ impl ProviderClient for Client {
     }
 }
 
+#[cfg(feature = "image")]
 use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
@@ -522,57 +522,21 @@ impl openai::completion::OpenAICompatibleProvider for AzureExt {
 // Azure OpenAI Transcription API
 // ================================================================
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gpt-3.5-turbo-1106)
-    pub model: String,
-}
+/// Azure OpenAI transcription model; `model` identifies the Azure deployment.
+pub type TranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+impl<T> OpenAiTranscriptionClient for Client<T>
 where
     T: HttpClientExt + Clone + 'static,
 {
-    type Response = TranscriptionResponse;
-    type Client = Client<T>;
+    const MODEL_IN_FORM: bool = false;
 
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    fn transcription_request(
         &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        // Azure addresses the deployment through the URL, so no `model` form
-        // field is sent. `language` IS sent when set — the endpoint accepts
-        // it, and the old hand-rolled request dropping it was a bug.
-        let form = crate::providers::internal::transcription::transcription_form(
-            request,
-            crate::providers::internal::transcription::TranscriptionFields { model: None },
-        )?;
-
-        crate::providers::internal::transcription::send_transcription::<
-            _,
-            ApiResponse<TranscriptionResponse>,
-        >(
-            &self.client,
-            self.client.post_transcription(&self.model)?,
-            form,
-        )
-        .await
+        model: &str,
+    ) -> crate::http_client::Result<crate::http_client::Builder> {
+        self.post_transcription(model)
     }
 }
 
@@ -822,6 +786,46 @@ mod azure_tests {
             Some(http::StatusCode::BAD_REQUEST)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    #[tokio::test]
+    async fn transcription_routes_deployment_in_url_not_multipart_body() {
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let http_client = RecordingHttpClient::new(r#"{"text":"transcribed"}"#);
+        let client = Client::builder()
+            .api_key("test-key")
+            .azure_endpoint("https://example.openai.azure.com".to_owned())
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = TranscriptionModel::new(client, "whisper-deployment");
+
+        let response = model
+            .transcription_request()
+            .data(vec![1, 2, 3])
+            .filename(Some("audio.mp3".to_owned()))
+            .send()
+            .await
+            .expect("transcription should succeed");
+
+        assert_eq!(response.text, "transcribed");
+        let request = http_client
+            .requests()
+            .into_iter()
+            .next()
+            .expect("request should be captured");
+        assert_eq!(
+            request.uri,
+            "https://example.openai.azure.com/openai/deployments/whisper-deployment/audio/translations?api-version=2024-10-21"
+        );
+        let body = String::from_utf8_lossy(&request.body);
+        assert!(!body.contains("name=\"model\""), "{body}");
+        assert!(
+            body.contains("name=\"file\"; filename=\"audio.mp3\""),
+            "{body}"
+        );
     }
 
     #[tokio::test]

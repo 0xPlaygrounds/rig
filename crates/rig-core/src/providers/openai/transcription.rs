@@ -1,8 +1,6 @@
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::transcription::{
-    TranscriptionFields, send_transcription, transcription_form,
-};
-use crate::providers::openai::{Client, client::ApiResponse};
+use crate::providers::internal::transcription::OpenAiTranscriptionClient;
+use crate::providers::openai::Client;
 use crate::transcription;
 use crate::transcription::TranscriptionError;
 use serde::Deserialize;
@@ -31,53 +29,21 @@ impl TryFrom<TranscriptionResponse>
     }
 }
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
+/// OpenAI transcription model using the shared OpenAI-style implementation.
+pub type TranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
+impl<T> OpenAiTranscriptionClient for Client<T>
 where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + Send + 'static,
+    T: HttpClientExt + Clone + 'static,
 {
-    type Response = TranscriptionResponse;
+    const MODEL_IN_FORM: bool = true;
 
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn transcription(
+    fn transcription_request(
         &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<
-        transcription::TranscriptionResponse<Self::Response>,
-        transcription::TranscriptionError,
-    > {
-        let form = transcription_form(
-            request,
-            TranscriptionFields {
-                model: Some(&self.model),
-            },
-        )?;
-
-        send_transcription::<_, ApiResponse<TranscriptionResponse>>(
-            &self.client,
-            self.client.post("/audio/transcriptions")?,
-            form,
-        )
-        .await
+        _model: &str,
+    ) -> crate::http_client::Result<crate::http_client::Builder> {
+        self.post("/audio/transcriptions")
     }
 }
 
@@ -87,6 +53,45 @@ mod tests {
     use crate::client::transcription::TranscriptionClient;
     use crate::test_utils::RecordingHttpClient;
     use crate::transcription::TranscriptionModel as _;
+
+    #[tokio::test]
+    async fn transcription_routes_model_in_multipart_body() {
+        let http_client = RecordingHttpClient::new(r#"{"text":"transcribed"}"#);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(WHISPER_1);
+
+        let response = model
+            .transcription_request()
+            .data(vec![1, 2, 3])
+            .filename(Some("audio.mp3".to_owned()))
+            .send()
+            .await
+            .expect("transcription should succeed");
+
+        assert_eq!(response.text, "transcribed");
+        let request = http_client
+            .requests()
+            .into_iter()
+            .next()
+            .expect("request should be captured");
+        assert_eq!(
+            request.uri,
+            "https://api.openai.com/v1/audio/transcriptions"
+        );
+        let body = String::from_utf8_lossy(&request.body);
+        assert!(
+            body.contains("name=\"model\"\r\n\r\nwhisper-1\r\n"),
+            "{body}"
+        );
+        assert!(
+            body.contains("name=\"file\"; filename=\"audio.mp3\""),
+            "{body}"
+        );
+    }
 
     #[tokio::test]
     async fn transcription_http_non_success_preserves_status_and_body() {

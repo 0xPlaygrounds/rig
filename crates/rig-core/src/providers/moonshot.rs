@@ -24,8 +24,9 @@
 //! ```
 use crate::client::{self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider};
 use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
+    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
 };
+use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
 use crate::{completion::CompletionError, providers::openai};
 
 // ================================================================
@@ -71,12 +72,9 @@ client::impl_default_provider_builder!(
     api_key = MoonshotApiKey,
     base_url = GLOBAL_API_BASE_URL,
 );
-client::impl_default_provider_builder!(
+impl_anthropic_compatible_builder!(
     MoonshotAnthropicBuilder => MoonshotAnthropicExt,
-    api_key = AnthropicKey,
     base_url = ANTHROPIC_API_BASE_URL,
-    finish = finish_anthropic_builder,
-    state = anthropic,
 );
 
 impl<H> Capabilities<H> for MoonshotExt {
@@ -122,7 +120,8 @@ client::impl_provider_client!(
     AnthropicClient,
     input = String,
     api_key_env = "MOONSHOT_API_KEY",
-    base_url = anthropic_base_override("MOONSHOT_ANTHROPIC_API_BASE", "MOONSHOT_API_BASE")?,
+    base_url =
+        ANTHROPIC_BASE_URLS.resolve_from_env("MOONSHOT_ANTHROPIC_API_BASE", "MOONSHOT_API_BASE")?,
 );
 
 impl<H> ClientBuilder<H> {
@@ -139,29 +138,6 @@ impl<H> AnthropicClientBuilder<H> {
     pub fn global(self) -> Self {
         self.base_url(ANTHROPIC_API_BASE_URL)
     }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
 }
 
 impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthropicExt {
@@ -172,40 +148,14 @@ impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthr
     }
 }
 
-fn anthropic_base_override(
-    primary_env: &'static str,
-    fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
-
-    Ok(resolve_anthropic_base_override(
-        primary.as_deref(),
-        fallback.as_deref(),
-    ))
-}
-
-fn resolve_anthropic_base_override(
-    primary: Option<&str>,
-    fallback: Option<&str>,
-) -> Option<String> {
-    primary
-        .map(str::to_owned)
-        .or_else(|| fallback.and_then(normalize_anthropic_base_url))
-}
-
-fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
-    if base_url.contains("/anthropic") {
-        return Some(base_url.to_owned());
-    }
-
-    let mut url = url::Url::parse(base_url).ok()?;
-    if !matches!(url.path(), "/v1" | "/v1/") {
-        return None;
-    }
-    url.set_path("/anthropic");
-    Some(url.to_string())
-}
+const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
+    &[
+        (GLOBAL_API_BASE_URL, ANTHROPIC_API_BASE_URL),
+        (CHINA_API_BASE_URL, "https://api.moonshot.cn/anthropic"),
+    ],
+    &["/v1", "/v1/"],
+    "/anthropic",
+);
 
 // ================================================================
 // Moonshot Completion API
@@ -277,7 +227,7 @@ impl openai::completion::OpenAICompatibleProvider for MoonshotExt {
 
 #[cfg(test)]
 mod tests {
-    use super::{MoonshotExt, normalize_anthropic_base_url, resolve_anthropic_base_override};
+    use super::{ANTHROPIC_BASE_URLS, MoonshotExt};
     use crate::completion::CompletionRequest;
     use crate::message::{
         AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction,
@@ -454,15 +404,21 @@ mod tests {
     #[test]
     fn normalize_openai_style_base_to_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url("https://api.moonshot.ai/v1").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://api.moonshot.ai/v1")
+                .as_deref(),
             Some("https://api.moonshot.ai/anthropic")
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://api.moonshot.cn/v1").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://api.moonshot.cn/v1")
+                .as_deref(),
             Some("https://api.moonshot.cn/anthropic")
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/v1").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/v1")
+                .as_deref(),
             Some("https://proxy.example.com/anthropic")
         );
     }
@@ -470,14 +426,16 @@ mod tests {
     #[test]
     fn normalize_preserves_existing_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/anthropic").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/anthropic")
+                .as_deref(),
             Some("https://proxy.example.com/anthropic")
         );
     }
 
     #[test]
     fn anthropic_primary_override_wins() {
-        let override_url = resolve_anthropic_base_override(
+        let override_url = ANTHROPIC_BASE_URLS.resolve(
             Some("https://primary.example.com/anthropic"),
             Some("https://api.moonshot.cn/v1"),
         );
