@@ -8,12 +8,8 @@
 //!
 //! ```
 use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::completion::{self, CompletionError};
 use crate::http_client::{self, HttpClientExt};
-use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
-use crate::{
-    completion::{self, CompletionError},
-    message::{self, AssistantContent, Message, UserContent},
-};
 use serde::{Deserialize, Serialize};
 use std::string::FromUtf8Error;
 use thiserror::Error;
@@ -125,29 +121,6 @@ pub struct RawMessage {
 }
 
 const MIRA_API_BASE_URL: &str = "https://api.mira.network";
-
-impl TryFrom<RawMessage> for message::Message {
-    type Error = CompletionError;
-
-    fn try_from(raw: RawMessage) -> Result<Self, Self::Error> {
-        match raw.role.as_str() {
-            "system" => Ok(message::Message::System {
-                content: raw.content,
-            }),
-            "user" => Ok(message::Message::User {
-                content: vec![UserContent::Text(message::Text::new(raw.content))],
-            }),
-            "assistant" => Ok(message::Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::Text(message::Text::new(raw.content))],
-            }),
-            _ => Err(CompletionError::ResponseError(format!(
-                "Unsupported message role: {}",
-                raw.role
-            ))),
-        }
-    }
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -298,104 +271,77 @@ impl From<Usage> for completion::Usage {
 /// descriptor that actually produced it.
 impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
-        let response = self;
-        let (content, usage, message_id, model, finish_reason) = match &response {
+        use crate::providers::internal::openai_chat_completions_compatible as compat;
+
+        let (id, model, choices, usage) = match self {
             CompletionResponse::Structured {
                 id,
                 model,
                 choices,
                 usage,
                 ..
-            } => {
-                let choice = choices.first().ok_or_else(|| {
-                    CompletionError::ResponseError("Response contained no choices".to_owned())
-                })?;
-
-                let usage = usage
-                    .as_ref()
-                    .map(completion::Usage::from)
-                    .unwrap_or_default();
-
-                let finish_reason = choice
-                    .finish_reason
-                    .as_deref()
-                    .filter(|reason| !reason.is_empty())
-                    .map(map_openai_finish_reason);
-
-                let message_id = Some(id.clone()).filter(|id| !id.is_empty());
-                let model = Some(model.clone()).filter(|model| !model.is_empty());
-
-                // Convert RawMessage to message::Message
-                let message = message::Message::try_from(choice.message.clone())?;
-
-                let content = match message {
-                    Message::Assistant { content, .. } => {
-                        // Unreachable today, and not for the reason it looks
-                        // like: `TryFrom<RawMessage>` builds the assistant arm
-                        // as `vec![one]` unconditionally, so this is never
-                        // empty even when the wire sent an empty string. It
-                        // was equally unreachable before message content became
-                        // a `Vec` — the container's `is_empty` returned a
-                        // hardcoded `false` — so the type change did not
-                        // revive it. Kept as a guard against a future
-                        // conversion that can produce nothing.
-                        if content.is_empty() {
-                            return Err(CompletionError::ResponseError(
-                                "Response contained empty content".to_owned(),
-                            ));
-                        }
-
-                        // Log warning for unsupported content types
-                        for c in content.iter() {
-                            if !matches!(c, AssistantContent::Text(_)) {
-                                tracing::warn!(target: "rig",
-                                    "Unsupported content type encountered: {:?}. The Mira provider currently only supports text content", c
-                                );
-                            }
-                        }
-
-                        content.iter().map(|c| {
-                            match c {
-                                AssistantContent::Text(text) => Ok(completion::AssistantContent::text(&text.text)),
-                                other => Err(CompletionError::ResponseError(
-                                    format!("Unsupported content type: {other:?}. The Mira provider currently only supports text content")
-                                ))
-                            }
-                        }).collect::<Result<Vec<_>, _>>()?
-                    }
-                    Message::User { .. } => {
-                        tracing::warn!(target: "rig", "Received user message in response where assistant message was expected");
-                        return Err(CompletionError::ResponseError(
-                            "Received user message in response where assistant message was expected".to_owned()
-                        ));
-                    }
-                    Message::System { .. } => {
-                        tracing::warn!(target: "rig", "Received system message in response where assistant message was expected");
-                        return Err(CompletionError::ResponseError(
-                            "Received system message in response where assistant message was expected".to_owned(),
-                        ));
-                    }
-                };
-
-                (content, usage, message_id, model, finish_reason)
-            }
+            } => (id, model, choices, usage),
             // The bare-string variant carries no metadata at all — not even a
             // terminal reason, so the normalized reason stays `None`.
-            CompletionResponse::Simple(text) => (
-                vec![completion::AssistantContent::text(text)],
-                completion::Usage::new(),
-                None,
-                None,
-                None,
-            ),
+            CompletionResponse::Simple(text) => {
+                let choice = crate::message::require_non_empty_response(vec![
+                    completion::AssistantContent::text(&text),
+                ])?;
+                return Ok(completion::CompletionResponse::new(
+                    choice,
+                    completion::Usage::new(),
+                    provider,
+                ));
+            }
         };
 
-        let choice = crate::message::require_non_empty_response(content)?;
+        // Preserve Mira's role-specific error messages: the shared helper
+        // folds every non-assistant message into one generic error. Mira's
+        // wire messages are plain `{role, content}` strings, so an assistant
+        // message can never carry unsupported content types.
+        if let Some(choice) = choices.first() {
+            match choice.message.role.as_str() {
+                "assistant" => {}
+                "user" => {
+                    tracing::warn!(target: "rig", "Received user message in response where assistant message was expected");
+                    return Err(CompletionError::ResponseError(
+                        "Received user message in response where assistant message was expected"
+                            .to_owned(),
+                    ));
+                }
+                "system" => {
+                    tracing::warn!(target: "rig", "Received system message in response where assistant message was expected");
+                    return Err(CompletionError::ResponseError(
+                        "Received system message in response where assistant message was expected"
+                            .to_owned(),
+                    ));
+                }
+                other => {
+                    return Err(CompletionError::ResponseError(format!(
+                        "Unsupported message role: {other}"
+                    )));
+                }
+            }
+        }
 
-        Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_response_id(message_id)
-            .with_optional_model(model)
-            .with_optional_finish_reason(finish_reason))
+        let usage = usage
+            .as_ref()
+            .map(completion::Usage::from)
+            .unwrap_or_default();
+
+        compat::normalize_openai_response(
+            provider,
+            &choices,
+            Some(id.as_str()).filter(|id| !id.is_empty()),
+            Some(model.as_str()).filter(|model| !model.is_empty()),
+            usage,
+            |choice| choice.finish_reason.as_deref().unwrap_or(""),
+            |choice| {
+                Some(vec![completion::AssistantContent::text(
+                    &choice.message.content,
+                )])
+            },
+        )
     }
 }
 

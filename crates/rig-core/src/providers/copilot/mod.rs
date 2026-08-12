@@ -1357,26 +1357,13 @@ where
             )
         })?;
 
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
+        let api_resp: ListModelsResponse =
+            crate::providers::internal::model_listing::decode_json_response(
+                response,
                 MODEL_LISTING_PROVIDER,
                 MODEL_LISTING_PATH,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context(
-                MODEL_LISTING_PROVIDER,
-                MODEL_LISTING_PATH,
-                &error,
-                &body,
             )
-        })?;
+            .await?;
         let models = api_resp.data.into_iter().map(Model::from).collect();
 
         Ok(ModelList::new(models))
@@ -1411,19 +1398,7 @@ fn default_token_dir() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("github_copilot"))
 }
 
-fn config_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        std::env::var_os("APPDATA").map(PathBuf::from)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-    }
-}
+use crate::providers::internal::auth::config_dir;
 
 #[cfg(test)]
 mod tests {

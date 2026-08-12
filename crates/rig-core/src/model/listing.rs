@@ -318,27 +318,6 @@ pub enum ModelListingError {
         /// Authentication error details
         message: String,
     },
-
-    /// Rate limit was exceeded
-    #[error("Rate limit error: {message}")]
-    RateLimitError {
-        /// Rate limit error details
-        message: String,
-    },
-
-    /// The provider service is temporarily unavailable
-    #[error("Service unavailable: {message}")]
-    ServiceUnavailable {
-        /// Unavailable error details
-        message: String,
-    },
-
-    /// An unexpected error occurred
-    #[error("Unknown error: {message}")]
-    UnknownError {
-        /// Details of the unknown error
-        message: String,
-    },
 }
 
 const RESPONSE_BODY_PREVIEW_LIMIT: usize = 2048;
@@ -424,34 +403,6 @@ impl ModelListingError {
     ) -> Self {
         let message = format_response_context(provider, path, details, body);
         Self::parse_error(message)
-    }
-
-    /// Creates a new AuthError with the given message.
-    pub fn auth_error(message: impl Into<String>) -> Self {
-        Self::AuthError {
-            message: message.into(),
-        }
-    }
-
-    /// Creates a new RateLimitError with the given message.
-    pub fn rate_limit_error(message: impl Into<String>) -> Self {
-        Self::RateLimitError {
-            message: message.into(),
-        }
-    }
-
-    /// Creates a new ServiceUnavailable error with the given message.
-    pub fn service_unavailable(message: impl Into<String>) -> Self {
-        Self::ServiceUnavailable {
-            message: message.into(),
-        }
-    }
-
-    /// Creates a new UnknownError with the given message.
-    pub fn unknown_error(message: impl Into<String>) -> Self {
-        Self::UnknownError {
-            message: message.into(),
-        }
     }
 }
 
@@ -555,17 +506,10 @@ mod tests {
         let error = ModelListingError::parse_error("Invalid JSON");
         assert_eq!(error.to_string(), "Parse error: Invalid JSON");
 
-        let error = ModelListingError::auth_error("Invalid API key");
+        let error = ModelListingError::AuthError {
+            message: "Invalid API key".to_string(),
+        };
         assert_eq!(error.to_string(), "Authentication error: Invalid API key");
-
-        let error = ModelListingError::rate_limit_error("Too many requests");
-        assert_eq!(error.to_string(), "Rate limit error: Too many requests");
-
-        let error = ModelListingError::service_unavailable("Maintenance mode");
-        assert_eq!(error.to_string(), "Service unavailable: Maintenance mode");
-
-        let error = ModelListingError::unknown_error("Something went wrong");
-        assert_eq!(error.to_string(), "Unknown error: Something went wrong");
     }
 
     #[test]

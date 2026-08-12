@@ -235,7 +235,9 @@ impl From<&Usage> for crate::completion::Usage {
                 .as_ref()
                 .and_then(|details| details.cached_tokens)
                 .map(u64::from)
-                .unwrap_or(0),
+                // DeepSeek's native usage reports cache hits outside the
+                // OpenAI-style details object.
+                .unwrap_or(u64::from(usage.prompt_cache_hit_tokens)),
         );
         normalized.reasoning_tokens = usage
             .completion_tokens_details
@@ -277,16 +279,6 @@ pub struct Choice {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    System {
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    User {
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
     Assistant {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -300,11 +292,6 @@ pub enum Message {
         /// only exists on `deepseek-reasoner` model at time of addition
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning_content: Option<String>,
-    },
-    #[serde(rename = "tool")]
-    ToolResult {
-        tool_call_id: String,
-        content: String,
     },
 }
 
@@ -349,32 +336,30 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             self.model.as_deref(),
             usage,
             |choice| choice.finish_reason.as_str(),
-            |choice| match &choice.message {
-                Message::Assistant {
+            |choice| {
+                let Message::Assistant {
                     content,
                     tool_calls,
                     reasoning_content,
                     ..
-                } => {
-                    let mut content = compat::text_then_tool_calls(
-                        content,
-                        content.trim().is_empty(),
-                        tool_calls.iter().map(|call| {
-                            (
-                                call.id.as_str(),
-                                call.function.name.as_str(),
-                                call.function.arguments.clone(),
-                            )
-                        }),
-                    );
+                } = &choice.message;
+                let mut content = compat::text_then_tool_calls(
+                    content,
+                    content.trim().is_empty(),
+                    tool_calls.iter().map(|call| {
+                        (
+                            call.id.as_str(),
+                            call.function.name.as_str(),
+                            call.function.arguments.clone(),
+                        )
+                    }),
+                );
 
-                    if let Some(reasoning_content) = reasoning_content {
-                        content.push(completion::AssistantContent::reasoning(reasoning_content));
-                    }
-
-                    Some(content)
+                if let Some(reasoning_content) = reasoning_content {
+                    content.push(completion::AssistantContent::reasoning(reasoning_content));
                 }
-                _ => None,
+
+                Some(content)
             },
         )
     }
@@ -477,7 +462,6 @@ mod tests {
         assert_eq!(choices.len(), 1);
         match &choices.first().unwrap().message {
             Message::Assistant { content, .. } => assert_eq!(content, "Hello, world!"),
-            _ => panic!("Expected assistant message"),
         }
     }
 
@@ -504,7 +488,6 @@ mod tests {
         match result {
             Ok(response) => match &response.choices.first().unwrap().message {
                 Message::Assistant { content, .. } => assert_eq!(content, "Hello, world!"),
-                _ => panic!("Expected assistant message"),
             },
             Err(err) => {
                 panic!("Deserialization error at {}: {}", err.path(), err);
@@ -798,7 +781,6 @@ mod tests {
                     content,
                     "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄"
                 ),
-                _ => panic!("Expected assistant message"),
             },
             Err(err) => {
                 panic!("Deserialization error at {}: {}", err.path(), err);
@@ -840,7 +822,6 @@ mod tests {
                 assert_eq!(call.function.name, "subtract");
                 assert_eq!(call.index, 0);
             }
-            _ => panic!("Expected assistant message"),
         }
 
         let serialized = serde_json::to_value(&choice).expect("choice should serialize");

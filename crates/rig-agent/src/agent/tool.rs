@@ -45,7 +45,7 @@ impl Agent {
 
         DynamicTool::new(name, description, parameters, move |context, args| {
             let agent = Arc::clone(&agent);
-            let inherited_context = context.inbound_only();
+            let inherited_context = context.for_dispatch();
             Box::pin(async move {
                 let args: AgentToolArgs = serde_json::from_value(args).map_err(|error| {
                     ToolExecutionError::invalid_args(format!(

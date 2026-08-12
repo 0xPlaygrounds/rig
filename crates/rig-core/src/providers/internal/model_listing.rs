@@ -92,6 +92,21 @@ where
         .await
         .map_err(|error| map_transport_error(provider_name, path, error))?;
 
+    decode_json_response(response, provider_name, path).await
+}
+
+/// Triage a listing response's status and decode its JSON body, keeping the
+/// provider label, path, status, and body preview in every error. Shared with
+/// listings that build their own request (copilot's auth-derived base URL
+/// cannot go through [`get_json`]).
+pub(crate) async fn decode_json_response<T>(
+    response: http::Response<http_client::LazyBody<Vec<u8>>>,
+    provider_name: &str,
+    path: &str,
+) -> Result<T, ModelListingError>
+where
+    T: serde::de::DeserializeOwned,
+{
     if !response.status().is_success() {
         let status_code = response.status().as_u16();
         let body = response.into_body().await?;

@@ -158,19 +158,6 @@ impl MultiTurnStreamItem {
         ))
     }
 
-    pub fn final_response_with_history(
-        content: Vec<AssistantContent>,
-        aggregated_usage: crate::completion::Usage,
-        history: Option<Vec<Message>>,
-    ) -> Self {
-        Self::FinalResponse(final_response_from_content(
-            content,
-            aggregated_usage,
-            Vec::new(),
-            history,
-        ))
-    }
-
     pub(crate) fn final_response_with_completion_calls(
         content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,

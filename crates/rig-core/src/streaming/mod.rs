@@ -738,12 +738,6 @@ impl RawStreamingToolCall {
         }
     }
 
-    /// Override the generated internal call ID.
-    pub fn with_internal_call_id(mut self, internal_call_id: String) -> Self {
-        self.internal_call_id = internal_call_id;
-        self
-    }
-
     /// Attach a provider-specific call ID.
     pub fn with_call_id(mut self, call_id: String) -> Self {
         self.call_id = Some(call_id);

@@ -50,7 +50,7 @@ use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
     json_utils, message,
-    message::{ImageDetail, Text},
+    message::Text,
     streaming,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -59,7 +59,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{convert::TryFrom, str::FromStr};
+use std::convert::TryFrom;
 use tracing_futures::Instrument;
 // ---------- Main Client ----------
 
@@ -643,12 +643,12 @@ impl From<&StreamingCompletionResponse> for Usage {
     fn from(response: &StreamingCompletionResponse) -> Usage {
         let input_tokens = response.prompt_eval_count.unwrap_or_default();
         let output_tokens = response.eval_count.unwrap_or_default();
-
-        let mut usage = Usage::new();
-        usage.input_tokens = input_tokens;
-        usage.output_tokens = output_tokens;
-        usage.total_tokens = input_tokens + output_tokens;
-        usage
+        crate::providers::internal::completion_usage(
+            input_tokens,
+            output_tokens,
+            input_tokens + output_tokens,
+            0,
+        )
     }
 }
 
@@ -1044,25 +1044,12 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/api/tags";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "Ollama",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("Ollama", path, &error, &body)
-        })?;
+        let api_resp: ListModelsResponse = crate::providers::internal::model_listing::get_json(
+            &self.client,
+            "Ollama",
+            "/api/tags",
+        )
+        .await?;
         let models = api_resp.models.into_iter().map(Model::from).collect();
 
         Ok(ModelList::new(models))
@@ -1425,43 +1412,6 @@ impl From<crate::message::ToolCall> for ToolCall {
             },
         }
     }
-}
-
-// Byte-for-byte the same wire shape as OpenAI's system content part; reuse it.
-pub use crate::providers::openai::completion::{SystemContent, SystemContentType};
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct AssistantContent {
-    pub text: String,
-}
-
-impl FromStr for AssistantContent {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(AssistantContent { text: s.to_owned() })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum UserContent {
-    Text { text: String },
-    Image { image_url: ImageUrl },
-    // Audio variant removed as Ollama API does not support audio input.
-}
-
-impl FromStr for UserContent {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(UserContent::Text { text: s.to_owned() })
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct ImageUrl {
-    pub url: String,
-    #[serde(default)]
-    pub detail: ImageDetail,
 }
 
 // =================================================================

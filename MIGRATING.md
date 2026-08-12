@@ -1900,8 +1900,8 @@ Bound the loop with `.max_invalid_tool_call_retries(n)` on either prompt builder
 
 ### 3. The streaming final response carries content, not a string
 
-`MultiTurnStreamItem::final_response` and `final_response_with_history` take
-`OneOrMany<AssistantContent>` where they took `&str`:
+`MultiTurnStreamItem::final_response` takes
+`OneOrMany<AssistantContent>` where it took `&str`:
 
 ```rust
 // before

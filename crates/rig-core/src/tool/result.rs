@@ -66,6 +66,45 @@ kind_defaults! {
     Other => ("other", None, "the tool failed"),
 }
 
+// One `ToolExecutionError` constructor per kind, from a single table so a new
+// kind cannot miss its shorthand. `refused` stays hand-written because it also
+// sets the refusal disposition.
+macro_rules! kind_ctors {
+    ($($(#[$doc:meta])* $ctor:ident => $variant:ident),+ $(,)?) => {
+        impl ToolExecutionError {
+            $($(#[$doc])*
+            pub fn $ctor(message: impl Into<String>) -> Self {
+                Self::new(ToolErrorKind::$variant, message)
+            })+
+        }
+    };
+}
+
+kind_ctors! {
+    /// Invalid arguments.
+    invalid_args => InvalidArgs,
+    /// Timeout.
+    timeout => Timeout,
+    /// Cancellation.
+    cancelled => Cancelled,
+    /// Missing tool or resource.
+    not_found => NotFound,
+    /// An authorization or permission failure.
+    ///
+    /// This is an ordinary execution error. Use [`Self::refused`] when the tool
+    /// intentionally declines the operation so hooks and telemetry can preserve
+    /// the refusal as a distinct disposition.
+    permission_denied => PermissionDenied,
+    /// Rate limit.
+    rate_limited => RateLimited,
+    /// Upstream provider failure.
+    provider => Provider,
+    /// Network failure.
+    network => Network,
+    /// Catch-all failure.
+    other => Other,
+}
+
 impl std::fmt::Display for ToolErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
@@ -112,35 +151,6 @@ impl ToolExecutionError {
         }
     }
 
-    /// Invalid arguments.
-    pub fn invalid_args(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::InvalidArgs, message)
-    }
-
-    /// Timeout.
-    pub fn timeout(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Timeout, message)
-    }
-
-    /// Cancellation.
-    pub fn cancelled(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Cancelled, message)
-    }
-
-    /// Missing tool or resource.
-    pub fn not_found(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::NotFound, message)
-    }
-
-    /// An authorization or permission failure.
-    ///
-    /// This is an ordinary execution error. Use [`Self::refused`] when the tool
-    /// intentionally declines the operation so hooks and telemetry can preserve
-    /// the refusal as a distinct disposition.
-    pub fn permission_denied(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::PermissionDenied, message)
-    }
-
     /// An intentional, tool-authored refusal.
     ///
     /// Refusals use the normalized [`ToolErrorKind::PermissionDenied`] kind but
@@ -149,26 +159,6 @@ impl ToolExecutionError {
         let mut error = Self::new(ToolErrorKind::PermissionDenied, message);
         error.refusal = true;
         error
-    }
-
-    /// Rate limit.
-    pub fn rate_limited(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::RateLimited, message)
-    }
-
-    /// Upstream provider failure.
-    pub fn provider(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Provider, message)
-    }
-
-    /// Network failure.
-    pub fn network(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Network, message)
-    }
-
-    /// Catch-all failure.
-    pub fn other(message: impl Into<String>) -> Self {
-        Self::new(ToolErrorKind::Other, message)
     }
 
     /// Build a safely presented `Other` error from a concrete source.
