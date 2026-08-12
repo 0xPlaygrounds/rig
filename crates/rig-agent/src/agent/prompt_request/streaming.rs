@@ -13,7 +13,7 @@ use crate::{
     agent::prompt_request::{assistant_text_from_choice, is_empty_assistant_turn},
     agent::run::{
         AgentRun, PendingToolCall,
-        streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
+        streamed::{StreamedResolution, StreamedTurnEvent},
     },
     agent::runner::{
         AgentRunner, CompletionCallOutcome, ModelTurnDecision, ToolExecution, acquire_agent_span,
@@ -1113,10 +1113,7 @@ impl TurnSource for StreamingTurnSource {
             // `ModelTurnFinished` event carries the turn's usage.
             let mut last_usage = crate::completion::Usage::new();
 
-            let mut assembler = StreamedTurnAssembler::new(
-                (*prepared.tools.executable_tool_names).clone(),
-                (*prepared.tools.allowed_tool_names).clone(),
-            );
+            let mut assembler = prepared.tools.streamed_turn_assembler();
             let mut completion_call_emitted = false;
             let mut turn_abandoned = false;
             let mut provider_final_seen = false;

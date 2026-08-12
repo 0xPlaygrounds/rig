@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::StreamExt;
-use rig::agent::run::{OutputMode, StreamedTurnAssembler};
+use rig::agent::run::OutputMode;
 use rig::agent::{AgentRun, RequestPatch, TurnPreparation};
 use rig::completion::PromptError;
 use rig::message::{Message, ToolChoice};
@@ -918,10 +918,7 @@ async fn a_streamed_turn_drives_through_the_driver() {
         let mut driver = agent.drive(ADD_PROMPT);
         let (request, tools, _) = expect_send(&mut driver).await;
 
-        let mut assembler = StreamedTurnAssembler::new(
-            tools.executable_tool_names().clone(),
-            tools.allowed_tool_names().clone(),
-        );
+        let mut assembler = tools.streamed_turn_assembler();
         let mut stream = request.stream().await.expect("stream should open");
         while let Some(item) = stream.next().await {
             let item = item.expect("stream item");
@@ -963,10 +960,7 @@ async fn a_streamed_text_turn_finalizes_the_run() {
         let mut driver = agent.drive("Say hello.");
         let (request, tools, _) = expect_send(&mut driver).await;
 
-        let mut assembler = StreamedTurnAssembler::new(
-            tools.executable_tool_names().clone(),
-            tools.allowed_tool_names().clone(),
-        );
+        let mut assembler = tools.streamed_turn_assembler();
         let mut stream = request.stream().await.expect("stream should open");
         while let Some(item) = stream.next().await {
             assembler
@@ -1017,10 +1011,7 @@ async fn a_streamed_turn_honors_the_request_patch() {
         .await;
         assert!(!tools.executable_tool_names().contains("subtract"));
 
-        let mut assembler = StreamedTurnAssembler::new(
-            tools.executable_tool_names().clone(),
-            tools.allowed_tool_names().clone(),
-        );
+        let mut assembler = tools.streamed_turn_assembler();
         let mut stream = request.stream().await.expect("stream should open");
         while let Some(item) = stream.next().await {
             assembler
@@ -1072,10 +1063,7 @@ async fn a_truncated_stream_ends_the_turn_without_a_transport_error() {
         let mut driver = agent.drive(ADD_PROMPT);
         let (request, tools, _) = expect_send(&mut driver).await;
 
-        let mut assembler = StreamedTurnAssembler::new(
-            tools.executable_tool_names().clone(),
-            tools.allowed_tool_names().clone(),
-        );
+        let mut assembler = tools.streamed_turn_assembler();
         let mut stream = request.stream().await.expect("stream should open");
         let mut stream_error = None;
         while let Some(item) = stream.next().await {

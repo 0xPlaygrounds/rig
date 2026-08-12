@@ -160,16 +160,13 @@ pub enum DriveStep {
         /// following [`ExecuteTools`](Self::ExecuteTools) step for dispatch.
         ///
         /// For a **streamed** send it is required, and this is the only place
-        /// a driven turn can get it:
-        /// [`StreamedTurnAssembler::new`](super::run::StreamedTurnAssembler::new)
-        /// takes the turn's executable and allowed name sets, so build the
-        /// assembler from
-        /// [`executable_tool_names`](TurnTools::executable_tool_names) and
-        /// [`allowed_tool_names`](TurnTools::allowed_tool_names) here, then
-        /// feed the assembled turn through
+        /// a driven turn can get it: call
+        /// [`TurnTools::streamed_turn_assembler`] here to assemble the
+        /// provider's stream, then feed the assembled turn through
         /// [`AgentDriver::accept_streamed_turn`]. Destructuring this step as
         /// `SendRequest { request, .. }` is fine for a blocking loop and will
-        /// leave a streaming one with no way to validate the model's calls.
+        /// leave a streaming one with no way to catch an invalid tool call
+        /// while the stream is still open.
         tools: TurnTools,
         /// One-based index of this model call within the run.
         turn: usize,
@@ -329,9 +326,17 @@ impl AgentDriver {
     /// [`Self::next_step`] yields `ExecuteTools` or `Done` paired with this
     /// turn's dispatch snapshot.
     ///
-    /// Build the turn with a [`StreamedTurnAssembler`](super::run::StreamedTurnAssembler)
-    /// constructed from the [`TurnTools`] the matching `SendRequest` carried;
-    /// see that module's docs for the full streaming protocol.
+    /// Build the turn with the
+    /// [`StreamedTurnAssembler`](super::run::StreamedTurnAssembler) from the
+    /// matching `SendRequest`'s [`TurnTools::streamed_turn_assembler`]; see
+    /// that module's docs for the full streaming protocol.
+    ///
+    /// Tool calls are validated against what the *request* advertised — the
+    /// metadata committed when this turn was prepared, not the names the
+    /// assembler was built with. The two agree whenever the assembler came
+    /// from its own turn's `TurnTools`; when they do not, the request wins,
+    /// so no assembler a caller mis-built can get a tool dispatched that this
+    /// turn's `tool_choice` forbade.
     pub fn accept_streamed_turn(&mut self, turn: StreamedTurn) -> Result<(), PromptError> {
         self.run.streamed_turn(turn)
     }
@@ -660,11 +665,13 @@ impl AgentDriver {
 mod tests {
     use super::*;
     use crate::agent::AgentBuilder;
-    use crate::agent::run::OutputMode;
-    use crate::completion::Message;
+    use crate::agent::TurnToolNames;
+    use crate::agent::run::{AgentRunStep, OutputMode, StreamedTurnAssembler, StreamedTurnEvent};
+    use crate::completion::{AssistantContent, Message, Usage};
+    use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::{MockAddTool, MockCompletionModel, MockSubtractTool, MockTurn};
     use crate::tool::{ToolContext, ToolErrorKind};
-    use rig_core::message::ToolChoice;
+    use rig_core::message::{ToolCall, ToolCallId, ToolChoice, ToolFunction};
     use serde_json::json;
 
     fn schema(value: serde_json::Value) -> schemars::Schema {
@@ -1679,5 +1686,159 @@ mod tests {
             matches!(result, UserContent::ToolResult(_)),
             "the opt-out must dispatch and produce a tool result"
         );
+    }
+
+    // ── Streamed ingress authority ──────────────────────────────────────
+    //
+    // `StreamedTurnAssembler` is built by the caller, so the sets it validates
+    // against are the caller's. These pin that a mis-built one cannot widen
+    // what a *driven* turn is allowed to do: the run answers from the metadata
+    // committed when its request was built. The bad assemblers below are
+    // constructed deliberately — a caller can construct them, which is the
+    // whole point — but only by going around
+    // `TurnTools::streamed_turn_assembler`.
+
+    /// Drive one streamed turn whose assembler was built with `names`,
+    /// streaming a single call to `tool_name`, and hand the result to the
+    /// driver.
+    async fn stream_one_call(
+        driver: &mut AgentDriver,
+        names: &TurnToolNames,
+        tool_name: &str,
+    ) -> Result<(), PromptError> {
+        let (_, _, _) = expect_send_with!(
+            driver,
+            RequestPatch::new().tool_choice(ToolChoice::Specific {
+                function_names: vec!["add".to_string()]
+            })
+        );
+        let mut assembler = StreamedTurnAssembler::new(names);
+        let tool_call = ToolCall::new(
+            ToolCallId::new("call_1").expect("non-empty id"),
+            ToolFunction::new(tool_name.to_string(), json!({"x": 1, "y": 2})),
+        );
+        let events = assembler
+            .ingest(&StreamedAssistantContent::ToolCall {
+                tool_call: tool_call.clone(),
+                internal_call_id: "internal_1".to_string(),
+            })
+            .expect("ingest succeeds");
+        // A widened assembler raises nothing mid-stream — that is exactly the
+        // early exit the caller forfeits, and why the run must still refuse.
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, StreamedTurnEvent::InvalidToolCall(_))),
+            "the mis-built assembler was supposed to wave this call through"
+        );
+        driver
+            .record_stream_usage(Usage::new())
+            .expect("usage recorded");
+        let turn = assembler.finish(None, &[AssistantContent::ToolCall(tool_call)]);
+        driver.accept_streamed_turn(turn)
+    }
+
+    fn driven_to_add_only() -> Agent {
+        AgentBuilder::new(MockCompletionModel::text("unused"))
+            .default_max_turns(2)
+            .tool(MockAddTool)
+            .tool(MockSubtractTool)
+            .build()
+    }
+
+    /// Criterion: the request's `tool_choice` narrowed the turn to `add`, so a
+    /// streamed `subtract` is refused however wide the assembler's set was.
+    #[tokio::test]
+    async fn a_widened_assembler_cannot_widen_a_driven_streamed_turn() {
+        let agent = driven_to_add_only();
+        let mut driver = agent.drive("go");
+        let widened = TurnToolNames::new(["add", "subtract"], ["add", "subtract"]);
+
+        let err = stream_one_call(&mut driver, &widened, "subtract")
+            .await
+            .expect_err("the request forbade `subtract`, so the run must refuse it");
+        let message = err.to_string();
+        assert!(
+            message.contains("subtract"),
+            "the refusal must name the call: {message}"
+        );
+    }
+
+    /// Criterion: the same, for the transposition the old two-set constructor
+    /// invited. Here `allowed` receives the executable set, which under a
+    /// `Specific` choice is the wider of the two.
+    #[tokio::test]
+    async fn a_transposed_assembler_cannot_widen_a_driven_streamed_turn() {
+        let agent = driven_to_add_only();
+        let mut driver = agent.drive("go");
+        // What a caller writing `new(allowed, executable)` would have got.
+        let transposed = TurnToolNames::new(["add"], ["add", "subtract"]);
+
+        stream_one_call(&mut driver, &transposed, "subtract")
+            .await
+            .expect_err("the committed metadata, not the assembler, decides");
+    }
+
+    /// Criterion: the authority rule does not reject what the turn *did*
+    /// advertise — the narrowed call still goes through.
+    #[tokio::test]
+    async fn the_committed_tool_still_passes_the_streamed_ingress() {
+        let agent = driven_to_add_only();
+        let mut driver = agent.drive("go");
+        let widened = TurnToolNames::new(["add", "subtract"], ["add", "subtract"]);
+
+        stream_one_call(&mut driver, &widened, "add")
+            .await
+            .expect("`add` was advertised, so it is accepted");
+        let (calls, _) = expect_execute_tools!(driver);
+        assert_eq!(calls[0].tool_call.function.name, "add");
+    }
+
+    /// Criterion: the fallback arm. A run hand-driven through `AgentRun`
+    /// commits no metadata and has nothing but its carried sets, so those
+    /// still govern — otherwise the rule would silently allow *everything* on
+    /// the raw path.
+    #[tokio::test]
+    async fn a_raw_run_still_validates_against_its_carried_sets() {
+        let mut run = AgentRun::new("go");
+        let AgentRunStep::CallModel { .. } = run.next_step().expect("first step") else {
+            panic!("expected a model call");
+        };
+
+        let mut assembler = StreamedTurnAssembler::new(&TurnToolNames::new(["add"], ["add"]));
+        let tool_call = ToolCall::new(
+            ToolCallId::new("call_1").expect("non-empty id"),
+            ToolFunction::new("add".to_string(), json!({"x": 1, "y": 2})),
+        );
+        assembler
+            .ingest(&StreamedAssistantContent::ToolCall {
+                tool_call: tool_call.clone(),
+                internal_call_id: "internal_1".to_string(),
+            })
+            .expect("ingest succeeds");
+        let turn = assembler.finish(None, &[AssistantContent::ToolCall(tool_call)]);
+        run.streamed_turn(turn)
+            .expect("the carried sets allowed `add`");
+
+        // And the negative: a call the carried sets never allowed.
+        let mut run = AgentRun::new("go");
+        let AgentRunStep::CallModel { .. } = run.next_step().expect("first step") else {
+            panic!("expected a model call");
+        };
+        let tool_call = ToolCall::new(
+            ToolCallId::new("call_1").expect("non-empty id"),
+            ToolFunction::new("subtract".to_string(), json!({})),
+        );
+        // Built by hand rather than assembled: the assembler's own check would
+        // have caught this mid-stream, and the run's is what is under test.
+        let turn = StreamedTurn {
+            message_id: None,
+            choice: vec![AssistantContent::ToolCall(tool_call)],
+            executable_tool_names: ["add".to_string()].into_iter().collect(),
+            allowed_tool_names: ["add".to_string()].into_iter().collect(),
+            internal_call_ids: Vec::new(),
+        };
+        run.streamed_turn(turn)
+            .expect_err("the carried sets never allowed `subtract`");
     }
 }

@@ -659,6 +659,32 @@ impl AgentRun {
             .unwrap_or(self.tool_choice.as_ref())
     }
 
+    /// The tool names that govern the current turn: the committed metadata's
+    /// when the turn was prepared with it, and `carried` otherwise.
+    ///
+    /// The name-set counterpart of [`Self::effective_tool_choice`], and the
+    /// same rule. A prepared turn's request went out with a resolved tool set
+    /// — narrowed by `active_tools`, restricted by a `Specific` choice, widened
+    /// by the synthetic output tool — and *what this turn was allowed to do* is
+    /// that set, not one an ingesting caller supplies alongside the response.
+    /// The blocking path could not disagree (the driver builds the
+    /// [`ModelTurn`] from the committed names itself), but the streamed path
+    /// carries sets a caller handed the assembler, and a widened or transposed
+    /// pair there would get the model a tool the request forbade.
+    ///
+    /// `carried` is the fallback for a run hand-driven through
+    /// [`Self::next_step`], which commits no metadata and has only what its
+    /// driver supplies.
+    fn effective_tool_names<'a>(
+        &'a self,
+        carried: (&'a BTreeSet<String>, &'a BTreeSet<String>),
+    ) -> (&'a BTreeSet<String>, &'a BTreeSet<String>) {
+        match self.prepared_turn.as_ref() {
+            Some(prepared) => (&prepared.tools.executable, &prepared.tools.allowed),
+            None => carried,
+        }
+    }
+
     /// Set the synthetic output-tool name for Tool output mode (see #1928).
     /// When a model turn calls this tool, the run finalizes with the call's
     /// arguments (serialized JSON) as the response.
@@ -1307,13 +1333,23 @@ impl AgentRun {
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
 
+        // Same rule as the streamed path: a prepared turn answers from what it
+        // committed. `AgentDriver` builds this `ModelTurn` from those very
+        // names, so the two agree by construction there; applying the rule
+        // here anyway means one sentence describes both ingress paths, and no
+        // caller of `AgentRun::model_response` can widen a driven turn either.
+        let (executable_tool_names, allowed_tool_names) =
+            self.effective_tool_names((&turn.executable_tool_names, &turn.allowed_tool_names));
+        let (executable_tool_names, allowed_tool_names) =
+            (executable_tool_names.clone(), allowed_tool_names.clone());
+
         self.state = RunState::ResolvingToolCalls(Box::new(ResolvingState {
             message_id: turn.message_id,
             original_choice: turn.choice,
             items,
             next_index: 0,
-            executable_tool_names: turn.executable_tool_names,
-            allowed_tool_names: turn.allowed_tool_names,
+            executable_tool_names,
+            allowed_tool_names,
             skipped: BTreeMap::new(),
             recovered: false,
             any_skipped: false,
@@ -1705,13 +1741,19 @@ impl AgentRun {
         partial: &PartialStreamedTurn,
         invalid: &StreamedInvalidToolCall,
     ) -> InvalidToolCallContext {
+        // A hook is told what the *request* advertised, for the same reason it
+        // is told the effective tool choice below: the two must describe one
+        // request, or a repair suggested from the hook's view of the tool set
+        // is rejected by the run's.
+        let (executable_tool_names, allowed_tool_names) = self
+            .effective_tool_names((&invalid.executable_tool_names, &invalid.allowed_tool_names));
         InvalidToolCallContext {
             tool_name: invalid.tool_call.function.name.clone(),
             tool_call_id: Some(invalid.tool_call.id.as_str().to_owned()),
             internal_call_id: Some(invalid.internal_call_id.clone()),
             args: invalid.args.clone(),
-            available_tools: invalid.executable_tool_names.iter().cloned().collect(),
-            allowed_tools: invalid.allowed_tool_names.iter().cloned().collect(),
+            available_tools: executable_tool_names.iter().cloned().collect(),
+            allowed_tools: allowed_tool_names.iter().cloned().collect(),
             tool_choice: self.effective_tool_choice().cloned(),
             chat_history: self
                 .streamed_diagnostic_history(partial, Some(invalid.tool_call.clone())),
@@ -1740,9 +1782,15 @@ impl AgentRun {
 
         let diagnostic_history =
             self.streamed_diagnostic_history(partial, Some(invalid.tool_call.clone()));
-        let executable_tool_names: Vec<String> =
-            invalid.executable_tool_names.iter().cloned().collect();
-        let allowed_tool_names: Vec<String> = invalid.allowed_tool_names.iter().cloned().collect();
+        // What the request advertised, not what the assembler was told — the
+        // `Repair` arm below validates the replacement name against
+        // `allowed`, and accepting one the request never advertised would
+        // dispatch a tool the provider was told did not exist this turn.
+        let (executable, allowed) = self
+            .effective_tool_names((&invalid.executable_tool_names, &invalid.allowed_tool_names));
+        let allowed_names = allowed.clone();
+        let executable_tool_names: Vec<String> = executable.iter().cloned().collect();
+        let allowed_tool_names: Vec<String> = allowed.iter().cloned().collect();
 
         match action {
             InvalidToolCallAction::Fail => {
@@ -1784,7 +1832,7 @@ impl AgentRun {
                 })
             }
             InvalidToolCallAction::Repair { tool_name } => {
-                if !invalid.allowed_tool_names.contains(&tool_name) {
+                if !allowed_names.contains(&tool_name) {
                     self.state = RunState::Failed;
                     return Err(unknown_tool_call_error(
                         tool_name,
@@ -1868,11 +1916,19 @@ impl AgentRun {
             .iter()
             .any(|item| matches!(item, AssistantContent::ToolCall(_)));
 
+        // The turn's own answer, not the assembler's. `StreamedTurn` carries
+        // the sets a caller handed `StreamedTurnAssembler::new`, and a driven
+        // turn's request went out under the sets committed with it.
+        let (executable_tool_names, allowed_tool_names) =
+            self.effective_tool_names((&turn.executable_tool_names, &turn.allowed_tool_names));
+        let (executable_tool_names, allowed_tool_names) =
+            (executable_tool_names.clone(), allowed_tool_names.clone());
+
         for item in &turn.choice {
             let AssistantContent::ToolCall(tool_call) = item else {
                 continue;
             };
-            if !turn.allowed_tool_names.contains(&tool_call.function.name) {
+            if !allowed_tool_names.contains(&tool_call.function.name) {
                 let mut diagnostic_messages = self.new_messages.clone();
                 if !is_empty_assistant_turn(&turn.choice) {
                     diagnostic_messages.push(Message::Assistant {
@@ -1885,8 +1941,8 @@ impl AgentRun {
                 self.state = RunState::Failed;
                 return Err(unknown_tool_call_error(
                     tool_call.function.name.clone(),
-                    turn.executable_tool_names.iter().cloned().collect(),
-                    turn.allowed_tool_names.iter().cloned().collect(),
+                    executable_tool_names.iter().cloned().collect(),
+                    allowed_tool_names.iter().cloned().collect(),
                     diagnostic_history,
                 ));
             }

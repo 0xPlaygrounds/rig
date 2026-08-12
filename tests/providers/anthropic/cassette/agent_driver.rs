@@ -10,7 +10,7 @@
 //! rationale; this module carries the provider-portable core of that suite.
 
 use futures::StreamExt;
-use rig::agent::run::{OutputMode, StreamedTurnAssembler};
+use rig::agent::run::OutputMode;
 use rig::agent::{AgentRun, RequestPatch};
 use rig::completion::PromptError;
 use rig::message::{Message, ToolChoice};
@@ -376,10 +376,7 @@ async fn a_streamed_turn_drives_through_the_driver() {
         let mut driver = agent.drive(ADD_PROMPT);
         let (request, tools, _) = expect_send(&mut driver).await;
 
-        let mut assembler = StreamedTurnAssembler::new(
-            tools.executable_tool_names().clone(),
-            tools.allowed_tool_names().clone(),
-        );
+        let mut assembler = tools.streamed_turn_assembler();
         let mut stream = request.stream().await.expect("stream should open");
         while let Some(item) = stream.next().await {
             assembler

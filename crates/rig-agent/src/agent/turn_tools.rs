@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use rig_core::message::{ToolChoice, UserContent};
 
 use super::model::ModelHandle;
-use super::run::{ModelTurn, PendingToolCall};
+use super::run::{ModelTurn, PendingToolCall, StreamedTurnAssembler};
 use crate::completion::{CompletionRequestBuilder, CompletionResponse};
 use crate::tool::server::ToolRegistrySnapshot;
 use crate::tool::{ToolContext, ToolExecutionError, ToolResult};
@@ -329,6 +329,20 @@ impl TurnTools {
     /// construction site for driver-facing turns.
     pub(crate) fn model_turn(&self, response: &CompletionResponse) -> ModelTurn {
         self.names().model_turn(response)
+    }
+
+    /// The assembler for this turn's provider stream, carrying the names this
+    /// turn advertised.
+    ///
+    /// The streaming counterpart of [`Self::model_turn`], and the way a
+    /// [`AgentDriver`](super::AgentDriver) caller should build one: it takes
+    /// the names off the turn the matching
+    /// [`DriveStep::SendRequest`](super::DriveStep::SendRequest) carried, so
+    /// there is no pair of same-typed sets for a caller to transpose or widen.
+    /// Feed [`StreamedTurnAssembler::finish`]'s result to
+    /// [`AgentDriver::accept_streamed_turn`](super::AgentDriver::accept_streamed_turn).
+    pub fn streamed_turn_assembler(&self) -> StreamedTurnAssembler {
+        StreamedTurnAssembler::new(&self.names())
     }
 }
 
