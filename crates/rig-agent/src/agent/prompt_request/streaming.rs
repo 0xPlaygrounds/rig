@@ -146,6 +146,22 @@ impl MultiTurnStreamItem {
         Self::StreamAssistantItem(item)
     }
 
+    /// Build a `FinalResponse` item from final-turn content, applying the
+    /// run-finalization shaping in [`final_response_from_content`] (#1928).
+    /// The one public entry point to that shaping, for mocks and adapters
+    /// that synthesize final items outside the drive loop.
+    pub fn final_response(
+        content: Vec<AssistantContent>,
+        aggregated_usage: crate::completion::Usage,
+    ) -> Self {
+        Self::FinalResponse(final_response_from_content(
+            content,
+            aggregated_usage,
+            Vec::new(),
+            None,
+        ))
+    }
+
     pub(crate) fn final_response_with_completion_calls(
         content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
