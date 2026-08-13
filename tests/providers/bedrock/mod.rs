@@ -7,6 +7,7 @@ mod cassette {
     mod embeddings;
     mod model_ids;
     mod raw_completion;
+    mod raw_provider_data;
     mod raw_streaming;
     mod streaming;
     mod tool_choice;
