@@ -138,7 +138,27 @@ pub struct Usage {
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
     pub cache_creation_input_tokens: Option<u64>,
+    /// Per-TTL breakdown of `cache_creation_input_tokens`. Absent when the
+    /// provider does not report it; the aggregate above is always authoritative.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation: Option<CacheCreation>,
     pub output_tokens: u64,
+}
+
+/// Per-TTL breakdown of cache-write tokens (`usage.cache_creation`).
+///
+/// Distinguishes 1-hour cache writes (~2x base input token price) from
+/// 5-minute writes (~1.25x), which is what makes a mixed-TTL configuration
+/// (see [`CompletionModel::with_static_prefix_cache_ttl`]) observable.
+/// Unknown buckets a provider may add later are ignored on deserialization.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+pub struct CacheCreation {
+    /// Tokens written to the 5-minute cache on this turn.
+    #[serde(default)]
+    pub ephemeral_5m_input_tokens: u64,
+    /// Tokens written to the 1-hour cache on this turn.
+    #[serde(default)]
+    pub ephemeral_1h_input_tokens: u64,
 }
 
 impl std::fmt::Display for Usage {
@@ -1624,6 +1644,10 @@ pub struct GenericCompletionModel<Ext = super::client::AnthropicExt, T = reqwest
     /// TTL for automatic caching. `None` uses the API default (5 minutes).
     /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
     pub automatic_caching_ttl: Option<CacheTtl>,
+    /// TTL for the static prefix (tool definitions + system prompt),
+    /// independent of the conversation-tail breakpoint. `None` inherits the
+    /// top-level/automatic TTL.
+    pub static_prefix_cache_ttl: Option<CacheTtl>,
     /// Whether Rig-generated tools request provider-supported strict validation.
     pub strict_tools: bool,
 }
@@ -1651,6 +1675,7 @@ where
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
             strict_tools: false,
         }
     }
@@ -1664,6 +1689,7 @@ where
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
             strict_tools: false,
         }
     }
@@ -1743,6 +1769,45 @@ where
     pub fn with_automatic_caching_1h(mut self) -> Self {
         self.automatic_caching = true;
         self.automatic_caching_ttl = Some(CacheTtl::OneHour);
+        self
+    }
+
+    /// Set the cache TTL for the static prefix (tool definitions + system
+    /// prompt), independent of the moving conversation-tail breakpoint.
+    ///
+    /// An agent's prompt has two parts with very different volatility: the
+    /// system prompt and tool definitions are byte-identical across sessions,
+    /// while the conversation tail changes every turn and is worthless an hour
+    /// later. A 1-hour cache write costs ~2x base input tokens where a
+    /// 5-minute write costs ~1.25x, so the optimal configuration is usually
+    /// mixed — `1h` on the prefix, the 5-minute default on the tail:
+    ///
+    /// ```ignore
+    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
+    ///     .with_automatic_caching()
+    ///     .with_static_prefix_cache_ttl(CacheTtl::OneHour);
+    /// ```
+    ///
+    /// Rig places explicit `cache_control` markers on the final tool
+    /// definition and the system prompt at this TTL. The conversation tail is
+    /// unaffected: it follows the automatic/top-level TTL (Anthropic's moving
+    /// breakpoint in automatic mode, Rig's last-message marker in manual
+    /// [`with_prompt_caching`] mode). When this knob is unset, the prefix
+    /// inherits the top-level TTL exactly as before.
+    ///
+    /// Anthropic requires 1-hour markers to precede 5-minute ones. The static
+    /// prefix precedes the tail, so `OneHour` here composes with a 5-minute
+    /// tail — but setting `FiveMinutes` here alongside
+    /// [`with_automatic_caching_1h`] is the illegal inversion and fails before
+    /// any request is sent. The model-specific minimum cacheable prompt
+    /// lengths tabulated on [`with_automatic_caching`] apply to each marker;
+    /// below the minimum, Anthropic silently skips caching.
+    ///
+    /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
+    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
+    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
+    pub fn with_static_prefix_cache_ttl(mut self, ttl: CacheTtl) -> Self {
+        self.static_prefix_cache_ttl = Some(ttl);
         self
     }
 }
@@ -2596,6 +2661,7 @@ pub(super) fn apply_prompt_cache_control(
     messages: &mut [Message],
     tools: &mut [serde_json::Value],
     prompt_caching: bool,
+    static_prefix_cache_ttl: Option<&CacheTtl>,
     top_level_cache_control: Option<&CacheControl>,
 ) -> Result<(), CompletionError> {
     normalize_tool_cache_control(tools);
@@ -2619,28 +2685,44 @@ pub(super) fn apply_prompt_cache_control(
 
     let mut remaining_cache_markers = max_cache_markers - tool_cache_markers;
 
+    // The static prefix (tools + system) must not carry a shorter TTL than the
+    // tail that follows it — Anthropic requires 1h markers before 5-minute
+    // ones. Catch the typed-knob inversion here with an error that names the
+    // knobs; the generic marker-order validator below would otherwise report
+    // it in terms of raw markers.
+    let top_level_ttl = top_level_cache_control_ttl(top_level_cache_control);
+    if static_prefix_cache_ttl == Some(&CacheTtl::FiveMinutes)
+        && top_level_ttl == Some(CacheTtl::OneHour)
+    {
+        return Err(CompletionError::RequestError(
+            "`with_static_prefix_cache_ttl(CacheTtl::FiveMinutes)` conflicts with the 1-hour \
+             top-level cache TTL (`with_automatic_caching_1h` or a raw top-level \
+             `cache_control`): Anthropic requires 1h markers to precede 5-minute ones, and the \
+             static prefix precedes the conversation tail"
+                .into(),
+        ));
+    }
+
+    // Manual prompt caching marks the prefix and the tail; a static-prefix TTL
+    // alone marks just the prefix (the tail stays with the automatic/top-level
+    // breakpoint, or uncached).
+    if prompt_caching || static_prefix_cache_ttl.is_some() {
+        let static_cache_control =
+            build_cache_control(static_prefix_cache_ttl.cloned().or(top_level_ttl.clone()));
+
+        apply_tool_cache_control(tools, &mut remaining_cache_markers, &static_cache_control)?;
+        apply_system_cache_control(system, &mut remaining_cache_markers, &static_cache_control);
+    }
+
     if prompt_caching {
-        let generated_cache_control =
-            build_cache_control(top_level_cache_control_ttl(top_level_cache_control));
-
-        apply_tool_cache_control(
-            tools,
-            &mut remaining_cache_markers,
-            &generated_cache_control,
-        )?;
-        apply_system_cache_control(
-            system,
-            &mut remaining_cache_markers,
-            &generated_cache_control,
-        );
-
         if top_level_cache_control.is_some() {
             clear_message_cache_control(messages);
         } else {
+            let tail_cache_control = build_cache_control(top_level_ttl);
             apply_message_cache_control(
                 messages,
                 &mut remaining_cache_markers,
-                &generated_cache_control,
+                &tail_cache_control,
             );
         }
     }
@@ -2779,6 +2861,8 @@ pub struct AnthropicRequestParams<'a> {
     pub automatic_caching: bool,
     /// TTL for the top-level cache_control. `None` omits the `ttl` field (API default is 5 min).
     pub automatic_caching_ttl: Option<CacheTtl>,
+    /// TTL for the static prefix (tools + system). `None` inherits the top-level TTL.
+    pub static_prefix_cache_ttl: Option<CacheTtl>,
 }
 
 impl AnthropicCompletionRequest {
@@ -2795,6 +2879,7 @@ impl AnthropicCompletionRequest {
             prompt_caching,
             automatic_caching,
             automatic_caching_ttl,
+            static_prefix_cache_ttl,
         } = params;
         let chat_history = req.chat_history_with_documents();
 
@@ -2849,6 +2934,7 @@ impl AnthropicCompletionRequest {
             &mut messages,
             &mut tools,
             prompt_caching,
+            static_prefix_cache_ttl.as_ref(),
             top_level_cache_control.as_ref(),
         )?;
 
@@ -2992,6 +3078,7 @@ where
                 prompt_caching: self.prompt_caching,
                 automatic_caching: self.automatic_caching,
                 automatic_caching_ttl: self.automatic_caching_ttl.clone(),
+                static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
             },
             self.strict_tools,
         )?;
@@ -3608,6 +3695,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -3700,6 +3788,7 @@ mod tests {
                 prompt_caching: false,
                 automatic_caching: false,
                 automatic_caching_ttl: None,
+                static_prefix_cache_ttl: None,
             },
             true,
         )
@@ -3804,6 +3893,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -3840,6 +3930,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -3879,6 +3970,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -3965,6 +4057,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4057,6 +4150,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4094,6 +4188,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4127,6 +4222,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4221,6 +4317,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4252,6 +4349,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4289,6 +4387,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4325,6 +4424,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4363,6 +4463,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4400,6 +4501,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -4434,6 +4536,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4466,6 +4569,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4508,6 +4612,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4566,6 +4671,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -4617,6 +4723,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -4643,6 +4750,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4696,6 +4804,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4728,6 +4837,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4770,6 +4880,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: true,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4822,6 +4933,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: true,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -4868,6 +4980,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: true,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -4894,6 +5007,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: true,
             automatic_caching_ttl: Some(CacheTtl::OneHour),
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -4910,6 +5024,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: true,
             automatic_caching_ttl: Some(CacheTtl::OneHour),
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4944,6 +5059,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: true,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4979,6 +5095,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -4996,6 +5113,215 @@ mod tests {
         assert_eq!(value["cache_control"]["ttl"], "1h");
         assert_eq!(value["metadata"]["source"], "raw-cache-control");
         assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_static_prefix_ttl_with_manual_caching_splits_prefix_and_tail() {
+        let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: true,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+            static_prefix_cache_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        // The tail keeps the 5-minute default: a marker with no `ttl` field.
+        let tail_cache_control = value["messages"]
+            .as_array()
+            .and_then(|messages| messages.last())
+            .and_then(|message| message["content"].as_array())
+            .and_then(|content| content.last())
+            .map(|block| &block["cache_control"])
+            .unwrap();
+        assert_eq!(tail_cache_control["type"], "ephemeral");
+        assert!(tail_cache_control.get("ttl").is_none());
+        assert!(value.get("cache_control").is_none());
+    }
+
+    #[test]
+    fn test_static_prefix_ttl_with_automatic_caching_marks_prefix_only() {
+        let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+            static_prefix_cache_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        // The moving tail breakpoint is Anthropic's top-level one at the
+        // 5-minute default; no explicit message marker exists.
+        assert_eq!(value["cache_control"]["type"], "ephemeral");
+        assert!(value["cache_control"].get("ttl").is_none());
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_static_prefix_ttl_alone_marks_prefix_without_tail_or_top_level() {
+        let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+            static_prefix_cache_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            value["system"]
+                .as_array()
+                .and_then(|blocks| blocks.last())
+                .and_then(|block| block["cache_control"].get("ttl")),
+            Some(&json!("1h"))
+        );
+        assert!(value.get("cache_control").is_none());
+        assert!(!last_message_has_cache_control(&value));
+    }
+
+    #[test]
+    fn test_static_prefix_ttl_five_minutes_with_automatic_1h_errors_client_side() {
+        let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
+
+        let error = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: Some(CacheTtl::OneHour),
+            static_prefix_cache_ttl: Some(CacheTtl::FiveMinutes),
+        })
+        .unwrap_err();
+
+        let message = error.to_string();
+        assert!(
+            message.contains("with_static_prefix_cache_ttl"),
+            "error should name the knob: {message}"
+        );
+        assert!(
+            message.contains("with_automatic_caching_1h"),
+            "error should name the conflicting knob: {message}"
+        );
+    }
+
+    #[test]
+    fn test_static_prefix_ttl_five_minutes_matches_automatic_default_ttl() {
+        let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
+
+        // 5m prefix + 5m (default) top-level is uniform, not an inversion.
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+            static_prefix_cache_ttl: Some(CacheTtl::FiveMinutes),
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let tools = value["tools"].as_array().unwrap();
+        assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
+        // The explicit knob serializes an explicit `"5m"`, equivalent to the
+        // omitted-`ttl` default.
+        assert_eq!(tools[0]["cache_control"]["ttl"], "5m");
+    }
+
+    #[test]
+    fn test_static_prefix_ttl_preserves_marker_budget_arithmetic() {
+        // Automatic mode reserves one marker for the top-level breakpoint; the
+        // static-prefix knob spends from the same remaining budget as manual
+        // caching does — two markers (final tool + system), no more.
+        let request = completion_request_with_tools(vec![generic_tool("cached_tool")], None);
+
+        let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            automatic_caching: true,
+            automatic_caching_ttl: None,
+            static_prefix_cache_ttl: Some(CacheTtl::OneHour),
+        })
+        .unwrap();
+
+        let value = serde_json::to_value(request).unwrap();
+        let marker_count = value["tools"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|tool| !tool["cache_control"].is_null())
+            .count()
+            + value["system"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|block| !block["cache_control"].is_null())
+                .count()
+            + usize::from(!value["cache_control"].is_null());
+        assert_eq!(marker_count, 3);
+        assert!(marker_count <= MAX_CACHE_CONTROL_MARKERS);
+    }
+
+    #[test]
+    fn test_usage_parses_per_ttl_cache_creation_breakdown() {
+        let usage: Usage = serde_json::from_str(
+            r#"{
+                "input_tokens": 3,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 9677,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 9677,
+                    "ephemeral_1h_input_tokens": 0,
+                    "ephemeral_24h_input_tokens": 0
+                },
+                "output_tokens": 7
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(usage.cache_creation_input_tokens, Some(9677));
+        let cache_creation = usage.cache_creation.unwrap();
+        assert_eq!(cache_creation.ephemeral_5m_input_tokens, 9677);
+        assert_eq!(cache_creation.ephemeral_1h_input_tokens, 0);
+    }
+
+    #[test]
+    fn test_usage_without_cache_creation_breakdown_parses_as_none() {
+        let usage: Usage =
+            serde_json::from_str(r#"{"input_tokens": 3, "output_tokens": 7}"#).unwrap();
+        assert!(usage.cache_creation.is_none());
     }
 
     #[test]
@@ -5039,6 +5365,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -5066,6 +5393,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -5087,6 +5415,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: true,
             automatic_caching_ttl: Some(CacheTtl::OneHour),
+            static_prefix_cache_ttl: None,
         })
         .unwrap_err();
 
@@ -5109,6 +5438,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -5139,6 +5469,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -5161,6 +5492,7 @@ mod tests {
             prompt_caching: true,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .unwrap();
 
@@ -5699,6 +6031,7 @@ mod tests {
                 input_tokens: 7,
                 cache_read_input_tokens: None,
                 cache_creation_input_tokens: None,
+                cache_creation: None,
                 output_tokens: 2,
             },
         };
@@ -5732,6 +6065,7 @@ mod tests {
                 input_tokens: 7,
                 cache_read_input_tokens: None,
                 cache_creation_input_tokens: None,
+                cache_creation: None,
                 output_tokens: 2,
             },
         };
@@ -5804,6 +6138,7 @@ mod tests {
                 input_tokens: 7,
                 cache_read_input_tokens: None,
                 cache_creation_input_tokens: None,
+                cache_creation: None,
                 output_tokens: 2,
             },
         };
@@ -6424,6 +6759,7 @@ mod tests {
                 input_tokens: 1,
                 cache_read_input_tokens: None,
                 cache_creation_input_tokens: None,
+                cache_creation: None,
                 output_tokens: 1,
             },
         };

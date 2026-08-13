@@ -32,22 +32,21 @@ use std::collections::HashMap;
 /// streaming-only difference — an explicit `tool_choice: auto` when tools are
 /// advertised but the caller left the choice unset — is re-applied below so the
 /// streaming request bytes stay stable.
+/// The typed request's `TryFrom` requires `max_tokens`; the caller must have
+/// resolved it onto `completion_request` (the request's own value, else the
+/// model default) before calling.
 fn create_streaming_request_body<Ext>(
     request_model: String,
-    mut completion_request: CompletionRequest,
-    max_tokens: u64,
+    completion_request: CompletionRequest,
     prompt_caching: bool,
     automatic_caching: bool,
     automatic_caching_ttl: Option<CacheTtl>,
+    static_prefix_cache_ttl: Option<CacheTtl>,
     strict_tools: bool,
 ) -> Result<Value, CompletionError>
 where
     Ext: AnthropicCompatibleProvider,
 {
-    // The typed request's `TryFrom` requires `max_tokens`; feed it the value the
-    // caller already resolved (the request's own value, else the model default).
-    completion_request.max_tokens = Some(max_tokens);
-
     let request = AnthropicCompletionRequest::try_from_params::<Ext>(
         AnthropicRequestParams {
             model: &request_model,
@@ -55,6 +54,7 @@ where
             prompt_caching,
             automatic_caching,
             automatic_caching_ttl,
+            static_prefix_cache_ttl,
         },
         strict_tools,
     )?;
@@ -267,6 +267,11 @@ pub struct PartialUsage {
     pub input_tokens: Option<usize>,
     #[serde(default)]
     pub cache_creation_input_tokens: Option<u64>,
+    /// Per-TTL breakdown of `cache_creation_input_tokens`. Anthropic reports
+    /// it on `message_start`, not the terminal `message_delta`; the adapter
+    /// carries it forward onto the terminal usage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation: Option<super::completion::CacheCreation>,
     #[serde(default)]
     pub cache_read_input_tokens: Option<u64>,
 }
@@ -348,6 +353,9 @@ struct AnthropicAdapter {
     server_tool_uses: HashMap<usize, ServerToolUseState>,
     current_thinking: Option<ThinkingState>,
     input_tokens: u64,
+    /// Per-TTL cache-write breakdown from `message_start`; the terminal
+    /// `message_delta` usage omits it.
+    cache_creation: Option<super::completion::CacheCreation>,
     message_id: Option<String>,
     response_model: Option<String>,
     /// A provider `error` event ended the turn; later frames are dead — the
@@ -378,6 +386,7 @@ impl WireAdapter for AnthropicAdapter {
                 // body is a no-op, not an error.
                 let Some(message) = message else { return };
                 self.input_tokens = message.usage.input_tokens;
+                self.cache_creation = message.usage.cache_creation.clone();
                 self.message_id = Some(message.id.clone());
                 self.response_model = Some(message.model.clone());
 
@@ -440,6 +449,10 @@ impl WireAdapter for AnthropicAdapter {
                         .filter(|tokens| *tokens > 0)
                         .or_else(|| usize::try_from(self.input_tokens).ok()),
                     cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                    cache_creation: usage
+                        .cache_creation
+                        .clone()
+                        .or_else(|| self.cache_creation.clone()),
                     cache_read_input_tokens: usage.cache_read_input_tokens,
                 };
 
@@ -545,7 +558,7 @@ where
     /// [`crate::streaming::normalize_stream`] — one network request either way.
     pub async fn raw_stream(
         &self,
-        completion_request: CompletionRequest,
+        mut completion_request: CompletionRequest,
     ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let request_model = completion_request
             .model
@@ -561,23 +574,23 @@ where
             completion_request.record_telemetry_content,
         )
         .build();
-        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
-            tokens
-        } else if let Some(tokens) = self.default_max_tokens {
-            tokens
-        } else {
-            return Err(CompletionError::RequestError(
-                "`max_tokens` must be set for Anthropic".into(),
-            ));
-        };
+        if completion_request.max_tokens.is_none() {
+            if let Some(tokens) = self.default_max_tokens {
+                completion_request.max_tokens = Some(tokens);
+            } else {
+                return Err(CompletionError::RequestError(
+                    "`max_tokens` must be set for Anthropic".into(),
+                ));
+            }
+        }
 
         let body = create_streaming_request_body::<Ext>(
             request_model,
             completion_request,
-            max_tokens,
             self.prompt_caching,
             self.automatic_caching,
             self.automatic_caching_ttl.clone(),
+            self.static_prefix_cache_ttl.clone(),
             self.strict_tools,
         )?;
 
@@ -912,7 +925,8 @@ mod tests {
             .unwrap();
         let mut system: Vec<SystemContent> = Vec::new();
         let mut messages: Vec<Message> = Vec::new();
-        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None).unwrap();
+        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None, None)
+            .unwrap();
 
         assert_eq!(tools.len(), 2);
         assert!(tools[0].get("cache_control").is_none());
@@ -949,9 +963,9 @@ mod tests {
             create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
                 CLAUDE_OPUS_4_8.to_string(),
                 request,
-                64,
                 false,
                 false,
+                None,
                 None,
                 false,
             )
@@ -1007,9 +1021,9 @@ mod tests {
             create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
                 CLAUDE_OPUS_4_8.to_string(),
                 request.clone(),
-                64,
                 false,
                 false,
+                None,
                 None,
                 false,
             )
@@ -1039,6 +1053,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .expect("blocking request body should build");
         let mut expected = serde_json::to_value(&blocking).expect("serialize blocking body");
@@ -1077,9 +1092,9 @@ mod tests {
             create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
                 CLAUDE_OPUS_4_8.to_string(),
                 request,
-                64,
                 false,
                 false,
+                None,
                 None,
                 false,
             )
@@ -1120,9 +1135,9 @@ mod tests {
             create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
                 CLAUDE_OPUS_4_8.to_string(),
                 request,
-                64,
                 false,
                 false,
+                None,
                 None,
                 true,
             )
@@ -1163,9 +1178,9 @@ mod tests {
             create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
                 CLAUDE_OPUS_4_8.to_string(),
                 request,
-                64,
                 false,
                 false,
+                None,
                 None,
                 false,
             )
@@ -1207,6 +1222,7 @@ mod tests {
             &mut messages,
             &mut tools,
             true,
+            None,
             top_level_cache_control.as_ref(),
         )
         .unwrap();
@@ -2372,6 +2388,55 @@ mod tests {
         assert!(out.is_empty(), "an unmodeled nested delta is a no-op");
     }
 
+    /// Anthropic reports the per-TTL `cache_creation` split on
+    /// `message_start` only; the terminal `message_delta` usage omits it. The
+    /// adapter must carry it onto the terminal record. Unit-tested (not a
+    /// cassette) because the carry-forward is internal adapter state — the
+    /// wire evidence lives in the recorded `prompt_caching/matrix_*` streaming
+    /// cassettes, whose `message_start` frames hold the split.
+    #[test]
+    fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
+        let mut adapter = AnthropicAdapter::default();
+        let mut out = Vec::new();
+
+        let start = WireFrame::Text(
+            r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":9366,"ephemeral_5m_input_tokens":336}}}}"#
+                .into(),
+        );
+        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(start)
+        else {
+            panic!("message_start must classify Known");
+        };
+        adapter.interpret(event, &mut out);
+
+        let delta = WireFrame::Text(
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7,"input_tokens":3,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0}}"#
+                .into(),
+        );
+        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(delta)
+        else {
+            panic!("message_delta must classify Known");
+        };
+        adapter.interpret(event, &mut out);
+
+        let terminal = out
+            .iter()
+            .find_map(|item| match item {
+                Ok(crate::streaming::RawStreamingChoice::FinalResponse(response)) => {
+                    Some(response.clone())
+                }
+                _ => None,
+            })
+            .expect("terminal message_delta must yield a final response");
+        let split = terminal
+            .usage
+            .cache_creation
+            .expect("terminal usage must carry the message_start cache_creation split");
+        assert_eq!(split.ephemeral_1h_input_tokens, 9366);
+        assert_eq!(split.ephemeral_5m_input_tokens, 336);
+        assert_eq!(terminal.usage.cache_creation_input_tokens, Some(9702));
+    }
+
     /// A `content_block_delta` whose `delta` omits `type` is malformed, not
     /// novel: silently skipping it would turn a compat gateway's untagged
     /// text delta into a successful *empty* completion. It classifies
@@ -2463,6 +2528,7 @@ mod tests {
                     output_tokens: 5,
                     input_tokens: Some(3),
                     cache_creation_input_tokens: None,
+                    cache_creation: None,
                     cache_read_input_tokens: Some(2),
                 },
                 stop_reason: Some("max_tokens".to_string()),
