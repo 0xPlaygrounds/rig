@@ -95,3 +95,34 @@ async fn provider_error_response_carries_request_id() -> Result<()> {
     )
     .await
 }
+
+/// 401 auth rejection (rig#2314 error matrix): Groq's auth tier carries the
+/// id its 4xx errors do (recorded).
+#[tokio::test]
+async fn auth_rejection_classifies_with_contract() -> Result<()> {
+    use super::support::with_groq_cassette_bogus_key_result;
+
+    with_groq_cassette_bogus_key_result(
+        "response_identity_edge/auth_rejection_classifies_with_contract",
+        |client| async move {
+            let model = client.completion_model(MODEL);
+            let error = model
+                .completion_request("Never authenticated")
+                .send()
+                .await
+                .expect_err("a bogus key must be rejected");
+            anyhow::ensure!(
+                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                "got {error:?}"
+            );
+            anyhow::ensure!(
+                error
+                    .provider_request_id()
+                    .is_some_and(|id| !id.trim().is_empty()),
+                "Groq's auth tier sends x-request-id (see the fixture); got {error:?}"
+            );
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}

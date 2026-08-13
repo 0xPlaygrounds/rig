@@ -123,3 +123,24 @@ fn normalize_anthropic_base_url(base_url: &str) -> String {
         trimmed.to_string()
     }
 }
+
+/// Like [`with_anthropic_cassette`], but the client authenticates with a
+/// deliberately invalid API key — for recording real 401 responses without a
+/// secret anywhere near the fixture (auth headers are neither recorded nor
+/// matched by the harness).
+pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette = ProviderCassette::start("anthropic", spec, "https://api.anthropic.com").await;
+    let client = anthropic::Client::builder()
+        .api_key("sk-invalid-edge-matrix-key")
+        .base_url(cassette.base_url())
+        .build()
+        .expect("client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}

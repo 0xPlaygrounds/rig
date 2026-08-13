@@ -654,7 +654,7 @@ where
 pub(crate) async fn send_compatible_raw_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
-    request_id_header: Option<&str>,
+    request_id_header: Option<&'static str>,
     profile: P,
 ) -> Result<streaming::RawStreamingResult<P::FinalResponse>, CompletionError>
 where
@@ -700,6 +700,7 @@ where
     Ok(super::sse_transport::stamp_terminal_request_id(
         stream,
         request_id_slot,
+        request_id_header,
         P::stamp_request_id,
     ))
 }

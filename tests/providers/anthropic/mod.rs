@@ -6,6 +6,7 @@ mod cassette {
     mod document_file_id;
     mod empty_end_turn;
     mod error_envelope;
+    mod error_identity_edge;
     mod image;
     mod messages_behaviors;
     mod messages_sessions;

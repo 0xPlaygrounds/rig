@@ -2001,6 +2001,45 @@ mod migrated_tests {
         assert_eq!(call.provider_request_id, None);
     }
 
+    /// rig#2314 error matrix: a failed attempt's error carries its *own*
+    /// transport id through the surfaced `PromptError`, and a run that fails
+    /// after a successful call never cross-attributes — the error's id and
+    /// the earlier success's id stay distinct.
+    #[tokio::test]
+    async fn failed_attempt_error_carries_its_own_request_id() {
+        let hook = TurnIdentityHook::default();
+        let error = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 2, "y": 3}))
+                .with_provider_request_id("req-success-1"),
+            MockTurn::provider_response_error(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                r#"{"error":"rate limited"}"#,
+                "req-failed-2",
+            ),
+        ]))
+        .tool(crate::test_utils::MockAddTool)
+        .add_hook(hook.clone())
+        .build()
+        .runner(Message::user("add 2 and 3"))
+        .max_turns(4)
+        .run()
+        .await
+        .expect_err("the second attempt fails");
+
+        assert_eq!(
+            error.provider_request_id(),
+            Some("req-failed-2"),
+            "the surfaced error reports the failing attempt's id: {error:?}"
+        );
+        let turns = hook.turns.lock().expect("turn identities").clone();
+        assert_eq!(turns.len(), 1, "only the successful call fired the event");
+        assert_eq!(
+            turns[0].provider_request_id.as_deref(),
+            Some("req-success-1"),
+            "the success keeps its own id — no cross-attribution"
+        );
+    }
+
     /// Hook capturing every `ModelTurnFinished` identity plus whether a
     /// `StreamResponseFinish` fired — the cross-surface "every completed
     /// call" observer #2265 requires.

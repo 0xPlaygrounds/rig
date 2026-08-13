@@ -1,0 +1,20 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1,"messages":[{"content":[{"text":"Never validated","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","temperature":-5.0}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_1
+  body: '{"error":{"message":"temperature: range: 0..1","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'

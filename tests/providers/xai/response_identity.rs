@@ -168,3 +168,30 @@ async fn provider_error_classifies_with_contract_but_reports_no_id() {
     )
     .await;
 }
+
+/// 401 auth rejection (rig#2314 error matrix): contract classification holds
+/// on the auth tier; the recording documents whether xAI's auth tier sends
+/// the id it omits on 4xx.
+#[tokio::test]
+async fn auth_rejection_classifies_with_contract() {
+    use super::support::with_xai_cassette_bogus_key;
+
+    with_xai_cassette_bogus_key(
+        "response_identity/auth_rejection_classifies_with_contract",
+        |client| async move {
+            let model = client.completion_model(xai::completion::GROK_3_MINI);
+            let error = model
+                .completion_request("Never authenticated")
+                .send()
+                .await
+                .expect_err("a bogus key must be rejected");
+            assert!(
+                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                "got {error:?}"
+            );
+            // Derived from the recording.
+            let _ = error.provider_request_id();
+        },
+    )
+    .await;
+}

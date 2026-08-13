@@ -140,6 +140,7 @@ where
 pub(crate) fn stamp_terminal_request_id<R>(
     stream: crate::streaming::RawStreamingResult<R>,
     slot: Option<crate::http_client::sse::RequestIdSlot>,
+    request_id_header: Option<&'static str>,
     stamp: impl Fn(&mut R, String) + WasmCompatSend + 'static,
 ) -> crate::streaming::RawStreamingResult<R>
 where
@@ -164,6 +165,32 @@ where
             // connection's transport id so a failed stream reports the id
             // support asks for (rig#2314). Only the ProviderResponse variant
             // has a slot for it; transport-level failures stay untouched.
+            // A failed SSE handshake (connect-time non-success) surfaces as
+            // a details-preserving transport error; this helper is installed
+            // exactly by providers with a request-id contract, so classify it
+            // like the unary driver would — ProviderResponse with the failed
+            // response's own id (rig#2314 follow-up: the streaming 4xx now
+            // matches its blocking twin instead of losing body and id).
+            Err(crate::completion::CompletionError::HttpError(
+                crate::http_client::Error::InvalidStatusCodeWithDetails {
+                    status,
+                    body,
+                    headers,
+                },
+            )) if request_id_header.is_some() => {
+                let provider_request_id = request_id_header
+                    .and_then(|header| headers.get(header))
+                    .and_then(|value| value.to_str().ok())
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                Err(
+                    crate::completion::CompletionError::from_http_response_with_request_id(
+                        status,
+                        body,
+                        provider_request_id,
+                    ),
+                )
+            }
             Err(crate::completion::CompletionError::ProviderResponse(response)) => {
                 // Never clear an id an upstream constructor already attached;
                 // the slot only fills the gap.
@@ -409,7 +436,7 @@ mod request_id_stamp_tests {
                 Err(CompletionError::ResponseError("unrelated".to_string())),
             ]));
 
-        let stamped = stamp_terminal_request_id(stream, Some(slot), |_, _| {});
+        let stamped = stamp_terminal_request_id(stream, Some(slot), None, |_, _| {});
         let items: Vec<_> = stamped.collect().await;
 
         assert!(matches!(
@@ -425,6 +452,43 @@ mod request_id_stamp_tests {
         match &items[2] {
             Err(CompletionError::ResponseError(_)) => {}
             other => panic!("non-provider errors pass through untouched, got {other:?}"),
+        }
+    }
+
+    /// rig#2315 follow-up: a failed SSE handshake (details-preserving
+    /// transport error) classifies like the unary driver for contract
+    /// providers — ProviderResponse carrying the failed response's own id.
+    #[tokio::test]
+    async fn handshake_details_error_classifies_with_contract() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert("x-request-id", "req_handshake".parse().expect("value"));
+        let stream: crate::streaming::RawStreamingResult<String> = Box::pin(futures::stream::iter(
+            vec![Err(CompletionError::HttpError(
+                crate::http_client::Error::InvalidStatusCodeWithDetails {
+                    status: http::StatusCode::NOT_FOUND,
+                    body: r#"{"error":"no model"}"#.to_string(),
+                    headers: Box::new(headers),
+                },
+            ))],
+        ));
+
+        let stamped = stamp_terminal_request_id(
+            stream,
+            Some(crate::http_client::sse::RequestIdSlot::default()),
+            Some("x-request-id"),
+            |_, _| {},
+        );
+        let items: Vec<_> = stamped.collect().await;
+        match &items[0] {
+            Err(error) => {
+                assert!(matches!(error, CompletionError::ProviderResponse(_)));
+                assert_eq!(error.provider_request_id(), Some("req_handshake"));
+                assert_eq!(
+                    error.provider_response_status(),
+                    Some(http::StatusCode::NOT_FOUND)
+                );
+            }
+            other => panic!("expected the classified handshake error, got {other:?}"),
         }
     }
 }

@@ -154,3 +154,28 @@ async fn provider_error_keeps_transport_shape_and_none_id() {
     )
     .await;
 }
+
+/// 401/403 control cell (rig#2314 error matrix): the contract-less provider's
+/// auth failure keeps the transport-shaped error, id `None`.
+#[tokio::test]
+async fn auth_rejection_keeps_transport_shape() {
+    use super::super::support::with_gemini_cassette_bogus_key;
+
+    with_gemini_cassette_bogus_key(
+        "response_identity/auth_rejection_keeps_transport_shape",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let error = model
+                .completion_request("Never authenticated")
+                .send()
+                .await
+                .expect_err("a bogus key must be rejected");
+            assert!(
+                matches!(error, rig::completion::CompletionError::HttpError(_)),
+                "contract-less classification unchanged: {error:?}"
+            );
+            assert_eq!(error.provider_request_id(), None);
+        },
+    )
+    .await;
+}

@@ -498,4 +498,50 @@ mod tests {
         ));
         assert_eq!(error.provider_request_id(), None);
     }
+
+    /// Display goldens (rig#2315 error matrix): error strings are what
+    /// callers grep and alert on — message churn must be a reviewed diff.
+    #[test]
+    fn display_goldens_for_error_shapes() {
+        let with_id = crate::completion::CompletionError::from_http_response_with_request_id(
+            StatusCode::NOT_FOUND,
+            r#"{"error":"nope"}"#,
+            Some("req_abc".to_string()),
+        );
+        assert_eq!(
+            with_id.to_string(),
+            r#"ProviderResponseError: status 404 Not Found: {"error":"nope"} (request id: req_abc)"#
+        );
+
+        let without_id = crate::completion::CompletionError::from_http_response_with_request_id(
+            StatusCode::NOT_FOUND,
+            r#"{"error":"nope"}"#,
+            None,
+        );
+        assert_eq!(
+            without_id.to_string(),
+            r#"ProviderResponseError: status 404 Not Found: {"error":"nope"}"#
+        );
+
+        let contract_less = crate::completion::CompletionError::from_http_response(
+            StatusCode::NOT_FOUND,
+            r#"{"error":"nope"}"#,
+        );
+        assert_eq!(
+            contract_less.to_string(),
+            r#"HttpError: Invalid status code 404 Not Found with message: {"error":"nope"}"#
+        );
+
+        // The two transport variants display identically.
+        let details = crate::http_client::Error::InvalidStatusCodeWithDetails {
+            status: StatusCode::NOT_FOUND,
+            body: "x".to_string(),
+            headers: Box::new(http::HeaderMap::new()),
+        };
+        let message = crate::http_client::Error::InvalidStatusCodeWithMessage(
+            StatusCode::NOT_FOUND,
+            "x".to_string(),
+        );
+        assert_eq!(details.to_string(), message.to_string());
+    }
 }

@@ -64,3 +64,30 @@ async fn streaming_contract_and_gateway_both_report_none() {
     )
     .await;
 }
+
+/// 2xx-envelope / routed-failure hunt (rig#2314 error matrix): a model id
+/// that parses but routes nowhere — record what OpenRouter actually answers
+/// (assertion derived from the recording).
+#[tokio::test]
+async fn routed_failure_error_shape() {
+    with_openrouter_cassette(
+        "response_identity_edge/routed_failure_error_shape",
+        |client| async move {
+            let model = client.completion_model("openai/gpt-nonexistent-routed-model");
+            let error = model
+                .completion_request("Never routed")
+                .send()
+                .await
+                .expect_err("an unroutable model must fail");
+            // Derived from the recording: OpenRouter answers a body-ful 4xx;
+            // contract-less classification keeps the transport shape.
+            assert!(
+                matches!(error, rig::completion::CompletionError::HttpError(_)),
+                "got {error:?}"
+            );
+            assert!(error.provider_response_body().is_some());
+            assert_eq!(error.provider_request_id(), None);
+        },
+    )
+    .await;
+}

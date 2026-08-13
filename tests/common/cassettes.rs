@@ -432,6 +432,18 @@ impl ProviderCassette {
         format!("{}{}", self.server.base_url(), self.base_path)
     }
 
+    /// A deliberately invalid API key for recording real auth failures: the
+    /// bogus literal in record mode, the dummy key in replay — so providers
+    /// that carry the key in a *matched* location (Gemini's query string)
+    /// still replay (the recorded value is scrubbed either way).
+    pub(crate) fn bogus_api_key(&self) -> String {
+        if self.mode.records() {
+            "invalid-edge-matrix-key".to_string()
+        } else {
+            DUMMY_API_KEY.to_string()
+        }
+    }
+
     pub(crate) fn api_key(&self, env_name: &str) -> String {
         if self.mode.records() {
             std::env::var(env_name).unwrap_or_else(|_| {
