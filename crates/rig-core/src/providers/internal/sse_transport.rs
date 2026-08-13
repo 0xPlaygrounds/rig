@@ -130,7 +130,6 @@ where
     }
 }
 
-/// Open an SSE-backed wire stream: build the event source, run the transport
 /// Stamp the transport request id captured off the SSE connection onto the
 /// stream's terminal record. `slot` is filled at each successful (re)connect
 /// ([`crate::http_client::sse::GenericEventSource::capture_request_id`]), so
@@ -162,6 +161,7 @@ where
     }))
 }
 
+/// Open an SSE-backed wire stream: build the event source, run the transport
 /// preamble ([`sse_frames`]) with the wire's options and triage, and drive the
 /// frames through the shared adapter driver
 /// ([`run_wire_stream`](super::adapter::run_wire_stream)) under `span`.

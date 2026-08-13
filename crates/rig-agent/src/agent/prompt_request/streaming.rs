@@ -1327,9 +1327,23 @@ impl TurnSource for StreamingTurnSource {
             // Final fallback: no usage was ever learned, so there is nothing to
             // record onto the span and this is the last read of the flag — kept
             // inline (not `emit_completion_call!`) so it doesn't emit a dead
-            // `completion_call_emitted = true` write.
+            // `completion_call_emitted = true` write. Identity is built the
+            // same way the hook events build theirs (from this stream's state,
+            // not `default()`), so `completion_calls` and hook observations
+            // agree even on this path.
             if !completion_call_emitted {
-                match run.record_streamed_completion_call(crate::completion::Usage::new(), rig_core::completion::ResponseIdentity::default()) {
+                let fallback_identity = rig_core::completion::ResponseIdentity {
+                    message_id: stream.message_id.clone(),
+                    response_id: stream
+                        .response
+                        .as_ref()
+                        .and_then(|response| response.response_id.clone()),
+                    provider_request_id: stream
+                        .response
+                        .as_ref()
+                        .and_then(|response| response.provider_request_id.clone()),
+                };
+                match run.record_streamed_completion_call(crate::completion::Usage::new(), fallback_identity) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
                         yield Err(Box::new(err).into());
