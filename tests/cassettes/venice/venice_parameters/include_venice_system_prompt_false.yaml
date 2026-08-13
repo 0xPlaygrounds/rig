@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":24,"messages":[{"content":"Say hi in three words.","role":"user"}],"model":"qwen3-5-9b","venice_parameters":{"disable_thinking":true,"include_venice_system_prompt":false}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":null,"audio":null,"content":"Hello there friend.","function_call":null,"reasoning_content":null,"reasoning_encrypted":false,"refusal":null,"role":"assistant","tool_calls":[]},"stop_reason":null,"token_ids":null}],"cost":{"diem":0,"usd":2.55e-6},"created":0,"id":"chatcmpl-REDACTED_1","kv_transfer_params":null,"model":"qwen3-5-9b","object":"chat.completion","prompt_logprobs":null,"prompt_token_ids":null,"service_tier":null,"usage":{"completion_tokens":5,"prompt_tokens":18,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":23},"venice_parameters":{"disable_thinking":true,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":false,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'

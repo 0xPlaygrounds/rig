@@ -80,6 +80,7 @@ Rig supports the following LLM providers out of the box:
 - OpenRouter
 - Perplexity
 - Together
+- Venice
 - Voyage AI
 - xAI
 - Xiaomi MiMo

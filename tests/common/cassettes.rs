@@ -34,6 +34,8 @@ use tokio::task::JoinHandle;
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const CASSETTE_ROOT: &str = "tests/cassettes";
 const REDACTED: &str = "[REDACTED]";
+/// Stand-in for a generated image payload (`"hello"` in base64).
+const IMAGE_PAYLOAD_PLACEHOLDER: &str = "aGVsbG8=";
 const DUMMY_API_KEY: &str = REDACTED;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -107,7 +109,7 @@ pub(crate) struct CassettePolicy {
 impl CassettePolicy {
     fn for_scenario(provider: &str, scenario: &str, replay_matching: ReplayMatching) -> Self {
         let required_request_headers = match provider {
-            "openai" | "doubleword" => OPENAI_REQUIRED_REQUEST_HEADERS,
+            "openai" | "doubleword" | "venice" => OPENAI_REQUIRED_REQUEST_HEADERS,
             "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
             "gemini" if scenario.starts_with("interactions_api/") => {
@@ -1077,7 +1079,14 @@ fn body_matches(
     expected_encoding: BodyEncoding,
 ) -> bool {
     let Some(expected) = expected else {
-        return actual.is_empty();
+        // A cassette recorded through the httpmock proxy stores bodies as
+        // strings, so a non-UTF-8 multipart upload (an audio file posted to a
+        // transcription endpoint) is exported with no body at all. Requiring
+        // an empty request body there would make every such scenario
+        // unreplayable; the multipart *shape* those endpoints receive is
+        // pinned by unit tests next to each provider instead. Non-multipart
+        // requests still have to be body-less to match.
+        return actual.is_empty() || is_multipart_request(actual_headers, expected_headers);
     };
     let expected_bytes = decode_body(expected, expected_encoding)
         .unwrap_or_else(|error| panic!("cassette request body should decode: {error}"));
@@ -1682,6 +1691,11 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "openai_api_key",
     "anthropic_api_key",
     "gemini_api_key",
+    "venice_api_key",
+    // Venice inference keys carry this literal prefix, so a recording that
+    // ever echoes one back (Venice quotes request material in some error
+    // bodies) fails the scan instead of being committed.
+    "venice_inference_key_",
     "__cf_bm=",
     "proj_",
     "set-cookie",
@@ -1934,6 +1948,19 @@ impl CassetteScrubber {
                     .get("object")
                     .and_then(Value::as_str)
                     .map(str::to_ascii_lowercase);
+                // Venice's image payload carries neither `object` nor `type`:
+                // it is `{ id, images: [base64], … }`, and its `id` is a bare
+                // account-scoped token with no prefix for the generated-token
+                // rules to recognize. Both halves of the shape are required —
+                // cohere's image-embedding *request* also has an `images`
+                // array of (data-URI) strings but no `id`, and its response's
+                // `images` holds metadata objects rather than payloads.
+                let venice_image_payload = map.get("id").is_some_and(Value::is_string)
+                    && map.get("images").is_some_and(|images| {
+                        images
+                            .as_array()
+                            .is_some_and(|images| images.iter().all(Value::is_string))
+                    });
 
                 for (key, value) in map {
                     if key == "data" && object_type.as_deref() == Some("reasoning.encrypted") {
@@ -1949,6 +1976,34 @@ impl CassetteScrubber {
                     if key == "data" && object_type.as_deref() == Some("redacted_thinking") {
                         if let Value::String(data) = value {
                             *data = self.placeholder(data, "redacted_thinking_");
+                        }
+                        continue;
+                    }
+
+                    if key == "id"
+                        && venice_image_payload
+                        && let Value::String(id) = value
+                    {
+                        *id = self.placeholder(id, "id_");
+                        continue;
+                    }
+
+                    // Venice returns generated images as bare base64 strings
+                    // in an `images` array rather than OpenAI's `b64_json`
+                    // objects; same payload, same treatment — keeping the
+                    // bytes would commit generated media and inflate the
+                    // fixture (Gemini's unscrubbed image cassette is 328 KB).
+                    // Scoped to the response shape, not the key name: cohere's
+                    // image-embedding requests carry their own `images` array
+                    // of data URIs that must survive verbatim.
+                    if key == "images"
+                        && venice_image_payload
+                        && let Value::Array(images) = value
+                    {
+                        for image in images.iter_mut() {
+                            if let Value::String(image) = image {
+                                *image = IMAGE_PAYLOAD_PLACEHOLDER.to_string();
+                            }
                         }
                         continue;
                     }
@@ -2006,7 +2061,7 @@ impl CassetteScrubber {
                     }
 
                     if key == "b64_json" {
-                        *text = "aGVsbG8=".to_string();
+                        *text = IMAGE_PAYLOAD_PLACEHOLDER.to_string();
                         return;
                     }
                 }
