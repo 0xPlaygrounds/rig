@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
 
 use super::completion::{
     AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
@@ -11,9 +9,9 @@ use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::GenericEventSource;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
 use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, skip_blank_frames, sse_frames,
+    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
 };
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
@@ -583,13 +581,11 @@ where
             self.strict_tools,
         )?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Anthropic completion request: {}",
-                serde_json::to_string_pretty(&body)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Anthropic completion request",
+            &body,
+        );
 
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
@@ -599,27 +595,20 @@ where
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 
-        let stream = GenericEventSource::new(self.client.clone(), req);
-
-        // Transport layer: SSE events → `WireFrame`s. Byte splitting and
-        // framing only — classification and policy live downstream.
         // Anthropic's loop historically had no separate `StreamEnded` arm and
         // no transport-error log: `StreamEnded` folds into the generic error
         // mapping, preserved via the options below.
-        let transport = sse_frames(
-            stream,
+        Ok(open_wire_stream(
+            GenericEventSource::new(self.client.clone(), req),
             SseTransportOptions {
                 open_log: OpenLog::Silent,
                 stream_ended_is_error: true,
                 log_transport_errors: false,
             },
             skip_blank_frames,
-        );
-
-        let stream: RawStreamingResult<StreamingCompletionResponse> =
-            Box::pin(run_wire_stream(transport, AnthropicAdapter::default()).instrument(span));
-
-        Ok(stream)
+            AnthropicAdapter::default(),
+            span,
+        ))
     }
 
     pub(crate) async fn stream(

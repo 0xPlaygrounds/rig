@@ -73,86 +73,64 @@ impl RecordBatchDeserializer for RecordBatch {
 
 /// Recursive function that matches all possible data types store in LanceDB and converts them to serde_json::Value vector.
 fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError> {
+    /// Expands to a `type_matcher` arm body converting `column` to JSON values
+    /// via the given helper method (e.g. `to_primitive_value::<Float32Type>`).
+    macro_rules! json_arm {
+        ($method:ident, $t:ty) => {
+            column.$method::<$t>().map_err(VectorStoreError::JsonError)
+        };
+    }
+
     match column.data_type() {
         DataType::Null => Ok(vec![serde_json::Value::Null]),
-        DataType::Float32 => column
-            .to_primitive_value::<Float32Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Float64 => column
-            .to_primitive_value::<Float64Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Int8 => column
-            .to_primitive_value::<Int8Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Int16 => column
-            .to_primitive_value::<Int16Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Int32 => column
-            .to_primitive_value::<Int32Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Int64 => column
-            .to_primitive_value::<Int64Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::UInt8 => column
-            .to_primitive_value::<UInt8Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::UInt16 => column
-            .to_primitive_value::<UInt16Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::UInt32 => column
-            .to_primitive_value::<UInt32Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::UInt64 => column
-            .to_primitive_value::<UInt64Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Date32 => column
-            .to_primitive_value::<Date32Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Date64 => column
-            .to_primitive_value::<Date64Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Decimal128(..) => column
-            .to_primitive_value::<Decimal128Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Time32(TimeUnit::Second) => column
-            .to_primitive_value::<Time32SecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Time32(TimeUnit::Millisecond) => column
-            .to_primitive_value::<Time32MillisecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Time64(TimeUnit::Microsecond) => column
-            .to_primitive_value::<Time64MicrosecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Time64(TimeUnit::Nanosecond) => column
-            .to_primitive_value::<Time64NanosecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Timestamp(TimeUnit::Microsecond, ..) => column
-            .to_primitive_value::<TimestampMicrosecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Timestamp(TimeUnit::Millisecond, ..) => column
-            .to_primitive_value::<TimestampMillisecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Timestamp(TimeUnit::Second, ..) => column
-            .to_primitive_value::<TimestampSecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Timestamp(TimeUnit::Nanosecond, ..) => column
-            .to_primitive_value::<TimestampNanosecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Duration(TimeUnit::Microsecond) => column
-            .to_primitive_value::<DurationMicrosecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Duration(TimeUnit::Millisecond) => column
-            .to_primitive_value::<DurationMillisecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Duration(TimeUnit::Nanosecond) => column
-            .to_primitive_value::<DurationNanosecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Duration(TimeUnit::Second) => column
-            .to_primitive_value::<DurationSecondType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Interval(IntervalUnit::YearMonth) => column
-            .to_primitive_value::<IntervalYearMonthType>()
-            .map_err(VectorStoreError::JsonError),
+        DataType::Float32 => json_arm!(to_primitive_value, Float32Type),
+        DataType::Float64 => json_arm!(to_primitive_value, Float64Type),
+        DataType::Int8 => json_arm!(to_primitive_value, Int8Type),
+        DataType::Int16 => json_arm!(to_primitive_value, Int16Type),
+        DataType::Int32 => json_arm!(to_primitive_value, Int32Type),
+        DataType::Int64 => json_arm!(to_primitive_value, Int64Type),
+        DataType::UInt8 => json_arm!(to_primitive_value, UInt8Type),
+        DataType::UInt16 => json_arm!(to_primitive_value, UInt16Type),
+        DataType::UInt32 => json_arm!(to_primitive_value, UInt32Type),
+        DataType::UInt64 => json_arm!(to_primitive_value, UInt64Type),
+        DataType::Date32 => json_arm!(to_primitive_value, Date32Type),
+        DataType::Date64 => json_arm!(to_primitive_value, Date64Type),
+        DataType::Decimal128(..) => json_arm!(to_primitive_value, Decimal128Type),
+        DataType::Time32(TimeUnit::Second) => json_arm!(to_primitive_value, Time32SecondType),
+        DataType::Time32(TimeUnit::Millisecond) => {
+            json_arm!(to_primitive_value, Time32MillisecondType)
+        }
+        DataType::Time64(TimeUnit::Microsecond) => {
+            json_arm!(to_primitive_value, Time64MicrosecondType)
+        }
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            json_arm!(to_primitive_value, Time64NanosecondType)
+        }
+        DataType::Timestamp(TimeUnit::Microsecond, ..) => {
+            json_arm!(to_primitive_value, TimestampMicrosecondType)
+        }
+        DataType::Timestamp(TimeUnit::Millisecond, ..) => {
+            json_arm!(to_primitive_value, TimestampMillisecondType)
+        }
+        DataType::Timestamp(TimeUnit::Second, ..) => {
+            json_arm!(to_primitive_value, TimestampSecondType)
+        }
+        DataType::Timestamp(TimeUnit::Nanosecond, ..) => {
+            json_arm!(to_primitive_value, TimestampNanosecondType)
+        }
+        DataType::Duration(TimeUnit::Microsecond) => {
+            json_arm!(to_primitive_value, DurationMicrosecondType)
+        }
+        DataType::Duration(TimeUnit::Millisecond) => {
+            json_arm!(to_primitive_value, DurationMillisecondType)
+        }
+        DataType::Duration(TimeUnit::Nanosecond) => {
+            json_arm!(to_primitive_value, DurationNanosecondType)
+        }
+        DataType::Duration(TimeUnit::Second) => json_arm!(to_primitive_value, DurationSecondType),
+        DataType::Interval(IntervalUnit::YearMonth) => {
+            json_arm!(to_primitive_value, IntervalYearMonthType)
+        }
         DataType::Interval(IntervalUnit::DayTime) => Ok(column
             .to_primitive::<IntervalDayTimeType>()
             .iter()
@@ -180,18 +158,10 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
                 },
             )
             .collect()),
-        DataType::Utf8 => column
-            .to_str_value::<Utf8Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::LargeUtf8 => column
-            .to_str_value::<LargeUtf8Type>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::Binary => column
-            .to_str_value::<BinaryType>()
-            .map_err(VectorStoreError::JsonError),
-        DataType::LargeBinary => column
-            .to_str_value::<LargeBinaryType>()
-            .map_err(VectorStoreError::JsonError),
+        DataType::Utf8 => json_arm!(to_str_value, Utf8Type),
+        DataType::LargeUtf8 => json_arm!(to_str_value, LargeUtf8Type),
+        DataType::Binary => json_arm!(to_str_value, BinaryType),
+        DataType::LargeBinary => json_arm!(to_str_value, LargeBinaryType),
         DataType::FixedSizeBinary(n) => (0..*n)
             .map(|i| serde_json::to_value(column.as_fixed_size_binary().value(i as usize)))
             .collect::<Result<Vec<_>, _>>()
@@ -269,65 +239,14 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
                 "Can't cast column {column:?} to union array"
             )))),
         },
-        DataType::RunEndEncoded(index_type, ..) => {
-            let items = match index_type.data_type() {
-                DataType::Int16 => {
-                    let (indexes, v) = column
-                        .to_run_end::<Int16Type>()
-                        .map_err(VectorStoreError::datastore)?;
-
-                    let mut prev = vec![0];
-                    prev.extend(indexes.clone());
-
-                    prev.iter()
-                        .zip(indexes)
-                        .map(|(prev, cur)| cur - prev)
-                        .zip(type_matcher(&v)?)
-                        .flat_map(|(n, value)| vec![value; n as usize])
-                        .collect::<Vec<_>>()
-                }
-                DataType::Int32 => {
-                    let (indexes, v) = column
-                        .to_run_end::<Int32Type>()
-                        .map_err(VectorStoreError::datastore)?;
-
-                    let mut prev = vec![0];
-                    prev.extend(indexes.clone());
-
-                    prev.iter()
-                        .zip(indexes)
-                        .map(|(prev, cur)| cur - prev)
-                        .zip(type_matcher(&v)?)
-                        .flat_map(|(n, value)| vec![value; n as usize])
-                        .collect::<Vec<_>>()
-                }
-                DataType::Int64 => {
-                    let (indexes, v) = column
-                        .to_run_end::<Int64Type>()
-                        .map_err(VectorStoreError::datastore)?;
-
-                    let mut prev = vec![0];
-                    prev.extend(indexes.clone());
-
-                    prev.iter()
-                        .zip(indexes)
-                        .map(|(prev, cur)| cur - prev)
-                        .zip(type_matcher(&v)?)
-                        .flat_map(|(n, value)| vec![value; n as usize])
-                        .collect::<Vec<_>>()
-                }
-                _ => {
-                    return Err(VectorStoreError::datastore(ArrowError::CastError(format!(
-                        "RunEndEncoded index type is not accepted: {index_type:?}"
-                    ))));
-                }
-            };
-
-            items
-                .iter()
-                .map(|item| serde_json::to_value(item).map_err(VectorStoreError::JsonError))
-                .collect()
-        }
+        DataType::RunEndEncoded(index_type, ..) => match index_type.data_type() {
+            DataType::Int16 => run_end_values::<Int16Type>(column),
+            DataType::Int32 => run_end_values::<Int32Type>(column),
+            DataType::Int64 => run_end_values::<Int64Type>(column),
+            _ => Err(VectorStoreError::datastore(ArrowError::CastError(format!(
+                "RunEndEncoded index type is not accepted: {index_type:?}"
+            )))),
+        },
         DataType::BinaryView
         | DataType::Utf8View
         | DataType::ListView(..)
@@ -350,6 +269,30 @@ fn type_matcher(column: &Arc<dyn Array>) -> Result<Vec<Value>, VectorStoreError>
 // ================================================================
 // Everything below includes helpers for the recursive function `type_matcher`
 // ================================================================
+
+/// Expands a run-end encoded column into one JSON value per logical row.
+fn run_end_values<T: RunEndIndexType>(
+    column: &Arc<dyn Array>,
+) -> Result<Vec<Value>, VectorStoreError>
+where
+    T::Native: Into<i64>,
+{
+    let (indexes, v) = column
+        .to_run_end::<T>()
+        .map_err(VectorStoreError::datastore)?;
+    let indexes = indexes.into_iter().map(Into::into).collect::<Vec<i64>>();
+
+    let mut prev = vec![0];
+    prev.extend(indexes.clone());
+
+    Ok(prev
+        .iter()
+        .zip(indexes)
+        .map(|(prev, cur)| cur - prev)
+        .zip(type_matcher(&v)?)
+        .flat_map(|(n, value)| vec![value; n as usize])
+        .collect())
+}
 
 /// Trait used to "deserialize" an arrow_array::Array as as list of primitive objects.
 trait DeserializePrimitiveArray {

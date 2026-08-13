@@ -207,43 +207,32 @@ where
         &self,
         documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), rig_core::vector_store::VectorStoreError> {
-        let docs: Vec<PutInputVector> = documents
-            .into_iter()
-            .map(|x| {
-                let json_value = serde_json::to_value(&x.0).map_err(VectorStoreError::JsonError)?;
-
-                x.1.into_iter()
-                    .map(|y| {
-                        let document = CreateRecord {
-                            document: json_value.clone(),
-                            embedded_text: y.document,
-                        };
-                        let document =
-                            serde_json::to_value(&document).map_err(VectorStoreError::JsonError)?;
-                        let document = json_value_to_document(&document);
-                        let vec = y.vec.into_iter().map(|item| item as f32).collect();
-                        PutInputVector::builder()
-                            .metadata(document.clone())
-                            .data(VectorData::Float32(vec))
-                            .key(Uuid::new_v4())
-                            .build()
-                            .map_err(|x| {
-                                VectorStoreError::DatastoreError(
-                                    format!("Couldn't build vector input: {x}").into(),
-                                )
-                            })
+        let docs: Vec<PutInputVector> =
+            rig_core::vector_store::flatten_embedded(documents, |json_value, y| {
+                let document = CreateRecord {
+                    document: json_value.clone(),
+                    embedded_text: y.document,
+                };
+                let document =
+                    serde_json::to_value(&document).map_err(VectorStoreError::JsonError)?;
+                let document = json_value_to_document(&document);
+                let vec = y.vec.into_iter().map(|item| item as f32).collect();
+                PutInputVector::builder()
+                    .metadata(document.clone())
+                    .data(VectorData::Float32(vec))
+                    .key(Uuid::new_v4())
+                    .build()
+                    .map_err(|x| {
+                        VectorStoreError::DatastoreError(
+                            format!("Couldn't build vector input: {x}").into(),
+                        )
                     })
-                    .collect()
             })
-            .collect::<Result<Vec<Vec<PutInputVector>>, VectorStoreError>>()
             .map_err(|x| {
                 VectorStoreError::DatastoreError(
                     format!("Could not build vector store data: {x}").into(),
                 )
-            })?
-            .into_iter()
-            .flatten()
-            .collect();
+            })?;
 
         self.client
             .put_vectors()

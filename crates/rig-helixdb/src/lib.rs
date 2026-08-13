@@ -235,25 +235,20 @@ where
             doc: String,
         }
 
-        for (document, embeddings) in documents {
-            let json_document = serde_json::to_value(&document)?;
-            let json_document_as_string = serde_json::to_string(&json_document)?;
+        let queries =
+            rig_core::vector_store::flatten_embedded(documents, |json_document, embedding| {
+                Ok(QueryInput {
+                    vector: embedding.vec,
+                    doc: embedding.document,
+                    json_payload: serde_json::to_string(json_document)?,
+                })
+            })?;
 
-            for embedding in embeddings {
-                let embedded_text = embedding.document;
-                let vector: Vec<f64> = embedding.vec;
-
-                let query = QueryInput {
-                    vector,
-                    doc: embedded_text,
-                    json_payload: json_document_as_string.clone(),
-                };
-
-                self.client
-                    .query::<QueryInput, QueryOutput>("InsertVector", &query)
-                    .await
-                    .map_err(VectorStoreError::datastore)?;
-            }
+        for query in queries {
+            self.client
+                .query::<QueryInput, QueryOutput>("InsertVector", &query)
+                .await
+                .map_err(VectorStoreError::datastore)?;
         }
         Ok(())
     }

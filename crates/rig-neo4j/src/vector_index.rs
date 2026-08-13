@@ -183,6 +183,17 @@ where
             .param("num_candidates", req.samples() as i64)
             .param("index_name", self.index_config.index_name.clone())
     }
+
+    /// Embeds the query and runs the vector search, deserializing each row as `R`.
+    async fn run_search<R: for<'a> Deserialize<'a>>(
+        &self,
+        req: &VectorSearchRequest<Neo4jSearchFilter>,
+    ) -> Result<Vec<R>, VectorStoreError> {
+        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
+        let query = self.build_vector_search_query(prompt_embedding, true, req);
+
+        Neo4jClient::execute_and_collect::<R>(&self.graph, query).await
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,17 +233,12 @@ where
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
-        let query = self.build_vector_search_query(prompt_embedding, true, &req);
+        let rows = self.run_search::<RowResultNode<T>>(&req).await?;
 
-        let rows = Neo4jClient::execute_and_collect::<RowResultNode<T>>(&self.graph, query).await?;
-
-        let results = rows
+        Ok(rows
             .into_iter()
             .map(|row| (row.score, row.element_id.to_string(), row.node))
-            .collect::<Vec<_>>();
-
-        Ok(results)
+            .collect())
     }
 
     /// Get the top n ids and scores matching the query. Runs faster than top_n since it doesn't need to transfer and parse
@@ -241,18 +247,12 @@ where
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
+        let rows = self.run_search::<RowResult>(&req).await?;
 
-        let query = self.build_vector_search_query(prompt_embedding, true, &req);
-
-        let rows = Neo4jClient::execute_and_collect::<RowResult>(&self.graph, query).await?;
-
-        let results = rows
+        Ok(rows
             .into_iter()
             .map(|row| (row.score, row.element_id.to_string()))
-            .collect::<Vec<_>>();
-
-        Ok(results)
+            .collect())
     }
 }
 

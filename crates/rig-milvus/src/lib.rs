@@ -61,11 +61,12 @@ struct SearchRequest<'a> {
     output_fields: Vec<&'a str>,
 }
 
+/// Milvus search response envelope, generic over the row shape.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SearchResult<T> {
+struct SearchResult<Row> {
     code: i64,
-    data: Vec<SearchResultData<T>>,
+    data: Vec<Row>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,16 +75,9 @@ struct SearchResultData<T> {
     id: i64,
     distance: f64,
     document: T,
-    embedded_text: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchResultOnlyId {
-    code: i64,
-    data: Vec<SearchResultDataOnlyId>,
-}
-
+/// Row shape for the id-only search path.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchResultDataOnlyId {
@@ -215,31 +209,14 @@ where
             base_url = self.base_url
         );
 
-        let data = documents
-            .into_iter()
-            .map(|(document, embeddings)| {
-                let json_document: serde_json::Value = serde_json::to_value(&document)?;
-                let json_document_as_string = serde_json::to_string(&json_document)?;
-
-                let embeddings = embeddings
-                    .into_iter()
-                    .map(|embedding| {
-                        let embedded_text = embedding.document;
-                        let embedding: Vec<f64> = embedding.vec;
-
-                        CreateRecord {
-                            document: json_document_as_string.clone(),
-                            embedded_text,
-                            embedding,
-                        }
-                    })
-                    .collect::<Vec<CreateRecord>>();
-                Ok(embeddings)
-            })
-            .collect::<Result<Vec<Vec<CreateRecord>>, VectorStoreError>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<CreateRecord>>();
+        let data =
+            rig_core::vector_store::flatten_embedded(documents, |json_document, embedding| {
+                Ok(CreateRecord {
+                    document: serde_json::to_string(json_document)?,
+                    embedded_text: embedding.document,
+                    embedding: embedding.vec,
+                })
+            })?;
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {
@@ -275,7 +252,7 @@ where
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let json: SearchResult<T> = self.search(&req, false).await?;
+        let json: SearchResult<SearchResultData<T>> = self.search(&req, false).await?;
 
         let res = json
             .data
@@ -292,7 +269,7 @@ where
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let json: SearchResultOnlyId = self.search(&req, true).await?;
+        let json: SearchResult<SearchResultDataOnlyId> = self.search(&req, true).await?;
 
         let res = json
             .data

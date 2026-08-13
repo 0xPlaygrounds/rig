@@ -397,6 +397,17 @@ fn render_plain_chat(
     Ok(rendered)
 }
 
+fn unsupported_user_content(item: &UserContent) -> CandleError {
+    CandleError::UnsupportedPromptContent(match item {
+        UserContent::Text(_) => "text content",
+        UserContent::ToolResult(_) => "tool results",
+        UserContent::Image(_) => "image content",
+        UserContent::Audio(_) => "audio content",
+        UserContent::Video(_) => "video content",
+        UserContent::Document(_) => "message document content",
+    })
+}
+
 fn render_plain_message(message: &Message) -> Result<(&'static str, String), CandleError> {
     match message {
         Message::System { content } => Ok(("system", content.clone())),
@@ -405,23 +416,7 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
             for item in content.iter() {
                 match item {
                     UserContent::Text(text) => parts.push(text.text.clone()),
-                    UserContent::ToolResult(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("tool results"));
-                    }
-                    UserContent::Image(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("image content"));
-                    }
-                    UserContent::Audio(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("audio content"));
-                    }
-                    UserContent::Video(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("video content"));
-                    }
-                    UserContent::Document(_) => {
-                        return Err(CandleError::UnsupportedPromptContent(
-                            "message document content",
-                        ));
-                    }
+                    unsupported => return Err(unsupported_user_content(unsupported)),
                 }
             }
             Ok(("user", parts.join("\n")))
@@ -676,20 +671,7 @@ fn render_qwen_message(
                         }
                         results.push(items.join("\n"));
                     }
-                    UserContent::Image(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("image content"));
-                    }
-                    UserContent::Audio(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("audio content"));
-                    }
-                    UserContent::Video(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("video content"));
-                    }
-                    UserContent::Document(_) => {
-                        return Err(CandleError::UnsupportedPromptContent(
-                            "message document content",
-                        ));
-                    }
+                    unsupported => return Err(unsupported_user_content(unsupported)),
                 }
             }
             if !text.is_empty() && !results.is_empty() {

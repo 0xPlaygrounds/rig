@@ -55,7 +55,6 @@ use crate::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use async_stream::stream;
-use bytes::Bytes;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -718,12 +717,11 @@ where
                 .system_instructions(system_instructions.as_deref(), record_telemetry_content)
                 .build();
 
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Ollama completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Ollama completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
 
@@ -733,32 +731,15 @@ where
             .body(body)
             .map_err(http_client::Error::from)?;
 
-        let async_block = async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ));
-            }
-
-            let response: CompletionResponse = serde_json::from_slice(&response_body)?;
+        let async_block = internal::completion_send::send_completion::<
+            _,
+            internal::envelope::DirectPayload<CompletionResponse>,
+            _,
+        >(&self.client, req, "Ollama completion", |response| {
             let span = tracing::Span::current();
-            span.record_response_metadata(&response);
-            span.record_token_usage(&Usage::from(&response));
-
-            if tracing::enabled!(tracing::Level::TRACE) {
-                tracing::trace!(target: "rig::completions",
-                    "Ollama completion response: {}",
-                    serde_json::to_string_pretty(&response)?
-                );
-            }
-
-            Ok(response)
-        };
+            span.record_response_metadata(response);
+            span.record_token_usage(&Usage::from(response));
+        });
 
         tracing::Instrument::instrument(async_block, span).await
     }
@@ -786,12 +767,11 @@ where
         .build();
         request.stream = true;
 
-        if tracing::enabled!(tracing::Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "Ollama streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Ollama streaming completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
 

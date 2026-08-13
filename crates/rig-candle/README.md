@@ -8,7 +8,7 @@ network access itself.
 use rig_agent::{agent::AgentBuilder, completion::Prompt};
 use rig_candle::{CandleModel, ModelData};
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let model = CandleModel::from_safetensors_async(ModelData {
         config: std::fs::read("./model/config.json")?,
@@ -40,8 +40,8 @@ constructors and `build_async` perform validation and model construction on
 Tokio's blocking pool; synchronous constructors remain available. A load that
 has entered the blocking pool runs to completion even if its awaiting future is
 dropped. `builder_from_gguf_bytes` gives borrowed GGUF buffers the same
-generation/concurrency settings as owned artifacts without copying them;
-`from_gguf_bytes_async` accepts static buffers such as `include_bytes!`.
+generation/concurrency settings as owned artifacts without copying them,
+including static buffers such as `include_bytes!`.
 Arbitrary Qwen, Qwen2, Qwen3 MoE/vision, other sizes, shards, and unvalidated
 quantizations are rejected rather than treated as Llama.
 

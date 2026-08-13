@@ -30,6 +30,8 @@ use crate::completion::{self, CompletionError};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::providers::internal::completion_send::send_completion;
+use crate::providers::internal::envelope::DirectPayload;
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
 use crate::streaming::StreamingCompletionResponse;
@@ -618,6 +620,17 @@ enum ChatApiResponse<T> {
     Err(ChatApiErrorResponse),
 }
 
+impl<T> crate::providers::internal::envelope::ProviderEnvelope for ChatApiResponse<T> {
+    type Payload = T;
+
+    fn into_payload(self) -> Result<T, String> {
+        match self {
+            Self::Ok(payload) => Ok(payload),
+            Self::Err(error) => Err(error.error_message().to_owned()),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct CompletionModel<H = reqwest::Client> {
     client: Client<H>,
@@ -740,40 +753,21 @@ where
             .system_instructions(system_instructions.as_deref(), record_telemetry_content)
             .build();
 
-        async move {
-            let response = self.client.send(req).await?;
-
-            let status = response.status();
-            if status.is_success() {
-                let body = http_client::text(response).await?;
-                match serde_json::from_str::<ChatApiResponse<openai::completion::CompletionResponse>>(
-                    &body,
-                )? {
-                    ChatApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record_response_metadata(&response);
-                        let usage = response
-                            .usage
-                            .as_ref()
-                            .map(|usage| usage.to_normalized())
-                            .unwrap_or_default();
-                        span.record_token_usage(&usage);
-
-                        Ok(response)
-                    }
-                    ChatApiResponse::Err(err) => {
-                        tracing::warn!(
-                            message = %err.error_message(),
-                            "provider returned an error response"
-                        );
-                        Err(CompletionError::from_http_response(status, body))
-                    }
-                }
-            } else {
-                let body = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, body))
-            }
-        }
+        send_completion::<_, ChatApiResponse<openai::completion::CompletionResponse>, _>(
+            &self.client,
+            req,
+            "Copilot chat completion",
+            |response| {
+                let span = tracing::Span::current();
+                span.record_response_metadata(response);
+                let usage = response
+                    .usage
+                    .as_ref()
+                    .map(|usage| usage.to_normalized())
+                    .unwrap_or_default();
+                span.record_token_usage(&usage);
+            },
+        )
         .instrument(span)
         .await
     }
@@ -801,25 +795,19 @@ where
             .system_instructions(system_instructions.as_deref(), record_telemetry_content)
             .build();
 
-        async move {
-            let response = self.client.send(req).await?;
-            let status = response.status();
-            if status.is_success() {
-                let body = http_client::text(response).await?;
-                let response = serde_json::from_str::<responses_api::CompletionResponse>(&body)?;
+        send_completion::<_, DirectPayload<responses_api::CompletionResponse>, _>(
+            &self.client,
+            req,
+            "Copilot responses completion",
+            |response| {
                 let span = tracing::Span::current();
                 span.record("gen_ai.response.id", response.id.as_str());
                 span.record("gen_ai.response.model", response.model.as_str());
                 if let Some(usage) = &response.usage {
                     span.record_token_usage(&usage.into());
                 }
-
-                Ok(response)
-            } else {
-                let body = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, body))
-            }
-        }
+            },
+        )
         .instrument(span)
         .await
     }

@@ -22,7 +22,6 @@ use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream, connect_async,
     tungstenite::{self, Message, client::IntoClientRequest},
 };
-use tracing::Level;
 use url::Url;
 
 use super::{CompletionResponse, ResponseStatus, ResponsesCompletionModel, ResponsesUsage};
@@ -366,13 +365,11 @@ where
             generate: options.generate,
         };
 
-        if tracing::enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI websocket request: {}",
-                serde_json::to_string_pretty(&payload)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI websocket request",
+            &payload,
+        );
 
         let payload = serde_json::to_string(&payload)?;
 

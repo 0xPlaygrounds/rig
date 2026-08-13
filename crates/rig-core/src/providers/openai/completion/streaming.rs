@@ -2,7 +2,6 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{Level, enabled};
 
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
@@ -286,13 +285,11 @@ where
             .ext()
             .finalize_request_body_with_options(&mut request_as_json, options)?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Chat Completions streaming completion request: {}",
-                serde_json::to_string_pretty(&request_as_json)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Chat Completions streaming completion request",
+            &request_as_json,
+        );
 
         let req_body = serde_json::to_vec(&request_as_json)?;
 

@@ -106,28 +106,21 @@ where
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
-        for (document, embeddings) in documents {
-            let json_document: serde_json::Value =
-                serde_json::to_value(&document).map_err(VectorStoreError::JsonError)?;
-            let json_document_as_string =
-                serde_json::to_string(&json_document).map_err(VectorStoreError::JsonError)?;
+        let records =
+            rig_core::vector_store::flatten_embedded(documents, |json_document, embedding| {
+                Ok(CreateRecord {
+                    document: serde_json::to_string(json_document)?,
+                    embedded_text: embedding.document,
+                    embedding: embedding.vec,
+                })
+            })?;
 
-            for embedding in embeddings {
-                let embedded_text = embedding.document;
-                let embedding: Vec<f64> = embedding.vec;
-
-                let record = CreateRecord {
-                    document: json_document_as_string.clone(),
-                    embedded_text,
-                    embedding,
-                };
-
-                self.surreal
-                    .create::<Option<CreateRecord>>(self.documents_table.clone())
-                    .content(record)
-                    .await
-                    .map_err(VectorStoreError::datastore)?;
-            }
+        for record in records {
+            self.surreal
+                .create::<Option<CreateRecord>>(self.documents_table.clone())
+                .content(record)
+                .await
+                .map_err(VectorStoreError::datastore)?;
         }
 
         Ok(())

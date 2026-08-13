@@ -88,6 +88,26 @@ impl VectorStoreError {
     }
 }
 
+/// Serializes each document to JSON once, then applies `f` to every
+/// `(document, embedding)` pair, flattening the results into a single vector.
+///
+/// This is the shared shape of most [`InsertDocuments`] implementations:
+/// build one backend record per embedding, carrying the owning document's
+/// serialized form.
+pub fn flatten_embedded<Doc: Serialize, R>(
+    documents: Vec<(Doc, Vec<Embedding>)>,
+    mut f: impl FnMut(&Value, Embedding) -> Result<R, VectorStoreError>,
+) -> Result<Vec<R>, VectorStoreError> {
+    let mut records = Vec::new();
+    for (document, embeddings) in documents {
+        let json_document = serde_json::to_value(&document)?;
+        for embedding in embeddings {
+            records.push(f(&json_document, embedding)?);
+        }
+    }
+    Ok(records)
+}
+
 /// Trait for inserting documents and embeddings into a vector store.
 pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
     /// Insert precomputed embeddings for each document.
