@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Fixed
+
+- *(streaming)* preserve body and request id when an SSE handshake fails: a streaming connect 4xx/401 on a request-id-contract provider (anthropic, openai, xai, groq, copilot) now classifies as `CompletionError::ProviderResponse` with the response body and provider request id, matching the blocking path, instead of a bare status ([#2315](https://github.com/0xPlaygrounds/rig/pull/2315))
+- *(client)* `VerifyClient::verify` now maps 401/403 to `VerifyError::InvalidAuthentication` again under the reqwest transport; the transport reports non-success as an error before the status match, which had made those arms unreachable ([#2315](https://github.com/0xPlaygrounds/rig/pull/2315))
+
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/v0.40.0...v0.41.0) - 2026-07-28
 
 ### Added

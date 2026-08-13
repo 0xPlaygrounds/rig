@@ -13,4 +13,4 @@ then:
   header:
   - name: content-type
     value: application/json
-  body: '{"error":{"code":400,"message":"openai/gpt-nonexistent-routed-model is not a valid model ID"},"user_id":"user_3CJR2Zr8m9Y85T5QLhFrnKAl9g7"}'
+  body: '{"error":{"code":400,"message":"openai/gpt-nonexistent-routed-model is not a valid model ID"},"user_id":"user_REDACTED"}'
