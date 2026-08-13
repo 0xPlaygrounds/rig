@@ -1,4 +1,7 @@
 use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::providers::openai::responses_api::{
+    ResponsesProviderExt, ResponsesToolDefinition, SystemInstructionsPlacement,
+};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct XAiExt;
@@ -17,6 +20,30 @@ impl Provider for XAiExt {
     type Builder = XAiExtBuilder;
 
     const VERIFY_PATH: &'static str = "/v1/api-key";
+}
+
+impl ResponsesProviderExt for XAiExt {
+    const PROVIDER_NAME: &'static str = "xai";
+    const RESPONSES_PATH: &'static str = "/v1/responses";
+    const EMITS_COMPLETE_TOOL_CALLS_IMMEDIATELY: bool = true;
+    const USES_2XX_ERROR_ENVELOPE: bool = true;
+    const COMPOSES_NATIVE_OUTPUT_WITH_TOOLS: bool = false;
+
+    fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
+        SystemInstructionsPlacement::InputSystemMessages
+    }
+
+    fn create_responses_request(
+        &self,
+        model: String,
+        request: crate::completion::CompletionRequest,
+        default_tools: &[ResponsesToolDefinition],
+        strict_tools: bool,
+        _system_instructions_placement: SystemInstructionsPlacement,
+        stream: bool,
+    ) -> Result<(String, serde_json::Value), crate::completion::CompletionError> {
+        super::api::create_completion_request(model, request, default_tools, strict_tools, stream)
+    }
 }
 
 client::impl_capabilities!(

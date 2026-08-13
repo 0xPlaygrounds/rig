@@ -627,7 +627,9 @@ where
                             self.previous_response_id = Some(response_id.to_string());
                         }
                     }
-                    Some(ResponseStatus::Failed) | Some(ResponseStatus::Cancelled) => {
+                    Some(ResponseStatus::Failed)
+                    | Some(ResponseStatus::Cancelled)
+                    | Some(ResponseStatus::Other(_)) => {
                         self.previous_response_id = None;
                     }
                     Some(ResponseStatus::InProgress | ResponseStatus::Queued) | None => {}

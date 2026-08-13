@@ -1,7 +1,7 @@
-//! Shared request driver for OpenAI-style `/audio/speech` endpoints.
+//! Shared request driver for JSON audio-generation endpoints.
 //!
-//! OpenAI and Azure OpenAI send the same JSON body and receive raw audio
-//! bytes back; only the request path differs, which stays with each provider.
+//! Providers build their own JSON body and path, then share the identical raw
+//! audio response and error-preservation tail.
 
 use bytes::Bytes;
 

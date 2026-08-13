@@ -1,7 +1,8 @@
 use crate::audio_generation::{
     self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
 };
-use crate::http_client::{self, HttpClientExt};
+use crate::http_client::HttpClientExt;
+use crate::providers::internal::audio_generation::send_audio_generation;
 use crate::providers::openrouter::Client;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use bytes::Bytes;
@@ -80,29 +81,11 @@ where
             }
         }
 
-        let body = serde_json::to_vec(&serde_json::Value::Object(body_map))?;
-
-        let req = self
+        let builder = self
             .client
             .post("/audio/speech")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(http_client::Error::from)?;
-
-        let response = self.client.send(req).await?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = http_client::text(response).await?;
-            return Err(AudioGenerationError::from_http_response(status, text));
-        }
-
-        let audio: Vec<u8> = response.into_body().await?;
-
-        Ok(AudioGenerationResponse {
-            audio: audio.clone(),
-            response: Bytes::from(audio),
-        })
+            .header("Content-Type", "application/json");
+        send_audio_generation(&self.client, builder, serde_json::Value::Object(body_map)).await
     }
 }
 
@@ -112,6 +95,44 @@ mod tests {
     use crate::audio_generation::AudioGenerationModel as _;
     use crate::client::audio_generation::AudioGenerationClient;
     use crate::test_utils::RecordingHttpClient;
+
+    #[tokio::test]
+    async fn shared_driver_keeps_openrouter_request_and_binary_response() {
+        let http_client = RecordingHttpClient::new(Bytes::from_static(b"audio"));
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+        let model = client.audio_generation_model(GPT_4O_MINI_TTS);
+
+        let response = model
+            .audio_generation(
+                model
+                    .audio_generation_request()
+                    .text("hello")
+                    .voice("alloy")
+                    .build(),
+            )
+            .await
+            .expect("audio generation should succeed");
+
+        assert_eq!(response.audio, b"audio");
+        let requests = http_client.requests();
+        assert_eq!(requests[0].uri, "https://openrouter.ai/api/v1/audio/speech");
+        assert_eq!(
+            requests[0]
+                .headers
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/json")
+        );
+        let body: serde_json::Value =
+            serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
+        assert_eq!(body["model"], GPT_4O_MINI_TTS);
+        assert_eq!(body["input"], "hello");
+        assert_eq!(body["voice"], "alloy");
+    }
 
     #[tokio::test]
     async fn audio_generation_non_success_preserves_status_and_body() {

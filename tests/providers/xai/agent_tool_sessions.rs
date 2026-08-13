@@ -395,15 +395,17 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
 
 /// Assert the provider-native metadata xAI reports on its own wire response.
 ///
-/// The response id (`resp_...`), the untyped `status`, and the raw usage
-/// envelope have no normalized home, so they are read from
-/// [`xai::CompletionModel::raw_completion`]. `completion` is that same call
-/// followed by the same conversion, so a cassette still records exactly one
-/// interaction.
+/// The response id (`resp_...`), typed status, and full usage envelope are read
+/// from [`xai::CompletionModel::raw_completion`]. `completion` is that same
+/// call followed by the shared Responses normalization, so a cassette still
+/// records exactly one interaction.
 fn assert_raw_response_metadata(raw: &xai::CompletionResponse) {
     assert_nonempty_response(&raw.id);
     assert_nonempty_response(&raw.model);
-    assert_eq!(raw.status.as_deref(), Some("completed"));
+    assert_eq!(
+        raw.status,
+        rig::providers::openai::responses_api::ResponseStatus::Completed
+    );
     assert!(
         raw.usage.is_some(),
         "raw xAI response should preserve usage metadata"
@@ -702,7 +704,8 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 
             let raw = model.raw_completion(request).await?;
             assert_raw_response_metadata(&raw);
-            let response: rig::completion::CompletionResponse = raw.try_into()?;
+            let response: rig::completion::CompletionResponse =
+                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -835,7 +838,8 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 .unwrap_or_default();
             assert_raw_response_metadata(&raw);
 
-            let response: rig::completion::CompletionResponse = raw.try_into()?;
+            let response: rig::completion::CompletionResponse =
+                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
 
             anyhow::ensure!(
                 response
@@ -913,7 +917,8 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
 
             let raw = model.raw_completion(request).await?;
             assert_raw_response_metadata(&raw);
-            let response: rig::completion::CompletionResponse = raw.try_into()?;
+            let response: rig::completion::CompletionResponse =
+                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("schema response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;

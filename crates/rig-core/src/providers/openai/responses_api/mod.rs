@@ -23,7 +23,6 @@ use crate::message::{
     Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError, MimeType, Text,
 };
 use crate::providers::internal::completion_send::send_completion;
-use crate::providers::internal::envelope::DirectPayload;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -1088,8 +1087,7 @@ pub enum ResponseObject {
 }
 
 /// The response status as an enum (ensures type validation)
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ResponseStatus {
     InProgress,
     Completed,
@@ -1097,6 +1095,8 @@ pub enum ResponseStatus {
     Cancelled,
     Queued,
     Incomplete,
+    /// A provider-specific status added after this client was released.
+    Other(String),
 }
 
 /// The wire spelling of a [`ResponseStatus`].
@@ -1104,7 +1104,7 @@ pub enum ResponseStatus {
 /// Statuses outside the normalized finish-reason vocabulary are carried through
 /// as [`completion::FinishReason::Other`], so they must keep OpenAI's own
 /// spelling rather than a Rust `Debug` name.
-fn response_status_wire_name(status: &ResponseStatus) -> &'static str {
+fn response_status_wire_name(status: &ResponseStatus) -> &str {
     match status {
         ResponseStatus::InProgress => "in_progress",
         ResponseStatus::Completed => "completed",
@@ -1112,6 +1112,33 @@ fn response_status_wire_name(status: &ResponseStatus) -> &'static str {
         ResponseStatus::Cancelled => "cancelled",
         ResponseStatus::Queued => "queued",
         ResponseStatus::Incomplete => "incomplete",
+        ResponseStatus::Other(status) => status,
+    }
+}
+
+impl Serialize for ResponseStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(response_status_wire_name(self))
+    }
+}
+
+impl<'de> Deserialize<'de> for ResponseStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(match String::deserialize(deserializer)?.as_str() {
+            "in_progress" => Self::InProgress,
+            "completed" => Self::Completed,
+            "failed" => Self::Failed,
+            "cancelled" => Self::Cancelled,
+            "queued" => Self::Queued,
+            "incomplete" => Self::Incomplete,
+            other => Self::Other(other.to_owned()),
+        })
     }
 }
 
@@ -1153,7 +1180,8 @@ pub(crate) fn map_finish_reason(
                 }
             },
         ),
-        ResponseStatus::Failed | ResponseStatus::Cancelled => Some(
+        ResponseStatus::Other(status) if status.is_empty() => None,
+        ResponseStatus::Failed | ResponseStatus::Cancelled | ResponseStatus::Other(_) => Some(
             completion::FinishReason::Other(response_status_wire_name(status).to_owned()),
         ),
         // The turn has not terminated, so there is genuinely no reason yet.
@@ -1203,6 +1231,21 @@ pub trait ResponsesProviderExt {
     /// `None`, never an error.
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
+    /// Relative path of the provider's Responses endpoint.
+    const RESPONSES_PATH: &'static str = "/responses";
+
+    /// Whether a complete function call should be emitted as soon as its
+    /// `output_item.done` event arrives instead of waiting for the terminal
+    /// response event.
+    const EMITS_COMPLETE_TOOL_CALLS_IMMEDIATELY: bool = false;
+
+    /// Whether a successful HTTP response can carry the provider's error
+    /// envelope instead of a Responses payload.
+    const USES_2XX_ERROR_ENVELOPE: bool = false;
+
+    /// Whether native structured output composes with provider tool calls.
+    const COMPOSES_NATIVE_OUTPUT_WITH_TOOLS: bool = true;
+
     /// Where Rig system instructions are placed in requests built from this
     /// provider. See [`SystemInstructionsPlacement`].
     ///
@@ -1210,7 +1253,49 @@ pub trait ResponsesProviderExt {
     /// placement explicitly, so a backend that can't handle the default
     /// (top-level `instructions`) is never inherited by accident.
     fn system_instructions_placement(&self) -> SystemInstructionsPlacement;
+
+    /// Convert a Rig request into this provider's Responses wire value.
+    ///
+    /// The default is the OpenAI wire. Compatible providers override only
+    /// when their request shape genuinely differs; response and streaming
+    /// normalization remain shared.
+    #[doc(hidden)]
+    fn create_responses_request(
+        &self,
+        model: String,
+        request: crate::completion::CompletionRequest,
+        default_tools: &[ResponsesToolDefinition],
+        strict_tools: bool,
+        system_instructions_placement: SystemInstructionsPlacement,
+        stream: bool,
+    ) -> Result<(String, Value), CompletionError> {
+        let mut request = CompletionRequest::try_from(ResponsesRequestParams {
+            model,
+            request,
+            system_instructions_placement,
+        })?;
+        request.tools.extend(default_tools.iter().cloned());
+        if strict_tools {
+            request.tools = request
+                .tools
+                .into_iter()
+                .map(ResponsesToolDefinition::normalize)
+                .collect();
+        }
+        if stream {
+            request.stream = Some(true);
+        }
+        Ok((request.model.clone(), serde_json::to_value(request)?))
+    }
 }
+
+/// Marks Responses providers that let individual models override the client's
+/// system-instruction placement.
+///
+/// Providers with a fixed wire representation deliberately do not implement
+/// this trait, so the corresponding model builders are not exposed for them.
+#[doc(hidden)]
+pub trait ConfigurableSystemInstructionsPlacement: ResponsesProviderExt {}
 
 /// Attempt to try and create a `NewCompletionRequest` from a model name and [`crate::completion::CompletionRequest`]
 impl TryFrom<(String, crate::completion::CompletionRequest)> for CompletionRequest {
@@ -1426,9 +1511,7 @@ pub type ResponsesCompletionModel<H = reqwest::Client> =
 
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
-    crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
-    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + 'static,
+    Ext: crate::client::Provider + ResponsesProviderExt,
 {
     /// Creates a new [`ResponsesCompletionModel`].
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
@@ -1459,27 +1542,6 @@ where
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
         self
-    }
-
-    /// Sets where Rig system instructions are placed in requests from this
-    /// model, overriding the client-level default. See
-    /// [`SystemInstructionsPlacement`] for when each placement applies.
-    pub fn with_system_instructions_placement(
-        mut self,
-        placement: SystemInstructionsPlacement,
-    ) -> Self {
-        self.system_instructions_placement = placement;
-        self
-    }
-
-    /// Sends Rig system instructions as `system` messages in `input` instead of
-    /// as top-level Responses API `instructions`.
-    ///
-    /// OpenAI's Responses API supports `instructions`, and Rig uses it by
-    /// default. Use this compatibility fallback for OpenAI-compatible providers
-    /// that reject or ignore top-level `instructions`.
-    pub fn with_system_instructions_as_messages(self) -> Self {
-        self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
     }
 
     /// Adds a default tool to all requests from this model.
@@ -1519,6 +1581,47 @@ where
         }
 
         Ok(req)
+    }
+
+    fn create_provider_request(
+        &self,
+        request: crate::completion::CompletionRequest,
+        stream: bool,
+    ) -> Result<(String, Value), CompletionError> {
+        self.client.ext().create_responses_request(
+            self.model.clone(),
+            request,
+            &self.tools,
+            self.strict_tools,
+            self.system_instructions_placement,
+            stream,
+        )
+    }
+}
+
+impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
+where
+    Ext: crate::client::Provider + ResponsesProviderExt + ConfigurableSystemInstructionsPlacement,
+{
+    /// Sets where Rig system instructions are placed in requests from this
+    /// model, overriding the client-level default. See
+    /// [`SystemInstructionsPlacement`] for when each placement applies.
+    pub fn with_system_instructions_placement(
+        mut self,
+        placement: SystemInstructionsPlacement,
+    ) -> Self {
+        self.system_instructions_placement = placement;
+        self
+    }
+
+    /// Sends Rig system instructions as `system` messages in `input` instead of
+    /// as top-level Responses API `instructions`.
+    ///
+    /// OpenAI's Responses API supports `instructions`, and Rig uses it by
+    /// default. Use this compatibility fallback for OpenAI-compatible providers
+    /// that reject or ignore top-level `instructions`.
+    pub fn with_system_instructions_as_messages(self) -> Self {
+        self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
     }
 }
 
@@ -1843,6 +1946,9 @@ pub enum TextFormat {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StructuredOutputsInput {
     /// The name of your schema.
+    ///
+    /// Compatible providers may omit it when echoing a response configuration.
+    #[serde(default)]
     pub name: String,
     /// Your required output schema. It is recommended that you use the JsonSchema macro, which you can check out at <https://docs.rs/schemars/latest/schemars/trait.JsonSchema.html>.
     pub schema: serde_json::Value,
@@ -2442,10 +2548,10 @@ where
     ) -> Result<CompletionResponse, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = self.create_completion_request(completion_request)?;
+        let (request_model, request) = self.create_provider_request(completion_request, false)?;
         let span = CompletionSpanBuilder::new(
             Ext::PROVIDER_NAME,
-            &request.model,
+            &request_model,
             CompletionOperation::Chat,
         )
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
@@ -2454,35 +2560,56 @@ where
 
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
-            "OpenAI Responses completion request",
+            "Responses completion request",
             &request,
         );
 
         let req = self
             .client
-            .post("/responses")?
+            .post(Ext::RESPONSES_PATH)?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let (mut response, provider_request_id) =
-            send_completion::<_, DirectPayload<CompletionResponse>, _>(
+        fn record_response(response: &CompletionResponse) {
+            let span = tracing::Span::current();
+            span.record_response_metadata(response);
+            let usage = response
+                .usage
+                .as_ref()
+                .map(crate::completion::Usage::from)
+                .unwrap_or_default();
+            span.record_token_usage(&usage);
+        }
+
+        let (mut response, provider_request_id) = if Ext::USES_2XX_ERROR_ENVELOPE {
+            send_completion::<
+                _,
+                crate::providers::openai::client::ApiResponse<CompletionResponse>,
+                _,
+            >(
                 &self.client,
                 req,
-                "OpenAI Responses completion",
+                "Responses completion",
                 Ext::REQUEST_ID_HEADER,
-                |response| {
-                    let span = tracing::Span::current();
-                    span.record_response_metadata(response);
-                    let usage = response
-                        .usage
-                        .as_ref()
-                        .map(crate::completion::Usage::from)
-                        .unwrap_or_default();
-                    span.record_token_usage(&usage);
-                },
+                record_response,
             )
             .instrument(span)
-            .await?;
+            .await?
+        } else {
+            send_completion::<
+                _,
+                crate::providers::internal::envelope::DirectPayload<CompletionResponse>,
+                _,
+            >(
+                &self.client,
+                req,
+                "Responses completion",
+                Ext::REQUEST_ID_HEADER,
+                record_response,
+            )
+            .instrument(span)
+            .await?
+        };
         response.provider_request_id = provider_request_id;
         Ok(response)
     }
@@ -2505,7 +2632,8 @@ where
         // The OpenAI Responses API constrains only the final assistant message via
         // `text.format`; tools are still called across turns, so native structured
         // output composes with tool calls. See issue #1928.
-        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
+        completion::ProviderCapabilities::default()
+            .with_native_output_tool_composition(Ext::COMPOSES_NATIVE_OUTPUT_WITH_TOOLS)
     }
 
     async fn completion(
@@ -2527,9 +2655,8 @@ where
 impl<Ext, H> crate::client::ConstructCompletionModel<crate::client::Client<Ext, H>>
     for GenericResponsesCompletionModel<Ext, H>
 where
-    crate::client::Client<Ext, H>: HttpClientExt + Clone + std::fmt::Debug + 'static,
-    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + 'static,
+    Ext: crate::client::Provider + ResponsesProviderExt + Clone,
+    H: Clone,
 {
     fn construct(client: &crate::client::Client<Ext, H>, model: String) -> Self {
         Self::new(client.clone(), model)
@@ -4390,6 +4517,17 @@ mod tests {
         assert_eq!(
             map_finish_reason(&ResponseStatus::Cancelled, None),
             Some(completion::FinishReason::Other("cancelled".to_string()))
+        );
+        let status: ResponseStatus = serde_json::from_str(r#""throttled""#)
+            .expect("an unknown provider status should deserialize");
+        assert_eq!(status, ResponseStatus::Other("throttled".to_string()));
+        assert_eq!(
+            map_finish_reason(&status, None),
+            Some(completion::FinishReason::Other("throttled".to_string()))
+        );
+        assert_eq!(
+            serde_json::to_string(&status).expect("unknown status should serialize"),
+            r#""throttled""#
         );
         assert_eq!(
             map_finish_reason(&ResponseStatus::Incomplete, None),

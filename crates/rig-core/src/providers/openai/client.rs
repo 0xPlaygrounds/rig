@@ -1,4 +1,6 @@
-use super::responses_api::{ResponsesProviderExt, SystemInstructionsPlacement};
+use super::responses_api::{
+    ConfigurableSystemInstructionsPlacement, ResponsesProviderExt, SystemInstructionsPlacement,
+};
 use crate::{
     client::{self, BearerAuth, DebugExt, Provider},
     http_client::HttpClientExt,
@@ -62,6 +64,8 @@ impl ResponsesProviderExt for OpenAIResponsesExt {
         self.system_instructions_placement
     }
 }
+
+impl ConfigurableSystemInstructionsPlacement for OpenAIResponsesExt {}
 
 impl Provider for OpenAICompletionsExt {
     type Builder = OpenAICompletionsExtBuilder;

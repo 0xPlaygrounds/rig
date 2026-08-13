@@ -128,7 +128,8 @@ async fn raw_and_normalized_views_agree_on_identity() {
             assert_request_id(raw_id.as_deref(), "raw view");
 
             let normalized: rig::completion::CompletionResponse =
-                raw.try_into().expect("raw response should normalize");
+                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")
+                    .expect("raw response should normalize");
             assert_eq!(
                 normalized.provider_request_id, raw_id,
                 "raw and normalized views describe the same interaction"

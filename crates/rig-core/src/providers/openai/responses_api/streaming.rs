@@ -1494,10 +1494,9 @@ pub enum SummaryPartChunkPart {
 
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + 'static,
     Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
+    H: Clone + WasmCompatSend + 'static,
 {
     /// Open a stream whose terminal record stays provider-native.
     ///
@@ -1513,12 +1512,11 @@ where
     ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
-        let mut request = self.create_completion_request(completion_request)?;
-        request.stream = Some(true);
+        let (request_model, request) = self.create_provider_request(completion_request, true)?;
 
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
-            "OpenAI Responses streaming completion request",
+            "Responses streaming completion request",
             &request,
         );
 
@@ -1526,13 +1524,13 @@ where
 
         let req = self
             .client
-            .post("/responses")?
+            .post(Ext::RESPONSES_PATH)?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = CompletionSpanBuilder::new(
             Ext::PROVIDER_NAME,
-            &request.model,
+            &request_model,
             CompletionOperation::ChatStreaming,
         )
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
@@ -1547,7 +1545,12 @@ where
             None => (event_source, None),
         };
 
-        let stream = raw_stream_from_event_source(event_source, span);
+        let options = if Ext::EMITS_COMPLETE_TOOL_CALLS_IMMEDIATELY {
+            ResponsesStreamOptions::strict_with_immediate_tool_calls()
+        } else {
+            ResponsesStreamOptions::strict()
+        };
+        let stream = raw_stream_from_event_source_with_options(event_source, span, options);
         Ok(
             crate::providers::internal::sse_transport::stamp_terminal_request_id(
                 stream,
