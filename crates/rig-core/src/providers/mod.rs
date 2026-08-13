@@ -19,6 +19,7 @@
 //! - OpenRouter
 //! - Perplexity
 //! - Together
+//! - Venice
 //! - Voyage AI
 //! - xAI
 //! - Xiaomi MiMo
@@ -128,6 +129,7 @@ pub mod openai;
 pub mod openrouter;
 pub mod perplexity;
 pub mod together;
+pub mod venice;
 pub mod voyageai;
 pub mod xai;
 pub mod xiaomimimo;
