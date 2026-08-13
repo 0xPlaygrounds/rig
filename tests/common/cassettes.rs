@@ -1750,7 +1750,11 @@ const SENSITIVE_QUERY_PARAMS: &[&str] = &[
     "x-amz-security-token",
 ];
 
-const RESPONSE_HEADER_ALLOWLIST: &[&str] = &["content-type"];
+// `x-amzn-errortype` is how the AWS SDKs classify an error response into a
+// modeled exception; dropping it made every recorded AWS error replay as an
+// unclassified `Unhandled` error, so a cassette could not reproduce the error
+// path it recorded. The value is an exception class name, not account state.
+const RESPONSE_HEADER_ALLOWLIST: &[&str] = &["content-type", "x-amzn-errortype"];
 
 const VOLATILE_JSON_KEYS: &[&str] = &[
     "completed_at",

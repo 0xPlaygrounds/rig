@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(bedrock)* [**breaking**] the model constants are the identifiers Bedrock can actually invoke. 39 of the 72 shipped constants could only fail: 29 identifiers (every `anthropic.claude-*` constant among them, plus the Titan text/image generators, Claude 2/Instant, Llama 3.2, Jamba Instruct, the older Stability ids and the Cohere `command-text` pair) are absent from `ListFoundationModels` in us-east-1, us-west-2, eu-central-1 and ap-northeast-1 and answer `ResourceNotFoundException` ("This model version has reached the end of its life"); 10 more exist but are servable only through a cross-region inference profile, so the bare identifier answers `ValidationException` ("Invocation of model ID … with on-demand throughput isn't supported"). Retired identifiers are removed; the profile-only families (`DEEPSEEK_R1`, `META_LLAMA_3_3_70B_INSTRUCT`, `META_LLAMA_4_*`, `MISTRAL_PIXTRAL_LARGE_2502`, `WRITER_PALMYRA_X4`/`X5`) now carry their `us.` profile identifier, and Anthropic — which had no working constant at all — is represented by `ANTHROPIC_CLAUDE_HAIKU_4_5`, `ANTHROPIC_CLAUDE_SONNET_4_5`, `ANTHROPIC_CLAUDE_OPUS_4_5`, `ANTHROPIC_CLAUDE_SONNET_4_6`, `ANTHROPIC_CLAUDE_SONNET_5` and `ANTHROPIC_CLAUDE_OPUS_5`. A `us.` prefix names a region family: callers outside the US substitute `eu.`/`apac.` (or `global.` where offered). Every retained identifier was invoked with `Converse` in us-east-1
+
+- *(bedrock)* a provider error this SDK version cannot classify keeps the service's own body. `SdkError::into_service_error` funnels unmodeled exceptions — and any response whose `x-amzn-errortype` the transport dropped — into `Unhandled`, whose `meta()` is empty and whose message hides in its source, so the conversion's catch-all reported Bedrock's end-of-life notice as `ProviderError("An unexpected error occurred. Verify Internet connection or AWS keys")` with `provider_response_body() == None`. The raw HTTP body is now the fallback on all four conversions (converse, converse-stream, invoke-model → image and embedding); a classified exception's own message still wins
+
 ### Changed
 
 - *(completion)* [**behavior**] an assistant message that converts to zero content blocks is rejected with rig-core's shared empty-response wording (via `message::require_non_empty_response`) — previously "Bedrock returned an assistant message with no content"
