@@ -30,3 +30,39 @@ async fn nonstreaming_request_id_is_none_by_design() {
     )
     .await;
 }
+
+/// Blocking/streaming parity for the `None` provider: the streamed terminal
+/// also reports no transport id — recorded absence, not a skipped surface.
+#[tokio::test]
+async fn streaming_request_id_is_none_by_design() {
+    use futures::StreamExt;
+    use rig::streaming::StreamedAssistantContent;
+
+    with_cohere_cassette(
+        "response_identity/streaming_request_id_is_none_by_design",
+        |client| async move {
+            let model = client.completion_model(CASSETTE_MODEL);
+            let mut stream = model
+                .completion_request("Reply with exactly: stream identity probe")
+                .max_tokens(32)
+                .stream()
+                .await
+                .expect("stream should open");
+
+            let mut terminal = None;
+            while let Some(item) = stream.next().await {
+                if let StreamedAssistantContent::Final(final_record) =
+                    item.expect("stream item should succeed")
+                {
+                    terminal = Some(final_record);
+                }
+            }
+            let terminal = terminal.expect("stream should yield a terminal record");
+            assert_eq!(
+                terminal.provider_request_id, None,
+                "Cohere has no adopted request-id header on either surface"
+            );
+        },
+    )
+    .await;
+}

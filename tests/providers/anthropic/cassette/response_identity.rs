@@ -236,3 +236,76 @@ async fn streamed_agent_run_hook_observes_identity() {
 fn _tool_trait_in_scope() -> &'static str {
     Adder::NAME
 }
+
+/// Live proof of the #2313 hook-coverage fix: a *streamed* tool run's
+/// tool-only turn fires no `StreamResponseFinish`, yet its
+/// `ModelTurnFinished` carries the attempt's full identity — and each of the
+/// run's attempts reports its own request id.
+#[tokio::test]
+async fn streamed_agent_tool_run_reports_per_attempt_identity() {
+    use crate::support::IdentityProbe;
+
+    with_anthropic_cassette(
+        "response_identity/streamed_agent_tool_run_reports_per_attempt_identity",
+        |client| async move {
+            let probe = IdentityProbe::default();
+            let agent = client
+                .agent(CLAUDE_SONNET_4_6)
+                .preamble(TOOLS_PREAMBLE)
+                .max_tokens(1024)
+                .tool(Adder)
+                .add_hook(probe.clone())
+                .build();
+
+            let mut stream = agent
+                .runner(Message::user(
+                    "What is 2 + 3? Use the tool, then state the result.",
+                ))
+                .max_turns(3)
+                .stream()
+                .await;
+            let mut completion_calls = Vec::new();
+            while let Some(item) = stream.next().await {
+                if let rig::agent::MultiTurnStreamItem::CompletionCall(call) =
+                    item.expect("stream item should succeed")
+                {
+                    completion_calls.push(call);
+                }
+            }
+
+            let turns = probe.turn_identities();
+            assert!(
+                turns.len() >= 2,
+                "a streamed tool run completes at least two model turns, got {}",
+                turns.len()
+            );
+            for (index, turn) in turns.iter().enumerate() {
+                assert_request_id(
+                    turn.provider_request_id.as_deref(),
+                    &format!("streamed turn {index}"),
+                );
+            }
+            assert_ne!(
+                turns[0].provider_request_id, turns[1].provider_request_id,
+                "each streamed attempt reports its own request id"
+            );
+
+            // The tool-only turn fires no StreamResponseFinish; only the
+            // final text turn does, and it agrees with that turn's identity.
+            let finishes = probe.stream_finish_identities();
+            assert_eq!(finishes.len(), 1, "one text turn, one finish event");
+            assert_eq!(
+                finishes[0].provider_request_id,
+                turns.last().expect("turns").provider_request_id
+            );
+
+            // The per-call records the stream emitted agree with the hooks.
+            assert_eq!(completion_calls.len(), turns.len());
+            for (call, turn) in completion_calls.iter().zip(&turns) {
+                assert_eq!(call.provider_request_id, turn.provider_request_id);
+                assert_eq!(call.message_id, turn.message_id);
+            }
+        },
+    )
+    .await;
+}

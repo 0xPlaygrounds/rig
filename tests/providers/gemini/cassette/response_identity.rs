@@ -62,3 +62,71 @@ async fn streaming_request_id_is_none_by_design() {
     )
     .await;
 }
+
+/// The documented `None` propagates through the agent surfaces too: hooks and
+/// `completion_calls` report `provider_request_id: None` for Gemini while the
+/// run itself succeeds — absence is data, never an error.
+#[tokio::test]
+async fn agent_run_reports_none_identity() {
+    use crate::support::IdentityProbe;
+    use rig::completion::Prompt;
+
+    with_gemini_cassette(
+        "response_identity/agent_run_reports_none_identity",
+        |client| async move {
+            let probe = IdentityProbe::default();
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You are a terse assistant.")
+                .add_hook(probe.clone())
+                .build();
+
+            let response = agent
+                .prompt("Reply with exactly: identity probe")
+                .extended_details()
+                .await
+                .expect("agent run should succeed");
+
+            let turns = probe.turn_identities();
+            assert_eq!(turns.len(), 1);
+            assert_eq!(turns[0].provider_request_id, None);
+            assert_eq!(
+                response.completion_calls[0].provider_request_id, None,
+                "Gemini reports no request-id header; None is the documented outcome"
+            );
+        },
+    )
+    .await;
+}
+
+/// Streamed parity for the `None` provider through the agent surfaces.
+#[tokio::test]
+async fn streamed_agent_run_reports_none_identity() {
+    use crate::support::IdentityProbe;
+
+    with_gemini_cassette(
+        "response_identity/streamed_agent_run_reports_none_identity",
+        |client| async move {
+            let probe = IdentityProbe::default();
+            let agent = client
+                .agent(gemini::completion::GEMINI_2_5_FLASH)
+                .preamble("You are a terse assistant.")
+                .add_hook(probe.clone())
+                .build();
+
+            let mut stream = rig::streaming::StreamingPrompt::stream_prompt(
+                &agent,
+                rig::completion::Message::user("Reply with exactly: streamed identity probe"),
+            )
+            .await;
+            while let Some(item) = stream.next().await {
+                item.expect("stream item should succeed");
+            }
+
+            let turns = probe.turn_identities();
+            assert_eq!(turns.len(), 1);
+            assert_eq!(turns[0].provider_request_id, None);
+        },
+    )
+    .await;
+}

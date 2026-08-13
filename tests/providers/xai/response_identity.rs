@@ -72,3 +72,39 @@ async fn streaming_terminal_carries_identity() {
     )
     .await;
 }
+
+/// Streamed agent run on xAI: hook turn events carry the SSE connection's
+/// transport id.
+#[tokio::test]
+async fn streamed_agent_run_reports_identity() {
+    use crate::support::{IdentityProbe, assert_transport_request_id};
+
+    with_xai_cassette(
+        "response_identity/streamed_agent_run_reports_identity",
+        |client| async move {
+            let probe = IdentityProbe::default();
+            let agent = client
+                .agent(xai::completion::GROK_3_MINI)
+                .preamble("You are a terse assistant.")
+                .add_hook(probe.clone())
+                .build();
+
+            let mut stream = rig::streaming::StreamingPrompt::stream_prompt(
+                &agent,
+                rig::completion::Message::user("Reply with exactly: streamed identity probe"),
+            )
+            .await;
+            while let Some(item) = stream.next().await {
+                item.expect("stream item should succeed");
+            }
+
+            let turns = probe.turn_identities();
+            assert_eq!(turns.len(), 1);
+            assert_transport_request_id(
+                turns[0].provider_request_id.as_deref(),
+                "xai streamed turn",
+            );
+        },
+    )
+    .await;
+}

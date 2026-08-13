@@ -1439,6 +1439,51 @@ carried:
   "Persisted histories" bullet in the tool-call identity section above for
   what a legacy `call_id` key now means and how to migrate the JSON by hand.
 
+### Response identity metadata reaches agent observers (#2265)
+
+Completed model calls now report a `rig_core::completion::ResponseIdentity`
+(message-scoped id, response-scoped id, and the provider's transport request
+id) on hook events and `PromptResponse.completion_calls`. Three source-level
+breaks come with it:
+
+- **`CompletionCall` is no longer `Copy`** — it carries owned identity
+  strings. Replace `.copied()` with `.cloned()` (or borrow):
+
+  ```rust
+  // Was
+  let last = response.completion_calls().last().copied();
+  // Now
+  let last = response.completion_calls().last().cloned();
+  ```
+
+  Persisted call records are unaffected: the new `message_id`, `response_id`,
+  and `provider_request_id` fields are serde-defaulted, so pre-identity JSON
+  still loads (with each field `None`).
+
+- **`AgentRun::record_streamed_completion_call` takes the attempt's identity
+  as a second argument.** Hand-driven streaming drivers pass the identity
+  read from their stream's terminal record; pass
+  `ResponseIdentity::default()` when the provider reported none:
+
+  ```rust
+  // Was
+  run.record_streamed_completion_call(usage)?;
+  // Now
+  run.record_streamed_completion_call(usage, ResponseIdentity {
+      message_id: stream.message_id.clone(),
+      response_id: terminal.and_then(|t| t.response_id.clone()),
+      provider_request_id: terminal.and_then(|t| t.provider_request_id.clone()),
+  })?;
+  ```
+
+- **The `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished`
+  hook events gain an `identity: &ResponseIdentity` field.** Hooks that only
+  *read* events are unaffected; code constructing these events by hand (test
+  harnesses) must supply the field — `&ResponseIdentity::default()` preserves
+  the old no-identity behavior. `ModelTurnFinished` now carries identity for
+  every accepted turn on both surfaces, so an observer of that one event
+  records identity for every completed call.
+
 ---
 
 ## 0.40 → 0.41

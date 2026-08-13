@@ -132,3 +132,82 @@ async fn chat_completions_streaming_carries_identity() {
     )
     .await;
 }
+
+/// Agent-run reachability on OpenAI (Responses API): a two-call tool run's
+/// hooks and `completion_calls` report distinct per-attempt request ids.
+#[tokio::test]
+async fn agent_tool_run_reports_per_attempt_identity() {
+    use crate::support::{Adder, IdentityProbe, TOOLS_PREAMBLE};
+    use rig::completion::Prompt;
+
+    with_openai_cassette(
+        "response_identity/agent_tool_run_reports_per_attempt_identity",
+        |client| async move {
+            let probe = IdentityProbe::default();
+            let agent = client
+                .agent(openai::GPT_4O)
+                .preamble(TOOLS_PREAMBLE)
+                .tool(Adder)
+                .add_hook(probe.clone())
+                .build();
+
+            let response = agent
+                .prompt("What is 2 + 3? Use the tool, then state the result.")
+                .max_turns(3)
+                .extended_details()
+                .await
+                .expect("agent run should succeed");
+
+            let turns = probe.turn_identities();
+            assert!(turns.len() >= 2, "tool run makes at least two calls");
+            for turn in &turns {
+                assert_request_id(turn.provider_request_id.as_deref(), "turn identity");
+            }
+            assert_ne!(turns[0].provider_request_id, turns[1].provider_request_id);
+            let calls = &response.completion_calls;
+            assert_eq!(calls.len(), turns.len());
+            for (call, turn) in calls.iter().zip(&turns) {
+                assert_eq!(call.provider_request_id, turn.provider_request_id);
+                assert_eq!(call.response_id, turn.response_id);
+            }
+        },
+    )
+    .await;
+}
+
+/// Streamed agent run on OpenAI: the turn event carries the attempt's
+/// identity from the SSE connection's headers.
+#[tokio::test]
+async fn streamed_agent_run_reports_identity() {
+    use crate::support::IdentityProbe;
+    use futures::StreamExt as _;
+
+    with_openai_cassette(
+        "response_identity/streamed_agent_run_reports_identity",
+        |client| async move {
+            let probe = IdentityProbe::default();
+            let agent = client
+                .agent(openai::GPT_4O)
+                .preamble("You are a terse assistant.")
+                .add_hook(probe.clone())
+                .build();
+
+            let mut stream = rig::streaming::StreamingPrompt::stream_prompt(
+                &agent,
+                rig::completion::Message::user("Reply with exactly: streamed identity probe"),
+            )
+            .await;
+            while let Some(item) = stream.next().await {
+                item.expect("stream item should succeed");
+            }
+
+            let turns = probe.turn_identities();
+            assert_eq!(turns.len(), 1);
+            assert_request_id(turns[0].provider_request_id.as_deref(), "streamed turn");
+            let finishes = probe.stream_finish_identities();
+            assert_eq!(finishes.len(), 1);
+            assert_eq!(finishes[0], turns[0]);
+        },
+    )
+    .await;
+}

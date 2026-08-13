@@ -1462,7 +1462,16 @@ impl AgentRun {
             // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
             // so routing the no-usage fallback through `record_completion_call`
             // leaves the run total unchanged while unifying the accounting.
-            self.record_completion_call(Usage::new(), ResponseIdentity::default());
+            // Identity carries the turn's message id — the same value written
+            // into run history below — so `completion_calls` and `messages()`
+            // agree even for a hand-driven driver that never recorded usage.
+            self.record_completion_call(
+                Usage::new(),
+                ResponseIdentity {
+                    message_id: turn.message_id.clone(),
+                    ..ResponseIdentity::default()
+                },
+            );
             self.streamed_completion_call_recorded = true;
         }
 
