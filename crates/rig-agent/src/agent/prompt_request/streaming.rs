@@ -463,7 +463,8 @@ where
         // Run-scoped hook context: minted once, shared by every hook event on
         // both surfaces. `is_streaming` records which surface is driving; the
         // per-turn index is advanced on each `CallModel` step below.
-        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone())
+            .with_conversation_id(runner.conversation_id.clone());
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
@@ -1385,6 +1386,12 @@ impl TurnSource for StreamingTurnSource {
                                 content: &streamed_turn.choice,
                                 usage: last_usage,
                                 message_id: streamed_turn.message_id.as_deref(),
+                                // Only the terminal record names the response;
+                                // a stream cut short simply reports none.
+                                response_id: stream
+                                    .response
+                                    .as_ref()
+                                    .and_then(|final_record| final_record.response_id.as_deref()),
                             },
                         )
                         .await,
