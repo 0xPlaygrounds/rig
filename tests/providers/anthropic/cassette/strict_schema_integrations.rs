@@ -318,6 +318,47 @@ async fn automatic_prompt_caching_coexists_with_strict_tools() {
 }
 
 #[tokio::test]
+async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
+    with_anthropic_cassette(
+        "strict_schema_integrations/static_prefix_ttl_caching_coexists_with_strict_tools",
+        |client| async move {
+            let model = client
+                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
+                .with_automatic_caching()
+                .with_static_prefix_cache_ttl(
+                    rig::providers::anthropic::completion::CacheTtl::OneHour,
+                )
+                .with_strict_tools();
+            // The preamble must clear the model's minimum cacheable prompt
+            // length or the API silently skips caching and the recorded
+            // counters prove nothing.
+            let padding = "This strict-tool cache fixture paragraph is stable provider test \
+                           padding about request routing, tool schemas, system instructions, \
+                           and deterministic replay behavior. "
+                .repeat(60);
+            let request = model
+                .completion_request("Call cached_strict with value = static-prefix.")
+                .preamble(format!("Use the strict tool exactly once.\n{padding}"))
+                .max_tokens(1024)
+                .tool_choice(ToolChoice::Required)
+                .tool(strict_value_tool("cached_strict"))
+                .build();
+
+            let response = model
+                .completion(request)
+                .await
+                .expect("a 1h static prefix and strict tools should coexist");
+            assert_one_call(
+                &response,
+                "cached_strict",
+                &json!({ "value": "static-prefix" }),
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn one_hour_automatic_caching_coexists_with_strict_tools() {
     with_anthropic_cassette(
         "strict_schema_integrations/one_hour_automatic_caching_coexists_with_strict_tools",
