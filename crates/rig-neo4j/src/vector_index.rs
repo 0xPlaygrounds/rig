@@ -185,33 +185,6 @@ where
     }
 }
 
-/// Search parameters for a vector search. Neo4j currently only supports post-vector-search filtering.
-pub struct SearchParams {
-    /// Sets the **post-filter** field of the search params. Uses a WHERE clause.
-    /// See [Neo4j WHERE clause](https://neo4j.com/docs/cypher-manual/current/clauses/where/) for more information.
-    post_vector_search_filter: Option<String>,
-}
-
-impl SearchParams {
-    /// Initializes a new `SearchParams` with default values.
-    pub fn new(filter: Option<String>) -> Self {
-        Self {
-            post_vector_search_filter: filter,
-        }
-    }
-
-    pub fn filter(mut self, filter: String) -> Self {
-        self.post_vector_search_filter = Some(filter);
-        self
-    }
-}
-
-impl Default for SearchParams {
-    fn default() -> Self {
-        Self::new(None)
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct RowResultNode<T> {
     score: f64,
@@ -340,7 +313,7 @@ where
         self.graph
             .run(neo4rs::query(&insert_documents_query(node_label)).param("items", items))
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         Ok(())
     }

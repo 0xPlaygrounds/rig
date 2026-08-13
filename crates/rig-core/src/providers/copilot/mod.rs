@@ -33,9 +33,7 @@ use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::openai;
 use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
 use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::{
-    CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
-};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use futures::StreamExt;
 use http::Request;
@@ -562,7 +560,7 @@ fn route_for_model(model: &str) -> CompletionRoute {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "api", rename_all = "snake_case")]
 pub enum CopilotCompletionResponse {
-    Chat(Box<ChatCompletionResponse>),
+    Chat(Box<openai::completion::CompletionResponse>),
     Responses(Box<responses_api::CompletionResponse>),
 }
 
@@ -593,107 +591,8 @@ impl From<(&str, CopilotStreamingResponse)> for crate::streaming::StreamFinal {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatCompletionResponse {
-    pub id: String,
-    #[serde(default)]
-    pub object: Option<String>,
-    #[serde(default)]
-    pub created: Option<u64>,
-    pub model: String,
-    pub system_fingerprint: Option<String>,
-    pub choices: Vec<ChatChoice>,
-    pub usage: Option<openai::completion::Usage>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ChatChoice {
-    #[serde(default)]
-    pub index: usize,
-    pub message: openai::completion::Message,
-    pub logprobs: Option<serde_json::Value>,
-    #[serde(default)]
-    pub finish_reason: Option<String>,
-}
-
 /// Stable descriptor name reported on normalized Copilot responses.
 pub const PROVIDER_NAME: &str = "copilot";
-
-impl From<ChatChoice> for openai::completion::Choice {
-    fn from(choice: ChatChoice) -> Self {
-        Self {
-            index: choice.index,
-            message: choice.message,
-            logprobs: choice.logprobs,
-            // OpenAI's normalization treats an empty `finish_reason` as
-            // absent, so Copilot's optional field folds onto it losslessly.
-            finish_reason: choice.finish_reason.unwrap_or_default(),
-        }
-    }
-}
-
-impl From<ChatCompletionResponse> for openai::completion::CompletionResponse {
-    fn from(response: ChatCompletionResponse) -> Self {
-        Self {
-            id: response.id,
-            object: response.object.unwrap_or_default(),
-            created: response.created.unwrap_or_default(),
-            model: response.model,
-            system_fingerprint: response.system_fingerprint,
-            choices: response.choices.into_iter().map(Into::into).collect(),
-            usage: response.usage,
-        }
-    }
-}
-
-impl TryFrom<ChatCompletionResponse> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from(response: ChatCompletionResponse) -> Result<Self, Self::Error> {
-        // Copilot's chat route speaks OpenAI's chat-completions wire (with a
-        // few fields optional), so normalization is OpenAI's, under Copilot's
-        // own provider name.
-        openai::completion::CompletionResponse::from(response).normalize(PROVIDER_NAME)
-    }
-}
-
-impl ProviderResponseExt for ChatCompletionResponse {
-    type OutputMessage = ChatChoice;
-    type Usage = openai::completion::Usage;
-
-    fn get_response_id(&self) -> Option<String> {
-        Some(self.id.clone())
-    }
-
-    fn get_response_model_name(&self) -> Option<String> {
-        Some(self.model.clone())
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.choices.clone()
-    }
-
-    fn get_text_response(&self) -> Option<String> {
-        let response = self
-            .choices
-            .iter()
-            .filter_map(|choice| {
-                openai::completion::assistant_message_text_response(&choice.message)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if response.is_empty() {
-            None
-        } else {
-            Some(response)
-        }
-    }
-
-    fn get_usage(&self) -> Option<Self::Usage> {
-        self.usage.clone()
-    }
-}
 
 #[derive(Debug, Deserialize)]
 pub struct ChatApiErrorResponse {
@@ -820,7 +719,7 @@ where
     async fn raw_completion_chat(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<ChatCompletionResponse, CompletionError> {
+    ) -> Result<openai::completion::CompletionResponse, CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
@@ -847,7 +746,9 @@ where
             let status = response.status();
             if status.is_success() {
                 let body = http_client::text(response).await?;
-                match serde_json::from_str::<ChatApiResponse<ChatCompletionResponse>>(&body)? {
+                match serde_json::from_str::<ChatApiResponse<openai::completion::CompletionResponse>>(
+                    &body,
+                )? {
                     ChatApiResponse::Ok(response) => {
                         let span = tracing::Span::current();
                         span.record_response_metadata(&response);
@@ -1089,7 +990,7 @@ where
             CompletionRoute::ChatCompletions => self
                 .raw_completion_chat(completion_request)
                 .await?
-                .try_into(),
+                .normalize(PROVIDER_NAME),
             CompletionRoute::Responses => self
                 .raw_completion_responses(completion_request)
                 .await?
@@ -1403,9 +1304,9 @@ use crate::providers::internal::auth::config_dir;
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatApiErrorResponse, ChatCompletionResponse, Client, CompletionRoute, CopilotIntent,
-        TEXT_EMBEDDING_3_SMALL, base_url_from_token, default_headers, env_api_key, env_base_url,
-        env_github_access_token, route_for_model,
+        ChatApiErrorResponse, Client, CompletionRoute, CopilotIntent, TEXT_EMBEDDING_3_SMALL,
+        base_url_from_token, default_headers, env_api_key, env_base_url, env_github_access_token,
+        route_for_model,
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
@@ -1413,6 +1314,7 @@ mod tests {
     use crate::providers::internal::openai_chat_completions_compatible::test_support::{
         sse_bytes_from_data_lines, sse_bytes_from_json_events,
     };
+    use crate::providers::openai;
     use crate::streaming::StreamedAssistantContent;
     use crate::test_utils::MockStreamingClient;
     use crate::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
@@ -1516,24 +1418,25 @@ mod tests {
             }
         }"#;
 
-        let response: ChatCompletionResponse =
+        let response: openai::completion::CompletionResponse =
             serde_json::from_str(json).expect("standard OpenAI response should deserialize");
         assert_eq!(response.id, "chatcmpl-abc123");
-        assert_eq!(response.object.as_deref(), Some("chat.completion"));
-        assert_eq!(response.created, Some(1700000000));
+        assert_eq!(response.object, "chat.completion");
+        assert_eq!(response.created, 1700000000);
         assert_eq!(response.model, "gpt-4o");
         assert_eq!(response.choices.len(), 1);
-        assert_eq!(response.choices[0].finish_reason.as_deref(), Some("stop"));
+        assert_eq!(response.choices[0].finish_reason, "stop");
     }
 
     #[test]
     fn deserialize_copilot_response_without_object_and_created() {
-        let response: ChatCompletionResponse = serde_json::from_str(minimal_chat_response())
-            .expect("Copilot response should deserialize");
+        let response: openai::completion::CompletionResponse =
+            serde_json::from_str(minimal_chat_response())
+                .expect("Copilot response should deserialize");
 
         assert_eq!(response.id, "chatcmpl-123");
-        assert_eq!(response.object, None);
-        assert_eq!(response.created, None);
+        assert_eq!(response.object, "");
+        assert_eq!(response.created, 0);
         assert_eq!(response.model, "gpt-4o");
         assert_eq!(response.choices.len(), 1);
     }
@@ -1555,11 +1458,11 @@ mod tests {
             }
         }"#;
 
-        let response: ChatCompletionResponse =
+        let response: openai::completion::CompletionResponse =
             serde_json::from_str(json).expect("Claude-via-Copilot response should deserialize");
 
         assert_eq!(response.model, "claude-3.5-sonnet");
-        assert_eq!(response.choices[0].finish_reason, None);
+        assert_eq!(response.choices[0].finish_reason, "");
         assert_eq!(response.choices[0].index, 0);
     }
 

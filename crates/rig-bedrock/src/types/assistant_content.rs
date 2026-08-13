@@ -19,7 +19,9 @@ use rig_core::telemetry::ProviderResponseExt;
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AwsConverseOutput(pub InternalConverseOutput);
 
-fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
+/// Normalize Bedrock token counts into rig's usage record. Shared by the
+/// unary response path and the streaming terminal record.
+pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
     completion::Usage {
         input_tokens: usage.input_tokens as u64,
         output_tokens: usage.output_tokens as u64,

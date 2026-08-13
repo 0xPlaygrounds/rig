@@ -1,6 +1,6 @@
-use crate::types::assistant_content::{PROVIDER_NAME, map_stop_reason};
+use crate::types::assistant_content::{PROVIDER_NAME, map_stop_reason, normalize_usage};
 use crate::types::completion_request::AwsCompletionRequest;
-use crate::types::converse_output::StopReason;
+use crate::types::converse_output::{StopReason, TokenUsage};
 use crate::{
     completion::{CompletionModel, resolve_request_model},
     types::errors::{AwsSdkConverseStreamError, converse_stream_output_completion_error},
@@ -24,22 +24,11 @@ use tracing_futures::Instrument;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BedrockStreamingResponse {
-    pub usage: Option<BedrockUsage>,
+    pub usage: Option<TokenUsage>,
     /// Bedrock's own `stopReason` from the terminal `MessageStop` event, when
     /// the stream reported one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<StopReason>,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct BedrockUsage {
-    pub input_tokens: i32,
-    pub output_tokens: i32,
-    pub total_tokens: i32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_read_input_tokens: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_write_input_tokens: Option<i32>,
 }
 
 impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
@@ -47,15 +36,7 @@ impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
         response
             .usage
             .as_ref()
-            .map(|u| rig_core::completion::Usage {
-                input_tokens: u.input_tokens as u64,
-                output_tokens: u.output_tokens as u64,
-                total_tokens: u.total_tokens as u64,
-                cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
-                cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
+            .map(normalize_usage)
             .unwrap_or_default()
     }
 }
@@ -335,13 +316,10 @@ fn process_event(
             // Extract usage information from metadata; a missing usage still
             // yields a terminal record so the stream ends with a FinalResponse.
             let final_response = BedrockStreamingResponse {
-                usage: metadata_event.usage.map(|usage| BedrockUsage {
-                    input_tokens: usage.input_tokens,
-                    output_tokens: usage.output_tokens,
-                    total_tokens: usage.total_tokens,
-                    cache_read_input_tokens: usage.cache_read_input_tokens,
-                    cache_write_input_tokens: usage.cache_write_input_tokens,
-                }),
+                // The mirror conversion is infallible for `TokenUsage`.
+                usage: metadata_event
+                    .usage
+                    .and_then(|usage| TokenUsage::try_from(usage).ok()),
                 stop_reason: state.final_stop_reason.clone(),
             };
             items.push(Ok(RawStreamingChoice::FinalResponse(final_response)));
@@ -714,7 +692,7 @@ mod tests {
 
     #[test]
     fn test_bedrock_usage_creation() {
-        let usage = BedrockUsage {
+        let usage = TokenUsage {
             input_tokens: 100,
             output_tokens: 50,
             total_tokens: 150,
@@ -730,7 +708,7 @@ mod tests {
     #[test]
     fn test_bedrock_streaming_response_with_usage() {
         let response = BedrockStreamingResponse {
-            usage: Some(BedrockUsage {
+            usage: Some(TokenUsage {
                 input_tokens: 200,
                 output_tokens: 75,
                 total_tokens: 275,
@@ -773,7 +751,7 @@ mod tests {
     #[test]
     fn test_streaming_response_normalizes_usage() {
         let response = BedrockStreamingResponse {
-            usage: Some(BedrockUsage {
+            usage: Some(TokenUsage {
                 input_tokens: 448,
                 output_tokens: 68,
                 total_tokens: 516,
@@ -800,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_bedrock_usage_serde() {
-        let usage = BedrockUsage {
+        let usage = TokenUsage {
             input_tokens: 100,
             output_tokens: 50,
             total_tokens: 150,
@@ -815,7 +793,7 @@ mod tests {
         assert!(json.contains("\"total_tokens\":150"));
 
         // Test deserialization
-        let deserialized: BedrockUsage = serde_json::from_str(&json).expect("Should deserialize");
+        let deserialized: TokenUsage = serde_json::from_str(&json).expect("Should deserialize");
         assert_eq!(deserialized.input_tokens, usage.input_tokens);
         assert_eq!(deserialized.output_tokens, usage.output_tokens);
         assert_eq!(deserialized.total_tokens, usage.total_tokens);
@@ -832,7 +810,7 @@ mod tests {
     #[test]
     fn test_bedrock_streaming_response_serde() {
         let response = BedrockStreamingResponse {
-            usage: Some(BedrockUsage {
+            usage: Some(TokenUsage {
                 input_tokens: 200,
                 output_tokens: 75,
                 total_tokens: 275,

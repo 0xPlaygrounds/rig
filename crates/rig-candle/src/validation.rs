@@ -353,7 +353,7 @@ pub(crate) fn validate_gguf_metadata(
     tokenizer: &Tokenizer,
     definition: &ProfileDefinition,
 ) -> Result<(), CandleError> {
-    let expected = [
+    let dims = [
         ("llama.vocab_size", config.vocab_size),
         ("llama.embedding_length", config.hidden_size),
         ("llama.feed_forward_length", config.intermediate_size),
@@ -366,27 +366,44 @@ pub(crate) fn validate_gguf_metadata(
             config.hidden_size / config.num_attention_heads,
         ),
     ];
-    for (key, expected) in expected {
+    let floats = [
+        ("llama.rope.freq_base", config.rope_theta as f64),
+        (
+            "llama.attention.layer_norm_rms_epsilon",
+            config.rms_norm_eps,
+        ),
+    ];
+    validate_gguf_common(
+        content,
+        &dims,
+        &floats,
+        definition,
+        tokenizer,
+        config.vocab_size,
+        false,
+    )
+}
+
+fn validate_gguf_common(
+    content: &gguf_file::Content,
+    dims: &[(&str, usize)],
+    floats: &[(&str, f64)],
+    definition: &ProfileDefinition,
+    tokenizer: &Tokenizer,
+    vocab_size: usize,
+    allow_padding: bool,
+) -> Result<(), CandleError> {
+    for (key, expected) in dims {
         let actual = metadata_usize(content, key)?;
-        if actual != expected {
+        if actual != *expected {
             return Err(CandleError::ArtifactMismatch {
                 artifact: "model.gguf",
                 reason: format!("metadata `{key}` is {actual}, but config requires {expected}"),
             });
         }
     }
-    for (key, actual, expected) in [
-        (
-            "llama.rope.freq_base",
-            metadata_f64(content, "llama.rope.freq_base")?,
-            config.rope_theta as f64,
-        ),
-        (
-            "llama.attention.layer_norm_rms_epsilon",
-            metadata_f64(content, "llama.attention.layer_norm_rms_epsilon")?,
-            config.rms_norm_eps,
-        ),
-    ] {
+    for (key, expected) in floats {
+        let actual = metadata_f64(content, key)?;
         if (actual - expected).abs() > 1e-5 * expected.abs().max(f64::MIN_POSITIVE) {
             return Err(CandleError::ArtifactMismatch {
                 artifact: "model.gguf",
@@ -394,59 +411,11 @@ pub(crate) fn validate_gguf_metadata(
             });
         }
     }
-    let requirements = definition.gguf.as_ref().ok_or_else(|| {
-        CandleError::UnsupportedModelFamily(format!(
-            "{} does not support GGUF artifacts",
-            definition.name
-        ))
-    })?;
+    let requirements = gguf_requirements(definition)?;
     for requirement in requirements.metadata_strings {
         require_metadata_string(content, requirement.key, requirement.value)?;
     }
-    let tokens = match content.metadata.get("tokenizer.ggml.tokens") {
-        Some(gguf_file::Value::Array(tokens)) => tokens,
-        Some(value) => {
-            return Err(CandleError::InvalidQuantizedCheckpoint(format!(
-                "metadata `tokenizer.ggml.tokens` must be an array, found {value:?}"
-            )));
-        }
-        None => {
-            return Err(CandleError::InvalidQuantizedCheckpoint(
-                "missing `tokenizer.ggml.tokens` metadata".to_string(),
-            ));
-        }
-    };
-    if tokens.len() != config.vocab_size {
-        return Err(CandleError::ArtifactMismatch {
-            artifact: "model.gguf",
-            reason: format!(
-                "GGUF tokenizer has {} tokens, but config requires {}",
-                tokens.len(),
-                config.vocab_size
-            ),
-        });
-    }
-    for (id, value) in tokens.iter().enumerate() {
-        let gguf_token = match value {
-            gguf_file::Value::String(token) => token,
-            value => {
-                return Err(CandleError::InvalidQuantizedCheckpoint(format!(
-                    "tokenizer.ggml.tokens[{id}] must be a string, found {value:?}"
-                )));
-            }
-        };
-        let id = u32::try_from(id).map_err(|_| {
-            CandleError::InvalidQuantizedCheckpoint(
-                "GGUF tokenizer index does not fit in u32".to_string(),
-            )
-        })?;
-        if tokenizer.id_to_token(id).as_deref() != Some(gguf_token.as_str()) {
-            return Err(CandleError::ArtifactMismatch {
-                artifact: "tokenizer.json",
-                reason: format!("token ID {id} does not match the GGUF tokenizer vocabulary"),
-            });
-        }
-    }
+    validate_gguf_tokenizer_vocabulary(content, vocab_size, tokenizer, allow_padding)?;
     for (key, token) in [
         ("tokenizer.ggml.bos_token_id", definition.start_token),
         ("tokenizer.ggml.eos_token_id", definition.end_token),
@@ -471,7 +440,7 @@ pub(crate) fn validate_qwen3_gguf_metadata(
     tokenizer: &Tokenizer,
     definition: &ProfileDefinition,
 ) -> Result<(), CandleError> {
-    let expected = [
+    let dims = [
         ("qwen3.embedding_length", config.hidden_size),
         ("qwen3.feed_forward_length", config.intermediate_size),
         ("qwen3.block_count", config.num_hidden_layers),
@@ -481,59 +450,23 @@ pub(crate) fn validate_qwen3_gguf_metadata(
         ("qwen3.attention.value_length", config.head_dim),
         ("qwen3.context_length", config.max_position_embeddings),
     ];
-    for (key, expected) in expected {
-        let actual = metadata_usize(content, key)?;
-        if actual != expected {
-            return Err(CandleError::ArtifactMismatch {
-                artifact: "model.gguf",
-                reason: format!("metadata `{key}` is {actual}, but config requires {expected}"),
-            });
-        }
-    }
-    for (key, actual, expected) in [
-        (
-            "qwen3.rope.freq_base",
-            metadata_f64(content, "qwen3.rope.freq_base")?,
-            config.rope_theta,
-        ),
+    let floats = [
+        ("qwen3.rope.freq_base", config.rope_theta),
         (
             "qwen3.attention.layer_norm_rms_epsilon",
-            metadata_f64(content, "qwen3.attention.layer_norm_rms_epsilon")?,
             config.rms_norm_eps,
         ),
-    ] {
-        if (actual - expected).abs() > 1e-5 * expected.abs().max(f64::MIN_POSITIVE) {
-            return Err(CandleError::ArtifactMismatch {
-                artifact: "model.gguf",
-                reason: format!("metadata `{key}` is {actual}, but config requires {expected}"),
-            });
-        }
-    }
-    let requirements = definition.gguf.as_ref().ok_or_else(|| {
-        CandleError::UnsupportedModelFamily(format!(
-            "{} does not support GGUF artifacts",
-            definition.name
-        ))
-    })?;
-    for requirement in requirements.metadata_strings {
-        require_metadata_string(content, requirement.key, requirement.value)?;
-    }
-    validate_gguf_tokenizer_vocabulary(content, config.vocab_size, tokenizer)?;
-    for (key, token) in [
-        ("tokenizer.ggml.bos_token_id", definition.start_token),
-        ("tokenizer.ggml.eos_token_id", definition.end_token),
-    ] {
-        let actual = metadata_usize(content, key)?;
-        let expected = tokenizer
-            .token_to_id(token)
-            .ok_or(CandleError::MissingSpecialToken { token })? as usize;
-        if actual != expected {
-            return Err(CandleError::ArtifactMismatch {
-                artifact: "model.gguf",
-                reason: format!("metadata `{key}` is {actual}, but tokenizer requires {expected}"),
-            });
-        }
-    }
+    ];
+    validate_gguf_common(
+        content,
+        &dims,
+        &floats,
+        definition,
+        tokenizer,
+        config.vocab_size,
+        true,
+    )?;
+    let requirements = gguf_requirements(definition)?;
     match content.metadata.get("tokenizer.chat_template") {
         Some(gguf_file::Value::String(template))
             if requirements
@@ -555,10 +488,22 @@ pub(crate) fn validate_qwen3_gguf_metadata(
     Ok(())
 }
 
+fn gguf_requirements(
+    definition: &ProfileDefinition,
+) -> Result<&crate::profile::GgufRequirements, CandleError> {
+    definition.gguf.as_ref().ok_or_else(|| {
+        CandleError::UnsupportedModelFamily(format!(
+            "{} does not support GGUF artifacts",
+            definition.name
+        ))
+    })
+}
+
 pub(crate) fn validate_gguf_tokenizer_vocabulary(
     content: &gguf_file::Content,
     vocab_size: usize,
     tokenizer: &Tokenizer,
+    allow_padding: bool,
 ) -> Result<(), CandleError> {
     let tokens = match content.metadata.get("tokenizer.ggml.tokens") {
         Some(gguf_file::Value::Array(tokens)) => tokens,
@@ -597,15 +542,20 @@ pub(crate) fn validate_gguf_tokenizer_vocabulary(
             )
         })?;
         let matches = tokenizer.id_to_token(id).map_or_else(
-            || *gguf_token == format!("[PAD{id}]"),
+            || allow_padding && *gguf_token == format!("[PAD{id}]"),
             |token| token == gguf_token.as_str(),
         );
         if !matches {
+            let reason = if allow_padding {
+                format!(
+                    "token ID {id} does not match the GGUF tokenizer vocabulary or its required padding token"
+                )
+            } else {
+                format!("token ID {id} does not match the GGUF tokenizer vocabulary")
+            };
             return Err(CandleError::ArtifactMismatch {
                 artifact: "tokenizer.json",
-                reason: format!(
-                    "token ID {id} does not match the GGUF tokenizer vocabulary or its required padding token"
-                ),
+                reason,
             });
         }
     }
@@ -662,17 +612,63 @@ pub(crate) fn require_metadata_string(
     }
 }
 
+/// Per-layer weight shapes shared by the Llama-architecture GGUF and
+/// safetensors layouts: (GGUF suffix, safetensors suffix, shape).
+fn llama_layer_shapes(config: &Config) -> [(&'static str, &'static str, Vec<usize>); 9] {
+    let hidden = config.hidden_size;
+    let intermediate = config.intermediate_size;
+    let kv_size = (hidden / config.num_attention_heads) * config.num_key_value_heads;
+    [
+        (
+            "attn_q.weight",
+            "self_attn.q_proj.weight",
+            vec![hidden, hidden],
+        ),
+        (
+            "attn_k.weight",
+            "self_attn.k_proj.weight",
+            vec![kv_size, hidden],
+        ),
+        (
+            "attn_v.weight",
+            "self_attn.v_proj.weight",
+            vec![kv_size, hidden],
+        ),
+        (
+            "attn_output.weight",
+            "self_attn.o_proj.weight",
+            vec![hidden, hidden],
+        ),
+        (
+            "ffn_gate.weight",
+            "mlp.gate_proj.weight",
+            vec![intermediate, hidden],
+        ),
+        (
+            "ffn_down.weight",
+            "mlp.down_proj.weight",
+            vec![hidden, intermediate],
+        ),
+        (
+            "ffn_up.weight",
+            "mlp.up_proj.weight",
+            vec![intermediate, hidden],
+        ),
+        ("attn_norm.weight", "input_layernorm.weight", vec![hidden]),
+        (
+            "ffn_norm.weight",
+            "post_attention_layernorm.weight",
+            vec![hidden],
+        ),
+    ]
+}
+
 pub(crate) fn validate_gguf_tensors(
     content: &gguf_file::Content,
     config: &Config,
     definition: &ProfileDefinition,
 ) -> Result<(), CandleError> {
-    let requirements = definition.gguf.as_ref().ok_or_else(|| {
-        CandleError::UnsupportedModelFamily(format!(
-            "{} does not support GGUF artifacts",
-            definition.name
-        ))
-    })?;
+    let requirements = gguf_requirements(definition)?;
     for (name, tensor) in &content.tensor_infos {
         if !requirements
             .allowed_tensor_dtypes
@@ -707,37 +703,9 @@ pub(crate) fn validate_gguf_tensors(
             &[config.vocab_size, config.hidden_size],
         )?;
     }
-    let head_dim = config.hidden_size / config.num_attention_heads;
-    let kv_size = head_dim * config.num_key_value_heads;
     for layer in 0..config.num_hidden_layers {
-        let prefix = format!("blk.{layer}");
-        for (suffix, shape) in [
-            (
-                "attn_q.weight",
-                vec![config.hidden_size, config.hidden_size],
-            ),
-            ("attn_k.weight", vec![kv_size, config.hidden_size]),
-            ("attn_v.weight", vec![kv_size, config.hidden_size]),
-            (
-                "attn_output.weight",
-                vec![config.hidden_size, config.hidden_size],
-            ),
-            (
-                "ffn_gate.weight",
-                vec![config.intermediate_size, config.hidden_size],
-            ),
-            (
-                "ffn_down.weight",
-                vec![config.hidden_size, config.intermediate_size],
-            ),
-            (
-                "ffn_up.weight",
-                vec![config.intermediate_size, config.hidden_size],
-            ),
-            ("attn_norm.weight", vec![config.hidden_size]),
-            ("ffn_norm.weight", vec![config.hidden_size]),
-        ] {
-            validate_gguf_tensor(content, &format!("{prefix}.{suffix}"), &shape)?;
+        for (suffix, _, shape) in &llama_layer_shapes(config) {
+            validate_gguf_tensor(content, &format!("blk.{layer}.{suffix}"), shape)?;
         }
     }
     Ok(())
@@ -748,12 +716,7 @@ pub(crate) fn validate_qwen3_gguf_tensors(
     config: &Qwen3Config,
     definition: &ProfileDefinition,
 ) -> Result<(), CandleError> {
-    let requirements = definition.gguf.as_ref().ok_or_else(|| {
-        CandleError::UnsupportedModelFamily(format!(
-            "{} does not support GGUF artifacts",
-            definition.name
-        ))
-    })?;
+    let requirements = gguf_requirements(definition)?;
     for (name, tensor) in &content.tensor_infos {
         if !requirements
             .allowed_tensor_dtypes
@@ -805,68 +768,29 @@ pub(crate) fn validate_qwen3_gguf_tensors(
         &[config.hidden_size],
         requirements.norm_dtypes,
     )?;
+    let (hidden, intermediate) = (config.hidden_size, config.intermediate_size);
     let query_size = config.num_attention_heads * config.head_dim;
     let kv_size = config.num_key_value_heads * config.head_dim;
+    let (matrix, mixed, norm) = (
+        requirements.matrix_dtypes,
+        requirements.mixed_matrix_dtypes,
+        requirements.norm_dtypes,
+    );
     for layer in 0..config.num_hidden_layers {
-        let prefix = format!("blk.{layer}");
         for (suffix, shape, dtypes) in [
-            (
-                "attn_q.weight",
-                vec![query_size, config.hidden_size],
-                requirements.matrix_dtypes,
-            ),
-            (
-                "attn_k.weight",
-                vec![kv_size, config.hidden_size],
-                requirements.matrix_dtypes,
-            ),
-            (
-                "attn_v.weight",
-                vec![kv_size, config.hidden_size],
-                requirements.mixed_matrix_dtypes,
-            ),
-            (
-                "attn_output.weight",
-                vec![config.hidden_size, query_size],
-                requirements.matrix_dtypes,
-            ),
-            (
-                "attn_q_norm.weight",
-                vec![config.head_dim],
-                requirements.norm_dtypes,
-            ),
-            (
-                "attn_k_norm.weight",
-                vec![config.head_dim],
-                requirements.norm_dtypes,
-            ),
-            (
-                "ffn_gate.weight",
-                vec![config.intermediate_size, config.hidden_size],
-                requirements.matrix_dtypes,
-            ),
-            (
-                "ffn_down.weight",
-                vec![config.hidden_size, config.intermediate_size],
-                requirements.mixed_matrix_dtypes,
-            ),
-            (
-                "ffn_up.weight",
-                vec![config.intermediate_size, config.hidden_size],
-                requirements.matrix_dtypes,
-            ),
-            (
-                "attn_norm.weight",
-                vec![config.hidden_size],
-                requirements.norm_dtypes,
-            ),
-            (
-                "ffn_norm.weight",
-                vec![config.hidden_size],
-                requirements.norm_dtypes,
-            ),
+            ("attn_q.weight", vec![query_size, hidden], matrix),
+            ("attn_k.weight", vec![kv_size, hidden], matrix),
+            ("attn_v.weight", vec![kv_size, hidden], mixed),
+            ("attn_output.weight", vec![hidden, query_size], matrix),
+            ("attn_q_norm.weight", vec![config.head_dim], norm),
+            ("attn_k_norm.weight", vec![config.head_dim], norm),
+            ("ffn_gate.weight", vec![intermediate, hidden], matrix),
+            ("ffn_down.weight", vec![hidden, intermediate], mixed),
+            ("ffn_up.weight", vec![intermediate, hidden], matrix),
+            ("attn_norm.weight", vec![hidden], norm),
+            ("ffn_norm.weight", vec![hidden], norm),
         ] {
-            validate_gguf_tensor_dtype(content, &format!("{prefix}.{suffix}"), &shape, dtypes)?;
+            validate_gguf_tensor_dtype(content, &format!("blk.{layer}.{suffix}"), &shape, dtypes)?;
         }
     }
     Ok(())
@@ -911,9 +835,6 @@ pub(crate) fn validate_gguf_tensor(
 pub(crate) fn validate_checkpoint(weights: &[u8], config: &Config) -> Result<(), CandleError> {
     let tensors = SafeTensors::deserialize(weights)
         .map_err(|error| CandleError::InvalidCheckpoint(error.to_string()))?;
-    let head_dim = config.hidden_size / config.num_attention_heads;
-    let kv_size = head_dim * config.num_key_value_heads;
-
     validate_tensor(
         &tensors,
         "model.embed_tokens.weight",
@@ -928,34 +849,8 @@ pub(crate) fn validate_checkpoint(weights: &[u8], config: &Config) -> Result<(),
         )?;
     }
     for layer in 0..config.num_hidden_layers {
-        let prefix = format!("model.layers.{layer}");
-        for (suffix, shape) in [
-            (
-                "self_attn.q_proj.weight",
-                vec![config.hidden_size, config.hidden_size],
-            ),
-            ("self_attn.k_proj.weight", vec![kv_size, config.hidden_size]),
-            ("self_attn.v_proj.weight", vec![kv_size, config.hidden_size]),
-            (
-                "self_attn.o_proj.weight",
-                vec![config.hidden_size, config.hidden_size],
-            ),
-            (
-                "mlp.gate_proj.weight",
-                vec![config.intermediate_size, config.hidden_size],
-            ),
-            (
-                "mlp.up_proj.weight",
-                vec![config.intermediate_size, config.hidden_size],
-            ),
-            (
-                "mlp.down_proj.weight",
-                vec![config.hidden_size, config.intermediate_size],
-            ),
-            ("input_layernorm.weight", vec![config.hidden_size]),
-            ("post_attention_layernorm.weight", vec![config.hidden_size]),
-        ] {
-            validate_tensor(&tensors, &format!("{prefix}.{suffix}"), &shape)?;
+        for (_, suffix, shape) in &llama_layer_shapes(config) {
+            validate_tensor(&tensors, &format!("model.layers.{layer}.{suffix}"), shape)?;
         }
     }
     Ok(())

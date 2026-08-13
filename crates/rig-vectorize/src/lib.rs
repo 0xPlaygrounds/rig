@@ -40,7 +40,7 @@ use uuid::Uuid;
 
 impl From<VectorizeError> for VectorStoreError {
     fn from(err: VectorizeError) -> Self {
-        VectorStoreError::DatastoreError(Box::new(err))
+        VectorStoreError::datastore(err)
     }
 }
 

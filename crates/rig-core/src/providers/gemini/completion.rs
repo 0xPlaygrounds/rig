@@ -335,7 +335,9 @@ pub(crate) fn create_request_body(
     Ok(request)
 }
 
-pub(super) fn split_system_messages_from_history(
+/// Split system messages out of a chat history, keeping their contents in
+/// order. Shared with sibling Gemini transports (e.g. `rig-gemini-grpc`).
+pub fn split_system_messages_from_history(
     history: Vec<completion::Message>,
 ) -> (Vec<String>, Vec<completion::Message>) {
     let mut system = Vec::new();

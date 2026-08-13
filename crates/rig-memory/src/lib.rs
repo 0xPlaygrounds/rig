@@ -131,29 +131,7 @@ pub trait IntoFilter: MemoryPolicy + Sized + 'static {
     /// `tracing::warn!` is emitted, so a transient policy bug degrades
     /// gracefully (the model still sees the unfiltered history) instead of
     /// silently erasing context.
-    #[cfg(not(target_family = "wasm"))]
-    fn into_filter(self) -> Box<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync> {
-        let policy = Arc::new(self);
-        Box::new(move |msgs| {
-            let fallback = msgs.clone();
-            match policy.apply(msgs) {
-                Ok(out) => out,
-                Err(err) => {
-                    tracing::warn!(error = %err, "memory policy failed; returning unfiltered history");
-                    fallback
-                }
-            }
-        })
-    }
-
-    /// Convert this policy into a filter closure.
-    ///
-    /// On policy error the original input is returned unchanged and a
-    /// `tracing::warn!` is emitted, so a transient policy bug degrades
-    /// gracefully (the model still sees the unfiltered history) instead of
-    /// silently erasing context.
-    #[cfg(target_family = "wasm")]
-    fn into_filter(self) -> Box<dyn Fn(Vec<Message>) -> Vec<Message>> {
+    fn into_filter(self) -> BoxedFilter {
         let policy = Arc::new(self);
         Box::new(move |msgs| {
             let fallback = msgs.clone();
@@ -167,6 +145,14 @@ pub trait IntoFilter: MemoryPolicy + Sized + 'static {
         })
     }
 }
+
+/// Boxed filter closure returned by [`IntoFilter::into_filter`].
+#[cfg(not(target_family = "wasm"))]
+pub type BoxedFilter = Box<dyn Fn(Vec<Message>) -> Vec<Message> + Send + Sync>;
+
+/// Boxed filter closure returned by [`IntoFilter::into_filter`].
+#[cfg(target_family = "wasm")]
+pub type BoxedFilter = Box<dyn Fn(Vec<Message>) -> Vec<Message>>;
 
 impl<P> IntoFilter for P where P: MemoryPolicy + 'static {}
 
@@ -629,6 +615,99 @@ pub struct DemotingPolicyMemory<M, P, H> {
 
 type InFlightReservation = Arc<()>;
 
+/// Emits the members shared by the stateful wrappers
+/// ([`DemotingPolicyMemory`], [`CompactingMemory`]): accessors,
+/// `forget`/`tracked_conversations` over the per-conversation state map, and
+/// a `Debug` impl that elides the non-`Debug` third component.
+macro_rules! stateful_wrapper_common {
+    ($ty:ident, $third:ident: $tgen:ident $(: $tbound:ident)?) => {
+        impl<M, P, $tgen $(: $tbound)?> $ty<M, P, $tgen> {
+            /// Return a reference to the wrapped backend.
+            pub fn inner(&self) -> &M {
+                &self.inner
+            }
+
+            /// Return a reference to the wrapped policy.
+            pub fn policy(&self) -> &P {
+                &self.policy
+            }
+
+            /// Return a reference to the third component.
+            pub fn $third(&self) -> &$tgen {
+                &self.$third
+            }
+
+            /// Consume the wrapper and return its three components.
+            pub fn into_inner(self) -> (M, P, $tgen) {
+                (self.inner, self.policy, self.$third)
+            }
+
+            /// Drop the in-process state for `conversation_id`.
+            ///
+            /// Call this when a conversation has ended to bound memory usage;
+            /// the state map is otherwise unbounded — entries persist for the
+            /// lifetime of the wrapper. If the internal state lock has been
+            /// poisoned by a panic in another thread, this is a no-op (the
+            /// state will be dropped naturally when the wrapper itself is
+            /// dropped).
+            pub fn forget(&self, conversation_id: &str) {
+                if let Ok(mut guard) = self.state.lock() {
+                    guard.remove(conversation_id);
+                }
+            }
+
+            /// Number of conversations currently tracked in the state map.
+            /// Useful for telemetry and leak detection. Returns `0` if the
+            /// internal state lock is poisoned.
+            pub fn tracked_conversations(&self) -> usize {
+                self.state.lock().map(|g| g.len()).unwrap_or(0)
+            }
+        }
+
+        impl<M, P, $tgen $(: $tbound)?> std::fmt::Debug for $ty<M, P, $tgen>
+        where
+            M: std::fmt::Debug,
+            P: std::fmt::Debug,
+        {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_struct(stringify!($ty))
+                    .field("inner", &self.inner)
+                    .field("policy", &self.policy)
+                    .field(
+                        stringify!($third),
+                        &concat!("<", stringify!($third), ">"),
+                    )
+                    .finish()
+            }
+        }
+    };
+}
+
+/// Emits the delegating `append` and the `clear`-then-`forget` methods of a
+/// stateful wrapper's [`ConversationMemory`] impl.
+macro_rules! stateful_wrapper_append_clear {
+    () => {
+        fn append<'a>(
+            &'a self,
+            conversation_id: &'a str,
+            messages: Vec<Message>,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            self.inner.append(conversation_id, messages)
+        }
+
+        fn clear<'a>(
+            &'a self,
+            conversation_id: &'a str,
+        ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
+            Box::pin(async move {
+                self.inner.clear(conversation_id).await?;
+                self.forget(conversation_id);
+                Ok(())
+            })
+        }
+    };
+}
+
 #[derive(Debug, Default, Clone)]
 struct ConversationDemotionState {
     /// Number of demoted messages already delivered to the hook within
@@ -651,63 +730,9 @@ impl<M, P, H> DemotingPolicyMemory<M, P, H> {
             state: StdMutex::new(HashMap::new()),
         }
     }
-
-    /// Return a reference to the wrapped backend.
-    pub fn inner(&self) -> &M {
-        &self.inner
-    }
-
-    /// Return a reference to the wrapped policy.
-    pub fn policy(&self) -> &P {
-        &self.policy
-    }
-
-    /// Return a reference to the demotion hook.
-    pub fn hook(&self) -> &H {
-        &self.hook
-    }
-
-    /// Consume the wrapper and return its three components.
-    pub fn into_inner(self) -> (M, P, H) {
-        (self.inner, self.policy, self.hook)
-    }
-
-    /// Drop the in-process delivery watermark for `conversation_id`.
-    ///
-    /// Call this when a conversation has ended to bound memory usage.
-    /// The watermark map is otherwise unbounded — entries persist for
-    /// the lifetime of the wrapper.
-    ///
-    /// If the internal state lock has been poisoned by a panic in another
-    /// thread, this is a no-op (the watermark will be dropped naturally
-    /// when the wrapper itself is dropped).
-    pub fn forget(&self, conversation_id: &str) {
-        if let Ok(mut guard) = self.state.lock() {
-            guard.remove(conversation_id);
-        }
-    }
-
-    /// Number of conversations currently tracked in the watermark map.
-    /// Useful for telemetry and leak detection. Returns `0` if the internal
-    /// state lock is poisoned.
-    pub fn tracked_conversations(&self) -> usize {
-        self.state.lock().map(|g| g.len()).unwrap_or(0)
-    }
 }
 
-impl<M, P, H> std::fmt::Debug for DemotingPolicyMemory<M, P, H>
-where
-    M: std::fmt::Debug,
-    P: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DemotingPolicyMemory")
-            .field("inner", &self.inner)
-            .field("policy", &self.policy)
-            .field("hook", &"<hook>")
-            .finish()
-    }
-}
+stateful_wrapper_common!(DemotingPolicyMemory, hook: H);
 
 impl<M, P, H> ConversationMemory for DemotingPolicyMemory<M, P, H>
 where
@@ -777,7 +802,7 @@ where
             // clearing newer in-flight loads after clear()/forget() reuse the
             // same conversation id.
             let in_flight_guard =
-                DemotionInFlightGuard::new(&self.state, conversation_id, reservation.clone());
+                InFlightGuard::new(&self.state, conversation_id, reservation.clone());
 
             let result = self.hook.on_demote(conversation_id, pending).await;
 
@@ -810,104 +835,52 @@ where
         })
     }
 
-    fn append<'a>(
-        &'a self,
-        conversation_id: &'a str,
-        messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        self.inner.append(conversation_id, messages)
-    }
-
-    fn clear<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        Box::pin(async move {
-            self.inner.clear(conversation_id).await?;
-            self.forget(conversation_id);
-            Ok(())
-        })
-    }
+    stateful_wrapper_append_clear!();
 }
 
 fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
     MemoryError::Internal(err.to_string())
 }
 
-/// RAII guard that clears the `in_flight` flag for a conversation in the
-/// shared demotion state map when dropped, unless the consumer explicitly
-/// disarms it after a successful post-await update.
-///
-/// This prevents the in-flight gate from leaking when the awaiting
-/// `load(...)` future is dropped (caller timeout, `tokio::select!`, etc.)
-/// or when the hook panics. A missing entry is a no-op, covering the case
-/// where a concurrent `clear` removed the conversation while delivery was
-/// awaiting.
-struct DemotionInFlightGuard<'a> {
-    state: &'a StdMutex<HashMap<String, ConversationDemotionState>>,
-    key: &'a str,
-    reservation: InFlightReservation,
-    armed: bool,
+/// A per-conversation state entry with an `in_flight` delivery reservation,
+/// letting [`InFlightGuard`] work over both the demotion and compaction
+/// state maps.
+trait InFlightSlot {
+    fn in_flight_mut(&mut self) -> &mut Option<InFlightReservation>;
 }
 
-impl<'a> DemotionInFlightGuard<'a> {
-    fn new(
-        state: &'a StdMutex<HashMap<String, ConversationDemotionState>>,
-        key: &'a str,
-        reservation: InFlightReservation,
-    ) -> Self {
-        Self {
-            state,
-            key,
-            reservation,
-            armed: true,
-        }
-    }
-
-    /// Disable the `Drop` clean-up. Call after the post-await state
-    /// update has already cleared `in_flight` while holding the lock.
-    fn disarm(mut self) {
-        self.armed = false;
+impl InFlightSlot for ConversationDemotionState {
+    fn in_flight_mut(&mut self) -> &mut Option<InFlightReservation> {
+        &mut self.in_flight
     }
 }
 
-impl Drop for DemotionInFlightGuard<'_> {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
-        if let Ok(mut guard) = self.state.lock()
-            && let Some(entry) = guard.get_mut(self.key)
-            && entry
-                .in_flight
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, &self.reservation))
-        {
-            entry.in_flight = None;
-        }
+impl<A> InFlightSlot for ConversationCompactionState<A> {
+    fn in_flight_mut(&mut self) -> &mut Option<InFlightReservation> {
+        &mut self.in_flight
     }
 }
 
 /// RAII guard that clears the `in_flight` flag for a conversation in the
-/// shared compaction state map when dropped, unless the consumer
+/// shared demotion/compaction state map when dropped, unless the consumer
 /// explicitly disarms it after a successful post-await update.
 ///
 /// This prevents the in-flight gate from leaking when the awaiting
 /// `load(...)` future is dropped (caller timeout, `tokio::select!`, etc.)
-/// or when the compactor panics: in either case `Drop` runs and releases
-/// the gate so subsequent loads can retry. A missing entry is a no-op,
-/// covering the case where a concurrent `clear` removed the conversation
-/// while compaction was awaiting.
-struct InFlightGuard<'a, A> {
-    state: &'a StdMutex<HashMap<String, ConversationCompactionState<A>>>,
+/// or when the hook/compactor panics: in either case `Drop` runs and
+/// releases the gate so subsequent loads can retry. A missing entry is a
+/// no-op, covering the case where a concurrent `clear` removed the
+/// conversation while delivery was awaiting.
+struct InFlightGuard<'a, S: InFlightSlot> {
+    state: &'a StdMutex<HashMap<String, S>>,
     key: &'a str,
     reservation: InFlightReservation,
     armed: bool,
 }
 
-impl<'a, A> InFlightGuard<'a, A> {
+impl<'a, S: InFlightSlot> InFlightGuard<'a, S> {
     fn new(
-        state: &'a StdMutex<HashMap<String, ConversationCompactionState<A>>>,
+        state: &'a StdMutex<HashMap<String, S>>,
         key: &'a str,
         reservation: InFlightReservation,
     ) -> Self {
@@ -926,7 +899,7 @@ impl<'a, A> InFlightGuard<'a, A> {
     }
 }
 
-impl<A> Drop for InFlightGuard<'_, A> {
+impl<S: InFlightSlot> Drop for InFlightGuard<'_, S> {
     fn drop(&mut self) {
         if !self.armed {
             return;
@@ -934,11 +907,11 @@ impl<A> Drop for InFlightGuard<'_, A> {
         if let Ok(mut guard) = self.state.lock()
             && let Some(entry) = guard.get_mut(self.key)
             && entry
-                .in_flight
+                .in_flight_mut()
                 .as_ref()
                 .is_some_and(|current| Arc::ptr_eq(current, &self.reservation))
         {
-            entry.in_flight = None;
+            *entry.in_flight_mut() = None;
         }
     }
 }
@@ -1043,60 +1016,9 @@ impl<M, P, C: Compactor> CompactingMemory<M, P, C> {
             state: StdMutex::new(HashMap::new()),
         }
     }
-
-    /// Return a reference to the wrapped backend.
-    pub fn inner(&self) -> &M {
-        &self.inner
-    }
-
-    /// Return a reference to the wrapped policy.
-    pub fn policy(&self) -> &P {
-        &self.policy
-    }
-
-    /// Return a reference to the compactor.
-    pub fn compactor(&self) -> &C {
-        &self.compactor
-    }
-
-    /// Consume the wrapper and return its three components.
-    pub fn into_inner(self) -> (M, P, C) {
-        (self.inner, self.policy, self.compactor)
-    }
-
-    /// Drop the in-process compaction state for `conversation_id`.
-    ///
-    /// Call this when a conversation has ended to bound memory usage; the
-    /// state map is otherwise unbounded. If the internal lock has been
-    /// poisoned by a panic in another thread, this is a no-op.
-    pub fn forget(&self, conversation_id: &str) {
-        if let Ok(mut guard) = self.state.lock() {
-            guard.remove(conversation_id);
-        }
-    }
-
-    /// Number of conversations currently tracked in the compaction state
-    /// map. Useful for telemetry and leak detection. Returns `0` if the
-    /// internal lock is poisoned.
-    pub fn tracked_conversations(&self) -> usize {
-        self.state.lock().map(|g| g.len()).unwrap_or(0)
-    }
 }
 
-impl<M, P, C> std::fmt::Debug for CompactingMemory<M, P, C>
-where
-    M: std::fmt::Debug,
-    P: std::fmt::Debug,
-    C: Compactor,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompactingMemory")
-            .field("inner", &self.inner)
-            .field("policy", &self.policy)
-            .field("compactor", &"<compactor>")
-            .finish()
-    }
-}
+stateful_wrapper_common!(CompactingMemory, compactor: C: Compactor);
 
 impl<M, P, C> ConversationMemory for CompactingMemory<M, P, C>
 where
@@ -1253,24 +1175,7 @@ where
         })
     }
 
-    fn append<'a>(
-        &'a self,
-        conversation_id: &'a str,
-        messages: Vec<Message>,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        self.inner.append(conversation_id, messages)
-    }
-
-    fn clear<'a>(
-        &'a self,
-        conversation_id: &'a str,
-    ) -> WasmBoxedFuture<'a, Result<(), MemoryError>> {
-        Box::pin(async move {
-            self.inner.clear(conversation_id).await?;
-            self.forget(conversation_id);
-            Ok(())
-        })
-    }
+    stateful_wrapper_append_clear!();
 }
 
 struct CompactionPlan<A> {

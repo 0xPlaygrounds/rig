@@ -1130,14 +1130,15 @@ impl FromStr for SystemContent {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub id: String,
-    // Defaulted on deserialization: some OpenAI-compatible gateways
-    // (HuggingFace router sub-providers, TGI variants) omit them.
-    #[serde(default)]
+    // Null-or-missing tolerated on deserialization: some OpenAI-compatible
+    // gateways (HuggingFace router sub-providers, TGI variants, Copilot's
+    // multi-vendor chat route) omit them or send explicit `null`.
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub object: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub created: u64,
     pub model: String,
     pub system_fingerprint: Option<String>,
@@ -1278,9 +1279,14 @@ pub(crate) fn assistant_message_text_response(message: &Message) -> Option<Strin
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Choice {
+    // Null-or-missing tolerated on deserialization: Copilot's chat route
+    // (fronting non-OpenAI vendors) can omit either field or send explicit
+    // `null`; normalization treats "" as absent.
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub index: usize,
     pub message: Message,
     pub logprobs: Option<serde_json::Value>,
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub finish_reason: String,
 }
 
@@ -2169,6 +2175,33 @@ where
 
 #[cfg(test)]
 mod tests {
+    /// The shared chat-completions response type is deliberately lenient about
+    /// envelope metadata: `object`, `created`, `choices[].index`, and
+    /// `choices[].finish_reason` may be missing or explicit `null` (lossy
+    /// OpenAI-compatible gateways and Copilot's multi-vendor chat route both
+    /// rely on this). An empty `finish_reason` normalizes to `None` rather
+    /// than erroring. This pins that contract next to the type itself.
+    #[test]
+    fn completion_response_tolerates_null_or_missing_envelope_metadata() {
+        let json = r#"{
+            "id": "chatcmpl-1",
+            "object": null,
+            "created": null,
+            "model": "some-model",
+            "choices": [{
+                "index": null,
+                "message": { "role": "assistant", "content": "hi" },
+                "finish_reason": null
+            }]
+        }"#;
+        let response: super::CompletionResponse =
+            serde_json::from_str(json).expect("null envelope metadata should deserialize");
+        assert_eq!(response.object, "");
+        assert_eq!(response.created, 0);
+        assert_eq!(response.choices[0].index, 0);
+        assert_eq!(response.choices[0].finish_reason, "");
+    }
+
     /// Boundary-minted tool ids (`tool-{index}`, from id-less streamed calls)
     /// replay to the chat wire as a self-consistent pair: the assistant
     /// message's `tool_calls[].id` and the tool result's `tool_call_id` carry

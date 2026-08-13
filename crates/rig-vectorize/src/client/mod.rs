@@ -15,8 +15,47 @@ pub use types::{
 };
 
 use reqwest::Client;
+use serde::de::DeserializeOwned;
 use tracing::instrument;
 use types::ApiResponse;
+
+/// Reads a Vectorize response body, logs it, and unwraps the API envelope,
+/// turning envelope errors and a missing `result` into [`VectorizeError`].
+/// `what` names the operation for the log/error messages (e.g. "upsert").
+async fn unwrap_api<T: DeserializeOwned>(
+    response: reqwest::Response,
+    what: &str,
+) -> Result<T, VectorizeError> {
+    let response_text = response.text().await?;
+    tracing::debug!("Raw Vectorize {} response: {}", what, response_text);
+
+    parse_api(&response_text, what)
+}
+
+/// Parses and unwraps a Vectorize API envelope from a raw response body.
+fn parse_api<T: DeserializeOwned>(text: &str, what: &str) -> Result<T, VectorizeError> {
+    let api_response: ApiResponse<T> = serde_json::from_str(text)?;
+
+    if !api_response.success {
+        let error = api_response
+            .errors
+            .first()
+            .map(|e| VectorizeError::ApiError {
+                code: e.code,
+                message: e.message.clone(),
+            })
+            .unwrap_or_else(|| VectorizeError::ApiError {
+                code: 0,
+                message: "Unknown error".to_string(),
+            });
+        return Err(error);
+    }
+
+    api_response.result.ok_or_else(|| VectorizeError::ApiError {
+        code: 0,
+        message: format!("No result in successful {what} response"),
+    })
+}
 
 /// Base URL for the Cloudflare API.
 const CLOUDFLARE_API_BASE_URL: &str = "https://api.cloudflare.com/client/v4";
@@ -73,30 +112,7 @@ impl VectorizeClient {
             .send()
             .await?;
 
-        let response_text = response.text().await?;
-        tracing::debug!("Raw Vectorize response: {}", response_text);
-
-        let api_response: ApiResponse<QueryResult> = serde_json::from_str(&response_text)?;
-
-        if !api_response.success {
-            let error = api_response
-                .errors
-                .first()
-                .map(|e| VectorizeError::ApiError {
-                    code: e.code,
-                    message: e.message.clone(),
-                })
-                .unwrap_or_else(|| VectorizeError::ApiError {
-                    code: 0,
-                    message: "Unknown error".to_string(),
-                });
-            return Err(error);
-        }
-
-        api_response.result.ok_or_else(|| VectorizeError::ApiError {
-            code: 0,
-            message: "No result in successful response".to_string(),
-        })
+        unwrap_api(response, "query").await
     }
 
     /// Upserts vectors (inserts or updates if ID already exists).
@@ -120,30 +136,7 @@ impl VectorizeClient {
             .send()
             .await?;
 
-        let response_text = response.text().await?;
-        tracing::debug!("Raw Vectorize upsert response: {}", response_text);
-
-        let api_response: ApiResponse<UpsertResult> = serde_json::from_str(&response_text)?;
-
-        if !api_response.success {
-            let error = api_response
-                .errors
-                .first()
-                .map(|e| VectorizeError::ApiError {
-                    code: e.code,
-                    message: e.message.clone(),
-                })
-                .unwrap_or_else(|| VectorizeError::ApiError {
-                    code: 0,
-                    message: "Unknown error".to_string(),
-                });
-            return Err(error);
-        }
-
-        api_response.result.ok_or_else(|| VectorizeError::ApiError {
-            code: 0,
-            message: "No result in successful upsert response".to_string(),
-        })
+        unwrap_api(response, "upsert").await
     }
 
     /// Deletes vectors by their IDs.
@@ -163,30 +156,7 @@ impl VectorizeClient {
             .send()
             .await?;
 
-        let response_text = response.text().await?;
-        tracing::debug!("Raw Vectorize delete response: {}", response_text);
-
-        let api_response: ApiResponse<DeleteResult> = serde_json::from_str(&response_text)?;
-
-        if !api_response.success {
-            let error = api_response
-                .errors
-                .first()
-                .map(|e| VectorizeError::ApiError {
-                    code: e.code,
-                    message: e.message.clone(),
-                })
-                .unwrap_or_else(|| VectorizeError::ApiError {
-                    code: 0,
-                    message: "Unknown error".to_string(),
-                });
-            return Err(error);
-        }
-
-        api_response.result.ok_or_else(|| VectorizeError::ApiError {
-            code: 0,
-            message: "No result in successful delete response".to_string(),
-        })
+        unwrap_api(response, "delete").await
     }
 
     /// Lists vector IDs in the index (paginated).
@@ -219,29 +189,46 @@ impl VectorizeClient {
             .send()
             .await?;
 
-        let response_text = response.text().await?;
-        tracing::debug!("Raw Vectorize list response: {}", response_text);
+        unwrap_api(response, "list").await
+    }
+}
 
-        let api_response: ApiResponse<ListVectorsResult> = serde_json::from_str(&response_text)?;
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::{VectorizeError, parse_api};
 
-        if !api_response.success {
-            let error = api_response
-                .errors
-                .first()
-                .map(|e| VectorizeError::ApiError {
-                    code: e.code,
-                    message: e.message.clone(),
-                })
-                .unwrap_or_else(|| VectorizeError::ApiError {
-                    code: 0,
-                    message: "Unknown error".to_string(),
-                });
-            return Err(error);
+    #[test]
+    fn parse_api_unwraps_successful_envelope() {
+        let body = r#"{"success": true, "result": 42, "errors": [], "messages": []}"#;
+        let n: u32 = parse_api(body, "query").expect("successful envelope");
+        assert_eq!(n, 42);
+    }
+
+    #[test]
+    fn parse_api_surfaces_envelope_errors() {
+        let body = r#"{
+            "success": false,
+            "result": null,
+            "errors": [{"code": 7, "message": "index not found"}],
+            "messages": []
+        }"#;
+        match parse_api::<u32>(body, "query") {
+            Err(VectorizeError::ApiError { code: 7, message }) => {
+                assert_eq!(message, "index not found");
+            }
+            other => panic!("expected ApiError, got {other:?}"),
         }
+    }
 
-        api_response.result.ok_or_else(|| VectorizeError::ApiError {
-            code: 0,
-            message: "No result in successful list response".to_string(),
-        })
+    #[test]
+    fn parse_api_errors_on_missing_result() {
+        let body = r#"{"success": true, "result": null, "errors": [], "messages": []}"#;
+        match parse_api::<u32>(body, "upsert") {
+            Err(VectorizeError::ApiError { code: 0, message }) => {
+                assert_eq!(message, "No result in successful upsert response");
+            }
+            other => panic!("expected ApiError, got {other:?}"),
+        }
     }
 }

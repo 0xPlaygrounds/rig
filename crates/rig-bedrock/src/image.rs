@@ -6,12 +6,12 @@ use rig_core::image_generation::{
     self, ImageGenerationError, ImageGenerationRequest, ImageGenerationResponse,
 };
 
-/// `amazon.titan-image-generator-v1`
-pub const AMAZON_TITAN_IMAGE_GENERATOR_V1: &str = "amazon.titan-image-generator-v1";
-/// `amazon.titan-image-generator-v2:0`
-pub const AMAZON_TITAN_IMAGE_GENERATOR_V2_0: &str = "amazon.titan-image-generator-v2:0";
-/// `amazon.nova-canvas-v1:0`
-pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
+// The model-id string values are canonically defined in `crate::completion`;
+// these aliases keep this module's historical public names.
+pub use crate::completion::{
+    AMAZON_NOVA_CANVAS, AMAZON_TITAN_IMAGE_GENERATOR_G1 as AMAZON_TITAN_IMAGE_GENERATOR_V1,
+    AMAZON_TITAN_IMAGE_GENERATOR_G1_V2 as AMAZON_TITAN_IMAGE_GENERATOR_V2_0,
+};
 
 #[derive(Clone)]
 pub struct ImageGenerationModel {

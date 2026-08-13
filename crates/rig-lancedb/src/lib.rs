@@ -37,14 +37,6 @@ use utils::{FilterTableColumns, QueryToJson};
 
 mod utils;
 
-fn lancedb_to_rig_error(e: lancedb::Error) -> VectorStoreError {
-    VectorStoreError::DatastoreError(Box::new(e))
-}
-
-fn serde_to_rig_error(e: serde_json::Error) -> VectorStoreError {
-    VectorStoreError::JsonError(e)
-}
-
 /// Type on which vector searches can be performed for a lanceDb table.
 /// # Example
 /// ```ignore
@@ -409,14 +401,14 @@ where
         let mut query = self
             .table
             .vector_search(prompt_embedding.vec.clone())
-            .map_err(lancedb_to_rig_error)?
+            .map_err(VectorStoreError::datastore)?
             .limit(req.samples() as usize)
             .distance_range(None, req.threshold().map(|x| x as f32))
             .select(lancedb::query::Select::Columns(
                 self.table
                     .schema()
                     .await
-                    .map_err(lancedb_to_rig_error)?
+                    .map_err(VectorStoreError::datastore)?
                     .filter_embeddings(),
             ));
 
@@ -439,7 +431,7 @@ where
                         Some(Value::String(id)) => id.to_string(),
                         _ => format!("unknown{i}"),
                     },
-                    serde_json::from_value(value).map_err(serde_to_rig_error)?,
+                    serde_json::from_value(value).map_err(VectorStoreError::JsonError)?,
                 ))
             })
             .collect()
@@ -474,7 +466,7 @@ where
             .query()
             .select(lancedb::query::Select::Columns(vec![self.id_field.clone()]))
             .nearest_to(prompt_embedding.vec.clone())
-            .map_err(lancedb_to_rig_error)?
+            .map_err(VectorStoreError::datastore)?
             .distance_range(None, req.threshold().map(|x| x as f32))
             .limit(req.samples() as usize);
 

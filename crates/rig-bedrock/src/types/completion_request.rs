@@ -50,20 +50,21 @@ impl AwsCompletionRequest {
             return Ok(None);
         }
 
-        let mut tools = vec![];
-        for tool_definition in self.inner.tools.iter() {
-            let doc: AwsDocument = tool_definition.parameters.clone().into();
-            let schema = ToolInputSchema::Json(doc.0);
-            let tool = Tool::ToolSpec(
+        let tools = self
+            .inner
+            .tools
+            .iter()
+            .map(|tool_definition| {
+                let doc: AwsDocument = tool_definition.parameters.clone().into();
                 ToolSpecification::builder()
                     .name(tool_definition.name.clone())
                     .set_description(Some(tool_definition.description.clone()))
-                    .set_input_schema(Some(schema))
+                    .set_input_schema(Some(ToolInputSchema::Json(doc.0)))
                     .build()
-                    .map_err(|e| CompletionError::RequestError(e.into()))?,
-            );
-            tools.push(tool);
-        }
+                    .map(Tool::ToolSpec)
+                    .map_err(|e| CompletionError::RequestError(e.into()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         if !tools.is_empty() {
             // Convert rig's ToolChoice to AWS Bedrock ToolChoice
@@ -190,11 +191,13 @@ impl AwsCompletionRequest {
             full_history.push(Message::User { content });
         }
 
-        self.inner.chat_history.iter().for_each(|message| {
-            if !matches!(message, Message::System { .. }) {
-                full_history.push(message.clone());
-            }
-        });
+        full_history.extend(
+            self.inner
+                .chat_history
+                .iter()
+                .filter(|message| !matches!(message, Message::System { .. }))
+                .cloned(),
+        );
 
         let mut messages: Vec<aws_bedrock::Message> = full_history
             .into_iter()

@@ -83,27 +83,20 @@ impl VertexCompletionRequest {
             return None;
         }
 
-        let function_calling_config = match self.0.tool_choice.as_ref() {
-            Some(rig_core::message::ToolChoice::Auto) => {
-                vertexai::model::FunctionCallingConfig::new()
-                    .set_mode(vertexai::model::function_calling_config::Mode::Auto)
-            }
-            Some(rig_core::message::ToolChoice::Required) => {
-                vertexai::model::FunctionCallingConfig::new()
-                    .set_mode(vertexai::model::function_calling_config::Mode::Any)
-            }
-            Some(rig_core::message::ToolChoice::None) => {
-                vertexai::model::FunctionCallingConfig::new()
-                    .set_mode(vertexai::model::function_calling_config::Mode::None)
-            }
+        use vertexai::model::function_calling_config::Mode;
+
+        let (mode, allowed_function_names) = match self.0.tool_choice.as_ref() {
+            Some(rig_core::message::ToolChoice::Auto) | None => (Mode::Auto, Vec::new()),
+            Some(rig_core::message::ToolChoice::Required) => (Mode::Any, Vec::new()),
+            Some(rig_core::message::ToolChoice::None) => (Mode::None, Vec::new()),
             Some(rig_core::message::ToolChoice::Specific { function_names }) => {
-                vertexai::model::FunctionCallingConfig::new()
-                    .set_mode(vertexai::model::function_calling_config::Mode::Any)
-                    .set_allowed_function_names(function_names.clone())
+                (Mode::Any, function_names.clone())
             }
-            None => vertexai::model::FunctionCallingConfig::new()
-                .set_mode(vertexai::model::function_calling_config::Mode::Auto),
         };
+
+        let function_calling_config = vertexai::model::FunctionCallingConfig::new()
+            .set_mode(mode)
+            .set_allowed_function_names(allowed_function_names);
 
         Some(
             vertexai::model::ToolConfig::new().set_function_calling_config(function_calling_config),

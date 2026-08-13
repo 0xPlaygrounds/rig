@@ -1,10 +1,18 @@
 //! Types that replace the AWS Bedrock Runtime SDK's `ConverseOutput` type.
 //! This is required so that we can impl Serialize and Deserialize.
-use std::{collections::HashMap, fmt};
+//!
+//! Only the parts of the Converse response that rig actually reads are
+//! mirrored as typed structs. Model-specific extras
+//! (`additional_model_response_fields`) are carried as plain
+//! [`serde_json::Value`]; the guardrail-assessment trace and performance
+//! configuration (telemetry-only, never read) are not mirrored.
+use std::fmt;
 
+use aws_sdk_bedrockruntime::types as aws_bedrock;
 use serde::{Deserialize, Serialize};
 
 use super::errors::TypeConversionError;
+use super::json::AwsDocument;
 
 /// Our own implementation of the AWS Bedrock runtime "converse" operation output.
 /// The reason why we need to implement this is that we need to impl Deserialize/Serialize on top of this.
@@ -19,11 +27,7 @@ pub struct InternalConverseOutput {
     /// <p>Metrics for the call to <code>Converse</code>.</p>
     pub metrics: Option<ConverseMetrics>,
     /// <p>Additional fields in the response that are unique to the model.</p>
-    pub additional_model_response_fields: Option<Document>,
-    /// <p>A trace object that contains information about the Guardrail behavior.</p>
-    pub trace: Option<ConverseTrace>,
-    /// <p>Model performance settings for the request.</p>
-    pub performance_config: Option<PerformanceConfiguration>,
+    pub additional_model_response_fields: Option<serde_json::Value>,
 }
 
 impl InternalConverseOutput {
@@ -46,36 +50,18 @@ impl TryFrom<aws_sdk_bedrockruntime::operation::converse::ConverseOutput>
             usage,
             metrics,
             additional_model_response_fields,
-            trace,
-            performance_config,
             ..
         } = value;
 
-        let res = Self {
+        Ok(Self {
             output: output.map(|x| x.try_into()).transpose()?,
             stop_reason: stop_reason.try_into()?,
             usage: usage.map(|x| x.try_into()).transpose()?,
             metrics: metrics.map(|x| x.try_into()).transpose()?,
             additional_model_response_fields: additional_model_response_fields
-                .map(|x| x.try_into())
-                .transpose()?,
-            trace: trace.map(|x| x.try_into()).transpose()?,
-            performance_config: performance_config.map(|x| x.try_into()).transpose()?,
-        };
-
-        Ok(res)
+                .map(|doc| AwsDocument(doc).into()),
+        })
     }
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum StopReason {
-    ContentFiltered,
-    EndTurn,
-    GuardrailIntervened,
-    MaxTokens,
-    StopSequence,
-    ToolUse,
-    Unknown(UnknownVariantValue),
 }
 
 /// Opaque struct used as inner data for the `Unknown` variant defined in enums in
@@ -92,11 +78,24 @@ impl fmt::Display for UnknownVariantValue {
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub enum StopReason {
+    ContentFiltered,
+    EndTurn,
+    GuardrailIntervened,
+    MaxTokens,
+    StopSequence,
+    ToolUse,
+    Unknown(UnknownVariantValue),
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct TokenUsage {
     pub input_tokens: i32,
     pub output_tokens: i32,
     pub total_tokens: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_read_input_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_write_input_tokens: Option<i32>,
 }
 
@@ -105,281 +104,6 @@ pub struct ConverseMetrics {
     pub latency_ms: i64,
 }
 
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct ConverseTrace {
-    pub guardrail: Option<GuardrailTraceAssessment>,
-    pub prompt_router: Option<PromptRouterTrace>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct PromptRouterTrace {
-    pub invoked_model_id: Option<String>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailTraceAssessment {
-    pub model_output: Option<Vec<String>>,
-    pub input_assessment: Option<HashMap<String, GuardrailAssessment>>,
-    pub output_assessments: Option<HashMap<String, Vec<GuardrailAssessment>>>,
-    pub action_reason: Option<String>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailAssessment {
-    pub topic_policy: Option<GuardrailTopicPolicyAssessment>,
-    pub content_policy: Option<GuardrailContentPolicyAssessment>,
-    pub word_policy: Option<GuardrailWordPolicyAssessment>,
-    pub sensitive_information_policy: Option<GuardrailSensitiveInformationPolicyAssessment>,
-    pub contextual_grounding_policy: Option<GuardrailContextualGroundingPolicyAssessment>,
-    pub invocation_metrics: Option<GuardrailInvocationMetrics>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailTopicPolicyAssessment {
-    pub topics: Vec<GuardrailTopic>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailContentPolicyAssessment {
-    pub filters: Vec<GuardrailContentFilter>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailWordPolicyAssessment {
-    pub custom_words: Vec<GuardrailCustomWord>,
-    pub managed_word_lists: Vec<GuardrailManagedWord>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailSensitiveInformationPolicyAssessment {
-    pub pii_entities: Vec<GuardrailPiiEntityFilter>,
-    pub regexes: Vec<GuardrailRegexFilter>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailContextualGroundingPolicyAssessment {
-    pub filters: Option<Vec<GuardrailContextualGroundingFilter>>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailInvocationMetrics {
-    pub guardrail_processing_latency: Option<i64>,
-    pub usage: Option<GuardrailUsage>,
-    pub guardrail_coverage: Option<GuardrailCoverage>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailTopic {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub kind: GuardrailTopicType,
-    pub action: GuardrailTopicPolicyAction,
-    pub detected: Option<bool>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailTopicType {
-    Deny,
-    Unknown(UnknownVariantValue),
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailTopicPolicyAction {
-    Blocked,
-    None,
-    Unknown(UnknownVariantValue),
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailContentFilter {
-    #[serde(rename = "type")]
-    pub kind: GuardrailContentFilterType,
-    pub confidence: GuardrailContentFilterConfidence,
-    pub filter_strength: Option<GuardrailContentFilterStrength>,
-    pub action: GuardrailContentPolicyAction,
-    pub detected: Option<bool>,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailContentFilterConfidence {
-    High,
-    Low,
-    Medium,
-    None,
-    Unknown(UnknownVariantValue),
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailContentFilterStrength {
-    High,
-    Low,
-    Medium,
-    None,
-    Unknown(UnknownVariantValue),
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailContentPolicyAction {
-    Blocked,
-    None,
-    Unknown(UnknownVariantValue),
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailContentFilterType {
-    Hate,
-    Insults,
-    Misconduct,
-    PromptAttack,
-    Sexual,
-    Violence,
-    Unknown(UnknownVariantValue),
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailCustomWord {
-    #[serde(rename = "match")]
-    pub matches_on: String,
-    pub action: GuardrailWordPolicyAction,
-    pub detected: Option<bool>,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailWordPolicyAction {
-    Blocked,
-    None,
-    Unknown(UnknownVariantValue),
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailManagedWord {
-    #[serde(rename = "match")]
-    pub matches_on: String,
-    #[serde(rename = "type")]
-    pub kind: GuardrailManagedWordType,
-    pub action: GuardrailWordPolicyAction,
-    pub detected: Option<bool>,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailManagedWordType {
-    Profanity,
-    Unknown(UnknownVariantValue),
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailPiiEntityFilter {
-    #[serde(rename = "match")]
-    pub matches_on: String,
-    #[serde(rename = "type")]
-    pub kind: GuardrailPiiEntityType,
-    pub action: GuardrailSensitiveInformationPolicyAction,
-    pub detected: Option<bool>,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailSensitiveInformationPolicyAction {
-    Anonymized,
-    Blocked,
-    None,
-    Unknown(UnknownVariantValue),
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailPiiEntityType {
-    Address,
-    Age,
-    AwsAccessKey,
-    AwsSecretKey,
-    CaHealthNumber,
-    CaSocialInsuranceNumber,
-    CreditDebitCardCvv,
-    CreditDebitCardExpiry,
-    CreditDebitCardNumber,
-    DriverId,
-    Email,
-    InternationalBankAccountNumber,
-    IpAddress,
-    LicensePlate,
-    MacAddress,
-    Name,
-    Password,
-    Phone,
-    Pin,
-    SwiftCode,
-    UkNationalHealthServiceNumber,
-    UkNationalInsuranceNumber,
-    UkUniqueTaxpayerReferenceNumber,
-    Url,
-    Username,
-    UsBankAccountNumber,
-    UsBankRoutingNumber,
-    UsIndividualTaxIdentificationNumber,
-    UsPassportNumber,
-    UsSocialSecurityNumber,
-    VehicleIdentificationNumber,
-    Unknown(UnknownVariantValue),
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailRegexFilter {
-    pub name: Option<String>,
-    #[serde(rename = "match")]
-    pub matches_on: Option<String>,
-    pub regex: Option<String>,
-    pub action: GuardrailSensitiveInformationPolicyAction,
-    pub detected: Option<bool>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailContextualGroundingFilter {
-    #[serde(rename = "type")]
-    pub kind: GuardrailContextualGroundingFilterType,
-    pub threshold: f64,
-    pub score: f64,
-    pub action: GuardrailContextualGroundingPolicyAction,
-    pub detected: Option<bool>,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailContextualGroundingFilterType {
-    Grounding,
-    Relevance,
-    Unknown(UnknownVariantValue),
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum GuardrailContextualGroundingPolicyAction {
-    Blocked,
-    None,
-    Unknown(UnknownVariantValue),
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailUsage {
-    pub topic_policy_units: i32,
-    pub content_policy_units: i32,
-    pub word_policy_units: i32,
-    pub sensitive_information_policy_units: i32,
-    pub sensitive_information_policy_free_units: i32,
-    pub contextual_grounding_policy_units: i32,
-    pub content_policy_image_units: Option<i32>,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailCoverage {
-    pub text_characters: Option<GuardrailTextCharactersCoverage>,
-    pub images: Option<GuardrailImageCoverage>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailTextCharactersCoverage {
-    pub guarded: Option<i32>,
-    pub total: Option<i32>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct GuardrailImageCoverage {
-    pub guarded: Option<i32>,
-    pub total: Option<i32>,
-}
-
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub struct PerformanceConfiguration {
-    pub latency: PerformanceConfigLatency,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum PerformanceConfigLatency {
-    Optimized,
-    Standard,
-    Unknown(UnknownVariantValue),
-}
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum ConverseOutput {
     Message(Message),
@@ -615,7 +339,7 @@ pub struct ToolResultBlock {
 pub enum ToolResultContentBlock {
     Document(DocumentBlock),
     Image(ImageBlock),
-    Json(Document),
+    Json(serde_json::Value),
     Text(String),
     Video(VideoBlock),
     #[non_exhaustive]
@@ -650,7 +374,7 @@ pub enum VideoSource {
 pub struct ToolUseBlock {
     pub tool_use_id: String,
     pub name: String,
-    pub input: Document,
+    pub input: serde_json::Value,
 }
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -662,2054 +386,221 @@ pub enum ToolResultStatus {
     Unknown(UnknownVariantValue),
 }
 
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum Document {
-    Object(HashMap<String, Document>),
-    Array(Vec<Document>),
-    Number(Number),
-    String(String),
-    Bool(bool),
-    Null,
-}
-#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
-pub enum Number {
-    PosInt(u64),
-    NegInt(i64),
-    Float(f64),
-}
-
-impl From<aws_smithy_types::Number> for Number {
-    fn from(value: aws_smithy_types::Number) -> Self {
-        match value {
-            aws_smithy_types::Number::Float(float) => Self::Float(float),
-            aws_smithy_types::Number::NegInt(int) => Self::NegInt(int),
-            aws_smithy_types::Number::PosInt(int) => Self::PosInt(int),
-        }
-    }
-}
-
-impl From<&aws_smithy_types::Number> for Number {
-    fn from(value: &aws_smithy_types::Number) -> Self {
-        match value {
-            aws_smithy_types::Number::Float(float) => Self::Float(float.to_owned()),
-            aws_smithy_types::Number::NegInt(int) => Self::NegInt(int.to_owned()),
-            aws_smithy_types::Number::PosInt(int) => Self::PosInt(int.to_owned()),
-        }
-    }
-}
-
-impl From<Number> for aws_smithy_types::Number {
-    fn from(value: Number) -> Self {
-        match value {
-            Number::Float(float) => aws_smithy_types::Number::Float(float),
-            Number::NegInt(int) => aws_smithy_types::Number::NegInt(int),
-            Number::PosInt(int) => aws_smithy_types::Number::PosInt(int),
-        }
-    }
-}
-
 // TryFrom<T> implementations
-impl TryFrom<aws_sdk_bedrockruntime::types::StopReason> for StopReason {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::StopReason) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::StopReason::ContentFiltered => {
-                Ok(StopReason::ContentFiltered)
+//
+// The AWS SDK's "string enums" (unit variants only) and unions (one payload
+// per variant) mirror mechanically, so the impls are macro-generated. The
+// error strings match the historical hand-written impls exactly:
+// `Unknown variant for TYPE: {invalid:?}`.
+
+/// Mirror a unit-variant AWS enum: emits owned + borrowed `TryFrom<aws>` impls
+/// and, with the trailing `reverse` flag, a `TryFrom<ours> for aws` impl.
+/// Unlisted variants (including this crate's `Unknown`) fall through to a
+/// `TypeConversionError`.
+macro_rules! mirror_enum {
+    ($ours:ident, $aws:ty { $($aws_variant:ident => $ours_variant:ident),+ $(,)? }) => {
+        impl TryFrom<$aws> for $ours {
+            type Error = TypeConversionError;
+            fn try_from(value: $aws) -> Result<Self, Self::Error> {
+                <$ours>::try_from(&value)
             }
-            aws_sdk_bedrockruntime::types::StopReason::EndTurn => Ok(StopReason::EndTurn),
-            aws_sdk_bedrockruntime::types::StopReason::GuardrailIntervened => {
-                Ok(StopReason::GuardrailIntervened)
-            }
-            aws_sdk_bedrockruntime::types::StopReason::MaxTokens => Ok(StopReason::MaxTokens),
-            aws_sdk_bedrockruntime::types::StopReason::StopSequence => Ok(StopReason::StopSequence),
-            aws_sdk_bedrockruntime::types::StopReason::ToolUse => Ok(StopReason::ToolUse),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for StopReason: {invalid:?}"
-            ))),
         }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::TokenUsage> for TokenUsage {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::TokenUsage) -> Result<Self, Self::Error> {
-        Ok(TokenUsage {
-            input_tokens: value.input_tokens(),
-            output_tokens: value.output_tokens(),
-            total_tokens: value.total_tokens(),
-            cache_read_input_tokens: value.cache_read_input_tokens(),
-            cache_write_input_tokens: value.cache_write_input_tokens(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ConverseMetrics> for ConverseMetrics {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::ConverseMetrics,
-    ) -> Result<Self, Self::Error> {
-        Ok(ConverseMetrics {
-            latency_ms: value.latency_ms(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ConverseTrace> for ConverseTrace {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::ConverseTrace) -> Result<Self, Self::Error> {
-        Ok(ConverseTrace {
-            guardrail: value.guardrail().map(|v| v.try_into()).transpose()?,
-            prompt_router: value.prompt_router().map(|v| v.try_into()).transpose()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::PromptRouterTrace> for PromptRouterTrace {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::PromptRouterTrace,
-    ) -> Result<Self, Self::Error> {
-        Ok(PromptRouterTrace {
-            invoked_model_id: value.invoked_model_id().map(Into::into),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::PromptRouterTrace> for PromptRouterTrace {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::PromptRouterTrace,
-    ) -> Result<Self, Self::Error> {
-        Ok(PromptRouterTrace {
-            invoked_model_id: value.invoked_model_id().map(Into::into),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTraceAssessment> for GuardrailTraceAssessment {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailTraceAssessment,
-    ) -> Result<Self, Self::Error> {
-        let input_assessment = value
-            .input_assessment()
-            .map(|map| {
-                map.iter()
-                    .map(|(k, v)| Ok((k.clone(), v.clone().try_into()?)))
-                    .collect::<Result<_, Self::Error>>()
-            })
-            .transpose()?;
-
-        let output_assessments = value
-            .output_assessments()
-            .map(|map| {
-                map.iter()
-                    .map(|(k, v)| {
-                        let converted_vec: Result<Vec<GuardrailAssessment>, Self::Error> =
-                            v.iter().map(|x| x.clone().try_into()).collect();
-                        Ok((k.clone(), converted_vec?))
-                    })
-                    .collect::<Result<_, Self::Error>>()
-            })
-            .transpose()?;
-
-        Ok(GuardrailTraceAssessment {
-            model_output: Some(value.model_output().iter().map(|x| x.to_owned()).collect()),
-            input_assessment,
-            output_assessments,
-            action_reason: value.action_reason().map(Into::into),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTraceAssessment>
-    for GuardrailTraceAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailTraceAssessment,
-    ) -> Result<Self, Self::Error> {
-        let input_assessment = value
-            .input_assessment()
-            .map(|map| {
-                map.iter()
-                    .map(|(k, v)| Ok((k.clone(), v.clone().try_into()?)))
-                    .collect::<Result<_, Self::Error>>()
-            })
-            .transpose()?;
-
-        let output_assessments = value
-            .output_assessments()
-            .map(|map| {
-                map.iter()
-                    .map(|(k, v)| {
-                        let converted_vec: Result<Vec<GuardrailAssessment>, Self::Error> =
-                            v.iter().map(|x| x.clone().try_into()).collect();
-                        Ok((k.clone(), converted_vec?))
-                    })
-                    .collect::<Result<_, Self::Error>>()
-            })
-            .transpose()?;
-
-        Ok(GuardrailTraceAssessment {
-            model_output: Some(value.model_output().iter().map(|x| x.to_owned()).collect()),
-            input_assessment,
-            output_assessments,
-            action_reason: value.action_reason().map(Into::into),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailAssessment> for GuardrailAssessment {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailAssessment {
-            topic_policy: value.topic_policy().map(|v| v.try_into()).transpose()?,
-            content_policy: value.content_policy().map(|v| v.try_into()).transpose()?,
-            word_policy: value.word_policy().map(|v| v.try_into()).transpose()?,
-            sensitive_information_policy: value
-                .sensitive_information_policy()
-                .map(|v| v.try_into())
-                .transpose()?,
-            contextual_grounding_policy: value
-                .contextual_grounding_policy()
-                .map(|v| v.try_into())
-                .transpose()?,
-            invocation_metrics: value
-                .invocation_metrics()
-                .map(|v| v.try_into())
-                .transpose()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAssessment>
-    for GuardrailTopicPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailTopicPolicyAssessment {
-            topics: value
-                .topics()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAssessment>
-    for GuardrailTopicPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailTopicPolicyAssessment {
-            topics: value
-                .topics()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContentPolicyAssessment>
-    for GuardrailContentPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContentPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailContentPolicyAssessment {
-            filters: value
-                .filters()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentPolicyAssessment>
-    for GuardrailContentPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContentPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailContentPolicyAssessment {
-            filters: value
-                .filters()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailWordPolicyAssessment>
-    for GuardrailWordPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailWordPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailWordPolicyAssessment {
-            custom_words: value
-                .custom_words()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-            managed_word_lists: value
-                .managed_word_lists()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailWordPolicyAssessment>
-    for GuardrailWordPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailWordPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailWordPolicyAssessment {
-            custom_words: value
-                .custom_words()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-            managed_word_lists: value
-                .managed_word_lists()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAssessment>
-    for GuardrailSensitiveInformationPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailSensitiveInformationPolicyAssessment {
-            pii_entities: value
-                .pii_entities()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-            regexes: value
-                .regexes()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAssessment>
-    for GuardrailSensitiveInformationPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailSensitiveInformationPolicyAssessment {
-            pii_entities: value
-                .pii_entities()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-            regexes: value
-                .regexes()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAssessment>
-    for GuardrailContextualGroundingPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailContextualGroundingPolicyAssessment {
-            filters: value
-                .filters
-                .map(|x| x.into_iter().map(TryInto::try_into).collect())
-                .transpose()?,
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAssessment>
-    for GuardrailContextualGroundingPolicyAssessment
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAssessment,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailContextualGroundingPolicyAssessment {
-            filters: value
-                .filters
-                .clone()
-                .map(|x| x.into_iter().map(TryInto::try_into).collect())
-                .transpose()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailInvocationMetrics>
-    for GuardrailInvocationMetrics
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailInvocationMetrics,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailInvocationMetrics {
-            guardrail_processing_latency: value.guardrail_processing_latency(),
-            usage: value.usage().map(|v| v.try_into()).transpose()?,
-            guardrail_coverage: value
-                .guardrail_coverage()
-                .map(|v| v.try_into())
-                .transpose()?,
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailInvocationMetrics>
-    for GuardrailInvocationMetrics
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailInvocationMetrics,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailInvocationMetrics {
-            guardrail_processing_latency: value.guardrail_processing_latency(),
-            usage: value.usage().map(|v| v.try_into()).transpose()?,
-            guardrail_coverage: value
-                .guardrail_coverage()
-                .map(|v| v.try_into())
-                .transpose()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTopic> for GuardrailTopic {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::GuardrailTopic) -> Result<Self, Self::Error> {
-        Ok(GuardrailTopic {
-            name: value.name().into(),
-            kind: value.r#type().try_into()?,
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTopic> for GuardrailTopic {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailTopic,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailTopic {
-            name: value.name().into(),
-            kind: value.r#type().try_into()?,
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTopicType> for GuardrailTopicType {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailTopicType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailTopicType::Deny => Ok(GuardrailTopicType::Deny),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailTopicType: {invalid:?}"
-            ))),
+        impl TryFrom<&$aws> for $ours {
+            type Error = TypeConversionError;
+            fn try_from(value: &$aws) -> Result<Self, Self::Error> {
+                type Aws = $aws;
+                match value {
+                    $(Aws::$aws_variant => Ok($ours::$ours_variant),)+
+                    invalid => Err(TypeConversionError::new(&format!(
+                        concat!("Unknown variant for ", stringify!($ours), ": {:?}"),
+                        invalid
+                    ))),
+                }
+            }
         }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTopicType> for GuardrailTopicType {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailTopicType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailTopicType::Deny => Ok(GuardrailTopicType::Deny),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailTopicType: {invalid:?}"
-            ))),
+    };
+    ($ours:ident, $aws:ty { $($aws_variant:ident => $ours_variant:ident),+ $(,)? }, reverse) => {
+        mirror_enum!($ours, $aws { $($aws_variant => $ours_variant),+ });
+        impl TryFrom<$ours> for $aws {
+            type Error = TypeConversionError;
+            fn try_from(value: $ours) -> Result<Self, TypeConversionError> {
+                type Aws = $aws;
+                match value {
+                    $($ours::$ours_variant => Ok(Aws::$aws_variant),)+
+                    invalid => Err(TypeConversionError::new(&format!(
+                        concat!("Unknown variant for ", stringify!($ours), ": {:?}"),
+                        invalid
+                    ))),
+                }
+            }
         }
-    }
+    };
 }
 
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction>
-    for GuardrailTopicPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction::Blocked => {
-                Ok(GuardrailTopicPolicyAction::Blocked)
+/// Mirror an AWS union (every listed variant carries a single payload that
+/// converts via `TryInto`): emits the owned `TryFrom<aws>` impl and, with
+/// `reverse`, the `TryFrom<ours> for aws` impl.
+macro_rules! mirror_union {
+    ($ours:ident, $aws:ty { $($aws_variant:ident => $ours_variant:ident),+ $(,)? }) => {
+        impl TryFrom<$aws> for $ours {
+            type Error = TypeConversionError;
+            fn try_from(value: $aws) -> Result<Self, Self::Error> {
+                type Aws = $aws;
+                match value {
+                    $(Aws::$aws_variant(value) => Ok($ours::$ours_variant(value.try_into()?)),)+
+                    invalid => Err(TypeConversionError::new(&format!(
+                        concat!("Unknown variant for ", stringify!($ours), ": {:?}"),
+                        invalid
+                    ))),
+                }
             }
-            aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction::None => {
-                Ok(GuardrailTopicPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailTopicPolicyAction: {invalid:?}"
-            ))),
         }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction>
-    for GuardrailTopicPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction::Blocked => {
-                Ok(GuardrailTopicPolicyAction::Blocked)
+    };
+    ($ours:ident, $aws:ty { $($aws_variant:ident => $ours_variant:ident),+ $(,)? }, reverse) => {
+        mirror_union!($ours, $aws { $($aws_variant => $ours_variant),+ });
+        impl TryFrom<$ours> for $aws {
+            type Error = TypeConversionError;
+            fn try_from(value: $ours) -> Result<Self, TypeConversionError> {
+                type Aws = $aws;
+                match value {
+                    $($ours::$ours_variant(value) => Ok(Aws::$aws_variant(value.try_into()?)),)+
+                    invalid => Err(TypeConversionError::new(&format!(
+                        concat!("Unknown variant for ", stringify!($ours), ": {:?}"),
+                        invalid
+                    ))),
+                }
             }
-            aws_sdk_bedrockruntime::types::GuardrailTopicPolicyAction::None => {
-                Ok(GuardrailTopicPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailTopicPolicyAction: {invalid:?}"
-            ))),
         }
-    }
+    };
 }
 
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContentFilter> for GuardrailContentFilter {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContentFilter,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailContentFilter {
-            kind: value.r#type().try_into()?,
-            confidence: value.confidence().try_into()?,
-            filter_strength: value.filter_strength().map(|v| v.try_into()).transpose()?,
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
+mirror_enum!(StopReason, aws_bedrock::StopReason {
+    ContentFiltered => ContentFiltered,
+    EndTurn => EndTurn,
+    GuardrailIntervened => GuardrailIntervened,
+    MaxTokens => MaxTokens,
+    StopSequence => StopSequence,
+    ToolUse => ToolUse,
+});
+mirror_enum!(ConversationRole, aws_bedrock::ConversationRole {
+    Assistant => Assistant,
+    User => User,
+}, reverse);
+mirror_enum!(CachePointType, aws_bedrock::CachePointType {
+    Default => Default,
+}, reverse);
+mirror_enum!(DocumentFormat, aws_bedrock::DocumentFormat {
+    Csv => Csv,
+    Doc => Doc,
+    Docx => Docx,
+    Html => Html,
+    Md => Md,
+    Pdf => Pdf,
+    Txt => Txt,
+    Xls => Xls,
+    Xlsx => Xlsx,
+}, reverse);
+mirror_enum!(ImageFormat, aws_bedrock::ImageFormat {
+    Gif => Gif,
+    Jpeg => Jpeg,
+    Png => Png,
+    Webp => Webp,
+}, reverse);
+mirror_enum!(VideoFormat, aws_bedrock::VideoFormat {
+    Flv => Flv,
+    Mkv => Mkv,
+    Mov => Mov,
+    Mp4 => Mp4,
+    Mpeg => Mpeg,
+    Mpg => Mpg,
+    ThreeGp => ThreeGp,
+    Webm => Webm,
+    Wmv => Wmv,
+}, reverse);
+mirror_enum!(ToolResultStatus, aws_bedrock::ToolResultStatus {
+    Error => IsError,
+    Success => Success,
+}, reverse);
+mirror_enum!(GuardrailConverseImageFormat, aws_bedrock::GuardrailConverseImageFormat {
+    Jpeg => Jpeg,
+    Png => Png,
+}, reverse);
+mirror_enum!(GuardrailConverseContentQualifier, aws_bedrock::GuardrailConverseContentQualifier {
+    GroundingSource => GroundingSource,
+    GuardContent => GuardContent,
+    Query => Query,
+}, reverse);
 
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentFilter> for GuardrailContentFilter {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContentFilter,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailContentFilter {
-            kind: value.r#type().try_into()?,
-            confidence: value.confidence().try_into()?,
-            filter_strength: value.filter_strength().map(|v| v.try_into()).transpose()?,
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
+mirror_union!(ConverseOutput, aws_bedrock::ConverseOutput {
+    Message => Message,
+});
+mirror_union!(ContentBlock, aws_bedrock::ContentBlock {
+    CachePoint => CachePoint,
+    CitationsContent => CitationsContent,
+    Document => Document,
+    GuardContent => GuardContent,
+    Image => Image,
+    ReasoningContent => ReasoningContent,
+    Text => Text,
+    ToolResult => ToolResult,
+    ToolUse => ToolUse,
+    Video => Video,
+}, reverse);
+mirror_union!(CitationGeneratedContent, aws_bedrock::CitationGeneratedContent {
+    Text => Text,
+}, reverse);
+mirror_union!(CitationSourceContent, aws_bedrock::CitationSourceContent {
+    Text => Text,
+}, reverse);
+mirror_union!(CitationLocation, aws_bedrock::CitationLocation {
+    DocumentChar => DocumentChar,
+    DocumentChunk => DocumentChunk,
+    DocumentPage => DocumentPage,
+}, reverse);
+mirror_union!(DocumentContentBlock, aws_bedrock::DocumentContentBlock {
+    Text => Text,
+}, reverse);
+mirror_union!(GuardrailConverseContentBlock, aws_bedrock::GuardrailConverseContentBlock {
+    Image => Image,
+    Text => Text,
+}, reverse);
+mirror_union!(GuardrailConverseImageSource, aws_bedrock::GuardrailConverseImageSource {
+    Bytes => Bytes,
+}, reverse);
+mirror_union!(ImageSource, aws_bedrock::ImageSource {
+    Bytes => Bytes,
+    S3Location => S3Location,
+}, reverse);
+mirror_union!(VideoSource, aws_bedrock::VideoSource {
+    Bytes => Bytes,
+    S3Location => S3Location,
+}, reverse);
+mirror_union!(ReasoningContentBlock, aws_bedrock::ReasoningContentBlock {
+    ReasoningText => ReasoningText,
+    RedactedContent => RedactedContent,
+}, reverse);
 
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence>
-    for GuardrailContentFilterConfidence
-{
+// `DocumentSource::Content` carries a `Vec` payload and
+// `ToolResultContentBlock::Json` bridges Smithy `Document` <-> `serde_json::Value`,
+// so those two unions stay hand-written.
+
+impl TryFrom<aws_bedrock::DocumentSource> for DocumentSource {
     type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(value: aws_bedrock::DocumentSource) -> Result<Self, Self::Error> {
         match value {
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence::High => {
-                Ok(GuardrailContentFilterConfidence::High)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence::Low => {
-                Ok(GuardrailContentFilterConfidence::Low)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence::Medium => {
-                Ok(GuardrailContentFilterConfidence::Medium)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence::None => {
-                Ok(GuardrailContentFilterConfidence::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterConfidence: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence>
-    for GuardrailContentFilterConfidence
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence::High => {
-                Ok(GuardrailContentFilterConfidence::High)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence::Low => {
-                Ok(GuardrailContentFilterConfidence::Low)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence::Medium => {
-                Ok(GuardrailContentFilterConfidence::Medium)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterConfidence::None => {
-                Ok(GuardrailContentFilterConfidence::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterConfidence: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength>
-    for GuardrailContentFilterStrength
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength::High => {
-                Ok(GuardrailContentFilterStrength::High)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength::Low => {
-                Ok(GuardrailContentFilterStrength::Low)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength::Medium => {
-                Ok(GuardrailContentFilterStrength::Medium)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength::None => {
-                Ok(GuardrailContentFilterStrength::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterStrength: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength>
-    for GuardrailContentFilterStrength
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength::High => {
-                Ok(GuardrailContentFilterStrength::High)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength::Low => {
-                Ok(GuardrailContentFilterStrength::Low)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength::Medium => {
-                Ok(GuardrailContentFilterStrength::Medium)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterStrength::None => {
-                Ok(GuardrailContentFilterStrength::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterStrength: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction>
-    for GuardrailContentPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction::Blocked => {
-                Ok(GuardrailContentPolicyAction::Blocked)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction::None => {
-                Ok(GuardrailContentPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentPolicyAction: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction>
-    for GuardrailContentPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction::Blocked => {
-                Ok(GuardrailContentPolicyAction::Blocked)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentPolicyAction::None => {
-                Ok(GuardrailContentPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentPolicyAction: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContentFilterType>
-    for GuardrailContentFilterType
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContentFilterType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterType::Hate => {
-                Ok(GuardrailContentFilterType::Hate)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterType::Insults => {
-                Ok(GuardrailContentFilterType::Insults)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterType::Misconduct => {
-                Ok(GuardrailContentFilterType::Misconduct)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterType::PromptAttack => {
-                Ok(GuardrailContentFilterType::PromptAttack)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterType::Sexual => {
-                Ok(GuardrailContentFilterType::Sexual)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContentFilterType::Violence => {
-                Ok(GuardrailContentFilterType::Violence)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContentFilterType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailCustomWord> for GuardrailCustomWord {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailCustomWord,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailCustomWord {
-            matches_on: value.r#match().into(),
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction>
-    for GuardrailWordPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction::Blocked => {
-                Ok(GuardrailWordPolicyAction::Blocked)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction::None => {
-                Ok(GuardrailWordPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailWordPolicyAction: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction>
-    for GuardrailWordPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction::Blocked => {
-                Ok(GuardrailWordPolicyAction::Blocked)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailWordPolicyAction::None => {
-                Ok(GuardrailWordPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailWordPolicyAction: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailManagedWord> for GuardrailManagedWord {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailManagedWord,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailManagedWord {
-            matches_on: value.r#match().into(),
-            kind: value.r#type().try_into()?,
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailManagedWordType> for GuardrailManagedWordType {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailManagedWordType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailManagedWordType::Profanity => {
-                Ok(GuardrailManagedWordType::Profanity)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailManagedWordType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailManagedWordType>
-    for GuardrailManagedWordType
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailManagedWordType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailManagedWordType::Profanity => {
-                Ok(GuardrailManagedWordType::Profanity)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailManagedWordType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailPiiEntityFilter> for GuardrailPiiEntityFilter {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailPiiEntityFilter,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailPiiEntityFilter {
-            matches_on: value.r#match().into(),
-            kind: value.r#type().try_into()?,
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction>
-    for GuardrailSensitiveInformationPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction::Anonymized => {
-                Ok(GuardrailSensitiveInformationPolicyAction::Anonymized)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction::Blocked => {
-                Ok(GuardrailSensitiveInformationPolicyAction::Blocked)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction::None => {
-                Ok(GuardrailSensitiveInformationPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailSensitiveInformationPolicyAction: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction>
-    for GuardrailSensitiveInformationPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction::Anonymized => {
-                Ok(GuardrailSensitiveInformationPolicyAction::Anonymized)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction::Blocked => {
-                Ok(GuardrailSensitiveInformationPolicyAction::Blocked)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailSensitiveInformationPolicyAction::None => {
-                Ok(GuardrailSensitiveInformationPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailSensitiveInformationPolicyAction: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailPiiEntityType> for GuardrailPiiEntityType {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailPiiEntityType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Address => Ok(GuardrailPiiEntityType::Address),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Age => Ok(GuardrailPiiEntityType::Age),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::AwsAccessKey => Ok(GuardrailPiiEntityType::AwsAccessKey),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::AwsSecretKey => Ok(GuardrailPiiEntityType::AwsSecretKey),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CaHealthNumber => Ok(GuardrailPiiEntityType::CaHealthNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CaSocialInsuranceNumber => Ok(GuardrailPiiEntityType::CaSocialInsuranceNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CreditDebitCardCvv => Ok(GuardrailPiiEntityType::CreditDebitCardCvv),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CreditDebitCardExpiry => Ok(GuardrailPiiEntityType::CreditDebitCardExpiry),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CreditDebitCardNumber => Ok(GuardrailPiiEntityType::CreditDebitCardNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::DriverId => Ok(GuardrailPiiEntityType::DriverId),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Email => Ok(GuardrailPiiEntityType::Email),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::InternationalBankAccountNumber => Ok(GuardrailPiiEntityType::InternationalBankAccountNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::IpAddress => Ok(GuardrailPiiEntityType::IpAddress),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::LicensePlate => Ok(GuardrailPiiEntityType::LicensePlate),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::MacAddress => Ok(GuardrailPiiEntityType::MacAddress),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Name => Ok(GuardrailPiiEntityType::Name),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Password => Ok(GuardrailPiiEntityType::Password),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Phone => Ok(GuardrailPiiEntityType::Phone),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Pin => Ok(GuardrailPiiEntityType::Pin),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::SwiftCode => Ok(GuardrailPiiEntityType::SwiftCode),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UkNationalHealthServiceNumber => Ok(GuardrailPiiEntityType::UkNationalHealthServiceNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UkNationalInsuranceNumber => Ok(GuardrailPiiEntityType::UkNationalInsuranceNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UkUniqueTaxpayerReferenceNumber => Ok(GuardrailPiiEntityType::UkUniqueTaxpayerReferenceNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Url => Ok(GuardrailPiiEntityType::Url),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Username => Ok(GuardrailPiiEntityType::Username),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsBankAccountNumber => Ok(GuardrailPiiEntityType::UsBankAccountNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsBankRoutingNumber => Ok(GuardrailPiiEntityType::UsBankRoutingNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsIndividualTaxIdentificationNumber => Ok(GuardrailPiiEntityType::UsIndividualTaxIdentificationNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsPassportNumber => Ok(GuardrailPiiEntityType::UsPassportNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsSocialSecurityNumber => Ok(GuardrailPiiEntityType::UsSocialSecurityNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::VehicleIdentificationNumber => Ok(GuardrailPiiEntityType::VehicleIdentificationNumber),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailPiiEntityType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailPiiEntityType> for GuardrailPiiEntityType {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailPiiEntityType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Address => Ok(GuardrailPiiEntityType::Address),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Age => Ok(GuardrailPiiEntityType::Age),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::AwsAccessKey => Ok(GuardrailPiiEntityType::AwsAccessKey),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::AwsSecretKey => Ok(GuardrailPiiEntityType::AwsSecretKey),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CaHealthNumber => Ok(GuardrailPiiEntityType::CaHealthNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CaSocialInsuranceNumber => Ok(GuardrailPiiEntityType::CaSocialInsuranceNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CreditDebitCardCvv => Ok(GuardrailPiiEntityType::CreditDebitCardCvv),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CreditDebitCardExpiry => Ok(GuardrailPiiEntityType::CreditDebitCardExpiry),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::CreditDebitCardNumber => Ok(GuardrailPiiEntityType::CreditDebitCardNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::DriverId => Ok(GuardrailPiiEntityType::DriverId),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Email => Ok(GuardrailPiiEntityType::Email),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::InternationalBankAccountNumber => Ok(GuardrailPiiEntityType::InternationalBankAccountNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::IpAddress => Ok(GuardrailPiiEntityType::IpAddress),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::LicensePlate => Ok(GuardrailPiiEntityType::LicensePlate),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::MacAddress => Ok(GuardrailPiiEntityType::MacAddress),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Name => Ok(GuardrailPiiEntityType::Name),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Password => Ok(GuardrailPiiEntityType::Password),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Phone => Ok(GuardrailPiiEntityType::Phone),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Pin => Ok(GuardrailPiiEntityType::Pin),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::SwiftCode => Ok(GuardrailPiiEntityType::SwiftCode),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UkNationalHealthServiceNumber => Ok(GuardrailPiiEntityType::UkNationalHealthServiceNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UkNationalInsuranceNumber => Ok(GuardrailPiiEntityType::UkNationalInsuranceNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UkUniqueTaxpayerReferenceNumber => Ok(GuardrailPiiEntityType::UkUniqueTaxpayerReferenceNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Url => Ok(GuardrailPiiEntityType::Url),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::Username => Ok(GuardrailPiiEntityType::Username),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsBankAccountNumber => Ok(GuardrailPiiEntityType::UsBankAccountNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsBankRoutingNumber => Ok(GuardrailPiiEntityType::UsBankRoutingNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsIndividualTaxIdentificationNumber => Ok(GuardrailPiiEntityType::UsIndividualTaxIdentificationNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsPassportNumber => Ok(GuardrailPiiEntityType::UsPassportNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::UsSocialSecurityNumber => Ok(GuardrailPiiEntityType::UsSocialSecurityNumber),
-            aws_sdk_bedrockruntime::types::GuardrailPiiEntityType::VehicleIdentificationNumber => Ok(GuardrailPiiEntityType::VehicleIdentificationNumber),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailPiiEntityType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailRegexFilter> for GuardrailRegexFilter {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailRegexFilter,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailRegexFilter {
-            name: value.name().map(Into::into),
-            matches_on: value.r#match().map(Into::into),
-            regex: value.regex().map(Into::into),
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailRegexFilter> for GuardrailRegexFilter {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailRegexFilter,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailRegexFilter {
-            name: value.name().map(Into::into),
-            matches_on: value.r#match().map(Into::into),
-            regex: value.regex().map(Into::into),
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilter>
-    for GuardrailContextualGroundingFilter
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilter,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailContextualGroundingFilter {
-            kind: value.r#type().try_into()?,
-            threshold: value.threshold(),
-            score: value.score(),
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilter>
-    for GuardrailContextualGroundingFilter
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilter,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailContextualGroundingFilter {
-            kind: value.r#type().try_into()?,
-            threshold: value.threshold(),
-            score: value.score(),
-            action: value.action().try_into()?,
-            detected: value.detected(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterType>
-    for GuardrailContextualGroundingFilterType
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterType::Grounding => {
-                Ok(GuardrailContextualGroundingFilterType::Grounding)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterType::Relevance => {
-                Ok(GuardrailContextualGroundingFilterType::Relevance)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContextualGroundingFilterType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterType>
-    for GuardrailContextualGroundingFilterType
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterType::Grounding => {
-                Ok(GuardrailContextualGroundingFilterType::Grounding)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContextualGroundingFilterType::Relevance => {
-                Ok(GuardrailContextualGroundingFilterType::Relevance)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContextualGroundingFilterType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAction>
-    for GuardrailContextualGroundingPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAction::Blocked => {
-                Ok(GuardrailContextualGroundingPolicyAction::Blocked)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAction::None => {
-                Ok(GuardrailContextualGroundingPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContextualGroundingPolicyAction: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAction>
-    for GuardrailContextualGroundingPolicyAction
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAction,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAction::Blocked => {
-                Ok(GuardrailContextualGroundingPolicyAction::Blocked)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailContextualGroundingPolicyAction::None => {
-                Ok(GuardrailContextualGroundingPolicyAction::None)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailContextualGroundingPolicyAction: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailUsage> for GuardrailUsage {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::GuardrailUsage) -> Result<Self, Self::Error> {
-        Ok(GuardrailUsage {
-            topic_policy_units: value.topic_policy_units(),
-            content_policy_units: value.content_policy_units(),
-            word_policy_units: value.word_policy_units(),
-            sensitive_information_policy_units: value.sensitive_information_policy_units(),
-            sensitive_information_policy_free_units: value
-                .sensitive_information_policy_free_units(),
-            contextual_grounding_policy_units: value.contextual_grounding_policy_units(),
-            content_policy_image_units: value.content_policy_image_units(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailUsage> for GuardrailUsage {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailUsage,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailUsage {
-            topic_policy_units: value.topic_policy_units(),
-            content_policy_units: value.content_policy_units(),
-            word_policy_units: value.word_policy_units(),
-            sensitive_information_policy_units: value.sensitive_information_policy_units(),
-            sensitive_information_policy_free_units: value
-                .sensitive_information_policy_free_units(),
-            contextual_grounding_policy_units: value.contextual_grounding_policy_units(),
-            content_policy_image_units: value.content_policy_image_units(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailCoverage> for GuardrailCoverage {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailCoverage,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailCoverage {
-            text_characters: value.text_characters().map(TryInto::try_into).transpose()?,
-            images: value.images().map(TryInto::try_into).transpose()?,
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailCoverage> for GuardrailCoverage {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailCoverage,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailCoverage {
-            text_characters: value.text_characters().map(TryInto::try_into).transpose()?,
-            images: value.images().map(TryInto::try_into).transpose()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailTextCharactersCoverage>
-    for GuardrailTextCharactersCoverage
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailTextCharactersCoverage,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailTextCharactersCoverage {
-            guarded: value.guarded(),
-            total: value.total(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailTextCharactersCoverage>
-    for GuardrailTextCharactersCoverage
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailTextCharactersCoverage,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailTextCharactersCoverage {
-            guarded: value.guarded(),
-            total: value.total(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailImageCoverage> for GuardrailImageCoverage {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailImageCoverage,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailImageCoverage {
-            guarded: value.guarded(),
-            total: value.total(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailImageCoverage> for GuardrailImageCoverage {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailImageCoverage,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailImageCoverage {
-            guarded: value.guarded(),
-            total: value.total(),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::PerformanceConfiguration> for PerformanceConfiguration {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::PerformanceConfiguration,
-    ) -> Result<Self, Self::Error> {
-        Ok(PerformanceConfiguration {
-            latency: value.latency().try_into()?,
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::PerformanceConfigLatency> for PerformanceConfigLatency {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::PerformanceConfigLatency,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::PerformanceConfigLatency::Optimized => {
-                Ok(PerformanceConfigLatency::Optimized)
-            }
-            aws_sdk_bedrockruntime::types::PerformanceConfigLatency::Standard => {
-                Ok(PerformanceConfigLatency::Standard)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for PerformanceConfigLatency: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::PerformanceConfigLatency>
-    for PerformanceConfigLatency
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::PerformanceConfigLatency,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::PerformanceConfigLatency::Optimized => {
-                Ok(PerformanceConfigLatency::Optimized)
-            }
-            aws_sdk_bedrockruntime::types::PerformanceConfigLatency::Standard => {
-                Ok(PerformanceConfigLatency::Standard)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for PerformanceConfigLatency: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ConverseOutput> for ConverseOutput {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::ConverseOutput) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ConverseOutput::Message(message) => {
-                Ok(ConverseOutput::Message(message.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ConverseOutput: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::Message> for Message {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::Message) -> Result<Self, Self::Error> {
-        Ok(Message {
-            role: value.role().try_into()?,
-            content: value
-                .content()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        })
-    }
-}
-
-impl TryFrom<Message> for aws_sdk_bedrockruntime::types::Message {
-    type Error = TypeConversionError;
-    fn try_from(value: Message) -> Result<Self, Self::Error> {
-        let role = Some(value.role.try_into()?);
-        let content = Some(
-            value
-                .content
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        );
-        let res = aws_sdk_bedrockruntime::types::Message::builder()
-            .set_role(role)
-            .set_content(content)
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ConversationRole> for ConversationRole {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::ConversationRole,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ConversationRole::Assistant => {
-                Ok(ConversationRole::Assistant)
-            }
-            aws_sdk_bedrockruntime::types::ConversationRole::User => Ok(ConversationRole::User),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ConversationRole: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::ConversationRole> for ConversationRole {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::ConversationRole,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ConversationRole::Assistant => {
-                Ok(ConversationRole::Assistant)
-            }
-            aws_sdk_bedrockruntime::types::ConversationRole::User => Ok(ConversationRole::User),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ConversationRole: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<ConversationRole> for aws_sdk_bedrockruntime::types::ConversationRole {
-    type Error = TypeConversionError;
-    fn try_from(value: ConversationRole) -> Result<Self, Self::Error> {
-        match value {
-            ConversationRole::Assistant => {
-                Ok(aws_sdk_bedrockruntime::types::ConversationRole::Assistant)
-            }
-            ConversationRole::User => Ok(aws_sdk_bedrockruntime::types::ConversationRole::User),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ConversationRole: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ContentBlock> for ContentBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::ContentBlock) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ContentBlock::CachePoint(value) => {
-                Ok(ContentBlock::CachePoint(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::CitationsContent(value) => {
-                Ok(ContentBlock::CitationsContent(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::Document(value) => {
-                Ok(ContentBlock::Document(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::GuardContent(value) => {
-                Ok(ContentBlock::GuardContent(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::Image(value) => {
-                Ok(ContentBlock::Image(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::ReasoningContent(value) => {
-                Ok(ContentBlock::ReasoningContent(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::Text(value) => {
-                Ok(ContentBlock::Text(value))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::ToolResult(value) => {
-                Ok(ContentBlock::ToolResult(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::ToolUse(value) => {
-                Ok(ContentBlock::ToolUse(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ContentBlock::Video(value) => {
-                Ok(ContentBlock::Video(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ContentBlock: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<ContentBlock> for aws_sdk_bedrockruntime::types::ContentBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: ContentBlock) -> Result<Self, Self::Error> {
-        match value {
-            ContentBlock::CachePoint(value) => Ok(
-                aws_sdk_bedrockruntime::types::ContentBlock::CachePoint(value.try_into()?),
-            ),
-            ContentBlock::CitationsContent(value) => Ok(
-                aws_sdk_bedrockruntime::types::ContentBlock::CitationsContent(value.try_into()?),
-            ),
-            ContentBlock::Document(value) => Ok(
-                aws_sdk_bedrockruntime::types::ContentBlock::Document(value.try_into()?),
-            ),
-            ContentBlock::GuardContent(value) => Ok(
-                aws_sdk_bedrockruntime::types::ContentBlock::GuardContent(value.try_into()?),
-            ),
-            ContentBlock::Image(value) => Ok(aws_sdk_bedrockruntime::types::ContentBlock::Image(
-                value.try_into()?,
-            )),
-            ContentBlock::ReasoningContent(value) => Ok(
-                aws_sdk_bedrockruntime::types::ContentBlock::ReasoningContent(value.try_into()?),
-            ),
-            ContentBlock::Text(value) => {
-                Ok(aws_sdk_bedrockruntime::types::ContentBlock::Text(value))
-            }
-            ContentBlock::ToolResult(value) => Ok(
-                aws_sdk_bedrockruntime::types::ContentBlock::ToolResult(value.try_into()?),
-            ),
-            ContentBlock::ToolUse(value) => Ok(
-                aws_sdk_bedrockruntime::types::ContentBlock::ToolUse(value.try_into()?),
-            ),
-            ContentBlock::Video(value) => Ok(aws_sdk_bedrockruntime::types::ContentBlock::Video(
-                value.try_into()?,
-            )),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ContentBlock: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::CachePointBlock> for CachePointBlock {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::CachePointBlock,
-    ) -> Result<Self, Self::Error> {
-        Ok(CachePointBlock {
-            kind: value.r#type().try_into()?,
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::CachePointBlock> for CachePointBlock {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::CachePointBlock,
-    ) -> Result<Self, Self::Error> {
-        Ok(CachePointBlock {
-            kind: value.r#type().try_into()?,
-        })
-    }
-}
-
-impl TryFrom<CachePointBlock> for aws_sdk_bedrockruntime::types::CachePointBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: CachePointBlock) -> Result<Self, Self::Error> {
-        let res = aws_sdk_bedrockruntime::types::CachePointBlock::builder()
-            .set_type(Some(value.kind.try_into()?))
-            .build()
-            .map_err(|x| TypeConversionError::new(format!("Converting from CachePointBlock to AWS CachePointBlock should never fail but it seems to have done so: {x}").as_ref()))?;
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::CachePointType> for CachePointType {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::CachePointType) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::CachePointType::Default => Ok(CachePointType::Default),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CachePointType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<CachePointType> for aws_sdk_bedrockruntime::types::CachePointType {
-    type Error = TypeConversionError;
-    fn try_from(value: CachePointType) -> Result<Self, Self::Error> {
-        match value {
-            CachePointType::Default => Ok(aws_sdk_bedrockruntime::types::CachePointType::Default),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CachePointType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::CachePointType> for CachePointType {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::CachePointType,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::CachePointType::Default => Ok(CachePointType::Default),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CachePointType: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::CitationsContentBlock> for CitationsContentBlock {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::CitationsContentBlock,
-    ) -> Result<Self, Self::Error> {
-        Ok(CitationsContentBlock {
-            content: Some(
-                value
-                    .content()
-                    .iter()
-                    .map(|x| x.clone().try_into())
-                    .collect::<Result<_, Self::Error>>()?,
-            ),
-
-            citations: Some(
-                value
-                    .citations()
-                    .iter()
-                    .map(|x| x.clone().try_into())
-                    .collect::<Result<_, Self::Error>>()?,
-            ),
-        })
-    }
-}
-
-impl TryFrom<CitationsContentBlock> for aws_sdk_bedrockruntime::types::CitationsContentBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: CitationsContentBlock) -> Result<Self, Self::Error> {
-        let citations = value
-            .citations
-            .map(|x| x.into_iter().map(|x| x.try_into()).collect())
-            .transpose()?;
-        let content = value
-            .content
-            .map(|x| x.into_iter().map(|x| x.try_into()).collect())
-            .transpose()?;
-        let citations = aws_sdk_bedrockruntime::types::CitationsContentBlock::builder()
-            .set_citations(citations)
-            .set_content(content)
-            .build();
-        Ok(citations)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::CitationGeneratedContent> for CitationGeneratedContent {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::CitationGeneratedContent,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::CitationGeneratedContent::Text(value) => {
-                Ok(CitationGeneratedContent::Text(value))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationGeneratedContent: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<CitationGeneratedContent> for aws_sdk_bedrockruntime::types::CitationGeneratedContent {
-    type Error = TypeConversionError;
-    fn try_from(value: CitationGeneratedContent) -> Result<Self, Self::Error> {
-        match value {
-            CitationGeneratedContent::Text(value) => {
-                Ok(aws_sdk_bedrockruntime::types::CitationGeneratedContent::Text(value))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationGeneratedContent: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::CitationGeneratedContent>
-    for CitationGeneratedContent
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::CitationGeneratedContent,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::CitationGeneratedContent::Text(value) => {
-                Ok(CitationGeneratedContent::Text(value.to_owned()))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationGeneratedContent: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::Citation> for Citation {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::Citation) -> Result<Self, Self::Error> {
-        Ok(Citation {
-            title: value.title().map(Into::into),
-            source_content: Some(
-                value
-                    .source_content()
-                    .iter()
-                    .map(|x| x.try_into())
-                    .collect::<Result<_, Self::Error>>()?,
-            ),
-            location: value.location().map(|v| v.try_into()).transpose()?,
-        })
-    }
-}
-
-impl TryFrom<Citation> for aws_sdk_bedrockruntime::types::Citation {
-    type Error = TypeConversionError;
-    fn try_from(value: Citation) -> Result<Self, Self::Error> {
-        let title = value.title;
-        let location = value.location.map(|x| x.try_into()).transpose()?;
-        let content = value
-            .source_content
-            .map(|x| {
-                x.into_iter()
-                    .map(|x| x.try_into())
-                    .collect::<Result<_, Self::Error>>()
-            })
-            .transpose()?;
-
-        let builder = aws_sdk_bedrockruntime::types::Citation::builder()
-            .set_title(title)
-            .set_location(location)
-            .set_source_content(content)
-            .build();
-        Ok(builder)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::CitationSourceContent> for CitationSourceContent {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::CitationSourceContent,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::CitationSourceContent::Text(value) => {
-                Ok(CitationSourceContent::Text(value))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationSourceContent: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::CitationSourceContent> for CitationSourceContent {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::CitationSourceContent,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::CitationSourceContent::Text(value) => {
-                Ok(CitationSourceContent::Text(value.to_owned()))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationSourceContent: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<CitationSourceContent> for aws_sdk_bedrockruntime::types::CitationSourceContent {
-    type Error = TypeConversionError;
-    fn try_from(value: CitationSourceContent) -> Result<Self, Self::Error> {
-        match value {
-            CitationSourceContent::Text(value) => Ok(
-                aws_sdk_bedrockruntime::types::CitationSourceContent::Text(value),
-            ),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationSourceContent: {invalid:?}"
-            ))),
-        }
-    }
-}
-impl TryFrom<aws_sdk_bedrockruntime::types::CitationLocation> for CitationLocation {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::CitationLocation,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::CitationLocation::DocumentChar(value) => {
-                Ok(CitationLocation::DocumentChar(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::CitationLocation::DocumentChunk(value) => {
-                Ok(CitationLocation::DocumentChunk(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::CitationLocation::DocumentPage(value) => {
-                Ok(CitationLocation::DocumentPage(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationLocation: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::CitationLocation> for CitationLocation {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::CitationLocation,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::CitationLocation::DocumentChar(value) => {
-                Ok(CitationLocation::DocumentChar(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::CitationLocation::DocumentChunk(value) => {
-                Ok(CitationLocation::DocumentChunk(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::CitationLocation::DocumentPage(value) => {
-                Ok(CitationLocation::DocumentPage(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationLocation: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<CitationLocation> for aws_sdk_bedrockruntime::types::CitationLocation {
-    type Error = TypeConversionError;
-    fn try_from(value: CitationLocation) -> Result<Self, Self::Error> {
-        match value {
-            CitationLocation::DocumentChar(value) => Ok(
-                aws_sdk_bedrockruntime::types::CitationLocation::DocumentChar(value.try_into()?),
-            ),
-            CitationLocation::DocumentChunk(value) => Ok(
-                aws_sdk_bedrockruntime::types::CitationLocation::DocumentChunk(value.try_into()?),
-            ),
-            CitationLocation::DocumentPage(value) => Ok(
-                aws_sdk_bedrockruntime::types::CitationLocation::DocumentPage(value.try_into()?),
-            ),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for CitationLocation: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::DocumentCharLocation> for DocumentCharLocation {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::DocumentCharLocation,
-    ) -> Result<Self, Self::Error> {
-        Ok(DocumentCharLocation {
-            document_index: value.document_index(),
-            start: value.start(),
-            end: value.end(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::DocumentCharLocation> for DocumentCharLocation {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::DocumentCharLocation,
-    ) -> Result<Self, Self::Error> {
-        Ok(DocumentCharLocation {
-            document_index: value.document_index(),
-            start: value.start(),
-            end: value.end(),
-        })
-    }
-}
-
-impl TryFrom<DocumentCharLocation> for aws_sdk_bedrockruntime::types::DocumentCharLocation {
-    type Error = TypeConversionError;
-    fn try_from(value: DocumentCharLocation) -> Result<Self, Self::Error> {
-        let res = aws_sdk_bedrockruntime::types::DocumentCharLocation::builder()
-            .set_document_index(value.document_index)
-            .set_start(value.start)
-            .set_end(value.end)
-            .build();
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::DocumentChunkLocation> for DocumentChunkLocation {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::DocumentChunkLocation,
-    ) -> Result<Self, Self::Error> {
-        Ok(DocumentChunkLocation {
-            document_index: value.document_index(),
-            start: value.start(),
-            end: value.end(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::DocumentChunkLocation> for DocumentChunkLocation {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::DocumentChunkLocation,
-    ) -> Result<Self, Self::Error> {
-        Ok(DocumentChunkLocation {
-            document_index: value.document_index(),
-            start: value.start(),
-            end: value.end(),
-        })
-    }
-}
-
-impl TryFrom<DocumentChunkLocation> for aws_sdk_bedrockruntime::types::DocumentChunkLocation {
-    type Error = TypeConversionError;
-    fn try_from(value: DocumentChunkLocation) -> Result<Self, Self::Error> {
-        let res = aws_sdk_bedrockruntime::types::DocumentChunkLocation::builder()
-            .set_document_index(value.document_index)
-            .set_start(value.start)
-            .set_end(value.end)
-            .build();
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::DocumentPageLocation> for DocumentPageLocation {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::DocumentPageLocation,
-    ) -> Result<Self, Self::Error> {
-        Ok(DocumentPageLocation {
-            document_index: value.document_index(),
-            start: value.start(),
-            end: value.end(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::DocumentPageLocation> for DocumentPageLocation {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::DocumentPageLocation,
-    ) -> Result<Self, Self::Error> {
-        Ok(DocumentPageLocation {
-            document_index: value.document_index(),
-            start: value.start(),
-            end: value.end(),
-        })
-    }
-}
-
-impl TryFrom<DocumentPageLocation> for aws_sdk_bedrockruntime::types::DocumentPageLocation {
-    type Error = TypeConversionError;
-    fn try_from(value: DocumentPageLocation) -> Result<Self, Self::Error> {
-        let res = aws_sdk_bedrockruntime::types::DocumentPageLocation::builder()
-            .set_document_index(value.document_index)
-            .set_start(value.start)
-            .set_end(value.end)
-            .build();
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::DocumentBlock> for DocumentBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::DocumentBlock) -> Result<Self, Self::Error> {
-        Ok(DocumentBlock {
-            format: value.format().try_into()?,
-            name: value.name().into(),
-            source: value.source().map(|v| v.try_into()).transpose()?,
-            context: value.context().map(Into::into),
-            citations: value.citations().map(|v| v.try_into()).transpose()?,
-        })
-    }
-}
-
-impl TryFrom<DocumentBlock> for aws_sdk_bedrockruntime::types::DocumentBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: DocumentBlock) -> Result<Self, Self::Error> {
-        let format = Some(aws_sdk_bedrockruntime::types::DocumentFormat::try_from(
-            value.format,
-        )?);
-        let name = value.name.into();
-        let source = value.source.map(|v| v.try_into()).transpose()?;
-        let context = value.context;
-        let citations = value.citations.map(|v| v.try_into()).transpose()?;
-
-        let res = aws_sdk_bedrockruntime::types::DocumentBlock::builder()
-            .set_format(format)
-            .set_name(name)
-            .set_source(source)
-            .set_context(context)
-            .set_citations(citations)
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::DocumentFormat> for DocumentFormat {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::DocumentFormat) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::DocumentFormat::Csv => Ok(DocumentFormat::Csv),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Doc => Ok(DocumentFormat::Doc),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Docx => Ok(DocumentFormat::Docx),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Html => Ok(DocumentFormat::Html),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Md => Ok(DocumentFormat::Md),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Pdf => Ok(DocumentFormat::Pdf),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Txt => Ok(DocumentFormat::Txt),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Xls => Ok(DocumentFormat::Xls),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Xlsx => Ok(DocumentFormat::Xlsx),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::DocumentFormat> for DocumentFormat {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::DocumentFormat,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::DocumentFormat::Csv => Ok(DocumentFormat::Csv),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Doc => Ok(DocumentFormat::Doc),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Docx => Ok(DocumentFormat::Docx),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Html => Ok(DocumentFormat::Html),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Md => Ok(DocumentFormat::Md),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Pdf => Ok(DocumentFormat::Pdf),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Txt => Ok(DocumentFormat::Txt),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Xls => Ok(DocumentFormat::Xls),
-            aws_sdk_bedrockruntime::types::DocumentFormat::Xlsx => Ok(DocumentFormat::Xlsx),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<DocumentFormat> for aws_sdk_bedrockruntime::types::DocumentFormat {
-    type Error = TypeConversionError;
-    fn try_from(value: DocumentFormat) -> Result<Self, Self::Error> {
-        match value {
-            DocumentFormat::Csv => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Csv),
-            DocumentFormat::Doc => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Doc),
-            DocumentFormat::Docx => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Docx),
-            DocumentFormat::Html => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Html),
-            DocumentFormat::Md => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Md),
-            DocumentFormat::Pdf => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Pdf),
-            DocumentFormat::Txt => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Txt),
-            DocumentFormat::Xls => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Xls),
-            DocumentFormat::Xlsx => Ok(aws_sdk_bedrockruntime::types::DocumentFormat::Xlsx),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::DocumentSource> for DocumentSource {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::DocumentSource) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::DocumentSource::Bytes(value) => {
+            aws_bedrock::DocumentSource::Bytes(value) => {
                 Ok(DocumentSource::Bytes(value.try_into()?))
             }
-            aws_sdk_bedrockruntime::types::DocumentSource::Content(value) => {
-                Ok(DocumentSource::Content(
-                    value
-                        .iter()
-                        .map(|x| x.clone().try_into())
-                        .collect::<Result<_, Self::Error>>()?,
-                ))
-            }
-            aws_sdk_bedrockruntime::types::DocumentSource::S3Location(value) => {
+            aws_bedrock::DocumentSource::Content(value) => Ok(DocumentSource::Content(
+                value
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, Self::Error>>()?,
+            )),
+            aws_bedrock::DocumentSource::S3Location(value) => {
                 Ok(DocumentSource::S3Location(value.try_into()?))
             }
-            aws_sdk_bedrockruntime::types::DocumentSource::Text(value) => {
-                Ok(DocumentSource::Text(value))
-            }
+            aws_bedrock::DocumentSource::Text(value) => Ok(DocumentSource::Text(value)),
             invalid => Err(TypeConversionError::new(&format!(
                 "Unknown variant for DocumentSource: {invalid:?}"
             ))),
@@ -2717,57 +608,23 @@ impl TryFrom<aws_sdk_bedrockruntime::types::DocumentSource> for DocumentSource {
     }
 }
 
-impl TryFrom<&aws_sdk_bedrockruntime::types::DocumentSource> for DocumentSource {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::DocumentSource,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::DocumentSource::Bytes(value) => {
-                Ok(DocumentSource::Bytes(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::DocumentSource::Content(value) => {
-                Ok(DocumentSource::Content(
-                    value
-                        .iter()
-                        .map(|x| x.clone().try_into())
-                        .collect::<Result<_, Self::Error>>()?,
-                ))
-            }
-            aws_sdk_bedrockruntime::types::DocumentSource::S3Location(value) => {
-                Ok(DocumentSource::S3Location(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::DocumentSource::Text(value) => {
-                Ok(DocumentSource::Text(value.to_string()))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<DocumentSource> for aws_sdk_bedrockruntime::types::DocumentSource {
+impl TryFrom<DocumentSource> for aws_bedrock::DocumentSource {
     type Error = TypeConversionError;
     fn try_from(value: DocumentSource) -> Result<Self, Self::Error> {
         match value {
-            DocumentSource::Bytes(value) => Ok(
-                aws_sdk_bedrockruntime::types::DocumentSource::Bytes(value.try_into()?),
-            ),
-            DocumentSource::Content(value) => {
-                Ok(aws_sdk_bedrockruntime::types::DocumentSource::Content(
-                    value
-                        .iter()
-                        .map(|x| x.clone().try_into())
-                        .collect::<Result<_, Self::Error>>()?,
-                ))
+            DocumentSource::Bytes(value) => {
+                Ok(aws_bedrock::DocumentSource::Bytes(value.try_into()?))
             }
-            DocumentSource::S3Location(value) => Ok(
-                aws_sdk_bedrockruntime::types::DocumentSource::S3Location(value.try_into()?),
-            ),
-            DocumentSource::Text(value) => {
-                Ok(aws_sdk_bedrockruntime::types::DocumentSource::Text(value))
+            DocumentSource::Content(value) => Ok(aws_bedrock::DocumentSource::Content(
+                value
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, Self::Error>>()?,
+            )),
+            DocumentSource::S3Location(value) => {
+                Ok(aws_bedrock::DocumentSource::S3Location(value.try_into()?))
             }
+            DocumentSource::Text(value) => Ok(aws_bedrock::DocumentSource::Text(value)),
             invalid => Err(TypeConversionError::new(&format!(
                 "Unknown variant for DocumentSource: {invalid:?}"
             ))),
@@ -2775,673 +632,23 @@ impl TryFrom<DocumentSource> for aws_sdk_bedrockruntime::types::DocumentSource {
     }
 }
 
-impl TryFrom<aws_sdk_bedrockruntime::types::DocumentContentBlock> for DocumentContentBlock {
+impl TryFrom<aws_bedrock::ToolResultContentBlock> for ToolResultContentBlock {
     type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::DocumentContentBlock,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(value: aws_bedrock::ToolResultContentBlock) -> Result<Self, Self::Error> {
         match value {
-            aws_sdk_bedrockruntime::types::DocumentContentBlock::Text(value) => {
-                Ok(DocumentContentBlock::Text(value))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentContentBlock: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<DocumentContentBlock> for aws_sdk_bedrockruntime::types::DocumentContentBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: DocumentContentBlock) -> Result<Self, Self::Error> {
-        match value {
-            DocumentContentBlock::Text(value) => Ok(
-                aws_sdk_bedrockruntime::types::DocumentContentBlock::Text(value),
-            ),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for DocumentContentBlock: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::S3Location> for S3Location {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::S3Location) -> Result<Self, Self::Error> {
-        Ok(S3Location {
-            uri: value.uri().into(),
-            bucket_owner: value.bucket_owner().map(Into::into),
-        })
-    }
-}
-
-impl TryFrom<S3Location> for aws_sdk_bedrockruntime::types::S3Location {
-    type Error = TypeConversionError;
-    fn try_from(value: S3Location) -> Result<Self, Self::Error> {
-        let res = aws_sdk_bedrockruntime::types::S3Location::builder()
-            .set_uri(Some(value.uri))
-            .set_bucket_owner(value.bucket_owner)
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::S3Location> for S3Location {
-    type Error = TypeConversionError;
-    fn try_from(value: &aws_sdk_bedrockruntime::types::S3Location) -> Result<Self, Self::Error> {
-        Ok(S3Location {
-            uri: value.uri().into(),
-            bucket_owner: value.bucket_owner().map(Into::into),
-        })
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::primitives::Blob> for Blob {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::primitives::Blob) -> Result<Self, Self::Error> {
-        Ok(Blob {
-            inner: value.clone().into_inner(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::primitives::Blob> for Blob {
-    type Error = TypeConversionError;
-    fn try_from(value: &aws_sdk_bedrockruntime::primitives::Blob) -> Result<Self, Self::Error> {
-        Ok(Blob {
-            inner: value.clone().into_inner(),
-        })
-    }
-}
-
-impl TryFrom<Blob> for aws_sdk_bedrockruntime::primitives::Blob {
-    type Error = TypeConversionError;
-    fn try_from(value: Blob) -> Result<Self, Self::Error> {
-        let res = aws_sdk_bedrockruntime::primitives::Blob::new(value.inner);
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::CitationsConfig> for CitationsConfig {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::CitationsConfig,
-    ) -> Result<Self, Self::Error> {
-        Ok(CitationsConfig {
-            enabled: value.enabled(),
-        })
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::CitationsConfig> for CitationsConfig {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::CitationsConfig,
-    ) -> Result<Self, Self::Error> {
-        Ok(CitationsConfig {
-            enabled: value.enabled(),
-        })
-    }
-}
-
-impl TryFrom<CitationsConfig> for aws_sdk_bedrockruntime::types::CitationsConfig {
-    type Error = TypeConversionError;
-    fn try_from(value: CitationsConfig) -> Result<Self, Self::Error> {
-        let res = aws_sdk_bedrockruntime::types::CitationsConfig::builder()
-            .set_enabled(Some(value.enabled))
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseContentBlock>
-    for GuardrailConverseContentBlock
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailConverseContentBlock,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailConverseContentBlock::Image(value) => {
-                Ok(GuardrailConverseContentBlock::Image(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::GuardrailConverseContentBlock::Text(value) => {
-                Ok(GuardrailConverseContentBlock::Text(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentBlock: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<GuardrailConverseContentBlock>
-    for aws_sdk_bedrockruntime::types::GuardrailConverseContentBlock
-{
-    type Error = TypeConversionError;
-    fn try_from(value: GuardrailConverseContentBlock) -> Result<Self, Self::Error> {
-        match value {
-            GuardrailConverseContentBlock::Image(value) => Ok(
-                aws_sdk_bedrockruntime::types::GuardrailConverseContentBlock::Image(
-                    value.try_into()?,
-                ),
-            ),
-            GuardrailConverseContentBlock::Text(value) => Ok(
-                aws_sdk_bedrockruntime::types::GuardrailConverseContentBlock::Text(
-                    value.try_into()?,
-                ),
-            ),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentBlock: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseImageBlock>
-    for GuardrailConverseImageBlock
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailConverseImageBlock,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailConverseImageBlock {
-            format: value.format().try_into()?,
-            source: value.source().map(|v| v.try_into()).transpose()?,
-        })
-    }
-}
-
-impl TryFrom<GuardrailConverseImageBlock>
-    for aws_sdk_bedrockruntime::types::GuardrailConverseImageBlock
-{
-    type Error = TypeConversionError;
-    fn try_from(value: GuardrailConverseImageBlock) -> Result<Self, Self::Error> {
-        let format = Some(value.format.try_into()?);
-        let source = value.source.map(|v| v.try_into()).transpose()?;
-        let res = aws_sdk_bedrockruntime::types::GuardrailConverseImageBlock::builder()
-            .set_format(format)
-            .set_source(source)
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat>
-    for GuardrailConverseImageFormat
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat::Jpeg => {
-                Ok(GuardrailConverseImageFormat::Jpeg)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat::Png => {
-                Ok(GuardrailConverseImageFormat::Png)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<GuardrailConverseImageFormat>
-    for aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat
-{
-    type Error = TypeConversionError;
-    fn try_from(value: GuardrailConverseImageFormat) -> Result<Self, Self::Error> {
-        match value {
-            GuardrailConverseImageFormat::Jpeg => {
-                Ok(aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat::Jpeg)
-            }
-            GuardrailConverseImageFormat::Png => {
-                Ok(aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat::Png)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat>
-    for GuardrailConverseImageFormat
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat::Jpeg => {
-                Ok(GuardrailConverseImageFormat::Jpeg)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailConverseImageFormat::Png => {
-                Ok(GuardrailConverseImageFormat::Png)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseImageSource>
-    for GuardrailConverseImageSource
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailConverseImageSource,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailConverseImageSource::Bytes(value) => {
-                Ok(GuardrailConverseImageSource::Bytes(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailConverseImageSource>
-    for GuardrailConverseImageSource
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailConverseImageSource,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailConverseImageSource::Bytes(value) => {
-                Ok(GuardrailConverseImageSource::Bytes(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<GuardrailConverseImageSource>
-    for aws_sdk_bedrockruntime::types::GuardrailConverseImageSource
-{
-    type Error = TypeConversionError;
-    fn try_from(value: GuardrailConverseImageSource) -> Result<Self, Self::Error> {
-        match value {
-            GuardrailConverseImageSource::Bytes(value) => Ok(
-                aws_sdk_bedrockruntime::types::GuardrailConverseImageSource::Bytes(
-                    value.try_into()?,
-                ),
-            ),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseImageSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseTextBlock>
-    for GuardrailConverseTextBlock
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailConverseTextBlock,
-    ) -> Result<Self, Self::Error> {
-        Ok(GuardrailConverseTextBlock {
-            text: value.text().into(),
-            qualifiers: Some(
-                value
-                    .qualifiers()
-                    .iter()
-                    .map(|v| v.try_into())
-                    .collect::<Result<_, Self::Error>>()?,
-            ),
-        })
-    }
-}
-
-impl TryFrom<GuardrailConverseTextBlock>
-    for aws_sdk_bedrockruntime::types::GuardrailConverseTextBlock
-{
-    type Error = TypeConversionError;
-    fn try_from(value: GuardrailConverseTextBlock) -> Result<Self, Self::Error> {
-        let text = Some(value.text);
-        let qualifiers = value
-            .qualifiers
-            .map(|v| v.into_iter().map(|x| x.try_into()).collect())
-            .transpose()?;
-        let res = aws_sdk_bedrockruntime::types::GuardrailConverseTextBlock::builder()
-            .set_text(text)
-            .set_qualifiers(qualifiers)
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier>
-    for GuardrailConverseContentQualifier
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::GroundingSource => {
-                Ok(GuardrailConverseContentQualifier::GroundingSource)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::GuardContent => {
-                Ok(GuardrailConverseContentQualifier::GuardContent)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::Query => {
-                Ok(GuardrailConverseContentQualifier::Query)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentQualifier: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier>
-    for GuardrailConverseContentQualifier
-{
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::GroundingSource => {
-                Ok(GuardrailConverseContentQualifier::GroundingSource)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::GuardContent => {
-                Ok(GuardrailConverseContentQualifier::GuardContent)
-            }
-            aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::Query => {
-                Ok(GuardrailConverseContentQualifier::Query)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentQualifier: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<GuardrailConverseContentQualifier>
-    for aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier
-{
-    type Error = TypeConversionError;
-    fn try_from(value: GuardrailConverseContentQualifier) -> Result<Self, Self::Error> {
-        match value {
-            GuardrailConverseContentQualifier::GroundingSource => Ok(
-                aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::GroundingSource,
-            ),
-            GuardrailConverseContentQualifier::GuardContent => {
-                Ok(aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::GuardContent)
-            }
-            GuardrailConverseContentQualifier::Query => {
-                Ok(aws_sdk_bedrockruntime::types::GuardrailConverseContentQualifier::Query)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for GuardrailConverseContentQualifier: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ImageBlock> for ImageBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::ImageBlock) -> Result<Self, Self::Error> {
-        Ok(ImageBlock {
-            format: value.format().try_into()?,
-            source: value.source().map(|v| v.try_into()).transpose()?,
-        })
-    }
-}
-
-impl TryFrom<ImageBlock> for aws_sdk_bedrockruntime::types::ImageBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: ImageBlock) -> Result<Self, Self::Error> {
-        let format = Some(value.format.try_into()?);
-        let source = value.source.map(|v| v.try_into()).transpose()?;
-        let res = aws_sdk_bedrockruntime::types::ImageBlock::builder()
-            .set_format(format)
-            .set_source(source)
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ImageFormat> for ImageFormat {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::ImageFormat) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ImageFormat::Gif => Ok(ImageFormat::Gif),
-            aws_sdk_bedrockruntime::types::ImageFormat::Jpeg => Ok(ImageFormat::Jpeg),
-            aws_sdk_bedrockruntime::types::ImageFormat::Png => Ok(ImageFormat::Png),
-            aws_sdk_bedrockruntime::types::ImageFormat::Webp => Ok(ImageFormat::Webp),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::ImageFormat> for ImageFormat {
-    type Error = TypeConversionError;
-    fn try_from(value: &aws_sdk_bedrockruntime::types::ImageFormat) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ImageFormat::Gif => Ok(ImageFormat::Gif),
-            aws_sdk_bedrockruntime::types::ImageFormat::Jpeg => Ok(ImageFormat::Jpeg),
-            aws_sdk_bedrockruntime::types::ImageFormat::Png => Ok(ImageFormat::Png),
-            aws_sdk_bedrockruntime::types::ImageFormat::Webp => Ok(ImageFormat::Webp),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<ImageFormat> for aws_sdk_bedrockruntime::types::ImageFormat {
-    type Error = TypeConversionError;
-    fn try_from(value: ImageFormat) -> Result<Self, Self::Error> {
-        match value {
-            ImageFormat::Gif => Ok(aws_sdk_bedrockruntime::types::ImageFormat::Gif),
-            ImageFormat::Jpeg => Ok(aws_sdk_bedrockruntime::types::ImageFormat::Jpeg),
-            ImageFormat::Png => Ok(aws_sdk_bedrockruntime::types::ImageFormat::Png),
-            ImageFormat::Webp => Ok(aws_sdk_bedrockruntime::types::ImageFormat::Webp),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ImageSource> for ImageSource {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::ImageSource) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ImageSource::Bytes(value) => {
-                Ok(ImageSource::Bytes(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ImageSource::S3Location(value) => {
-                Ok(ImageSource::S3Location(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::ImageSource> for ImageSource {
-    type Error = TypeConversionError;
-    fn try_from(value: &aws_sdk_bedrockruntime::types::ImageSource) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ImageSource::Bytes(value) => {
-                Ok(ImageSource::Bytes(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ImageSource::S3Location(value) => {
-                Ok(ImageSource::S3Location(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<ImageSource> for aws_sdk_bedrockruntime::types::ImageSource {
-    type Error = TypeConversionError;
-    fn try_from(value: ImageSource) -> Result<Self, Self::Error> {
-        match value {
-            ImageSource::Bytes(value) => Ok(aws_sdk_bedrockruntime::types::ImageSource::Bytes(
-                value.try_into()?,
-            )),
-            ImageSource::S3Location(value) => Ok(
-                aws_sdk_bedrockruntime::types::ImageSource::S3Location(value.try_into()?),
-            ),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ImageSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ReasoningContentBlock> for ReasoningContentBlock {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::ReasoningContentBlock,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ReasoningContentBlock::ReasoningText(value) => {
-                Ok(ReasoningContentBlock::ReasoningText(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::ReasoningContentBlock::RedactedContent(value) => {
-                Ok(ReasoningContentBlock::RedactedContent(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ReasoningContentBlock: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<ReasoningContentBlock> for aws_sdk_bedrockruntime::types::ReasoningContentBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: ReasoningContentBlock) -> Result<Self, Self::Error> {
-        match value {
-            ReasoningContentBlock::ReasoningText(value) => Ok(
-                aws_sdk_bedrockruntime::types::ReasoningContentBlock::ReasoningText(
-                    value.try_into()?,
-                ),
-            ),
-            ReasoningContentBlock::RedactedContent(value) => Ok(
-                aws_sdk_bedrockruntime::types::ReasoningContentBlock::RedactedContent(
-                    value.try_into()?,
-                ),
-            ),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ReasoningContentBlock: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ReasoningTextBlock> for ReasoningTextBlock {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::ReasoningTextBlock,
-    ) -> Result<Self, Self::Error> {
-        Ok(ReasoningTextBlock {
-            text: value.text().into(),
-            signature: value.signature().map(Into::into),
-        })
-    }
-}
-
-impl TryFrom<ReasoningTextBlock> for aws_sdk_bedrockruntime::types::ReasoningTextBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: ReasoningTextBlock) -> Result<Self, Self::Error> {
-        let text = value.text.into();
-        let signature = value.signature;
-        let res = aws_sdk_bedrockruntime::types::ReasoningTextBlock::builder()
-            .set_text(text)
-            .set_signature(signature)
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ToolResultBlock> for ToolResultBlock {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::ToolResultBlock,
-    ) -> Result<Self, Self::Error> {
-        Ok(ToolResultBlock {
-            tool_use_id: value.tool_use_id().into(),
-            content: value
-                .content()
-                .iter()
-                .map(|v| v.clone().try_into())
-                .collect::<Result<_, Self::Error>>()?,
-            status: value.status().map(|v| v.try_into()).transpose()?,
-        })
-    }
-}
-
-impl TryFrom<ToolResultBlock> for aws_sdk_bedrockruntime::types::ToolResultBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: ToolResultBlock) -> Result<Self, Self::Error> {
-        let tool_use_id = Some(value.tool_use_id);
-        let content = Some(
-            value
-                .content
-                .into_iter()
-                .map(|v| v.try_into())
-                .collect::<Result<_, Self::Error>>()?,
-        );
-        let status = value.status.map(|v| v.try_into()).transpose()?;
-        let res = aws_sdk_bedrockruntime::types::ToolResultBlock::builder()
-            .set_tool_use_id(tool_use_id)
-            .set_content(content)
-            .set_status(status)
-            .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-        Ok(res)
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ToolResultContentBlock> for ToolResultContentBlock {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::ToolResultContentBlock,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ToolResultContentBlock::Document(value) => {
+            aws_bedrock::ToolResultContentBlock::Document(value) => {
                 Ok(ToolResultContentBlock::Document(value.try_into()?))
             }
-            aws_sdk_bedrockruntime::types::ToolResultContentBlock::Image(value) => {
+            aws_bedrock::ToolResultContentBlock::Image(value) => {
                 Ok(ToolResultContentBlock::Image(value.try_into()?))
             }
-            aws_sdk_bedrockruntime::types::ToolResultContentBlock::Json(value) => {
-                Ok(ToolResultContentBlock::Json(value.try_into()?))
+            aws_bedrock::ToolResultContentBlock::Json(value) => {
+                Ok(ToolResultContentBlock::Json(AwsDocument(value).into()))
             }
-            aws_sdk_bedrockruntime::types::ToolResultContentBlock::Text(value) => {
+            aws_bedrock::ToolResultContentBlock::Text(value) => {
                 Ok(ToolResultContentBlock::Text(value))
             }
-            aws_sdk_bedrockruntime::types::ToolResultContentBlock::Video(value) => {
+            aws_bedrock::ToolResultContentBlock::Video(value) => {
                 Ok(ToolResultContentBlock::Video(value.try_into()?))
             }
             invalid => Err(TypeConversionError::new(&format!(
@@ -3451,25 +658,25 @@ impl TryFrom<aws_sdk_bedrockruntime::types::ToolResultContentBlock> for ToolResu
     }
 }
 
-impl TryFrom<ToolResultContentBlock> for aws_sdk_bedrockruntime::types::ToolResultContentBlock {
+impl TryFrom<ToolResultContentBlock> for aws_bedrock::ToolResultContentBlock {
     type Error = TypeConversionError;
     fn try_from(value: ToolResultContentBlock) -> Result<Self, Self::Error> {
         match value {
             ToolResultContentBlock::Document(value) => Ok(
-                aws_sdk_bedrockruntime::types::ToolResultContentBlock::Document(value.try_into()?),
+                aws_bedrock::ToolResultContentBlock::Document(value.try_into()?),
             ),
-            ToolResultContentBlock::Image(value) => {
-                Ok(aws_sdk_bedrockruntime::types::ToolResultContentBlock::Image(value.try_into()?))
+            ToolResultContentBlock::Image(value) => Ok(aws_bedrock::ToolResultContentBlock::Image(
+                value.try_into()?,
+            )),
+            ToolResultContentBlock::Json(value) => Ok(aws_bedrock::ToolResultContentBlock::Json(
+                AwsDocument::from(value).0,
+            )),
+            ToolResultContentBlock::Text(value) => {
+                Ok(aws_bedrock::ToolResultContentBlock::Text(value))
             }
-            ToolResultContentBlock::Json(value) => Ok(
-                aws_sdk_bedrockruntime::types::ToolResultContentBlock::Json(value.try_into()?),
-            ),
-            ToolResultContentBlock::Text(value) => Ok(
-                aws_sdk_bedrockruntime::types::ToolResultContentBlock::Text(value),
-            ),
-            ToolResultContentBlock::Video(value) => {
-                Ok(aws_sdk_bedrockruntime::types::ToolResultContentBlock::Video(value.try_into()?))
-            }
+            ToolResultContentBlock::Video(value) => Ok(aws_bedrock::ToolResultContentBlock::Video(
+                value.try_into()?,
+            )),
             invalid => Err(TypeConversionError::new(&format!(
                 "Unknown variant for ToolResultContentBlock: {invalid:?}"
             ))),
@@ -3477,294 +684,536 @@ impl TryFrom<ToolResultContentBlock> for aws_sdk_bedrockruntime::types::ToolResu
     }
 }
 
-impl TryFrom<aws_sdk_bedrockruntime::types::VideoBlock> for VideoBlock {
+// Struct conversions.
+
+impl TryFrom<aws_bedrock::TokenUsage> for TokenUsage {
     type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::VideoBlock) -> Result<Self, Self::Error> {
-        Ok(VideoBlock {
-            format: value.format().try_into()?,
-            source: value.source().map(|v| v.try_into()).transpose()?,
+    fn try_from(value: aws_bedrock::TokenUsage) -> Result<Self, Self::Error> {
+        Ok(TokenUsage {
+            input_tokens: value.input_tokens,
+            output_tokens: value.output_tokens,
+            total_tokens: value.total_tokens,
+            cache_read_input_tokens: value.cache_read_input_tokens,
+            cache_write_input_tokens: value.cache_write_input_tokens,
         })
     }
 }
 
-impl TryFrom<VideoBlock> for aws_sdk_bedrockruntime::types::VideoBlock {
+impl TryFrom<aws_bedrock::ConverseMetrics> for ConverseMetrics {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::ConverseMetrics) -> Result<Self, Self::Error> {
+        Ok(ConverseMetrics {
+            latency_ms: value.latency_ms,
+        })
+    }
+}
+
+impl TryFrom<aws_bedrock::Message> for Message {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::Message) -> Result<Self, Self::Error> {
+        Ok(Message {
+            role: value.role.try_into()?,
+            content: value
+                .content
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, Self::Error>>()?,
+        })
+    }
+}
+
+impl TryFrom<Message> for aws_bedrock::Message {
+    type Error = TypeConversionError;
+    fn try_from(value: Message) -> Result<Self, Self::Error> {
+        aws_bedrock::Message::builder()
+            .set_role(Some(value.role.try_into()?))
+            .set_content(Some(
+                value
+                    .content
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, Self::Error>>()?,
+            ))
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_bedrock::CachePointBlock> for CachePointBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::CachePointBlock) -> Result<Self, Self::Error> {
+        Ok(CachePointBlock {
+            kind: value.r#type.try_into()?,
+        })
+    }
+}
+
+impl TryFrom<CachePointBlock> for aws_bedrock::CachePointBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: CachePointBlock) -> Result<Self, Self::Error> {
+        aws_bedrock::CachePointBlock::builder()
+            .set_type(Some(value.kind.try_into()?))
+            .build()
+            .map_err(|x| TypeConversionError::new(format!("Converting from CachePointBlock to AWS CachePointBlock should never fail but it seems to have done so: {x}").as_ref()))
+    }
+}
+
+impl TryFrom<aws_bedrock::CitationsContentBlock> for CitationsContentBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::CitationsContentBlock) -> Result<Self, Self::Error> {
+        Ok(CitationsContentBlock {
+            content: Some(
+                value
+                    .content
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, Self::Error>>()?,
+            ),
+            citations: Some(
+                value
+                    .citations
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, Self::Error>>()?,
+            ),
+        })
+    }
+}
+
+impl TryFrom<CitationsContentBlock> for aws_bedrock::CitationsContentBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: CitationsContentBlock) -> Result<Self, Self::Error> {
+        let citations = value
+            .citations
+            .map(|x| x.into_iter().map(TryInto::try_into).collect())
+            .transpose()?;
+        let content = value
+            .content
+            .map(|x| x.into_iter().map(TryInto::try_into).collect())
+            .transpose()?;
+        Ok(aws_bedrock::CitationsContentBlock::builder()
+            .set_citations(citations)
+            .set_content(content)
+            .build())
+    }
+}
+
+impl TryFrom<aws_bedrock::Citation> for Citation {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::Citation) -> Result<Self, Self::Error> {
+        Ok(Citation {
+            title: value.title,
+            source_content: Some(
+                value
+                    .source_content
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, Self::Error>>()?,
+            ),
+            location: value.location.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
+impl TryFrom<Citation> for aws_bedrock::Citation {
+    type Error = TypeConversionError;
+    fn try_from(value: Citation) -> Result<Self, Self::Error> {
+        let location = value.location.map(TryInto::try_into).transpose()?;
+        let content = value
+            .source_content
+            .map(|x| {
+                x.into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, Self::Error>>()
+            })
+            .transpose()?;
+        Ok(aws_bedrock::Citation::builder()
+            .set_title(value.title)
+            .set_location(location)
+            .set_source_content(content)
+            .build())
+    }
+}
+
+/// The three citation-location structs are field-identical; mirror them with
+/// one macro.
+macro_rules! mirror_location {
+    ($($name:ident),+ $(,)?) => {$(
+        impl TryFrom<aws_bedrock::$name> for $name {
+            type Error = TypeConversionError;
+            fn try_from(value: aws_bedrock::$name) -> Result<Self, Self::Error> {
+                Ok($name {
+                    document_index: value.document_index,
+                    start: value.start,
+                    end: value.end,
+                })
+            }
+        }
+        impl TryFrom<$name> for aws_bedrock::$name {
+            type Error = TypeConversionError;
+            fn try_from(value: $name) -> Result<Self, Self::Error> {
+                Ok(aws_bedrock::$name::builder()
+                    .set_document_index(value.document_index)
+                    .set_start(value.start)
+                    .set_end(value.end)
+                    .build())
+            }
+        }
+    )+};
+}
+mirror_location!(
+    DocumentCharLocation,
+    DocumentChunkLocation,
+    DocumentPageLocation
+);
+
+impl TryFrom<aws_bedrock::DocumentBlock> for DocumentBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::DocumentBlock) -> Result<Self, Self::Error> {
+        Ok(DocumentBlock {
+            format: value.format.try_into()?,
+            name: value.name,
+            source: value.source.map(TryInto::try_into).transpose()?,
+            context: value.context,
+            citations: value.citations.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
+impl TryFrom<DocumentBlock> for aws_bedrock::DocumentBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: DocumentBlock) -> Result<Self, Self::Error> {
+        aws_bedrock::DocumentBlock::builder()
+            .set_format(Some(value.format.try_into()?))
+            .set_name(Some(value.name))
+            .set_source(value.source.map(TryInto::try_into).transpose()?)
+            .set_context(value.context)
+            .set_citations(value.citations.map(TryInto::try_into).transpose()?)
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_bedrock::S3Location> for S3Location {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::S3Location) -> Result<Self, Self::Error> {
+        Ok(S3Location {
+            uri: value.uri,
+            bucket_owner: value.bucket_owner,
+        })
+    }
+}
+
+impl TryFrom<S3Location> for aws_bedrock::S3Location {
+    type Error = TypeConversionError;
+    fn try_from(value: S3Location) -> Result<Self, Self::Error> {
+        aws_bedrock::S3Location::builder()
+            .set_uri(Some(value.uri))
+            .set_bucket_owner(value.bucket_owner)
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_sdk_bedrockruntime::primitives::Blob> for Blob {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_sdk_bedrockruntime::primitives::Blob) -> Result<Self, Self::Error> {
+        Ok(Blob {
+            inner: value.into_inner(),
+        })
+    }
+}
+
+impl TryFrom<Blob> for aws_sdk_bedrockruntime::primitives::Blob {
+    type Error = TypeConversionError;
+    fn try_from(value: Blob) -> Result<Self, Self::Error> {
+        Ok(aws_sdk_bedrockruntime::primitives::Blob::new(value.inner))
+    }
+}
+
+impl TryFrom<aws_bedrock::CitationsConfig> for CitationsConfig {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::CitationsConfig) -> Result<Self, Self::Error> {
+        Ok(CitationsConfig {
+            enabled: value.enabled,
+        })
+    }
+}
+
+impl TryFrom<CitationsConfig> for aws_bedrock::CitationsConfig {
+    type Error = TypeConversionError;
+    fn try_from(value: CitationsConfig) -> Result<Self, Self::Error> {
+        aws_bedrock::CitationsConfig::builder()
+            .set_enabled(Some(value.enabled))
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_bedrock::GuardrailConverseImageBlock> for GuardrailConverseImageBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::GuardrailConverseImageBlock) -> Result<Self, Self::Error> {
+        Ok(GuardrailConverseImageBlock {
+            format: value.format.try_into()?,
+            source: value.source.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
+impl TryFrom<GuardrailConverseImageBlock> for aws_bedrock::GuardrailConverseImageBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: GuardrailConverseImageBlock) -> Result<Self, Self::Error> {
+        aws_bedrock::GuardrailConverseImageBlock::builder()
+            .set_format(Some(value.format.try_into()?))
+            .set_source(value.source.map(TryInto::try_into).transpose()?)
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_bedrock::GuardrailConverseTextBlock> for GuardrailConverseTextBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::GuardrailConverseTextBlock) -> Result<Self, Self::Error> {
+        Ok(GuardrailConverseTextBlock {
+            text: value.text,
+            qualifiers: Some(
+                value
+                    .qualifiers
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|v| (&v).try_into())
+                    .collect::<Result<_, Self::Error>>()?,
+            ),
+        })
+    }
+}
+
+impl TryFrom<GuardrailConverseTextBlock> for aws_bedrock::GuardrailConverseTextBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: GuardrailConverseTextBlock) -> Result<Self, Self::Error> {
+        let qualifiers = value
+            .qualifiers
+            .map(|v| v.into_iter().map(TryInto::try_into).collect())
+            .transpose()?;
+        aws_bedrock::GuardrailConverseTextBlock::builder()
+            .set_text(Some(value.text))
+            .set_qualifiers(qualifiers)
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_bedrock::ImageBlock> for ImageBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::ImageBlock) -> Result<Self, Self::Error> {
+        Ok(ImageBlock {
+            format: value.format.try_into()?,
+            source: value.source.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
+impl TryFrom<ImageBlock> for aws_bedrock::ImageBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: ImageBlock) -> Result<Self, Self::Error> {
+        aws_bedrock::ImageBlock::builder()
+            .set_format(Some(value.format.try_into()?))
+            .set_source(value.source.map(TryInto::try_into).transpose()?)
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_bedrock::ReasoningTextBlock> for ReasoningTextBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::ReasoningTextBlock) -> Result<Self, Self::Error> {
+        Ok(ReasoningTextBlock {
+            text: value.text,
+            signature: value.signature,
+        })
+    }
+}
+
+impl TryFrom<ReasoningTextBlock> for aws_bedrock::ReasoningTextBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: ReasoningTextBlock) -> Result<Self, Self::Error> {
+        aws_bedrock::ReasoningTextBlock::builder()
+            .set_text(Some(value.text))
+            .set_signature(value.signature)
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_bedrock::ToolResultBlock> for ToolResultBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::ToolResultBlock) -> Result<Self, Self::Error> {
+        Ok(ToolResultBlock {
+            tool_use_id: value.tool_use_id,
+            content: value
+                .content
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<_, Self::Error>>()?,
+            status: value.status.map(|v| (&v).try_into()).transpose()?,
+        })
+    }
+}
+
+impl TryFrom<ToolResultBlock> for aws_bedrock::ToolResultBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: ToolResultBlock) -> Result<Self, Self::Error> {
+        aws_bedrock::ToolResultBlock::builder()
+            .set_tool_use_id(Some(value.tool_use_id))
+            .set_content(Some(
+                value
+                    .content
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<_, Self::Error>>()?,
+            ))
+            .set_status(value.status.map(TryInto::try_into).transpose()?)
+            .build()
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
+    }
+}
+
+impl TryFrom<aws_bedrock::VideoBlock> for VideoBlock {
+    type Error = TypeConversionError;
+    fn try_from(value: aws_bedrock::VideoBlock) -> Result<Self, Self::Error> {
+        Ok(VideoBlock {
+            format: value.format.try_into()?,
+            source: value.source.map(TryInto::try_into).transpose()?,
+        })
+    }
+}
+
+impl TryFrom<VideoBlock> for aws_bedrock::VideoBlock {
     type Error = TypeConversionError;
     fn try_from(value: VideoBlock) -> Result<Self, Self::Error> {
-        let format = Some(value.format.try_into()?);
-        let source = value.source.map(|v| v.try_into()).transpose()?;
-
-        let res = aws_sdk_bedrockruntime::types::VideoBlock::builder()
-            .set_format(format)
-            .set_source(source)
+        aws_bedrock::VideoBlock::builder()
+            .set_format(Some(value.format.try_into()?))
+            .set_source(value.source.map(TryInto::try_into).transpose()?)
             .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-
-        Ok(res)
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
     }
 }
 
-impl TryFrom<aws_sdk_bedrockruntime::types::VideoFormat> for VideoFormat {
+impl TryFrom<aws_bedrock::ToolUseBlock> for ToolUseBlock {
     type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::VideoFormat) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::VideoFormat::Flv => Ok(VideoFormat::Flv),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mkv => Ok(VideoFormat::Mkv),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mov => Ok(VideoFormat::Mov),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mp4 => Ok(VideoFormat::Mp4),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mpeg => Ok(VideoFormat::Mpeg),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mpg => Ok(VideoFormat::Mpg),
-            aws_sdk_bedrockruntime::types::VideoFormat::ThreeGp => Ok(VideoFormat::ThreeGp),
-            aws_sdk_bedrockruntime::types::VideoFormat::Webm => Ok(VideoFormat::Webm),
-            aws_sdk_bedrockruntime::types::VideoFormat::Wmv => Ok(VideoFormat::Wmv),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::VideoFormat> for VideoFormat {
-    type Error = TypeConversionError;
-    fn try_from(value: &aws_sdk_bedrockruntime::types::VideoFormat) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::VideoFormat::Flv => Ok(VideoFormat::Flv),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mkv => Ok(VideoFormat::Mkv),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mov => Ok(VideoFormat::Mov),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mp4 => Ok(VideoFormat::Mp4),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mpeg => Ok(VideoFormat::Mpeg),
-            aws_sdk_bedrockruntime::types::VideoFormat::Mpg => Ok(VideoFormat::Mpg),
-            aws_sdk_bedrockruntime::types::VideoFormat::ThreeGp => Ok(VideoFormat::ThreeGp),
-            aws_sdk_bedrockruntime::types::VideoFormat::Webm => Ok(VideoFormat::Webm),
-            aws_sdk_bedrockruntime::types::VideoFormat::Wmv => Ok(VideoFormat::Wmv),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<VideoFormat> for aws_sdk_bedrockruntime::types::VideoFormat {
-    type Error = TypeConversionError;
-    fn try_from(value: VideoFormat) -> Result<Self, Self::Error> {
-        match value {
-            VideoFormat::Flv => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Flv),
-            VideoFormat::Mkv => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Mkv),
-            VideoFormat::Mov => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Mov),
-            VideoFormat::Mp4 => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Mp4),
-            VideoFormat::Mpeg => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Mpeg),
-            VideoFormat::Mpg => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Mpg),
-            VideoFormat::ThreeGp => Ok(aws_sdk_bedrockruntime::types::VideoFormat::ThreeGp),
-            VideoFormat::Webm => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Webm),
-            VideoFormat::Wmv => Ok(aws_sdk_bedrockruntime::types::VideoFormat::Wmv),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoFormat: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::VideoSource> for VideoSource {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::VideoSource) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::VideoSource::Bytes(value) => {
-                Ok(VideoSource::Bytes(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::VideoSource::S3Location(value) => {
-                Ok(VideoSource::S3Location(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&aws_sdk_bedrockruntime::types::VideoSource> for VideoSource {
-    type Error = TypeConversionError;
-    fn try_from(value: &aws_sdk_bedrockruntime::types::VideoSource) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::VideoSource::Bytes(value) => {
-                Ok(VideoSource::Bytes(value.try_into()?))
-            }
-            aws_sdk_bedrockruntime::types::VideoSource::S3Location(value) => {
-                Ok(VideoSource::S3Location(value.try_into()?))
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<VideoSource> for aws_sdk_bedrockruntime::types::VideoSource {
-    type Error = TypeConversionError;
-    fn try_from(value: VideoSource) -> Result<Self, Self::Error> {
-        match value {
-            VideoSource::Bytes(value) => Ok(aws_sdk_bedrockruntime::types::VideoSource::Bytes(
-                value.try_into()?,
-            )),
-            VideoSource::S3Location(value) => Ok(
-                aws_sdk_bedrockruntime::types::VideoSource::S3Location(value.try_into()?),
-            ),
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for VideoSource: {invalid:?}"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<aws_sdk_bedrockruntime::types::ToolUseBlock> for ToolUseBlock {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_sdk_bedrockruntime::types::ToolUseBlock) -> Result<Self, Self::Error> {
+    fn try_from(value: aws_bedrock::ToolUseBlock) -> Result<Self, Self::Error> {
         Ok(ToolUseBlock {
-            tool_use_id: value.tool_use_id().into(),
-            name: value.name().into(),
-            input: value.input().try_into()?,
+            tool_use_id: value.tool_use_id,
+            name: value.name,
+            input: AwsDocument(value.input).into(),
         })
     }
 }
 
-impl TryFrom<ToolUseBlock> for aws_sdk_bedrockruntime::types::ToolUseBlock {
+impl TryFrom<ToolUseBlock> for aws_bedrock::ToolUseBlock {
     type Error = TypeConversionError;
     fn try_from(value: ToolUseBlock) -> Result<Self, Self::Error> {
-        let tool_use_id = value.tool_use_id.into();
-        let name = value.name.into();
-        let input = Some(value.input.try_into()?);
-
-        let res = aws_sdk_bedrockruntime::types::ToolUseBlock::builder()
-            .set_tool_use_id(tool_use_id)
-            .set_name(name)
-            .set_input(input)
+        aws_bedrock::ToolUseBlock::builder()
+            .set_tool_use_id(Some(value.tool_use_id))
+            .set_name(Some(value.name))
+            .set_input(Some(AwsDocument::from(value.input).0))
             .build()
-            .map_err(|e| TypeConversionError::new(&e.to_string()))?;
-
-        Ok(res)
+            .map_err(|e| TypeConversionError::new(&e.to_string()))
     }
 }
 
-impl TryFrom<aws_sdk_bedrockruntime::types::ToolResultStatus> for ToolResultStatus {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: aws_sdk_bedrockruntime::types::ToolResultStatus,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ToolResultStatus::Error => Ok(ToolResultStatus::IsError),
-            aws_sdk_bedrockruntime::types::ToolResultStatus::Success => {
-                Ok(ToolResultStatus::Success)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultStatus: {invalid:?}"
-            ))),
-        }
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
 
-impl TryFrom<&aws_sdk_bedrockruntime::types::ToolResultStatus> for ToolResultStatus {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: &aws_sdk_bedrockruntime::types::ToolResultStatus,
-    ) -> Result<Self, Self::Error> {
-        match value {
-            aws_sdk_bedrockruntime::types::ToolResultStatus::Error => Ok(ToolResultStatus::IsError),
-            aws_sdk_bedrockruntime::types::ToolResultStatus::Success => {
-                Ok(ToolResultStatus::Success)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultStatus: {invalid:?}"
-            ))),
-        }
+    #[test]
+    fn mirror_enum_converts_known_variants_both_ways() {
+        assert_eq!(
+            StopReason::try_from(aws_bedrock::StopReason::EndTurn).unwrap(),
+            StopReason::EndTurn
+        );
+        // Borrowed impl.
+        assert_eq!(
+            StopReason::try_from(&aws_bedrock::StopReason::ToolUse).unwrap(),
+            StopReason::ToolUse
+        );
+        // Reverse impl, including a renamed pairing (aws `Error` -> ours `IsError`).
+        assert_eq!(
+            ToolResultStatus::try_from(aws_bedrock::ToolResultStatus::Error).unwrap(),
+            ToolResultStatus::IsError
+        );
+        assert_eq!(
+            aws_bedrock::ToolResultStatus::try_from(ToolResultStatus::IsError).unwrap(),
+            aws_bedrock::ToolResultStatus::Error
+        );
     }
-}
 
-impl TryFrom<ToolResultStatus> for aws_sdk_bedrockruntime::types::ToolResultStatus {
-    type Error = TypeConversionError;
-    fn try_from(
-        value: ToolResultStatus,
-    ) -> Result<
-        Self,
-        <aws_sdk_bedrockruntime::types::ToolResultStatus as TryFrom<ToolResultStatus>>::Error,
-    > {
-        match value {
-            ToolResultStatus::IsError => Ok(aws_sdk_bedrockruntime::types::ToolResultStatus::Error),
-            ToolResultStatus::Success => {
-                Ok(aws_sdk_bedrockruntime::types::ToolResultStatus::Success)
-            }
-            invalid => Err(TypeConversionError::new(&format!(
-                "Unknown variant for ToolResultStatus: {invalid:?}"
-            ))),
-        }
+    #[test]
+    fn mirror_enum_unknown_variant_preserves_error_string() {
+        let unknown = aws_bedrock::StopReason::from("weird_stop");
+        let err = StopReason::try_from(unknown.clone()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("Unknown variant for StopReason: {unknown:?}")
+        );
+
+        let err = aws_bedrock::ConversationRole::try_from(ConversationRole::Unknown(
+            UnknownVariantValue("nope".to_owned()),
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .starts_with("Unknown variant for ConversationRole:")
+        );
     }
-}
 
-impl TryFrom<aws_smithy_types::Document> for Document {
-    type Error = TypeConversionError;
-    fn try_from(value: aws_smithy_types::Document) -> Result<Self, Self::Error> {
-        match value {
-            aws_smithy_types::Document::Object(value) => Ok(Document::Object(
-                value
-                    .into_iter()
-                    .map(|(k, v)| Ok((k, v.try_into()?)))
-                    .collect::<Result<_, Self::Error>>()?,
-            )),
-            aws_smithy_types::Document::Array(value) => Ok(Document::Array(
-                value
-                    .into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<_, Self::Error>>()?,
-            )),
-            aws_smithy_types::Document::Number(value) => Ok(Document::Number(value.into())),
-            aws_smithy_types::Document::String(value) => Ok(Document::String(value)),
-            aws_smithy_types::Document::Bool(value) => Ok(Document::Bool(value)),
-            aws_smithy_types::Document::Null => Ok(Document::Null),
-        }
+    #[test]
+    fn additional_model_response_fields_survive_as_json() {
+        let doc: AwsDocument = json!({"reasoning_effort": "low", "depth": 3}).into();
+        let output = aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
+            .stop_reason(aws_bedrock::StopReason::EndTurn)
+            .additional_model_response_fields(doc.0)
+            .build()
+            .unwrap();
+
+        let internal = InternalConverseOutput::try_from(output).unwrap();
+        assert_eq!(
+            internal.additional_model_response_fields,
+            Some(json!({"reasoning_effort": "low", "depth": 3}))
+        );
+
+        // The whole normalized output stays serializable and the extras
+        // survive a serde round trip.
+        let value = serde_json::to_value(&internal).unwrap();
+        assert_eq!(
+            value.get("additional_model_response_fields"),
+            Some(&json!({"reasoning_effort": "low", "depth": 3}))
+        );
+        let back: InternalConverseOutput = serde_json::from_value(value).unwrap();
+        assert_eq!(back, internal);
     }
-}
 
-impl TryFrom<&aws_smithy_types::Document> for Document {
-    type Error = TypeConversionError;
-    fn try_from(value: &aws_smithy_types::Document) -> Result<Self, Self::Error> {
-        match value {
-            aws_smithy_types::Document::Object(value) => Ok(Document::Object(
-                value
-                    .iter()
-                    .map(|(k, v)| Ok((k.to_owned(), v.try_into()?)))
-                    .collect::<Result<_, Self::Error>>()?,
-            )),
-            aws_smithy_types::Document::Array(value) => Ok(Document::Array(
-                value
-                    .iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<_, Self::Error>>()?,
-            )),
-            aws_smithy_types::Document::Number(value) => Ok(Document::Number(value.into())),
-            aws_smithy_types::Document::String(value) => Ok(Document::String(value.to_owned())),
-            aws_smithy_types::Document::Bool(value) => Ok(Document::Bool(value.to_owned())),
-            aws_smithy_types::Document::Null => Ok(Document::Null),
-        }
-    }
-}
+    #[test]
+    fn tool_use_input_round_trips_through_json_value() {
+        let aws_block = aws_bedrock::ToolUseBlock::builder()
+            .tool_use_id("call_1")
+            .name("add")
+            .input(AwsDocument::from(json!({"x": 1, "y": 2})).0)
+            .build()
+            .unwrap();
 
-impl TryFrom<Document> for aws_smithy_types::Document {
-    type Error = TypeConversionError;
-    fn try_from(value: Document) -> Result<Self, Self::Error> {
-        match value {
-            Document::Object(value) => Ok(aws_smithy_types::Document::Object(
-                value
-                    .into_iter()
-                    .map(|(k, v)| Ok((k, v.try_into()?)))
-                    .collect::<Result<_, Self::Error>>()?,
-            )),
-            Document::Array(value) => Ok(aws_smithy_types::Document::Array(
-                value
-                    .into_iter()
-                    .map(TryInto::try_into)
-                    .collect::<Result<_, Self::Error>>()?,
-            )),
-            Document::Number(value) => Ok(aws_smithy_types::Document::Number(value.into())),
-            Document::String(value) => Ok(aws_smithy_types::Document::String(value)),
-            Document::Bool(value) => Ok(aws_smithy_types::Document::Bool(value)),
-            Document::Null => Ok(aws_smithy_types::Document::Null),
-        }
+        let ours = ToolUseBlock::try_from(aws_block).unwrap();
+        assert_eq!(ours.input, json!({"x": 1, "y": 2}));
+
+        let back = aws_bedrock::ToolUseBlock::try_from(ours).unwrap();
+        assert_eq!(back.tool_use_id, "call_1");
+        assert_eq!(
+            serde_json::Value::from(AwsDocument(back.input)),
+            json!({"x": 1, "y": 2})
+        );
     }
 }

@@ -360,64 +360,40 @@ fn render_plain_chat(
         ));
     }
     let messages = messages_with_documents(request);
-    let mut rendered = match family {
-        ModelFamily::Llama3 => String::from(BEGIN_OF_TEXT),
-        ModelFamily::SmolLm2 => {
-            if !matches!(messages.first(), Some(Message::System { .. })) {
-                format!("{IM_START}system\n{SMOLLM2_DEFAULT_SYSTEM_PROMPT}{IM_END}\n")
-            } else {
-                String::new()
-            }
-        }
-        ModelFamily::Qwen3 => {
-            return Err(CandleError::UnsupportedModelFamily(
-                "Qwen3 requires its dedicated conversation renderer".to_string(),
-            ));
-        }
-    };
-    for message in messages {
-        let (role, content) = render_plain_message(&message)?;
+    // Byte-exact turn framing per family: turn_start, role, role_suffix
+    // pieces, content, then turn_end pieces.
+    type Pieces = &'static [&'static str];
+    let (turn_start, role_suffix, turn_end, mut rendered): (&str, Pieces, Pieces, String) =
         match family {
-            ModelFamily::Llama3 => {
-                rendered.push_str(START_HEADER);
-                rendered.push_str(role);
-                rendered.push_str(END_HEADER);
-                rendered.push_str("\n\n");
-                rendered.push_str(&content);
-                rendered.push_str(END_OF_TURN);
-            }
-            ModelFamily::SmolLm2 => {
-                rendered.push_str(IM_START);
-                rendered.push_str(role);
-                rendered.push('\n');
-                rendered.push_str(&content);
-                rendered.push_str(IM_END);
-                rendered.push('\n');
-            }
+            ModelFamily::Llama3 => (
+                START_HEADER,
+                &[END_HEADER, "\n\n"],
+                &[END_OF_TURN],
+                String::from(BEGIN_OF_TEXT),
+            ),
+            ModelFamily::SmolLm2 => (
+                IM_START,
+                &["\n"],
+                &[IM_END, "\n"],
+                if matches!(messages.first(), Some(Message::System { .. })) {
+                    String::new()
+                } else {
+                    format!("{IM_START}system\n{SMOLLM2_DEFAULT_SYSTEM_PROMPT}{IM_END}\n")
+                },
+            ),
             ModelFamily::Qwen3 => {
                 return Err(CandleError::UnsupportedModelFamily(
                     "Qwen3 requires its dedicated conversation renderer".to_string(),
                 ));
             }
+        };
+    for message in messages {
+        let (role, content) = render_plain_message(&message)?;
+        for piece in [&[turn_start, role][..], role_suffix, &[&content], turn_end].concat() {
+            rendered.push_str(piece);
         }
     }
-    match family {
-        ModelFamily::Llama3 => {
-            rendered.push_str(START_HEADER);
-            rendered.push_str("assistant");
-            rendered.push_str(END_HEADER);
-            rendered.push_str("\n\n");
-        }
-        ModelFamily::SmolLm2 => {
-            rendered.push_str(IM_START);
-            rendered.push_str("assistant\n");
-        }
-        ModelFamily::Qwen3 => {
-            return Err(CandleError::UnsupportedModelFamily(
-                "Qwen3 requires its dedicated conversation renderer".to_string(),
-            ));
-        }
-    }
+    rendered.extend([&[turn_start, "assistant"][..], role_suffix].concat());
     Ok(rendered)
 }
 
