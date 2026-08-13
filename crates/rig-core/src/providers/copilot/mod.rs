@@ -729,10 +729,13 @@ where
         Ok(request)
     }
 
+    /// The chat wire type has no transport-metadata slot, so the captured
+    /// request id rides alongside; `completion()` stamps it onto the
+    /// normalized response.
     async fn raw_completion_chat(
         &self,
         completion_request: completion::CompletionRequest,
-    ) -> Result<openai::completion::CompletionResponse, CompletionError> {
+    ) -> Result<(openai::completion::CompletionResponse, Option<String>), CompletionError> {
         let initiator = request_initiator(&completion_request);
         let has_vision = request_has_vision(&completion_request);
         let system_instructions = completion_request.preamble.clone();
@@ -774,7 +777,6 @@ where
         )
         .instrument(span)
         .await
-        .map(|(payload, _)| payload)
     }
 
     async fn raw_completion_responses(
@@ -817,7 +819,10 @@ where
         )
         .instrument(span)
         .await
-        .map(|(payload, _)| payload)
+        .map(|(mut payload, provider_request_id)| {
+            payload.provider_request_id = provider_request_id;
+            payload
+        })
     }
 
     async fn raw_stream_chat(
@@ -894,13 +899,21 @@ where
         .build();
 
         let client = self.client.clone();
-        let event_source = crate::http_client::sse::GenericEventSource::new(client, req);
+        // The OpenAI-compatible default header, matching the chat route.
+        let (event_source, request_id_slot) =
+            crate::http_client::sse::GenericEventSource::new(client, req)
+                .capture_request_id("x-request-id");
 
         // Copilot's `/responses` route relays OpenAI's Responses SSE wire
         // verbatim, so the shared classify + `RawChoiceAccumulator` machinery
         // is the event interpreter — only the auth/transport above and the
         // route-carrying terminal wrapper below are Copilot-specific.
         let raw = responses_api::streaming::raw_stream_from_event_source(event_source, span);
+        let raw = crate::providers::internal::sse_transport::stamp_terminal_request_id(
+            raw,
+            Some(request_id_slot),
+            |response, id| response.provider_request_id = Some(id),
+        );
         let stream = raw.map(|item| {
             item.and_then(|choice| {
                 choice.try_map_final(|response| Ok(CopilotStreamingResponse::Responses(response)))
@@ -924,7 +937,9 @@ where
             CompletionRoute::ChatCompletions => self
                 .raw_completion_chat(completion_request)
                 .await
-                .map(|response| CopilotCompletionResponse::Chat(Box::new(response))),
+                // The chat wire type has no transport-metadata slot; the
+                // captured id is a normalized-surface concern.
+                .map(|(response, _)| CopilotCompletionResponse::Chat(Box::new(response))),
             CompletionRoute::Responses => self
                 .raw_completion_responses(completion_request)
                 .await
@@ -983,10 +998,14 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         match self.route() {
-            CompletionRoute::ChatCompletions => self
-                .raw_completion_chat(completion_request)
-                .await?
-                .normalize(PROVIDER_NAME),
+            CompletionRoute::ChatCompletions => {
+                let (response, provider_request_id) =
+                    self.raw_completion_chat(completion_request).await?;
+                Ok(response
+                    .normalize(PROVIDER_NAME)?
+                    .with_optional_provider_request_id(provider_request_id))
+            }
+            // The responses wire type carries the id; `normalize` maps it.
             CompletionRoute::Responses => self
                 .raw_completion_responses(completion_request)
                 .await?
@@ -2271,5 +2290,78 @@ mod tests {
             env_github_access_token(&get).as_deref(),
             Some("bootstrap-token")
         );
+    }
+}
+
+#[cfg(test)]
+mod response_identity_tests {
+    use super::*;
+
+    /// Both Copilot routes' streaming terminals carry the transport request id
+    /// (stamped by the shared SSE capture) into the normalized `StreamFinal`.
+    /// Deterministic and credential-free: the transport halves — the shared
+    /// OpenAI chat wrapper's capture and `stamp_terminal_request_id` on the
+    /// Responses route — are covered by the shared-path tests; this locks the
+    /// Copilot-specific conversion layer.
+    #[test]
+    fn streaming_terminals_carry_request_id_into_stream_final() {
+        let mut chat_terminal = openai::completion::streaming::StreamingCompletionResponse::<
+            openai::completion::Usage,
+        >::new(openai::completion::Usage::default());
+        chat_terminal.provider_request_id = Some("req-chat".to_string());
+        let chat_final: crate::streaming::StreamFinal =
+            (PROVIDER_NAME, CopilotStreamingResponse::Chat(chat_terminal)).into();
+        assert_eq!(chat_final.provider_request_id.as_deref(), Some("req-chat"));
+
+        let mut responses_terminal = responses_api::streaming::StreamingCompletionResponse::new(
+            serde_json::from_value(
+                serde_json::json!({"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}),
+            )
+            .expect("usage should parse"),
+        );
+        responses_terminal.provider_request_id = Some("req-responses".to_string());
+        let responses_final: crate::streaming::StreamFinal = (
+            PROVIDER_NAME,
+            CopilotStreamingResponse::Responses(responses_terminal),
+        )
+            .into();
+        assert_eq!(
+            responses_final.provider_request_id.as_deref(),
+            Some("req-responses")
+        );
+    }
+
+    /// The Responses-route unary wire type carries the stamped id through
+    /// `normalize` into the core response; the chat route has no wire slot,
+    /// so `completion()` stamps the normalized response from the returned
+    /// pair — asserted here at the conversion layer for the responses half.
+    #[test]
+    fn responses_unary_wire_id_survives_normalize() {
+        use crate::completion::NormalizeCompletionResponse;
+
+        let payload = serde_json::json!({
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "model": "gpt-test",
+            "output": [{
+                "type": "message",
+                "id": "msg_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "hi", "annotations": []}]
+            }]
+        });
+        let mut response: responses_api::CompletionResponse =
+            serde_json::from_value(payload).expect("wire response should parse");
+        response.provider_request_id = Some("req-unary".to_string());
+
+        let normalized = response
+            .normalize(PROVIDER_NAME)
+            .expect("response should normalize");
+        assert_eq!(normalized.provider_request_id.as_deref(), Some("req-unary"));
+        assert_eq!(normalized.response_id.as_deref(), Some("resp_123"));
+        assert_eq!(normalized.provider, PROVIDER_NAME);
     }
 }

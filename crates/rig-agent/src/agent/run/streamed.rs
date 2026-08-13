@@ -1614,7 +1614,7 @@ mod tests {
         };
         run.record_streamed_completion_call(
             usage,
-            crate::agent::prompt_request::CallIdentity::default(),
+            rig_core::completion::ResponseIdentity::default(),
         )
         .expect("record should succeed");
         let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
@@ -1640,7 +1640,7 @@ mod tests {
         let asm = assembler();
         run.record_streamed_completion_call(
             Usage::new(),
-            crate::agent::prompt_request::CallIdentity::default(),
+            rig_core::completion::ResponseIdentity::default(),
         )
         .expect("record should succeed");
         let final_choice = vec![AssistantContent::text("done")];
@@ -1704,7 +1704,7 @@ mod tests {
         // Usage from the drained stream is recorded after the rollback.
         run.record_streamed_completion_call(
             Usage::new(),
-            crate::agent::prompt_request::CallIdentity::default(),
+            rig_core::completion::ResponseIdentity::default(),
         )
         .expect("record after rollback should succeed");
 
@@ -1778,7 +1778,7 @@ mod tests {
         ));
         run.record_streamed_completion_call(
             Usage::new(),
-            crate::agent::prompt_request::CallIdentity::default(),
+            rig_core::completion::ResponseIdentity::default(),
         )
         .expect("completion call should be recorded");
         assert_eq!(run.completion_calls().len(), 1);
@@ -1894,7 +1894,7 @@ mod tests {
         let err = run
             .record_streamed_completion_call(
                 Usage::new(),
-                crate::agent::prompt_request::CallIdentity::default(),
+                rig_core::completion::ResponseIdentity::default(),
             )
             .expect_err("recording before any model call must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
@@ -1903,7 +1903,7 @@ mod tests {
         run.next_step().expect("next_step should still succeed");
         run.record_streamed_completion_call(
             Usage::new(),
-            crate::agent::prompt_request::CallIdentity::default(),
+            rig_core::completion::ResponseIdentity::default(),
         )
         .expect("recording during a pending model call succeeds");
     }
@@ -1926,7 +1926,7 @@ mod tests {
         .expect("ingest should succeed");
         run.record_streamed_completion_call(
             Usage::new(),
-            crate::agent::prompt_request::CallIdentity::default(),
+            rig_core::completion::ResponseIdentity::default(),
         )
         .expect("record should succeed");
 
@@ -1972,13 +1972,13 @@ mod tests {
 
         run.record_streamed_completion_call(
             Usage::new(),
-            crate::agent::prompt_request::CallIdentity::default(),
+            rig_core::completion::ResponseIdentity::default(),
         )
         .expect("first record succeeds");
         let err = run
             .record_streamed_completion_call(
                 Usage::new(),
-                crate::agent::prompt_request::CallIdentity::default(),
+                rig_core::completion::ResponseIdentity::default(),
             )
             .expect_err("second record for the same turn must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
@@ -1995,7 +1995,7 @@ mod tests {
             .expect("ingest should succeed");
         run.record_streamed_completion_call(
             Usage::new(),
-            crate::agent::prompt_request::CallIdentity::default(),
+            rig_core::completion::ResponseIdentity::default(),
         )
         .expect("record should succeed");
         let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];

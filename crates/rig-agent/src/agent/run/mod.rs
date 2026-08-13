@@ -76,7 +76,7 @@ use rig_core::message::{
 use crate::{
     agent::hook::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest},
     agent::prompt_request::{
-        CallIdentity, CompletionCall, PromptResponse, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
+        CompletionCall, PromptResponse, ResponseIdentity, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
         invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
     },
@@ -917,7 +917,7 @@ impl AgentRun {
 
         self.record_completion_call(
             turn.usage,
-            CallIdentity {
+            ResponseIdentity {
                 message_id: turn.message_id.clone(),
                 response_id: turn.response_id.clone(),
                 provider_request_id: turn.provider_request_id.clone(),
@@ -949,7 +949,11 @@ impl AgentRun {
     /// ingestion paths. Callers own the once-per-turn `streamed_completion_call_recorded`
     /// guard/flag; this helper never touches it, so it cannot be mistaken for
     /// "a completion call happened" and re-introduce a double count.
-    fn record_completion_call(&mut self, usage: Usage, identity: CallIdentity) -> CompletionCall {
+    fn record_completion_call(
+        &mut self,
+        usage: Usage,
+        identity: ResponseIdentity,
+    ) -> CompletionCall {
         let call = CompletionCall::new(self.completion_call_index, usage).with_identity(identity);
         self.completion_call_index += 1;
         self.completion_calls.push(call.clone());
@@ -1303,7 +1307,7 @@ impl AgentRun {
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Usage,
-        identity: CallIdentity,
+        identity: ResponseIdentity,
     ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
@@ -1458,7 +1462,7 @@ impl AgentRun {
             // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
             // so routing the no-usage fallback through `record_completion_call`
             // leaves the run total unchanged while unifying the accounting.
-            self.record_completion_call(Usage::new(), CallIdentity::default());
+            self.record_completion_call(Usage::new(), ResponseIdentity::default());
             self.streamed_completion_call_recorded = true;
         }
 
@@ -2233,7 +2237,7 @@ mod tests {
     fn model_response_rejected_after_streamed_completion_call_record() {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
-        run.record_streamed_completion_call(Usage::new(), CallIdentity::default())
+        run.record_streamed_completion_call(Usage::new(), ResponseIdentity::default())
             .expect("record should succeed");
 
         let err = run

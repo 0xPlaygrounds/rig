@@ -270,6 +270,16 @@ impl StreamFinal {
         self.finish_reason = finish_reason;
         self
     }
+
+    /// This terminal record's identity metadata as one
+    /// [`crate::completion::ResponseIdentity`] carrier.
+    pub fn identity(&self) -> crate::completion::ResponseIdentity {
+        crate::completion::ResponseIdentity {
+            message_id: self.message_id.clone(),
+            response_id: self.response_id.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
+    }
 }
 
 crate::provider_response::response_metadata_setters!(StreamFinal);
@@ -1015,6 +1025,9 @@ impl From<StreamingCompletionResponse> for CompletionResponse {
                 .or_else(|| terminal.and_then(|response| response.message_id.clone())),
         )
         .with_optional_response_id(terminal.and_then(|response| response.response_id.clone()))
+        .with_optional_provider_request_id(
+            terminal.and_then(|response| response.provider_request_id.clone()),
+        )
         .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
         .with_optional_model(terminal.and_then(|response| response.model.clone()))
     }
@@ -1514,6 +1527,32 @@ mod tests {
         let response: CompletionResponse = stream.into();
         assert_eq!(response.usage.total_tokens, 15);
         assert_eq!(response.provider, TEST_PROVIDER);
+    }
+
+    /// Regression (rig#2265): the transport request id captured on the
+    /// terminal record must survive stream→`CompletionResponse` conversion,
+    /// exactly like the response id, usage, finish reason, and model do.
+    #[tokio::test]
+    async fn into_completion_response_carries_the_terminal_request_id() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("hi".to_string()));
+                yield Ok(RawStreamingChoice::FinalResponse(
+                    StreamFinal::new(TEST_PROVIDER, Usage::new())
+                        .with_response_id("resp_1")
+                        .with_provider_request_id("req_transport_1"),
+                ));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let response: CompletionResponse = stream.into();
+        assert_eq!(response.response_id.as_deref(), Some("resp_1"));
+        assert_eq!(
+            response.provider_request_id.as_deref(),
+            Some("req_transport_1")
+        );
     }
 
     #[tokio::test]

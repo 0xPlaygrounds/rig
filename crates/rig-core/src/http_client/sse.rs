@@ -71,9 +71,10 @@ pin_project! {
 }
 
 /// Shared slot for the transport request id captured off an SSE connection's
-/// response headers. Written on every successful (re)connect — so a reader at
-/// stream end sees the id of the connection that delivered the terminal — and
-/// left untouched when the provider omits the header.
+/// response headers. Overwritten on every successful (re)connect — with
+/// `None` when that connection's response omits (or garbles) the header — so
+/// a reader at stream end sees the id of exactly the connection that
+/// delivered the terminal, never a previous connection's.
 pub type RequestIdSlot = std::sync::Arc<std::sync::Mutex<Option<String>>>;
 
 pin_project! {
@@ -118,8 +119,10 @@ where
     }
 
     /// Capture the named response header from each successful (re)connect into
-    /// the returned [`RequestIdSlot`]. A connection whose response omits the
-    /// header leaves the slot unchanged.
+    /// the returned [`RequestIdSlot`]. Each (re)connect *replaces* the slot —
+    /// a connection whose response omits the header resets it to `None`, so a
+    /// stale id from a previous connection is never attributed to the one
+    /// that delivered the terminal.
     pub fn capture_request_id(mut self, header: impl Into<String>) -> (Self, RequestIdSlot) {
         let slot = RequestIdSlot::default();
         self.request_id_capture = Some((header.into(), slot.clone()));
@@ -361,18 +364,20 @@ where
     }
 }
 
-/// Write the configured request-id response header into the shared slot; a
-/// response without the header leaves the slot unchanged.
+/// Replace the shared slot with this connection's request-id header value —
+/// `None` when the response omits the header or its value is empty/invalid.
+/// Overwriting (rather than only writing on presence) is what prevents a
+/// reconnect from reporting the *previous* connection's id.
 fn capture_request_id_header<T>(capture: Option<&(String, RequestIdSlot)>, response: &Response<T>) {
     if let Some((header, slot)) = capture
-        && let Some(value) = response
+        && let Ok(mut slot) = slot.lock()
+    {
+        *slot = response
             .headers()
             .get(header.as_str())
             .and_then(|value| value.to_str().ok())
             .filter(|value| !value.is_empty())
-        && let Ok(mut slot) = slot.lock()
-    {
-        *slot = Some(value.to_string());
+            .map(str::to_string);
     }
 }
 
@@ -410,5 +415,139 @@ fn check_response<T>(
         Ok(response)
     } else {
         Err(super::Error::InvalidContentType(content_type.clone()))
+    }
+}
+
+#[cfg(all(test, not(all(target_arch = "wasm32", target_os = "unknown"))))]
+mod tests {
+    use super::*;
+    use crate::http_client::{self, HttpClientExt};
+    use futures::StreamExt;
+    use std::collections::VecDeque;
+    use std::future::Future;
+    use std::sync::{Arc, Mutex};
+
+    /// One scripted connection: its request-id header value and body chunks.
+    type ScriptedConnection = (Option<&'static str>, Vec<StreamResult<Bytes>>);
+
+    /// Scripted connection outcomes: each `send_streaming` call pops one
+    /// [`ScriptedConnection`].
+    #[derive(Clone)]
+    struct SequencedStreamingClient {
+        connections: Arc<Mutex<VecDeque<ScriptedConnection>>>,
+    }
+
+    impl SequencedStreamingClient {
+        fn new(connections: impl IntoIterator<Item = ScriptedConnection>) -> Self {
+            Self {
+                connections: Arc::new(Mutex::new(connections.into_iter().collect())),
+            }
+        }
+    }
+
+    impl HttpClientExt for SequencedStreamingClient {
+        fn send<T, U>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<Response<http_client::LazyBody<U>>>>
+        + WasmCompatSend
+        + 'static
+        where
+            T: Into<Bytes> + WasmCompatSend,
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            std::future::ready(Err(http_client::Error::InvalidStatusCode(
+                StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_multipart<U>(
+            &self,
+            _req: Request<crate::http_client::MultipartForm>,
+        ) -> impl Future<Output = http_client::Result<Response<http_client::LazyBody<U>>>>
+        + WasmCompatSend
+        + 'static
+        where
+            U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            std::future::ready(Err(http_client::Error::InvalidStatusCode(
+                StatusCode::NOT_IMPLEMENTED,
+            )))
+        }
+
+        fn send_streaming<T>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + WasmCompatSend
+        where
+            T: Into<Bytes> + WasmCompatSend,
+        {
+            let next = self
+                .connections
+                .lock()
+                .expect("scripted connections")
+                .pop_front();
+            async move {
+                let (request_id, chunks) =
+                    next.expect("a scripted connection should remain for each connect");
+                let boxed: BoxedStream = Box::pin(futures::stream::iter(chunks));
+                let mut builder = Response::builder()
+                    .status(StatusCode::OK)
+                    .header(http::header::CONTENT_TYPE, "text/event-stream");
+                if let Some(id) = request_id {
+                    builder = builder.header("x-request-id", id);
+                }
+                builder.body(boxed).map_err(http_client::Error::Protocol)
+            }
+        }
+    }
+
+    /// Regression (rig#2265): after a mid-stream failure and reconnect, the
+    /// slot must describe the connection that is now open — a reconnect whose
+    /// response omits the header resets it to `None` instead of leaking the
+    /// first connection's id.
+    #[tokio::test]
+    async fn reconnect_replaces_request_id_slot_including_with_none() {
+        let client = SequencedStreamingClient::new([
+            (
+                Some("req-first-connection"),
+                vec![
+                    Ok(Bytes::from_static(b"data: one\n\n")),
+                    Err(http_client::Error::StreamEnded),
+                ],
+            ),
+            (None, vec![Ok(Bytes::from_static(b"data: two\n\n"))]),
+        ]);
+        let req = Request::builder()
+            .uri("http://mock.invalid/stream")
+            .body(Vec::<u8>::new())
+            .expect("request should build");
+        let (source, slot) =
+            GenericEventSource::new(client, req).capture_request_id("x-request-id");
+        let mut source = Box::pin(source);
+
+        let mut messages = Vec::new();
+        let mut checked_first_connection = false;
+        while let Some(item) = source.next().await {
+            if let Ok(Event::Message(message)) = item {
+                if !checked_first_connection {
+                    assert_eq!(
+                        slot.lock().expect("slot").as_deref(),
+                        Some("req-first-connection"),
+                        "the first connection's id is captured at connect"
+                    );
+                    checked_first_connection = true;
+                }
+                messages.push(message.data);
+            }
+        }
+
+        assert_eq!(messages, ["one", "two"], "both connections delivered data");
+        assert_eq!(
+            slot.lock().expect("slot").as_deref(),
+            None,
+            "the reconnect omitted the header, so the slot must not retain the \
+             first connection's id"
+        );
     }
 }

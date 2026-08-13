@@ -15,6 +15,11 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{future::IntoFuture, marker::PhantomData};
 
+/// The provider-neutral identity carrier, re-exported from rig-core so agent
+/// callers name one type across core responses, stream terminals, completion
+/// calls, and hook events.
+pub use rig_core::completion::ResponseIdentity;
+
 /// Generate the request-builder setters that forward verbatim to an inner
 /// receiver — `AgentRunner` for the blocking builder, the wrapped
 /// `PromptRequest` for the typed builder, and the `AgentRunner` for the
@@ -359,26 +364,21 @@ impl CompletionCall {
     }
 
     /// Attach the response identity metadata this call's attempt reported.
-    pub fn with_identity(mut self, identity: CallIdentity) -> Self {
+    pub fn with_identity(mut self, identity: ResponseIdentity) -> Self {
         self.message_id = identity.message_id;
         self.response_id = identity.response_id;
         self.provider_request_id = identity.provider_request_id;
         self
     }
-}
 
-/// Response identity metadata for one completion call: which provider objects
-/// this exact attempt produced. Every field is `None` when the provider did
-/// not report it — a documented outcome, never an error.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct CallIdentity {
-    /// Provider-assigned assistant message ID (e.g. Anthropic `msg_…`).
-    pub message_id: Option<String>,
-    /// Provider-assigned response-scoped ID (e.g. an OpenAI `chatcmpl-` /
-    /// `resp_…` ID).
-    pub response_id: Option<String>,
-    /// The provider's transport request id from the HTTP response headers.
-    pub provider_request_id: Option<String>,
+    /// This call's identity metadata as one [`ResponseIdentity`] carrier.
+    pub fn identity(&self) -> ResponseIdentity {
+        ResponseIdentity {
+            message_id: self.message_id.clone(),
+            response_id: self.response_id.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
+    }
 }
 
 /// Tolerate `null` usage from data serialized before rig dropped the
@@ -884,6 +884,7 @@ where
 }
 #[cfg(test)]
 mod tests {
+    use super::ResponseIdentity;
     use super::{CompletionCall, PromptResponse, TypedPromptResponse, is_empty_assistant_turn};
     use crate::{
         agent::{
@@ -2956,5 +2957,34 @@ mod tests {
             .expect("append failure must not block successful completion");
 
         assert!(!response.is_empty());
+    }
+
+    /// Serde compatibility (rig#2265): run records persisted before the
+    /// identity fields existed still load, with every identity field `None`.
+    #[test]
+    fn completion_call_without_identity_fields_still_deserializes() {
+        let call: CompletionCall = serde_json::from_str(
+            r#"{"call_index": 3, "usage": {"input_tokens": 1, "output_tokens": 2,
+                "total_tokens": 3, "cached_input_tokens": 0,
+                "cache_creation_input_tokens": 0, "reasoning_tokens": 0}}"#,
+        )
+        .expect("pre-identity CompletionCall JSON should load");
+        assert_eq!(call.call_index, 3);
+        assert_eq!(call.identity(), ResponseIdentity::default());
+    }
+
+    /// And a populated record round-trips the identity losslessly.
+    #[test]
+    fn completion_call_identity_round_trips() {
+        let call = CompletionCall::new(0, crate::completion::Usage::new()).with_identity(
+            ResponseIdentity {
+                message_id: Some("msg_1".into()),
+                response_id: Some("resp_1".into()),
+                provider_request_id: Some("req_1".into()),
+            },
+        );
+        let json = serde_json::to_string(&call).expect("serialize");
+        let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored, call);
     }
 }

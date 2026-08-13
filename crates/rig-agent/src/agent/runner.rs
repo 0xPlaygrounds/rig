@@ -961,6 +961,12 @@ impl TurnSource for UnaryTurnSource {
                             // normalized per-turn event. The first observes;
                             // the second can accept, retry, or stop the canonical
                             // turn. Both are suppressed for recovered turns.
+                            //
+                            // Identity comes from this attempt's own `resp` —
+                            // a retried turn re-enters `run_model_turn` with a
+                            // fresh response, so a stale attempt's ids can
+                            // never be attributed here.
+                            let identity = resp.identity();
                             if let Some(reason) = observe_action(
                                 runner
                                     .hooks
@@ -971,10 +977,7 @@ impl TurnSource for UnaryTurnSource {
                                             content: &resp.choice,
                                             usage: resp.usage,
                                             message_id: resp.message_id.as_deref(),
-                                            response_id: resp.response_id.as_deref(),
-                                            provider_request_id: resp
-                                                .provider_request_id
-                                                .as_deref(),
+                                            identity: &identity,
                                         },
                                     )
                                     .await,
@@ -991,6 +994,7 @@ impl TurnSource for UnaryTurnSource {
                                         turn: hook_ctx.turn(),
                                         content: &resp.choice,
                                         usage: resp.usage,
+                                        identity: &identity,
                                     },
                                 )
                                 .await;
@@ -1883,6 +1887,13 @@ mod migrated_tests {
         }
     }
 
+    /// A `'static` empty identity for hand-built hook events in tests.
+    fn no_identity() -> &'static rig_core::completion::ResponseIdentity {
+        static EMPTY: std::sync::OnceLock<rig_core::completion::ResponseIdentity> =
+            std::sync::OnceLock::new();
+        EMPTY.get_or_init(Default::default)
+    }
+
     fn canonical_usage() -> Usage {
         Usage {
             input_tokens: 11,
@@ -1940,8 +1951,8 @@ mod migrated_tests {
             ) -> ObservationAction {
                 self.seen.lock().expect("identity snapshots").push((
                     event.message_id.map(str::to_owned),
-                    event.response_id.map(str::to_owned),
-                    event.provider_request_id.map(str::to_owned),
+                    event.identity.response_id.clone(),
+                    event.identity.provider_request_id.clone(),
                 ));
                 ObservationAction::continue_run()
             }
@@ -1988,6 +1999,230 @@ mod migrated_tests {
         assert_eq!(call.message_id, None);
         assert_eq!(call.response_id, None);
         assert_eq!(call.provider_request_id, None);
+    }
+
+    /// Hook capturing every `ModelTurnFinished` identity plus whether a
+    /// `StreamResponseFinish` fired — the cross-surface "every completed
+    /// call" observer #2265 requires.
+    #[derive(Clone, Default)]
+    struct TurnIdentityHook {
+        turns: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
+        stream_finishes: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
+    }
+
+    impl AgentHook for TurnIdentityHook {
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            self.turns
+                .lock()
+                .expect("turn identities")
+                .push(event.identity.clone());
+            ModelTurnAction::continue_run()
+        }
+
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            event: StreamResponseFinish<'_>,
+        ) -> ObservationAction {
+            self.stream_finishes
+                .lock()
+                .expect("stream finish identities")
+                .push(event.identity.clone());
+            ObservationAction::continue_run()
+        }
+    }
+
+    fn stream_final_with_ids(request_id: &str, response_id: &str) -> MockStreamEvent {
+        MockStreamEvent::FinalResponse(
+            rig_core::streaming::StreamFinal::new("mock", Usage::new())
+                .with_response_id(response_id)
+                .with_provider_request_id(request_id),
+        )
+    }
+
+    /// Blocking surface: a tool-only turn and the following text turn each
+    /// fire `ModelTurnFinished` with their *own* attempt's identity.
+    #[tokio::test]
+    async fn model_turn_finished_identity_blocking_tool_only_and_text() {
+        let hook = TurnIdentityHook::default();
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3}))
+                .with_provider_request_id("req-turn-1")
+                .with_response_id("resp-turn-1"),
+            MockTurn::text("5")
+                .with_provider_request_id("req-turn-2")
+                .with_response_id("resp-turn-2"),
+        ]))
+        .tool(crate::test_utils::MockAddTool)
+        .add_hook(hook.clone())
+        .build()
+        .runner(Message::user("add 2 and 3"))
+        .max_turns(3)
+        .run()
+        .await
+        .expect("blocking tool run");
+
+        let turns = hook.turns.lock().expect("turn identities").clone();
+        let request_ids: Vec<_> = turns
+            .iter()
+            .map(|identity| identity.provider_request_id.clone())
+            .collect();
+        assert_eq!(
+            request_ids,
+            [
+                Some("req-turn-1".to_string()),
+                Some("req-turn-2".to_string())
+            ],
+            "each attempt reports its own transport id, in order"
+        );
+        // The run's completion_calls agree with the hook observations.
+        let call_ids: Vec<_> = response
+            .completion_calls
+            .iter()
+            .map(|call| call.provider_request_id.clone())
+            .collect();
+        assert_eq!(request_ids, call_ids);
+    }
+
+    /// Streamed surface: a tool-only turn fires no `StreamResponseFinish`
+    /// (that event is text-turn-scoped by design) but its `ModelTurnFinished`
+    /// carries full identity — so an observer of that one event still records
+    /// every completed call. The two turns report distinct per-attempt ids.
+    #[tokio::test]
+    async fn model_turn_finished_identity_streamed_tool_only_and_text() {
+        let hook = TurnIdentityHook::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call_name_delta("tc1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                stream_final_with_ids("req-stream-1", "resp-stream-1"),
+            ],
+            vec![
+                MockStreamEvent::text("5"),
+                stream_final_with_ids("req-stream-2", "resp-stream-2"),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(crate::test_utils::MockAddTool)
+            .add_hook(hook.clone())
+            .build()
+            .runner(Message::user("add 2 and 3"))
+            .max_turns(3)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let turns = hook.turns.lock().expect("turn identities").clone();
+        let request_ids: Vec<_> = turns
+            .iter()
+            .map(|identity| identity.provider_request_id.clone())
+            .collect();
+        assert_eq!(
+            request_ids,
+            [
+                Some("req-stream-1".to_string()),
+                Some("req-stream-2".to_string())
+            ],
+            "streamed tool-only and text turns each carry their own identity"
+        );
+        let finishes = hook.stream_finishes.lock().expect("finishes").clone();
+        assert_eq!(
+            finishes.len(),
+            1,
+            "StreamResponseFinish stays text-turn-scoped; the tool-only turn fires none"
+        );
+        assert_eq!(
+            finishes[0].provider_request_id.as_deref(),
+            Some("req-stream-2"),
+            "the text turn's finish event carries that turn's identity"
+        );
+    }
+
+    /// A reasoning-only streamed turn (no text, no tool calls) also fires
+    /// `ModelTurnFinished` with identity.
+    #[tokio::test]
+    async fn model_turn_finished_identity_streamed_reasoning_only() {
+        let hook = TurnIdentityHook::default();
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::reasoning("thinking quietly"),
+            stream_final_with_ids("req-reasoning-only", "resp-reasoning-only"),
+        ]]);
+        let mut stream = AgentBuilder::new(model)
+            .add_hook(hook.clone())
+            .build()
+            .runner(Message::user("think"))
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let turns = hook.turns.lock().expect("turn identities").clone();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            turns[0].provider_request_id.as_deref(),
+            Some("req-reasoning-only")
+        );
+        assert_eq!(turns[0].response_id.as_deref(), Some("resp-reasoning-only"));
+        assert!(
+            hook.stream_finishes.lock().expect("finishes").is_empty(),
+            "a reasoning-only turn streams no text, so no StreamResponseFinish"
+        );
+    }
+
+    /// A retried turn's `ModelTurnFinished` carries the retried attempt's own
+    /// identity — the first attempt's ids never leak into the second event.
+    #[tokio::test]
+    async fn retried_turn_reports_the_retried_attempts_own_identity() {
+        #[derive(Clone, Default)]
+        struct RetryOnceCapturingIdentity {
+            seen: Arc<Mutex<Vec<Option<String>>>>,
+        }
+
+        impl AgentHook for RetryOnceCapturingIdentity {
+            async fn on_model_turn_finished(
+                &self,
+                _ctx: &HookContext,
+                event: ModelTurnFinished<'_>,
+            ) -> ModelTurnAction {
+                let mut seen = self.seen.lock().expect("retry identities");
+                seen.push(event.identity.provider_request_id.clone());
+                if seen.len() == 1 {
+                    ModelTurnAction::repeat()
+                } else {
+                    ModelTurnAction::continue_run()
+                }
+            }
+        }
+
+        let hook = RetryOnceCapturingIdentity::default();
+        AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::text("first attempt").with_provider_request_id("req-attempt-1"),
+            MockTurn::text("second attempt").with_provider_request_id("req-attempt-2"),
+        ]))
+        .add_hook(hook.clone())
+        .build()
+        .runner(Message::user("prompt"))
+        .max_turns(3)
+        .run()
+        .await
+        .expect("retried run");
+
+        assert_eq!(
+            *hook.seen.lock().expect("retry identities"),
+            [
+                Some("req-attempt-1".to_string()),
+                Some("req-attempt-2".to_string())
+            ],
+            "each attempt's event carries that attempt's id — no stale leak"
+        );
     }
 
     #[tokio::test]
@@ -10147,6 +10382,7 @@ mod migrated_tests {
             turn: 1,
             content: &content,
             usage: Usage::new(),
+            identity: no_identity(),
         };
         let second_event = first_event;
 
@@ -10175,6 +10411,7 @@ mod migrated_tests {
                     turn: 1,
                     content: &first_content,
                     usage: Usage::new(),
+                    identity: no_identity(),
                 },
             )
             .await;
@@ -10185,6 +10422,7 @@ mod migrated_tests {
                     turn: 2,
                     content: &second_content,
                     usage: Usage::new(),
+                    identity: no_identity(),
                 },
             )
             .await;
@@ -10216,6 +10454,7 @@ mod migrated_tests {
             turn: 1,
             content: &content,
             usage: Usage::new(),
+            identity: no_identity(),
         };
         let ctx = HookContext::new(false, None);
 
