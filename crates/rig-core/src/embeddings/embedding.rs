@@ -1,5 +1,5 @@
-//! The module defines the [EmbeddingModel] trait, which represents an embedding model that can
-//! generate embeddings for documents.
+//! The module defines the [EmbeddingModel] and [ImageEmbeddingModel] traits, which represent
+//! embedding models that can generate embeddings for text documents and images.
 //!
 //! The module also defines the [Embedding] struct, which represents a single document embedding.
 //!
@@ -179,10 +179,45 @@ pub struct EmbeddingResponse {
     pub usage: Usage,
 }
 
+/// Trait for embedding models that can generate embeddings for images.
+pub trait ImageEmbeddingModel: Clone + WasmCompatSend + WasmCompatSync {
+    /// The maximum number of images the provider accepts in one request.
+    const MAX_DOCUMENTS: usize;
+
+    /// The number of dimensions in the embedding vector.
+    fn ndims(&self) -> usize;
+
+    /// Embed a batch of images from their encoded file bytes.
+    ///
+    /// Implementations must preserve input order in the returned embeddings.
+    /// The returned [`Embedding::document`] should identify the input without
+    /// retaining the raw image or a reversible encoding of it.
+    fn embed_images(
+        &self,
+        images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
+    ) -> impl std::future::Future<Output = Result<Vec<Embedding>, EmbeddingError>> + WasmCompatSend;
+
+    /// Embed a single image from its encoded file bytes.
+    fn embed_image<'a>(
+        &'a self,
+        bytes: &'a [u8],
+    ) -> impl std::future::Future<Output = Result<Embedding, EmbeddingError>> + WasmCompatSend {
+        async move {
+            let mut embeddings = self.embed_images(vec![bytes.to_owned()]).await?;
+            embeddings.pop().ok_or_else(|| {
+                EmbeddingError::ResponseError(
+                    "embedding provider returned an empty response for embed_image".to_string(),
+                )
+            })
+        }
+    }
+}
+
 /// Struct that holds a single document and its embedding.
 #[derive(Clone, Default, Deserialize, Serialize, Debug)]
 pub struct Embedding {
-    /// The document that was embedded. Used for debugging.
+    /// The text that was embedded, or a non-sensitive input identifier for
+    /// non-text embeddings. Used for debugging and equality.
     pub document: String,
     /// The embedding vector
     pub vec: Vec<f64>,
