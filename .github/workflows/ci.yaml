@@ -211,21 +211,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # protoc is required here, and NOT only for the `lancedb` feature: the
-      # `rig` facade lists `lancedb` as an unconditional dev-dependency, so
-      # building its test targets — which both steps below do — compiles the
-      # lance chain, whose build scripts shell out to a *system* protoc.
-      # ubuntu-latest does not ship one, and dropping the install does not
-      # fail loudly — it fails only once the rust-cache entry is invalidated
-      # and lance rebuilds, turning a Cargo.lock or toolchain bump into an
-      # unrelated-looking build-script error. Verify the dependency edge with:
-      #   cargo tree -i lance-encoding -e normal,dev --target all
+      # The raw lancedb dependency used by the facade's integration tests is
+      # feature-gated with those tests. Neither graph below enables it, so a
+      # cold PR run avoids the Lance/Arrow/DataFusion graph and needs no
+      # system protoc. The all-features jobs retain both.
       - name: Install Rust stable
         uses: ./.github/actions/rust-setup
         with:
           sccache: "true"
           nextest: "true"
-          protoc: "true"
 
       # `nextest` below runs with `--features bedrock`, which does not compile
       # the pure default-feature test graph. Check the root integration tests
@@ -233,19 +227,16 @@ jobs:
       # accidentally depend on APIs that only exist under optional features.
       #
       # `cargo check`, not `cargo test --no-run`: the guarded failure class is
-      # purely type-level, and `--no-run` additionally pays codegen + linking
-      # of every lance-heavy test binary under a default-feature hash the
-      # `--features bedrock` step below never reuses (~1-2 wasted minutes even
-      # warm, since rust-cache never persists workspace-member artifacts).
-      # `check` still runs build scripts, so the protoc requirement above is
-      # unchanged. Be precise about what this trades away: the bedrock run
-      # below and nightly's sweep link *superset* feature configurations, so
-      # no lane anywhere links the pure default-feature binaries — a
-      # default-only codegen/link break would surface first in merge_group's
-      # full run. That gap is accepted as theoretical: `bedrock` is purely
-      # additive and the workspace has no `cfg(not(feature = …))` in test
-      # code, so a break that appears only with features *removed* has no
-      # known mechanism.
+      # purely type-level, while `--no-run` additionally pays codegen +
+      # linking under a default-feature hash the `--features bedrock` step
+      # below never reuses. Be precise about what this trades away: the
+      # bedrock run below and nightly's sweep link *superset* feature
+      # configurations, so no lane anywhere links the pure default-feature
+      # binaries — a default-only codegen/link break would surface first in
+      # merge_group's full run. That gap is accepted as theoretical:
+      # `bedrock` is purely additive and the workspace has no
+      # `cfg(not(feature = …))` in test code, so a break that appears only
+      # with features *removed* has no known mechanism.
       - name: Check default-feature root test targets
         run: cargo check --locked -p rig --tests
 
@@ -270,8 +261,21 @@ jobs:
       # archived in 2023 and pins Node 20, which this workflow's own log
       # already reports as force-upgraded to Node 24. It added nothing over
       # invoking cargo directly.
+      # The two nested-Cargo binaries run in `test-guards` under the stronger
+      # configuration they protect: identity_leak with all features and
+      # macro_hygiene through its dedicated downstream-consumer step. Running
+      # them again here made a cold test execution spend over three minutes
+      # recompiling scratch projects after the other ~3,600 tests had nearly
+      # finished.
       - name: Test with latest nextest release
-        run: cargo nextest run --locked --features bedrock --retries 2
+        run: >-
+          cargo nextest run --locked --features bedrock --retries 2
+          -E 'not (binary(identity_leak) | binary(macro_hygiene))'
+
+      - name: Show sccache statistics
+        if: always() && env.RUSTC_WRAPPER == 'sccache'
+        continue-on-error: true
+        run: sccache --show-stats
 
   # The cross-crate contract tripwires, split from `test` so the two halves
   # run in parallel: each step deliberately compiles a package set with its
@@ -290,13 +294,9 @@ jobs:
           sccache: "true"
           nextest: "true"
 
-      # No protoc here, and unlike the `test` job that is genuinely true: the
-      # lance chain enters the graph through the `rig` facade's
-      # dev-dependencies, and every step below names `-p` packages
-      # (rig-agent, rig-core, rig-candle, rig-gemini-grpc) rather than the
-      # facade, so no lance build script runs. rig-gemini-grpc vendors its own
-      # protoc via protoc-bin-vendored. Adding a facade step here means adding
-      # the apt install back.
+      # No system protoc: every step below names packages that do not enable
+      # the facade's `lancedb` feature, and rig-gemini-grpc vendors its own
+      # protoc via protoc-bin-vendored.
 
       # The full rig-core and rig-agent test suites under `--all-features`.
       # Before the fast/full split, the workspace-wide `--all-features` sweep
@@ -310,16 +310,20 @@ jobs:
       # enforced by the dedicated step below, exactly as it was when the
       # workspace sweep ran them with `--retries 2` alongside it.
       #
-      # All test targets, NOT `--lib`: rig-core's `identity_leak` trybuild
-      # suite is an *integration* test whose compile-fail proof (no `Serialize`
-      # path for `PartId`/`StreamPartId`) is only load-bearing under
-      # `--all-features`, because trybuild propagates the outer binary's
-      # enabled features into its scratch builds. `--lib` here would demote
-      # that proof — and rig-agent's non-lib targets such as
-      # `runtime_model_swapping` — to nightly-only coverage, exactly the
-      # silent narrowing this step exists to prevent.
+      # All test targets except macro_hygiene, NOT `--lib`: rig-core's
+      # `identity_leak` trybuild suite is an *integration* test whose
+      # compile-fail proof (no `Serialize` path for `PartId`/`StreamPartId`)
+      # is only load-bearing under `--all-features`, because trybuild
+      # propagates the outer binary's enabled features into its scratch
+      # builds. `--lib` here would demote that proof — and rig-agent's non-lib
+      # targets such as `runtime_model_swapping` — to nightly-only coverage,
+      # exactly the silent narrowing this step exists to prevent.
+      # macro_hygiene also shells out to Cargo, but its dedicated step below
+      # is the authoritative plain-`cargo test` execution.
       - name: Test rig-core and rig-agent with all features
-        run: cargo nextest run --locked -p rig-core -p rig-agent --all-features --retries 2
+        run: >-
+          cargo nextest run --locked -p rig-core -p rig-agent --all-features
+          --retries 2 -E 'not binary(macro_hygiene)'
 
       # `cargo nextest run` (in the `test` job) selects the workspace's
       # *default members* — historically just the `rig` facade, which is why a
@@ -384,6 +388,11 @@ jobs:
       - name: Test out-of-facade streaming conformance and structural guards
         run: cargo nextest run --locked -p rig-core -p rig-candle -p rig-gemini-grpc --all-features -E 'binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption)'
 
+      - name: Show sccache statistics
+        if: always() && env.RUSTC_WRAPPER == 'sccache'
+        continue-on-error: true
+        run: sccache --show-stats
+
   # rig-derive's own test suite — 43 tests across 12 binaries, including 20
   # trybuild cases and the dependency-rename fixtures. Until this job existed
   # none of them ran anywhere in CI: rig-derive is deliberately outside
@@ -431,10 +440,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # protoc: required to compile rig-lancedb (and the facade's lance
-      # dev-dependency chain). No sccache: this job is off the critical path
-      # and rustdoc's doctest execution is not cacheable anyway — see the
-      # quota note on the sccache input in the rust-setup action.
+      # protoc: required because this all-features job enables rig-lancedb.
+      # No sccache: this job is off the critical path and rustdoc's doctest
+      # execution is not cacheable anyway — see the quota note on the
+      # sccache input in the rust-setup action.
       - name: Install Rust stable
         uses: ./.github/actions/rust-setup
         with:

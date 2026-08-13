@@ -32,6 +32,12 @@ inputs:
   cache:
     description: Enable rust-cache (disable for jobs that compile nothing)
     default: "true"
+  cache-save-if:
+    description: >-
+      Additional rust-cache save gate. Cache writes are always restricted to
+      the default branch so pull-request merge refs can restore but cannot
+      evict the reusable caches they consume.
+    default: "true"
   sccache:
     description: >-
       Enable sccache with the GitHub Actions cache backend. Reserved for the
@@ -86,6 +92,7 @@ runs:
         components: ${{ inputs.components }}
         target: ${{ inputs.target }}
         cache: ${{ inputs.cache }}
+        cache-save-if: ${{ inputs.cache-save-if == 'true' && github.ref == 'refs/heads/main' }}
 
     # rust-cache (inside setup-rust-toolchain above) persists *dependency*
     # artifacts but always recompiles the workspace's own crates; sccache
@@ -135,6 +142,12 @@ runs:
         {
           echo "SCCACHE_GHA_ENABLED=true"
           echo "RUSTC_WRAPPER=sccache"
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            # PR caches are scoped to their merge ref and cannot warm other
+            # branches. Read the default branch's entries without creating
+            # thousands of short-lived, quota-consuming PR entries.
+            echo "SCCACHE_GHA_RW_MODE=READ_ONLY"
+          fi
         } >> "$GITHUB_ENV"
 
     - name: Install nextest
