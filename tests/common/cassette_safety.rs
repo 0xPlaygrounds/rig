@@ -76,6 +76,15 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &["with_cohere_cassette"],
     },
     ProviderCassetteSuite {
+        provider: "venice",
+        source_dir: "tests/providers/venice/cassette",
+        wrapper_names: &[
+            "with_venice_cassette",
+            "with_venice_cassette_result",
+            "with_venice_direct_cassette",
+        ],
+    },
+    ProviderCassetteSuite {
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &["with_gemini_cassette", "with_gemini_interactions_cassette"],
