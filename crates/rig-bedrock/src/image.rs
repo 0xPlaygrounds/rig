@@ -6,11 +6,14 @@ use rig_core::image_generation::{
     self, ImageGenerationError, ImageGenerationRequest, ImageGenerationResponse,
 };
 
-// The model-id string values are canonically defined in `crate::completion`;
-// these aliases keep this module's historical public names.
+// The model-id string values are canonically defined in `crate::completion`.
+// The Titan image generators are gone: `amazon.titan-image-generator-v1` and
+// `-v2:0` are absent from `ListFoundationModels` in every region checked
+// (us-east-1, us-west-2, eu-central-1, ap-northeast-1), so their aliases are
+// removed rather than left pointing at identifiers Bedrock rejects.
 pub use crate::completion::{
-    AMAZON_NOVA_CANVAS, AMAZON_TITAN_IMAGE_GENERATOR_G1 as AMAZON_TITAN_IMAGE_GENERATOR_V1,
-    AMAZON_TITAN_IMAGE_GENERATOR_G1_V2 as AMAZON_TITAN_IMAGE_GENERATOR_V2_0,
+    AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,
+    STABILITY_STABLE_IMAGE_ULTRA_1_0,
 };
 
 #[derive(Clone)]
