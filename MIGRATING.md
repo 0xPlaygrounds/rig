@@ -520,6 +520,25 @@ non-success response moves from `Instance(..)` to
 
 ## 0.41 → next
 
+### xAI uses the shared Responses wire response
+
+`providers::xai::completion::CompletionResponse` is now an alias for
+`providers::openai::responses_api::CompletionResponse`. The xAI model still
+sends xAI's request shape to `/v1/responses`, preserves xAI error envelopes and
+request ids, and emits completed streamed tool calls at the same boundary; only
+the duplicated response and streaming implementation is gone.
+
+Code inspecting `raw_completion()` results should use the shared field names
+and types: `created_at` replaces `created`, `status` is a `ResponseStatus`
+instead of `Option<String>`, and the complete Responses metadata surface is
+available. To normalize a raw value explicitly, import
+`completion::NormalizeCompletionResponse` and call `raw.normalize("xai")`;
+the xAI-specific `TryFrom` implementation no longer exists.
+
+`ResponseStatus` also gains `Other(String)`. This lets OpenAI-compatible
+providers preserve a newly introduced status instead of failing wire
+deserialization, but exhaustive matches need an `Other` arm.
+
 ### `OneOrMany<T>` is gone; lists are `Vec<T>`
 
 `rig_core::OneOrMany` and `rig_core::EmptyListError` are removed, along with the

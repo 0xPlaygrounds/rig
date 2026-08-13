@@ -6,10 +6,119 @@
 //! since xAI's API format is designed to be compatible with OpenAI.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::completion::{self, CompletionError};
 use crate::message::{Message as RigMessage, MimeType, ReasoningContent};
 use crate::providers::openai::responses_api::ReasoningSummary;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CompletionRequest {
+    model: String,
+    input: Vec<Message>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<crate::providers::openai::responses_api::ToolChoice>,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    additional_params: Option<Value>,
+}
+
+fn normalize_strict_tool(mut tool: Value) -> Value {
+    if tool.get("type").and_then(Value::as_str) == Some("function") {
+        if let Some(parameters) = tool.get_mut("parameters") {
+            crate::providers::openai::sanitize_schema(parameters);
+        }
+        if let Some(tool) = tool.as_object_mut() {
+            tool.insert("strict".to_string(), Value::Bool(true));
+        }
+    }
+    tool
+}
+
+pub(crate) fn create_completion_request(
+    model: String,
+    req: crate::completion::CompletionRequest,
+    default_tools: &[crate::providers::openai::responses_api::ResponsesToolDefinition],
+    strict_tools: bool,
+    stream: bool,
+) -> Result<(String, Value), CompletionError> {
+    let chat_history = req.chat_history_with_documents();
+    if req.output_schema.is_some() {
+        tracing::warn!("Structured outputs currently not supported for xAI");
+    }
+    let model = req.model.clone().unwrap_or(model);
+    let mut input = req
+        .preamble
+        .as_ref()
+        .map_or_else(Vec::new, |p| vec![Message::system(p)]);
+    for message in chat_history {
+        input.extend(Vec::<Message>::try_from(message)?);
+    }
+    let input = crate::message::require_non_empty(input, || {
+        CompletionError::RequestError(
+            "no message in the chat history converted to xAI input \
+             (id-less reasoning-only content has no xAI representation)"
+                .into(),
+        )
+    })?;
+
+    let mut additional_params = req.additional_params.unwrap_or(Value::Null);
+    let mut additional_tools = if let Some(map) = additional_params.as_object_mut()
+        && let Some(raw_tools) = map.remove("tools")
+    {
+        serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
+            CompletionError::RequestError(
+                format!("Invalid xAI `additional_params.tools` payload: {err}").into(),
+            )
+        })?
+    } else {
+        Vec::new()
+    };
+    let mut tools = req
+        .tools
+        .into_iter()
+        .map(ToolDefinition::from)
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()?;
+    tools.append(&mut additional_tools);
+    tools.extend(
+        default_tools
+            .iter()
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()?,
+    );
+    if strict_tools {
+        tools = tools.into_iter().map(normalize_strict_tool).collect();
+    }
+    if stream {
+        if additional_params.is_null() {
+            additional_params = serde_json::json!({});
+        }
+        crate::json_utils::merge_inplace(
+            &mut additional_params,
+            serde_json::json!({"stream": true}),
+        );
+    }
+
+    let request = CompletionRequest {
+        model: model.clone(),
+        input,
+        temperature: req.temperature,
+        max_output_tokens: req.max_tokens,
+        tools,
+        tool_choice: req
+            .tool_choice
+            .map(crate::providers::openai::responses_api::ToolChoice::try_from)
+            .transpose()?,
+        additional_params: (!additional_params.is_null()).then_some(additional_params),
+    };
+    Ok((model, serde_json::to_value(request)?))
+}
 
 // ================================================================
 // Request Types
@@ -378,12 +487,202 @@ impl From<completion::ToolDefinition> for ToolDefinition {
 
 #[cfg(test)]
 mod tests {
-    use super::{Content, Message, Role};
+    use super::{Content, Message, Role, create_completion_request};
+    use crate::completion::{CompletionRequest, CompletionRequestBuilder, Document};
     use crate::message::{
-        AssistantContent, Message as RigMessage, Reasoning, ReasoningContent, ToolResultContent,
-        UserContent,
+        AssistantContent, Message as RigMessage, Reasoning, ReasoningContent, ToolChoice,
+        ToolResultContent, UserContent,
     };
     use crate::providers::openai::responses_api::ReasoningSummary;
+    use crate::test_utils::MockCompletionModel;
+
+    fn request_value(request: CompletionRequest) -> serde_json::Value {
+        create_completion_request("grok-4-0709".to_string(), request, &[], false, false)
+            .expect("request conversion should succeed")
+            .1
+    }
+
+    #[test]
+    fn xai_request_includes_normalized_documents() {
+        let request = CompletionRequestBuilder::new(
+            MockCompletionModel::default(),
+            "What does glarb-glarb mean?",
+        )
+        .document(Document {
+            id: "doc_1".to_string(),
+            text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+            additional_props: Default::default(),
+        })
+        .build();
+
+        let serialized = request_value(request);
+        let input = serialized["input"]
+            .as_array()
+            .expect("xAI request input should be an array");
+
+        assert!(
+            input
+                .iter()
+                .any(|message| message.to_string().contains("glarb-glarb")),
+            "normalized documents should be forwarded into xAI input"
+        );
+    }
+
+    #[test]
+    fn xai_direct_request_keeps_documents_after_system_messages() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec![
+                RigMessage::system("System prompt"),
+                RigMessage::assistant("Earlier assistant turn"),
+                RigMessage::system("Mid-conversation instruction"),
+                RigMessage::user("What is glarb-glarb?"),
+            ],
+            documents: vec![Document {
+                id: "doc_1".to_string(),
+                text: "Definition of glarb-glarb: an ancient tool.".to_string(),
+                additional_props: Default::default(),
+            }],
+            tools: vec![],
+            temperature: None,
+            max_tokens: None,
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let serialized = request_value(request);
+        let input = serialized["input"]
+            .as_array()
+            .expect("xAI request input should be an array");
+
+        assert_eq!(input.len(), 5);
+        assert_eq!(input[0]["role"], "system");
+        assert_eq!(input[1]["role"], "user");
+        assert!(input[1].to_string().contains("<file id: doc_1>"));
+        assert_eq!(input[2]["role"], "assistant");
+        assert_eq!(input[3]["role"], "system");
+        assert_eq!(input[4]["role"], "user");
+        assert_eq!(
+            input
+                .iter()
+                .filter(|message| message.to_string().contains("<file id: doc_1>"))
+                .count(),
+            1,
+            "document input should appear exactly once: {input:?}"
+        );
+    }
+
+    #[test]
+    fn xai_request_uses_responses_tool_choice_for_specific_tool() {
+        let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Use a tool.")
+            .tool(crate::completion::ToolDefinition {
+                name: "alpha".to_string(),
+                description: "Alpha tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool(crate::completion::ToolDefinition {
+                name: "beta".to_string(),
+                description: "Beta tool".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            })
+            .tool_choice(ToolChoice::Specific {
+                function_names: vec!["beta".to_string()],
+            })
+            .build();
+
+        let serialized = request_value(request);
+        assert_eq!(
+            serialized["tool_choice"],
+            serde_json::json!({"type": "function", "name": "beta"})
+        );
+    }
+
+    #[test]
+    fn xai_stream_request_sets_stream_without_additional_params() {
+        let request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "hello").build();
+        let (_, serialized) =
+            create_completion_request("grok-4-0709".to_string(), request, &[], false, true)
+                .expect("streaming request conversion should succeed");
+
+        assert_eq!(serialized["stream"], true);
+    }
+
+    #[test]
+    fn xai_strict_mode_normalizes_function_tools_from_every_source() {
+        let mut request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "Use one of the tools.")
+                .tool(crate::completion::ToolDefinition {
+                    name: "request_tool".to_string(),
+                    description: "A request tool".to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {"request": {"type": "string"}}
+                    }),
+                })
+                .build();
+        request.additional_params = Some(serde_json::json!({
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "additional_tool",
+                    "description": "An additional_params tool",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"additional": {"type": "string"}}
+                    }
+                },
+                {"type": "web_search"}
+            ]
+        }));
+        let default_tools = [
+            crate::providers::openai::responses_api::ResponsesToolDefinition::function(
+                "default_tool",
+                "A model-level default tool",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {"default": {"type": "string"}}
+                }),
+            ),
+        ];
+
+        let (_, serialized) = create_completion_request(
+            "grok-4-0709".to_string(),
+            request,
+            &default_tools,
+            true,
+            false,
+        )
+        .expect("request conversion should succeed");
+        let tools = serialized["tools"]
+            .as_array()
+            .expect("tools should be an array");
+
+        assert_eq!(tools.len(), 4);
+        for tool in tools.iter().filter(|tool| tool["type"] == "function") {
+            assert_eq!(tool["strict"], true);
+            assert_eq!(tool["parameters"]["additionalProperties"], false);
+            assert_eq!(
+                tool["parameters"]["required"]
+                    .as_array()
+                    .expect("strict object schema should require every property")
+                    .len(),
+                1
+            );
+        }
+        assert_eq!(tools[2], serde_json::json!({"type": "web_search"}));
+    }
 
     #[test]
     fn mixed_user_content_preserves_order_without_duplicate_text() {

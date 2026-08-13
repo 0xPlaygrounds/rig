@@ -19,7 +19,6 @@ pub mod client;
 pub mod completion;
 #[cfg(feature = "image")]
 pub mod image_generation;
-mod streaming;
 
 #[cfg(feature = "audio")]
 pub use audio_generation::{AudioGenerationModel, TTS_1};
