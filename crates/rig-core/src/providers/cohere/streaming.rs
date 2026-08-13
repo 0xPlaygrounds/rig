@@ -1,11 +1,14 @@
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::GenericEventSource;
 use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     CohereCompletionRequest, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
 };
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::sse_transport::{
+    FrameDisposition, OpenLog, SseTransportOptions, sse_frames,
+};
 use crate::providers::internal::wire;
 use crate::streaming::{
     MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
@@ -17,8 +20,6 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 /// keys their accumulation and can never reach a request.
 const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
 use crate::{json_utils, streaming};
-use async_stream::stream;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{Level, enabled};
 use tracing_futures::Instrument;
@@ -377,33 +378,22 @@ where
 
         // Transport layer: SSE events → `WireFrame`s. Byte splitting and
         // framing only — classification and policy live downstream.
-        let transport = stream! {
-            let mut event_source = Box::pin(event_source);
-            while let Some(event_result) = event_source.next().await {
-                match event_result {
-                    Ok(Event::Open) => {
-                        tracing::trace!("SSE connection opened");
-                    }
-                    Ok(Event::Message(message)) => {
-                        let data_str = message.data.trim();
-                        if data_str.is_empty() || data_str == "[DONE]" {
-                            continue;
-                        }
-                        yield Ok(WireFrame::Text(data_str.to_owned()));
-                    }
-                    Err(crate::http_client::Error::StreamEnded) => {
-                        break;
-                    }
-                    Err(err) => {
-                        tracing::error!(?err, "SSE error");
-                        yield Err(CompletionError::from_stream_transport(err));
-                        break;
-                    }
+        let transport = sse_frames(
+            event_source,
+            SseTransportOptions {
+                open_log: OpenLog::Trace,
+                stream_ended_is_error: false,
+                log_transport_errors: true,
+            },
+            |data| {
+                let data = data.trim();
+                if data.is_empty() || data == "[DONE]" {
+                    FrameDisposition::Skip
+                } else {
+                    FrameDisposition::Frame(data.to_owned())
                 }
-            }
-            // Ensure event source is closed when stream ends
-            event_source.close();
-        };
+            },
+        );
 
         let stream: RawStreamingResult<StreamingCompletionResponse> =
             Box::pin(run_wire_stream(transport, CohereAdapter::default()).instrument(span));

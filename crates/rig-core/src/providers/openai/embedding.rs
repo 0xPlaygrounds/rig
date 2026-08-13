@@ -139,7 +139,9 @@ pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::C
 /// parameter is the HTTP client type.
 pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
-fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+/// Default dimensions for OpenAI's known embedding models (also used by
+/// Azure OpenAI, which deploys the same models).
+pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
         TEXT_EMBEDDING_3_LARGE => Some(3_072),
         TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),

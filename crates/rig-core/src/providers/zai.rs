@@ -22,11 +22,10 @@
 //! let glm_4_6 = client.completion_model(zai::GLM_4_6);
 //! ```
 
-use crate::client::{self, BearerAuth, DebugExt, Provider};
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
+use crate::client;
+use crate::providers::internal::anthropic_compatible::{
+    AnthropicBaseUrl, impl_dual_dialect_provider,
 };
-use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
 
 /// General-purpose OpenAI-compatible base URL.
 pub const GENERAL_API_BASE_URL: &str = "https://api.z.ai/api/paas/v4";
@@ -50,54 +49,24 @@ pub const GLM_4_5V: &str = "glm-4.5v";
 /// `glm-4.5-airx`
 pub const GLM_4_5_AIRX: &str = "glm-4.5-airx";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiBuilder;
-
-#[derive(Debug, Default, Clone)]
-pub struct ZAiAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiAnthropicExt;
-
-type ZAiApiKey = BearerAuth;
-
-pub type Client<H = reqwest::Client> = client::Client<ZAiExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<ZAiBuilder, ZAiApiKey, H>;
-
-pub type AnthropicClient<H = reqwest::Client> = client::Client<ZAiAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<ZAiAnthropicBuilder, AnthropicKey, H>;
-
-impl Provider for ZAiExt {
-    type Builder = ZAiBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for ZAiAnthropicExt {
-    type Builder = ZAiAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
+impl_dual_dialect_provider!(
+    ext = ZAiExt,
+    builder = ZAiBuilder,
+    anthropic_ext = ZAiAnthropicExt,
+    anthropic_builder = ZAiAnthropicBuilder,
+    client_input = client::BearerAuth,
+    api_key_env = "ZAI_API_KEY",
+    base_url = GENERAL_API_BASE_URL,
+    base_url_env = "ZAI_API_BASE",
+    anthropic_provider_name = "z.ai",
+    anthropic_base_url = ANTHROPIC_API_BASE_URL,
+    anthropic_base_url_env = "ZAI_ANTHROPIC_API_BASE",
+);
 
 client::impl_capabilities!(
     ZAiExt,
     completion = super::openai::completion::GenericCompletionModel<ZAiExt, H>,
 );
-
-client::impl_capabilities!(
-    ZAiAnthropicExt,
-    completion = super::anthropic::completion::GenericCompletionModel<ZAiAnthropicExt, H>,
-);
-
-impl DebugExt for ZAiExt {}
-impl DebugExt for ZAiAnthropicExt {}
 
 impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
     const PROVIDER_NAME: &'static str = "zai";
@@ -106,38 +75,6 @@ impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
 
     type Response = super::openai::CompletionResponse;
 }
-
-client::impl_default_provider_builder!(
-    ZAiBuilder => ZAiExt,
-    api_key = ZAiApiKey,
-    base_url = GENERAL_API_BASE_URL,
-);
-impl_anthropic_compatible_builder!(
-    ZAiAnthropicBuilder => ZAiAnthropicExt,
-    base_url = ANTHROPIC_API_BASE_URL,
-);
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for ZAiAnthropicExt {
-    const PROVIDER_NAME: &'static str = "z.ai";
-
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
-}
-
-client::impl_provider_client!(
-    Client,
-    input = ZAiApiKey,
-    api_key_env = "ZAI_API_KEY",
-    base_url_env = "ZAI_API_BASE",
-);
-
-client::impl_provider_client!(
-    AnthropicClient,
-    input = String,
-    api_key_env = "ZAI_API_KEY",
-    base_url = ANTHROPIC_BASE_URLS.resolve_from_env("ZAI_ANTHROPIC_API_BASE", "ZAI_API_BASE")?,
-);
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
     &[

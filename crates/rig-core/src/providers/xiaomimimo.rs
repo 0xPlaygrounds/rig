@@ -21,15 +21,11 @@
 //! let model = client.completion_model(xiaomimimo::MIMO_V2_5_PRO);
 //! ```
 
-use crate::client::{self, BearerAuth, DebugExt, ModelLister, Provider};
-use crate::http_client::HttpClientExt;
-use crate::model::{ModelList, ModelListingError};
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
+use crate::client;
+use crate::providers::internal::anthropic_compatible::{
+    AnthropicBaseUrl, impl_dual_dialect_provider,
 };
-use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
-use crate::providers::internal::model_listing::ListModelEntry;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::providers::internal::model_listing::{ListModelEntry, impl_model_lister};
 
 /// OpenAI-compatible base URL.
 pub const API_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
@@ -47,55 +43,25 @@ pub const MIMO_V2_5: &str = "mimo-v2.5";
 /// `mimo-v2.5-pro`
 pub const MIMO_V2_5_PRO: &str = "mimo-v2.5-pro";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct XiaomiMimoExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct XiaomiMimoBuilder;
-
-#[derive(Debug, Default, Clone)]
-pub struct XiaomiMimoAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct XiaomiMimoAnthropicExt;
-
-type XiaomiMimoApiKey = BearerAuth;
-
-pub type Client<H = reqwest::Client> = client::Client<XiaomiMimoExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<XiaomiMimoBuilder, XiaomiMimoApiKey, H>;
-
-pub type AnthropicClient<H = reqwest::Client> = client::Client<XiaomiMimoAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<XiaomiMimoAnthropicBuilder, AnthropicKey, H>;
-
-impl Provider for XiaomiMimoExt {
-    type Builder = XiaomiMimoBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for XiaomiMimoAnthropicExt {
-    type Builder = XiaomiMimoAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
+impl_dual_dialect_provider!(
+    ext = XiaomiMimoExt,
+    builder = XiaomiMimoBuilder,
+    anthropic_ext = XiaomiMimoAnthropicExt,
+    anthropic_builder = XiaomiMimoAnthropicBuilder,
+    client_input = client::BearerAuth,
+    api_key_env = "XIAOMI_MIMO_API_KEY",
+    base_url = API_BASE_URL,
+    base_url_env = "XIAOMI_MIMO_API_BASE",
+    anthropic_provider_name = "xiaomimimo",
+    anthropic_base_url = ANTHROPIC_API_BASE_URL,
+    anthropic_base_url_env = "XIAOMI_MIMO_ANTHROPIC_API_BASE",
+);
 
 client::impl_capabilities!(
     XiaomiMimoExt,
     completion = super::openai::completion::GenericCompletionModel<XiaomiMimoExt, H>,
     model_listing = XiaomiMimoModelLister<H>,
 );
-
-client::impl_capabilities!(
-    XiaomiMimoAnthropicExt,
-    completion = super::anthropic::completion::GenericCompletionModel<XiaomiMimoAnthropicExt, H>,
-);
-
-impl DebugExt for XiaomiMimoExt {}
-impl DebugExt for XiaomiMimoAnthropicExt {}
 
 impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimoExt {
     const PROVIDER_NAME: &'static str = "xiaomimimo";
@@ -105,70 +71,21 @@ impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimoExt {
     type Response = super::openai::CompletionResponse;
 }
 
-client::impl_default_provider_builder!(
-    XiaomiMimoBuilder => XiaomiMimoExt,
-    api_key = XiaomiMimoApiKey,
-    base_url = API_BASE_URL,
-);
-impl_anthropic_compatible_builder!(
-    XiaomiMimoAnthropicBuilder => XiaomiMimoAnthropicExt,
-    base_url = ANTHROPIC_API_BASE_URL,
-);
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for XiaomiMimoAnthropicExt {
-    const PROVIDER_NAME: &'static str = "xiaomimimo";
-
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
-}
-
-client::impl_provider_client!(
-    Client,
-    input = XiaomiMimoApiKey,
-    api_key_env = "XIAOMI_MIMO_API_KEY",
-    base_url_env = "XIAOMI_MIMO_API_BASE",
-);
-
-client::impl_provider_client!(
-    AnthropicClient,
-    input = String,
-    api_key_env = "XIAOMI_MIMO_API_KEY",
-    base_url = ANTHROPIC_BASE_URLS
-        .resolve_from_env("XIAOMI_MIMO_ANTHROPIC_API_BASE", "XIAOMI_MIMO_API_BASE")?,
-);
-
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
     &[(API_BASE_URL, ANTHROPIC_API_BASE_URL)],
     &["/v1", "/v1/"],
     "/anthropic/v1",
 );
 
-/// [`ModelLister`] implementation for the Xiaomi MiMo API (`GET /models`).
-#[derive(Clone)]
-pub struct XiaomiMimoModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for XiaomiMimoModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        crate::providers::internal::model_listing::list_models::<ListModelEntry, _, _>(
-            &self.client,
-            "Xiaomi MiMo",
-            "/models",
-        )
-        .await
-    }
-}
+impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// Xiaomi MiMo API (`GET /models`).
+    XiaomiMimoModelLister,
+    Client<H>,
+    ListModelEntry,
+    "Xiaomi MiMo",
+    "/models"
+);
 
 #[cfg(test)]
 mod tests {

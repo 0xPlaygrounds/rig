@@ -9,10 +9,7 @@
 //! ```
 use crate::client::{self, BearerAuth, DebugExt, Provider};
 use crate::completion::{self, CompletionError};
-use crate::http_client::{self, HttpClientExt};
 use serde::{Deserialize, Serialize};
-use std::string::FromUtf8Error;
-use thiserror::Error;
 use tracing::{self};
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -28,7 +25,21 @@ impl Provider for MiraExt {
     const VERIFY_PATH: &'static str = "/user-credits";
 }
 
-client::impl_capabilities!(MiraExt, completion = CompletionModel<H>);
+client::impl_capabilities!(
+    MiraExt,
+    completion = CompletionModel<H>,
+    model_listing = MiraModelLister<H>,
+);
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// Mira API (`GET /v1/models`).
+    MiraModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "Mira",
+    "/v1/models"
+);
 
 impl DebugExt for MiraExt {}
 
@@ -100,20 +111,6 @@ pub type Client<H = reqwest::Client> = client::Client<MiraExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<MiraBuilder, MiraApiKey, H>;
 
-#[derive(Debug, Error)]
-pub enum MiraError {
-    #[error("Invalid API key")]
-    InvalidApiKey,
-    #[error("API error: {0}")]
-    ApiError(u16),
-    #[error("Request error: {0}")]
-    RequestError(#[from] http_client::Error),
-    #[error("UTF-8 error: {0}")]
-    Utf8Error(#[from] FromUtf8Error),
-    #[error("JSON error: {0}")]
-    JsonError(#[from] serde_json::Error),
-}
-
 #[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct RawMessage {
     pub role: String,
@@ -144,49 +141,6 @@ pub struct ChatChoice {
     pub finish_reason: Option<String>,
     #[serde(default)]
     pub index: Option<usize>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ModelsResponse {
-    data: Vec<ModelInfo>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct ModelInfo {
-    id: String,
-}
-
-impl<T> Client<T>
-where
-    T: HttpClientExt + 'static,
-{
-    /// List available models
-    pub async fn list_models(&self) -> Result<Vec<String>, MiraError> {
-        let req = self.get("/v1/models").and_then(|req| {
-            req.body(http_client::NoBody)
-                .map_err(http_client::Error::Protocol)
-        })?;
-
-        let response = self.send(req).await?;
-
-        let status = response.status();
-
-        if !status.is_success() {
-            // Log the error text but don't store it in an unused variable
-            let error_text = http_client::text(response).await.unwrap_or_default();
-            tracing::error!("Error response: {}", error_text);
-            return Err(MiraError::ApiError(status.as_u16()));
-        }
-
-        let response_text = http_client::text(response).await?;
-
-        let models: ModelsResponse = serde_json::from_str(&response_text).map_err(|e| {
-            tracing::error!("Failed to parse response: {}", e);
-            MiraError::JsonError(e)
-        })?;
-
-        Ok(models.data.into_iter().map(|model| model.id).collect())
-    }
 }
 
 client::impl_provider_client!(Client, input = String, api_key_env = "MIRA_API_KEY");

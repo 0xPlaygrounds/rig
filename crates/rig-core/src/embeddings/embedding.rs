@@ -8,26 +8,12 @@
 
 use crate::{
     completion::Usage,
-    http_client, provider_response,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
 
-/// Errors returned by embedding models.
-///
-/// Inspect provider failures with [`Self::provider_response_body`],
-/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum EmbeddingError {
-    /// Http error (e.g.: connection error, timeout, etc.)
-    #[error("HttpError: {0}")]
-    HttpError(#[from] http_client::Error),
-
-    /// Json error (e.g.: serialization, deserialization)
-    #[error("JsonError: {0}")]
-    JsonError(#[from] serde_json::Error),
-
+crate::provider_response::provider_error_enum!(
+    EmbeddingError, "embedding" {
     /// URL construction or parsing failed while preparing a provider request.
     #[error("UrlError: {0}")]
     UrlError(#[from] url::ParseError),
@@ -41,11 +27,7 @@ pub enum EmbeddingError {
     /// Error processing the document for embedding
     #[error("DocumentError: {0}")]
     DocumentError(Box<dyn std::error::Error + 'static>),
-
-    /// Error parsing the completion response
-    #[error("ResponseError: {0}")]
-    ResponseError(String),
-
+    } {
     /// The provider does not support an embedding request parameter configured on the model.
     #[error("{provider} embeddings do not support the `{parameter}` parameter")]
     UnsupportedParameter {
@@ -82,17 +64,8 @@ pub enum EmbeddingError {
         /// Provider whose response omitted usage.
         provider: &'static str,
     },
-
-    /// Error returned by the embedding model provider
-    #[error("ProviderError: {0}")]
-    ProviderError(String),
-
-    /// Raw error response preserved from the embedding model provider
-    #[error("ProviderResponseError: {0}")]
-    ProviderResponse(provider_response::ProviderResponseError),
-}
-
-crate::provider_response::impl_provider_response_helpers!(EmbeddingError);
+    }
+);
 
 /// Trait for embedding models that can generate embeddings for documents.
 pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
@@ -199,6 +172,7 @@ impl Eq for Embedding {}
 #[cfg(test)]
 mod provider_response_tests {
     use super::*;
+    use crate::{http_client, provider_response};
     use http::StatusCode;
 
     #[test]

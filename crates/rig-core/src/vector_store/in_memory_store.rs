@@ -196,26 +196,43 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         threshold: Option<f64>,
     ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
         match &self.index_strategy {
-            IndexStrategy::BruteForce => {
-                self.vector_search_brute_force(prompt_embedding, n, filter, threshold)
-            }
-            IndexStrategy::LSH {
-                num_tables,
-                num_hyperplanes,
-            } => self.vector_search_lsh(
+            IndexStrategy::BruteForce => self.rank_candidates(
+                self.embeddings.keys(),
                 prompt_embedding,
                 n,
-                *num_tables,
-                *num_hyperplanes,
                 filter,
                 threshold,
             ),
+            IndexStrategy::LSH { .. } => {
+                // If we don't have an LSH index yet, fall back to brute force
+                let Some(lsh_index) = self.lsh_index.as_ref() else {
+                    tracing::warn!("LSH index not initialized, falling back to brute force search");
+                    return self.rank_candidates(
+                        self.embeddings.keys(),
+                        prompt_embedding,
+                        n,
+                        filter,
+                        threshold,
+                    );
+                };
+                self.rank_candidates(
+                    lsh_index.query(&prompt_embedding.vec),
+                    prompt_embedding,
+                    n,
+                    filter,
+                    threshold,
+                )
+            }
         }
     }
 
-    /// Brute force vector search - checks all documents
-    fn vector_search_brute_force(
+    /// Ranks candidate documents by best embedding similarity, keeping the top `n`.
+    ///
+    /// Shared by the brute-force scan (which passes every stored id) and the LSH
+    /// scan (which passes only its candidate ids); unknown ids are skipped.
+    fn rank_candidates(
         &self,
+        candidate_ids: impl IntoIterator<Item = impl AsRef<str>>,
         prompt_embedding: &Embedding,
         n: usize,
         filter: Option<&Filter<serde_json::Value>>,
@@ -224,7 +241,12 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
         // Sort documents by best embedding distance
         let mut docs = BinaryHeap::new();
 
-        for (id, (doc, embeddings)) in self.embeddings.iter() {
+        for candidate_id in candidate_ids {
+            let Some((id, (doc, embeddings))) =
+                self.embeddings.get_key_value(candidate_id.as_ref())
+            else {
+                continue;
+            };
             let Some((distance, embed_doc)) =
                 Self::score_candidate(doc, embeddings, prompt_embedding, filter, threshold)?
             else {
@@ -239,69 +261,17 @@ impl<D: Serialize + Eq> InMemoryVectorStore<D> {
             }
         }
 
-        // Log selected tools with their distances
-        tracing::info!(target: "rig",
-            "Selected documents: {}",
-            docs.iter()
-                .map(|Reverse(RankingItem(distance, id, _, _))| format!("{id} ({distance})"))
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
-
-        Ok(docs)
-    }
-
-    /// LSH-based vector search - uses LSH to find candidates then computes exact distances
-    fn vector_search_lsh(
-        &self,
-        prompt_embedding: &Embedding,
-        n: usize,
-        _num_tables: usize,
-        _num_hyperplanes: usize,
-        filter: Option<&Filter<serde_json::Value>>,
-        threshold: Option<f64>,
-    ) -> Result<EmbeddingRanking<'_, D>, VectorStoreError> {
-        // If we don't have an LSH index yet, fall back to brute force
-        let Some(lsh_index) = self.lsh_index.as_ref() else {
-            tracing::warn!("LSH index not initialized, falling back to brute force search");
-            return self.vector_search_brute_force(prompt_embedding, n, filter, threshold);
-        };
-        let candidates = lsh_index.query(&prompt_embedding.vec);
-
-        // Sort documents by best embedding distance, but only check candidates
-        let mut docs = BinaryHeap::new();
-
-        // Collect all matching documents with their scores first
-        let mut scored_docs = Vec::new();
-
-        for candidate_id in candidates {
-            if let Some((doc, embeddings)) = self.embeddings.get(&candidate_id)
-                && let Some((distance, embed_doc)) =
-                    Self::score_candidate(doc, embeddings, prompt_embedding, filter, threshold)?
-            {
-                scored_docs.push((distance, candidate_id, doc, embed_doc));
-            }
+        // Log selected documents with their distances (the joined string is only
+        // built when INFO logging is actually enabled for the "rig" target).
+        if tracing::enabled!(target: "rig", tracing::Level::INFO) {
+            tracing::info!(target: "rig",
+                "Selected documents: {}",
+                docs.iter()
+                    .map(|Reverse(RankingItem(distance, id, _, _))| format!("{id} ({distance})"))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            );
         }
-
-        // Sort by distance and take top n
-        scored_docs.sort_by(|a, b| b.0.cmp(&a.0)); // Sort in descending order (highest similarity first)
-        scored_docs.truncate(n);
-
-        // Convert to BinaryHeap format using the original HashMap keys
-        for (distance, candidate_id, doc, embed_doc) in scored_docs {
-            if let Some((id_ref, _)) = self.embeddings.get_key_value(&candidate_id) {
-                docs.push(Reverse(RankingItem(distance, id_ref, doc, embed_doc)));
-            }
-        }
-
-        // Log selected tools with their distances
-        tracing::info!(target: "rig",
-            "Selected documents (LSH): {}",
-            docs.iter()
-                .map(|Reverse(RankingItem(distance, id, _, _))| format!("{id} ({distance})"))
-                .collect::<Vec<String>>()
-                .join(", ")
-        );
 
         Ok(docs)
     }

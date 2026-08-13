@@ -6,17 +6,16 @@
 //! state machine while leaving request parsing and provider-specific metadata to
 //! small profile hooks.
 
-use async_stream::stream;
-use futures::StreamExt;
 use http::Request;
 use tracing_futures::Instrument;
 
 use super::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use super::sse_transport::{FrameDisposition, OpenLog, SseTransportOptions, sse_frames};
 use super::tool_call_bridge::{ToolCallBridge, ToolCallSlot};
 use super::wire::WireEvent;
 use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::GenericEventSource;
 use crate::streaming::{
     self, MintKind, RawStreamingChoice, StreamPartId, ToolCallDecoration, ToolCallDeltaContent,
     UnparseableToolInput,
@@ -664,40 +663,28 @@ where
     // and the wire's in-band provider error envelope (a terminal transport
     // condition, detected pre-classification exactly as an HTTP failure would
     // be) — classification and policy live downstream.
-    let transport = stream! {
-        let mut event_source = Box::pin(event_source);
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                }
-                Ok(Event::Message(message)) => {
-                    if message.data != "[DONE]" && message.data.trim().is_empty() {
-                        continue;
-                    }
-
-                    if let Some(error) = provider_response_from_compatible_sse_data(&message.data) {
-                        // A terminal failure: the driver flushes
-                        // fully-delivered content, yields this error last,
-                        // and emits no terminal record.
-                        yield Err(error);
-                        break;
-                    }
-
-                    yield Ok(WireFrame::Text(message.data));
-                }
-                Err(crate::http_client::Error::StreamEnded) => {
-                    break;
-                }
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::from_stream_transport(error));
-                    break;
-                }
+    let transport = sse_frames(
+        event_source,
+        SseTransportOptions {
+            open_log: OpenLog::Trace,
+            stream_ended_is_error: false,
+            log_transport_errors: true,
+        },
+        |data| {
+            // `[DONE]` passes through: the adapter treats it as the wire's
+            // terminal sentinel.
+            if data != "[DONE]" && data.trim().is_empty() {
+                return FrameDisposition::Skip;
             }
-        }
-        event_source.close();
-    };
+            if let Some(error) = provider_response_from_compatible_sse_data(&data) {
+                // A terminal failure: the driver flushes fully-delivered
+                // content, yields this error last, and emits no terminal
+                // record.
+                return FrameDisposition::Fail(error);
+            }
+            FrameDisposition::Frame(data)
+        },
+    );
 
     let stream: streaming::RawStreamingResult<P::FinalResponse> = Box::pin(
         run_wire_stream(transport, CompatAdapter::new(profile)).instrument(instrument_span),

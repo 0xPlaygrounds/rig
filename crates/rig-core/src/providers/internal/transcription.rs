@@ -208,6 +208,46 @@ where
     }
 }
 
+/// Sends a JSON-bodied transcription request and splits the response on
+/// status, mirroring [`send_transcription`] for providers whose transcription
+/// endpoint takes JSON instead of multipart.
+///
+/// `builder` is the provider's already-path-built POST request (including any
+/// provider-specific headers) and `body` the serialized JSON payload. On a
+/// 2xx status the raw body is handed to `decode` together with the status so
+/// each provider keeps its own payload decoding, logging and error-envelope
+/// classification; non-2xx statuses preserve the raw body via
+/// [`TranscriptionError::from_http_response`].
+pub(crate) async fn send_json_transcription<C, R>(
+    client: &C,
+    builder: http_client::Builder,
+    body: Vec<u8>,
+    decode: impl FnOnce(
+        http::StatusCode,
+        &[u8],
+    ) -> Result<transcription::TranscriptionResponse<R>, TranscriptionError>,
+) -> Result<transcription::TranscriptionResponse<R>, TranscriptionError>
+where
+    C: HttpClientExt,
+{
+    let req = builder
+        .body(body)
+        .map_err(|e| TranscriptionError::HttpError(e.into()))?;
+
+    let response = client.send::<_, Vec<u8>>(req).await?;
+    let status = response.status();
+    let body = response.into_body().await?;
+
+    if status.is_success() {
+        decode(status, &body)
+    } else {
+        Err(TranscriptionError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body).into_owned(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

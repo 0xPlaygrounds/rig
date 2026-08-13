@@ -54,16 +54,6 @@ impl Part {
     pub fn name(&self) -> &str {
         &self.name
     }
-
-    /// Get the filename if set
-    pub fn get_filename(&self) -> Option<&str> {
-        self.filename.as_deref()
-    }
-
-    /// Get the content type if set
-    pub fn get_content_type(&self) -> Option<&Mime> {
-        self.content_type.as_ref()
-    }
 }
 
 /// Generic multipart form data container

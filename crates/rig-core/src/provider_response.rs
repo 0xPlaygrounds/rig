@@ -163,6 +163,132 @@ macro_rules! impl_provider_response_helpers {
 
 pub(crate) use impl_provider_response_helpers;
 
+/// Implements the shared response-metadata setters (`with_message_id`,
+/// `with_response_id`, `with_model` and their `_optional` forms) on a response
+/// type with `message_id`, `response_id`, and `model` fields of type
+/// `Option<String>`.
+///
+/// An empty string is treated as absent: gateways that echo `""` for fields
+/// they don't populate must not produce a `Some("")` that differs between the
+/// buffered and streaming paths. The invariant lives in these generated
+/// setters so no provider call site can diverge. `finish_reason` handling is
+/// intentionally left to each type, since reconciliation rules differ.
+macro_rules! response_metadata_setters {
+    ($ty:ty) => {
+        impl $ty {
+            /// Attach the provider-assigned message ID.
+            ///
+            /// An empty string is treated as absent: gateways that echo `""`
+            /// for fields they don't populate must not produce a `Some("")`
+            /// that differs between the buffered and streaming paths. All
+            /// identifier and model setters share this rule so the invariant
+            /// lives here rather than at every provider call site.
+            pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
+                self.with_optional_message_id(Some(message_id.into()))
+            }
+
+            /// Attach the provider-assigned message ID when the provider
+            /// reported one.
+            pub fn with_optional_message_id(
+                mut self,
+                message_id: Option<impl Into<String>>,
+            ) -> Self {
+                self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
+                self
+            }
+
+            /// Attach the provider-assigned response-scoped ID.
+            pub fn with_response_id(self, response_id: impl Into<String>) -> Self {
+                self.with_optional_response_id(Some(response_id.into()))
+            }
+
+            /// Attach the provider-assigned response-scoped ID when the
+            /// provider reported one.
+            pub fn with_optional_response_id(
+                mut self,
+                response_id: Option<impl Into<String>>,
+            ) -> Self {
+                self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
+                self
+            }
+
+            /// Attach the provider-reported model identifier.
+            ///
+            /// An empty string is treated as absent, matching the identifier
+            /// setters.
+            pub fn with_model(self, model: impl Into<String>) -> Self {
+                self.with_optional_model(Some(model.into()))
+            }
+
+            /// Attach the provider-reported model identifier when the
+            /// response carried one.
+            pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
+                self.model = model.map(Into::into).filter(|model| !model.is_empty());
+                self
+            }
+        }
+    };
+}
+
+pub(crate) use response_metadata_setters;
+
+/// Declares a capability error enum with the shared core variants
+/// (`HttpError`, `JsonError`, `ResponseError`, `ProviderError`,
+/// `ProviderResponse`) and wires up [`impl_provider_response_helpers!`] for
+/// it, so the five modality errors stay structurally identical.
+///
+/// `$noun` names the capability in the generated docs (e.g. `"transcription"`
+/// → "Error returned by the transcription model provider"). The first brace
+/// block is spliced between `JsonError` and `ResponseError` (request-building
+/// and URL errors live there); the optional second block is spliced before
+/// `ProviderError` for capability-specific variants.
+macro_rules! provider_error_enum {
+    (
+        $(#[$extra_doc:meta])*
+        $name:ident, $noun:literal {
+            $($mid_variants:tt)*
+        }
+        $({ $($late_variants:tt)* })?
+    ) => {
+        #[doc = concat!("Errors returned by ", $noun, " models.")]
+        ///
+        /// Inspect provider failures with [`Self::provider_response_body`],
+        /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
+        $(#[$extra_doc])*
+        #[derive(Debug, thiserror::Error)]
+        #[non_exhaustive]
+        pub enum $name {
+            /// Http error (e.g.: connection error, timeout, etc.)
+            #[error("HttpError: {0}")]
+            HttpError(#[from] $crate::http_client::Error),
+
+            /// Json error (e.g.: serialization, deserialization)
+            #[error("JsonError: {0}")]
+            JsonError(#[from] serde_json::Error),
+
+            $($mid_variants)*
+
+            #[doc = concat!("Error parsing the ", $noun, " response")]
+            #[error("ResponseError: {0}")]
+            ResponseError(String),
+
+            $($($late_variants)*)?
+
+            #[doc = concat!("Error returned by the ", $noun, " model provider")]
+            #[error("ProviderError: {0}")]
+            ProviderError(String),
+
+            #[doc = concat!("Raw error response preserved from the ", $noun, " model provider")]
+            #[error("ProviderResponseError: {0}")]
+            ProviderResponse($crate::provider_response::ProviderResponseError),
+        }
+
+        $crate::provider_response::impl_provider_response_helpers!($name);
+    };
+}
+
+pub(crate) use provider_error_enum;
+
 #[cfg(test)]
 mod tests {
     use http::StatusCode;

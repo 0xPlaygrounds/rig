@@ -1,6 +1,6 @@
 //! Migrated from `examples/agent_with_mira.rs`.
 
-use rig::client::ProviderClient;
+use rig::client::{ModelListingClient, ProviderClient};
 use rig::providers::mira;
 
 #[tokio::test]

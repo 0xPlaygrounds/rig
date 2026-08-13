@@ -2,8 +2,8 @@
 use bytes::Bytes;
 use serde::Deserialize;
 
-use crate::http_client::multipart::Part;
-use crate::http_client::{HttpClientExt, MultipartForm};
+use crate::http_client::HttpClientExt;
+use crate::providers::internal::transcription::{TranscriptionFields, transcription_form};
 use crate::providers::mistral::Client;
 use crate::transcription::{self, TranscriptionError};
 use crate::wasm_compat::WasmCompatSend;
@@ -109,31 +109,18 @@ where
 
     async fn transcription(
         &self,
-        request: transcription::TranscriptionRequest,
+        mut request: transcription::TranscriptionRequest,
     ) -> Result<transcription::TranscriptionResponse<Self::Response>, TranscriptionError> {
-        let data = request.data;
+        // Mistral's transcription endpoint has no `prompt` field; it has
+        // always been dropped rather than sent.
+        request.prompt = None;
 
-        let mut body = MultipartForm::new()
-            .text("model", self.model.clone())
-            .part(Part::bytes("file", data).filename(request.filename.clone()));
-
-        if let Some(language) = request.language {
-            body = body.text("language", language);
-        }
-
-        if let Some(ref temperature) = request.temperature {
-            body = body.text("temperature", temperature.to_string());
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            for (key, value) in additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(
-                    "Additional Parameters to Mistral Transcription should be a map".into(),
-                )
-            })? {
-                body = body.text(key.to_owned(), value.to_string());
-            }
-        }
+        let body = transcription_form(
+            request,
+            TranscriptionFields {
+                model: Some(&self.model),
+            },
+        )?;
 
         let req = self
             .client

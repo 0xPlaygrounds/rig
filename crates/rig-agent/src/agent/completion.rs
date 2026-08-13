@@ -622,11 +622,6 @@ impl Agent {
         AgentRunner::from_agent(self, prompt)
     }
 
-    /// Returns the agent's current default model handle.
-    pub fn model_handle(&self) -> &ModelHandle {
-        &self.model
-    }
-
     /// Replace the default model used by runners created after this call.
     ///
     /// Existing runners retain their model snapshot, and replacing one cloned
