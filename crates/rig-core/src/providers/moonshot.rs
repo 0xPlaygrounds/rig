@@ -22,11 +22,10 @@
 //!     .build()
 //!     .expect("Failed to build Moonshot client");
 //! ```
-use crate::client::{self, BearerAuth, DebugExt, Provider};
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
+use crate::client;
+use crate::providers::internal::anthropic_compatible::{
+    AnthropicBaseUrl, impl_dual_dialect_provider,
 };
-use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
 use crate::{completion::CompletionError, providers::openai};
 
 // ================================================================
@@ -39,72 +38,21 @@ pub const CHINA_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 /// Anthropic-compatible base URL.
 pub const ANTHROPIC_API_BASE_URL: &str = "https://api.moonshot.ai/anthropic";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotExt;
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotBuilder;
-#[derive(Debug, Default, Clone)]
-pub struct MoonshotAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MoonshotAnthropicExt;
-
-type MoonshotApiKey = BearerAuth;
-
-impl Provider for MoonshotExt {
-    type Builder = MoonshotBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for MoonshotAnthropicExt {
-    type Builder = MoonshotAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
-
-impl DebugExt for MoonshotExt {}
-impl DebugExt for MoonshotAnthropicExt {}
-
-client::impl_default_provider_builder!(
-    MoonshotBuilder => MoonshotExt,
-    api_key = MoonshotApiKey,
+impl_dual_dialect_provider!(
+    ext = MoonshotExt,
+    builder = MoonshotBuilder,
+    anthropic_ext = MoonshotAnthropicExt,
+    anthropic_builder = MoonshotAnthropicBuilder,
+    client_input = String,
+    api_key_env = "MOONSHOT_API_KEY",
     base_url = GLOBAL_API_BASE_URL,
-);
-impl_anthropic_compatible_builder!(
-    MoonshotAnthropicBuilder => MoonshotAnthropicExt,
-    base_url = ANTHROPIC_API_BASE_URL,
+    base_url_env = "MOONSHOT_API_BASE",
+    anthropic_provider_name = "moonshot",
+    anthropic_base_url = ANTHROPIC_API_BASE_URL,
+    anthropic_base_url_env = "MOONSHOT_ANTHROPIC_API_BASE",
 );
 
 client::impl_capabilities!(MoonshotExt, completion = CompletionModel<H>);
-
-client::impl_capabilities!(
-    MoonshotAnthropicExt,
-    completion = super::anthropic::completion::GenericCompletionModel<MoonshotAnthropicExt, H>,
-);
-
-pub type Client<H = reqwest::Client> = client::Client<MoonshotExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MoonshotBuilder, MoonshotApiKey, H>;
-pub type AnthropicClient<H = reqwest::Client> = client::Client<MoonshotAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MoonshotAnthropicBuilder, AnthropicKey, H>;
-
-client::impl_provider_client!(
-    Client,
-    input = String,
-    api_key_env = "MOONSHOT_API_KEY",
-    base_url_env = "MOONSHOT_API_BASE",
-);
-
-client::impl_provider_client!(
-    AnthropicClient,
-    input = String,
-    api_key_env = "MOONSHOT_API_KEY",
-    base_url =
-        ANTHROPIC_BASE_URLS.resolve_from_env("MOONSHOT_ANTHROPIC_API_BASE", "MOONSHOT_API_BASE")?,
-);
 
 impl<H> ClientBuilder<H> {
     pub fn global(self) -> Self {
@@ -119,14 +67,6 @@ impl<H> ClientBuilder<H> {
 impl<H> AnthropicClientBuilder<H> {
     pub fn global(self) -> Self {
         self.base_url(ANTHROPIC_API_BASE_URL)
-    }
-}
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for MoonshotAnthropicExt {
-    const PROVIDER_NAME: &'static str = "moonshot";
-
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::http_client::HttpClientExt;
 use crate::providers::huggingface::Client;
 use crate::providers::huggingface::completion::ApiResponse;
+use crate::providers::internal::transcription::send_json_transcription;
 use crate::transcription;
 use crate::transcription::TranscriptionError;
 use crate::wasm_compat::WasmCompatSync;
@@ -51,42 +52,33 @@ where
 
         let request = serde_json::to_vec(&request)?;
 
-        let req = self
-            .client
-            .post(&route)?
-            .header("Content-Type", "application/json")
-            .body(request)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send(req).await?;
-        let status = response.status();
-        let body: Vec<u8> = response.into_body().await?;
-
-        if !status.is_success() {
-            return Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ));
-        }
-
-        match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&body)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => {
-                let message = err
-                    .get("error")
-                    .and_then(|e| {
-                        e.as_str()
-                            .or_else(|| e.get("message").and_then(|m| m.as_str()))
-                    })
-                    .or_else(|| err.get("message").and_then(|m| m.as_str()))
-                    .unwrap_or_default();
-                tracing::warn!(message = %message, "provider returned an error response");
-                Err(TranscriptionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
+        send_json_transcription(
+            &self.client,
+            self.client
+                .post(&route)?
+                .header("Content-Type", "application/json"),
+            request,
+            |status, body| match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(body)?
+            {
+                ApiResponse::Ok(response) => response.try_into(),
+                ApiResponse::Err(err) => {
+                    let message = err
+                        .get("error")
+                        .and_then(|e| {
+                            e.as_str()
+                                .or_else(|| e.get("message").and_then(|m| m.as_str()))
+                        })
+                        .or_else(|| err.get("message").and_then(|m| m.as_str()))
+                        .unwrap_or_default();
+                    tracing::warn!(message = %message, "provider returned an error response");
+                    Err(TranscriptionError::from_http_response(
+                        status,
+                        String::from_utf8_lossy(body),
+                    ))
+                }
+            },
+        )
+        .await
     }
 }
 

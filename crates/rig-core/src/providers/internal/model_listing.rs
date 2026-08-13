@@ -43,6 +43,46 @@ impl From<ListModelEntry> for Model {
     }
 }
 
+/// Define a [`ModelLister`](crate::client::ModelLister) that lists models
+/// from an OpenAI-style `{ "data": [...] }` endpoint via
+/// [`list_models`]. Providers whose listing needs pagination or a bespoke
+/// envelope (Gemini, Anthropic, Ollama, Copilot) keep hand-written listers.
+macro_rules! impl_model_lister {
+    ($(#[$meta:meta])* $name:ident, $client:ty, $entry:ty, $label:literal, $path:literal) => {
+        $(#[$meta])*
+        #[derive(Clone)]
+        pub struct $name<H = reqwest::Client> {
+            client: $client,
+        }
+
+        impl<H> $crate::client::ModelLister<H> for $name<H>
+        where
+            H: $crate::http_client::HttpClientExt
+                + $crate::wasm_compat::WasmCompatSend
+                + $crate::wasm_compat::WasmCompatSync
+                + 'static,
+        {
+            type Client = $client;
+
+            fn new(client: Self::Client) -> Self {
+                Self { client }
+            }
+
+            async fn list_all(
+                &self,
+            ) -> Result<$crate::model::ModelList, $crate::model::ModelListingError> {
+                $crate::providers::internal::model_listing::list_models::<$entry, _, _>(
+                    &self.client,
+                    $label,
+                    $path,
+                )
+                .await
+            }
+        }
+    };
+}
+pub(crate) use impl_model_lister;
+
 /// Map a transport-level send error into listing-flavored context: an
 /// [`http_client::Error::InvalidStatusCodeWithMessage`] (backends that reject
 /// non-2xx before handing back a response) keeps the provider label, path,

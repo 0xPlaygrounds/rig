@@ -21,6 +21,7 @@ pub(crate) mod openai_chat_completions_compatible;
 pub(crate) mod schema;
 #[cfg(any(test, debug_assertions))]
 pub(crate) mod sequence_law;
+pub(crate) mod sse_transport;
 pub mod tool_call_bridge;
 pub(crate) mod transcription;
 pub mod wire;

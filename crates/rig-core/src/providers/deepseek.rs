@@ -14,15 +14,12 @@
 
 use serde_json::Value;
 
-use crate::client::{self, BearerAuth, DebugExt, ModelLister, Provider, ProviderClient};
-use crate::http_client::HttpClientExt;
-use crate::model::{ModelList, ModelListingError};
+use crate::client::{self, BearerAuth, DebugExt, Provider, ProviderClient};
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
     completion::{self, CompletionError},
     json_utils,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -365,31 +362,15 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     }
 }
 
-/// [`ModelLister`] implementation for the DeepSeek API (`GET /models`).
-#[derive(Clone)]
-pub struct DeepSeekModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for DeepSeekModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        crate::providers::internal::model_listing::list_models::<
-            crate::providers::internal::model_listing::ListModelEntry,
-            _,
-            _,
-        >(&self.client, "DeepSeek", "/models")
-        .await
-    }
-}
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// DeepSeek API (`GET /models`).
+    DeepSeekModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "DeepSeek",
+    "/models"
+);
 
 // ================================================================
 // DeepSeek Completion API
@@ -419,6 +400,7 @@ mod tests {
         CompletionRequestBuilder, FinishReason, ToolDefinition as RigToolDefinition,
     };
     use crate::message::ToolChoice as RigToolChoice;
+    use crate::model::ModelListingError;
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };

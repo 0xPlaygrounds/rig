@@ -1,5 +1,3 @@
-use async_stream::stream;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tracing::{Level, enabled};
@@ -10,10 +8,13 @@ use super::completion::{
     Content, GenericCompletionModel, Usage, map_finish_reason,
 };
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::GenericEventSource;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::sse_transport::{
+    OpenLog, SseTransportOptions, skip_blank_frames, sse_frames,
+};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
     self, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
@@ -602,28 +603,18 @@ where
 
         // Transport layer: SSE events → `WireFrame`s. Byte splitting and
         // framing only — classification and policy live downstream.
-        let transport = stream! {
-            let mut sse_stream = Box::pin(stream);
-            while let Some(sse_result) = sse_stream.next().await {
-                match sse_result {
-                    Ok(Event::Open) => {}
-                    Ok(Event::Message(sse)) => {
-                        // Data-less frames (keep-alive comments) carry no
-                        // payload and are not wire frames.
-                        if sse.data.trim().is_empty() {
-                            continue;
-                        }
-                        yield Ok(WireFrame::Text(sse.data));
-                    }
-                    Err(e) => {
-                        yield Err(CompletionError::from_stream_transport(e));
-                        break;
-                    }
-                }
-            }
-            // Ensure event source is closed when stream ends
-            sse_stream.close();
-        };
+        // Anthropic's loop historically had no separate `StreamEnded` arm and
+        // no transport-error log: `StreamEnded` folds into the generic error
+        // mapping, preserved via the options below.
+        let transport = sse_frames(
+            stream,
+            SseTransportOptions {
+                open_log: OpenLog::Silent,
+                stream_ended_is_error: true,
+                log_transport_errors: false,
+            },
+            skip_blank_frames,
+        );
 
         let stream: RawStreamingResult<StreamingCompletionResponse> =
             Box::pin(run_wire_stream(transport, AnthropicAdapter::default()).instrument(span));

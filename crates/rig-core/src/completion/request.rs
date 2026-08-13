@@ -336,37 +336,6 @@ impl CompletionResponse {
         }
     }
 
-    /// Attach the provider-assigned message ID.
-    ///
-    /// An empty string is treated as absent: gateways that echo `""` for
-    /// fields they don't populate must not produce a `Some("")` that differs
-    /// from the streaming path. All identifier and model setters share this
-    /// rule so the invariant lives here rather than at every provider call
-    /// site.
-    pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
-        self.message_id = Some(message_id.into()).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-assigned message ID when the provider reported one.
-    pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
-        self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-assigned response-scoped ID.
-    pub fn with_response_id(mut self, response_id: impl Into<String>) -> Self {
-        self.response_id = Some(response_id.into()).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-assigned response-scoped ID when the provider
-    /// reported one.
-    pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
-        self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
-        self
-    }
-
     /// Why the model stopped generating, when the provider reported it.
     pub fn finish_reason(&self) -> Option<FinishReason> {
         self.finish_reason.clone()
@@ -393,22 +362,9 @@ impl CompletionResponse {
             finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call));
         self
     }
-
-    /// Attach the provider-reported model identifier.
-    ///
-    /// An empty string is treated as absent, matching the identifier setters.
-    pub fn with_model(mut self, model: impl Into<String>) -> Self {
-        self.model = Some(model.into()).filter(|model| !model.is_empty());
-        self
-    }
-
-    /// Attach the provider-reported model identifier when the response carried
-    /// one.
-    pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
-        self.model = model.map(Into::into).filter(|model| !model.is_empty());
-        self
-    }
 }
+
+crate::provider_response::response_metadata_setters!(CompletionResponse);
 
 /// Wire-shape mirror of [`CompletionResponse`], used only for deserialization.
 ///

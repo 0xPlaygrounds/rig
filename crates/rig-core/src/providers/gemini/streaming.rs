@@ -1,5 +1,3 @@
-use async_stream::stream;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tracing::{Level, enabled};
 use tracing_futures::Instrument;
@@ -14,8 +12,11 @@ use super::completion::{
 };
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::GenericEventSource;
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::sse_transport::{
+    OpenLog, SseTransportOptions, skip_blank_frames, sse_frames,
+};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -459,33 +460,15 @@ where
 
         // Transport layer: SSE events → `WireFrame`s. Byte splitting and
         // framing only — classification and policy live downstream.
-        let transport = stream! {
-            let mut event_source = Box::pin(event_source);
-            while let Some(event_result) = event_source.next().await {
-                match event_result {
-                    Ok(Event::Open) => {
-                        tracing::debug!("SSE connection opened");
-                    }
-                    Ok(Event::Message(message)) => {
-                        // Heartbeats carry no payload and are not wire frames.
-                        if message.data.trim().is_empty() {
-                            continue;
-                        }
-                        yield Ok(WireFrame::Text(message.data));
-                    }
-                    Err(crate::http_client::Error::StreamEnded) => {
-                        break;
-                    }
-                    Err(error) => {
-                        tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::from_stream_transport(error));
-                        break;
-                    }
-                }
-            }
-            // Ensure event source is closed when stream ends
-            event_source.close();
-        };
+        let transport = sse_frames(
+            event_source,
+            SseTransportOptions {
+                open_log: OpenLog::Debug,
+                stream_ended_is_error: false,
+                log_transport_errors: true,
+            },
+            skip_blank_frames,
+        );
 
         let stream: streaming::RawStreamingResult<StreamingCompletionResponse> =
             Box::pin(run_wire_stream(transport, GeminiRestAdapter::default()).instrument(span));

@@ -27,10 +27,7 @@ use std::fmt::Debug;
 use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, ProviderClient};
 use crate::http_client::{self, HttpClientExt, bearer_auth_header};
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
-use crate::{
-    embeddings::{self, EmbeddingError},
-    providers::openai,
-};
+use crate::providers::openai;
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -311,21 +308,12 @@ pub const TEXT_EMBEDDING_3_SMALL: &str = "text-embedding-3-small";
 /// `text-embedding-ada-002` embedding model
 pub const TEXT_EMBEDDING_ADA_002: &str = "text-embedding-ada-002";
 
-fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
-    match identifier {
-        TEXT_EMBEDDING_3_LARGE => Some(3_072),
-        TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),
-        _ => None,
-    }
-}
-
-#[derive(Clone)]
-pub struct EmbeddingModel<T = reqwest::Client> {
-    /// The shared OpenAI-compatible embeddings driver, built once at
-    /// construction; the wrapper only preserves Azure's historical
-    /// `Option<usize>` ndims constructor signatures.
-    inner: openai::embedding::GenericEmbeddingModel<AzureExt, T>,
-}
+/// Azure OpenAI embedding model, driven by the shared OpenAI-compatible
+/// embeddings path. `EmbeddingModel::make` (and the client's
+/// `embedding_model` helpers) default unknown dimensions from the model
+/// identifier, exactly like OpenAI.
+pub type EmbeddingModel<T = reqwest::Client> =
+    openai::embedding::GenericEmbeddingModel<AzureExt, T>;
 
 impl openai::embedding::OpenAIEmbeddingsCompatible for AzureExt {
     const PROVIDER_NAME: &'static str = "azure.openai";
@@ -341,62 +329,6 @@ impl openai::embedding::OpenAIEmbeddingsCompatible for AzureExt {
             model.trim_start_matches('/'),
             self.api_version
         )
-    }
-}
-
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: HttpClientExt + Default + Clone + 'static,
-{
-    const MAX_DOCUMENTS: usize = 1024;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>, dims: Option<usize>) -> Self {
-        Self::new(client.clone(), model, dims)
-    }
-
-    fn ndims(&self) -> usize {
-        self.inner.ndims()
-    }
-
-    async fn embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<Vec<embeddings::Embedding>, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
-        self.inner.embed_texts(documents).await
-    }
-
-    async fn embed_texts_with_usage(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
-        self.inner.embed_texts_with_usage(documents).await
-    }
-}
-
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        let model = model.into();
-        let ndims = ndims
-            .or(model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-
-        Self {
-            inner: openai::embedding::GenericEmbeddingModel::new(client, model, ndims),
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str, ndims: Option<usize>) -> Self {
-        Self {
-            inner: openai::embedding::GenericEmbeddingModel::with_model(
-                client,
-                model,
-                ndims.unwrap_or_default(),
-            ),
-        }
     }
 }
 
@@ -616,6 +548,7 @@ mod azure_tests {
     use crate::client::{completion::CompletionClient, embeddings::EmbeddingsClient};
     use crate::completion::CompletionModel;
     use crate::completion::{CompletionError, CompletionRequest};
+    use crate::embeddings::EmbeddingError;
     use crate::embeddings::EmbeddingModel;
 
     #[cfg(any(feature = "image", feature = "audio"))]
@@ -784,7 +717,7 @@ mod azure_tests {
             .http_client(http_client)
             .build()
             .expect("build client");
-        let model = super::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, None);
+        let model = super::EmbeddingModel::make(&client, TEXT_EMBEDDING_3_SMALL, None);
 
         let error = match model.embed_texts(vec!["Hello, world!".to_string()]).await {
             Err(error) => error,
@@ -817,7 +750,7 @@ mod azure_tests {
             .http_client(http_client.clone())
             .build()
             .expect("build client");
-        let model = super::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, None);
+        let model = super::EmbeddingModel::make(&client, TEXT_EMBEDDING_3_SMALL, None);
 
         let response = model
             .embed_texts_with_usage(vec!["Hello, world!".to_string()])

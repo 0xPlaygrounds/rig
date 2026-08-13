@@ -959,26 +959,22 @@ pub mod interactions_api_types {
     impl GoogleSearchExchange {
         /// Collects all queries from the stored Google Search tool calls.
         pub fn queries(&self) -> Vec<String> {
-            let mut queries = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(call_queries) = &args.queries
-                {
-                    queries.extend(call_queries.clone());
-                }
-            }
-            queries
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.queries.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
 
         /// Collects all Google Search result entries from tool results.
         pub fn result_items(&self) -> Vec<GoogleSearchResult> {
-            let mut items = Vec::new();
-            for result in &self.results {
-                if let Some(entries) = &result.result {
-                    items.extend(entries.clone());
-                }
-            }
-            items
+            self.results
+                .iter()
+                .filter_map(|result| result.result.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
     }
 
@@ -988,26 +984,22 @@ pub mod interactions_api_types {
     impl UrlContextExchange {
         /// Collects all URLs from the stored URL context tool calls.
         pub fn urls(&self) -> Vec<String> {
-            let mut urls = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(call_urls) = &args.urls
-                {
-                    urls.extend(call_urls.clone());
-                }
-            }
-            urls
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.urls.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
 
         /// Collects all URL context result entries from tool results.
         pub fn result_items(&self) -> Vec<UrlContextResult> {
-            let mut items = Vec::new();
-            for result in &self.results {
-                if let Some(entries) = &result.result {
-                    items.extend(entries.clone());
-                }
-            }
-            items
+            self.results
+                .iter()
+                .filter_map(|result| result.result.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
     }
 
@@ -1017,27 +1009,75 @@ pub mod interactions_api_types {
     impl CodeExecutionExchange {
         /// Collects all code snippets from the stored code execution tool calls.
         pub fn code_snippets(&self) -> Vec<String> {
-            let mut snippets = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(code) = &args.code
-                {
-                    snippets.push(code.clone());
-                }
-            }
-            snippets
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.code.clone())
+                .collect()
         }
 
         /// Collects all code execution outputs from tool results.
         pub fn outputs(&self) -> Vec<String> {
-            let mut outputs = Vec::new();
-            for result in &self.results {
-                if let Some(output) = &result.result {
-                    outputs.push(output.clone());
-                }
-            }
-            outputs
+            self.results
+                .iter()
+                .filter_map(|result| result.result.clone())
+                .collect()
         }
+    }
+
+    /// Generates the `Interaction` accessor family for one built-in tool:
+    /// the call_id-grouped exchanges plus flattened views over their calls,
+    /// results, and per-exchange collector methods.
+    macro_rules! interaction_exchange_accessors {
+        (
+            $tool:literal, $exchange:ty, $call_variant:ident, $result_variant:ident,
+            $exchanges_fn:ident, $call_contents_fn:ident -> $call_ty:ty,
+            $result_contents_fn:ident -> $result_ty:ty,
+            $($flat_doc:literal $flat_fn:ident => $method:ident -> $flat_ty:ty),* $(,)?
+        ) => {
+            #[doc = concat!("Groups ", $tool, " tool calls and results by call_id.")]
+            ///
+            /// When a call_id is missing, results are grouped with the most recent
+            /// call (identified or not) as a best-effort fallback.
+            pub fn $exchanges_fn(&self) -> Vec<$exchange> {
+                pair_exchanges(
+                    &self.output_contents(),
+                    |content| match content {
+                        Content::$call_variant(call) => Some(call),
+                        _ => None,
+                    },
+                    |content| match content {
+                        Content::$result_variant(result) => Some(result),
+                        _ => None,
+                    },
+                )
+            }
+
+            #[doc = concat!("Collects ", $tool, " tool call contents from the interaction outputs.")]
+            pub fn $call_contents_fn(&self) -> Vec<$call_ty> {
+                self.$exchanges_fn()
+                    .into_iter()
+                    .flat_map(|exchange| exchange.calls)
+                    .collect()
+            }
+
+            #[doc = concat!("Collects ", $tool, " result contents from the interaction outputs.")]
+            pub fn $result_contents_fn(&self) -> Vec<$result_ty> {
+                self.$exchanges_fn()
+                    .into_iter()
+                    .flat_map(|exchange| exchange.results)
+                    .collect()
+            }
+
+            $(
+                #[doc = $flat_doc]
+                pub fn $flat_fn(&self) -> Vec<$flat_ty> {
+                    self.$exchanges_fn()
+                        .into_iter()
+                        .flat_map(|exchange| exchange.$method())
+                        .collect()
+                }
+            )*
+        };
     }
 
     impl Interaction {
@@ -1045,155 +1085,38 @@ pub mod interactions_api_types {
             self.steps.iter().flat_map(Step::output_contents).collect()
         }
 
-        /// Groups Google Search tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
-            pair_exchanges(
-                &self.output_contents(),
-                |content| match content {
-                    Content::GoogleSearchCall(call) => Some(call),
-                    _ => None,
-                },
-                |content| match content {
-                    Content::GoogleSearchResult(result) => Some(result),
-                    _ => None,
-                },
-            )
-        }
+        interaction_exchange_accessors!(
+            "Google Search", GoogleSearchExchange, GoogleSearchCall, GoogleSearchResult,
+            google_search_exchanges,
+            google_search_call_contents -> GoogleSearchCallContent,
+            google_search_result_contents -> GoogleSearchResultContent,
+            "Collects all Google Search queries from tool calls in the outputs."
+                google_search_queries => queries -> String,
+            "Collects all Google Search result entries from tool results in the outputs."
+                google_search_results => result_items -> GoogleSearchResult,
+        );
 
-        /// Collects Google Search tool call contents from the interaction outputs.
-        pub fn google_search_call_contents(&self) -> Vec<GoogleSearchCallContent> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
+        interaction_exchange_accessors!(
+            "URL context", UrlContextExchange, UrlContextCall, UrlContextResult,
+            url_context_exchanges,
+            url_context_call_contents -> UrlContextCallContent,
+            url_context_result_contents -> UrlContextResultContent,
+            "Collects all URLs from URL context tool calls in the outputs."
+                url_context_urls => urls -> String,
+            "Collects all URL context result entries from tool results in the outputs."
+                url_context_results => result_items -> UrlContextResult,
+        );
 
-        /// Collects Google Search result contents from the interaction outputs.
-        pub fn google_search_result_contents(&self) -> Vec<GoogleSearchResultContent> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all Google Search queries from tool calls in the outputs.
-        pub fn google_search_queries(&self) -> Vec<String> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.queries())
-                .collect()
-        }
-
-        /// Collects all Google Search result entries from tool results in the outputs.
-        pub fn google_search_results(&self) -> Vec<GoogleSearchResult> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.result_items())
-                .collect()
-        }
-
-        /// Groups URL context tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn url_context_exchanges(&self) -> Vec<UrlContextExchange> {
-            pair_exchanges(
-                &self.output_contents(),
-                |content| match content {
-                    Content::UrlContextCall(call) => Some(call),
-                    _ => None,
-                },
-                |content| match content {
-                    Content::UrlContextResult(result) => Some(result),
-                    _ => None,
-                },
-            )
-        }
-
-        /// Collects URL context tool call contents from the interaction outputs.
-        pub fn url_context_call_contents(&self) -> Vec<UrlContextCallContent> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
-
-        /// Collects URL context result contents from the interaction outputs.
-        pub fn url_context_result_contents(&self) -> Vec<UrlContextResultContent> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all URLs from URL context tool calls in the outputs.
-        pub fn url_context_urls(&self) -> Vec<String> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.urls())
-                .collect()
-        }
-
-        /// Collects all URL context result entries from tool results in the outputs.
-        pub fn url_context_results(&self) -> Vec<UrlContextResult> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.result_items())
-                .collect()
-        }
-
-        /// Groups code execution tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn code_execution_exchanges(&self) -> Vec<CodeExecutionExchange> {
-            pair_exchanges(
-                &self.output_contents(),
-                |content| match content {
-                    Content::CodeExecutionCall(call) => Some(call),
-                    _ => None,
-                },
-                |content| match content {
-                    Content::CodeExecutionResult(result) => Some(result),
-                    _ => None,
-                },
-            )
-        }
-
-        /// Collects code execution tool call contents from the interaction outputs.
-        pub fn code_execution_call_contents(&self) -> Vec<CodeExecutionCallContent> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
-
-        /// Collects code execution result contents from the interaction outputs.
-        pub fn code_execution_result_contents(&self) -> Vec<CodeExecutionResultContent> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all code snippets from code execution calls in the outputs.
-        pub fn code_execution_snippets(&self) -> Vec<String> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.code_snippets())
-                .collect()
-        }
-
-        /// Collects all code execution outputs from tool results in the outputs.
-        pub fn code_execution_outputs(&self) -> Vec<String> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.outputs())
-                .collect()
-        }
+        interaction_exchange_accessors!(
+            "code execution", CodeExecutionExchange, CodeExecutionCall, CodeExecutionResult,
+            code_execution_exchanges,
+            code_execution_call_contents -> CodeExecutionCallContent,
+            code_execution_result_contents -> CodeExecutionResultContent,
+            "Collects all code snippets from code execution calls in the outputs."
+                code_execution_snippets => code_snippets -> String,
+            "Collects all code execution outputs from tool results in the outputs."
+                code_execution_outputs => outputs -> String,
+        );
 
         /// Returns concatenated text outputs with inline citations appended.
         pub fn text_with_inline_citations(&self) -> Option<String> {

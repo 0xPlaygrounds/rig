@@ -261,47 +261,9 @@ impl StreamFinal {
         self.finish_reason = finish_reason;
         self
     }
-
-    /// Attach the provider-assigned message ID.
-    ///
-    /// An empty string is treated as absent, matching the unary
-    /// [`CompletionResponse`] setters:
-    /// the invariant lives in the setters so no provider call site can
-    /// diverge.
-    pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
-        self.with_optional_message_id(Some(message_id.into()))
-    }
-
-    /// Attach the provider-assigned message ID when the provider reported one.
-    pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
-        self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-assigned response-scoped ID.
-    pub fn with_response_id(self, response_id: impl Into<String>) -> Self {
-        self.with_optional_response_id(Some(response_id.into()))
-    }
-
-    /// Attach the provider-assigned response-scoped ID when the provider
-    /// reported one.
-    pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
-        self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-reported model identifier.
-    pub fn with_model(self, model: impl Into<String>) -> Self {
-        self.with_optional_model(Some(model.into()))
-    }
-
-    /// Attach the provider-reported model identifier when the stream reported
-    /// one.
-    pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
-        self.model = model.map(Into::into).filter(|model| !model.is_empty());
-        self
-    }
 }
+
+crate::provider_response::response_metadata_setters!(StreamFinal);
 
 /// Wire-shape mirror of [`StreamFinal`], used only for deserialization.
 ///

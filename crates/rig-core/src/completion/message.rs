@@ -1671,26 +1671,73 @@ impl std::str::FromStr for ImageDetail {
 // FromStr, From<String>, and From<&str> impls
 // ================================================================
 
-impl From<String> for Text {
-    fn from(text: String) -> Self {
-        Text {
-            text,
-            additional_params: None,
+/// `From` impls for [`Text`] from string-like types.
+macro_rules! text_from {
+    ($($src:ty),+ $(,)?) => {$(
+        impl From<$src> for Text {
+            fn from(text: $src) -> Self {
+                Text {
+                    text: text.into(),
+                    additional_params: None,
+                }
+            }
         }
-    }
+    )+};
 }
 
-impl From<&String> for Text {
-    fn from(text: &String) -> Self {
-        text.to_owned().into()
-    }
+text_from!(String, &String, &str);
+
+/// `From<String>` impls that forward into a content type's `text` constructor.
+macro_rules! text_content_from_string {
+    ($($ty:ident),+ $(,)?) => {$(
+        impl From<String> for $ty {
+            fn from(text: String) -> Self {
+                $ty::text(text)
+            }
+        }
+    )+};
 }
 
-impl From<&str> for Text {
-    fn from(text: &str) -> Self {
-        text.to_owned().into()
-    }
+text_content_from_string!(ToolResultContent, AssistantContent, UserContent);
+
+/// One-line `From<T> for Message` forwards: convert the value, wrap it in the
+/// named content variant, and build a single-content message.
+macro_rules! single_content_message_from {
+    (User { $($src:ty => $variant:ident),+ $(,)? }) => {$(
+        impl From<$src> for Message {
+            fn from(value: $src) -> Self {
+                Message::User {
+                    content: vec![UserContent::$variant(value.into())],
+                }
+            }
+        }
+    )+};
+    (Assistant { $($src:ty => $variant:ident),+ $(,)? }) => {$(
+        impl From<$src> for Message {
+            fn from(value: $src) -> Self {
+                Message::Assistant {
+                    id: None,
+                    content: vec![AssistantContent::$variant(value.into())],
+                }
+            }
+        }
+    )+};
 }
+
+single_content_message_from!(User {
+    String => Text,
+    &str => Text,
+    &String => Text,
+    Text => Text,
+    Image => Image,
+    Audio => Audio,
+    Document => Document,
+    ToolResult => ToolResult,
+});
+
+single_content_message_from!(Assistant {
+    ToolCall => ToolCall,
+});
 
 impl FromStr for Text {
     type Err = Infallible;
@@ -1703,80 +1750,6 @@ impl FromStr for Text {
 impl From<&Message> for Message {
     fn from(msg: &Message) -> Self {
         msg.clone()
-    }
-}
-
-impl From<String> for Message {
-    fn from(text: String) -> Self {
-        Message::User {
-            content: vec![UserContent::Text(text.into())],
-        }
-    }
-}
-
-impl From<&str> for Message {
-    fn from(text: &str) -> Self {
-        Message::User {
-            content: vec![UserContent::Text(text.into())],
-        }
-    }
-}
-
-impl From<&String> for Message {
-    fn from(text: &String) -> Self {
-        Message::User {
-            content: vec![UserContent::Text(text.into())],
-        }
-    }
-}
-
-impl From<Text> for Message {
-    fn from(text: Text) -> Self {
-        Message::User {
-            content: vec![UserContent::Text(text)],
-        }
-    }
-}
-
-impl From<Image> for Message {
-    fn from(image: Image) -> Self {
-        Message::User {
-            content: vec![UserContent::Image(image)],
-        }
-    }
-}
-
-impl From<Audio> for Message {
-    fn from(audio: Audio) -> Self {
-        Message::User {
-            content: vec![UserContent::Audio(audio)],
-        }
-    }
-}
-
-impl From<Document> for Message {
-    fn from(document: Document) -> Self {
-        Message::User {
-            content: vec![UserContent::Document(document)],
-        }
-    }
-}
-
-impl From<String> for ToolResultContent {
-    fn from(text: String) -> Self {
-        ToolResultContent::text(text)
-    }
-}
-
-impl From<String> for AssistantContent {
-    fn from(text: String) -> Self {
-        AssistantContent::text(text)
-    }
-}
-
-impl From<String> for UserContent {
-    fn from(text: String) -> Self {
-        UserContent::text(text)
     }
 }
 
@@ -1806,23 +1779,6 @@ impl From<Vec<AssistantContent>> for Message {
 impl From<Vec<UserContent>> for Message {
     fn from(content: Vec<UserContent>) -> Self {
         Message::User { content }
-    }
-}
-
-impl From<ToolCall> for Message {
-    fn from(tool_call: ToolCall) -> Self {
-        Message::Assistant {
-            id: None,
-            content: vec![AssistantContent::ToolCall(tool_call)],
-        }
-    }
-}
-
-impl From<ToolResult> for Message {
-    fn from(tool_result: ToolResult) -> Self {
-        Message::User {
-            content: vec![UserContent::ToolResult(tool_result)],
-        }
     }
 }
 

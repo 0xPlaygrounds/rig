@@ -16,6 +16,9 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::gemini::streaming::shared_parts;
+use crate::providers::internal::sse_transport::{
+    OpenLog, SseTransportOptions, skip_blank_frames, sse_frames,
+};
 use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 
 use crate::providers::internal::adapter::{
@@ -157,31 +160,15 @@ where
 
         // Transport layer: SSE events → `WireFrame`s. Byte splitting and
         // framing only — classification and policy live downstream.
-        let transport = stream! {
-            let mut event_source = Box::pin(event_source);
-            while let Some(event_result) = event_source.next().await {
-                match event_result {
-                    Ok(Event::Open) => {
-                        tracing::debug!("SSE connection opened");
-                    }
-                    Ok(Event::Message(message)) => {
-                        if message.data.trim().is_empty() {
-                            continue;
-                        }
-                        yield Ok(WireFrame::Text(message.data));
-                    }
-                    Err(crate::http_client::Error::StreamEnded) => {
-                        break;
-                    }
-                    Err(error) => {
-                        tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::from_stream_transport(error));
-                        break;
-                    }
-                }
-            }
-            event_source.close();
-        };
+        let transport = sse_frames(
+            event_source,
+            SseTransportOptions {
+                open_log: OpenLog::Debug,
+                stream_ended_is_error: false,
+                log_transport_errors: true,
+            },
+            skip_blank_frames,
+        );
 
         let stream: streaming::RawStreamingResult<StreamingCompletionResponse> =
             Box::pin(run_wire_stream(transport, InteractionsAdapter::default()).instrument(span));

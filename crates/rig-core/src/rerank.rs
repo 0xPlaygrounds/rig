@@ -6,39 +6,17 @@
 
 use crate::{
     completion::Usage,
-    http_client, provider_response,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
 
-/// Errors returned by reranking models.
-///
-/// Inspect provider failures with [`Self::provider_response_body`],
-/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum RerankError {
-    #[error("HttpError: {0}")]
-    HttpError(#[from] http_client::Error),
-
-    #[error("JsonError: {0}")]
-    JsonError(#[from] serde_json::Error),
-
-    #[error("UrlError: {0}")]
-    UrlError(#[from] url::ParseError),
-
-    #[error("ResponseError: {0}")]
-    ResponseError(String),
-
-    #[error("ProviderError: {0}")]
-    ProviderError(String),
-
-    /// Raw error response preserved from the reranking model provider
-    #[error("ProviderResponseError: {0}")]
-    ProviderResponse(provider_response::ProviderResponseError),
-}
-
-crate::provider_response::impl_provider_response_helpers!(RerankError);
+crate::provider_response::provider_error_enum!(
+    RerankError, "reranking" {
+        /// URL construction or parsing failed while preparing a provider request.
+        #[error("UrlError: {0}")]
+        UrlError(#[from] url::ParseError),
+    }
+);
 
 /// Trait for reranking models that score documents by relevance to a query.
 pub trait RerankModel: WasmCompatSend + WasmCompatSync {

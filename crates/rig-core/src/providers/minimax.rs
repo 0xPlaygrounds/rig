@@ -21,11 +21,10 @@
 //! let model = client.completion_model(minimax::MINIMAX_M2);
 //! ```
 
-use crate::client::{self, BearerAuth, DebugExt, Provider};
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, impl_anthropic_compatible_builder,
+use crate::client;
+use crate::providers::internal::anthropic_compatible::{
+    AnthropicBaseUrl, impl_dual_dialect_provider,
 };
-use crate::providers::internal::anthropic_compatible::AnthropicBaseUrl;
 
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.minimax.io/v1";
@@ -51,54 +50,24 @@ pub const MINIMAX_M2_1_HIGHSPEED: &str = "MiniMax-M2.1-highspeed";
 /// `MiniMax-M2`
 pub const MINIMAX_M2: &str = "MiniMax-M2";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MiniMaxExt;
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MiniMaxBuilder;
-
-#[derive(Debug, Default, Clone)]
-pub struct MiniMaxAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MiniMaxAnthropicExt;
-
-type MiniMaxApiKey = BearerAuth;
-
-pub type Client<H = reqwest::Client> = client::Client<MiniMaxExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MiniMaxBuilder, MiniMaxApiKey, H>;
-
-pub type AnthropicClient<H = reqwest::Client> = client::Client<MiniMaxAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<MiniMaxAnthropicBuilder, AnthropicKey, H>;
-
-impl Provider for MiniMaxExt {
-    type Builder = MiniMaxBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for MiniMaxAnthropicExt {
-    type Builder = MiniMaxAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
+impl_dual_dialect_provider!(
+    ext = MiniMaxExt,
+    builder = MiniMaxBuilder,
+    anthropic_ext = MiniMaxAnthropicExt,
+    anthropic_builder = MiniMaxAnthropicBuilder,
+    client_input = client::BearerAuth,
+    api_key_env = "MINIMAX_API_KEY",
+    base_url = GLOBAL_API_BASE_URL,
+    base_url_env = "MINIMAX_API_BASE",
+    anthropic_provider_name = "minimax",
+    anthropic_base_url = GLOBAL_ANTHROPIC_API_BASE_URL,
+    anthropic_base_url_env = "MINIMAX_ANTHROPIC_API_BASE",
+);
 
 client::impl_capabilities!(
     MiniMaxExt,
     completion = super::openai::completion::GenericCompletionModel<MiniMaxExt, H>,
 );
-
-client::impl_capabilities!(
-    MiniMaxAnthropicExt,
-    completion = super::anthropic::completion::GenericCompletionModel<MiniMaxAnthropicExt, H>,
-);
-
-impl DebugExt for MiniMaxExt {}
-impl DebugExt for MiniMaxAnthropicExt {}
 
 impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {
     const PROVIDER_NAME: &'static str = "minimax";
@@ -107,39 +76,6 @@ impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {
 
     type Response = super::openai::CompletionResponse;
 }
-
-client::impl_default_provider_builder!(
-    MiniMaxBuilder => MiniMaxExt,
-    api_key = MiniMaxApiKey,
-    base_url = GLOBAL_API_BASE_URL,
-);
-impl_anthropic_compatible_builder!(
-    MiniMaxAnthropicBuilder => MiniMaxAnthropicExt,
-    base_url = GLOBAL_ANTHROPIC_API_BASE_URL,
-);
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for MiniMaxAnthropicExt {
-    const PROVIDER_NAME: &'static str = "minimax";
-
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
-}
-
-client::impl_provider_client!(
-    Client,
-    input = MiniMaxApiKey,
-    api_key_env = "MINIMAX_API_KEY",
-    base_url_env = "MINIMAX_API_BASE",
-);
-
-client::impl_provider_client!(
-    AnthropicClient,
-    input = String,
-    api_key_env = "MINIMAX_API_KEY",
-    base_url =
-        ANTHROPIC_BASE_URLS.resolve_from_env("MINIMAX_ANTHROPIC_API_BASE", "MINIMAX_API_BASE")?,
-);
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
     &[

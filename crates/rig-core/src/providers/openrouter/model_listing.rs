@@ -1,9 +1,6 @@
 use crate::{
-    client::ModelLister,
-    http_client::HttpClientExt,
-    model::{Model, ModelList, ModelListingError},
+    model::Model,
     providers::{internal, openrouter::Client},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
 
@@ -31,27 +28,12 @@ impl From<ModelEntry> for Model {
     }
 }
 
-#[derive(Clone)]
-pub struct OpenRouterModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for OpenRouterModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        internal::model_listing::list_models::<ModelEntry, _, _>(
-            &self.client,
-            "OpenRouter",
-            "/models",
-        )
-        .await
-    }
-}
+internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// OpenRouter API (`GET /models`).
+    OpenRouterModelLister,
+    Client<H>,
+    ModelEntry,
+    "OpenRouter",
+    "/models"
+);

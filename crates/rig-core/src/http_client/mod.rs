@@ -115,12 +115,6 @@ pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Resu
     Ok(())
 }
 
-pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
-    bearer_auth_header(req.headers_mut().ok_or(Error::NoHeaders)?, auth)?;
-
-    Ok(req)
-}
-
 /// A helper trait to make generic requests (both regular and SSE) possible.
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     /// Send a HTTP request, get a response back (as bytes). Response must be able to be turned back into Bytes.
