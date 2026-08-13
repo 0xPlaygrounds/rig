@@ -78,6 +78,17 @@ where
                 ),
             });
         }
+        // A transport that reports non-success without preserved headers (a
+        // custom `HttpClientExt`): a contract provider still classifies as
+        // ProviderResponse — the shape follows the contract on every
+        // transport — with no id to read.
+        Err(crate::http_client::Error::InvalidStatusCodeWithMessage(status, body))
+            if request_id_header.is_some() =>
+        {
+            return Err(CompletionError::from_http_response_with_request_id(
+                status, body, None,
+            ));
+        }
         Err(other) => return Err(other.into()),
     };
 

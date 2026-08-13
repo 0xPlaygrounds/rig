@@ -103,6 +103,17 @@ pub(crate) fn map_transport_error(
                 message.as_bytes(),
             )
         }
+        // The reqwest transport reports non-success with preserved headers
+        // (rig#2314); listings have no request-id contract, so only the
+        // status and body matter here.
+        http_client::Error::InvalidStatusCodeWithDetails { status, body, .. } => {
+            ModelListingError::api_error_with_context(
+                provider_name,
+                path,
+                status.as_u16(),
+                body.as_bytes(),
+            )
+        }
         other => ModelListingError::from(other),
     }
 }
@@ -198,5 +209,40 @@ mod tests {
         assert_eq!(model.name, None);
         assert_eq!(model.created_at, None);
         assert_eq!(model.owned_by, None);
+    }
+}
+
+#[cfg(test)]
+mod transport_error_tests {
+    use super::*;
+
+    /// Regression (rig#2314 review): the header-preserving transport variant
+    /// must classify as an ApiError with provider/path context exactly like
+    /// the header-less one — the reqwest transport now emits it for every
+    /// non-2xx.
+    #[test]
+    fn details_variant_maps_to_api_error_with_context() {
+        let error = map_transport_error(
+            "test-provider",
+            "/models",
+            http_client::Error::InvalidStatusCodeWithDetails {
+                status: http::StatusCode::UNAUTHORIZED,
+                body: r#"{"error":"no"}"#.to_string(),
+                headers: Box::new(http::HeaderMap::new()),
+            },
+        );
+        let with_message = map_transport_error(
+            "test-provider",
+            "/models",
+            http_client::Error::InvalidStatusCodeWithMessage(
+                http::StatusCode::UNAUTHORIZED,
+                r#"{"error":"no"}"#.to_string(),
+            ),
+        );
+        assert_eq!(format!("{error}"), format!("{with_message}"));
+        assert!(
+            matches!(error, ModelListingError::ApiError { .. }),
+            "got {error:?}"
+        );
     }
 }

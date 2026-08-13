@@ -165,8 +165,15 @@ where
             // support asks for (rig#2314). Only the ProviderResponse variant
             // has a slot for it; transport-level failures stay untouched.
             Err(crate::completion::CompletionError::ProviderResponse(response)) => {
+                // Never clear an id an upstream constructor already attached;
+                // the slot only fills the gap.
+                let stamped = if response.provider_request_id.is_none() {
+                    response.with_provider_request_id(request_id)
+                } else {
+                    response
+                };
                 Err(crate::completion::CompletionError::ProviderResponse(
-                    response.with_provider_request_id(request_id),
+                    stamped,
                 ))
             }
             other => other,
