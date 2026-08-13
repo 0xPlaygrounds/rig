@@ -663,23 +663,33 @@ fn llama_layer_shapes(config: &Config) -> [(&'static str, &'static str, Vec<usiz
     ]
 }
 
-pub(crate) fn validate_gguf_tensors(
+fn reject_disallowed_dtypes(
     content: &gguf_file::Content,
-    config: &Config,
-    definition: &ProfileDefinition,
+    requirements: &crate::profile::GgufRequirements,
+    prefix: &'static str,
+    suffix: &'static str,
 ) -> Result<(), CandleError> {
-    let requirements = gguf_requirements(definition)?;
     for (name, tensor) in &content.tensor_infos {
         if !requirements
             .allowed_tensor_dtypes
             .contains(&tensor.ggml_dtype)
         {
             return Err(CandleError::UnsupportedQuantization(format!(
-                "tensor `{name}` uses unsupported {:?} in a Q4_K_M checkpoint",
+                "{prefix}tensor `{name}` uses unsupported {:?}{suffix}",
                 tensor.ggml_dtype
             )));
         }
     }
+    Ok(())
+}
+
+pub(crate) fn validate_gguf_tensors(
+    content: &gguf_file::Content,
+    config: &Config,
+    definition: &ProfileDefinition,
+) -> Result<(), CandleError> {
+    let requirements = gguf_requirements(definition)?;
+    reject_disallowed_dtypes(content, requirements, "", " in a Q4_K_M checkpoint")?;
     if !content
         .tensor_infos
         .values()
@@ -703,8 +713,9 @@ pub(crate) fn validate_gguf_tensors(
             &[config.vocab_size, config.hidden_size],
         )?;
     }
+    let layer_shapes = llama_layer_shapes(config);
     for layer in 0..config.num_hidden_layers {
-        for (suffix, _, shape) in &llama_layer_shapes(config) {
+        for (suffix, _, shape) in &layer_shapes {
             validate_gguf_tensor(content, &format!("blk.{layer}.{suffix}"), shape)?;
         }
     }
@@ -717,17 +728,12 @@ pub(crate) fn validate_qwen3_gguf_tensors(
     definition: &ProfileDefinition,
 ) -> Result<(), CandleError> {
     let requirements = gguf_requirements(definition)?;
-    for (name, tensor) in &content.tensor_infos {
-        if !requirements
-            .allowed_tensor_dtypes
-            .contains(&tensor.ggml_dtype)
-        {
-            return Err(CandleError::UnsupportedQuantization(format!(
-                "Qwen3 tensor `{name}` uses unsupported {:?}; pinned Q4_K_M permits F32, Q4_K, and Q6_K",
-                tensor.ggml_dtype
-            )));
-        }
-    }
+    reject_disallowed_dtypes(
+        content,
+        requirements,
+        "Qwen3 ",
+        "; pinned Q4_K_M permits F32, Q4_K, and Q6_K",
+    )?;
     let tensors_per_layer = requirements.tensors_per_layer.ok_or_else(|| {
         CandleError::Configuration(format!(
             "{} does not define an exact GGUF tensor layout",
@@ -848,8 +854,9 @@ pub(crate) fn validate_checkpoint(weights: &[u8], config: &Config) -> Result<(),
             &[config.vocab_size, config.hidden_size],
         )?;
     }
+    let layer_shapes = llama_layer_shapes(config);
     for layer in 0..config.num_hidden_layers {
-        for (_, suffix, shape) in &llama_layer_shapes(config) {
+        for (_, suffix, shape) in &layer_shapes {
             validate_tensor(&tensors, &format!("model.layers.{layer}.{suffix}"), shape)?;
         }
     }

@@ -33,9 +33,6 @@ providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_s
 providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.
 # Single-file providers: unary/non-stream parses sharing a file with streaming code.
 providers/ollama.rs | serde_json::from_slice(&bytes)?; | unary embedding response body, not a stream frame
-providers/ollama.rs | serde_json::from_slice(&response_body)?; | unary completion response body, not a stream frame
-providers/copilot/mod.rs | ChatApiResponse<openai::completion::CompletionResponse>>( | unary chat completion body, not a stream frame
-providers/copilot/mod.rs | responses_api::CompletionResponse>(&body)? | unary responses completion body, not a stream frame
 providers/copilot/mod.rs | CopilotEmbeddingResponse = match serde_json::from_slice | unary embedding response body, not a stream frame
 providers/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | unary error-envelope decode on a non-2xx body, not a stream frame
 

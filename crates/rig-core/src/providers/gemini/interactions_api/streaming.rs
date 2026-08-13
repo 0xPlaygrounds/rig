@@ -2,8 +2,6 @@ use async_stream::stream;
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
 
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction,
@@ -17,12 +15,12 @@ use crate::http_client::Request;
 use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::gemini::streaming::shared_parts;
 use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, skip_blank_frames, sse_frames,
+    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
 };
 use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 
 use crate::providers::internal::adapter::{
-    AdapterOutput, TriagedFrame, WireAdapter, WireFrame, run_wire_stream, triage_frame,
+    AdapterOutput, TriagedFrame, WireAdapter, WireFrame, triage_frame,
 };
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
@@ -140,13 +138,11 @@ where
 
         let request = create_request_body(self.model.clone(), completion_request, Some(true))?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::streaming",
-                "Gemini interactions streaming request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Streaming,
+            "Gemini interactions streaming request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
         let req = self
@@ -156,24 +152,17 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let event_source = GenericEventSource::new(self.client.clone(), req);
-
-        // Transport layer: SSE events → `WireFrame`s. Byte splitting and
-        // framing only — classification and policy live downstream.
-        let transport = sse_frames(
-            event_source,
+        Ok(open_wire_stream(
+            GenericEventSource::new(self.client.clone(), req),
             SseTransportOptions {
                 open_log: OpenLog::Debug,
                 stream_ended_is_error: false,
                 log_transport_errors: true,
             },
             skip_blank_frames,
-        );
-
-        let stream: streaming::RawStreamingResult<StreamingCompletionResponse> =
-            Box::pin(run_wire_stream(transport, InteractionsAdapter::default()).instrument(span));
-
-        Ok(stream)
+            InteractionsAdapter::default(),
+            span,
+        ))
     }
 
     pub(crate) async fn stream(

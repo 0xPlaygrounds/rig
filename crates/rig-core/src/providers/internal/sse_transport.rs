@@ -16,8 +16,9 @@
 
 use async_stream::stream;
 use futures::{Stream, StreamExt};
+use tracing_futures::Instrument;
 
-use super::adapter::WireFrame;
+use super::adapter::{WireAdapter, WireFrame, run_wire_stream};
 use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -52,6 +53,18 @@ pub(crate) fn skip_blank_frames(data: String) -> FrameDisposition {
         FrameDisposition::Skip
     } else {
         FrameDisposition::Frame(data)
+    }
+}
+
+/// Triage shared by wires whose heartbeats and `[DONE]` sentinel are both
+/// dropped at the transport: trim the payload, skip blanks and `[DONE]`,
+/// yield everything else trimmed.
+pub(crate) fn skip_blank_and_done(data: String) -> FrameDisposition {
+    let data = data.trim();
+    if data.is_empty() || data == "[DONE]" {
+        FrameDisposition::Skip
+    } else {
+        FrameDisposition::Frame(data.to_owned())
     }
 }
 
@@ -115,6 +128,33 @@ where
         // Ensure event source is closed when stream ends
         event_source.close();
     }
+}
+
+/// Open an SSE-backed wire stream: build the event source, run the transport
+/// preamble ([`sse_frames`]) with the wire's options and triage, and drive the
+/// frames through the shared adapter driver
+/// ([`run_wire_stream`](super::adapter::run_wire_stream)) under `span`.
+pub(crate) fn open_wire_stream<HttpClient, RequestBody, A, F>(
+    event_source: GenericEventSource<HttpClient, RequestBody>,
+    options: SseTransportOptions,
+    triage: F,
+    adapter: A,
+    span: tracing::Span,
+) -> crate::streaming::RawStreamingResult<A::Response>
+where
+    HttpClient: HttpClientExt + Clone + 'static,
+    RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
+    A: WireAdapter<Frame = WireFrame> + WasmCompatSend + 'static,
+    A::Event: WasmCompatSend,
+    A::Response: WasmCompatSend + 'static,
+    F: FnMut(String) -> FrameDisposition + WasmCompatSend + 'static,
+{
+    // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
+    // and any in-band provider-error pre-filter carried by `triage` —
+    // classification and policy live downstream.
+    let transport = sse_frames(event_source, options, triage);
+
+    Box::pin(run_wire_stream(transport, adapter).instrument(span))
 }
 
 #[cfg(test)]

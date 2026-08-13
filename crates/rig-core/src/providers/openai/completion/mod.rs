@@ -5,9 +5,10 @@
 use super::client::ApiResponse;
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
-use crate::http_client::{self, HttpClientExt};
+use crate::http_client::HttpClientExt;
 use crate::json_utils::string_or_vec;
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
+use crate::providers::internal::completion_send::send_completion;
 use crate::telemetry::{
     CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
 };
@@ -16,7 +17,7 @@ use crate::{completion, json_utils, message};
 use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
-use tracing::{Instrument, Level, enabled};
+use tracing::Instrument;
 
 use std::str::FromStr;
 
@@ -2043,13 +2044,11 @@ where
         self.client
             .ext()
             .finalize_request_body_with_options(&mut request_body, options)?;
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Chat Completions completion request: {}",
-                serde_json::to_string_pretty(&request_body)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Chat Completions completion request",
+            &request_body,
+        );
 
         let body = serde_json::to_vec(&request_body)?;
         // Deliberately the configured model, not the per-request override:
@@ -2062,42 +2061,17 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        async move {
-            let response = self.client.send(req).await?;
-
-            let status = response.status();
-            if status.is_success() {
-                let text = http_client::text(response).await?;
-
-                match serde_json::from_str::<ApiResponse<Ext::Response>>(&text)? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record_response_metadata(&response);
-                        let usage = response
-                            .get_usage()
-                            .map(Into::into)
-                            .unwrap_or_default();
-                        span.record_token_usage(&usage);
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(
-                                target: "rig::completions",
-                                "OpenAI Chat Completions completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-
-                        Ok(response)
-                    }
-                    ApiResponse::Err(err) => {
-                        tracing::warn!(message = %err.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(status, text))
-                    }
-                }
-            } else {
-                let text = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, text))
-            }
-        }
+        send_completion::<_, ApiResponse<Ext::Response>, _>(
+            &self.client,
+            req,
+            "OpenAI Chat Completions completion",
+            |response| {
+                let span = tracing::Span::current();
+                span.record_response_metadata(response);
+                let usage = response.get_usage().map(Into::into).unwrap_or_default();
+                span.record_token_usage(&usage);
+            },
+        )
         .instrument(span)
         .await
     }

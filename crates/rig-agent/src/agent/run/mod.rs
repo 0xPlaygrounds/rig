@@ -777,13 +777,7 @@ impl AgentRun {
                         content: final_items.clone(),
                     });
 
-                    let response = PromptResponse::new(output, self.usage)
-                        .with_messages(self.new_messages.clone())
-                        .with_completion_calls(self.completion_calls.clone())
-                        .with_output_tool_calls(output_tool_calls)
-                        .with_content(final_items);
-                    self.state = RunState::Done(Box::new(response.clone()));
-                    return Ok(AgentRunStep::Done(response));
+                    return Ok(self.finish(output, final_items, output_tool_calls));
                 }
 
                 // An empty turn is not a lost turn. Cancelling here would fail
@@ -852,13 +846,7 @@ impl AgentRun {
                         return self.reprompt_for_output();
                     }
 
-                    let response =
-                        PromptResponse::new(assistant_text_from_choice(&items), self.usage)
-                            .with_messages(self.new_messages.clone())
-                            .with_completion_calls(self.completion_calls.clone())
-                            .with_content(items);
-                    self.state = RunState::Done(Box::new(response.clone()));
-                    Ok(AgentRunStep::Done(response))
+                    Ok(self.finish(assistant_text_from_choice(&items), items, 0))
                 }
             }
             RunState::ExecutingTools(calls) => {
@@ -943,6 +931,24 @@ impl AgentRun {
         self.completion_calls.push(call);
         self.usage += usage;
         call
+    }
+
+    /// Build the run's final [`PromptResponse`], park it in
+    /// [`RunState::Done`], and return the `Done` step. Shared by the
+    /// output-tool and plain-text finalization paths in `next_step`.
+    fn finish(
+        &mut self,
+        output: String,
+        content: Vec<AssistantContent>,
+        output_tool_calls: usize,
+    ) -> AgentRunStep {
+        let response = PromptResponse::new(output, self.usage)
+            .with_messages(self.new_messages.clone())
+            .with_completion_calls(self.completion_calls.clone())
+            .with_output_tool_calls(output_tool_calls)
+            .with_content(content);
+        self.state = RunState::Done(Box::new(response.clone()));
+        AgentRunStep::Done(response)
     }
 
     /// Park an accepted model turn in [`RunState::AwaitingAdvance`]. Both the

@@ -815,20 +815,11 @@ where
             // that case we must not resurrect it with a stale `delivered`
             // count — the next load on a freshly-populated backend would
             // then skip a real demotion.
-            {
-                let mut guard = self.state.lock().map_err(poisoned)?;
-                if let Some(entry) = guard.get_mut(conversation_id)
-                    && entry
-                        .in_flight
-                        .as_ref()
-                        .is_some_and(|current| Arc::ptr_eq(current, &reservation))
-                {
-                    entry.in_flight = None;
-                    if result.is_ok() {
-                        entry.delivered = demoted_count;
-                    }
+            release_in_flight(&self.state, conversation_id, &reservation, |entry| {
+                if result.is_ok() {
+                    entry.delivered = demoted_count;
                 }
-            }
+            })?;
             in_flight_guard.disarm();
             result?;
             Ok(kept)
@@ -840,6 +831,32 @@ where
 
 fn poisoned<E: std::fmt::Display>(err: E) -> MemoryError {
     MemoryError::Internal(err.to_string())
+}
+
+/// Clear the conversation's `in_flight` reservation if the entry still exists
+/// and still holds `reservation`, running `on_match` on the entry under the
+/// lock. Returns `on_match`'s value only when the reservation matched — a
+/// missing entry (concurrent `clear`) or a newer reservation is a no-op, so
+/// stale releases can never resurrect or clobber newer state.
+fn release_in_flight<S: InFlightSlot, T>(
+    state: &StdMutex<HashMap<String, S>>,
+    key: &str,
+    reservation: &InFlightReservation,
+    on_match: impl FnOnce(&mut S) -> T,
+) -> Result<Option<T>, MemoryError> {
+    let mut guard = state.lock().map_err(poisoned)?;
+    let Some(entry) = guard.get_mut(key) else {
+        return Ok(None);
+    };
+    if entry
+        .in_flight_mut()
+        .as_ref()
+        .is_some_and(|current| Arc::ptr_eq(current, reservation))
+    {
+        *entry.in_flight_mut() = None;
+        return Ok(Some(on_match(entry)));
+    }
+    Ok(None)
 }
 
 /// A per-conversation state entry with an `in_flight` delivery reservation,
@@ -904,15 +921,8 @@ impl<S: InFlightSlot> Drop for InFlightGuard<'_, S> {
         if !self.armed {
             return;
         }
-        if let Ok(mut guard) = self.state.lock()
-            && let Some(entry) = guard.get_mut(self.key)
-            && entry
-                .in_flight_mut()
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, &self.reservation))
-        {
-            *entry.in_flight_mut() = None;
-        }
+        // A poisoned lock is ignored, matching pre-guard behavior.
+        let _ = release_in_flight(self.state, self.key, &self.reservation, |_| ());
     }
 }
 
@@ -1130,38 +1140,18 @@ where
             // that case we must not resurrect it with stale state — the
             // next load on a freshly-populated backend would then start
             // from a non-zero watermark and skip a real compaction.
+            // A conversation cleared mid-compaction has no entry anymore; the
+            // artifact is dropped rather than reviving stale state.
             let summary_for_splice = match result {
                 Ok(artifact) => {
-                    let mut guard = self.state.lock().map_err(poisoned)?;
-                    if let Some(entry) = guard.get_mut(conversation_id) {
-                        if entry
-                            .in_flight
-                            .as_ref()
-                            .is_some_and(|current| Arc::ptr_eq(current, &reservation))
-                        {
-                            entry.in_flight = None;
-                            entry.absorbed = demoted_count;
-                            entry.summary = Some(artifact.clone());
-                            Some(artifact)
-                        } else {
-                            None
-                        }
-                    } else {
-                        // Conversation was cleared mid-compaction. Drop
-                        // the artifact rather than reviving stale state.
-                        None
-                    }
+                    release_in_flight(&self.state, conversation_id, &reservation, |entry| {
+                        entry.absorbed = demoted_count;
+                        entry.summary = Some(artifact.clone());
+                        artifact
+                    })?
                 }
                 Err(err) => {
-                    let mut guard = self.state.lock().map_err(poisoned)?;
-                    if let Some(entry) = guard.get_mut(conversation_id)
-                        && entry
-                            .in_flight
-                            .as_ref()
-                            .is_some_and(|current| Arc::ptr_eq(current, &reservation))
-                    {
-                        entry.in_flight = None;
-                    }
+                    release_in_flight(&self.state, conversation_id, &reservation, |_| ())?;
                     return Err(err);
                 }
             };

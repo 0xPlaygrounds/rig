@@ -1,0 +1,84 @@
+//! Shared request driver for unary completion endpoints.
+//!
+//! Every provider builds its own request body and path — those are the real
+//! wire differences — but the tail is identical: send the request, split
+//! status and body, decode through the provider's success-or-error envelope,
+//! record telemetry, trace-log the payload, and preserve raw error bodies via
+//! [`CompletionError::from_http_response`]. This driver owns that tail.
+
+use bytes::Bytes;
+use serde::de::DeserializeOwned;
+
+use super::envelope::ProviderEnvelope;
+use crate::completion::CompletionError;
+use crate::http_client::HttpClientExt;
+
+/// Sends a unary completion request and decodes the provider's
+/// success-or-error envelope.
+///
+/// `request` is the provider's fully built POST request; `A` is the
+/// provider's own response envelope (use
+/// [`DirectPayload`](super::envelope::DirectPayload) when the 2xx body IS the
+/// payload); `record_telemetry` records response metadata and token usage on
+/// the current span; `label` names the provider in trace/error logs (e.g.
+/// `"Gemini completion"`).
+///
+/// Error paths, preserved exactly:
+/// - non-success status → `from_http_response(status, raw_body)`;
+/// - 2xx error envelope → warn-log the provider message, preserve raw body;
+/// - undecodable 2xx body → error-log the body, surface the JSON error.
+pub(crate) async fn send_completion<C, A, F>(
+    client: &C,
+    request: crate::http_client::Request<Vec<u8>>,
+    label: &str,
+    record_telemetry: F,
+) -> Result<A::Payload, CompletionError>
+where
+    C: HttpClientExt,
+    A: DeserializeOwned + ProviderEnvelope,
+    A::Payload: serde::Serialize,
+    F: FnOnce(&A::Payload),
+{
+    let response = client.send::<_, Bytes>(request).await?;
+
+    let status = response.status();
+    let body = response
+        .into_body()
+        .await
+        .map_err(CompletionError::HttpError)?;
+
+    if !status.is_success() {
+        return Err(CompletionError::from_http_response(
+            status,
+            String::from_utf8_lossy(&body),
+        ));
+    }
+
+    let envelope: A = serde_json::from_slice(&body).map_err(|err| {
+        tracing::error!(
+            error = %err,
+            body = %String::from_utf8_lossy(&body),
+            "failed to deserialize {label} response"
+        );
+        CompletionError::JsonError(err)
+    })?;
+
+    match envelope.into_payload() {
+        Ok(payload) => {
+            record_telemetry(&payload);
+            super::trace_json(
+                crate::providers::internal::LogTarget::Completions,
+                &format!("{label} response"),
+                &payload,
+            );
+            Ok(payload)
+        }
+        Err(message) => {
+            tracing::warn!(message = %message, "provider returned an error response");
+            Err(CompletionError::from_http_response(
+                status,
+                String::from_utf8_lossy(&body),
+            ))
+        }
+    }
+}

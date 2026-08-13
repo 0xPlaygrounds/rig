@@ -16,20 +16,21 @@
 use super::InputAudio;
 use crate::completion::CompletionError;
 use crate::completion::NormalizeCompletionResponse;
-use crate::http_client;
 use crate::http_client::HttpClientExt;
 use crate::json_utils;
 use crate::json_utils::string_or_vec;
 use crate::message::{
     Document, DocumentMediaType, DocumentSourceKind, ImageDetail, MessageError, MimeType, Text,
 };
+use crate::providers::internal::completion_send::send_completion;
+use crate::providers::internal::envelope::DirectPayload;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::{completion, message};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
-use tracing::{Instrument, Level, enabled};
+use tracing::Instrument;
 
 use std::convert::Infallible;
 use std::ops::Add;
@@ -2439,13 +2440,11 @@ where
         .build();
         let body = serde_json::to_vec(&request)?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Responses completion request: {request}",
-                request = serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Responses completion request",
+            &request,
+        );
 
         let req = self
             .client
@@ -2453,34 +2452,21 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        async move {
-            let response = self.client.send(req).await?;
-
-            if response.status().is_success() {
-                let t = http_client::text(response).await?;
-                let response = serde_json::from_str::<CompletionResponse>(&t)?;
+        send_completion::<_, DirectPayload<CompletionResponse>, _>(
+            &self.client,
+            req,
+            "OpenAI Responses completion",
+            |response| {
                 let span = tracing::Span::current();
-                span.record_response_metadata(&response);
+                span.record_response_metadata(response);
                 let usage = response
                     .usage
                     .as_ref()
                     .map(crate::completion::Usage::from)
                     .unwrap_or_default();
                 span.record_token_usage(&usage);
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "OpenAI Responses completion response: {response}",
-                        response = serde_json::to_string_pretty(&response)?
-                    );
-                }
-                Ok(response)
-            } else {
-                let status = response.status();
-                let text = http_client::text(response).await?;
-                Err(CompletionError::from_http_response(status, text))
-            }
-        }
+            },
+        )
         .instrument(span)
         .await
     }

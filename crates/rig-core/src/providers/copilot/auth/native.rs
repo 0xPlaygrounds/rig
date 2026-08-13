@@ -1,7 +1,10 @@
 use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
+use crate::providers::internal::device_auth::{
+    emit_device_code_prompt, ensure_parent_dir, read_json_record, token_expired, write_json_record,
+};
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const GITHUB_CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
@@ -70,7 +73,7 @@ impl PlatformAuthenticator {
     }
 
     pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
-        let record = self.read_api_key_record()?;
+        let record: ApiKeyRecord = read_json_record(self.api_key_file.as_deref())?;
         let cached_access_token = self.read_access_token().ok().flatten();
         let api_base = record.api_base();
         if record.can_reuse_for_oauth(cached_access_token.as_deref())
@@ -102,7 +105,7 @@ impl PlatformAuthenticator {
             Err(err) => return Err(err),
         };
         let api_base = record.api_base();
-        self.write_api_key_record(&record)?;
+        write_json_record(self.api_key_file.as_deref(), &record)?;
         Ok(AuthContext {
             api_key: record.token.unwrap_or_default(),
             api_base,
@@ -113,7 +116,7 @@ impl PlatformAuthenticator {
         &self,
         access_token: &str,
     ) -> Result<AuthContext, AuthError> {
-        let record = self.read_api_key_record()?;
+        let record: ApiKeyRecord = read_json_record(self.api_key_file.as_deref())?;
         let api_base = record.api_base();
         if record.can_reuse_for_bootstrap_token(access_token)
             && let Some(token) = record.token
@@ -129,7 +132,7 @@ impl PlatformAuthenticator {
             .await?
             .bind_to_bootstrap_token(access_token);
         let api_base = record.api_base();
-        self.write_api_key_record(&record)?;
+        write_json_record(self.api_key_file.as_deref(), &record)?;
         Ok(AuthContext {
             api_key: record.token.unwrap_or_default(),
             api_base,
@@ -174,11 +177,15 @@ impl PlatformAuthenticator {
             .await?;
 
         emit_device_code_prompt(
-            &self.device_code_handler,
+            self.device_code_handler.0.as_ref(),
             DeviceCodePrompt {
                 verification_uri: device.verification_uri.clone(),
                 user_code: device.user_code.clone(),
             },
+            &format!(
+                "Sign in with GitHub Copilot:\n1) Visit {}\n2) Enter code: {}",
+                device.verification_uri, device.user_code
+            ),
         );
 
         let deadline = std::time::Instant::now()
@@ -304,28 +311,6 @@ impl PlatformAuthenticator {
         self.write_access_token(&token)?;
         Ok(token)
     }
-
-    fn read_api_key_record(&self) -> Result<ApiKeyRecord, AuthError> {
-        let Some(path) = &self.api_key_file else {
-            return Ok(ApiKeyRecord::default());
-        };
-
-        match std::fs::read(path) {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(ApiKeyRecord::default()),
-            Err(err) => Err(err.into()),
-        }
-    }
-
-    fn write_api_key_record(&self, record: &ApiKeyRecord) -> Result<(), AuthError> {
-        let Some(path) = &self.api_key_file else {
-            return Ok(());
-        };
-
-        ensure_parent_dir(path)?;
-        std::fs::write(path, serde_json::to_vec_pretty(record)?)?;
-        Ok(())
-    }
 }
 
 impl ApiKeyRecord {
@@ -360,7 +345,7 @@ impl ApiKeyRecord {
         self.token
             .as_ref()
             .is_some_and(|token| !token.trim().is_empty())
-            && !token_expired(self.expires_at)
+            && !token_expired(self.expires_at, 0)
     }
 
     fn matches_bootstrap_token(&self, bootstrap_token: &str) -> bool {
@@ -373,36 +358,6 @@ fn bootstrap_token_fingerprint(bootstrap_token: &str) -> String {
     let mut hasher = DefaultHasher::new();
     bootstrap_token.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
-}
-
-fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt) {
-    if let Some(callback) = &handler.0 {
-        callback(prompt);
-    } else {
-        println!(
-            "Sign in with GitHub Copilot:\n1) Visit {}\n2) Enter code: {}",
-            prompt.verification_uri, prompt.user_code
-        );
-    }
-}
-
-fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    Ok(())
-}
-
-fn token_expired(expires_at: Option<i64>) -> bool {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or_default();
-
-    match expires_at {
-        Some(exp) => now >= exp,
-        None => true,
-    }
 }
 
 fn normalize_poll_interval_seconds(interval: Option<u64>) -> u64 {

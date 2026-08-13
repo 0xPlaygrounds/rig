@@ -474,23 +474,16 @@ where
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
-        let mongo_documents = documents
-            .into_iter()
-            .map(|(document, embeddings)| -> Result<Vec<mongodb::bson::Document>, VectorStoreError> {
-                let json_doc = serde_json::to_value(&document)?;
-
-                embeddings.into_iter().map(|embedding| -> Result<mongodb::bson::Document, VectorStoreError> {
-                    Ok(doc! {
-                        "document": mongodb::bson::to_bson(&json_doc).map_err(VectorStoreError::datastore)?,
-                        "embedding": embedding.vec,
-                        "embedded_text": embedding.document,
-                    })
-                }).collect::<Result<Vec<_>, _>>()
-            })
-            .collect::<Result<Vec<Vec<_>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let mongo_documents = rig_core::vector_store::flatten_embedded(
+            documents,
+            |json_doc, embedding| {
+                Ok(doc! {
+                    "document": mongodb::bson::to_bson(json_doc).map_err(VectorStoreError::datastore)?,
+                    "embedding": embedding.vec,
+                    "embedded_text": embedding.document,
+                })
+            },
+        )?;
 
         let collection = self.collection.clone_with_type::<mongodb::bson::Document>();
 

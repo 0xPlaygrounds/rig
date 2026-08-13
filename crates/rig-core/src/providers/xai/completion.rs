@@ -3,15 +3,15 @@
 //! Uses the xAI Responses API: <https://docs.x.ai/docs/guides/chat>
 
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::{Instrument, Level, enabled};
+use tracing::Instrument;
 
 use super::api::{Message, ToolDefinition};
 use super::client::Client;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
+use crate::providers::internal::completion_send::send_completion;
 use crate::providers::openai::client::ApiResponse;
 use crate::providers::openai::responses_api::ToolChoice;
 use crate::providers::openai::responses_api::{IncompleteDetailsReason, Output, ResponsesUsage};
@@ -303,12 +303,11 @@ where
                 .system_instructions(system_instructions.as_deref(), record_telemetry_content)
                 .build();
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "xAI completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "xAI completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
         let req = self
@@ -317,44 +316,18 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        async move {
-            let response = self.client.send::<_, Bytes>(req).await?;
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if status.is_success() {
-                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {
-                    ApiResponse::Ok(response) => {
-                        let span = tracing::Span::current();
-                        span.record_response_metadata(&response);
-                        if let Some(usage) = &response.usage {
-                            span.record_token_usage(&crate::completion::Usage::from(usage));
-                        }
-
-                        if enabled!(Level::TRACE) {
-                            tracing::trace!(target: "rig::completions",
-                                "xAI completion response: {}",
-                                serde_json::to_string_pretty(&response)?
-                            );
-                        }
-
-                        Ok(response)
-                    }
-                    ApiResponse::Err(error) => {
-                        tracing::warn!(message = %error.message, "provider returned an error response");
-                        Err(CompletionError::from_http_response(
-                            status,
-                            String::from_utf8_lossy(&response_body),
-                        ))
-                    }
+        send_completion::<_, ApiResponse<CompletionResponse>, _>(
+            &self.client,
+            req,
+            "xAI completion",
+            |response| {
+                let span = tracing::Span::current();
+                span.record_response_metadata(response);
+                if let Some(usage) = &response.usage {
+                    span.record_token_usage(&crate::completion::Usage::from(usage));
                 }
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ))
-            }
-        }
+            },
+        )
         .instrument(span)
         .await
     }

@@ -1,10 +1,13 @@
 //! Native ChatGPT OAuth and token cache implementation.
 
 use super::{AuthContext, AuthError, DeviceCodeHandler, DeviceCodePrompt};
+use crate::providers::internal::device_auth::{
+    emit_device_code_prompt, read_json_record, token_expired, write_json_record,
+};
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use serde::{Deserialize, Deserializer, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const CHATGPT_AUTH_BASE: &str = "https://auth.openai.com";
 const CHATGPT_DEVICE_CODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
@@ -79,10 +82,10 @@ impl PlatformAuthenticator {
     }
 
     pub(super) async fn auth_context_oauth(&self) -> Result<AuthContext, AuthError> {
-        let mut record = self.read_auth_record()?;
+        let mut record: AuthRecord = read_json_record(self.auth_file.as_deref())?;
 
         if let Some(access_token) = record.access_token.clone()
-            && !token_expired(record.expires_at)
+            && !token_expired(record.expires_at, TOKEN_EXPIRY_SKEW_SECONDS)
         {
             let account_id = record
                 .account_id
@@ -91,7 +94,7 @@ impl PlatformAuthenticator {
                 .or_else(|| extract_account_id(Some(&access_token)));
             if account_id != record.account_id {
                 record.account_id = account_id.clone();
-                self.write_auth_record(&record)?;
+                write_json_record(self.auth_file.as_deref(), &record)?;
             }
             return Ok(AuthContext {
                 access_token,
@@ -102,7 +105,7 @@ impl PlatformAuthenticator {
         if let Some(refresh_token) = record.refresh_token.clone() {
             match self.refresh_tokens(&refresh_token).await {
                 Ok(refreshed) => {
-                    self.write_auth_record(&refreshed)?;
+                    write_json_record(self.auth_file.as_deref(), &refreshed)?;
                     return Ok(AuthContext {
                         access_token: refreshed.access_token.unwrap_or_default(),
                         account_id: refreshed.account_id,
@@ -121,33 +124,11 @@ impl PlatformAuthenticator {
         }
 
         let fresh = self.login_device_flow().await?;
-        self.write_auth_record(&fresh)?;
+        write_json_record(self.auth_file.as_deref(), &fresh)?;
         Ok(AuthContext {
             access_token: fresh.access_token.unwrap_or_default(),
             account_id: fresh.account_id,
         })
-    }
-
-    fn read_auth_record(&self) -> Result<AuthRecord, AuthError> {
-        let Some(path) = &self.auth_file else {
-            return Ok(AuthRecord::default());
-        };
-
-        match std::fs::read(path) {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(AuthRecord::default()),
-            Err(err) => Err(err.into()),
-        }
-    }
-
-    fn write_auth_record(&self, record: &AuthRecord) -> Result<(), AuthError> {
-        let Some(path) = &self.auth_file else {
-            return Ok(());
-        };
-
-        ensure_parent_dir(path)?;
-        std::fs::write(path, serde_json::to_vec_pretty(record)?)?;
-        Ok(())
     }
 
     async fn login_device_flow(&self) -> Result<AuthRecord, AuthError> {
@@ -162,11 +143,15 @@ impl PlatformAuthenticator {
             .await?;
 
         emit_device_code_prompt(
-            &self.device_code_handler,
+            self.device_code_handler.0.as_ref(),
             DeviceCodePrompt {
                 verification_uri: CHATGPT_DEVICE_VERIFY_URL.to_string(),
                 user_code: device.user_code.clone(),
             },
+            &format!(
+                "Sign in with ChatGPT:\n1) Visit {CHATGPT_DEVICE_VERIFY_URL}\n2) Enter code: {}\nDo not share this device code.",
+                device.user_code
+            ),
         );
 
         let interval = device.interval.unwrap_or(DEVICE_CODE_POLL_SLEEP_SECONDS);
@@ -284,24 +269,6 @@ impl PlatformAuthenticator {
     }
 }
 
-fn emit_device_code_prompt(handler: &DeviceCodeHandler, prompt: DeviceCodePrompt) {
-    if let Some(callback) = &handler.0 {
-        callback(prompt);
-    } else {
-        println!(
-            "Sign in with ChatGPT:\n1) Visit {}\n2) Enter code: {}\nDo not share this device code.",
-            prompt.verification_uri, prompt.user_code
-        );
-    }
-}
-
-fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    Ok(())
-}
-
 fn build_auth_record(
     tokens: OAuthTokenResponse,
     previous_refresh_token: Option<String>,
@@ -385,18 +352,6 @@ fn format_refresh_error(
     }
 
     format!("ChatGPT token refresh failed: {status}")
-}
-
-fn token_expired(expires_at: Option<i64>) -> bool {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or_default();
-
-    match expires_at {
-        Some(exp) => now >= exp - TOKEN_EXPIRY_SKEW_SECONDS,
-        None => true,
-    }
 }
 
 fn deserialize_optional_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>

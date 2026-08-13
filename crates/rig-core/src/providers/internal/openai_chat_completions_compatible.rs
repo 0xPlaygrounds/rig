@@ -7,10 +7,9 @@
 //! small profile hooks.
 
 use http::Request;
-use tracing_futures::Instrument;
 
-use super::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
-use super::sse_transport::{FrameDisposition, OpenLog, SseTransportOptions, sse_frames};
+use super::adapter::{AdapterOutput, WireAdapter, WireFrame};
+use super::sse_transport::{FrameDisposition, OpenLog, SseTransportOptions};
 use super::tool_call_bridge::{ToolCallBridge, ToolCallSlot};
 use super::wire::WireEvent;
 use crate::completion::{CompletionError, FinishReason, Usage};
@@ -656,15 +655,11 @@ where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
 {
-    let instrument_span = tracing::Span::current();
-    let event_source = GenericEventSource::new(http_client, req);
-
-    // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
-    // and the wire's in-band provider error envelope (a terminal transport
-    // condition, detected pre-classification exactly as an HTTP failure would
-    // be) — classification and policy live downstream.
-    let transport = sse_frames(
-        event_source,
+    // The wire's in-band provider error envelope is a terminal transport
+    // condition, detected pre-classification exactly as an HTTP failure
+    // would be.
+    Ok(super::sse_transport::open_wire_stream(
+        GenericEventSource::new(http_client, req),
         SseTransportOptions {
             open_log: OpenLog::Trace,
             stream_ended_is_error: false,
@@ -684,13 +679,9 @@ where
             }
             FrameDisposition::Frame(data)
         },
-    );
-
-    let stream: streaming::RawStreamingResult<P::FinalResponse> = Box::pin(
-        run_wire_stream(transport, CompatAdapter::new(profile)).instrument(instrument_span),
-    );
-
-    Ok(stream)
+        CompatAdapter::new(profile),
+        tracing::Span::current(),
+    ))
 }
 
 fn record_usage(span: &tracing::Span, usage: &Usage) {

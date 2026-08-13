@@ -5,9 +5,9 @@ use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
     CohereCompletionRequest, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
 };
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
 use crate::providers::internal::sse_transport::{
-    FrameDisposition, OpenLog, SseTransportOptions, sse_frames,
+    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_and_done,
 };
 use crate::providers::internal::wire;
 use crate::streaming::{
@@ -21,8 +21,6 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 const REASONING_ID: StreamPartId = StreamPartId::minted(MintKind::Reasoning, 0);
 use crate::{json_utils, streaming};
 use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
@@ -358,13 +356,11 @@ where
 
         request.additional_params = Some(params);
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::streaming",
-                "Cohere streaming completion input: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Streaming,
+            "Cohere streaming completion input",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
 
@@ -374,31 +370,17 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let event_source = GenericEventSource::new(self.client.clone(), req);
-
-        // Transport layer: SSE events → `WireFrame`s. Byte splitting and
-        // framing only — classification and policy live downstream.
-        let transport = sse_frames(
-            event_source,
+        Ok(open_wire_stream(
+            GenericEventSource::new(self.client.clone(), req),
             SseTransportOptions {
                 open_log: OpenLog::Trace,
                 stream_ended_is_error: false,
                 log_transport_errors: true,
             },
-            |data| {
-                let data = data.trim();
-                if data.is_empty() || data == "[DONE]" {
-                    FrameDisposition::Skip
-                } else {
-                    FrameDisposition::Frame(data.to_owned())
-                }
-            },
-        );
-
-        let stream: RawStreamingResult<StreamingCompletionResponse> =
-            Box::pin(run_wire_stream(transport, CohereAdapter::default()).instrument(span));
-
-        Ok(stream)
+            skip_blank_and_done,
+            CohereAdapter::default(),
+            span,
+        ))
     }
 
     pub(crate) async fn stream(

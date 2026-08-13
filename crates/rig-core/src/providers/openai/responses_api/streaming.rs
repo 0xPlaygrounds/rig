@@ -5,10 +5,10 @@ use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{
-    AdapterOutput, WireAdapter, WireFrame, run_wire_buffered, run_wire_stream,
+    AdapterOutput, WireAdapter, WireFrame, run_wire_buffered,
 };
 use crate::providers::internal::sse_transport::{
-    FrameDisposition, OpenLog, SseTransportOptions, sse_frames,
+    FrameDisposition, OpenLog, SseTransportOptions, open_wire_stream,
 };
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
@@ -20,8 +20,6 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::WasmCompatSend;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, GenericResponsesCompletionModel, Output, ResponsesProviderExt};
 
@@ -1084,11 +1082,10 @@ where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
 {
-    // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
-    // and the wire's in-band provider `error` envelope (a terminal transport
-    // condition, detected pre-classification exactly as an HTTP failure would
-    // be) — classification and policy live downstream.
-    let transport = sse_frames(
+    // The wire's in-band provider `error` envelope is a terminal transport
+    // condition, detected pre-classification exactly as an HTTP failure
+    // would be.
+    open_wire_stream(
         event_source,
         SseTransportOptions {
             open_log: OpenLog::Trace,
@@ -1107,9 +1104,9 @@ where
             }
             FrameDisposition::Frame(data)
         },
-    );
-
-    Box::pin(run_wire_stream(transport, ResponsesAdapter::live(options)).instrument(span))
+        ResponsesAdapter::live(options),
+        span,
+    )
 }
 
 /// One classified Responses frame, carrying its raw payload alongside the
@@ -1510,13 +1507,11 @@ where
         let mut request = self.create_completion_request(completion_request)?;
         request.stream = Some(true);
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Responses streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Responses streaming completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
 

@@ -3,6 +3,7 @@
 use crate::completion::CompletionRequest;
 use crate::completion::NormalizeCompletionResponse;
 use crate::json_utils::string_or_vec;
+use crate::providers::internal::completion_send::send_completion;
 use crate::{
     client::Provider,
     completion::{self, CompletionError},
@@ -11,10 +12,9 @@ use crate::{
     telemetry::{CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator},
     wasm_compat::*,
 };
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-use tracing::{Instrument, Level, enabled};
+use tracing::Instrument;
 
 // ================================================================
 // Anthropic Completion API
@@ -2996,65 +2996,30 @@ where
             self.strict_tools,
         )?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Anthropic completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Anthropic completion request",
+            &request,
+        );
 
-        async move {
-            let request: Vec<u8> = serde_json::to_vec(&request)?;
+        let request: Vec<u8> = serde_json::to_vec(&request)?;
 
-            let req = self
-                .client
-                .post("/v1/messages")?
-                .body(request)
-                .map_err(|e| CompletionError::HttpError(e.into()))?;
+        let req = self
+            .client
+            .post("/v1/messages")?
+            .body(request)
+            .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-            let response = self
-                .client
-                .send::<_, Bytes>(req)
-                .await
-                .map_err(CompletionError::HttpError)?;
-
-            let status = response.status();
-            let body = response
-                .into_body()
-                .await
-                .map_err(CompletionError::HttpError)?;
-
-            if !status.is_success() {
-                return Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&body)? {
-                ApiResponse::Message(completion) => {
-                    let span = tracing::Span::current();
-                    span.record_response_metadata(&completion);
-                    span.record_token_usage(&crate::completion::Usage::from(&completion.usage));
-                    if enabled!(Level::TRACE) {
-                        tracing::trace!(
-                            target: "rig::completions",
-                            "Anthropic completion response: {}",
-                            serde_json::to_string_pretty(&completion)?
-                        );
-                    }
-                    Ok(completion)
-                }
-                ApiResponse::Error(ApiErrorResponse { message }) => {
-                    tracing::warn!(message = %message, "provider returned an error response");
-                    Err(CompletionError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&body),
-                    ))
-                }
-            }
-        }
+        send_completion::<_, ApiResponse<CompletionResponse>, _>(
+            &self.client,
+            req,
+            "Anthropic completion",
+            |completion| {
+                let span = tracing::Span::current();
+                span.record_response_metadata(completion);
+                span.record_token_usage(&crate::completion::Usage::from(&completion.usage));
+            },
+        )
         .instrument(span)
         .await
     }
@@ -3107,6 +3072,17 @@ use crate::providers::internal::envelope::ApiErrorResponse;
 enum ApiResponse<T> {
     Message(T),
     Error(ApiErrorResponse),
+}
+
+impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T> {
+    type Payload = T;
+
+    fn into_payload(self) -> Result<T, String> {
+        match self {
+            Self::Message(payload) => Ok(payload),
+            Self::Error(ApiErrorResponse { message }) => Err(message),
+        }
+    }
 }
 
 #[cfg(test)]

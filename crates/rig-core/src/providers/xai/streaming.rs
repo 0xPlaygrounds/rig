@@ -4,7 +4,6 @@
 //! is designed to be compatible with OpenAI's format.
 
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 
 use crate::completion::{CompletionError, CompletionRequest};
@@ -44,12 +43,11 @@ where
 
         request.additional_params = Some(params);
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(target: "rig::completions",
-                "xAI streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "xAI streaming completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
         let req = self

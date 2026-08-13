@@ -653,7 +653,7 @@ fn loads_entirely_from_owned_bytes() -> Result<(), Box<dyn std::error::Error + S
         loaded.profile.definition.artifact_format,
         ArtifactFormat::Safetensors
     );
-    assert_eq!(model.model_family(), Some(ModelFamily::Llama3));
+    assert_eq!(model.conversation_protocol(), Some(ModelFamily::Llama3));
     assert_eq!(model.quantization(), None);
     Ok(())
 }
@@ -695,7 +695,7 @@ fn borrowed_gguf_builder_keeps_borrowed_artifacts_and_all_settings() {
 async fn async_loading_succeeds_and_preserves_builder_settings()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let direct = CandleModel::from_safetensors_async(model_data()?).await?;
-    assert_eq!(direct.model_family(), Some(ModelFamily::Llama3));
+    assert_eq!(direct.conversation_protocol(), Some(ModelFamily::Llama3));
 
     let configured = CandleModel::builder(model_data()?)
         .max_tokens(17)
@@ -750,7 +750,7 @@ fn typed_gguf_and_family_errors_preserve_the_failure_kind()
     let data = model_data()?;
     assert!(matches!(
         LlamaModel::builder(data)
-            .model_family(ModelFamily::SmolLm2)
+            .conversation_protocol(ModelFamily::SmolLm2)
             .build(),
         Err(CandleError::ModelFamilyMismatch {
             selected: ModelFamily::SmolLm2,

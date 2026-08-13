@@ -72,6 +72,20 @@ pub(crate) trait ProviderEnvelope {
     fn into_payload(self) -> Result<Self::Payload, String>;
 }
 
+/// Identity envelope for providers whose 2xx body IS the success payload
+/// (no error envelope can arrive with a success status).
+#[derive(serde::Deserialize)]
+#[serde(transparent)]
+pub(crate) struct DirectPayload<T>(T);
+
+impl<T> ProviderEnvelope for DirectPayload<T> {
+    type Payload = T;
+
+    fn into_payload(self) -> Result<T, String> {
+        Ok(self.0)
+    }
+}
+
 impl<T> ProviderEnvelope for crate::providers::openai::client::ApiResponse<T> {
     type Payload = T;
 

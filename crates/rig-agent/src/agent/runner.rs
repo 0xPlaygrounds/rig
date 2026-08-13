@@ -433,8 +433,9 @@ impl AgentRunner {
     /// order** (never completion order), for the tools whose body actually ran.
     /// The persisted message history is unchanged.
     ///
-    /// A `concurrency` of 0 is clamped to 1; `0` and `1` both run a turn's tools
-    /// sequentially (the `buffer_unordered` path is used only at `concurrency > 1`).
+    /// A `concurrency` of 0 is clamped to 1; at `1` the tools of a turn run
+    /// strictly sequentially in call order, failing fast on the first
+    /// terminating error.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency.max(1);
         self

@@ -146,18 +146,6 @@ impl MultiTurnStreamItem {
         Self::StreamAssistantItem(item)
     }
 
-    pub fn final_response(
-        content: Vec<AssistantContent>,
-        aggregated_usage: crate::completion::Usage,
-    ) -> Self {
-        Self::FinalResponse(final_response_from_content(
-            content,
-            aggregated_usage,
-            Vec::new(),
-            None,
-        ))
-    }
-
     pub(crate) fn final_response_with_completion_calls(
         content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
@@ -475,6 +463,32 @@ where
         // failure leaves it unchanged while a provider error still counts.
         let mut previous_model: Option<ModelHandle> = None;
 
+        // Drive one medium-specific step stream: forward its items, and on the
+        // first error store error usage, surface it, and end the run. A macro
+        // because `yield`/`break 'outer` cannot cross a fn boundary; the loop
+        // label is passed in because labels are hygienic across the macro edge.
+        macro_rules! drive_step {
+            ($label:lifetime, $step_stream:expr) => {{
+                let mut step_stream = $step_stream;
+                let mut step_error = None;
+                while let Some(item) = step_stream.next().await {
+                    match item {
+                        Ok(item) => yield Ok(DriveItem::Item(item)),
+                        Err(err) => {
+                            step_error = Some(err);
+                            break;
+                        }
+                    }
+                }
+                drop(step_stream);
+                if let Some(err) = step_error {
+                    store_error_usage(&runner, &run);
+                    yield Err(err);
+                    break $label;
+                }
+            }};
+        }
+
         'outer: loop {
             let step = match run.next_step() {
                 Ok(step) => step,
@@ -578,7 +592,7 @@ where
                     // above left `previous_model` untouched.
                     previous_model = Some(selected_model);
 
-                    let mut turn_stream = source.run_model_turn(
+                    drive_step!('outer, source.run_model_turn(
                         &runner,
                         &hook_ctx,
                         &mut run,
@@ -586,23 +600,7 @@ where
                         chat_span,
                         &agent_span,
                         prompt,
-                    );
-                    let mut turn_error = None;
-                    while let Some(item) = turn_stream.next().await {
-                        match item {
-                            Ok(item) => yield Ok(DriveItem::Item(item)),
-                            Err(err) => {
-                                turn_error = Some(err);
-                                break;
-                            }
-                        }
-                    }
-                    drop(turn_stream);
-                    if let Some(err) = turn_error {
-                        store_error_usage(&runner, &run);
-                        yield Err(err);
-                        break 'outer;
-                    }
+                    ));
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
@@ -614,29 +612,13 @@ where
                         )));
                         break 'outer;
                     };
-                    let mut tool_stream = source.run_tool_calls(
+                    drive_step!('outer, source.run_tool_calls(
                         &runner,
                         &hook_ctx,
                         &mut run,
                         calls,
                         tool_snapshot,
-                    );
-                    let mut tool_error = None;
-                    while let Some(item) = tool_stream.next().await {
-                        match item {
-                            Ok(item) => yield Ok(DriveItem::Item(item)),
-                            Err(err) => {
-                                tool_error = Some(err);
-                                break;
-                            }
-                        }
-                    }
-                    drop(tool_stream);
-                    if let Some(err) = tool_error {
-                        store_error_usage(&runner, &run);
-                        yield Err(err);
-                        break 'outer;
-                    }
+                    ));
                 }
                 AgentRunStep::Done(response) => {
                     // Run-completion marker, unifying the blocking and streaming
@@ -775,53 +757,9 @@ where
             (0..call_count).map(|_| None).collect();
         let mut first_error: Option<(usize, PromptError)> = None;
 
-        if runner.concurrency <= 1 {
-            // Sequential: run in call order, fail-fast on the first terminating
-            // error so the remaining tools never start.
-            for (index, call) in prepared.into_iter().enumerate() {
-                let PreparedToolCall { tool_call, preresolved_result, internal_call_id, span } = call;
-                if let Some(result) = preresolved_result {
-                    if let Some(slot) = collected.get_mut(index) {
-                        *slot = Some(CollectedToolResult {
-                            content: result,
-                            internal_call_id,
-                            surface: ToolSurface::Preresolved,
-                        });
-                    }
-                    continue;
-                }
-                let outcome = run_single_tool(
-                    runner,
-                    hook_ctx,
-                    &tool_snapshot,
-                    &tool_call,
-                    &internal_call_id,
-                    &full_history_for_errors,
-                )
-                .instrument(span)
-                .await;
-                match outcome {
-                    Ok(outcome) => {
-                        let surface = match outcome.execution {
-                            ToolExecution::Executed(effective) => ToolSurface::Executed(effective),
-                            ToolExecution::Skipped => ToolSurface::Skipped,
-                        };
-                        if let Some(slot) = collected.get_mut(index) {
-                            *slot = Some(CollectedToolResult {
-                                content: outcome.content,
-                                internal_call_id,
-                                surface,
-                            });
-                        }
-                    }
-                    Err(err) => {
-                        first_error = Some((index, err));
-                        break;
-                    }
-                }
-            }
-        } else {
-            // Concurrent: bounded by `tool_concurrency`. A shared `terminating`
+        {
+            // Bounded by `tool_concurrency` (`0`/`1` poll strictly in call
+            // order, giving sequential fail-fast). A shared `terminating`
             // flag makes a not-yet-started sibling skip (its side effect never
             // runs) once any sibling terminates — avoiding the Semantic-Kernel
             // fail-open — while already-in-flight siblings are drained so the
@@ -874,7 +812,7 @@ where
                     }
                     .instrument(span)
                 })
-                .buffer_unordered(runner.concurrency);
+                .buffer_unordered(runner.concurrency.max(1));
             futures::pin_mut!(unordered);
 
             while let Some((index, outcome)) = unordered.next().await {

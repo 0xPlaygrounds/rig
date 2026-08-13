@@ -3,6 +3,7 @@ use crate::{
     http_client::HttpClientExt,
     json_utils,
     message::{self, Reasoning, ToolChoice},
+    providers::internal::{completion_send::send_completion, envelope::DirectPayload},
     telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator},
 };
 use std::collections::HashMap;
@@ -10,7 +11,7 @@ use std::collections::HashMap;
 use super::client::Client;
 use crate::completion::CompletionRequest;
 use serde::{Deserialize, Serialize};
-use tracing::{Instrument, Level, enabled};
+use tracing::Instrument;
 
 /// Stable descriptor name recorded on normalized responses, streams, and
 /// telemetry spans for this provider.
@@ -746,12 +747,11 @@ where
                 .system_instructions(system_instructions.as_deref(), record_telemetry_content)
                 .build();
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                "Cohere completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Cohere completion request",
+            &request,
+        );
 
         let req_body = serde_json::to_vec(&request)?;
 
@@ -761,16 +761,13 @@ where
             .body(req_body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        async {
-            // Left unboxed so `provider_response_status`/`_body` can read the
-            // status and body straight off `InvalidStatusCodeWithMessage`.
-            let response = self.client.send::<_, bytes::Bytes>(req).await?;
-
-            let status = response.status();
-            let body = response.into_body().into_future().await?.to_owned();
-
-            if status.is_success() {
-                let json_response: CompletionResponse = serde_json::from_slice(&body)?;
+        // Left unboxed so `provider_response_status`/`_body` can read the
+        // status and body straight off `InvalidStatusCodeWithMessage`.
+        send_completion::<_, DirectPayload<CompletionResponse>, _>(
+            &self.client,
+            req,
+            "Cohere completion",
+            |json_response| {
                 let span = tracing::Span::current();
                 let usage = json_response
                     .usage
@@ -778,24 +775,9 @@ where
                     .map(completion::Usage::from)
                     .unwrap_or_default();
                 span.record_token_usage(&usage);
-                span.record_response_metadata(&json_response);
-
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "Cohere completion response: {}",
-                        serde_json::to_string_pretty(&json_response)?
-                    );
-                }
-
-                Ok(json_response)
-            } else {
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
+                span.record_response_metadata(json_response);
+            },
+        )
         .instrument(llm_span)
         .await
     }
