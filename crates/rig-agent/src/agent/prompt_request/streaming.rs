@@ -147,7 +147,7 @@ impl MultiTurnStreamItem {
     }
 
     /// Build a `FinalResponse` item from final-turn content, applying the
-    /// run-finalization shaping in [`final_response_from_content`] (#1928).
+    /// run-finalization shaping of `final_response_from_content` (#1928).
     /// The one public entry point to that shaping, for mocks and adapters
     /// that synthesize final items outside the drive loop.
     pub fn final_response(
