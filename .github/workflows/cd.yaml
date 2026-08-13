@@ -47,8 +47,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # protoc: required to compile rig-lancedb, and the `lancedb` crate that
-      # the `rig` facade carries as an unconditional dev-dependency.
+      # protoc: required when release-plz checks or packages rig-lancedb.
       - name: Install Rust toolchain
         uses: ./.github/actions/rust-setup
         with:
