@@ -211,40 +211,36 @@ fn vertex_tool_result_image_part(
     }
     let mime_type = media_type.to_mime_type();
 
-    match &image.data {
-        DocumentSourceKind::Base64(data) => {
-            let data = BASE64.decode(data.as_bytes()).map_err(|error| {
-                CompletionError::RequestError(
-                    format!("Invalid base64 tool-result image data: {error}").into(),
-                )
-            })?;
-            Ok(
-                vertexai::model::FunctionResponsePart::new().set_inline_data(
-                    vertexai::model::FunctionResponseBlob::new()
-                        .set_mime_type(mime_type)
-                        .set_data(data)
-                        .set_display_name(display_name),
-                ),
+    let data = match &image.data {
+        DocumentSourceKind::Base64(data) => BASE64.decode(data.as_bytes()).map_err(|error| {
+            CompletionError::RequestError(
+                format!("Invalid base64 tool-result image data: {error}").into(),
             )
-        }
-        DocumentSourceKind::Raw(data) => Ok(vertexai::model::FunctionResponsePart::new()
-            .set_inline_data(
-                vertexai::model::FunctionResponseBlob::new()
-                    .set_mime_type(mime_type)
-                    .set_data(data.clone())
-                    .set_display_name(display_name),
-            )),
-        DocumentSourceKind::Url(url) => Ok(vertexai::model::FunctionResponsePart::new()
-            .set_file_data(
+        })?,
+        DocumentSourceKind::Raw(data) => data.clone(),
+        DocumentSourceKind::Url(url) => {
+            return Ok(vertexai::model::FunctionResponsePart::new().set_file_data(
                 vertexai::model::FunctionResponseFileData::new()
                     .set_mime_type(mime_type)
                     .set_file_uri(url.clone())
                     .set_display_name(display_name),
-            )),
-        unsupported => Err(CompletionError::RequestError(
-            format!("Unsupported Vertex AI tool-result image source: {unsupported}").into(),
-        )),
-    }
+            ));
+        }
+        unsupported => {
+            return Err(CompletionError::RequestError(
+                format!("Unsupported Vertex AI tool-result image source: {unsupported}").into(),
+            ));
+        }
+    };
+
+    Ok(
+        vertexai::model::FunctionResponsePart::new().set_inline_data(
+            vertexai::model::FunctionResponseBlob::new()
+                .set_mime_type(mime_type)
+                .set_data(data)
+                .set_display_name(display_name),
+        ),
+    )
 }
 
 fn vertex_assistant_image_part(image: Image) -> Result<vertexai::model::Part, CompletionError> {

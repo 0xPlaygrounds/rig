@@ -126,7 +126,7 @@ where
                     .create::<Option<CreateRecord>>(self.documents_table.clone())
                     .content(record)
                     .await
-                    .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+                    .map_err(VectorStoreError::datastore)?;
             }
         }
 
@@ -147,13 +147,7 @@ impl TryFrom<Filter<serde_json::Value>> for SurrealSearchFilter {
     type Error = FilterError;
 
     fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
-        match value {
-            Filter::Eq(key, value) => Ok(Self::eq(key, Value::from_t(value))),
-            Filter::Gt(key, value) => Ok(Self::gt(key, Value::from_t(value))),
-            Filter::Lt(key, value) => Ok(Self::lt(key, Value::from_t(value))),
-            Filter::And(lhs, rhs) => Ok(Self::try_from(*lhs)?.and(Self::try_from(*rhs)?)),
-            Filter::Or(lhs, rhs) => Ok(Self::try_from(*lhs)?.or(Self::try_from(*rhs)?)),
-        }
+        value.try_interpret(|v| Ok(Value::from_t(v)))
     }
 }
 
@@ -283,12 +277,29 @@ where
         Self::new(model, surreal, None, SurrealDistanceFunction::Cosine)
     }
 
-    fn search_query_full(&self) -> String {
-        self.search_query(true)
-    }
+    /// Embeds the query and runs the similarity-search query, returning the raw response.
+    async fn run_search_query(
+        &self,
+        req: &VectorSearchRequest<SurrealSearchFilter>,
+        with_document: bool,
+    ) -> Result<surrealdb::IndexedResults, VectorStoreError> {
+        let embedded_query: Vec<f64> = self.model.embed_text(req.query()).await?.vec;
 
-    fn search_query_only_ids(&self) -> String {
-        self.search_query(false)
+        self.surreal
+            .query(self.search_query(with_document).as_str())
+            .bind(("vec", embedded_query))
+            .bind(("tablename", self.documents_table.clone()))
+            .bind(("threshold", req.threshold().unwrap_or(0.)))
+            .bind(("limit", req.samples() as usize))
+            .bind((
+                "filter",
+                req.filter()
+                    .clone()
+                    .map(SurrealSearchFilter::inner)
+                    .unwrap_or("true".into()),
+            ))
+            .await
+            .map_err(VectorStoreError::datastore)
     }
 
     fn search_query(&self, with_document: bool) -> String {
@@ -323,28 +334,9 @@ where
         &self,
         req: VectorSearchRequest<SurrealSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let embedded_query: Vec<f64> = self.model.embed_text(req.query()).await?.vec;
+        let mut response = self.run_search_query(&req, true).await?;
 
-        let mut response = self
-            .surreal
-            .query(self.search_query_full().as_str())
-            .bind(("vec", embedded_query))
-            .bind(("tablename", self.documents_table.clone()))
-            .bind(("threshold", req.threshold().unwrap_or(0.)))
-            .bind(("limit", req.samples() as usize))
-            .bind((
-                "filter",
-                req.filter()
-                    .clone()
-                    .map(SurrealSearchFilter::inner)
-                    .unwrap_or("true".into()),
-            ))
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let rows: Vec<SearchResult> = response
-            .take(0)
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let rows: Vec<SearchResult> = response.take(0).map_err(VectorStoreError::datastore)?;
 
         let rows: Vec<(f64, String, T)> = rows
             .into_iter()
@@ -359,35 +351,14 @@ where
         &self,
         req: VectorSearchRequest<SurrealSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let embedded_query: Vec<f32> = self
-            .model
-            .embed_text(req.query())
-            .await?
-            .vec
-            .iter()
-            .map(|&x| x as f32)
-            .collect();
-
-        let mut response = self
-            .surreal
-            .query(self.search_query_only_ids().as_str())
-            .bind(("vec", embedded_query))
-            .bind(("tablename", self.documents_table.clone()))
-            .bind(("threshold", req.threshold().unwrap_or(0.)))
-            .bind(("limit", req.samples() as usize))
-            .bind((
-                "filter",
-                req.filter()
-                    .clone()
-                    .map(SurrealSearchFilter::inner)
-                    .unwrap_or("true".into()),
-            ))
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        // NOTE: this previously bound the query vector as `Vec<f32>` while
+        // `top_n` bound `Vec<f64>`; both now bind `Vec<f64>`, matching the
+        // stored `embedding: Vec<f64>` schema.
+        let mut response = self.run_search_query(&req, false).await?;
 
         let rows: Vec<SearchResultOnlyId> = response
             .take::<Vec<SearchResultOnlyId>>(0)
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         let rows: Vec<(f64, String)> = rows
             .into_iter()

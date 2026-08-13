@@ -71,6 +71,23 @@ pub enum VectorStoreError {
     BuilderError(String),
 }
 
+impl VectorStoreError {
+    /// Wraps a backend error as [`VectorStoreError::DatastoreError`].
+    ///
+    /// Handles the wasm/non-wasm trait-bound split in one place; use as
+    /// `.map_err(VectorStoreError::datastore)`.
+    #[cfg(not(target_family = "wasm"))]
+    pub fn datastore(e: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self::DatastoreError(Box::new(e))
+    }
+
+    /// Wraps a backend error as [`VectorStoreError::DatastoreError`].
+    #[cfg(target_family = "wasm")]
+    pub fn datastore(e: impl std::error::Error + 'static) -> Self {
+        Self::DatastoreError(Box::new(e))
+    }
+}
+
 /// Trait for inserting documents and embeddings into a vector store.
 pub trait InsertDocuments: WasmCompatSend + WasmCompatSync {
     /// Insert precomputed embeddings for each document.
@@ -324,5 +341,12 @@ mod tests {
         assert_eq!(result.score, 0.9);
         assert_eq!(result.id, "doc-1");
         assert_eq!(result.document, json!({ "answer": 42 }));
+    }
+
+    #[test]
+    fn datastore_wraps_backend_errors() {
+        let err = VectorStoreError::datastore(std::io::Error::other("db down"));
+        assert!(matches!(err, VectorStoreError::DatastoreError(_)));
+        assert_eq!(err.to_string(), "Datastore error: db down");
     }
 }

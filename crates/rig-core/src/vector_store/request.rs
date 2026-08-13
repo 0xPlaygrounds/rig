@@ -182,13 +182,34 @@ where
     where
         F: SearchFilter<Value = V>,
     {
-        match self {
-            Self::Eq(key, val) => F::eq(key, val),
-            Self::Gt(key, val) => F::gt(key, val),
-            Self::Lt(key, val) => F::lt(key, val),
-            Self::And(lhs, rhs) => F::and(lhs.interpret(), rhs.interpret()),
-            Self::Or(lhs, rhs) => F::or(lhs.interpret(), rhs.interpret()),
+        self.interpret_with(|v| v)
+    }
+
+    /// Converts this filter into a backend-specific filter type, converting
+    /// each leaf value with `conv`.
+    pub fn interpret_with<F, W>(self, conv: impl Fn(V) -> W + Copy) -> F
+    where
+        F: SearchFilter<Value = W>,
+    {
+        match self.try_interpret(|v| Ok::<W, std::convert::Infallible>(conv(v))) {
+            Ok(filter) => filter,
+            Err(never) => match never {},
         }
+    }
+
+    /// Converts this filter into a backend-specific filter type, converting
+    /// each leaf value with `conv`. Fails on the first value that fails to convert.
+    pub fn try_interpret<F, W, E>(self, conv: impl Fn(V) -> Result<W, E> + Copy) -> Result<F, E>
+    where
+        F: SearchFilter<Value = W>,
+    {
+        Ok(match self {
+            Self::Eq(key, val) => F::eq(key, conv(val)?),
+            Self::Gt(key, val) => F::gt(key, conv(val)?),
+            Self::Lt(key, val) => F::lt(key, conv(val)?),
+            Self::And(lhs, rhs) => F::and(lhs.try_interpret(conv)?, rhs.try_interpret(conv)?),
+            Self::Or(lhs, rhs) => F::or(lhs.try_interpret(conv)?, rhs.try_interpret(conv)?),
+        })
     }
 }
 
@@ -396,5 +417,35 @@ mod tests {
 
         let either = F::eq("category", json!("veg")).or(F::lt("price", json!(50)));
         assert!(either.satisfies(&doc));
+    }
+
+    #[test]
+    fn try_interpret_converts_nested_leaf_values() {
+        let f: Filter<i64> =
+            Filter::Eq("a".into(), 1).and(Filter::Gt("b".into(), 2).or(Filter::Lt("c".into(), 3)));
+        let out: Filter<String> = f
+            .try_interpret(|v| Ok::<_, std::convert::Infallible>(v.to_string()))
+            .unwrap();
+        match out {
+            Filter::And(lhs, rhs) => {
+                assert!(matches!(*lhs, Filter::Eq(ref k, ref v) if k == "a" && v == "1"));
+                match *rhs {
+                    Filter::Or(l, r) => {
+                        assert!(matches!(*l, Filter::Gt(ref k, ref v) if k == "b" && v == "2"));
+                        assert!(matches!(*r, Filter::Lt(ref k, ref v) if k == "c" && v == "3"));
+                    }
+                    other => panic!("expected Or, got {other:?}"),
+                }
+            }
+            other => panic!("expected And, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn try_interpret_propagates_conversion_errors() {
+        let f: Filter<i64> = Filter::Eq("a".into(), 1).and(Filter::Gt("b".into(), -2));
+        let out: Result<Filter<u64>, String> =
+            f.try_interpret(|v| u64::try_from(v).map_err(|e| e.to_string()));
+        assert!(out.is_err());
     }
 }

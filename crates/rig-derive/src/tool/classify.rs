@@ -12,14 +12,19 @@ use crate::resolve::CrateRefs;
 /// types with the same name, so only paths rooted at a crate name Rig resolves
 /// to in this build (including Cargo renames) are recognized. Imported aliases
 /// use the explicit `#[rig(context)]` parameter marker instead.
-fn is_tool_context_type(ty: &Type, refs: &CrateRefs) -> bool {
-    let ty = match ty {
-        Type::Group(group) => &*group.elem,
-        Type::Paren(paren) => &*paren.elem,
-        ty => ty,
-    };
+const MUT_CONTEXT_MSG: &str = "a `ToolContext` parameter must have type `&mut ToolContext`";
 
-    let Type::Path(type_path) = ty else {
+/// Peel grouping (`Group`/`Paren`) wrappers off a type.
+fn peel(ty: &Type) -> &Type {
+    match ty {
+        Type::Group(group) => &group.elem,
+        Type::Paren(paren) => &paren.elem,
+        ty => ty,
+    }
+}
+
+fn is_tool_context_type(ty: &Type, refs: &CrateRefs) -> bool {
+    let Type::Path(type_path) = peel(ty) else {
         return false;
     };
     let segments = type_path
@@ -77,30 +82,20 @@ pub(crate) fn is_tool_context_parameter(
     explicitly_marked: bool,
     refs: &CrateRefs,
 ) -> syn::Result<bool> {
-    let ty = match ty {
-        Type::Group(group) => &*group.elem,
-        Type::Paren(paren) => &*paren.elem,
-        ty => ty,
-    };
+    let ty = peel(ty);
 
     if let Type::Reference(reference) = ty
         && (explicitly_marked || is_tool_context_type(&reference.elem, refs))
     {
         if reference.mutability.is_none() {
-            return Err(syn::Error::new_spanned(
-                ty,
-                "a `ToolContext` parameter must have type `&mut ToolContext`",
-            ));
+            return Err(syn::Error::new_spanned(ty, MUT_CONTEXT_MSG));
         }
 
         return Ok(true);
     }
 
     if explicitly_marked || is_tool_context_type(ty, refs) {
-        return Err(syn::Error::new_spanned(
-            ty,
-            "a `ToolContext` parameter must have type `&mut ToolContext`",
-        ));
+        return Err(syn::Error::new_spanned(ty, MUT_CONTEXT_MSG));
     }
 
     Ok(false)

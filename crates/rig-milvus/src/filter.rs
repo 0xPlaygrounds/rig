@@ -215,14 +215,6 @@ impl Filter {
 impl TryFrom<CoreFilter<serde_json::Value>> for Filter {
     type Error = FilterError;
     fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
-        let value = match value {
-            CoreFilter::Eq(k, val) => Filter::eq(k, val.try_into()?),
-            CoreFilter::Gt(k, val) => Filter::gt(k, val.try_into()?),
-            CoreFilter::Lt(k, val) => Filter::lt(k, val.try_into()?),
-            CoreFilter::And(l, r) => Self::try_from(*l)?.and(Self::try_from(*r)?),
-            CoreFilter::Or(l, r) => Self::try_from(*l)?.or(Self::try_from(*r)?),
-        };
-
-        Ok(value)
+        value.try_interpret(MilvusValue::try_from)
     }
 }

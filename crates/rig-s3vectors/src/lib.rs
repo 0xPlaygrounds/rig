@@ -136,6 +136,67 @@ where
     pub fn client(&self) -> &Client {
         &self.client
     }
+
+    /// Validates the sample count, embeds the query, and runs the S3Vectors
+    /// query, returning the `(distance, vector)` pairs passing the threshold.
+    async fn run_query(
+        &self,
+        req: &VectorSearchRequest<S3SearchFilter>,
+        return_metadata: bool,
+    ) -> Result<Vec<(f64, aws_sdk_s3vectors::types::QueryOutputVector)>, VectorStoreError> {
+        if req.samples() > i32::MAX as u64 {
+            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
+        }
+
+        let embedding = self
+            .embedding_model
+            .embed_text(req.query())
+            .await?
+            .vec
+            .into_iter()
+            .map(|x| x as f32)
+            .collect();
+
+        let mut query_builder = self
+            .client
+            .query_vectors()
+            .query_vector(VectorData::Float32(embedding))
+            .top_k(req.samples() as i32)
+            .return_distance(true)
+            .vector_bucket_name(self.bucket_name())
+            .index_name(self.index_name());
+
+        if return_metadata {
+            query_builder = query_builder.return_metadata(true);
+        }
+
+        if let Some(filter) = req.filter() {
+            query_builder = query_builder.filter(filter.inner().clone())
+        }
+
+        let query = query_builder
+            .send()
+            .await
+            .map_err(VectorStoreError::datastore)?;
+
+        Ok(query
+            .vectors
+            .into_iter()
+            .map(|x| {
+                let distance = x.distance.ok_or_else(|| {
+                    VectorStoreError::DatastoreError("S3Vectors response missing distance".into())
+                })? as f64;
+
+                Ok((distance, x))
+            })
+            .collect::<Result<Vec<_>, VectorStoreError>>()?
+            .into_iter()
+            .filter(|(distance, _)| {
+                !req.threshold()
+                    .is_some_and(|threshold| *distance < threshold)
+            })
+            .collect())
+    }
 }
 
 impl<M> InsertDocuments for S3VectorsVectorStore<M>
@@ -264,132 +325,30 @@ where
         &self,
         req: VectorSearchRequest<S3SearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        if req.samples() > i32::MAX as u64 {
-            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
-        }
-
-        let embedding = self
-            .embedding_model
-            .embed_text(req.query())
+        self.run_query(&req, true)
             .await?
-            .vec
             .into_iter()
-            .map(|x| x as f32)
-            .collect();
-
-        let mut query_builder = self
-            .client
-            .query_vectors()
-            .query_vector(VectorData::Float32(embedding))
-            .top_k(req.samples() as i32)
-            .return_distance(true)
-            .return_metadata(true)
-            .vector_bucket_name(self.bucket_name())
-            .index_name(self.index_name());
-
-        if let Some(filter) = req.filter() {
-            query_builder = query_builder.filter(filter.inner().clone())
-        }
-
-        let query = query_builder
-            .send()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let res: Vec<(f64, String, T)> = query
-            .vectors
-            .into_iter()
-            .map(|x| {
-                let distance = x.distance.ok_or_else(|| {
-                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                        "S3Vectors response missing distance",
-                    )))
-                })? as f64;
-
-                if req
-                    .threshold()
-                    .is_some_and(|threshold| distance < threshold)
-                {
-                    return Ok(None);
-                }
-
+            .map(|(distance, x)| {
                 let metadata_document = x.metadata.ok_or_else(|| {
-                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                        "S3Vectors response missing metadata",
-                    )))
+                    VectorStoreError::DatastoreError("S3Vectors response missing metadata".into())
                 })?;
                 let val = document_to_json_value(&metadata_document);
                 let metadata: T = serde_json::from_value(val)?;
 
-                Ok(Some((distance, x.key, metadata)))
+                Ok((distance, x.key, metadata))
             })
-            .collect::<Result<Vec<_>, VectorStoreError>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        Ok(res)
+            .collect()
     }
 
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<S3SearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        if req.samples() > i32::MAX as u64 {
-            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
-        }
-
-        let embedding = self
-            .embedding_model
-            .embed_text(req.query())
+        Ok(self
+            .run_query(&req, false)
             .await?
-            .vec
             .into_iter()
-            .map(|x| x as f32)
-            .collect();
-
-        let mut query_builder = self
-            .client
-            .query_vectors()
-            .query_vector(VectorData::Float32(embedding))
-            .top_k(req.samples() as i32)
-            .return_distance(true)
-            .vector_bucket_name(self.bucket_name())
-            .index_name(self.index_name());
-
-        if let Some(filter) = req.filter() {
-            query_builder = query_builder.filter(filter.inner().clone())
-        }
-
-        let query = query_builder
-            .send()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let res: Vec<(f64, String)> = query
-            .vectors
-            .into_iter()
-            .map(|x| {
-                let distance = x.distance.ok_or_else(|| {
-                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                        "S3Vectors response missing distance",
-                    )))
-                })? as f64;
-
-                if req
-                    .threshold()
-                    .is_some_and(|threshold| distance < threshold)
-                {
-                    return Ok(None);
-                }
-
-                Ok(Some((distance, x.key)))
-            })
-            .collect::<Result<Vec<_>, VectorStoreError>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        Ok(res)
+            .map(|(distance, x)| (distance, x.key))
+            .collect())
     }
 }

@@ -19,16 +19,15 @@ pub struct EmbeddingResponse {
     pub input_text_token_count: usize,
 }
 
-/// `amazon.titan-embed-text-v1`
-pub const AMAZON_TITAN_EMBED_TEXT_V1: &str = "amazon.titan-embed-text-v1";
-/// `amazon.titan-embed-text-v2:0`
-pub const AMAZON_TITAN_EMBED_TEXT_V2_0: &str = "amazon.titan-embed-text-v2:0";
-/// `amazon.titan-embed-image-v1`
-pub const AMAZON_TITAN_EMBED_IMAGE_V1: &str = "amazon.titan-embed-image-v1";
-/// `cohere.embed-english-v3`
-pub const COHERE_EMBED_ENGLISH_V3: &str = "cohere.embed-english-v3";
-/// `cohere.embed-multilingual-v3`
-pub const COHERE_EMBED_MULTILINGUAL_V3: &str = "cohere.embed-multilingual-v3";
+// The model-id string values are canonically defined in `crate::completion`;
+// these aliases keep this module's historical public names.
+pub use crate::completion::{
+    AMAZON_TITAN_EMBEDDINGS_G1_TEXT as AMAZON_TITAN_EMBED_TEXT_V1,
+    AMAZON_TITAN_MULTIMODAL_EMBEDDINGS_G1 as AMAZON_TITAN_EMBED_IMAGE_V1,
+    AMAZON_TITAN_TEXT_EMBEDDINGS_V2 as AMAZON_TITAN_EMBED_TEXT_V2_0,
+    COHERE_EMBED_ENGLISH as COHERE_EMBED_ENGLISH_V3,
+    COHERE_EMBED_MULTILINGUAL as COHERE_EMBED_MULTILINGUAL_V3,
+};
 
 #[derive(Clone)]
 pub struct EmbeddingModel {
@@ -95,34 +94,32 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         &self,
         documents: impl IntoIterator<Item = String> + Send,
     ) -> Result<Vec<Embedding>, EmbeddingError> {
-        let documents: Vec<_> = documents.into_iter().collect();
+        let documents: Vec<String> = documents.into_iter().collect();
 
+        // Deliberately sequential: issuing the requests one at a time keeps
+        // Bedrock's per-account throttling behavior unchanged.
         let mut results = Vec::new();
-        let mut errors = Vec::new();
-
-        let mut iterator = documents.into_iter();
-        while let Some(embedding) = iterator.next().map(|doc| async move {
+        let mut first_error = None;
+        for doc in documents {
             let request = EmbeddingRequest {
-                input_text: doc.to_owned(),
+                input_text: doc.clone(),
                 dimensions: self.ndims(),
                 normalize: true,
             };
-            self.document_to_embeddings(request)
-                .await
-                .map(|embeddings| Embedding {
-                    document: doc.to_owned(),
+            match self.document_to_embeddings(request).await {
+                Ok(embeddings) => results.push(Embedding {
+                    document: doc,
                     vec: embeddings.embedding,
-                })
-        }) {
-            match embedding.await {
-                Ok(embedding) => results.push(embedding),
-                Err(err) => errors.push(err),
+                }),
+                Err(err) => {
+                    first_error.get_or_insert(err);
+                }
             }
         }
 
-        match errors.as_slice() {
-            [] => Ok(results),
-            [err, ..] => Err(EmbeddingError::ResponseError(err.to_string())),
+        match first_error {
+            None => Ok(results),
+            Some(err) => Err(EmbeddingError::ResponseError(err.to_string())),
         }
     }
 }

@@ -167,6 +167,39 @@ where
             output_fields,
         }
     }
+
+    /// Embeds the query, runs the Milvus search endpoint, and parses the response.
+    async fn search<T: for<'a> Deserialize<'a>>(
+        &self,
+        req: &VectorSearchRequest<Filter>,
+        id_only: bool,
+    ) -> Result<T, VectorStoreError> {
+        let embedding = self.model.embed_text(req.query()).await?;
+        let url = format!(
+            "{base_url}/v2/vectordb/entities/search",
+            base_url = self.base_url
+        );
+
+        let body = self.create_search_request(embedding.vec, req, id_only);
+
+        let mut client = self.client.post(url);
+        if let Some(ref token) = self.token {
+            client = client.header("Authorization", format!("Bearer {token}"));
+        }
+
+        let body = serde_json::to_string(&body)?;
+
+        let res = client.body(body).send().await?;
+
+        if res.status() != StatusCode::OK {
+            let status = res.status();
+            let text = res.text().await?;
+
+            return Err(VectorStoreError::ExternalAPIError(status, text));
+        }
+
+        Ok(res.json().await?)
+    }
 }
 
 impl<Model> InsertDocuments for MilvusVectorStore<Model>
@@ -210,7 +243,7 @@ where
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
+            client = client.header("Authorization", format!("Bearer {token}"));
         }
 
         let insert_request = self.create_insert_request(data);
@@ -242,31 +275,7 @@ where
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let embedding = self.model.embed_text(req.query()).await?;
-        let url = format!(
-            "{base_url}/v2/vectordb/entities/search",
-            base_url = self.base_url
-        );
-
-        let body = self.create_search_request(embedding.vec, &req, false);
-
-        let mut client = self.client.post(url);
-        if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
-        }
-
-        let body = serde_json::to_string(&body)?;
-
-        let res = client.body(body).send().await?;
-
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await?;
-
-            return Err(VectorStoreError::ExternalAPIError(status, text));
-        }
-
-        let json: SearchResult<T> = res.json().await?;
+        let json: SearchResult<T> = self.search(&req, false).await?;
 
         let res = json
             .data
@@ -283,31 +292,7 @@ where
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let embedding = self.model.embed_text(req.query()).await?;
-        let url = format!(
-            "{base_url}/v2/vectordb/entities/search",
-            base_url = self.base_url
-        );
-
-        let body = self.create_search_request(embedding.vec, &req, true);
-
-        let mut client = self.client.post(url);
-        if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
-        }
-
-        let body = serde_json::to_string(&body)?;
-
-        let res = client.body(body).send().await?;
-
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await?;
-
-            return Err(VectorStoreError::ExternalAPIError(status, text));
-        }
-
-        let json: SearchResultOnlyId = res.json().await?;
+        let json: SearchResultOnlyId = self.search(&req, true).await?;
 
         let res = json
             .data

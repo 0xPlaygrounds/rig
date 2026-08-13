@@ -19,6 +19,7 @@ rusqlite = { workspace = true, features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sqlite-vec = { workspace = true }
+thiserror = { workspace = true }
 tokio-rusqlite = { workspace = true, features = ["bundled"] }
 tracing = { workspace = true }
 zerocopy = { workspace = true }

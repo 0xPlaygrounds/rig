@@ -159,6 +159,21 @@ impl completion::CompletionModel for CompletionModel {
     }
 }
 
+/// Build a non-thought `proto::Part` around the given data payload.
+pub(crate) fn data_part(data: proto::part::Data) -> proto::Part {
+    proto::Part {
+        data: Some(data),
+        thought: false,
+        thought_signature: Vec::new(),
+        part_metadata: None,
+    }
+}
+
+/// Build a plain (non-thought) text `proto::Part`.
+pub(crate) fn text_part(text: String) -> proto::Part {
+    data_part(proto::part::Data::Text(text))
+}
+
 // Map a failed gRPC call into a `CompletionError` that preserves the provider's
 // error payload verbatim. gRPC is a non-HTTP transport, so there is no
 // `http::StatusCode`; the body is preserved via `from_provider_body` (status:
@@ -205,21 +220,11 @@ pub(crate) fn create_grpc_request(
     if let Some(preamble) = preamble
         && !preamble.is_empty()
     {
-        system_parts.push(proto::Part {
-            data: Some(proto::part::Data::Text(preamble)),
-            thought: false,
-            thought_signature: Vec::new(),
-            part_metadata: None,
-        });
+        system_parts.push(text_part(preamble));
     }
     for content in history_system {
         if !content.is_empty() {
-            system_parts.push(proto::Part {
-                data: Some(proto::part::Data::Text(content)),
-                thought: false,
-                thought_signature: Vec::new(),
-                part_metadata: None,
-            });
+            system_parts.push(text_part(content));
         }
     }
     let system_instruction = if system_parts.is_empty() {
@@ -307,33 +312,14 @@ fn rig_message_to_grpc_content(msg: message::Message) -> Result<proto::Content, 
     }
 }
 
-fn split_system_messages_from_history(
-    history: Vec<message::Message>,
-) -> (Vec<String>, Vec<message::Message>) {
-    let mut system = Vec::new();
-    let mut remaining = Vec::new();
-
-    for message in history {
-        match message {
-            message::Message::System { content } => system.push(content),
-            other => remaining.push(other),
-        }
-    }
-
-    (system, remaining)
-}
+use rig_core::providers::gemini::completion::split_system_messages_from_history;
 
 // Convert Rig UserContent to gRPC Part
 fn rig_user_content_to_grpc_part(
     content: message::UserContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::UserContent::Text(message::Text { text, .. }) => Ok(proto::Part {
-            data: Some(proto::part::Data::Text(text)),
-            thought: false,
-            thought_signature: Vec::new(),
-            part_metadata: None,
-        }),
+        message::UserContent::Text(message::Text { text, .. }) => Ok(text_part(text)),
         message::UserContent::ToolResult(result) => {
             let mut values = result
                 .content
@@ -358,21 +344,16 @@ fn rig_user_content_to_grpc_part(
             // `FunctionResponse.name` is the executed function's name —
             // required data on the result. Only a provider-issued id may
             // travel back on the wire (the proto field is optional-empty).
-            Ok(proto::Part {
-                data: Some(proto::part::Data::FunctionResponse(
-                    proto::FunctionResponse {
-                        name: result.name,
-                        response: Some(response_struct),
-                        id: result
-                            .provider
-                            .map(|provider| provider.call_id)
-                            .unwrap_or_default(),
-                    },
-                )),
-                thought: false,
-                thought_signature: Vec::new(),
-                part_metadata: None,
-            })
+            Ok(data_part(proto::part::Data::FunctionResponse(
+                proto::FunctionResponse {
+                    name: result.name,
+                    response: Some(response_struct),
+                    id: result
+                        .provider
+                        .map(|provider| provider.call_id)
+                        .unwrap_or_default(),
+                },
+            )))
         }
         message::UserContent::Image(img) => {
             let Some(media_type) = img.media_type else {
@@ -398,15 +379,10 @@ fn rig_user_content_to_grpc_part(
 
             let data = match img.data {
                 message::DocumentSourceKind::Url(file_uri) => {
-                    return Ok(proto::Part {
-                        data: Some(proto::part::Data::FileData(proto::FileData {
-                            mime_type,
-                            file_uri,
-                        })),
-                        thought: false,
-                        thought_signature: Vec::new(),
-                        part_metadata: None,
-                    });
+                    return Ok(data_part(proto::part::Data::FileData(proto::FileData {
+                        mime_type,
+                        file_uri,
+                    })));
                 }
                 message::DocumentSourceKind::Raw(bytes) => bytes,
                 message::DocumentSourceKind::Base64(data)
@@ -423,15 +399,10 @@ fn rig_user_content_to_grpc_part(
                 }
             };
 
-            Ok(proto::Part {
-                data: Some(proto::part::Data::InlineData(proto::Blob {
-                    mime_type,
-                    data,
-                })),
-                thought: false,
-                thought_signature: Vec::new(),
-                part_metadata: None,
-            })
+            Ok(data_part(proto::part::Data::InlineData(proto::Blob {
+                mime_type,
+                data,
+            })))
         }
         _ => Err(CompletionError::RequestError(
             "Unsupported user content type".into(),
@@ -444,17 +415,13 @@ fn rig_assistant_content_to_grpc_part(
     content: message::AssistantContent,
 ) -> Result<proto::Part, CompletionError> {
     match content {
-        message::AssistantContent::Text(message::Text { text, .. }) => Ok(proto::Part {
-            data: Some(proto::part::Data::Text(text)),
-            thought: false,
-            thought_signature: Vec::new(),
-            part_metadata: None,
-        }),
+        message::AssistantContent::Text(message::Text { text, .. }) => Ok(text_part(text)),
         message::AssistantContent::ToolCall(tool_call) => {
             let args = json_to_prost_struct(tool_call.function.arguments)?;
 
             Ok(proto::Part {
-                data: Some(proto::part::Data::FunctionCall(proto::FunctionCall {
+                thought_signature: decode_optional_base64(tool_call.signature)?,
+                ..data_part(proto::part::Data::FunctionCall(proto::FunctionCall {
                     name: tool_call.function.name,
                     args: Some(args),
                     // Only a provider-issued id may travel back on the
@@ -463,10 +430,7 @@ fn rig_assistant_content_to_grpc_part(
                         .provider
                         .map(|provider| provider.call_id)
                         .unwrap_or_default(),
-                })),
-                thought: false,
-                thought_signature: decode_optional_base64(tool_call.signature)?,
-                part_metadata: None,
+                }))
             })
         }
         message::AssistantContent::Reasoning(reasoning) => Ok(proto::Part {
@@ -570,19 +534,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 
         let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
 
-        let usage = response
-            .usage_metadata
-            .as_ref()
-            .map(|usage| completion::Usage {
-                input_tokens: usage.prompt_token_count as u64,
-                output_tokens: usage.candidates_token_count as u64,
-                total_tokens: usage.total_token_count as u64,
-                cached_input_tokens: usage.cached_content_token_count as u64,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
-            .unwrap_or_default();
+        let usage = map_usage(response.usage_metadata.as_ref());
 
         let finish_reason = response
             .candidates
@@ -691,7 +643,26 @@ fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, CompletionErro
     decode_base64_bytes(&sig)
 }
 
-fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
+/// Map Gemini's `UsageMetadata` onto rig's normalized `Usage`.
+///
+/// Known gap (unchanged here): `tool_use_prompt_token_count` and
+/// `thoughts_token_count` are not yet surfaced, so `tool_use_prompt_tokens`
+/// and `reasoning_tokens` read as 0.
+pub(crate) fn map_usage(usage: Option<&proto::UsageMetadata>) -> completion::Usage {
+    usage
+        .map(|usage| completion::Usage {
+            input_tokens: usage.prompt_token_count as u64,
+            output_tokens: usage.candidates_token_count as u64,
+            total_tokens: usage.total_token_count as u64,
+            cached_input_tokens: usage.cached_content_token_count as u64,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: 0,
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn encode_optional_base64(bytes: &[u8]) -> Option<String> {
     if bytes.is_empty() {
         None
     } else {
@@ -747,7 +718,7 @@ fn json_to_prost_value(value: serde_json::Value) -> proto::Value {
     }
 }
 
-fn prost_struct_to_json(st: &proto::Struct) -> serde_json::Value {
+pub(crate) fn prost_struct_to_json(st: &proto::Struct) -> serde_json::Value {
     let mut out = serde_json::Map::with_capacity(st.fields.len());
     for (k, v) in &st.fields {
         out.insert(k.clone(), prost_value_to_json(v));

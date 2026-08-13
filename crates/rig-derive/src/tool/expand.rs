@@ -57,6 +57,9 @@ fn is_option_type(ty: &Type) -> bool {
 }
 
 fn result_type_tokens(return_type: &ReturnType) -> syn::Result<(TokenStream, TokenStream)> {
+    const RESULT_TY_MSG: &str = "return type must be Result<T, E>";
+    const RESULT_ARITY_MSG: &str = "expected Result<T, E> with exactly two type parameters";
+
     let ReturnType::Type(_, ty) = return_type else {
         return Err(syn::Error::new_spanned(
             return_type,
@@ -65,24 +68,15 @@ fn result_type_tokens(return_type: &ReturnType) -> syn::Result<(TokenStream, Tok
     };
 
     let Type::Path(type_path) = ty.deref() else {
-        return Err(syn::Error::new_spanned(
-            ty,
-            "return type must be Result<T, E>",
-        ));
+        return Err(syn::Error::new_spanned(ty, RESULT_TY_MSG));
     };
 
     let Some(last_segment) = type_path.path.segments.last() else {
-        return Err(syn::Error::new_spanned(
-            &type_path.path,
-            "return type must be Result<T, E>",
-        ));
+        return Err(syn::Error::new_spanned(&type_path.path, RESULT_TY_MSG));
     };
 
     if last_segment.ident != "Result" {
-        return Err(syn::Error::new_spanned(
-            &last_segment.ident,
-            "return type must be Result<T, E>",
-        ));
+        return Err(syn::Error::new_spanned(&last_segment.ident, RESULT_TY_MSG));
     }
 
     let PathArguments::AngleBracketed(args) = &last_segment.arguments else {
@@ -94,17 +88,11 @@ fn result_type_tokens(return_type: &ReturnType) -> syn::Result<(TokenStream, Tok
 
     let mut generic_args = args.args.iter();
     let (Some(output), Some(error)) = (generic_args.next(), generic_args.next()) else {
-        return Err(syn::Error::new_spanned(
-            &args.args,
-            "expected Result<T, E> with exactly two type parameters",
-        ));
+        return Err(syn::Error::new_spanned(&args.args, RESULT_ARITY_MSG));
     };
 
     if generic_args.next().is_some() {
-        return Err(syn::Error::new_spanned(
-            &args.args,
-            "expected Result<T, E> with exactly two type parameters",
-        ));
+        return Err(syn::Error::new_spanned(&args.args, RESULT_ARITY_MSG));
     }
 
     Ok((quote!(#output), quote!(#error)))

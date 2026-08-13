@@ -19,13 +19,9 @@ impl TryFrom<RigDocument> for aws_bedrock::DocumentBlock {
             data, media_type, ..
         }): RigDocument,
     ) -> Result<Self, Self::Error> {
-        let document_media_type = media_type.map(|doc| RigDocumentMediaType(doc).try_into());
-
-        let document_media_type = match document_media_type {
-            Some(Ok(document_format)) => Ok(Some(document_format)),
-            Some(Err(err)) => Err(err),
-            None => Ok(None),
-        }?;
+        let document_media_type = media_type
+            .map(|doc| RigDocumentMediaType(doc).try_into())
+            .transpose()?;
 
         let document_source = match data {
             DocumentSourceKind::Base64(blob) => {
