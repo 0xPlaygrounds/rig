@@ -299,6 +299,16 @@ pub struct CompletionResponse {
     /// provider as a message ID.
     #[serde(default)]
     pub response_id: Option<String>,
+    /// The provider's transport-level request identifier, taken from the HTTP
+    /// response headers (Anthropic `request-id`, OpenAI/xAI `x-request-id`) or
+    /// the provider SDK's response metadata (Bedrock) — the id provider
+    /// support asks for when investigating a request. Never the body's
+    /// `message.id`/response id; those are [`Self::message_id`] and
+    /// [`Self::response_id`]. `None` means the provider did not report one —
+    /// that is a documented outcome (e.g. Gemini sends no id header), never an
+    /// error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
     /// Why the model stopped generating, when the provider reported it.
     ///
     /// Private so that every write flows through
@@ -330,6 +340,7 @@ impl CompletionResponse {
             usage,
             message_id: None,
             response_id: None,
+            provider_request_id: None,
             finish_reason: None,
             provider: provider.into(),
             model: None,
@@ -385,6 +396,8 @@ struct CompletionResponseRepr {
     #[serde(default)]
     response_id: Option<String>,
     #[serde(default)]
+    provider_request_id: Option<String>,
+    #[serde(default)]
     finish_reason: Option<FinishReason>,
     provider: String,
     #[serde(default)]
@@ -398,6 +411,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             usage,
             message_id,
             response_id,
+            provider_request_id,
             finish_reason,
             provider,
             model,
@@ -405,6 +419,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
         Self::new(choice, usage, provider)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
+            .with_optional_provider_request_id(provider_request_id)
             .with_optional_finish_reason(finish_reason)
             .with_optional_model(model)
     }

@@ -907,13 +907,19 @@ impl TurnSource for UnaryTurnSource {
                 }
             };
 
-            let mut outcome = match run.model_response(ModelTurn::new(
-                resp.message_id.clone(),
-                resp.choice.clone(),
-                resp.usage,
-                prepared.executable_tool_names,
-                prepared.allowed_tool_names,
-            )) {
+            let mut outcome = match run.model_response(
+                ModelTurn::new(
+                    resp.message_id.clone(),
+                    resp.choice.clone(),
+                    resp.usage,
+                    prepared.executable_tool_names,
+                    prepared.allowed_tool_names,
+                )
+                .with_identity(
+                    resp.response_id.clone(),
+                    resp.provider_request_id.clone(),
+                ),
+            ) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     yield Err(Box::new(err).into());
@@ -965,6 +971,10 @@ impl TurnSource for UnaryTurnSource {
                                             content: &resp.choice,
                                             usage: resp.usage,
                                             message_id: resp.message_id.as_deref(),
+                                            response_id: resp.response_id.as_deref(),
+                                            provider_request_id: resp
+                                                .provider_request_id
+                                                .as_deref(),
                                         },
                                     )
                                     .await,
@@ -1907,6 +1917,77 @@ mod migrated_tests {
                 message_id: Some("msg-canonical".to_string()),
             }]
         );
+    }
+
+    /// One hook observation per completed model call carries the attempt's
+    /// full identity triple, and the run's `completion_calls` record it
+    /// per-attempt (mock-model unit test; the live header-capture halves are
+    /// cassette-tested per provider).
+    #[tokio::test]
+    async fn completion_response_hook_and_calls_carry_identity_metadata() {
+        type IdentityTriple = (Option<String>, Option<String>, Option<String>);
+
+        #[derive(Clone, Default)]
+        struct IdentityHook {
+            seen: Arc<Mutex<Vec<IdentityTriple>>>,
+        }
+
+        impl AgentHook for IdentityHook {
+            async fn on_completion_response(
+                &self,
+                _ctx: &HookContext,
+                event: crate::agent::hook::CompletionResponse<'_>,
+            ) -> ObservationAction {
+                self.seen.lock().expect("identity snapshots").push((
+                    event.message_id.map(str::to_owned),
+                    event.response_id.map(str::to_owned),
+                    event.provider_request_id.map(str::to_owned),
+                ));
+                ObservationAction::continue_run()
+            }
+        }
+
+        let hook = IdentityHook::default();
+        let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")
+            .with_message_id("msg_1")
+            .with_response_id("resp_1")
+            .with_provider_request_id("req_1")]))
+        .add_hook(hook.clone())
+        .build()
+        .runner(Message::user("prompt"))
+        .run()
+        .await
+        .expect("blocking response");
+
+        assert_eq!(
+            *hook.seen.lock().expect("identity snapshots"),
+            [(
+                Some("msg_1".to_string()),
+                Some("resp_1".to_string()),
+                Some("req_1".to_string()),
+            )]
+        );
+        let call = &response.completion_calls[0];
+        assert_eq!(call.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(call.response_id.as_deref(), Some("resp_1"));
+        assert_eq!(call.provider_request_id.as_deref(), Some("req_1"));
+    }
+
+    /// A provider that reports no ids yields `None` everywhere — never an
+    /// error and never a fabricated value.
+    #[tokio::test]
+    async fn absent_identity_metadata_stays_none() {
+        let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")]))
+            .build()
+            .runner(Message::user("prompt"))
+            .run()
+            .await
+            .expect("blocking response");
+
+        let call = &response.completion_calls[0];
+        assert_eq!(call.message_id, None);
+        assert_eq!(call.response_id, None);
+        assert_eq!(call.provider_request_id, None);
     }
 
     #[tokio::test]

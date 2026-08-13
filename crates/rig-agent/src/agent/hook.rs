@@ -490,6 +490,11 @@ pub struct CompletionResponse<'a> {
     pub usage: Usage,
     /// Provider-assigned message ID, when available.
     pub message_id: Option<&'a str>,
+    /// Provider-assigned response-scoped ID, when available.
+    pub response_id: Option<&'a str>,
+    /// The provider's transport request id for this exact attempt (HTTP
+    /// response header, e.g. Anthropic `request-id`), when reported.
+    pub provider_request_id: Option<&'a str>,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -646,6 +651,11 @@ pub struct StreamResponseFinish<'a> {
     pub usage: Usage,
     /// Provider-assigned message ID, when available.
     pub message_id: Option<&'a str>,
+    /// Provider-assigned response-scoped ID, when available.
+    pub response_id: Option<&'a str>,
+    /// The provider's transport request id for this exact attempt (from the
+    /// SSE connection's response headers), when reported.
+    pub provider_request_id: Option<&'a str>,
 }
 
 /// Hook event kind used only as an observation performance hint.

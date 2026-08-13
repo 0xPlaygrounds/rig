@@ -20,6 +20,7 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod request_hook;
+    mod response_identity;
     mod response_retry;
     mod response_schema;
     mod responses_behaviors;

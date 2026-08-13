@@ -23,6 +23,12 @@ use crate::http_client::HttpClientExt;
 /// the current span; `label` names the provider in trace/error logs (e.g.
 /// `"Gemini completion"`).
 ///
+/// `request_id_header` names the provider's transport request-id response
+/// header (e.g. Anthropic `request-id`, OpenAI `x-request-id`); when present
+/// and the response carries it, its value is returned alongside the payload.
+/// `None` — as the parameter or in the returned pair — means "this provider
+/// does not report one", never an error.
+///
 /// Error paths, preserved exactly:
 /// - non-success status → `from_http_response(status, raw_body)`;
 /// - 2xx error envelope → warn-log the provider message, preserve raw body;
@@ -31,8 +37,9 @@ pub(crate) async fn send_completion<C, A, F>(
     client: &C,
     request: crate::http_client::Request<Vec<u8>>,
     label: &str,
+    request_id_header: Option<&str>,
     record_telemetry: F,
-) -> Result<A::Payload, CompletionError>
+) -> Result<(A::Payload, Option<String>), CompletionError>
 where
     C: HttpClientExt,
     A: DeserializeOwned + ProviderEnvelope,
@@ -42,6 +49,14 @@ where
     let response = client.send::<_, Bytes>(request).await?;
 
     let status = response.status();
+    let provider_request_id = request_id_header.and_then(|header| {
+        response
+            .headers()
+            .get(header)
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    });
     let body = response
         .into_body()
         .await
@@ -71,7 +86,7 @@ where
                 &format!("{label} response"),
                 &payload,
             );
-            Ok(payload)
+            Ok((payload, provider_request_id))
         }
         Err(message) => {
             tracing::warn!(message = %message, "provider returned an error response");

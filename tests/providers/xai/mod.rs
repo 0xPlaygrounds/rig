@@ -13,6 +13,7 @@ mod permission_control;
 mod reasoning_roundtrip;
 mod reasoning_tool_roundtrip;
 mod request_hook;
+mod response_identity;
 mod streaming;
 mod streaming_tools;
 mod support;

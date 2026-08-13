@@ -1758,8 +1758,14 @@ const SENSITIVE_QUERY_PARAMS: &[&str] = &[
 // reads it off the header, not the body — so a cassette that drops it cannot
 // replay any behavior that reads the id. It is a per-call opaque identifier,
 // not account state, and the scrubber placeholders its value.
-const RESPONSE_HEADER_ALLOWLIST: &[&str] =
-    &["content-type", "x-amzn-errortype", "x-amzn-requestid"];
+const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
+    "content-type",
+    "x-amzn-errortype",
+    "x-amzn-requestid",
+    // Provider transport request ids (rig#2265): Anthropic / OpenAI-and-xAI.
+    "request-id",
+    "x-request-id",
+];
 
 const VOLATILE_JSON_KEYS: &[&str] = &[
     "completed_at",
@@ -1780,7 +1786,7 @@ const SENSITIVE_STRING_KEYS: &[&str] = &[
 ];
 
 /// Allowlisted response headers whose value is a generated per-call id.
-const GENERATED_ID_HEADERS: &[&str] = &["x-amzn-requestid"];
+const GENERATED_ID_HEADERS: &[&str] = &["x-amzn-requestid", "request-id", "x-request-id"];
 
 const GENERATED_ID_KEYS: &[&str] = &[
     "call_id",
@@ -3517,7 +3523,12 @@ then:
 
         assert!(scrubbed.contains("value: '[REDACTED]'"));
         assert!(!scrubbed.contains("AIzaSySecret"));
-        assert!(!scrubbed.contains("x-request-id"));
+        // `x-request-id` is allowlisted since rig#2265 (provider transport
+        // request ids are feature data), but its value is a generated id and
+        // must record scrubbed.
+        assert!(scrubbed.contains("x-request-id"));
+        assert!(!scrubbed.contains("req_abc123456789"));
+        assert!(scrubbed.contains("req_REDACTED"));
         assert!(!scrubbed.contains("set-cookie"));
         assert!(scrubbed.contains("content-type"));
     }

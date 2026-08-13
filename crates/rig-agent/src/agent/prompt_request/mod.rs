@@ -319,7 +319,8 @@ impl PromptRequest<Standard> {
 }
 
 /// Details for one successfully completed completion request made by an agent run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+// No longer `Copy`: the identity fields carry owned strings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
@@ -331,13 +332,53 @@ pub struct CompletionCall {
     /// from "unreported".
     #[serde(default, deserialize_with = "usage_null_as_default")]
     pub usage: Usage,
+    /// Provider-assigned assistant message ID for this call, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// Provider-assigned response-scoped ID for this call, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+    /// The provider's transport request id for this call (HTTP response
+    /// header, e.g. Anthropic `request-id`) — the id provider support asks
+    /// for. `None` means the provider did not report one, never an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 impl CompletionCall {
-    /// Create details for one completion request in an agent run.
+    /// Create details for one completion request in an agent run; identity
+    /// metadata starts unset and is attached with [`Self::with_identity`].
     pub fn new(call_index: usize, usage: Usage) -> Self {
-        Self { call_index, usage }
+        Self {
+            call_index,
+            usage,
+            message_id: None,
+            response_id: None,
+            provider_request_id: None,
+        }
     }
+
+    /// Attach the response identity metadata this call's attempt reported.
+    pub fn with_identity(mut self, identity: CallIdentity) -> Self {
+        self.message_id = identity.message_id;
+        self.response_id = identity.response_id;
+        self.provider_request_id = identity.provider_request_id;
+        self
+    }
+}
+
+/// Response identity metadata for one completion call: which provider objects
+/// this exact attempt produced. Every field is `None` when the provider did
+/// not report it — a documented outcome, never an error.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CallIdentity {
+    /// Provider-assigned assistant message ID (e.g. Anthropic `msg_…`).
+    pub message_id: Option<String>,
+    /// Provider-assigned response-scoped ID (e.g. an OpenAI `chatcmpl-` /
+    /// `resp_…` ID).
+    pub response_id: Option<String>,
+    /// The provider's transport request id from the HTTP response headers.
+    pub provider_request_id: Option<String>,
 }
 
 /// Tolerate `null` usage from data serialized before rig dropped the

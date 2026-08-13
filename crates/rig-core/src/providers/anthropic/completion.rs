@@ -39,6 +39,12 @@ pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
 pub trait AnthropicCompatibleProvider: Provider {
     const PROVIDER_NAME: &'static str;
 
+    /// Response header carrying the provider's transport request id, when the
+    /// provider reports one. Anthropic sends `request-id`; compatible gateways
+    /// that mirror Anthropic's shape usually do too, and one that doesn't
+    /// simply yields `None` — never an error.
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("request-id");
+
     fn default_max_tokens(model: &str) -> Option<u64> {
         let _ = model;
         None
@@ -74,6 +80,12 @@ pub struct CompletionResponse {
     pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Usage,
+    /// The transport request id from the `request-id` response header — not
+    /// part of the response body; stamped by the request driver. This is the
+    /// id Anthropic support asks for. `None` when the provider (or a
+    /// compatible gateway) did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 /// Map an Anthropic Messages `stop_reason` onto the normalized vocabulary,
@@ -312,6 +324,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             provider,
         )
         .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+        .with_optional_provider_request_id(response.provider_request_id.clone())
         .with_model(response.model.as_str())
         .with_optional_finish_reason(finish_reason))
     }
@@ -3097,18 +3110,22 @@ where
             .body(request)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        send_completion::<_, ApiResponse<CompletionResponse>, _>(
-            &self.client,
-            req,
-            "Anthropic completion",
-            |completion| {
-                let span = tracing::Span::current();
-                span.record_response_metadata(completion);
-                span.record_token_usage(&crate::completion::Usage::from(&completion.usage));
-            },
-        )
-        .instrument(span)
-        .await
+        let (mut completion, provider_request_id) =
+            send_completion::<_, ApiResponse<CompletionResponse>, _>(
+                &self.client,
+                req,
+                "Anthropic completion",
+                Ext::REQUEST_ID_HEADER,
+                |completion| {
+                    let span = tracing::Span::current();
+                    span.record_response_metadata(completion);
+                    span.record_token_usage(&crate::completion::Usage::from(&completion.usage));
+                },
+            )
+            .instrument(span)
+            .await?;
+        completion.provider_request_id = provider_request_id;
+        Ok(completion)
     }
 }
 
@@ -6027,6 +6044,7 @@ mod tests {
             role: "assistant".to_string(),
             stop_reason: Some("end_turn".to_string()),
             stop_sequence: None,
+            provider_request_id: None,
             usage: Usage {
                 input_tokens: 7,
                 cache_read_input_tokens: None,
@@ -6061,6 +6079,7 @@ mod tests {
             role: "assistant".to_string(),
             stop_reason: Some("tool_use".to_string()),
             stop_sequence: None,
+            provider_request_id: None,
             usage: Usage {
                 input_tokens: 7,
                 cache_read_input_tokens: None,
@@ -6134,6 +6153,7 @@ mod tests {
             role: "assistant".to_string(),
             stop_reason: Some("end_turn".to_string()),
             stop_sequence: None,
+            provider_request_id: None,
             usage: Usage {
                 input_tokens: 7,
                 cache_read_input_tokens: None,
@@ -6755,6 +6775,7 @@ mod tests {
             role: "assistant".into(),
             stop_reason: Some("end_turn".into()),
             stop_sequence: None,
+            provider_request_id: None,
             usage: Usage {
                 input_tokens: 1,
                 cache_read_input_tokens: None,

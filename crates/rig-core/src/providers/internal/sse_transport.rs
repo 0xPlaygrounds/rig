@@ -131,6 +131,37 @@ where
 }
 
 /// Open an SSE-backed wire stream: build the event source, run the transport
+/// Stamp the transport request id captured off the SSE connection onto the
+/// stream's terminal record. `slot` is filled at each successful (re)connect
+/// ([`crate::http_client::sse::GenericEventSource::capture_request_id`]), so
+/// by the time a terminal flows through here it holds the id of the
+/// connection that delivered it. With no slot (provider reports no request-id
+/// header), the stream passes through untouched and the terminal's id stays
+/// `None`.
+pub(crate) fn stamp_terminal_request_id<R>(
+    stream: crate::streaming::RawStreamingResult<R>,
+    slot: Option<crate::http_client::sse::RequestIdSlot>,
+    stamp: impl Fn(&mut R, String) + WasmCompatSend + 'static,
+) -> crate::streaming::RawStreamingResult<R>
+where
+    R: 'static,
+{
+    let Some(slot) = slot else {
+        return stream;
+    };
+    Box::pin(stream.map(move |item| {
+        item.map(|choice| match choice {
+            crate::streaming::RawStreamingChoice::FinalResponse(mut response) => {
+                if let Some(id) = slot.lock().ok().and_then(|guard| guard.clone()) {
+                    stamp(&mut response, id);
+                }
+                crate::streaming::RawStreamingChoice::FinalResponse(response)
+            }
+            other => other,
+        })
+    }))
+}
+
 /// preamble ([`sse_frames`]) with the wire's options and triage, and drive the
 /// frames through the shared adapter driver
 /// ([`run_wire_stream`](super::adapter::run_wire_stream)) under `span`.

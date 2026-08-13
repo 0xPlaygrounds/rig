@@ -212,6 +212,21 @@ macro_rules! response_metadata_setters {
                 self
             }
 
+            /// Attach the provider's transport-level request identifier.
+            pub fn with_provider_request_id(self, request_id: impl Into<String>) -> Self {
+                self.with_optional_provider_request_id(Some(request_id.into()))
+            }
+
+            /// Attach the provider's transport-level request identifier when
+            /// the provider reported one.
+            pub fn with_optional_provider_request_id(
+                mut self,
+                request_id: Option<impl Into<String>>,
+            ) -> Self {
+                self.provider_request_id = request_id.map(Into::into).filter(|id| !id.is_empty());
+                self
+            }
+
             /// Attach the provider-reported model identifier.
             ///
             /// An empty string is treated as absent, matching the identifier

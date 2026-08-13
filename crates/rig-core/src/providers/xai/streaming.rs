@@ -88,13 +88,21 @@ where
     T: HttpClientExt + Clone + 'static,
 {
     let span = tracing::Span::current();
-    let event_source = GenericEventSource::new(http_client, req);
+    let (event_source, request_id_slot) = GenericEventSource::new(http_client, req)
+        .capture_request_id(super::completion::REQUEST_ID_HEADER);
 
-    Ok(raw_stream_from_event_source_with_options(
+    let stream = raw_stream_from_event_source_with_options(
         event_source,
         span,
         ResponsesStreamOptions::strict_with_immediate_tool_calls(),
-    ))
+    );
+    Ok(
+        crate::providers::internal::sse_transport::stamp_terminal_request_id(
+            stream,
+            Some(request_id_slot),
+            |response, id| response.provider_request_id = Some(id),
+        ),
+    )
 }
 
 #[cfg(test)]

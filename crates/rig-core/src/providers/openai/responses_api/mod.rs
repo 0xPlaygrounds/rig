@@ -1197,6 +1197,12 @@ pub trait ResponsesProviderExt {
     /// shared wire type never mislabels them.
     const PROVIDER_NAME: &'static str = "openai";
 
+    /// Response header carrying the provider's transport request id, when the
+    /// provider reports one. Defaults to OpenAI's `x-request-id` because this
+    /// wire format is OpenAI's; a backend that omits the header simply yields
+    /// `None`, never an error.
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
+
     /// Where Rig system instructions are placed in requests built from this
     /// provider. See [`SystemInstructionsPlacement`].
     ///
@@ -1550,6 +1556,11 @@ pub struct CompletionResponse {
     /// Provider-specific top-level reasoning content returned by some
     /// OpenAI-compatible Responses implementations.
     pub provider_reasoning: Option<String>,
+    /// The transport request id from the `x-request-id` response header — not
+    /// part of the response body; stamped by the request driver, so wire
+    /// deserialization always leaves it `None` and the manual `Serialize`
+    /// (which mirrors the wire body) never emits it.
+    pub provider_request_id: Option<String>,
     /// The complete object-shaped top-level reasoning metadata returned by the provider.
     ///
     /// Unknown fields, unknown values, and null-valued members inside the object
@@ -1703,6 +1714,7 @@ impl<'de> Deserialize<'de> for CompletionResponse {
             max_output_tokens: response.max_output_tokens,
             model: response.model,
             provider_reasoning,
+            provider_request_id: None,
             reasoning_metadata,
             reasoning_context,
             usage: response.usage,
@@ -2452,23 +2464,27 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        send_completion::<_, DirectPayload<CompletionResponse>, _>(
-            &self.client,
-            req,
-            "OpenAI Responses completion",
-            |response| {
-                let span = tracing::Span::current();
-                span.record_response_metadata(response);
-                let usage = response
-                    .usage
-                    .as_ref()
-                    .map(crate::completion::Usage::from)
-                    .unwrap_or_default();
-                span.record_token_usage(&usage);
-            },
-        )
-        .instrument(span)
-        .await
+        let (mut response, provider_request_id) =
+            send_completion::<_, DirectPayload<CompletionResponse>, _>(
+                &self.client,
+                req,
+                "OpenAI Responses completion",
+                Ext::REQUEST_ID_HEADER,
+                |response| {
+                    let span = tracing::Span::current();
+                    span.record_response_metadata(response);
+                    let usage = response
+                        .usage
+                        .as_ref()
+                        .map(crate::completion::Usage::from)
+                        .unwrap_or_default();
+                    span.record_token_usage(&usage);
+                },
+            )
+            .instrument(span)
+            .await?;
+        response.provider_request_id = provider_request_id;
+        Ok(response)
     }
 }
 
@@ -2587,6 +2603,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
         Ok(completion::CompletionResponse::new(choice, usage, provider)
             .with_optional_message_id(message_id)
             .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+            .with_optional_provider_request_id(response.provider_request_id.clone())
             .with_optional_model(Some(response.model.as_str()).filter(|model| !model.is_empty()))
             .with_optional_finish_reason(finish_reason))
     }

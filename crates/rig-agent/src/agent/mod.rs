@@ -127,7 +127,7 @@ pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };
 pub use prompt_request::{
-    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, Standard,
+    CallIdentity, CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, Standard,
     TypedPromptRequest, TypedPromptResponse,
 };
 pub use rig_core::message::Text;

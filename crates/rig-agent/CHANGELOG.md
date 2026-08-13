@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(agent)* response identity metadata reaches every observer surface (#2265): the `CompletionResponse` and `StreamResponseFinish` hook events gain `response_id` and `provider_request_id`, and `PromptResponse.completion_calls` entries gain `message_id`, `response_id`, and `provider_request_id` (serde-defaulted, so persisted run JSON loads) — each describing the exact attempt, not stale run state. `CallIdentity` is the carrier passed to `AgentRun::record_streamed_completion_call` and attached via `CompletionCall::with_identity`; `ModelTurn` gains `response_id`/`provider_request_id` with a `with_identity` builder. [**breaking**] `CompletionCall` is no longer `Copy` (the identity fields carry owned strings); `record_streamed_completion_call` takes the identity as a second argument; the two hook events have new fields (constructible only by the runner in practice)
+
 ### Changed
 
 - *(agent)* [**breaking**] persisted histories and `AgentRun`/`PromptResponse` JSON carry rig-core's tagged assistant content (`{"type": "text", ...}`); the untagged shape does not load — see rig-core's entry and MIGRATING. The flatten `Some({})` round-trip artifact is gone, so `is_empty_assistant_turn`'s classification is identical before and after a persist/restore with no special-casing

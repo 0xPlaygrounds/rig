@@ -76,6 +76,11 @@ pub struct StreamingCompletionResponse {
     /// The model identifier reported by the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The transport request id from the SSE connection's `x-request-id`
+    /// response header — not part of any stream frame; stamped by the
+    /// transport. `None` when the provider did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 impl StreamingCompletionResponse {
@@ -84,6 +89,7 @@ impl StreamingCompletionResponse {
     pub fn new(usage: ResponsesUsage) -> Self {
         Self {
             usage,
+            provider_request_id: None,
             reasoning_metadata: None,
             reasoning_context: None,
             status: None,
@@ -114,6 +120,7 @@ impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(response.message_id)
             .with_optional_response_id(response.response_id)
+            .with_optional_provider_request_id(response.provider_request_id)
             .with_optional_model(response.model)
     }
 }
@@ -815,6 +822,8 @@ impl RawChoiceAccumulator {
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
                 usage: self.final_usage,
+                // Stamped by the transport layer.
+                provider_request_id: None,
                 reasoning_metadata: self.reasoning_metadata,
                 reasoning_context: self.reasoning_context,
                 status: self.status,
@@ -1530,8 +1539,22 @@ where
         .build();
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
+        let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {
+            Some(header) => {
+                let (event_source, slot) = event_source.capture_request_id(header);
+                (event_source, Some(slot))
+            }
+            None => (event_source, None),
+        };
 
-        Ok(raw_stream_from_event_source(event_source, span))
+        let stream = raw_stream_from_event_source(event_source, span);
+        Ok(
+            crate::providers::internal::sse_transport::stamp_terminal_request_id(
+                stream,
+                request_id_slot,
+                |response, id| response.provider_request_id = Some(id),
+            ),
+        )
     }
 
     pub(crate) async fn stream(
@@ -1765,6 +1788,7 @@ mod tests {
         CompletionResponse {
             id: "resp_123".to_string(),
             object: ResponseObject::Response,
+            provider_request_id: None,
             created_at: 0,
             status,
             error: None,

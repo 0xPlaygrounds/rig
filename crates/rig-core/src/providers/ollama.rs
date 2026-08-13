@@ -735,13 +735,22 @@ where
             _,
             internal::envelope::DirectPayload<CompletionResponse>,
             _,
-        >(&self.client, req, "Ollama completion", |response| {
-            let span = tracing::Span::current();
-            span.record_response_metadata(response);
-            span.record_token_usage(&Usage::from(response));
-        });
+        >(
+            &self.client,
+            req,
+            "Ollama completion",
+            // A local Ollama server reports no request-id response header.
+            None,
+            |response| {
+                let span = tracing::Span::current();
+                span.record_response_metadata(response);
+                span.record_token_usage(&Usage::from(response));
+            },
+        );
 
-        tracing::Instrument::instrument(async_block, span).await
+        tracing::Instrument::instrument(async_block, span)
+            .await
+            .map(|(payload, _)| payload)
     }
 
     /// Open a stream whose terminal record stays Ollama-native.

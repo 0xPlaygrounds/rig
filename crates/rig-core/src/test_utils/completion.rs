@@ -56,6 +56,7 @@ struct MockTurnResponse {
     usage: Usage,
     message_id: Option<String>,
     response_id: Option<String>,
+    provider_request_id: Option<String>,
 }
 
 impl MockTurn {
@@ -98,6 +99,7 @@ impl MockTurn {
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
+                provider_request_id: None,
             }),
         }
     }
@@ -113,6 +115,7 @@ impl MockTurn {
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
+                provider_request_id: None,
             }),
         }
     }
@@ -155,12 +158,21 @@ impl MockTurn {
         self
     }
 
+    /// Set a provider transport request id for this turn.
+    pub fn with_provider_request_id(mut self, request_id: impl Into<String>) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.provider_request_id = Some(request_id.into());
+        }
+        self
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(
             CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER)
                 .with_optional_message_id(response.message_id)
-                .with_optional_response_id(response.response_id),
+                .with_optional_response_id(response.response_id)
+                .with_optional_provider_request_id(response.provider_request_id),
         )
     }
 }

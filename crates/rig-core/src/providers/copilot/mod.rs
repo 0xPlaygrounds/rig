@@ -757,6 +757,10 @@ where
             &self.client,
             req,
             "Copilot chat completion",
+            // The OpenAI-compatible default; a gateway that omits the header
+            // yields None. Matches the streaming path, which goes through the
+            // shared OpenAI wrapper and captures the same header.
+            Some("x-request-id"),
             |response| {
                 let span = tracing::Span::current();
                 span.record_response_metadata(response);
@@ -770,6 +774,7 @@ where
         )
         .instrument(span)
         .await
+        .map(|(payload, _)| payload)
     }
 
     async fn raw_completion_responses(
@@ -799,6 +804,8 @@ where
             &self.client,
             req,
             "Copilot responses completion",
+            // See the chat path: the OpenAI-compatible default header.
+            Some("x-request-id"),
             |response| {
                 let span = tracing::Span::current();
                 span.record("gen_ai.response.id", response.id.as_str());
@@ -810,6 +817,7 @@ where
         )
         .instrument(span)
         .await
+        .map(|(payload, _)| payload)
     }
 
     async fn raw_stream_chat(

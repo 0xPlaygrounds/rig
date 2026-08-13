@@ -294,6 +294,11 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     /// the driver owns the unknown/corrupt policy.
     fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>>;
 
+    /// Stamp the transport request id (captured off the SSE connection's
+    /// response headers) onto the profile's terminal record. The default
+    /// drops it — for profiles whose terminal has no slot for it.
+    fn stamp_request_id(_response: &mut Self::FinalResponse, _request_id: String) {}
+
     /// Build the provider's own terminal record from the stream's terminal
     /// state. The record stays provider-native for `raw_stream`; the normalized
     /// path maps it once through [`crate::streaming::normalize_stream`].
@@ -649,17 +654,27 @@ where
 pub(crate) async fn send_compatible_raw_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
+    request_id_header: Option<&str>,
     profile: P,
 ) -> Result<streaming::RawStreamingResult<P::FinalResponse>, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
 {
+    let event_source = GenericEventSource::new(http_client, req);
+    let (event_source, request_id_slot) = match request_id_header {
+        Some(header) => {
+            let (event_source, slot) = event_source.capture_request_id(header);
+            (event_source, Some(slot))
+        }
+        None => (event_source, None),
+    };
+
     // The wire's in-band provider error envelope is a terminal transport
     // condition, detected pre-classification exactly as an HTTP failure
     // would be.
-    Ok(super::sse_transport::open_wire_stream(
-        GenericEventSource::new(http_client, req),
+    let stream = super::sse_transport::open_wire_stream(
+        event_source,
         SseTransportOptions {
             open_log: OpenLog::Trace,
             stream_ended_is_error: false,
@@ -681,6 +696,11 @@ where
         },
         CompatAdapter::new(profile),
         tracing::Span::current(),
+    );
+    Ok(super::sse_transport::stamp_terminal_request_id(
+        stream,
+        request_id_slot,
+        P::stamp_request_id,
     ))
 }
 
@@ -821,7 +841,7 @@ mod tests {
         T: crate::http_client::HttpClientExt + Clone + 'static,
         P: CompatibleStreamProfile<FinalResponse = crate::streaming::StreamFinal> + 'static,
     {
-        let raw = send_compatible_raw_streaming_request(http_client, req, profile).await?;
+        let raw = send_compatible_raw_streaming_request(http_client, req, None, profile).await?;
         Ok(crate::streaming::StreamingCompletionResponse::stream(
             "test-compatible",
             crate::streaming::normalize_stream(raw, Ok),

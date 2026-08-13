@@ -70,6 +70,12 @@ pin_project! {
     }
 }
 
+/// Shared slot for the transport request id captured off an SSE connection's
+/// response headers. Written on every successful (re)connect — so a reader at
+/// stream end sees the id of the connection that delivered the terminal — and
+/// left untouched when the provider omits the header.
+pub type RequestIdSlot = std::sync::Arc<std::sync::Mutex<Option<String>>>;
+
 pin_project! {
     /// A generic SSE event source that works with any [`HttpClientExt`] implementation.
     #[project = GenericEventSourceProjection]
@@ -79,6 +85,7 @@ pin_project! {
         retry_policy: Retry,
         last_event_id: Option<String>,
         allow_missing_content_type: bool,
+        request_id_capture: Option<(String, RequestIdSlot)>,
         #[pin]
         state: SourceState,
     }
@@ -100,6 +107,7 @@ where
             retry_policy: DEFAULT_RETRY,
             last_event_id: None,
             allow_missing_content_type: false,
+            request_id_capture: None,
             state,
         }
     }
@@ -107,6 +115,15 @@ where
     pub fn allow_missing_content_type(mut self) -> Self {
         self.allow_missing_content_type = true;
         self
+    }
+
+    /// Capture the named response header from each successful (re)connect into
+    /// the returned [`RequestIdSlot`]. A connection whose response omits the
+    /// header leaves the slot unchanged.
+    pub fn capture_request_id(mut self, header: impl Into<String>) -> (Self, RequestIdSlot) {
+        let slot = RequestIdSlot::default();
+        self.request_id_capture = Some((header.into(), slot.clone()));
+        (self, slot)
     }
 
     /// Create a response future for connecting/reconnecting
@@ -179,6 +196,10 @@ where
                             match check_response(response, *this.allow_missing_content_type) {
                                 Ok(response) => {
                                     // Transition: Connecting -> Open
+                                    capture_request_id_header(
+                                        this.request_id_capture.as_ref(),
+                                        &response,
+                                    );
                                     let mut event_stream = response.into_body().eventsource();
                                     if let Some(id) = &this.last_event_id {
                                         event_stream.set_last_event_id(id.clone());
@@ -223,6 +244,10 @@ where
                             match check_response(response, *this.allow_missing_content_type) {
                                 Ok(response) => {
                                     // Transition: Reconnecting -> Open (retry cycle complete)
+                                    capture_request_id_header(
+                                        this.request_id_capture.as_ref(),
+                                        &response,
+                                    );
                                     let mut event_stream = response.into_body().eventsource();
                                     if let Some(id) = &this.last_event_id {
                                         event_stream.set_last_event_id(id.clone());
@@ -333,6 +358,21 @@ where
                 }
             }
         }
+    }
+}
+
+/// Write the configured request-id response header into the shared slot; a
+/// response without the header leaves the slot unchanged.
+fn capture_request_id_header<T>(capture: Option<&(String, RequestIdSlot)>, response: &Response<T>) {
+    if let Some((header, slot)) = capture
+        && let Some(value) = response
+            .headers()
+            .get(header.as_str())
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty())
+        && let Ok(mut slot) = slot.lock()
+    {
+        *slot = Some(value.to_string());
     }
 }
 

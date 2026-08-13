@@ -79,8 +79,11 @@ async fn run_streamed_turn(
                 StreamedTurnEvent::EmitToolCallDelta { .. } => {}
                 StreamedTurnEvent::Completed { usage, .. } => {
                     if !recorded {
-                        run.record_streamed_completion_call(usage)
-                            .expect("completion call should record while the turn is pending");
+                        run.record_streamed_completion_call(
+                            usage,
+                            rig::agent::CallIdentity::default(),
+                        )
+                        .expect("completion call should record while the turn is pending");
                         recorded = true;
                     }
                 }
@@ -107,7 +110,7 @@ async fn run_streamed_turn(
                                 } => {
                                     let drained_usage = drain_stream_usage(&mut stream).await;
                                     if !recorded {
-                                        run.record_streamed_completion_call(drained_usage).expect(
+                                        run.record_streamed_completion_call(drained_usage, rig::agent::CallIdentity::default()).expect(
                                             "abandoned turns may still record their completion call",
                                         );
                                     }
@@ -128,7 +131,7 @@ async fn run_streamed_turn(
         "the provider stream should end consistently"
     );
     if !recorded {
-        run.record_streamed_completion_call(Usage::new())
+        run.record_streamed_completion_call(Usage::new(), rig::agent::CallIdentity::default())
             .expect("turns without provider usage still record a completion call");
     }
     let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.choice);
@@ -156,7 +159,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::new()).is_err(),
+                fresh.record_streamed_completion_call(Usage::new(), rig::agent::CallIdentity::default()).is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 

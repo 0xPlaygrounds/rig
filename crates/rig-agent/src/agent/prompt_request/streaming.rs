@@ -1055,7 +1055,20 @@ impl TurnSource for StreamingTurnSource {
                         if usage.has_values() {
                             record_usage_on_span(&chat_span, usage);
                         }
-                        match run.record_streamed_completion_call(usage) {
+                        // The terminal record (when the provider delivered
+                        // one) carries this attempt's identity metadata.
+                        let identity = crate::agent::prompt_request::CallIdentity {
+                            message_id: stream.message_id.clone(),
+                            response_id: stream
+                                .response
+                                .as_ref()
+                                .and_then(|response| response.response_id.clone()),
+                            provider_request_id: stream
+                                .response
+                                .as_ref()
+                                .and_then(|response| response.provider_request_id.clone()),
+                        };
+                        match run.record_streamed_completion_call(usage, identity) {
                             Ok(call) => {
                                 completion_call_emitted = true;
                                 Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
@@ -1316,7 +1329,7 @@ impl TurnSource for StreamingTurnSource {
             // inline (not `emit_completion_call!`) so it doesn't emit a dead
             // `completion_call_emitted = true` write.
             if !completion_call_emitted {
-                match run.record_streamed_completion_call(crate::completion::Usage::new()) {
+                match run.record_streamed_completion_call(crate::completion::Usage::new(), crate::agent::prompt_request::CallIdentity::default()) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
                         yield Err(Box::new(err).into());
@@ -1339,6 +1352,14 @@ impl TurnSource for StreamingTurnSource {
                                 content: &streamed_turn.choice,
                                 usage: last_usage,
                                 message_id: streamed_turn.message_id.as_deref(),
+                                response_id: stream
+                                    .response
+                                    .as_ref()
+                                    .and_then(|response| response.response_id.as_deref()),
+                                provider_request_id: stream
+                                    .response
+                                    .as_ref()
+                                    .and_then(|response| response.provider_request_id.as_deref()),
                             },
                         )
                         .await,
