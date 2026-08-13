@@ -84,6 +84,7 @@ client::impl_capabilities!(
     GroqExt,
     completion = CompletionModel<H>,
     transcription = TranscriptionModel<H>,
+    model_listing = GroqModelLister<H>,
 );
 
 impl DebugExt for GroqExt {}
@@ -106,6 +107,17 @@ pub type CompletionModel<H = reqwest::Client> =
 /// final item of the stream returned by `CompletionModel::raw_stream`. Shared
 /// with the OpenAI Chat Completions path, usage payload included.
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the Groq
+    /// API (`GET /models`), the same endpoint [`GroqExt::VERIFY_PATH`] already
+    /// uses to verify credentials.
+    GroqModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "Groq",
+    "/models"
+);
 
 client::impl_provider_client!(Client, input = String, api_key_env = "GROQ_API_KEY");
 
@@ -549,5 +561,89 @@ mod tests {
             Some(http::StatusCode::BAD_REQUEST)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    /// The lister must hit `<base>/models` — the same path `VERIFY_PATH`
+    /// already uses — and map the OpenAI-style envelope onto `Model`s.
+    #[tokio::test]
+    async fn list_models_uses_the_models_endpoint() {
+        use crate::client::ModelListingClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let http_client = RecordingHttpClient::new(
+            r#"{
+                "object": "list",
+                "data": [
+                    {"id": "llama-3.1-8b-instant", "object": "model", "created": 1693721698, "owned_by": "Meta"},
+                    {"id": "whisper-large-v3", "object": "model", "owned_by": "OpenAI"}
+                ]
+            }"#,
+        );
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        let models = client
+            .list_models()
+            .await
+            .expect("list_models should succeed");
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models.data[0].id, "llama-3.1-8b-instant");
+        assert_eq!(models.data[0].created_at, Some(1693721698));
+        assert_eq!(models.data[0].owned_by.as_deref(), Some("Meta"));
+        assert_eq!(models.data[1].id, "whisper-large-v3");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].uri, "https://api.groq.com/openai/v1/models");
+    }
+
+    /// A non-success listing response keeps the provider label, path, status,
+    /// and body preview instead of collapsing into a bare transport error.
+    #[tokio::test]
+    async fn list_models_preserves_api_error_context() {
+        use crate::client::ModelListingClient;
+        use crate::model::ModelListingError;
+        use crate::test_utils::RecordingHttpClient;
+
+        let http_client = RecordingHttpClient::with_error(
+            http::StatusCode::UNAUTHORIZED,
+            r#"{"error":{"message":"Invalid API Key"}}"#,
+        );
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+
+        let error = client
+            .list_models()
+            .await
+            .expect_err("list_models should fail");
+
+        match error {
+            ModelListingError::ApiError {
+                status_code,
+                message,
+            } => {
+                assert_eq!(status_code, 401);
+                assert!(
+                    message.contains("Groq"),
+                    "message should name the provider: {message}"
+                );
+                assert!(
+                    message.contains("/models"),
+                    "message should name the path: {message}"
+                );
+                assert!(
+                    message.contains("Invalid API Key"),
+                    "message should preserve the body: {message}"
+                );
+            }
+            other => panic!("expected an API error, got {other:?}"),
+        }
     }
 }

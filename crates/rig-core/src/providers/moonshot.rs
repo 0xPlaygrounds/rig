@@ -52,7 +52,23 @@ impl_dual_dialect_provider!(
     anthropic_base_url_env = "MOONSHOT_ANTHROPIC_API_BASE",
 );
 
-client::impl_capabilities!(MoonshotExt, completion = CompletionModel<H>);
+client::impl_capabilities!(
+    MoonshotExt,
+    completion = CompletionModel<H>,
+    model_listing = MoonshotModelLister<H>,
+);
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for
+    /// Moonshot's OpenAI-compatible API (`GET /models`). The path is relative
+    /// to the configured base URL, so it follows the client between the global
+    /// and China hosts.
+    MoonshotModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "Moonshot",
+    "/models"
+);
 
 impl<H> ClientBuilder<H> {
     pub fn global(self) -> Self {
@@ -365,6 +381,72 @@ mod tests {
         assert_eq!(
             override_url.as_deref(),
             Some("https://primary.example.com/anthropic")
+        );
+    }
+
+    /// The lister must hit `<base>/models` and map the OpenAI-style envelope
+    /// onto `Model`s, ignoring the provider's extra per-entry fields.
+    #[tokio::test]
+    async fn list_models_uses_the_models_endpoint() {
+        use crate::client::ModelListingClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let http_client = RecordingHttpClient::new(
+            r#"{
+                "object": "list",
+                "data": [
+                    {"id": "kimi-k2-thinking", "object": "model", "created": 1745884800, "owned_by": "moonshot", "context_length": 262144},
+                    {"id": "moonshot-v1-8k", "object": "model", "owned_by": "moonshot"}
+                ]
+            }"#,
+        );
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        let models = client
+            .list_models()
+            .await
+            .expect("list_models should succeed");
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models.data[0].id, "kimi-k2-thinking");
+        assert_eq!(models.data[0].created_at, Some(1745884800));
+        assert_eq!(models.data[0].owned_by.as_deref(), Some("moonshot"));
+        assert_eq!(models.data[1].id, "moonshot-v1-8k");
+        assert_eq!(models.data[1].created_at, None);
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].uri, "https://api.moonshot.ai/v1/models");
+    }
+
+    /// The listing path is relative to the configured base URL, so selecting
+    /// the China host moves the listing with it.
+    #[tokio::test]
+    async fn list_models_follows_the_configured_base_url() {
+        use crate::client::ModelListingClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let http_client = RecordingHttpClient::new(r#"{"object":"list","data":[]}"#);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .china()
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        let models = client
+            .list_models()
+            .await
+            .expect("list_models should succeed");
+
+        assert!(models.data.is_empty());
+        assert_eq!(
+            http_client.requests()[0].uri,
+            "https://api.moonshot.cn/v1/models"
         );
     }
 }

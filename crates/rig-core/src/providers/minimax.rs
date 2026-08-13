@@ -67,6 +67,19 @@ impl_dual_dialect_provider!(
 client::impl_capabilities!(
     MiniMaxExt,
     completion = super::openai::completion::GenericCompletionModel<MiniMaxExt, H>,
+    model_listing = MiniMaxModelLister<H>,
+);
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for
+    /// MiniMax's OpenAI-compatible API (`GET /models`). Only this dialect is
+    /// listed: MiniMax's Anthropic-compatible `/anthropic/v1/models` returns a
+    /// differently shaped payload, so [`MiniMaxAnthropicExt`] keeps no lister.
+    MiniMaxModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "MiniMax",
+    "/models"
 );
 
 impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {
@@ -168,6 +181,71 @@ mod tests {
         assert_eq!(
             override_url.as_deref(),
             Some("https://primary.example.com/anthropic")
+        );
+    }
+
+    /// The lister must hit `<base>/models` and map MiniMax's OpenAI-style
+    /// envelope onto `Model`s.
+    #[tokio::test]
+    async fn list_models_uses_the_models_endpoint() {
+        use crate::client::ModelListingClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let http_client = RecordingHttpClient::new(
+            r#"{
+                "object": "list",
+                "data": [
+                    {"id": "MiniMax-M2.7", "object": "model", "created": 1780272000, "owned_by": "minimax"},
+                    {"id": "MiniMax-M2", "object": "model", "created": 1761782400, "owned_by": "minimax"}
+                ]
+            }"#,
+        );
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        let models = client
+            .list_models()
+            .await
+            .expect("list_models should succeed");
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models.data[0].id, "MiniMax-M2.7");
+        assert_eq!(models.data[0].created_at, Some(1780272000));
+        assert_eq!(models.data[0].owned_by.as_deref(), Some("minimax"));
+        assert_eq!(models.data[1].id, "MiniMax-M2");
+
+        let requests = http_client.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].uri, "https://api.minimax.io/v1/models");
+    }
+
+    /// The listing path is relative to the configured base URL, so selecting
+    /// the China host moves the listing with it.
+    #[tokio::test]
+    async fn list_models_follows_the_configured_base_url() {
+        use crate::client::ModelListingClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        let http_client = RecordingHttpClient::new(r#"{"object":"list","data":[]}"#);
+        let client = super::Client::builder()
+            .api_key("test-key")
+            .china()
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        let models = client
+            .list_models()
+            .await
+            .expect("list_models should succeed");
+
+        assert!(models.data.is_empty());
+        assert_eq!(
+            http_client.requests()[0].uri,
+            "https://api.minimaxi.com/v1/models"
         );
     }
 }
