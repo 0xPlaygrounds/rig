@@ -1,11 +1,21 @@
 //! Types that replace the AWS Bedrock Runtime SDK's `ConverseOutput` type.
 //! This is required so that we can impl Serialize and Deserialize.
 //!
-//! Only the parts of the Converse response that rig actually reads are
-//! mirrored as typed structs. Model-specific extras
+//! Rig's normalized [`CompletionResponse`](rig_core::completion::CompletionResponse)
+//! reads only part of the Converse response, but this type is what
+//! `raw_completion` hands back — the escape hatch whose whole purpose is that
+//! nothing the provider sent has been thrown away. Model-specific extras
 //! (`additional_model_response_fields`) are carried as plain
-//! [`serde_json::Value`]; the guardrail-assessment trace and performance
-//! configuration (telemetry-only, never read) are not mirrored.
+//! [`serde_json::Value`].
+//!
+//! The guardrail trace, performance configuration and service tier keep the
+//! SDK's own types rather than gaining hand-written mirrors: they are deeply
+//! nested (a guardrail assessment alone is a dozen types), and a mirror that
+//! drifts from the SDK would reintroduce exactly the silent loss this exists
+//! to prevent. Those three are `#[serde(skip)]` because the SDK types are not
+//! `Serialize`, so a serialized `InternalConverseOutput` — a cassette fixture,
+//! a persisted response — omits them while an in-process caller reads them in
+//! full.
 use std::fmt;
 
 use aws_sdk_bedrockruntime::types as aws_bedrock;
@@ -28,11 +38,41 @@ pub struct InternalConverseOutput {
     pub metrics: Option<ConverseMetrics>,
     /// <p>Additional fields in the response that are unique to the model.</p>
     pub additional_model_response_fields: Option<serde_json::Value>,
+    /// The AWS request id, taken from the response's `x-amzn-RequestId`
+    /// header. Always present on a successful call, and the identifier AWS
+    /// support asks for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    /// <p>A trace object that contains information about the Guardrail behavior.</p>
+    ///
+    /// Populated when the request carried a guardrail configuration with
+    /// tracing enabled (see
+    /// [`CompletionModel::with_guardrail`](crate::completion::CompletionModel::with_guardrail));
+    /// it is the only place Bedrock explains *why* a turn stopped with
+    /// [`StopReason::GuardrailIntervened`].
+    #[serde(skip)]
+    pub trace: Option<aws_bedrock::ConverseTrace>,
+    /// <p>Model performance settings for the request.</p>
+    #[serde(skip)]
+    pub performance_config: Option<aws_bedrock::PerformanceConfiguration>,
+    /// <p>The processing tier used to serve the request.</p>
+    #[serde(skip)]
+    pub service_tier: Option<aws_bedrock::ServiceTier>,
 }
 
 impl InternalConverseOutput {
     pub fn usage(&self) -> Option<&TokenUsage> {
         self.usage.as_ref()
+    }
+
+    /// Bedrock's guardrail trace for this turn, when one was requested.
+    pub fn trace(&self) -> Option<&aws_bedrock::ConverseTrace> {
+        self.trace.as_ref()
+    }
+
+    /// The AWS request id for this call.
+    pub fn request_id(&self) -> Option<&str> {
+        self.request_id.as_deref()
     }
 }
 
@@ -44,12 +84,27 @@ impl TryFrom<aws_sdk_bedrockruntime::operation::converse::ConverseOutput>
     fn try_from(
         value: aws_sdk_bedrockruntime::operation::converse::ConverseOutput,
     ) -> Result<Self, Self::Error> {
+        // The request id is only reachable through the trait, and only before
+        // the struct is destructured.
+        let request_id =
+            aws_sdk_bedrockruntime::operation::RequestId::request_id(&value).map(str::to_string);
+
+        // `ConverseOutput` is `#[non_exhaustive]` and hides `_request_id`, so
+        // the rest pattern is mandatory and cannot be traded for a
+        // compile-time guard: every field the SDK adds arrives here silently.
+        // That is how the guardrail trace, performance config and service tier
+        // came to be dropped, so the list below is checked against the SDK
+        // type when the dependency moves, and `converse_output_carries_every_
+        // sdk_field` pins the ones known today.
         let aws_sdk_bedrockruntime::operation::converse::ConverseOutput {
             output,
             stop_reason,
             usage,
             metrics,
             additional_model_response_fields,
+            trace,
+            performance_config,
+            service_tier,
             ..
         } = value;
 
@@ -60,6 +115,10 @@ impl TryFrom<aws_sdk_bedrockruntime::operation::converse::ConverseOutput>
             metrics: metrics.map(|x| x.try_into()).transpose()?,
             additional_model_response_fields: additional_model_response_fields
                 .map(|doc| AwsDocument(doc).into()),
+            request_id,
+            trace,
+            performance_config,
+            service_tier,
         })
     }
 }
@@ -1129,6 +1188,101 @@ impl TryFrom<ToolUseBlock> for aws_bedrock::ToolUseBlock {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// The escape hatch's contract is that nothing the provider sent was
+    /// dropped, and the SDK's output type is `#[non_exhaustive]`, so the
+    /// conversion's rest pattern hides every field added upstream. This pins
+    /// the ones known today — `trace`, `performance_config` and `service_tier`
+    /// were all silently discarded before.
+    #[test]
+    fn converse_output_carries_every_sdk_field() {
+        let sdk_output = aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
+            .stop_reason(aws_bedrock::StopReason::GuardrailIntervened)
+            .output(aws_bedrock::ConverseOutput::Message(
+                aws_bedrock::Message::builder()
+                    .role(aws_bedrock::ConversationRole::Assistant)
+                    .content(aws_bedrock::ContentBlock::Text("blocked".into()))
+                    .build()
+                    .unwrap(),
+            ))
+            .usage(
+                aws_bedrock::TokenUsage::builder()
+                    .input_tokens(1)
+                    .output_tokens(2)
+                    .total_tokens(3)
+                    .build()
+                    .unwrap(),
+            )
+            .metrics(
+                aws_bedrock::ConverseMetrics::builder()
+                    .latency_ms(4)
+                    .build()
+                    .unwrap(),
+            )
+            .trace(
+                aws_bedrock::ConverseTrace::builder()
+                    .guardrail(aws_bedrock::GuardrailTraceAssessment::builder().build())
+                    .build(),
+            )
+            .performance_config(
+                aws_bedrock::PerformanceConfiguration::builder()
+                    .latency(aws_bedrock::PerformanceConfigLatency::Standard)
+                    .build(),
+            )
+            .service_tier(
+                aws_bedrock::ServiceTier::builder()
+                    .r#type(aws_bedrock::ServiceTierType::Default)
+                    .build()
+                    .unwrap(),
+            )
+            .build()
+            .unwrap();
+
+        let mirrored = InternalConverseOutput::try_from(sdk_output).unwrap();
+
+        assert!(mirrored.output.is_some());
+        assert_eq!(mirrored.stop_reason, StopReason::GuardrailIntervened);
+        assert!(mirrored.usage.is_some());
+        assert!(mirrored.metrics.is_some());
+        assert!(
+            mirrored.trace().is_some(),
+            "the guardrail trace must survive the conversion"
+        );
+        assert!(
+            mirrored.performance_config.is_some(),
+            "the performance configuration must survive the conversion"
+        );
+        assert!(
+            mirrored.service_tier.is_some(),
+            "the service tier must survive the conversion"
+        );
+    }
+
+    /// The SDK types behind `trace`, `performance_config` and `service_tier`
+    /// are not `Serialize`, so they are `#[serde(skip)]`: serializing must
+    /// still succeed and must not invent values on the way back.
+    #[test]
+    fn skipped_provider_fields_round_trip_as_absent() {
+        let output = InternalConverseOutput {
+            output: None,
+            stop_reason: StopReason::EndTurn,
+            usage: None,
+            metrics: None,
+            additional_model_response_fields: None,
+            request_id: Some("req-1".to_string()),
+            trace: None,
+            performance_config: None,
+            service_tier: None,
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        let restored: InternalConverseOutput = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(restored.request_id(), Some("req-1"));
+        assert!(restored.trace().is_none());
+        assert!(restored.performance_config.is_none());
+        assert!(restored.service_tier.is_none());
+    }
 
     #[test]
     fn mirror_enum_converts_known_variants_both_ways() {
