@@ -8,6 +8,7 @@ use crate::{
     },
 };
 
+use aws_sdk_bedrockruntime::types as aws_bedrock;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::streaming::StreamingCompletionResponse;
 use rig_core::telemetry::ProviderResponseExt;
@@ -127,6 +128,9 @@ pub struct CompletionModel {
     /// A checkpoint is placed after the system prompt and after the last message
     /// in the chat history. Disabled by default.
     pub prompt_caching: bool,
+    /// Guardrail applied to every Converse request from this model, if any.
+    /// Set through [`CompletionModel::with_guardrail`].
+    pub guardrail: Option<aws_bedrock::GuardrailConfiguration>,
 }
 
 impl CompletionModel {
@@ -135,6 +139,7 @@ impl CompletionModel {
             client,
             model: model.into(),
             prompt_caching: false,
+            guardrail: None,
         }
     }
 
@@ -155,6 +160,33 @@ impl CompletionModel {
     /// support table for current limits and field support.
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
+        self
+    }
+
+    /// Apply a [Bedrock guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html)
+    /// to every Converse request this model issues.
+    ///
+    /// `identifier` is the guardrail id or ARN and `version` its version (or
+    /// `DRAFT`). When `trace` is enabled, Bedrock returns its assessment on
+    /// [`InternalConverseOutput::trace`](crate::types::converse_output::InternalConverseOutput::trace) —
+    /// the only place it explains *why* a turn came back with
+    /// [`StopReason::GuardrailIntervened`](crate::types::converse_output::StopReason::GuardrailIntervened),
+    /// which the normalized response reports as a content filter and nothing
+    /// more. Reach it through
+    /// [`raw_completion`](CompletionModel::raw_completion).
+    pub fn with_guardrail(
+        mut self,
+        identifier: impl Into<String>,
+        version: impl Into<String>,
+        trace: aws_bedrock::GuardrailTrace,
+    ) -> Self {
+        self.guardrail = Some(
+            aws_bedrock::GuardrailConfiguration::builder()
+                .guardrail_identifier(identifier)
+                .guardrail_version(version)
+                .trace(trace)
+                .build(),
+        );
         self
     }
 }
@@ -210,7 +242,8 @@ impl CompletionModel {
             .set_tool_config(tool_config)
             .set_system(request.system_prompt()?)
             .set_messages(Some(messages))
-            .set_output_config(output_config);
+            .set_output_config(output_config)
+            .set_guardrail_config(self.guardrail.clone());
 
         async move {
             let response = converse_builder.send().await.map_err(|sdk_error| {

@@ -1,6 +1,16 @@
-pub(crate) mod assistant_content;
+//! Bedrock wire types.
+//!
+//! `converse_output` and `assistant_content` are public because
+//! [`CompletionModel::raw_completion`](crate::completion::CompletionModel::raw_completion)
+//! returns `assistant_content::AwsConverseOutput`, which wraps
+//! `converse_output::InternalConverseOutput`: an escape hatch whose type a
+//! caller cannot name is only half an escape hatch. The remaining modules are
+//! request-side conversions with no public return type.
+
+pub mod assistant_content;
+pub mod converse_output;
+
 pub(crate) mod completion_request;
-pub(crate) mod converse_output;
 pub(crate) mod document;
 pub(crate) mod errors;
 pub(crate) mod image;

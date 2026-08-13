@@ -1754,7 +1754,12 @@ const SENSITIVE_QUERY_PARAMS: &[&str] = &[
 // modeled exception; dropping it made every recorded AWS error replay as an
 // unclassified `Unhandled` error, so a cassette could not reproduce the error
 // path it recorded. The value is an exception class name, not account state.
-const RESPONSE_HEADER_ALLOWLIST: &[&str] = &["content-type", "x-amzn-errortype"];
+// `x-amzn-requestid` is the only place the AWS request id appears — the SDK
+// reads it off the header, not the body — so a cassette that drops it cannot
+// replay any behavior that reads the id. It is a per-call opaque identifier,
+// not account state, and the scrubber placeholders its value.
+const RESPONSE_HEADER_ALLOWLIST: &[&str] =
+    &["content-type", "x-amzn-errortype", "x-amzn-requestid"];
 
 const VOLATILE_JSON_KEYS: &[&str] = &[
     "completed_at",
@@ -1773,6 +1778,9 @@ const SENSITIVE_STRING_KEYS: &[&str] = &[
     "signature",
     "thoughtsignature",
 ];
+
+/// Allowlisted response headers whose value is a generated per-call id.
+const GENERATED_ID_HEADERS: &[&str] = &["x-amzn-requestid"];
 
 const GENERATED_ID_KEYS: &[&str] = &[
     "call_id",
@@ -1840,6 +1848,15 @@ impl CassetteScrubber {
 
     fn scrub_response(&mut self, response: &mut CassetteResponse) {
         scrub_headers(self.policy, &mut response.header, HeaderMode::Response);
+
+        // An allowlisted header is kept for its *shape*, not its value: the
+        // request id is a per-call generated token and gets the same
+        // placeholder treatment as one carried in a body.
+        for header in response.header.iter_mut() {
+            if contains_case_insensitive(GENERATED_ID_HEADERS, &header.name) {
+                header.value = self.placeholder(&header.value, "req_");
+            }
+        }
 
         if let Some(body) = &mut response.body {
             *body = self.scrub_encoded_body(body, response.body_encoding);
@@ -2092,7 +2109,53 @@ impl CassetteScrubber {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
         let scrubbed = self.scrub_grounding_redirects(&scrubbed);
+        let scrubbed = self.scrub_aws_account_ids(&scrubbed);
         self.scrub_generated_tokens(&scrubbed)
+    }
+
+    /// Replace the account-id segment of every ARN.
+    ///
+    /// A Bedrock guardrail assessment echoes the guardrail's ARN, which
+    /// carries the caller's 12-digit AWS account id — a provider account
+    /// identifier, which cassettes must not commit. The rest of the ARN
+    /// (partition, service, region, resource) stays readable so the fixture
+    /// still shows which resource answered.
+    fn scrub_aws_account_ids(&mut self, text: &str) -> String {
+        const PREFIX: &str = "arn:";
+        const ACCOUNT_FIELD: usize = 4;
+        const ACCOUNT_LEN: usize = 12;
+
+        let mut output = String::with_capacity(text.len());
+        let mut rest = text;
+
+        while let Some(start) = rest.find(PREFIX) {
+            output.push_str(&rest[..start]);
+            let arn = &rest[start..];
+            // An ARN ends at the first character that cannot appear in one;
+            // the surrounding JSON quote or comma is the usual terminator.
+            let end = arn
+                .find(['"', ',', ' ', '\n', '}', ']'])
+                .unwrap_or(arn.len());
+            let (arn, tail) = arn.split_at(end);
+
+            let mut fields = arn.split(':').map(str::to_string).collect::<Vec<_>>();
+            match fields.get(ACCOUNT_FIELD) {
+                Some(account)
+                    if account.len() == ACCOUNT_LEN
+                        && account.chars().all(|ch| ch.is_ascii_digit()) =>
+                {
+                    let placeholder = self.placeholder(account, "account_");
+                    fields[ACCOUNT_FIELD] = placeholder;
+                    output.push_str(&fields.join(":"));
+                }
+                _ => output.push_str(arn),
+            }
+
+            rest = tail;
+        }
+
+        output.push_str(rest);
+        output
     }
 
     fn scrub_grounding_redirects(&mut self, text: &str) -> String {
@@ -2902,8 +2965,23 @@ mod tests {
             .expect("interaction should be recorded");
         assert_eq!(interaction.when.header.len(), 1);
         assert_eq!(interaction.when.header[0].name, "content-type");
-        assert_eq!(interaction.then.header.len(), 1);
-        assert_eq!(interaction.then.header[0].name, "content-type");
+
+        // The response keeps `x-amzn-requestid` — the SDK reads the AWS
+        // request id off that header and nowhere else — with its value
+        // placeholdered, and still drops everything outside the allowlist.
+        let response_headers = interaction
+            .then
+            .header
+            .iter()
+            .map(|header| (header.name.as_str(), header.value.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            response_headers,
+            vec![
+                ("content-type", "application/json"),
+                ("x-amzn-requestid", "req_REDACTED_1"),
+            ]
+        );
     }
 
     #[test]
