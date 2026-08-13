@@ -8,6 +8,7 @@ mod models;
 mod multi_extract;
 mod permission_control;
 mod request_hook;
+mod response_identity_edge;
 mod streaming;
 mod streaming_tools;
 mod support;

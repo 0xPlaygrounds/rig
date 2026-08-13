@@ -108,3 +108,32 @@ async fn streamed_agent_run_reports_identity() {
     )
     .await;
 }
+
+/// Family D (edge matrix): one interaction, two views — xAI's raw wire value
+/// and its normalized form agree on the transport id.
+#[tokio::test]
+async fn raw_and_normalized_views_agree_on_identity() {
+    with_xai_cassette(
+        "response_identity/raw_and_normalized_views_agree_on_identity",
+        |client| async move {
+            let model = client.completion_model(xai::completion::GROK_3_MINI);
+            let request = model
+                .completion_request("Reply with exactly: two views probe")
+                .build();
+            let raw = model
+                .raw_completion(request)
+                .await
+                .expect("raw completion should succeed");
+            let raw_id = raw.provider_request_id.clone();
+            assert_request_id(raw_id.as_deref(), "raw view");
+
+            let normalized: rig::completion::CompletionResponse =
+                raw.try_into().expect("raw response should normalize");
+            assert_eq!(
+                normalized.provider_request_id, raw_id,
+                "raw and normalized views describe the same interaction"
+            );
+        },
+    )
+    .await;
+}
