@@ -129,6 +129,9 @@ where
             &self.client,
             request,
             "Gemini completion",
+            // Gemini reports no transport request-id response header (verified
+            // against the live API); the normalized id is None by design.
+            None,
             |response| {
                 let span = tracing::Span::current();
                 span.record_response_metadata(response);
@@ -142,6 +145,7 @@ where
         )
         .instrument(span)
         .await
+        .map(|(payload, _)| payload)
     }
 }
 

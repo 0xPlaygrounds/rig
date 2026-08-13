@@ -11,6 +11,7 @@ mod cassette {
     mod context;
     mod embeddings;
     mod errors;
+    mod response_identity;
     mod streaming;
     mod streaming_grammar;
     mod streaming_tools;

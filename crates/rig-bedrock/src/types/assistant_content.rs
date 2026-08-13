@@ -134,8 +134,14 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
 
         let finish_reason = map_stop_reason(&value.0.stop_reason);
 
+        // Bedrock's transport request id comes from the AWS SDK's response
+        // metadata (`x-amzn-RequestId`), captured when the SDK output was
+        // converted into `InternalConverseOutput`.
+        let provider_request_id = value.0.request_id().map(str::to_string);
+
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_provider_request_id(provider_request_id)
                 .with_finish_reason(finish_reason),
         )
     }

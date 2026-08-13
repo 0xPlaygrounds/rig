@@ -767,6 +767,10 @@ where
             &self.client,
             req,
             "Cohere completion",
+            // Cohere reports no request-id response header (its `x-debug-trace-id`
+            // is a debug trace handle, not a documented request id); the
+            // normalized id is None by design.
+            None,
             |json_response| {
                 let span = tracing::Span::current();
                 let usage = json_response
@@ -780,6 +784,7 @@ where
         )
         .instrument(llm_span)
         .await
+        .map(|(payload, _)| payload)
     }
 }
 

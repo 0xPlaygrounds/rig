@@ -1,0 +1,39 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":32,"messages":[{"content":[{"text":"Reply with exactly: stream identity probe","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: message-start
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"7fb2e370-041f-4e2f-bd2a-d7b37e237cb5","type":"message-start"}
+
+    event: content-start
+    data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"stream"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" identity"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" probe"}}},"index":0,"type":"content-delta"}
+
+    event: content-end
+    data: {"index":0,"type":"content-end"}
+
+    event: message-end
+    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":7,"output_tokens":3},"cached_tokens":448,"tokens":{"input_tokens":502,"output_tokens":6}}},"type":"message-end"}
+
+    data: [DONE]
+

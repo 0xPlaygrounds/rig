@@ -1055,7 +1055,20 @@ impl TurnSource for StreamingTurnSource {
                         if usage.has_values() {
                             record_usage_on_span(&chat_span, usage);
                         }
-                        match run.record_streamed_completion_call(usage) {
+                        // The terminal record (when the provider delivered
+                        // one) carries this attempt's identity metadata.
+                        let identity = rig_core::completion::ResponseIdentity {
+                            message_id: stream.message_id.clone(),
+                            response_id: stream
+                                .response
+                                .as_ref()
+                                .and_then(|response| response.response_id.clone()),
+                            provider_request_id: stream
+                                .response
+                                .as_ref()
+                                .and_then(|response| response.provider_request_id.clone()),
+                        };
+                        match run.record_streamed_completion_call(usage, identity) {
                             Ok(call) => {
                                 completion_call_emitted = true;
                                 Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
@@ -1314,9 +1327,23 @@ impl TurnSource for StreamingTurnSource {
             // Final fallback: no usage was ever learned, so there is nothing to
             // record onto the span and this is the last read of the flag — kept
             // inline (not `emit_completion_call!`) so it doesn't emit a dead
-            // `completion_call_emitted = true` write.
+            // `completion_call_emitted = true` write. Identity is built the
+            // same way the hook events build theirs (from this stream's state,
+            // not `default()`), so `completion_calls` and hook observations
+            // agree even on this path.
             if !completion_call_emitted {
-                match run.record_streamed_completion_call(crate::completion::Usage::new()) {
+                let fallback_identity = rig_core::completion::ResponseIdentity {
+                    message_id: stream.message_id.clone(),
+                    response_id: stream
+                        .response
+                        .as_ref()
+                        .and_then(|response| response.response_id.clone()),
+                    provider_request_id: stream
+                        .response
+                        .as_ref()
+                        .and_then(|response| response.provider_request_id.clone()),
+                };
+                match run.record_streamed_completion_call(crate::completion::Usage::new(), fallback_identity) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
                         yield Err(Box::new(err).into());
@@ -1327,6 +1354,22 @@ impl TurnSource for StreamingTurnSource {
 
             let final_turn_content = stream.choice.clone();
             let streamed_turn = assembler.finish(stream.message_id.clone(), &final_turn_content);
+            // This attempt's identity, read from *this* stream's terminal
+            // record (each attempt — including a retry — opens its own
+            // stream, so a previous attempt's ids can never leak in). The
+            // message id prefers the assembled turn's, which folds in an
+            // explicit `MessageId` event; the terminal's ids fill the rest.
+            let identity = rig_core::completion::ResponseIdentity {
+                message_id: streamed_turn.message_id.clone(),
+                response_id: stream
+                    .response
+                    .as_ref()
+                    .and_then(|response| response.response_id.clone()),
+                provider_request_id: stream
+                    .response
+                    .as_ref()
+                    .and_then(|response| response.provider_request_id.clone()),
+            };
             if pending_final.is_some()
                 && !turn_recovered
                 && let Some(reason) = observe_action(
@@ -1339,6 +1382,7 @@ impl TurnSource for StreamingTurnSource {
                                 content: &streamed_turn.choice,
                                 usage: last_usage,
                                 message_id: streamed_turn.message_id.as_deref(),
+                                identity: &identity,
                             },
                         )
                         .await,
@@ -1373,6 +1417,7 @@ impl TurnSource for StreamingTurnSource {
                             turn: hook_ctx.turn(),
                             content: &canonical_choice,
                             usage: last_usage,
+                            identity: &identity,
                         },
                     )
                     .await;

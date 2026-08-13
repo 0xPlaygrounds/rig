@@ -1,0 +1,32 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly: stream identity probe","role":"user"}],"model":"llama-3.3-70b-versatile","stream":true,"stream_options":{"include_usage":true}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","x_groq":{"id":"req_REDACTED_1","seed":1926855854}}
+
+    data: {"choices":[{"delta":{"content":"stream"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" identity"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" probe"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{},"finish_reason":"stop","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.017731648,"completion_tokens":4,"prompt_time":0.00369361,"prompt_tokens":42,"queue_time":0.198327535,"total_time":0.021425258,"total_tokens":46},"x_groq":{"id":"req_REDACTED_1","usage":{"completion_time":0.017731648,"completion_tokens":4,"prompt_time":0.00369361,"prompt_tokens":42,"queue_time":0.198327535,"total_time":0.021425258,"total_tokens":46}}}
+
+    data: {"choices":[],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion.chunk","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.017731648,"completion_tokens":4,"prompt_time":0.00369361,"prompt_tokens":42,"queue_time":0.198327535,"total_time":0.021425258,"total_tokens":46}}
+
+    data: [DONE]
+

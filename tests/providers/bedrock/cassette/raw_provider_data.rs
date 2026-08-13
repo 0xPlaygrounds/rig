@@ -73,6 +73,53 @@ async fn guardrail_trace_survives_into_raw_completion() {
     .await;
 }
 
+/// Blocking/streaming parity (rig#2265): the same AWS request id semantics on
+/// the streaming surface — the converse-stream operation output's id reaches
+/// the normalized terminal record.
+///
+/// Ignored until recorded: the AWS credentials available when this test was
+/// written had expired, so no cassette exists yet. The conversion semantics
+/// are unit-tested in `rig-bedrock`
+/// (`streaming::response_identity_tests`); this scenario adds the live wire
+/// proof once recorded with `RIG_PROVIDER_TEST_MODE=record`.
+#[ignore]
+#[tokio::test]
+async fn request_id_survives_into_streamed_terminal() {
+    use futures::StreamExt;
+    use rig::streaming::StreamedAssistantContent;
+
+    with_bedrock_cassette(
+        "raw_provider_data/request_id_survives_into_streamed_terminal",
+        |client| async move {
+            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let request = model
+                .completion_request("Reply with the single word: ready.")
+                .max_tokens(16)
+                .build();
+
+            let mut stream = model.stream(request).await.expect("stream should start");
+            let mut terminal = None;
+            while let Some(item) = stream.next().await {
+                if let StreamedAssistantContent::Final(final_record) =
+                    item.expect("stream item should succeed")
+                {
+                    terminal = Some(final_record);
+                }
+            }
+            let terminal = terminal.expect("stream should yield a terminal record");
+            assert!(
+                terminal
+                    .provider_request_id
+                    .as_deref()
+                    .is_some_and(|id| !id.trim().is_empty()),
+                "the AWS request id must reach the streamed terminal, got {:?}",
+                terminal.provider_request_id
+            );
+        },
+    )
+    .await;
+}
+
 /// The AWS request id rides an HTTP header, so it is present on every call —
 /// including the ordinary ones — and it is what AWS support asks for.
 #[tokio::test]

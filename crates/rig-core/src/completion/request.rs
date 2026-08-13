@@ -299,6 +299,16 @@ pub struct CompletionResponse {
     /// provider as a message ID.
     #[serde(default)]
     pub response_id: Option<String>,
+    /// The provider's transport-level request identifier, taken from the HTTP
+    /// response headers (Anthropic `request-id`, OpenAI/xAI `x-request-id`) or
+    /// the provider SDK's response metadata (Bedrock) — the id provider
+    /// support asks for when investigating a request. Never the body's
+    /// `message.id`/response id; those are [`Self::message_id`] and
+    /// [`Self::response_id`]. `None` means the provider did not report one —
+    /// that is a documented outcome (e.g. Gemini sends no id header), never an
+    /// error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
     /// Why the model stopped generating, when the provider reported it.
     ///
     /// Private so that every write flows through
@@ -321,6 +331,29 @@ pub struct CompletionResponse {
     pub model: Option<String>,
 }
 
+/// Response identity metadata for one completed model call: which provider
+/// objects this exact attempt produced. The three axes stay distinct —
+/// message-scoped, response-scoped, and transport — and every field is `None`
+/// when the provider did not report it: a documented outcome, never an error.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResponseIdentity {
+    /// Provider-assigned *assistant message* ID (e.g. an Anthropic or OpenAI
+    /// Responses `msg_…`) — an ID the provider would recognize on a replayed
+    /// assistant message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// Provider-assigned *response-scoped* ID (e.g. an OpenAI `chatcmpl-` or
+    /// `resp_…` ID) — names the whole response, never replayed as a message
+    /// ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+    /// The provider's *transport* request id (HTTP response header such as
+    /// Anthropic `request-id`, or provider SDK response metadata) — the id
+    /// provider support asks for. Never the body's message/response id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
+}
+
 impl CompletionResponse {
     /// Create a response from its required parts; optional metadata starts
     /// unset and is filled in with the `with_*` helpers.
@@ -330,6 +363,7 @@ impl CompletionResponse {
             usage,
             message_id: None,
             response_id: None,
+            provider_request_id: None,
             finish_reason: None,
             provider: provider.into(),
             model: None,
@@ -339,6 +373,15 @@ impl CompletionResponse {
     /// Why the model stopped generating, when the provider reported it.
     pub fn finish_reason(&self) -> Option<FinishReason> {
         self.finish_reason.clone()
+    }
+
+    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
+    pub fn identity(&self) -> ResponseIdentity {
+        ResponseIdentity {
+            message_id: self.message_id.clone(),
+            response_id: self.response_id.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
     }
 
     /// Attach the normalized finish reason, reconciled against the choice via
@@ -385,6 +428,8 @@ struct CompletionResponseRepr {
     #[serde(default)]
     response_id: Option<String>,
     #[serde(default)]
+    provider_request_id: Option<String>,
+    #[serde(default)]
     finish_reason: Option<FinishReason>,
     provider: String,
     #[serde(default)]
@@ -398,6 +443,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             usage,
             message_id,
             response_id,
+            provider_request_id,
             finish_reason,
             provider,
             model,
@@ -405,6 +451,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
         Self::new(choice, usage, provider)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
+            .with_optional_provider_request_id(provider_request_id)
             .with_optional_finish_reason(finish_reason)
             .with_optional_model(model)
     }
@@ -2022,6 +2069,48 @@ mod tests {
                 .provider_response_json()
                 .expect("empty body is not a JSON parse error"),
             None
+        );
+    }
+}
+
+#[cfg(test)]
+mod response_identity_tests {
+    use super::*;
+
+    /// Serde compatibility (rig#2265): responses persisted before
+    /// `provider_request_id` existed still load, with the field `None`.
+    #[test]
+    fn completion_response_without_request_id_still_deserializes() {
+        let response: CompletionResponse = serde_json::from_str(
+            r#"{"choice": [{"type": "text", "text": "hi"}],
+                "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2,
+                          "cached_input_tokens": 0, "cache_creation_input_tokens": 0,
+                          "reasoning_tokens": 0},
+                "provider": "test"}"#,
+        )
+        .expect("pre-identity CompletionResponse JSON should load");
+        assert_eq!(response.provider_request_id, None);
+        assert_eq!(response.identity(), ResponseIdentity::default());
+    }
+
+    /// The identity accessor mirrors the flat fields exactly.
+    #[test]
+    fn identity_accessor_mirrors_flat_fields() {
+        let response = CompletionResponse::new(
+            vec![crate::completion::AssistantContent::text("hi")],
+            Usage::new(),
+            "test",
+        )
+        .with_message_id("msg_1")
+        .with_response_id("resp_1")
+        .with_provider_request_id("req_1");
+        assert_eq!(
+            response.identity(),
+            ResponseIdentity {
+                message_id: Some("msg_1".into()),
+                response_id: Some("resp_1".into()),
+                provider_request_id: Some("req_1".into()),
+            }
         );
     }
 }

@@ -1,0 +1,62 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"What is 2 + 3? Use the tool.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Use the add tool. If it fails transiently, call it again once.","type":"text"}],"tools":[{"description":"Add x and y. May fail transiently; retry on failure.","input_schema":{"properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_1
+  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":608,"output_tokens":69,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"What is 2 + 3? Use the tool.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"transient failure; retry","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Use the add tool. If it fails transiently, call it again once.","type":"text"}],"tools":[{"description":"Add x and y. May fail transiently; retry on failure.","input_schema":{"properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_2
+  body: '{"content":[{"text":"Let me retry that!","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"id":"msg_REDACTED_2","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":694,"output_tokens":74,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"What is 2 + 3? Use the tool.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"transient failure; retry","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"text":"Let me retry that!","type":"text"},{"id":"toolu_REDACTED_2","input":{"x":2,"y":3},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"5","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Use the add tool. If it fails transiently, call it again once.","type":"text"}],"tools":[{"description":"Add x and y. May fail transiently; retry on failure.","input_schema":{"properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_3
+  body: '{"content":[{"text":"The result of **2 + 3 = 5**. (The tool experienced a transient failure on the first attempt but succeeded on retry.)","type":"text"}],"id":"msg_REDACTED_3","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":781,"output_tokens":35,"service_tier":"standard"}}'

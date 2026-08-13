@@ -1612,8 +1612,11 @@ mod tests {
             total_tokens: 12,
             ..Usage::new()
         };
-        run.record_streamed_completion_call(usage)
-            .expect("record should succeed");
+        run.record_streamed_completion_call(
+            usage,
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record should succeed");
         let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
         run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
             .expect("streamed_turn should succeed");
@@ -1635,8 +1638,11 @@ mod tests {
             panic!("expected CallModel");
         };
         let asm = assembler();
-        run.record_streamed_completion_call(Usage::new())
-            .expect("record should succeed");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record should succeed");
         let final_choice = vec![AssistantContent::text("done")];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
@@ -1696,8 +1702,11 @@ mod tests {
         asm.resolve_pending_invalid(&resolution);
 
         // Usage from the drained stream is recorded after the rollback.
-        run.record_streamed_completion_call(Usage::new())
-            .expect("record after rollback should succeed");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record after rollback should succeed");
 
         // The rollback appended the partial assistant turn and feedback.
         assert_eq!(run.messages().len(), 3);
@@ -1767,8 +1776,11 @@ mod tests {
                 skipped_tool_result: None
             }
         ));
-        run.record_streamed_completion_call(Usage::new())
-            .expect("completion call should be recorded");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("completion call should be recorded");
         assert_eq!(run.completion_calls().len(), 1);
 
         let err = run
@@ -1880,14 +1892,20 @@ mod tests {
         // even though the machine is in its initial PreparingRequest state.
         let mut run = AgentRun::new("hello");
         let err = run
-            .record_streamed_completion_call(Usage::new())
+            .record_streamed_completion_call(
+                Usage::new(),
+                rig_core::completion::ResponseIdentity::default(),
+            )
             .expect_err("recording before any model call must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
 
         // The run stays drivable.
         run.next_step().expect("next_step should still succeed");
-        run.record_streamed_completion_call(Usage::new())
-            .expect("recording during a pending model call succeeds");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("recording during a pending model call succeeds");
     }
 
     #[test]
@@ -1906,8 +1924,11 @@ mod tests {
             internal_call_id: "internal_b".to_string(),
         })
         .expect("ingest should succeed");
-        run.record_streamed_completion_call(Usage::new())
-            .expect("record should succeed");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record should succeed");
 
         let final_choice = vec![
             AssistantContent::ToolCall(tool_call("tc_1", "add")),
@@ -1949,10 +1970,16 @@ mod tests {
         let mut run = AgentRun::new("hello");
         run.next_step().expect("next_step");
 
-        run.record_streamed_completion_call(Usage::new())
-            .expect("first record succeeds");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("first record succeeds");
         let err = run
-            .record_streamed_completion_call(Usage::new())
+            .record_streamed_completion_call(
+                Usage::new(),
+                rig_core::completion::ResponseIdentity::default(),
+            )
             .expect_err("second record for the same turn must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
         assert_eq!(run.completion_calls().len(), 1);
@@ -1966,8 +1993,11 @@ mod tests {
         let mut asm = assembler();
         asm.ingest(&tool_call_item("tc_1", "add"))
             .expect("ingest should succeed");
-        run.record_streamed_completion_call(Usage::new())
-            .expect("record should succeed");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record should succeed");
         let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");

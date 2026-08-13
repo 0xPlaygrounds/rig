@@ -128,7 +128,7 @@ use rig_core::{
 
 use crate::{
     agent::model::ModelHandle,
-    completion::{Document, Usage},
+    completion::{Document, ResponseIdentity, Usage},
     json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},
 };
@@ -488,8 +488,13 @@ pub struct CompletionResponse<'a> {
     pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
-    /// Provider-assigned message ID, when available.
+    /// Provider-assigned message ID, when available. Always equal to
+    /// [`identity`](Self::identity)`.message_id`; kept as a field for
+    /// continuity with pre-identity hooks.
     pub message_id: Option<&'a str>,
+    /// This exact attempt's response identity metadata (message-scoped,
+    /// response-scoped, and transport request ids).
+    pub identity: &'a ResponseIdentity,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -505,6 +510,13 @@ pub struct ModelTurnFinished<'a> {
     pub content: &'a Vec<AssistantContent>,
     /// Usage reported for the turn.
     pub usage: Usage,
+    /// This exact attempt's response identity metadata. Fired for every
+    /// completed model call on both surfaces — including streamed tool-only
+    /// and reasoning-only turns, which fire no [`StreamResponseFinish`] — so
+    /// a provider-neutral hook observing this event alone records identity
+    /// for every accepted call. On a retry, this is the retried attempt's own
+    /// identity, never a previous attempt's.
+    pub identity: &'a ResponseIdentity,
 }
 
 /// How an accepted, tool-free model turn should be retried.
@@ -644,8 +656,13 @@ pub struct StreamResponseFinish<'a> {
     pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
-    /// Provider-assigned message ID, when available.
+    /// Provider-assigned message ID, when available. Always equal to
+    /// [`identity`](Self::identity)`.message_id`; kept as a field for
+    /// continuity with pre-identity hooks.
     pub message_id: Option<&'a str>,
+    /// This exact attempt's response identity metadata (message-scoped,
+    /// response-scoped, and transport request ids).
+    pub identity: &'a ResponseIdentity,
 }
 
 /// Hook event kind used only as an observation performance hint.

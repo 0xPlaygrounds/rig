@@ -1424,6 +1424,12 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// Provider name recorded on `gen_ai.provider.name` telemetry spans.
     const PROVIDER_NAME: &'static str;
 
+    /// Response header carrying the provider's transport request id, when the
+    /// provider reports one (OpenAI sends `x-request-id`). `None` — the
+    /// default — means the provider does not report one; the normalized
+    /// response's `provider_request_id` is then `None`, never an error.
+    const REQUEST_ID_HEADER: Option<&'static str> = None;
+
     /// Whether the backend can emit a whole tool call (id, name, and complete
     /// arguments) in a single streaming chunk, as llama.cpp-based servers do.
     /// When true, the shared streaming layer emits such calls as soon as they
@@ -1572,6 +1578,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
 
 impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
     const PROVIDER_NAME: &'static str = "openai";
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 
     type StreamingUsage = Usage;
     type Response = CompletionResponse;
@@ -2019,6 +2026,19 @@ where
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<Ext::Response, CompletionError> {
+        self.raw_completion_with_request_id(completion_request)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// [`Self::raw_completion`] plus the transport request id from the
+    /// provider's request-id response header ([`OpenAICompatibleProvider::REQUEST_ID_HEADER`]).
+    /// Internal because the id belongs on the normalized response; the generic
+    /// wire type `Ext::Response` has no slot for it.
+    pub(crate) async fn raw_completion_with_request_id(
+        &self,
+        completion_request: CoreCompletionRequest,
+    ) -> Result<(Ext::Response, Option<String>), CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
         let options = CompletionModelOptions {
@@ -2065,6 +2085,7 @@ where
             &self.client,
             req,
             "OpenAI Chat Completions completion",
+            Ext::REQUEST_ID_HEADER,
             |response| {
                 let span = tracing::Span::current();
                 span.record_response_metadata(response);
@@ -2110,8 +2131,12 @@ where
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        let response = self.raw_completion(completion_request).await?;
-        response.normalize(Ext::PROVIDER_NAME)
+        let (response, provider_request_id) = self
+            .raw_completion_with_request_id(completion_request)
+            .await?;
+        Ok(response
+            .normalize(Ext::PROVIDER_NAME)?
+            .with_optional_provider_request_id(provider_request_id))
     }
 
     async fn stream(

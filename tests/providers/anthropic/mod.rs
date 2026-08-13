@@ -23,6 +23,8 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod request_override;
+    mod response_identity;
+    mod response_identity_edge;
     mod streaming;
     mod streaming_grammar;
     mod streaming_tools;

@@ -464,6 +464,9 @@ impl WireAdapter for AnthropicAdapter {
                         stop_reason: Some(reason.clone()),
                         message_id: self.message_id.clone(),
                         model: self.response_model.clone(),
+                        // Stamped by the transport layer; the adapter never
+                        // sees connection headers.
+                        provider_request_id: None,
                     },
                 )));
                 return;
@@ -527,6 +530,11 @@ pub struct StreamingCompletionResponse {
     /// The model named by `message_start`, when the stream reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The transport request id from the SSE connection's `request-id`
+    /// response header — not part of any stream frame; stamped by the
+    /// transport. `None` when the provider did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 /// Normalize an Anthropic terminal stream record.
@@ -539,6 +547,7 @@ impl From<(&str, StreamingCompletionResponse)> for StreamFinal {
         StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
             .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
             .with_optional_message_id(response.message_id)
+            .with_optional_provider_request_id(response.provider_request_id)
             .with_optional_model(response.model)
     }
 }
@@ -608,11 +617,20 @@ where
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 
+        let event_source = GenericEventSource::new(self.client.clone(), req);
+        let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {
+            Some(header) => {
+                let (event_source, slot) = event_source.capture_request_id(header);
+                (event_source, Some(slot))
+            }
+            None => (event_source, None),
+        };
+
         // Anthropic's loop historically had no separate `StreamEnded` arm and
         // no transport-error log: `StreamEnded` folds into the generic error
         // mapping, preserved via the options below.
-        Ok(open_wire_stream(
-            GenericEventSource::new(self.client.clone(), req),
+        let stream = open_wire_stream(
+            event_source,
             SseTransportOptions {
                 open_log: OpenLog::Silent,
                 stream_ended_is_error: true,
@@ -621,7 +639,14 @@ where
             skip_blank_frames,
             AnthropicAdapter::default(),
             span,
-        ))
+        );
+        Ok(
+            crate::providers::internal::sse_transport::stamp_terminal_request_id(
+                stream,
+                request_id_slot,
+                |response, id| response.provider_request_id = Some(id),
+            ),
+        )
     }
 
     pub(crate) async fn stream(
@@ -2534,6 +2559,7 @@ mod tests {
                 stop_reason: Some("max_tokens".to_string()),
                 message_id: Some("msg_1".to_string()),
                 model: Some(CLAUDE_OPUS_4_8.to_string()),
+                provider_request_id: None,
             }));
         };
 

@@ -149,7 +149,15 @@ pub struct CompletionResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub incomplete_details: Option<IncompleteDetailsReason>,
     pub usage: Option<ResponsesUsage>,
+    /// The transport request id from the `x-request-id` response header — not
+    /// part of the response body; stamped by the request driver. `None` when
+    /// the provider did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
+
+/// xAI's transport request-id response header.
+pub(crate) const REQUEST_ID_HEADER: &str = "x-request-id";
 
 /// Map an xAI Responses API terminal state onto the normalized vocabulary.
 ///
@@ -228,6 +236,7 @@ impl TryFrom<CompletionResponse> for completion::CompletionResponse {
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
                 .with_optional_message_id(message_id)
                 .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
+                .with_optional_provider_request_id(response.provider_request_id.clone())
                 .with_model(response.model)
                 .with_optional_finish_reason(finish_reason),
         )
@@ -316,20 +325,24 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        send_completion::<_, ApiResponse<CompletionResponse>, _>(
-            &self.client,
-            req,
-            "xAI completion",
-            |response| {
-                let span = tracing::Span::current();
-                span.record_response_metadata(response);
-                if let Some(usage) = &response.usage {
-                    span.record_token_usage(&crate::completion::Usage::from(usage));
-                }
-            },
-        )
-        .instrument(span)
-        .await
+        let (mut response, provider_request_id) =
+            send_completion::<_, ApiResponse<CompletionResponse>, _>(
+                &self.client,
+                req,
+                "xAI completion",
+                Some(REQUEST_ID_HEADER),
+                |response| {
+                    let span = tracing::Span::current();
+                    span.record_response_metadata(response);
+                    if let Some(usage) = &response.usage {
+                        span.record_token_usage(&crate::completion::Usage::from(usage));
+                    }
+                },
+            )
+            .instrument(span)
+            .await?;
+        response.provider_request_id = provider_request_id;
+        Ok(response)
     }
 }
 

@@ -226,6 +226,14 @@ pub struct StreamFinal {
     /// chat `chatcmpl-` ID. Never replayed to a provider as a message ID.
     #[serde(default)]
     pub response_id: Option<String>,
+    /// The provider's transport-level request identifier, taken from the SSE
+    /// connection's HTTP response headers (Anthropic `request-id`, OpenAI/xAI
+    /// `x-request-id`). When the source reconnected, this is the connection
+    /// that delivered this terminal record. Never the body's message/response
+    /// id. `None` means the provider did not report one — a documented
+    /// outcome, never an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
     /// Stable descriptor name of the provider that produced this stream.
     pub provider: String,
     /// Provider-reported model identifier, when available.
@@ -243,6 +251,7 @@ impl StreamFinal {
             finish_reason: None,
             message_id: None,
             response_id: None,
+            provider_request_id: None,
             provider: provider.into(),
             model: None,
         }
@@ -260,6 +269,16 @@ impl StreamFinal {
     ) -> Self {
         self.finish_reason = finish_reason;
         self
+    }
+
+    /// This terminal record's identity metadata as one
+    /// [`crate::completion::ResponseIdentity`] carrier.
+    pub fn identity(&self) -> crate::completion::ResponseIdentity {
+        crate::completion::ResponseIdentity {
+            message_id: self.message_id.clone(),
+            response_id: self.response_id.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
     }
 }
 
@@ -284,6 +303,8 @@ struct StreamFinalRepr {
     message_id: Option<String>,
     #[serde(default)]
     response_id: Option<String>,
+    #[serde(default)]
+    provider_request_id: Option<String>,
     provider: String,
     #[serde(default)]
     model: Option<String>,
@@ -297,6 +318,7 @@ impl From<StreamFinalRepr> for StreamFinal {
             finish_reason,
             message_id,
             response_id,
+            provider_request_id,
             provider,
             model,
         } = repr;
@@ -307,6 +329,7 @@ impl From<StreamFinalRepr> for StreamFinal {
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
+            .with_optional_provider_request_id(provider_request_id)
             .with_optional_model(model)
     }
 }
@@ -1002,6 +1025,9 @@ impl From<StreamingCompletionResponse> for CompletionResponse {
                 .or_else(|| terminal.and_then(|response| response.message_id.clone())),
         )
         .with_optional_response_id(terminal.and_then(|response| response.response_id.clone()))
+        .with_optional_provider_request_id(
+            terminal.and_then(|response| response.provider_request_id.clone()),
+        )
         .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
         .with_optional_model(terminal.and_then(|response| response.model.clone()))
     }
@@ -1501,6 +1527,32 @@ mod tests {
         let response: CompletionResponse = stream.into();
         assert_eq!(response.usage.total_tokens, 15);
         assert_eq!(response.provider, TEST_PROVIDER);
+    }
+
+    /// Regression (rig#2265): the transport request id captured on the
+    /// terminal record must survive stream→`CompletionResponse` conversion,
+    /// exactly like the response id, usage, finish reason, and model do.
+    #[tokio::test]
+    async fn into_completion_response_carries_the_terminal_request_id() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("hi".to_string()));
+                yield Ok(RawStreamingChoice::FinalResponse(
+                    StreamFinal::new(TEST_PROVIDER, Usage::new())
+                        .with_response_id("resp_1")
+                        .with_provider_request_id("req_transport_1"),
+                ));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let response: CompletionResponse = stream.into();
+        assert_eq!(response.response_id.as_deref(), Some("resp_1"));
+        assert_eq!(
+            response.provider_request_id.as_deref(),
+            Some("req_transport_1")
+        );
     }
 
     #[tokio::test]

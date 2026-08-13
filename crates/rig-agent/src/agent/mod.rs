@@ -127,8 +127,8 @@ pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };
 pub use prompt_request::{
-    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, Standard,
-    TypedPromptRequest, TypedPromptResponse,
+    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, ResponseIdentity,
+    Standard, TypedPromptRequest, TypedPromptResponse,
 };
 pub use rig_core::message::Text;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};

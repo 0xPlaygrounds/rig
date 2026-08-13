@@ -40,6 +40,11 @@ impl Provider for GroqExt {
 impl openai::completion::OpenAICompatibleProvider for GroqExt {
     const PROVIDER_NAME: &'static str = "groq";
 
+    /// Groq reports its transport request id on the same `x-request-id`
+    /// header OpenAI uses (verified live; see the recorded
+    /// `response_identity_edge` fixture, where the header arrives scrubbed).
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
+
     type StreamingUsage = openai::Usage;
 
     const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
