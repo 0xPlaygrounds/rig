@@ -22,12 +22,61 @@ macro_rules! service_error_message {
     ($fn_name:ident, $err_ty:ty, $default:expr, { $($variant:ident => $msg:expr),+ $(,)? }) => {
         fn $fn_name(err: $err_ty) -> (Option<String>, String) {
             type E = $err_ty;
+            // The catch-all arm is not only "an exception we chose not to
+            // name": `SdkError::into_service_error` funnels *every*
+            // non-service failure (timeout, dispatch error, unparseable
+            // response) and every exception this SDK version does not model
+            // into `Unhandled`. Those still carry the service's own message in
+            // their error metadata, so read it before falling back to Rig
+            // prose — dropping it reported a Bedrock end-of-life notice as
+            // "verify Internet connection or AWS keys".
+            let metadata_message =
+                ::aws_smithy_types::error::metadata::ProvideErrorMetadata::message(&err)
+                    .map(str::to_string);
             match err {
                 $(E::$variant(e) => (e.message, $msg.into()),)+
-                _ => (None, $default.into()),
+                _ => (metadata_message, $default.into()),
             }
         }
     };
+}
+
+/// The raw HTTP body Bedrock answered with, when the failure carries one.
+///
+/// `SdkError::into_service_error` funnels every failure this SDK version does
+/// not model — a new exception type, or any response whose `x-amzn-errortype`
+/// the transport did not preserve — into `Unhandled`, whose *source* holds the
+/// parsed message while its `meta()` is empty. Reading the raw body recovers
+/// what the service actually said instead of reporting Bedrock's end-of-life
+/// notice as "verify Internet connection or AWS keys".
+fn raw_response_body<E, R>(error: &SdkError<E, R>) -> Option<String>
+where
+    R: RawResponseBody,
+{
+    let body = error.raw_response()?.body_text()?;
+    let body = body.trim();
+
+    (!body.is_empty()).then(|| body.to_string())
+}
+
+/// The raw-body accessor for the response type an `SdkError` carries.
+trait RawResponseBody {
+    fn body_text(&self) -> Option<&str>;
+}
+
+impl RawResponseBody for HttpResponse {
+    fn body_text(&self) -> Option<&str> {
+        std::str::from_utf8(self.body().bytes()?).ok()
+    }
+}
+
+/// Prefer the exception's own message; fall back to the raw provider body for
+/// the failures this SDK version cannot classify.
+fn with_raw_body(
+    (message, fallback): (Option<String>, String),
+    raw_body: Option<String>,
+) -> (Option<String>, String) {
+    (message.or(raw_body), fallback)
 }
 
 /// Route a `(provider_message, fallback)` pair into an error type: a genuine
@@ -101,8 +150,9 @@ pub struct AwsSdkInvokeModelError(pub SdkError<InvokeModelError, HttpResponse>);
 
 impl From<AwsSdkInvokeModelError> for ImageGenerationError {
     fn from(value: AwsSdkInvokeModelError) -> Self {
+        let raw_body = raw_response_body(&value.0);
         gated(
-            invoke_model_message(value.0.into_service_error()),
+            with_raw_body(invoke_model_message(value.0.into_service_error()), raw_body),
             ImageGenerationError::from_provider_body,
             ImageGenerationError::ProviderError,
         )
@@ -111,8 +161,9 @@ impl From<AwsSdkInvokeModelError> for ImageGenerationError {
 
 impl From<AwsSdkInvokeModelError> for EmbeddingError {
     fn from(value: AwsSdkInvokeModelError) -> Self {
+        let raw_body = raw_response_body(&value.0);
         gated(
-            invoke_model_message(value.0.into_service_error()),
+            with_raw_body(invoke_model_message(value.0.into_service_error()), raw_body),
             EmbeddingError::from_provider_body,
             EmbeddingError::ProviderError,
         )
@@ -123,8 +174,9 @@ pub struct AwsSdkConverseError(pub SdkError<ConverseError, HttpResponse>);
 
 impl From<AwsSdkConverseError> for CompletionError {
     fn from(value: AwsSdkConverseError) -> Self {
+        let raw_body = raw_response_body(&value.0);
         gated(
-            converse_message(value.0.into_service_error()),
+            with_raw_body(converse_message(value.0.into_service_error()), raw_body),
             CompletionError::from_provider_body,
             CompletionError::ProviderError,
         )
@@ -144,8 +196,12 @@ pub(crate) fn converse_stream_output_completion_error(
 pub struct AwsSdkConverseStreamError(pub SdkError<ConverseStreamError, HttpResponse>);
 impl From<AwsSdkConverseStreamError> for CompletionError {
     fn from(value: AwsSdkConverseStreamError) -> Self {
+        let raw_body = raw_response_body(&value.0);
         gated(
-            converse_stream_message(value.0.into_service_error()),
+            with_raw_body(
+                converse_stream_message(value.0.into_service_error()),
+                raw_body,
+            ),
             CompletionError::from_provider_body,
             CompletionError::ProviderError,
         )
@@ -192,6 +248,56 @@ mod tests {
     // `rig-bedrock` (the crate exposes no `image`/`audio` features; the
     // completion/embedding/image/streaming modules are always compiled), so the
     // tests only need `#[cfg(test)]`.
+
+    /// Recorded, then replayed: a Bedrock 404 whose exception this SDK version
+    /// does not classify arrives as `Unhandled`, whose `meta()` is empty and
+    /// whose message hides in its source. Before the raw-body fallback, that
+    /// surfaced as `ProviderError("… Verify Internet connection or AWS keys")`
+    /// and the operator never saw "This model version has reached the end of
+    /// its life". Cassette replay covers the classified path; this covers the
+    /// unclassified one, which no cassette can produce once the transport
+    /// preserves `x-amzn-errortype`.
+    #[test]
+    fn unclassified_error_falls_back_to_the_raw_provider_body() {
+        let raw_body = Some(
+            r#"{"message":"This model version has reached the end of its life."}"#.to_string(),
+        );
+        let unclassified = (None, UNEXPECTED.to_string());
+
+        let error: CompletionError = gated(
+            with_raw_body(unclassified, raw_body.clone()),
+            CompletionError::from_provider_body,
+            CompletionError::ProviderError,
+        );
+
+        assert_eq!(error.provider_response_body(), raw_body.as_deref());
+    }
+
+    /// The exception's own message still wins: the raw body is a fallback, not
+    /// a replacement, so classified errors keep their existing wording.
+    #[test]
+    fn classified_error_message_wins_over_the_raw_body() {
+        let classified = (Some("boom".to_string()), UNEXPECTED.to_string());
+
+        let (message, _fallback) =
+            with_raw_body(classified, Some(r#"{"message":"ignored"}"#.to_string()));
+
+        assert_eq!(message, Some("boom".to_string()));
+    }
+
+    /// With neither a classified message nor a body, Rig prose is still the
+    /// fallback — and it must not masquerade as a provider response body.
+    #[test]
+    fn absent_message_and_body_yields_rig_prose_not_a_provider_body() {
+        let error: CompletionError = gated(
+            with_raw_body((None, UNEXPECTED.to_string()), None),
+            CompletionError::from_provider_body,
+            CompletionError::ProviderError,
+        );
+
+        assert_eq!(error.provider_response_body(), None);
+        assert!(matches!(error, CompletionError::ProviderError(_)));
+    }
 
     #[test]
     fn invoke_model_message_returns_provider_message_when_present() {
