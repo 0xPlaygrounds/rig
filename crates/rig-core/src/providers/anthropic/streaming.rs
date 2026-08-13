@@ -644,6 +644,7 @@ where
             crate::providers::internal::sse_transport::stamp_terminal_request_id(
                 stream,
                 request_id_slot,
+                Ext::REQUEST_ID_HEADER,
                 |response, id| response.provider_request_id = Some(id),
             ),
         )

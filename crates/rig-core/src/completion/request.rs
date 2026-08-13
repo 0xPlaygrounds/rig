@@ -1958,6 +1958,7 @@ mod tests {
         let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
             status: None,
             body: body.to_string(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some(body));
@@ -1981,6 +1982,7 @@ mod tests {
         let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
             status: Some(http::StatusCode::TOO_MANY_REQUESTS),
             body: body.to_string(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some(body));
@@ -1995,6 +1997,7 @@ mod tests {
         let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
             status: None,
             body: "provider exploded".to_string(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some("provider exploded"));
@@ -2061,6 +2064,7 @@ mod tests {
         let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
             status: None,
             body: String::new(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some(""));

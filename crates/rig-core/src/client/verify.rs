@@ -48,6 +48,7 @@ mod provider_response_tests {
         let error = VerifyError::ProviderResponse(provider_response::ProviderResponseError {
             status: None,
             body: body.to_string(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some(body));
@@ -82,6 +83,7 @@ mod provider_response_tests {
         let error = VerifyError::ProviderResponse(provider_response::ProviderResponseError {
             status: None,
             body: "not json".to_string(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some("not json"));

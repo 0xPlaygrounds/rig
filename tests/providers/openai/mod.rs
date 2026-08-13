@@ -9,6 +9,7 @@ mod cassette {
     mod completions_api;
     mod document_ordering;
     mod error_envelope;
+    mod error_identity_edge;
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;

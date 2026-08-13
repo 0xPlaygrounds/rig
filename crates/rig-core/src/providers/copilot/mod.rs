@@ -912,6 +912,7 @@ where
         let raw = crate::providers::internal::sse_transport::stamp_terminal_request_id(
             raw,
             Some(request_id_slot),
+            Some("x-request-id"),
             |response, id| response.provider_request_id = Some(id),
         );
         let stream = raw.map(|item| {

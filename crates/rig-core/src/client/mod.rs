@@ -678,7 +678,22 @@ where
             .body(http_client::NoBody)
             .map_err(http_client::Error::from)?;
 
-        let response = self.http_client.send(req).await?;
+        // The reqwest transport reports non-success as an error before this
+        // status match can run (found live on rig#2315's error matrix: the
+        // 401/403 arms below were dead and every bogus key surfaced as a raw
+        // HttpError). Recover the status from the transport error so the
+        // documented VerifyError classification actually fires.
+        let response = match self.http_client.send(req).await {
+            Ok(response) => response,
+            Err(error) => {
+                return Err(match error.non_success_status() {
+                    Some(StatusCode::UNAUTHORIZED) | Some(StatusCode::FORBIDDEN) => {
+                        VerifyError::InvalidAuthentication
+                    }
+                    _ => VerifyError::HttpError(error),
+                });
+            }
+        };
 
         match response.status() {
             StatusCode::OK => Ok(()),

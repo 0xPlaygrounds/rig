@@ -147,6 +147,7 @@ mod provider_response_tests {
             AudioGenerationError::ProviderResponse(provider_response::ProviderResponseError {
                 status: None,
                 body: body.to_string(),
+                provider_request_id: None,
             });
 
         assert_eq!(error.provider_response_body(), Some(body));

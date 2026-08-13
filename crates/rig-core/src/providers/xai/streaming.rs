@@ -100,6 +100,7 @@ where
         crate::providers::internal::sse_transport::stamp_terminal_request_id(
             stream,
             Some(request_id_slot),
+            Some(super::completion::REQUEST_ID_HEADER),
             |response, id| response.provider_request_id = Some(id),
         ),
     )

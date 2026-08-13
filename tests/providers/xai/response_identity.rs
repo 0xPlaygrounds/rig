@@ -137,3 +137,61 @@ async fn raw_and_normalized_views_agree_on_identity() {
     )
     .await;
 }
+
+/// rig#2314 census finding: xAI sends `x-request-id` on *successes* but not
+/// on its 4xx error responses (verified live; this fixture's error headers
+/// show the absence). The contract classification still applies — the error
+/// preserves as `ProviderResponse` with status and body — and the missing
+/// header is `None`, never a secondary failure.
+#[tokio::test]
+async fn provider_error_classifies_with_contract_but_reports_no_id() {
+    with_xai_cassette(
+        "response_identity/provider_error_classifies_with_contract_but_reports_no_id",
+        |client| async move {
+            let model = client.completion_model("grok-nonexistent-model-for-identity-edge");
+            let error = model
+                .completion_request("Never answered")
+                .send()
+                .await
+                .expect_err("a nonexistent model must fail");
+            assert!(
+                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                "contract providers classify 4xx as ProviderResponse: {error:?}"
+            );
+            assert_eq!(
+                error.provider_request_id(),
+                None,
+                "xAI omits x-request-id on error responses — None by design"
+            );
+            assert!(error.provider_response_status().is_some());
+        },
+    )
+    .await;
+}
+
+/// 401 auth rejection (rig#2314 error matrix): contract classification holds
+/// on the auth tier; the recording documents whether xAI's auth tier sends
+/// the id it omits on 4xx.
+#[tokio::test]
+async fn auth_rejection_classifies_with_contract() {
+    use super::support::with_xai_cassette_bogus_key;
+
+    with_xai_cassette_bogus_key(
+        "response_identity/auth_rejection_classifies_with_contract",
+        |client| async move {
+            let model = client.completion_model(xai::completion::GROK_3_MINI);
+            let error = model
+                .completion_request("Never authenticated")
+                .send()
+                .await
+                .expect_err("a bogus key must be rejected");
+            assert!(
+                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                "got {error:?}"
+            );
+            // Derived from the recording.
+            let _ = error.provider_request_id();
+        },
+    )
+    .await;
+}

@@ -22,6 +22,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/openai/cassette",
         wrapper_names: &[
             "with_openai_cassette",
+            "with_openai_cassette_bogus_key",
             "with_openai_completions_cassette",
             "with_openai_cassette_result",
             "with_openai_completions_cassette_result",
@@ -53,6 +54,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_anthropic_cassette",
             "with_anthropic_cassette_result",
+            "with_anthropic_cassette_bogus_key",
             "with_anthropic_files_cassette",
             "with_anthropic_gateway_cassette",
         ],
@@ -87,7 +89,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
-        wrapper_names: &["with_gemini_cassette", "with_gemini_interactions_cassette"],
+        wrapper_names: &[
+            "with_gemini_cassette",
+            "with_gemini_cassette_bogus_key",
+            "with_gemini_interactions_cassette",
+        ],
     },
     ProviderCassetteSuite {
         provider: "ollama",
@@ -102,7 +108,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "xai",
         source_dir: "tests/providers/xai",
-        wrapper_names: &["with_xai_cassette", "with_xai_cassette_result"],
+        wrapper_names: &[
+            "with_xai_cassette",
+            "with_xai_cassette_bogus_key",
+            "with_xai_cassette_result",
+        ],
     },
     ProviderCassetteSuite {
         provider: "openrouter",
@@ -121,7 +131,10 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "groq",
         source_dir: "tests/providers/groq",
-        wrapper_names: &["with_groq_cassette_result"],
+        wrapper_names: &[
+            "with_groq_cassette_result",
+            "with_groq_cassette_bogus_key_result",
+        ],
     },
     ProviderCassetteSuite {
         provider: "mistral",

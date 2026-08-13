@@ -23,6 +23,8 @@ pub enum MockError {
     Provider(String),
     /// Request construction error.
     Request(String),
+    /// A preserved provider error response (rig#2314), id included.
+    ProviderResponse(crate::provider_response::ProviderResponseError),
 }
 
 impl MockError {
@@ -40,6 +42,7 @@ impl MockError {
         match self {
             Self::Provider(message) => CompletionError::ProviderError(message),
             Self::Request(message) => CompletionError::RequestError(message.into()),
+            Self::ProviderResponse(response) => CompletionError::ProviderResponse(response),
         }
     }
 }
@@ -81,6 +84,22 @@ impl MockTurn {
     pub fn error(message: impl Into<String>) -> Self {
         Self {
             response: Err(MockError::provider(message)),
+        }
+    }
+
+    /// Create a provider-response error turn carrying a transport request id
+    /// (rig#2314): the scripted failure a test uses to assert error-identity
+    /// attribution.
+    pub fn provider_response_error(
+        status: http::StatusCode,
+        body: impl Into<String>,
+        request_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            response: Err(MockError::ProviderResponse(
+                crate::provider_response::ProviderResponseError::new(status, body)
+                    .with_provider_request_id(Some(request_id.into())),
+            )),
         }
     }
 

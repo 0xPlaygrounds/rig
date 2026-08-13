@@ -71,3 +71,58 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
     )
     .await
 }
+
+/// A provider 4xx carries the failed call's transport request id (rig#2314).
+#[tokio::test]
+async fn provider_error_response_carries_request_id() -> Result<()> {
+    with_groq_cassette_result(
+        "response_identity_edge/provider_error_response_carries_request_id",
+        |client| async move {
+            let model = client.completion_model("groq-nonexistent-model-for-identity-edge");
+            let error = model
+                .completion_request("Never answered")
+                .send()
+                .await
+                .expect_err("a nonexistent model must fail");
+            anyhow::ensure!(
+                error
+                    .provider_request_id()
+                    .is_some_and(|id| !id.trim().is_empty()),
+                "the 4xx error carries the x-request-id Groq sent; got {error:?}"
+            );
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+/// 401 auth rejection (rig#2314 error matrix): Groq's auth tier carries the
+/// id its 4xx errors do (recorded).
+#[tokio::test]
+async fn auth_rejection_classifies_with_contract() -> Result<()> {
+    use super::support::with_groq_cassette_bogus_key_result;
+
+    with_groq_cassette_bogus_key_result(
+        "response_identity_edge/auth_rejection_classifies_with_contract",
+        |client| async move {
+            let model = client.completion_model(MODEL);
+            let error = model
+                .completion_request("Never authenticated")
+                .send()
+                .await
+                .expect_err("a bogus key must be rejected");
+            anyhow::ensure!(
+                matches!(error, rig::completion::CompletionError::ProviderResponse(_)),
+                "got {error:?}"
+            );
+            anyhow::ensure!(
+                error
+                    .provider_request_id()
+                    .is_some_and(|id| !id.trim().is_empty()),
+                "Groq's auth tier sends x-request-id (see the fixture); got {error:?}"
+            );
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
