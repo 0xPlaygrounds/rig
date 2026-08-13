@@ -81,6 +81,14 @@ macro_rules! forward_provider_response_helpers {
                 }
             }
 
+            #[doc = concat!("Returns the provider transport request id exposed by a wrapped ", $inner, " (rig#2314).")]
+            pub fn provider_request_id(&self) -> Option<&str> {
+                match self {
+                    Self::$variant(error) => error.provider_request_id(),
+                    _ => None,
+                }
+            }
+
             #[doc = concat!("Returns the HTTP status exposed by a wrapped ", $inner, ".")]
             pub fn provider_response_status(&self) -> Option<http::StatusCode> {
                 match self {
@@ -208,14 +216,13 @@ mod provider_response_tests {
     fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
         let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
         let error = PromptError::CompletionError(CompletionError::ProviderResponse(
-            ProviderResponseError {
-                status: None,
-                body: body.to_string(),
-            },
+            ProviderResponseError::without_status(body),
         ));
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);
+        // rig#2314: the transport request id forwards through the wrapper too.
+        assert_eq!(error.provider_request_id(), None);
         assert_eq!(
             error.provider_response_json().expect("valid JSON body"),
             Some(serde_json::json!({
@@ -225,6 +232,17 @@ mod provider_response_tests {
                 }
             }))
         );
+    }
+
+    /// rig#2314: a wrapped completion error's transport request id forwards
+    /// through `PromptError` (and, transitively, `StructuredOutputError`).
+    #[test]
+    fn prompt_error_forwards_the_provider_request_id() {
+        let error = PromptError::CompletionError(CompletionError::ProviderResponse(
+            ProviderResponseError::new(http::StatusCode::NOT_FOUND, "{}")
+                .with_provider_request_id(Some("req_failed_call".to_string())),
+        ));
+        assert_eq!(error.provider_request_id(), Some("req_failed_call"));
     }
 
     #[test]
@@ -248,10 +266,10 @@ mod provider_response_tests {
     fn structured_output_error_provider_response_helpers_forward_prompt_error() {
         let body = r#"{"error":{"message":"bad input"}}"#;
         let error = StructuredOutputError::PromptError(Box::new(PromptError::CompletionError(
-            CompletionError::ProviderResponse(ProviderResponseError {
-                status: Some(http::StatusCode::BAD_REQUEST),
-                body: body.to_string(),
-            }),
+            CompletionError::ProviderResponse(ProviderResponseError::new(
+                http::StatusCode::BAD_REQUEST,
+                body,
+            )),
         )));
 
         assert_eq!(error.provider_response_body(), Some(body));

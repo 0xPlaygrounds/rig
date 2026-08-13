@@ -172,13 +172,31 @@ impl From<AwsSdkInvokeModelError> for EmbeddingError {
 
 pub struct AwsSdkConverseError(pub SdkError<ConverseError, HttpResponse>);
 
+/// Attach the AWS request id (from the SDK error's response metadata) to a
+/// preserved provider response body — the id AWS support asks for on failed
+/// calls (rig#2314). Rig-authored `ProviderError` diagnostics are left
+/// untouched: the id belongs with what the provider actually said.
+fn attach_request_id(error: CompletionError, request_id: Option<String>) -> CompletionError {
+    match error {
+        CompletionError::ProviderResponse(response) => {
+            CompletionError::ProviderResponse(response.with_provider_request_id(request_id))
+        }
+        other => other,
+    }
+}
+
 impl From<AwsSdkConverseError> for CompletionError {
     fn from(value: AwsSdkConverseError) -> Self {
         let raw_body = raw_response_body(&value.0);
-        gated(
-            with_raw_body(converse_message(value.0.into_service_error()), raw_body),
-            CompletionError::from_provider_body,
-            CompletionError::ProviderError,
+        let request_id =
+            aws_sdk_bedrockruntime::operation::RequestId::request_id(&value.0).map(str::to_string);
+        attach_request_id(
+            gated(
+                with_raw_body(converse_message(value.0.into_service_error()), raw_body),
+                CompletionError::from_provider_body,
+                CompletionError::ProviderError,
+            ),
+            request_id,
         )
     }
 }
@@ -197,13 +215,18 @@ pub struct AwsSdkConverseStreamError(pub SdkError<ConverseStreamError, HttpRespo
 impl From<AwsSdkConverseStreamError> for CompletionError {
     fn from(value: AwsSdkConverseStreamError) -> Self {
         let raw_body = raw_response_body(&value.0);
-        gated(
-            with_raw_body(
-                converse_stream_message(value.0.into_service_error()),
-                raw_body,
+        let request_id =
+            aws_sdk_bedrockruntime::operation::RequestId::request_id(&value.0).map(str::to_string);
+        attach_request_id(
+            gated(
+                with_raw_body(
+                    converse_stream_message(value.0.into_service_error()),
+                    raw_body,
+                ),
+                CompletionError::from_provider_body,
+                CompletionError::ProviderError,
             ),
-            CompletionError::from_provider_body,
-            CompletionError::ProviderError,
+            request_id,
         )
     }
 }
@@ -450,5 +473,32 @@ mod tests {
         let error = converse_stream_output_completion_error(err);
         assert_eq!(error.provider_response_body(), None);
         assert_eq!(error.provider_response_status(), None);
+    }
+}
+
+#[cfg(test)]
+mod request_id_tests {
+    use super::*;
+    use rig_core::ProviderResponseError;
+
+    /// rig#2314: the AWS request id attaches to preserved provider bodies and
+    /// leaves Rig-authored diagnostics untouched.
+    #[test]
+    fn attach_request_id_targets_provider_responses_only() {
+        let attached = attach_request_id(
+            CompletionError::ProviderResponse(ProviderResponseError::without_status("aws said no")),
+            Some("aws-req-1".to_string()),
+        );
+        assert_eq!(attached.provider_request_id(), Some("aws-req-1"));
+        assert!(
+            attached.to_string().contains("request id: aws-req-1"),
+            "the id appears in the logged message: {attached}"
+        );
+
+        let untouched = attach_request_id(
+            CompletionError::ProviderError("rig diagnostic".to_string()),
+            Some("aws-req-1".to_string()),
+        );
+        assert_eq!(untouched.provider_request_id(), None);
     }
 }

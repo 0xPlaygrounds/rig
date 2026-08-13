@@ -3523,7 +3523,11 @@ mod tests {
             .await
             .expect_err("completion should fail with non-success status");
 
-        assert!(matches!(error, CompletionError::HttpError(_)));
+        // rig#2314: a provider with a request-id contract preserves its
+        // non-success responses as ProviderResponse, so the transport id has
+        // a home on the error; this mock sent no header, so the id is None.
+        assert!(matches!(error, CompletionError::ProviderResponse(_)));
+        assert_eq!(error.provider_request_id(), None);
         assert_eq!(
             error.provider_response_status(),
             Some(http::StatusCode::TOO_MANY_REQUESTS)

@@ -7,29 +7,64 @@ use http::StatusCode;
 /// has the provider's response body in hand. Unlike `ProviderError(String)`,
 /// which may carry Rig-generated diagnostics, this type always represents the
 /// payload the provider actually returned.
+///
+/// `#[non_exhaustive]`: construct via [`Self::new`] / [`Self::without_status`]
+/// and the `with_*` setters, so transport metadata can grow without breaking
+/// matchers.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct ProviderResponseError {
     /// HTTP status of the provider response, when it was captured alongside the body.
     pub status: Option<StatusCode>,
     /// Raw response body as returned by the provider.
     pub body: String,
+    /// The provider's transport request id for the failed call (HTTP response
+    /// header such as Anthropic `request-id` / OpenAI `x-request-id`, or SDK
+    /// response metadata) — the id provider support asks for when
+    /// investigating a request, which matters most on exactly these failed
+    /// calls. `None` means the provider did not report one — a documented
+    /// outcome, never a secondary error (rig#2314).
+    pub provider_request_id: Option<String>,
 }
 
 impl ProviderResponseError {
-    pub(crate) fn without_status(body: impl Into<String>) -> Self {
+    /// Preserve a provider error response captured with its HTTP status.
+    pub fn new(status: StatusCode, body: impl Into<String>) -> Self {
+        Self {
+            status: Some(status),
+            body: body.into(),
+            provider_request_id: None,
+        }
+    }
+
+    /// Preserve a provider error body that has no HTTP status (gRPC / SDK
+    /// transports).
+    pub fn without_status(body: impl Into<String>) -> Self {
         Self {
             status: None,
             body: body.into(),
+            provider_request_id: None,
         }
+    }
+
+    /// Attach the transport request id the failed response reported.
+    pub fn with_provider_request_id(mut self, request_id: Option<String>) -> Self {
+        self.provider_request_id = request_id.filter(|id| !id.is_empty());
+        self
     }
 }
 
 impl std::fmt::Display for ProviderResponseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.status {
-            Some(status) => write!(f, "status {status}: {}", self.body),
-            None => write!(f, "{}", self.body),
+            Some(status) => write!(f, "status {status}: {}", self.body)?,
+            None => write!(f, "{}", self.body)?,
         }
+        // The id support asks for belongs in the message a caller logs.
+        if let Some(request_id) = &self.provider_request_id {
+            write!(f, " (request id: {request_id})")?;
+        }
+        Ok(())
     }
 }
 
@@ -81,16 +116,40 @@ macro_rules! impl_provider_response_helpers {
             /// response body exactly once and hand it here for both branches.
             pub fn from_http_response(status: http::StatusCode, body: impl Into<String>) -> Self {
                 if status.is_success() {
-                    Self::ProviderResponse($crate::provider_response::ProviderResponseError {
-                        status: Some(status),
-                        body: body.into(),
-                    })
+                    Self::ProviderResponse($crate::provider_response::ProviderResponseError::new(
+                        status, body,
+                    ))
                 } else {
                     Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithMessage(
                         status,
                         body.into(),
                     ))
                 }
+            }
+
+            /// [`Self::from_http_response`] for paths that captured the
+            /// provider's transport request id alongside the response
+            /// (rig#2314).
+            ///
+            /// Unlike the metadata-less funnel, a **non-success** status is
+            /// preserved as [`Self::ProviderResponse`] too — `http_client`'s
+            /// error type has no slot for provider metadata, and the id the
+            /// provider reported on a failed call is exactly what support
+            /// asks for. Classification therefore follows the *code path*
+            /// (did this call site capture transport metadata?), never the
+            /// presence of the header on a particular response, so a given
+            /// provider's errors classify consistently. The status stays
+            /// recoverable through [`Self::provider_response_status`] and the
+            /// id through [`Self::provider_request_id`].
+            pub fn from_http_response_with_request_id(
+                status: http::StatusCode,
+                body: impl Into<String>,
+                provider_request_id: Option<String>,
+            ) -> Self {
+                Self::ProviderResponse(
+                    $crate::provider_response::ProviderResponseError::new(status, body)
+                        .with_provider_request_id(provider_request_id),
+                )
             }
 
             /// Preserves a raw provider error body that has **no HTTP status**.
@@ -154,6 +213,18 @@ macro_rules! impl_provider_response_helpers {
                 match self {
                     Self::ProviderResponse(response) => response.status,
                     Self::HttpError(error) => error.non_success_status(),
+                    _ => None,
+                }
+            }
+
+            /// Returns the provider's transport request id for the failed
+            /// call, when the capture path preserved one (rig#2314) — the id
+            /// provider support asks for. `None` for providers that report
+            /// none, for paths that captured no transport metadata, and for
+            /// errors with no provider response at all.
+            pub fn provider_request_id(&self) -> Option<&str> {
+                match self {
+                    Self::ProviderResponse(response) => response.provider_request_id.as_deref(),
                     _ => None,
                 }
             }
@@ -374,5 +445,57 @@ mod tests {
         assert_funnel!(crate::image_generation::ImageGenerationError);
         #[cfg(feature = "audio")]
         assert_funnel!(crate::audio_generation::AudioGenerationError);
+    }
+
+    /// rig#2314: the metadata-aware funnel preserves non-success statuses as
+    /// `ProviderResponse` so the transport id has a home; status, body, and
+    /// id all stay recoverable, and the id appears in the logged message.
+    #[test]
+    fn with_request_id_funnel_preserves_non_success_as_provider_response() {
+        let error = crate::completion::CompletionError::from_http_response_with_request_id(
+            StatusCode::NOT_FOUND,
+            r#"{"error":"nope"}"#,
+            Some("req_abc".to_string()),
+        );
+        assert!(matches!(
+            error,
+            crate::completion::CompletionError::ProviderResponse(_)
+        ));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(StatusCode::NOT_FOUND)
+        );
+        assert_eq!(error.provider_response_body(), Some(r#"{"error":"nope"}"#));
+        assert_eq!(error.provider_request_id(), Some("req_abc"));
+        assert!(
+            error.to_string().contains("request id: req_abc"),
+            "the id support asks for appears in the message: {error}"
+        );
+    }
+
+    /// A missing id is `None`, never a secondary failure, and leaves the
+    /// message unchanged.
+    #[test]
+    fn with_request_id_funnel_tolerates_absent_id() {
+        let error = crate::completion::CompletionError::from_http_response_with_request_id(
+            StatusCode::BAD_REQUEST,
+            "bad",
+            None,
+        );
+        assert_eq!(error.provider_request_id(), None);
+        assert!(!error.to_string().contains("request id"));
+    }
+
+    /// The metadata-less funnel's classification is untouched: non-success
+    /// stays transport-shaped, and its accessor reports no id.
+    #[test]
+    fn metadata_less_funnel_classification_is_unchanged() {
+        let error =
+            crate::completion::CompletionError::from_http_response(StatusCode::BAD_REQUEST, "bad");
+        assert!(matches!(
+            error,
+            crate::completion::CompletionError::HttpError(_)
+        ));
+        assert_eq!(error.provider_request_id(), None);
     }
 }

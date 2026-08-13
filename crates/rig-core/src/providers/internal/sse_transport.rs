@@ -149,15 +149,28 @@ where
         return stream;
     };
     Box::pin(stream.map(move |item| {
-        item.map(|choice| match choice {
-            crate::streaming::RawStreamingChoice::FinalResponse(mut response) => {
-                if let Some(id) = slot.lock().ok().and_then(|guard| guard.clone()) {
+        let request_id = slot.lock().ok().and_then(|guard| guard.clone());
+        match item {
+            Ok(crate::streaming::RawStreamingChoice::FinalResponse(mut response)) => {
+                if let Some(id) = request_id {
                     stamp(&mut response, id);
                 }
-                crate::streaming::RawStreamingChoice::FinalResponse(response)
+                Ok(crate::streaming::RawStreamingChoice::FinalResponse(
+                    response,
+                ))
+            }
+            // A mid-stream in-band provider error envelope (yielded as an
+            // error item) also came over this connection: attach the same
+            // connection's transport id so a failed stream reports the id
+            // support asks for (rig#2314). Only the ProviderResponse variant
+            // has a slot for it; transport-level failures stay untouched.
+            Err(crate::completion::CompletionError::ProviderResponse(response)) => {
+                Err(crate::completion::CompletionError::ProviderResponse(
+                    response.with_provider_request_id(request_id),
+                ))
             }
             other => other,
-        })
+        }
     }))
 }
 
@@ -362,5 +375,49 @@ mod tests {
         assert_eq!(frames.len(), 2, "frame then error, got {frames:?}");
         assert!(matches!(frames[0], Ok(WireFrame::Text(ref t)) if t == "one"));
         assert!(frames[1].is_err());
+    }
+}
+
+#[cfg(all(test, not(all(target_arch = "wasm32", target_os = "unknown"))))]
+mod request_id_stamp_tests {
+    use super::*;
+    use crate::completion::CompletionError;
+    use crate::provider_response::ProviderResponseError;
+    use crate::streaming::RawStreamingChoice;
+
+    /// rig#2314: an in-band provider error envelope yielded as a stream error
+    /// item is stamped with the delivering connection's request id; other
+    /// error variants and pass-through items are untouched.
+    #[tokio::test]
+    async fn stamps_provider_response_stream_errors_from_the_slot() {
+        let slot = crate::http_client::sse::RequestIdSlot::default();
+        *slot.lock().expect("slot") = Some("req_conn_1".to_string());
+
+        let stream: crate::streaming::RawStreamingResult<String> =
+            Box::pin(futures::stream::iter(vec![
+                Ok(RawStreamingChoice::Message("hi".to_string())),
+                Err(CompletionError::ProviderResponse(
+                    ProviderResponseError::new(http::StatusCode::OK, r#"{"type":"error"}"#),
+                )),
+                Err(CompletionError::ResponseError("unrelated".to_string())),
+            ]));
+
+        let stamped = stamp_terminal_request_id(stream, Some(slot), |_, _| {});
+        let items: Vec<_> = stamped.collect().await;
+
+        assert!(matches!(
+            &items[0],
+            Ok(RawStreamingChoice::Message(text)) if text == "hi"
+        ));
+        match &items[1] {
+            Err(error) => {
+                assert_eq!(error.provider_request_id(), Some("req_conn_1"));
+            }
+            other => panic!("expected the stamped provider error, got {other:?}"),
+        }
+        match &items[2] {
+            Err(CompletionError::ResponseError(_)) => {}
+            other => panic!("non-provider errors pass through untouched, got {other:?}"),
+        }
     }
 }

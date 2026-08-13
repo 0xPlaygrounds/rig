@@ -130,3 +130,27 @@ async fn streamed_agent_run_reports_none_identity() {
     )
     .await;
 }
+
+/// The contract-less provider keeps the exact pre-#2314 error shape: a 4xx
+/// stays a transport-shaped `HttpError` and `provider_request_id()` is `None`
+/// — absence on the error path too, never a secondary failure.
+#[tokio::test]
+async fn provider_error_keeps_transport_shape_and_none_id() {
+    with_gemini_cassette(
+        "response_identity/provider_error_keeps_transport_shape_and_none_id",
+        |client| async move {
+            let model = client.completion_model("gemini-nonexistent-model-for-identity-edge");
+            let error = model
+                .completion_request("Never answered")
+                .send()
+                .await
+                .expect_err("a nonexistent model must fail");
+            assert!(
+                matches!(error, rig::completion::CompletionError::HttpError(_)),
+                "no request-id contract, so the classification is unchanged: {error:?}"
+            );
+            assert_eq!(error.provider_request_id(), None);
+        },
+    )
+    .await;
+}

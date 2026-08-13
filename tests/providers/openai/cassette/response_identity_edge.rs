@@ -146,11 +146,11 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
     .await;
 }
 
-/// Family B: a provider 4xx (out-of-range `max_tokens`) — the error surfaces
-/// cleanly, and the recorded fixture documents whether the error response
-/// carried `x-request-id` (evidence for the error-path follow-up).
+/// A provider 4xx carries the failed call's transport request id (rig#2314):
+/// the recorded error response's `x-request-id` header reaches the error's
+/// `provider_request_id()` accessor, alongside the preserved status and body.
 #[tokio::test]
-async fn provider_error_response_surfaces_cleanly() {
+async fn provider_error_response_carries_request_id() {
     with_openai_cassette(
         "response_identity_edge/provider_error_response_surfaces_cleanly",
         |client| async move {
@@ -160,10 +160,11 @@ async fn provider_error_response_surfaces_cleanly() {
                 .send()
                 .await
                 .expect_err("a nonexistent model must fail");
-            let message = error.to_string();
+            assert_transport_request_id(error.provider_request_id(), "4xx error");
+            assert!(error.provider_response_status().is_some());
             assert!(
-                message.contains("model") || message.contains("404") || message.contains("400"),
-                "expected a provider model error, got: {message}"
+                error.to_string().contains("request id:"),
+                "the id appears in the logged message: {error}"
             );
         },
     )

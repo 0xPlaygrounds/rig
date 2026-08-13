@@ -71,3 +71,27 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
     )
     .await
 }
+
+/// A provider 4xx carries the failed call's transport request id (rig#2314).
+#[tokio::test]
+async fn provider_error_response_carries_request_id() -> Result<()> {
+    with_groq_cassette_result(
+        "response_identity_edge/provider_error_response_carries_request_id",
+        |client| async move {
+            let model = client.completion_model("groq-nonexistent-model-for-identity-edge");
+            let error = model
+                .completion_request("Never answered")
+                .send()
+                .await
+                .expect_err("a nonexistent model must fail");
+            anyhow::ensure!(
+                error
+                    .provider_request_id()
+                    .is_some_and(|id| !id.trim().is_empty()),
+                "the 4xx error carries the x-request-id Groq sent; got {error:?}"
+            );
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}

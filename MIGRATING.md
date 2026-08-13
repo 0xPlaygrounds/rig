@@ -1439,6 +1439,15 @@ carried:
   "Persisted histories" bullet in the tool-call identity section above for
   what a legacy `call_id` key now means and how to migrate the JSON by hand.
 
+### Errors carry the transport request id; two error-shape changes (#2314)
+
+Failed calls now preserve the provider's transport request id. Two breaks:
+
+- **`http_client::Error` gains the `InvalidStatusCodeWithDetails { status, body, headers }` variant** (the reqwest transport now reports non-success through it, preserving the failed response's headers). Exhaustive matches on `http_client::Error` need a new arm; its Display is identical to `InvalidStatusCodeWithMessage`, and `provider_response_status()`/`provider_response_body()` read both.
+- **`ProviderResponseError` is `#[non_exhaustive]`** with a new `provider_request_id` field. Construct via `ProviderResponseError::new(status, body)` / `::without_status(body)` instead of a struct literal; read the id via the `provider_request_id()` accessor on the error enums (also forwarded through `PromptError`).
+
+Behavior: providers with a request-id contract (anthropic, openai, xai, groq, copilot) classify non-success HTTP responses as `CompletionError::ProviderResponse` instead of `HttpError`. Matchers on `CompletionError::HttpError(_)` for those providers' 4xx/5xx need updating; the `provider_response_*` accessors are shape-independent and keep working. Contract-less providers are unchanged.
+
 ### Response identity metadata reaches agent observers (#2265)
 
 Completed model calls now report a `rig_core::completion::ResponseIdentity`
