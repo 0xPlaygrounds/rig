@@ -853,10 +853,13 @@ impl AgentRun {
                     && let Some(reason) = self.truncating_finish_reason()
                 {
                     return Err(CompletionError::ResponseError(format!(
+                        // No `PromptResponse` is built on this path — the run
+                        // ends in `Err` — so the message must not send the
+                        // caller to `completion_calls` for the reason. It is
+                        // named here because here is the only place it appears.
                         "the model produced no answer and stopped with \
                          finish_reason={reason:?}; the turn was cut short before it \
-                         produced one (raise max_tokens, or inspect \
-                         PromptResponse::completion_calls for the terminal reason)"
+                         produced one — raise max_tokens for this request"
                     ))
                     .into());
                 }

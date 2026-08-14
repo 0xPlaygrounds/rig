@@ -719,10 +719,20 @@ pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
 /// block.
 ///
 /// Deliberately *not* [`is_empty_assistant_turn`], which answers a different
-/// question — "does this turn belong in history". The two diverge on exactly
-/// one shape, and it is the shape that matters here: a turn carrying only
-/// [`AssistantContent::Reasoning`] belongs in history (the reasoning is real
-/// content worth replaying) but has answered nothing.
+/// question — "does this turn belong in history". They diverge on the shapes
+/// that are **worth recording yet answer nothing**, of which there are two:
+///
+/// 1. a turn carrying only [`AssistantContent::Reasoning`] — the reasoning is
+///    real content worth replaying, but it is not an answer;
+/// 2. a turn carrying only an **empty text block with `additional_params`** —
+///    the annotation (citations, encrypted reasoning references, and other
+///    provider metadata some wires require on replay) is worth recording, but
+///    the caller still receives no text.
+///
+/// Metadata-only text therefore does **not** count as an answer. That follows
+/// from what the caller actually gets: [`assistant_text_from_choice`]
+/// concatenates `text.text` alone, so such a turn yields `""` — the annotation
+/// is metadata *about* an answer, never the answer itself.
 ///
 /// Reasoning is not an answer. It is the model's scratch work, it is often not
 /// even replayable across turns, and a caller asked a question rather than for
@@ -953,8 +963,8 @@ where
 mod tests {
     use super::ResponseIdentity;
     use super::{
-        CompletionCall, PromptResponse, TypedPromptResponse, is_empty_assistant_turn,
-        turn_delivered_no_answer,
+        CompletionCall, PromptResponse, TypedPromptResponse, assistant_text_from_choice,
+        is_empty_assistant_turn, turn_delivered_no_answer,
     };
     use crate::{
         agent::{
@@ -1043,28 +1053,58 @@ mod tests {
         ]));
     }
 
-    /// rig#2322 follow-up — the divergence between the two predicates is
-    /// exactly one shape, and it is intentional.
+    /// rig#2322 follow-up — the two predicates diverge on exactly the shapes
+    /// that are **worth recording yet answer nothing**, and that is intentional.
     ///
-    /// `is_empty_assistant_turn` governs the history push ("does this belong
-    /// in the transcript"); `turn_delivered_no_answer` governs the truncation
-    /// guard ("did this answer the question"). A reasoning-only turn is the
-    /// only shape where they disagree, and both answers are correct: it is
-    /// worth recording and it answered nothing.
+    /// `is_empty_assistant_turn` governs the history push ("does this belong in
+    /// the transcript"); `turn_delivered_no_answer` governs the truncation
+    /// guard ("did this answer the question"). Two shapes disagree, and for the
+    /// same reason: reasoning-only, and an empty text block carrying
+    /// `additional_params`. Both are worth recording; neither delivers text.
+    ///
+    /// An earlier version of this test claimed the divergence was reasoning-only
+    /// and checked just three agreeing shapes — none of them annotated — so the
+    /// second case went unnoticed. The agreeing set is now enumerated
+    /// explicitly alongside it.
     #[test]
-    fn the_two_turn_predicates_diverge_only_on_reasoning_only_turns() {
+    fn the_two_turn_predicates_diverge_on_recordable_but_answerless_turns() {
         let reasoning_only = vec![AssistantContent::Reasoning(
             rig_core::message::Reasoning::new("t"),
         )];
+        let annotated_empty_text = vec![AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                json!({"citations": ["ref"]}),
+            )
+            .expect("citation params should be a JSON object"),
+        })];
 
-        assert!(!is_empty_assistant_turn(&reasoning_only));
-        assert!(turn_delivered_no_answer(&reasoning_only));
+        // Divergent: recordable, but no answer was delivered.
+        for choice in [&reasoning_only, &annotated_empty_text] {
+            assert!(
+                !is_empty_assistant_turn(choice),
+                "should be recorded in history: {choice:?}"
+            );
+            assert!(
+                turn_delivered_no_answer(choice),
+                "should count as no answer — the caller receives no text: {choice:?}"
+            );
+        }
 
-        // Everywhere else they agree.
+        // Agreeing: everything else.
         for choice in [
             vec![],
             vec![AssistantContent::text("")],
             vec![AssistantContent::text("real")],
+            vec![AssistantContent::image_base64(
+                "iVBORw0KGgo=",
+                Some(rig_core::message::ImageMediaType::PNG),
+                Some(rig_core::message::ImageDetail::default()),
+            )],
+            vec![AssistantContent::ToolCall(ToolCall::from_wire(
+                "call_1".to_string(),
+                ToolFunction::new("add".to_string(), json!({})),
+            ))],
         ] {
             assert_eq!(
                 is_empty_assistant_turn(&choice),
@@ -1072,6 +1112,44 @@ mod tests {
                 "unexpected divergence on {choice:?}"
             );
         }
+    }
+
+    /// rig#2322 follow-up — metadata-only text is **not** an answer, stated as
+    /// its own decision rather than left implied by the predicate's code.
+    ///
+    /// A text block with `additional_params` and no text carries provider
+    /// metadata (citations, encrypted reasoning references) that is worth
+    /// keeping in history, but `assistant_text_from_choice` concatenates
+    /// `text.text` alone — so the caller receives `""`. Nothing was answered,
+    /// and a turn truncated in that state is a failed turn.
+    ///
+    /// If this is ever reclassified, the run-level consequence is the point to
+    /// weigh: it decides whether a truncated annotation-only turn errors or
+    /// silently returns an empty string.
+    #[test]
+    fn metadata_only_text_is_not_an_answer() {
+        let annotated_empty = AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                json!({"citations": ["ref"]}),
+            )
+            .expect("citation params should be a JSON object"),
+        });
+
+        assert!(turn_delivered_no_answer(std::slice::from_ref(
+            &annotated_empty
+        )));
+        assert_eq!(
+            assistant_text_from_choice(std::slice::from_ref(&annotated_empty)),
+            "",
+            "the caller receives no text, which is why this is not an answer"
+        );
+
+        // The annotation does not suppress a real answer beside it.
+        assert!(!turn_delivered_no_answer(&[
+            annotated_empty,
+            AssistantContent::text("real"),
+        ]));
     }
 
     #[derive(Serialize)]
