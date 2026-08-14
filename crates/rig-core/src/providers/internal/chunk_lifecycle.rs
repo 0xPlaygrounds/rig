@@ -29,10 +29,11 @@
 //!
 //! Wires that announce their own boundaries (anthropic `content_block_stop`,
 //! OpenAI Responses `output_item.done`) do not use this — their lifecycle is
-//! the wire's, not a derivation. The chat-completions compat family keeps
-//! its [`CompatibleStreamProfile`](super::openai_chat_completions_compatible)
-//! system: that IS the shared derivation for its ~15 gateway providers,
-//! with wire quirks (slot eviction, encrypted reasoning details, tool-call
+//! the wire's, not a derivation. The chat-completions compat family keeps its
+//! `CompatibleStreamProfile` system (in the crate-private
+//! `openai_chat_completions_compatible` module, hence named rather than
+//! linked): that IS the shared derivation for its ~15 gateway providers, with
+//! wire quirks (slot eviction, encrypted reasoning details, tool-call
 //! decorations) this declarative shape does not model.
 
 use crate::streaming::{RawStreamingChoice, StreamPartId};
