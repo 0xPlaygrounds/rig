@@ -238,39 +238,39 @@ impl ToolServer {
 pub struct ToolServerHandle(Arc<RwLock<ToolServerState>>);
 
 impl ToolServerHandle {
+    /// Register through `add`, then drop any stale MCP managed-generation
+    /// entry so the (re)registered name follows last-registration-wins.
+    async fn register(&self, add: impl FnOnce(&mut ToolSet) -> String) {
+        let mut state = self.0.write().await;
+        let _name = add(&mut state.toolset);
+        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+        state.managed_generations.remove(&_name);
+    }
+
     /// Register a new static tool. Re-registering an existing name replaces
     /// the implementation (last wins) and keeps its position.
     pub async fn add_tool<T>(&self, tool: T)
     where
         T: Tool + 'static,
     {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+        self.register(|toolset| toolset.add_tool(tool)).await
     }
 
     /// Register a runtime-defined static tool.
     pub async fn add_dynamic_tool(&self, tool: DynamicTool) {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_dynamic_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+        self.register(|toolset| toolset.add_dynamic_tool(tool))
+            .await
     }
 
     /// Register a context-free dynamic tool through the classic adapter.
     pub async fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
-        let mut state = self.0.write().await;
-        let _name = state.toolset.add_portable_dynamic_tool(tool);
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        state.managed_generations.remove(&_name);
+        self.register(|toolset| toolset.add_portable_dynamic_tool(tool))
+            .await
     }
 
     #[cfg(all(feature = "rmcp", test))]
     pub(crate) async fn add_erased_tool(&self, tool: Arc<dyn ErasedTool>) {
-        let mut state = self.0.write().await;
-        let name = state.toolset.add_erased(tool);
-        state.managed_generations.remove(&name);
+        self.register(|toolset| toolset.add_erased(tool)).await
     }
 
     /// Atomically install the initial tools owned by one MCP handler.
@@ -427,12 +427,24 @@ impl ToolServerHandle {
         context: &mut ToolContext,
     ) -> ToolResult {
         context.clear_dispatch_result();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = self.dispatch(tool_name, args, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        let dispatch = self.dispatch(tool_name, args, context).await;
+        dispatch.publish_to(context)
+    }
+
+    /// Run `f` against the registry state, first retiring disconnected MCP
+    /// tools (which needs a write lock) when that feature is compiled in.
+    async fn with_registry<R>(&self, f: impl FnOnce(&ToolServerState) -> R) -> R {
+        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+        {
+            let mut state = self.0.write().await;
+            state.retire_disconnected_tools();
+            f(&state)
+        }
+        #[cfg(not(all(feature = "rmcp", not(target_family = "wasm"))))]
+        {
+            let state = self.0.read().await;
+            f(&state)
+        }
     }
 
     /// Run one isolated dispatch and retain its full context for agent hooks.
@@ -442,17 +454,9 @@ impl ToolServerHandle {
         args: &str,
         context: &ToolContext,
     ) -> ToolDispatch {
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        let tool = {
-            let mut state = self.0.write().await;
-            state.retire_disconnected_tools();
-            state.toolset.get(tool_name).cloned()
-        };
-        #[cfg(not(all(feature = "rmcp", not(target_family = "wasm"))))]
-        let tool = {
-            let state = self.0.read().await;
-            state.toolset.get(tool_name).cloned()
-        };
+        let tool = self
+            .with_registry(|state| state.toolset.get(tool_name).cloned())
+            .await;
         dispatch_tool(tool_name, args.to_string(), tool, context).await
     }
 
@@ -518,17 +522,9 @@ impl ToolServerHandle {
             Vec::new()
         };
 
-        #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-        let tools = {
-            let mut state = self.0.write().await;
-            state.retire_disconnected_tools();
-            snapshot_registered_tools(&state, dynamic_tool_ids)
-        };
-        #[cfg(not(all(feature = "rmcp", not(target_family = "wasm"))))]
-        let tools = {
-            let state = self.0.read().await;
-            snapshot_registered_tools(&state, dynamic_tool_ids)
-        };
+        let tools = self
+            .with_registry(|state| snapshot_registered_tools(state, dynamic_tool_ids))
+            .await;
 
         Ok(ToolRegistrySnapshot::new(tools))
     }
@@ -539,38 +535,34 @@ fn snapshot_registered_tools(
     dynamic_tool_ids: Vec<String>,
 ) -> IndexMap<String, RegisteredTool> {
     let mut tools = IndexMap::new();
-
-    // Retrieved tools remain first, in index/result order. Duplicate IDs and
-    // dynamic/static overlap retain the first provider declaration.
-    for name in dynamic_tool_ids {
-        if tools.contains_key(&name) {
-            tracing::debug!(
-                tool_name = %name,
-                "dropping duplicate tool definition from the request"
-            );
-            continue;
-        }
-        match state.toolset.get(&name).cloned() {
-            Some(tool) => {
-                tools.insert(name, tool);
-            }
-            None => {
-                tracing::warn!("Tool implementation not found in toolset: {name}");
-            }
-        }
-    }
-
-    for name in state.toolset.always_exposed_names() {
+    let insert = |tools: &mut IndexMap<String, RegisteredTool>, name: &str, warn_missing| {
         if tools.contains_key(name) {
             tracing::debug!(
                 tool_name = %name,
                 "dropping duplicate tool definition from the request"
             );
-            continue;
+            return;
         }
-        if let Some(tool) = state.toolset.get(name).cloned() {
-            tools.insert(name.clone(), tool);
+        match state.toolset.get(name).cloned() {
+            Some(tool) => {
+                tools.insert(name.to_string(), tool);
+            }
+            // A dynamic ID the model asked for but the toolset lacks is worth
+            // an operator warning; a retired always-exposed tool is not.
+            None if warn_missing => {
+                tracing::warn!("Tool implementation not found in toolset: {name}");
+            }
+            None => {}
         }
+    };
+
+    // Retrieved tools remain first, in index/result order. Duplicate IDs and
+    // dynamic/static overlap retain the first provider declaration.
+    for name in &dynamic_tool_ids {
+        insert(&mut tools, name, true);
+    }
+    for name in state.toolset.always_exposed_names() {
+        insert(&mut tools, name, false);
     }
     tools
 }

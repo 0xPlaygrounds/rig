@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(bedrock)* `CompletionModel::with_guardrail` attaches a [Bedrock guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) (identifier, version, trace mode) to every Converse request the model issues. Requests previously had no way to carry `guardrailConfig` at all, which also made the response-side trace unreachable
+- *(bedrock)* `types::converse_output` and `types::assistant_content` are public modules. `raw_completion` returns `AwsConverseOutput`, which wraps `InternalConverseOutput`; both lived behind `pub(crate)` modules, so a caller could not name the type the escape hatch hands back
+
+### Fixed
+
+- *(bedrock)* `raw_completion` no longer discards provider-only response data. The conversion from the SDK's `ConverseOutput` matched five fields and swallowed the rest, so the guardrail `trace`, `performance_config`, `service_tier` and the AWS `request_id` never reached the escape hatch whose contract is that nothing the provider sent was dropped. The trace is the costly one: a blocked turn normalizes to a content-filter finish reason and nothing else, so the assessment naming the policy that fired was unrecoverable. All four are now carried — the three SDK-typed ones as the SDK's own types, `#[serde(skip)]` because they are not `Serialize`, so an in-process caller reads them in full while a serialized response omits them
+
+- *(bedrock)* [**breaking**] the model constants are the identifiers Bedrock can actually invoke. 39 of the 72 shipped constants could only fail: 29 identifiers (every `anthropic.claude-*` constant among them, plus the Titan text/image generators, Claude 2/Instant, Llama 3.2, Jamba Instruct, the older Stability ids and the Cohere `command-text` pair) are absent from `ListFoundationModels` in us-east-1, us-west-2, eu-central-1 and ap-northeast-1 and answer `ResourceNotFoundException` ("This model version has reached the end of its life"); 10 more exist but are servable only through a cross-region inference profile, so the bare identifier answers `ValidationException` ("Invocation of model ID … with on-demand throughput isn't supported"). Retired identifiers are removed; the profile-only families (`DEEPSEEK_R1`, `META_LLAMA_3_3_70B_INSTRUCT`, `META_LLAMA_4_*`, `MISTRAL_PIXTRAL_LARGE_2502`, `WRITER_PALMYRA_X4`/`X5`) now carry their `us.` profile identifier, and Anthropic — which had no working constant at all — is represented by `ANTHROPIC_CLAUDE_HAIKU_4_5`, `ANTHROPIC_CLAUDE_SONNET_4_5`, `ANTHROPIC_CLAUDE_OPUS_4_5`, `ANTHROPIC_CLAUDE_SONNET_4_6`, `ANTHROPIC_CLAUDE_SONNET_5` and `ANTHROPIC_CLAUDE_OPUS_5`. A `us.` prefix names a region family: callers outside the US substitute `eu.`/`apac.` (or `global.` where offered). Every retained identifier was invoked with `Converse` in us-east-1
+
+- *(bedrock)* a provider error this SDK version cannot classify keeps the service's own body. `SdkError::into_service_error` funnels unmodeled exceptions — and any response whose `x-amzn-errortype` the transport dropped — into `Unhandled`, whose `meta()` is empty and whose message hides in its source, so the conversion's catch-all reported Bedrock's end-of-life notice as `ProviderError("An unexpected error occurred. Verify Internet connection or AWS keys")` with `provider_response_body() == None`. The raw HTTP body is now the fallback on all four conversions (converse, converse-stream, invoke-model → image and embedding); a classified exception's own message still wins
+
 ### Changed
+
+- *(completion)* [**behavior**] an assistant message that converts to zero content blocks is rejected with rig-core's shared empty-response wording (via `message::require_non_empty_response`) — previously "Bedrock returned an assistant message with no content"
+
+- *(completion)* message and tool-result content conversions follow rig-core's message-content change from `OneOrMany<T>` to `Vec<T>`; wire payloads are unchanged
 
 - *(streaming)* the Converse stream routes through the shared `WireAdapter` driver: frame triage (unknown-variant warn-skip) lives in the one policy site, and `streaming::stream_from_events` is the events-first conformance seam driving already-typed SDK events through the full pipeline
 

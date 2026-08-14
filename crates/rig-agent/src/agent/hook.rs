@@ -25,10 +25,11 @@
 //! tool-result stop omits result content from telemetry.
 //!
 //! Blocking and streaming agents share model-turn, request, tool-call, and
-//! tool-result resolution. Streaming adds delta-specific observations, but
-//! shared lifecycle actions have identical semantics on both surfaces. Streamed
-//! deltas are provisional until the model turn is accepted; a retry is surfaced
-//! as [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
+//! tool-result resolution. Streaming adds text, reasoning, and tool-call delta
+//! observations, but shared lifecycle actions have identical semantics on both
+//! surfaces. Streamed deltas are provisional until the model turn is accepted;
+//! a retry is surfaced as
+//! [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried)
 //! so consumers can discard the rejected turn's deltas.
 //!
 //! # Example
@@ -121,14 +122,13 @@ use std::{future::Future, sync::Arc};
 
 use crate::tool::extensions::TypeMap;
 use rig_core::{
-    OneOrMany,
     message::{AssistantContent, Message, ToolChoice},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
 use crate::{
     agent::model::ModelHandle,
-    completion::{Document, Usage},
+    completion::{Document, ResponseIdentity, Usage},
     json_utils,
     tool::{ToolContext, ToolOutput, ToolResult},
 };
@@ -485,11 +485,16 @@ pub struct CompletionResponse<'a> {
     /// Prompt sent for this turn.
     pub prompt: &'a Message,
     /// Canonical assistant content returned for this turn.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
-    /// Provider-assigned message ID, when available.
+    /// Provider-assigned message ID, when available. Always equal to
+    /// [`identity`](Self::identity)`.message_id`; kept as a field for
+    /// continuity with pre-identity hooks.
     pub message_id: Option<&'a str>,
+    /// This exact attempt's response identity metadata (message-scoped,
+    /// response-scoped, and transport request ids).
+    pub identity: &'a ResponseIdentity,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -502,9 +507,16 @@ pub struct ModelTurnFinished<'a> {
     /// One-based model-call index.
     pub turn: usize,
     /// Canonical assistant content parked for hook acceptance.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for the turn.
     pub usage: Usage,
+    /// This exact attempt's response identity metadata. Fired for every
+    /// completed model call on both surfaces — including streamed tool-only
+    /// and reasoning-only turns, which fire no [`StreamResponseFinish`] — so
+    /// a provider-neutral hook observing this event alone records identity
+    /// for every accepted call. On a retry, this is the retried attempt's own
+    /// identity, never a previous attempt's.
+    pub identity: &'a ResponseIdentity,
 }
 
 /// How an accepted, tool-free model turn should be retried.
@@ -606,6 +618,21 @@ pub struct TextDelta<'a> {
     pub aggregated: &'a str,
 }
 
+/// Streaming reasoning delta.
+#[derive(Clone, Copy)]
+pub struct ReasoningDelta<'a> {
+    /// Rig-generated correlator for this reasoning part. It is stable across
+    /// the part's deltas and eventual completed reasoning item, but is never
+    /// persisted as a provider-issued reasoning id.
+    pub id: &'a str,
+    /// Provider-issued durable reasoning item id, when the wire provides one.
+    pub provider_id: Option<&'a str>,
+    /// Newly received reasoning fragment.
+    pub delta: &'a str,
+    /// Reasoning text accumulated for this reasoning part through this delta.
+    pub aggregated: &'a str,
+}
+
 /// Streaming tool-call delta.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
@@ -626,11 +653,16 @@ pub struct StreamResponseFinish<'a> {
     /// Prompt sent for this turn.
     pub prompt: &'a Message,
     /// Canonical assistant content aggregated for this turn.
-    pub content: &'a OneOrMany<AssistantContent>,
+    pub content: &'a Vec<AssistantContent>,
     /// Usage reported for this turn.
     pub usage: Usage,
-    /// Provider-assigned message ID, when available.
+    /// Provider-assigned message ID, when available. Always equal to
+    /// [`identity`](Self::identity)`.message_id`; kept as a field for
+    /// continuity with pre-identity hooks.
     pub message_id: Option<&'a str>,
+    /// This exact attempt's response identity metadata (message-scoped,
+    /// response-scoped, and transport request ids).
+    pub identity: &'a ResponseIdentity,
 }
 
 /// Hook event kind used only as an observation performance hint.
@@ -644,6 +676,7 @@ pub enum StepEventKind {
     ToolCall,
     ToolResult,
     TextDelta,
+    ReasoningDelta,
     ToolCallDelta,
     StreamResponseFinish,
 }
@@ -1141,6 +1174,19 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
+    /// Observes a reasoning delta from a streaming response.
+    ///
+    /// The aggregate is scoped to the reasoning part identified by the event's
+    /// correlator. Like all streamed deltas, it remains provisional until the
+    /// model turn is accepted. The default action continues the run.
+    fn on_reasoning_delta(
+        &self,
+        _ctx: &HookContext,
+        _event: ReasoningDelta<'_>,
+    ) -> impl Future<Output = ObservationAction> + WasmCompatSend {
+        async { ObservationAction::Continue }
+    }
+
     /// Observes an argument delta for a streaming tool call.
     ///
     /// The default action continues the run.
@@ -1175,23 +1221,81 @@ impl AgentHook for () {
     }
 }
 
+/// The erased hook events whose dispatch is a plain `Box::pin(self.on_*(..))`.
+/// `model_select` (sync), `invalid_tool_call` (borrowed event), and `tool_call`
+/// (wraps the rewrite-salvage frame) are hand-written below.
+macro_rules! for_each_boxed_hook_event {
+    ($m:ident) => {
+        $m!(
+            completion_call,
+            on_completion_call,
+            CompletionCall,
+            CompletionCallAction
+        );
+        $m!(
+            completion_response,
+            on_completion_response,
+            CompletionResponse,
+            ObservationAction
+        );
+        $m!(
+            model_turn_finished,
+            on_model_turn_finished,
+            ModelTurnFinished,
+            ModelTurnAction
+        );
+        $m!(
+            tool_result,
+            on_tool_result,
+            ToolResultEvent,
+            ToolResultAction
+        );
+        $m!(text_delta, on_text_delta, TextDelta, ObservationAction);
+        $m!(
+            reasoning_delta,
+            on_reasoning_delta,
+            ReasoningDelta,
+            ObservationAction
+        );
+        $m!(
+            tool_call_delta,
+            on_tool_call_delta,
+            ToolCallDelta,
+            ObservationAction
+        );
+        $m!(
+            stream_response_finish,
+            on_stream_response_finish,
+            StreamResponseFinish,
+            ObservationAction
+        );
+    };
+}
+
+macro_rules! erased_hook_decl {
+    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+        fn $erased<'a>(
+            &'a self,
+            ctx: &'a HookContext,
+            event: $event<'a>,
+        ) -> WasmBoxedFuture<'a, $action>;
+    };
+}
+
+macro_rules! erased_hook_forward {
+    ($erased:ident, $on:ident, $event:ident, $action:ident) => {
+        fn $erased<'a>(
+            &'a self,
+            ctx: &'a HookContext,
+            event: $event<'a>,
+        ) -> WasmBoxedFuture<'a, $action> {
+            Box::pin(self.$on(ctx, event))
+        }
+    };
+}
+
 trait DynAgentHook: WasmCompatSend + WasmCompatSync {
     fn model_select(&self, ctx: &HookContext, event: ModelSelection<'_>) -> ModelSelectionAction;
-    fn completion_call<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction>;
-    fn completion_response<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn model_turn_finished<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ModelTurnAction>;
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -1202,26 +1306,7 @@ trait DynAgentHook: WasmCompatSend + WasmCompatSync {
         ctx: &'a HookContext,
         event: ToolCall<'a>,
     ) -> WasmBoxedFuture<'a, (ToolCallAction, Option<serde_json::Value>)>;
-    fn tool_result<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction>;
-    fn text_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn tool_call_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
-    fn stream_response_finish<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction>;
+    for_each_boxed_hook_event!(erased_hook_decl);
     fn observes(&self, kind: StepEventKind) -> bool;
 }
 
@@ -1233,27 +1318,6 @@ where
         self.on_model_select(ctx, event)
     }
 
-    fn completion_call<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionCall<'a>,
-    ) -> WasmBoxedFuture<'a, CompletionCallAction> {
-        Box::pin(self.on_completion_call(ctx, event))
-    }
-    fn completion_response<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: CompletionResponse<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_completion_response(ctx, event))
-    }
-    fn model_turn_finished<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ModelTurnFinished<'a>,
-    ) -> WasmBoxedFuture<'a, ModelTurnAction> {
-        Box::pin(self.on_model_turn_finished(ctx, event))
-    }
     fn invalid_tool_call<'a>(
         &'a self,
         ctx: &'a HookContext,
@@ -1274,34 +1338,7 @@ where
             (action, frame.finish())
         })
     }
-    fn tool_result<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolResultEvent<'a>,
-    ) -> WasmBoxedFuture<'a, ToolResultAction> {
-        Box::pin(self.on_tool_result(ctx, event))
-    }
-    fn text_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: TextDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_text_delta(ctx, event))
-    }
-    fn tool_call_delta<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: ToolCallDelta<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_tool_call_delta(ctx, event))
-    }
-    fn stream_response_finish<'a>(
-        &'a self,
-        ctx: &'a HookContext,
-        event: StreamResponseFinish<'a>,
-    ) -> WasmBoxedFuture<'a, ObservationAction> {
-        Box::pin(self.on_stream_response_finish(ctx, event))
-    }
+    for_each_boxed_hook_event!(erased_hook_forward);
     fn observes(&self, kind: StepEventKind) -> bool {
         AgentHook::observes(self, kind)
     }
@@ -1384,16 +1421,57 @@ impl HookStack {
     }
 }
 
-async fn first_stop<I>(futures: I) -> ObservationAction
+/// An action with a neutral `Continue` state that observe-only and steering
+/// dispatch short-circuits on: the first non-`Continue` action wins and later
+/// hooks are not invoked.
+trait ShortCircuitAction: Sized {
+    const CONTINUE: Self;
+    fn is_continue(&self) -> bool;
+}
+
+impl ShortCircuitAction for ObservationAction {
+    const CONTINUE: Self = ObservationAction::Continue;
+    fn is_continue(&self) -> bool {
+        matches!(self, ObservationAction::Continue)
+    }
+}
+
+impl ShortCircuitAction for ModelTurnAction {
+    const CONTINUE: Self = ModelTurnAction::Continue;
+    fn is_continue(&self) -> bool {
+        matches!(self, ModelTurnAction::Continue)
+    }
+}
+
+/// Dispatches to each hook in registration order, returning the first action
+/// that is not `Continue` without invoking the remaining hooks.
+async fn first_non_continue<'a, A, F>(hooks: &'a [Arc<dyn DynAgentHook>], mut dispatch: F) -> A
 where
-    I: IntoIterator<Item = ObservationAction>,
+    A: ShortCircuitAction,
+    F: FnMut(&'a dyn DynAgentHook) -> WasmBoxedFuture<'a, A>,
 {
-    for action in futures {
-        if !matches!(action, ObservationAction::Continue) {
+    for hook in hooks {
+        let action = dispatch(hook.as_ref()).await;
+        if !action.is_continue() {
             return action;
         }
     }
-    ObservationAction::Continue
+    A::CONTINUE
+}
+
+/// Generate the `HookStack` methods whose dispatch is exactly
+/// [`first_non_continue`] over the erased hooks: `(on_* name, erased name,
+/// event type, action type)`, mirroring `for_each_boxed_hook_event!`. The
+/// genuinely chaining events (`on_model_select`, `on_completion_call`,
+/// `on_invalid_tool_call`, `on_tool_call`, `on_tool_result`) stay hand-written.
+macro_rules! stack_first_non_continue {
+    ($($on:ident, $erased:ident, $event:ident, $action:ident;)+) => {
+        $(
+            async fn $on(&self, ctx: &HookContext, event: $event<'_>) -> $action {
+                first_non_continue(&self.hooks, |hook| hook.$erased(ctx, event)).await
+            }
+        )+
+    };
 }
 
 impl AgentHook for HookStack {
@@ -1444,34 +1522,13 @@ impl AgentHook for HookStack {
         }
     }
 
-    async fn on_completion_response(
-        &self,
-        ctx: &HookContext,
-        event: CompletionResponse<'_>,
-    ) -> ObservationAction {
-        let mut actions = Vec::new();
-        for hook in &self.hooks {
-            let action = hook.completion_response(ctx, event).await;
-            let stop = !matches!(action, ObservationAction::Continue);
-            actions.push(action);
-            if stop {
-                break;
-            }
-        }
-        first_stop(actions).await
-    }
-    async fn on_model_turn_finished(
-        &self,
-        ctx: &HookContext,
-        event: ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
-        for hook in &self.hooks {
-            let action = hook.model_turn_finished(ctx, event).await;
-            if !matches!(action, ModelTurnAction::Continue) {
-                return action;
-            }
-        }
-        ModelTurnAction::Continue
+    stack_first_non_continue! {
+        on_completion_response, completion_response, CompletionResponse, ObservationAction;
+        on_model_turn_finished, model_turn_finished, ModelTurnFinished, ModelTurnAction;
+        on_text_delta, text_delta, TextDelta, ObservationAction;
+        on_reasoning_delta, reasoning_delta, ReasoningDelta, ObservationAction;
+        on_tool_call_delta, tool_call_delta, ToolCallDelta, ObservationAction;
+        on_stream_response_finish, stream_response_finish, StreamResponseFinish, ObservationAction;
     }
     async fn on_invalid_tool_call(
         &self,
@@ -1513,41 +1570,6 @@ impl AgentHook for HookStack {
             }
         }
         effective.map_or(ToolResultAction::Keep, ToolResultAction::Rewrite)
-    }
-    async fn on_text_delta(&self, ctx: &HookContext, event: TextDelta<'_>) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.text_delta(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
-    }
-    async fn on_tool_call_delta(
-        &self,
-        ctx: &HookContext,
-        event: ToolCallDelta<'_>,
-    ) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.tool_call_delta(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
-    }
-    async fn on_stream_response_finish(
-        &self,
-        ctx: &HookContext,
-        event: StreamResponseFinish<'_>,
-    ) -> ObservationAction {
-        for hook in &self.hooks {
-            let action = hook.stream_response_finish(ctx, event).await;
-            if !matches!(action, ObservationAction::Continue) {
-                return action;
-            }
-        }
-        ObservationAction::Continue
     }
     fn observes(&self, kind: StepEventKind) -> bool {
         self.hooks.iter().any(|hook| hook.observes(kind))
@@ -2043,6 +2065,19 @@ mod migrated_tests {
                 ObservationAction::continue_run()
             }
         }
+
+        async fn on_reasoning_delta(
+            &self,
+            _ctx: &HookContext,
+            _event: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.log.lock().expect("log").push(self.label);
+            if self.stop {
+                ObservationAction::stop("stop")
+            } else {
+                ObservationAction::continue_run()
+            }
+        }
     }
 
     struct ObservesOnly(StepEventKind);
@@ -2185,6 +2220,43 @@ mod migrated_tests {
             ObservationAction::Stop(_)
         ));
         assert_eq!(*log.lock().unwrap(), vec![1]);
+    }
+
+    #[tokio::test]
+    async fn reasoning_delta_observation_preserves_nested_order_and_stop() {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let mut inner = HookStack::with(ObservationRecorder {
+            label: 1,
+            log: log.clone(),
+            stop: false,
+        });
+        inner.push(ObservationRecorder {
+            label: 2,
+            log: log.clone(),
+            stop: true,
+        });
+        let mut outer = HookStack::with(inner);
+        outer.push(ObservationRecorder {
+            label: 3,
+            log: log.clone(),
+            stop: false,
+        });
+
+        assert!(matches!(
+            outer
+                .on_reasoning_delta(
+                    &ctx(),
+                    ReasoningDelta {
+                        id: "corr_1",
+                        provider_id: Some("rs_1"),
+                        delta: "think",
+                        aggregated: "think",
+                    },
+                )
+                .await,
+            ObservationAction::Stop(_)
+        ));
+        assert_eq!(*log.lock().expect("log"), vec![1, 2]);
     }
 
     #[tokio::test]
@@ -2350,6 +2422,7 @@ mod migrated_tests {
             StepEventKind::ToolCall,
             StepEventKind::ToolResult,
             StepEventKind::TextDelta,
+            StepEventKind::ReasoningDelta,
             StepEventKind::ToolCallDelta,
             StepEventKind::StreamResponseFinish,
         ] {

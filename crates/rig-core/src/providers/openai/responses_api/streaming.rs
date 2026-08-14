@@ -2,10 +2,13 @@
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::GenericEventSource;
 use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{
-    AdapterOutput, WireAdapter, WireFrame, run_wire_buffered, run_wire_stream,
+    AdapterOutput, WireAdapter, WireFrame, run_wire_buffered,
+};
+use crate::providers::internal::sse_transport::{
+    FrameDisposition, OpenLog, SseTransportOptions, open_wire_stream,
 };
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
@@ -15,11 +18,8 @@ use crate::streaming;
 use crate::streaming::RawStreamingChoice;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::WasmCompatSend;
-use async_stream::stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument as _;
 
 use super::{CompletionResponse, GenericResponsesCompletionModel, Output, ResponsesProviderExt};
 
@@ -76,6 +76,11 @@ pub struct StreamingCompletionResponse {
     /// The model identifier reported by the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The transport request id from the SSE connection's `x-request-id`
+    /// response header — not part of any stream frame; stamped by the
+    /// transport. `None` when the provider did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 impl StreamingCompletionResponse {
@@ -84,6 +89,7 @@ impl StreamingCompletionResponse {
     pub fn new(usage: ResponsesUsage) -> Self {
         Self {
             usage,
+            provider_request_id: None,
             reasoning_metadata: None,
             reasoning_context: None,
             status: None,
@@ -114,6 +120,7 @@ impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(response.message_id)
             .with_optional_response_id(response.response_id)
+            .with_optional_provider_request_id(response.provider_request_id)
             .with_optional_model(response.model)
     }
 }
@@ -480,14 +487,19 @@ impl RawChoiceAccumulator {
         output_index: u64,
         item_id: Option<&str>,
     ) -> crate::streaming::StreamPartId {
-        self.reasoning_slots
-            .entry(output_index)
-            .or_insert_with(|| {
-                item_id
-                    .map(crate::streaming::StreamPartId::wire)
-                    .unwrap_or(crate::streaming::MintKind::Output.for_wire_index(output_index))
-            })
-            .clone()
+        if let Some(key) = self.reasoning_slots.get(&output_index) {
+            return key.clone();
+        }
+        // Minted from the bridge's ONE counter (tool_call_bridge's own
+        // invariant): a second sequence stamping `Minted{Output, index}`
+        // could collide with an assembly the bridge minted the same value
+        // for. The per-slot map above, not the mint, is what keeps the key
+        // stable across the slot's frames.
+        let key = item_id
+            .map(crate::streaming::StreamPartId::wire)
+            .unwrap_or_else(|| self.tool_slots.minted_ids().mint());
+        self.reasoning_slots.insert(output_index, key.clone());
+        key
     }
 
     pub(crate) fn decode_item_chunk(
@@ -692,9 +704,12 @@ impl RawChoiceAccumulator {
                     // restates a real `fc_*` id — assembled fragments must
                     // not dangle under a different key.
                     Some(slot) => slot.key().clone(),
-                    None if func.id.is_empty() => {
-                        crate::streaming::MintKind::Output.for_wire_index(output_index)
-                    }
+                    // Minted from the bridge's ONE counter: a done-only call
+                    // stamping `Minted{Output, index}` from a second sequence
+                    // could collide with a mid-assembly key the bridge minted
+                    // the same value for, consuming that assembly under the
+                    // wrong call.
+                    None if func.id.is_empty() => self.tool_slots.minted_ids().mint(),
                     None => crate::streaming::StreamPartId::wire(func.id.clone()),
                 };
                 let mut end = streaming::ToolInputEnd::new(
@@ -807,6 +822,8 @@ impl RawChoiceAccumulator {
         choices.push(RawStreamingChoice::FinalResponse(
             StreamingCompletionResponse {
                 usage: self.final_usage,
+                // Stamped by the transport layer.
+                provider_request_id: None,
                 reasoning_metadata: self.reasoning_metadata,
                 reasoning_context: self.reasoning_context,
                 status: self.status,
@@ -968,17 +985,17 @@ pub(crate) async fn completion_response_from_raw_choices(
     // message text only in the terminal body while streaming other kinds as
     // deltas. A replay with no message text takes the body's message content;
     // everything replayed is kept.
-    let mut contents = stream.choice.iter().cloned().collect::<Vec<_>>();
+    let mut choice = std::mem::take(&mut stream.choice);
     // Presence of ANY streamed text — even whitespace — means the deltas were
     // the content channel; merging the body then would duplicate it.
-    let replay_has_message_text = contents.iter().any(|content| {
+    let replay_has_message_text = choice.iter().any(|content| {
         matches!(
             content,
             completion::AssistantContent::Text(text) if !text.text.is_empty()
         )
     });
     if !replay_has_message_text {
-        contents.extend(
+        choice.extend(
             raw_response
                 .output
                 .iter()
@@ -987,7 +1004,6 @@ pub(crate) async fn completion_response_from_raw_choices(
                 .flat_map(<Vec<completion::AssistantContent>>::from),
         );
     }
-    let choice = crate::OneOrMany::many(contents).unwrap_or_else(|_| stream.choice.clone());
 
     let terminal = stream.response.clone();
     let usage = terminal
@@ -1027,7 +1043,7 @@ pub(crate) async fn completion_response_from_raw_choices(
     ))
 }
 
-fn choice_is_empty(choice: &crate::OneOrMany<completion::AssistantContent>) -> bool {
+fn choice_is_empty(choice: &[completion::AssistantContent]) -> bool {
     choice.iter().all(|content| match content {
         completion::AssistantContent::Text(text) => text.text.trim().is_empty(),
         completion::AssistantContent::Reasoning(reasoning) => reasoning.content.is_empty(),
@@ -1075,46 +1091,31 @@ where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
 {
-    // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
-    // and the wire's in-band provider `error` envelope (a terminal transport
-    // condition, detected pre-classification exactly as an HTTP failure would
-    // be) — classification and policy live downstream.
-    let transport = stream! {
-        let mut event_source = Box::pin(event_source);
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                }
-                Ok(Event::Message(evt)) => {
-                    if evt.data.trim().is_empty() || evt.data == "[DONE]" {
-                        continue;
-                    }
-
-                    if let Some(error) = provider_response_from_responses_sse_data(&evt.data) {
-                        // A terminal failure: the driver flushes
-                        // fully-delivered content, yields this error last,
-                        // and emits no terminal record.
-                        yield Err(error);
-                        break;
-                    }
-
-                    yield Ok(WireFrame::Text(evt.data));
-                }
-                Err(crate::http_client::Error::StreamEnded) => {
-                    break;
-                }
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::from_stream_transport(error));
-                    break;
-                }
+    // The wire's in-band provider `error` envelope is a terminal transport
+    // condition, detected pre-classification exactly as an HTTP failure
+    // would be.
+    open_wire_stream(
+        event_source,
+        SseTransportOptions {
+            open_log: OpenLog::Trace,
+            stream_ended_is_error: false,
+            log_transport_errors: true,
+        },
+        |data| {
+            if data.trim().is_empty() || data == "[DONE]" {
+                return FrameDisposition::Skip;
             }
-        }
-        event_source.close();
-    };
-
-    Box::pin(run_wire_stream(transport, ResponsesAdapter::live(options)).instrument(span))
+            if let Some(error) = provider_response_from_responses_sse_data(&data) {
+                // A terminal failure: the driver flushes fully-delivered
+                // content, yields this error last, and emits no terminal
+                // record.
+                return FrameDisposition::Fail(error);
+            }
+            FrameDisposition::Frame(data)
+        },
+        ResponsesAdapter::live(options),
+        span,
+    )
 }
 
 /// One classified Responses frame, carrying its raw payload alongside the
@@ -1493,10 +1494,9 @@ pub enum SummaryPartChunkPart {
 
 impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
 where
-    crate::client::Client<Ext, H>:
-        HttpClientExt + Clone + std::fmt::Debug + WasmCompatSend + 'static,
+    crate::client::Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + 'static,
     Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
-    H: Clone + Default + std::fmt::Debug + WasmCompatSend + 'static,
+    H: Clone + WasmCompatSend + 'static,
 {
     /// Open a stream whose terminal record stays provider-native.
     ///
@@ -1512,36 +1512,53 @@ where
     ) -> Result<streaming::RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let system_instructions = completion_request.preamble.clone();
         let record_telemetry_content = completion_request.record_telemetry_content;
-        let mut request = self.create_completion_request(completion_request)?;
-        request.stream = Some(true);
+        let (request_model, request) = self.create_provider_request(completion_request, true)?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Responses streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Responses streaming completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
 
         let req = self
             .client
-            .post("/responses")?
+            .post(Ext::RESPONSES_PATH)?
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         let span = CompletionSpanBuilder::new(
             Ext::PROVIDER_NAME,
-            &request.model,
+            &request_model,
             CompletionOperation::ChatStreaming,
         )
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
         let client = self.client.clone();
         let event_source = GenericEventSource::new(client, req);
+        let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {
+            Some(header) => {
+                let (event_source, slot) = event_source.capture_request_id(header);
+                (event_source, Some(slot))
+            }
+            None => (event_source, None),
+        };
 
-        Ok(raw_stream_from_event_source(event_source, span))
+        let options = if Ext::EMITS_COMPLETE_TOOL_CALLS_IMMEDIATELY {
+            ResponsesStreamOptions::strict_with_immediate_tool_calls()
+        } else {
+            ResponsesStreamOptions::strict()
+        };
+        let stream = raw_stream_from_event_source_with_options(event_source, span, options);
+        Ok(
+            crate::providers::internal::sse_transport::stamp_terminal_request_id(
+                stream,
+                request_id_slot,
+                Ext::REQUEST_ID_HEADER,
+                |response, id| response.provider_request_id = Some(id),
+            ),
+        )
     }
 
     pub(crate) async fn stream(
@@ -1775,6 +1792,7 @@ mod tests {
         CompletionResponse {
             id: "resp_123".to_string(),
             object: ResponseObject::Response,
+            provider_request_id: None,
             created_at: 0,
             status,
             error: None,

@@ -1,6 +1,6 @@
-use crate::types::assistant_content::{PROVIDER_NAME, map_stop_reason};
+use crate::types::assistant_content::{PROVIDER_NAME, map_stop_reason, normalize_usage};
 use crate::types::completion_request::AwsCompletionRequest;
-use crate::types::converse_output::StopReason;
+use crate::types::converse_output::{StopReason, TokenUsage};
 use crate::{
     completion::{CompletionModel, resolve_request_model},
     types::errors::{AwsSdkConverseStreamError, converse_stream_output_completion_error},
@@ -24,22 +24,17 @@ use tracing_futures::Instrument;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct BedrockStreamingResponse {
-    pub usage: Option<BedrockUsage>,
+    pub usage: Option<TokenUsage>,
     /// Bedrock's own `stopReason` from the terminal `MessageStop` event, when
     /// the stream reported one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<StopReason>,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct BedrockUsage {
-    pub input_tokens: i32,
-    pub output_tokens: i32,
-    pub total_tokens: i32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_read_input_tokens: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_write_input_tokens: Option<i32>,
+    /// The AWS request id from the converse-stream response's metadata
+    /// (`x-amzn-RequestId`) — not part of any stream event; stamped by
+    /// `raw_stream` from the SDK operation output, matching the unary
+    /// surface's semantics. `None` when the SDK reported none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
@@ -47,15 +42,7 @@ impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
         response
             .usage
             .as_ref()
-            .map(|u| rig_core::completion::Usage {
-                input_tokens: u.input_tokens as u64,
-                output_tokens: u.output_tokens as u64,
-                total_tokens: u.total_tokens as u64,
-                cached_input_tokens: u.cache_read_input_tokens.unwrap_or_default() as u64,
-                cache_creation_input_tokens: u.cache_write_input_tokens.unwrap_or_default() as u64,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
-            })
+            .map(normalize_usage)
             .unwrap_or_default()
     }
 }
@@ -335,14 +322,14 @@ fn process_event(
             // Extract usage information from metadata; a missing usage still
             // yields a terminal record so the stream ends with a FinalResponse.
             let final_response = BedrockStreamingResponse {
-                usage: metadata_event.usage.map(|usage| BedrockUsage {
-                    input_tokens: usage.input_tokens,
-                    output_tokens: usage.output_tokens,
-                    total_tokens: usage.total_tokens,
-                    cache_read_input_tokens: usage.cache_read_input_tokens,
-                    cache_write_input_tokens: usage.cache_write_input_tokens,
-                }),
+                // The mirror conversion is infallible for `TokenUsage`.
+                usage: metadata_event
+                    .usage
+                    .and_then(|usage| TokenUsage::try_from(usage).ok()),
                 stop_reason: state.final_stop_reason.clone(),
+                // Stamped by `raw_stream`; the adapter never sees the SDK
+                // operation output's metadata.
+                provider_request_id: None,
             };
             items.push(Ok(RawStreamingChoice::FinalResponse(final_response)));
         }
@@ -409,6 +396,7 @@ fn normalize_bedrock_stream(
         let usage = (&response).into();
         let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
         Ok(rig_core::streaming::StreamFinal::new(PROVIDER_NAME, usage)
+            .with_optional_provider_request_id(response.provider_request_id.clone())
             .with_optional_finish_reason(finish_reason))
     })
 }
@@ -461,6 +449,12 @@ impl CompletionModel {
                 Into::<CompletionError>::into(AwsSdkConverseStreamError(sdk_error))
             })?;
 
+        // Read the AWS request id off the operation output *before* the event
+        // stream is moved — `ConverseStreamOutput` implements the SDK
+        // `RequestId` trait on the whole output, not on stream events.
+        let provider_request_id =
+            aws_sdk_bedrockruntime::operation::RequestId::request_id(&response).map(str::to_string);
+
         // Transport layer: SDK event-stream frames only — an event-stream
         // decode/receive failure is a transport error; classification and
         // policy live in the shared driver.
@@ -478,9 +472,19 @@ impl CompletionModel {
             }
         };
 
-        Ok(Box::pin(
-            run_wire_stream(transport, StreamState::default()).instrument(span),
-        ))
+        // Stamp the terminal record with the id captured above, mirroring the
+        // unary surface (`InternalConverseOutput::request_id`).
+        use futures::StreamExt as _;
+        let stream = run_wire_stream(transport, StreamState::default()).instrument(span);
+        Ok(Box::pin(stream.map(move |item| {
+            item.map(|choice| match choice {
+                RawStreamingChoice::FinalResponse(mut response) => {
+                    response.provider_request_id = provider_request_id.clone();
+                    RawStreamingChoice::FinalResponse(response)
+                }
+                other => other,
+            })
+        })))
     }
 
     /// Open a stream normalized to rig's terminal record. Delegates to
@@ -714,7 +718,7 @@ mod tests {
 
     #[test]
     fn test_bedrock_usage_creation() {
-        let usage = BedrockUsage {
+        let usage = TokenUsage {
             input_tokens: 100,
             output_tokens: 50,
             total_tokens: 150,
@@ -730,7 +734,7 @@ mod tests {
     #[test]
     fn test_bedrock_streaming_response_with_usage() {
         let response = BedrockStreamingResponse {
-            usage: Some(BedrockUsage {
+            usage: Some(TokenUsage {
                 input_tokens: 200,
                 output_tokens: 75,
                 total_tokens: 275,
@@ -738,6 +742,7 @@ mod tests {
                 cache_write_input_tokens: Some(10),
             }),
             stop_reason: None,
+            provider_request_id: None,
         };
 
         assert_eq!(
@@ -759,6 +764,7 @@ mod tests {
         let response = BedrockStreamingResponse {
             usage: None,
             stop_reason: None,
+            provider_request_id: None,
         };
 
         // Zero-valued usage is rig's documented sentinel for "the provider
@@ -773,7 +779,7 @@ mod tests {
     #[test]
     fn test_streaming_response_normalizes_usage() {
         let response = BedrockStreamingResponse {
-            usage: Some(BedrockUsage {
+            usage: Some(TokenUsage {
                 input_tokens: 448,
                 output_tokens: 68,
                 total_tokens: 516,
@@ -781,6 +787,7 @@ mod tests {
                 cache_write_input_tokens: Some(20),
             }),
             stop_reason: None,
+            provider_request_id: None,
         };
 
         // The streaming response normalizes into rig's usage record.
@@ -800,7 +807,7 @@ mod tests {
 
     #[test]
     fn test_bedrock_usage_serde() {
-        let usage = BedrockUsage {
+        let usage = TokenUsage {
             input_tokens: 100,
             output_tokens: 50,
             total_tokens: 150,
@@ -815,7 +822,7 @@ mod tests {
         assert!(json.contains("\"total_tokens\":150"));
 
         // Test deserialization
-        let deserialized: BedrockUsage = serde_json::from_str(&json).expect("Should deserialize");
+        let deserialized: TokenUsage = serde_json::from_str(&json).expect("Should deserialize");
         assert_eq!(deserialized.input_tokens, usage.input_tokens);
         assert_eq!(deserialized.output_tokens, usage.output_tokens);
         assert_eq!(deserialized.total_tokens, usage.total_tokens);
@@ -832,7 +839,7 @@ mod tests {
     #[test]
     fn test_bedrock_streaming_response_serde() {
         let response = BedrockStreamingResponse {
-            usage: Some(BedrockUsage {
+            usage: Some(TokenUsage {
                 input_tokens: 200,
                 output_tokens: 75,
                 total_tokens: 275,
@@ -840,6 +847,7 @@ mod tests {
                 cache_write_input_tokens: Some(15),
             }),
             stop_reason: None,
+            provider_request_id: None,
         };
 
         // Test serialization
@@ -1296,5 +1304,39 @@ mod tests {
             calls.first().expect("call").function.arguments,
             serde_json::json!({})
         );
+    }
+}
+
+#[cfg(test)]
+mod response_identity_tests {
+    use super::*;
+
+    /// Blocking/streaming parity (rig#2265): the streaming terminal's AWS
+    /// request id — stamped from the SDK operation output, the same source
+    /// the unary surface reads — normalizes into
+    /// `StreamFinal.provider_request_id`.
+    #[test]
+    fn streaming_terminal_request_id_normalizes_into_stream_final() {
+        let response = BedrockStreamingResponse {
+            usage: None,
+            stop_reason: Some(StopReason::EndTurn),
+            provider_request_id: Some("aws-req-1".to_string()),
+        };
+
+        let usage = (&response).into();
+        let terminal = rig_core::streaming::StreamFinal::new(PROVIDER_NAME, usage)
+            .with_optional_provider_request_id(response.provider_request_id.clone())
+            .with_optional_finish_reason(response.stop_reason.as_ref().map(map_stop_reason));
+        assert_eq!(terminal.provider_request_id.as_deref(), Some("aws-req-1"));
+
+        // And a response without one stays None — never an error.
+        let without = BedrockStreamingResponse {
+            usage: None,
+            stop_reason: None,
+            provider_request_id: None,
+        };
+        let terminal = rig_core::streaming::StreamFinal::new(PROVIDER_NAME, (&without).into())
+            .with_optional_provider_request_id(without.provider_request_id.clone());
+        assert_eq!(terminal.provider_request_id, None);
     }
 }

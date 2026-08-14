@@ -8,9 +8,6 @@
 mod identity;
 mod parts;
 
-pub use identity::{MintKind, StreamPartId, SyntheticIds, WireId};
-
-use crate::OneOrMany;
 use crate::completion::{CompletionError, CompletionResponse, Usage};
 use crate::message::{
     AssistantContent, Reasoning, ReasoningContent, Text, ToolCall, ToolFunction, ToolResult,
@@ -18,6 +15,7 @@ use crate::message::{
 use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
+pub use identity::{MintKind, StreamPartId, SyntheticIds, WireId};
 use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -228,6 +226,14 @@ pub struct StreamFinal {
     /// chat `chatcmpl-` ID. Never replayed to a provider as a message ID.
     #[serde(default)]
     pub response_id: Option<String>,
+    /// The provider's transport-level request identifier, taken from the SSE
+    /// connection's HTTP response headers (Anthropic `request-id`, OpenAI/xAI
+    /// `x-request-id`). When the source reconnected, this is the connection
+    /// that delivered this terminal record. Never the body's message/response
+    /// id. `None` means the provider did not report one — a documented
+    /// outcome, never an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
     /// Stable descriptor name of the provider that produced this stream.
     pub provider: String,
     /// Provider-reported model identifier, when available.
@@ -245,6 +251,7 @@ impl StreamFinal {
             finish_reason: None,
             message_id: None,
             response_id: None,
+            provider_request_id: None,
             provider: provider.into(),
             model: None,
         }
@@ -264,46 +271,18 @@ impl StreamFinal {
         self
     }
 
-    /// Attach the provider-assigned message ID.
-    ///
-    /// An empty string is treated as absent, matching the unary
-    /// [`CompletionResponse`] setters:
-    /// the invariant lives in the setters so no provider call site can
-    /// diverge.
-    pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
-        self.with_optional_message_id(Some(message_id.into()))
-    }
-
-    /// Attach the provider-assigned message ID when the provider reported one.
-    pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
-        self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-assigned response-scoped ID.
-    pub fn with_response_id(self, response_id: impl Into<String>) -> Self {
-        self.with_optional_response_id(Some(response_id.into()))
-    }
-
-    /// Attach the provider-assigned response-scoped ID when the provider
-    /// reported one.
-    pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
-        self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-reported model identifier.
-    pub fn with_model(self, model: impl Into<String>) -> Self {
-        self.with_optional_model(Some(model.into()))
-    }
-
-    /// Attach the provider-reported model identifier when the stream reported
-    /// one.
-    pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
-        self.model = model.map(Into::into).filter(|model| !model.is_empty());
-        self
+    /// This terminal record's identity metadata as one
+    /// [`crate::completion::ResponseIdentity`] carrier.
+    pub fn identity(&self) -> crate::completion::ResponseIdentity {
+        crate::completion::ResponseIdentity {
+            message_id: self.message_id.clone(),
+            response_id: self.response_id.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
     }
 }
+
+crate::provider_response::response_metadata_setters!(StreamFinal);
 
 /// Wire-shape mirror of [`StreamFinal`], used only for deserialization.
 ///
@@ -324,6 +303,8 @@ struct StreamFinalRepr {
     message_id: Option<String>,
     #[serde(default)]
     response_id: Option<String>,
+    #[serde(default)]
+    provider_request_id: Option<String>,
     provider: String,
     #[serde(default)]
     model: Option<String>,
@@ -337,6 +318,7 @@ impl From<StreamFinalRepr> for StreamFinal {
             finish_reason,
             message_id,
             response_id,
+            provider_request_id,
             provider,
             model,
         } = repr;
@@ -347,6 +329,7 @@ impl From<StreamFinalRepr> for StreamFinal {
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
+            .with_optional_provider_request_id(provider_request_id)
             .with_optional_model(model)
     }
 }
@@ -457,14 +440,17 @@ pub enum RawStreamingChoice<R = StreamFinal> {
         /// boundary-minted block.
         id: StreamPartId,
         /// Provider-specific metadata attached to this text block.
-        additional_params: Option<serde_json::Value>,
+        additional_params: Option<crate::message::AdditionalParams>,
     },
 
     /// Provider-specific metadata for the current text content block.
     ///
     /// This is not yielded to public stream consumers. The metadata is merged
     /// into the current aggregated [`Text`] block.
-    TextAdditionalParams(serde_json::Value),
+    /// [`crate::message::AdditionalParams`] is non-empty by construction, so
+    /// a provider with nothing to attach skips the variant instead of
+    /// emitting an empty carrier.
+    TextAdditionalParams(crate::message::AdditionalParams),
 
     /// A tool call response (in its entirety) — wires that never fragment
     /// tool input emit this directly; fragmenting wires emit
@@ -737,12 +723,6 @@ impl RawStreamingToolCall {
         }
     }
 
-    /// Override the generated internal call ID.
-    pub fn with_internal_call_id(mut self, internal_call_id: String) -> Self {
-        self.internal_call_id = internal_call_id;
-        self
-    }
-
     /// Attach a provider-specific call ID.
     pub fn with_call_id(mut self, call_id: String) -> Self {
         self.call_id = Some(call_id);
@@ -768,17 +748,10 @@ impl From<RawStreamingToolCall> for ToolCall {
         // carries (call_id, item id), a single wire carries its id in
         // `call_id`. With none, the correlation handle is minted and
         // `provider` records the absence — never an empty sentinel.
-        let call_id = tool_call.call_id.filter(|call_id| !call_id.is_empty());
-        let provider = match (call_id, tool_call.tool_id) {
-            (Some(call_id), tool_id) => {
-                crate::message::ProviderCallId::new(call_id).map(|provider| match tool_id {
-                    Some(tool_id) => provider.with_item_id(tool_id.into_string()),
-                    None => provider,
-                })
-            }
-            (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id.into_string()),
-            (None, None) => None,
-        };
+        let provider = crate::message::ProviderCallId::from_optional_wire(
+            tool_call.call_id,
+            tool_call.tool_id.map(WireId::into_string),
+        );
         let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         ToolCall {
             id,
@@ -893,7 +866,7 @@ pub struct StreamingCompletionResponse {
     provider: String,
     /// The final aggregated message from the stream
     /// contains all text and tool calls generated
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     /// Whether the stream already reached its end and aggregated `choice`.
     ///
     /// [`PartsAccumulator::finish`] is destructive (it takes the accumulated
@@ -938,7 +911,11 @@ impl StreamingCompletionResponse {
             pause_control,
             parts: PartsAccumulator::new(),
             provider: provider.into(),
-            choice: OneOrMany::one(AssistantContent::text("")),
+            // A stream that has not produced anything yet has produced nothing.
+            // This used to hold a fabricated empty-text part because the field
+            // could not be empty; that part was indistinguishable from a real
+            // empty text block the model had emitted.
+            choice: Vec::new(),
             finished: false,
             resume_wait: None,
             reasoning_correlators: std::collections::HashMap::new(),
@@ -1048,6 +1025,9 @@ impl From<StreamingCompletionResponse> for CompletionResponse {
                 .or_else(|| terminal.and_then(|response| response.message_id.clone())),
         )
         .with_optional_response_id(terminal.and_then(|response| response.response_id.clone()))
+        .with_optional_provider_request_id(
+            terminal.and_then(|response| response.provider_request_id.clone()),
+        )
         .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
         .with_optional_model(terminal.and_then(|response| response.model.clone()))
     }
@@ -1095,11 +1075,14 @@ impl Stream for StreamingCompletionResponse {
             return match Pin::new(&mut stream.inner).poll_next(cx) {
                 Poll::Pending => Poll::Pending,
                 Poll::Ready(None) => {
-                    // This is run at the end of the inner stream to collect all tokens into
-                    // a single unified `Message`. `finish` is never empty, so the
-                    // conversion cannot fail.
-                    if let Some(choice) = OneOrMany::from_iter_optional(stream.parts.finish()) {
-                        stream.choice = choice;
+                    // Run at the end of the inner stream to collect all tokens
+                    // into a single unified `Message`. `finish` can now be
+                    // empty — a turn that streamed nothing is no longer padded
+                    // with a fabricated empty-text part — and an empty result
+                    // leaves the already-empty `choice` alone.
+                    let finished = stream.parts.finish();
+                    if !finished.is_empty() {
+                        stream.choice = finished;
                     }
                     stream.finished = true;
 
@@ -1325,6 +1308,13 @@ impl Stream for StreamingCompletionResponse {
                         // Pass an unmodeled provider item straight through to the
                         // consumer; it is intentionally not pushed into
                         // `assistant_items` (no `AssistantContent::Unknown` exists).
+                        // No exclusion warning here: everything reaching this arm
+                        // is a live wire frame a provider adapter chose not to
+                        // model (adapters warn on those themselves) — a persisted
+                        // item that failed the strict `Text` decode is created by
+                        // consumer-side serde and never re-enters this stream.
+                        // The agent assembler, which does ingest such items,
+                        // carries that warning.
                         Poll::Ready(Some(Ok(StreamedAssistantContent::Unknown(value))))
                     }
                 },
@@ -1345,6 +1335,13 @@ mod tests {
 
     /// Provider descriptor used by the mock streams in this module.
     const TEST_PROVIDER: &str = "test-provider";
+
+    /// Fixture params: the JSON literal is always a non-empty object.
+    fn fixture_params(value: serde_json::Value) -> crate::message::AdditionalParams {
+        crate::message::AdditionalParams::try_from_value(value)
+            .expect("fixture params must be a JSON object")
+            .expect("fixture params must carry data")
+    }
 
     /// Terminal record with a known total-token count.
     fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
@@ -1485,7 +1482,7 @@ mod tests {
                 additional_params: None,
             });
             yield Ok(RawStreamingChoice::Message("first".to_string()));
-            yield Ok(RawStreamingChoice::TextAdditionalParams(serde_json::json!({
+            yield Ok(RawStreamingChoice::TextAdditionalParams(fixture_params(serde_json::json!({
                 "citations": [{
                     "type": "char_location",
                     "cited_text": "First citation.",
@@ -1493,8 +1490,8 @@ mod tests {
                     "start_char_index": 0,
                     "end_char_index": 15
                 }]
-            })));
-            yield Ok(RawStreamingChoice::TextAdditionalParams(serde_json::json!({
+            }))));
+            yield Ok(RawStreamingChoice::TextAdditionalParams(fixture_params(serde_json::json!({
                 "citations": [{
                     "type": "char_location",
                     "cited_text": "Second citation.",
@@ -1502,12 +1499,12 @@ mod tests {
                     "start_char_index": 16,
                     "end_char_index": 32
                 }]
-            })));
+            }))));
             yield Ok(RawStreamingChoice::TextStart {
                 id: StreamPartId::wire("block-1"),
-                additional_params: Some(serde_json::json!({
+                additional_params: crate::message::AdditionalParams::try_from_value(serde_json::json!({
                     "block": 2
-                })),
+                })).expect("object params"),
             });
             yield Ok(RawStreamingChoice::Message("second".to_string()));
             yield Ok(RawStreamingChoice::FinalResponse(mock_final_with_total_tokens(3)));
@@ -1530,6 +1527,32 @@ mod tests {
         let response: CompletionResponse = stream.into();
         assert_eq!(response.usage.total_tokens, 15);
         assert_eq!(response.provider, TEST_PROVIDER);
+    }
+
+    /// Regression (rig#2265): the transport request id captured on the
+    /// terminal record must survive stream→`CompletionResponse` conversion,
+    /// exactly like the response id, usage, finish reason, and model do.
+    #[tokio::test]
+    async fn into_completion_response_carries_the_terminal_request_id() {
+        let mut stream = StreamingCompletionResponse::stream(
+            TEST_PROVIDER,
+            to_stream_result(stream! {
+                yield Ok(RawStreamingChoice::Message("hi".to_string()));
+                yield Ok(RawStreamingChoice::FinalResponse(
+                    StreamFinal::new(TEST_PROVIDER, Usage::new())
+                        .with_response_id("resp_1")
+                        .with_provider_request_id("req_transport_1"),
+                ));
+            }),
+        );
+        while stream.next().await.is_some() {}
+
+        let response: CompletionResponse = stream.into();
+        assert_eq!(response.response_id.as_deref(), Some("resp_1"));
+        assert_eq!(
+            response.provider_request_id.as_deref(),
+            Some("req_transport_1")
+        );
     }
 
     #[tokio::test]
@@ -1585,7 +1608,7 @@ mod tests {
         // ...but the content delivered before the error is preserved.
         assert_eq!(
             stream.choice.first(),
-            AssistantContent::text("partial".to_string()),
+            Some(&AssistantContent::text("partial".to_string())),
         );
     }
 
@@ -1948,7 +1971,7 @@ mod tests {
         // The content streamed before the failure is still aggregated.
         assert_eq!(
             stream.choice.first(),
-            AssistantContent::text("partial".to_string())
+            Some(&AssistantContent::text("partial".to_string()))
         );
         assert!(stream.response.is_none());
     }

@@ -60,9 +60,20 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
     /// Whether the provider accepts the OpenAI-compatible `user` field.
     const SUPPORTS_USER: bool = true;
 
+    /// Whether the model is sent as a `model` field in the request body.
+    /// Azure routes the deployment through the URL and sends no model field.
+    const SENDS_MODEL_FIELD: bool = true;
+
     /// The request path for embeddings, resolved against the client base URL.
     fn embeddings_path(&self) -> String {
         "/embeddings".to_string()
+    }
+
+    /// The request path for embeddings for a given model. Providers that
+    /// route the model through the URL (Azure deployments) override this;
+    /// everyone else inherits [`OpenAIEmbeddingsCompatible::embeddings_path`].
+    fn embeddings_path_for_model(&self, _model: &str) -> String {
+        self.embeddings_path()
     }
 
     /// Validate and select the provider's dimension field.
@@ -92,7 +103,8 @@ pub enum EncodingFormat {
 
 #[derive(Debug, Serialize)]
 struct CompatibleEmbeddingRequest<'a> {
-    model: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<&'a str>,
     input: &'a [String],
     #[serde(skip_serializing_if = "Option::is_none")]
     dimensions: Option<usize>,
@@ -127,7 +139,9 @@ pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::C
 /// parameter is the HTTP client type.
 pub type EmbeddingModel<H = reqwest::Client> = GenericEmbeddingModel<super::OpenAIResponsesExt, H>;
 
-fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
+/// Default dimensions for OpenAI's known embedding models (also used by
+/// Azure OpenAI, which deploys the same models).
+pub(crate) fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
         TEXT_EMBEDDING_3_LARGE => Some(3_072),
         TEXT_EMBEDDING_3_SMALL | TEXT_EMBEDDING_ADA_002 => Some(1_536),
@@ -207,7 +221,7 @@ where
         };
 
         let body = serde_json::to_vec(&CompatibleEmbeddingRequest {
-            model: &self.model,
+            model: Ext::SENDS_MODEL_FIELD.then_some(self.model.as_str()),
             input: &documents,
             dimensions,
             output_dimension,
@@ -217,7 +231,7 @@ where
 
         let req = self
             .client
-            .post(self.client.ext().embeddings_path())?
+            .post(self.client.ext().embeddings_path_for_model(&self.model))?
             .body(body)
             .map_err(|e| EmbeddingError::HttpError(e.into()))?;
 

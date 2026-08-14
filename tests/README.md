@@ -73,8 +73,18 @@ cargo test -p rig --all-features --test anthropic anthropic::cassette -- --nocap
 cargo test -p rig --all-features --test gemini gemini::cassette -- --nocapture --test-threads=1
 cargo test -p rig --all-features --test chatgpt chatgpt::cassette -- --nocapture --test-threads=1
 cargo test -p rig --all-features --test bedrock bedrock::cassette -- --nocapture --test-threads=1
+cargo test -p rig --all-features --test cohere cohere::cassette -- --nocapture --test-threads=1
 cargo test -p rig --all-features --test doubleword doubleword::cassette -- --nocapture --test-threads=1
+cargo test -p rig --all-features --test venice venice::cassette -- --nocapture --test-threads=1
 ```
+
+Venice's text-to-speech scenario records through the direct recorder rather than
+the httpmock proxy: the proxy exports bodies as strings, so a binary response
+(raw audio) is exported with no body at all and replays as zero bytes. Its
+transcription scenario stays on the proxy path, where the same limitation drops
+the *request's* multipart body — a cassette that recorded no body still matches
+a multipart request, and the multipart shape itself is pinned by unit tests
+beside the provider.
 
 Bedrock cassette replay does not require AWS credentials. Bedrock record mode uses the AWS
 SDK credential provider chain and a direct SigV4-aware recorder, so it requires AWS credentials
@@ -103,12 +113,22 @@ cargo test -p rig --all-features --test gemini gemini::cassette -- --nocapture -
 
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
+cargo test -p rig --all-features --test cohere cohere::cassette -- --nocapture --test-threads=1
+```
+
+```bash
+RIG_PROVIDER_TEST_MODE=record \
 cargo test -p rig --all-features --test bedrock bedrock::cassette -- --nocapture --test-threads=1
 ```
 
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
 cargo test -p rig --all-features --test doubleword doubleword::cassette -- --nocapture --test-threads=1
+```
+
+```bash
+RIG_PROVIDER_TEST_MODE=record \
+cargo test -p rig --all-features --test venice venice::cassette -- --nocapture --test-threads=1
 ```
 
 ```bash

@@ -33,11 +33,11 @@
 //! ```
 
 use super::message::{AssistantContent, DocumentMediaType};
+use crate::http_client;
 use crate::message::ToolChoice;
 use crate::provider_response;
 use crate::streaming::StreamingCompletionResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::{OneOrMany, http_client};
 use crate::{
     json_utils,
     message::{Message, UserContent},
@@ -277,7 +277,7 @@ impl FinishReason {
 pub struct CompletionResponse {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
     /// The identifier the provider assigned to the *assistant message* itself,
@@ -299,6 +299,16 @@ pub struct CompletionResponse {
     /// provider as a message ID.
     #[serde(default)]
     pub response_id: Option<String>,
+    /// The provider's transport-level request identifier, taken from the HTTP
+    /// response headers (Anthropic `request-id`, OpenAI/xAI `x-request-id`) or
+    /// the provider SDK's response metadata (Bedrock) — the id provider
+    /// support asks for when investigating a request. Never the body's
+    /// `message.id`/response id; those are [`Self::message_id`] and
+    /// [`Self::response_id`]. `None` means the provider did not report one —
+    /// that is a documented outcome (e.g. Gemini sends no id header), never an
+    /// error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
     /// Why the model stopped generating, when the provider reported it.
     ///
     /// Private so that every write flows through
@@ -321,59 +331,57 @@ pub struct CompletionResponse {
     pub model: Option<String>,
 }
 
+/// Response identity metadata for one completed model call: which provider
+/// objects this exact attempt produced. The three axes stay distinct —
+/// message-scoped, response-scoped, and transport — and every field is `None`
+/// when the provider did not report it: a documented outcome, never an error.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResponseIdentity {
+    /// Provider-assigned *assistant message* ID (e.g. an Anthropic or OpenAI
+    /// Responses `msg_…`) — an ID the provider would recognize on a replayed
+    /// assistant message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// Provider-assigned *response-scoped* ID (e.g. an OpenAI `chatcmpl-` or
+    /// `resp_…` ID) — names the whole response, never replayed as a message
+    /// ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+    /// The provider's *transport* request id (HTTP response header such as
+    /// Anthropic `request-id`, or provider SDK response metadata) — the id
+    /// provider support asks for. Never the body's message/response id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
+}
+
 impl CompletionResponse {
     /// Create a response from its required parts; optional metadata starts
     /// unset and is filled in with the `with_*` helpers.
-    pub fn new(
-        choice: OneOrMany<AssistantContent>,
-        usage: Usage,
-        provider: impl Into<String>,
-    ) -> Self {
+    pub fn new(choice: Vec<AssistantContent>, usage: Usage, provider: impl Into<String>) -> Self {
         Self {
             choice,
             usage,
             message_id: None,
             response_id: None,
+            provider_request_id: None,
             finish_reason: None,
             provider: provider.into(),
             model: None,
         }
     }
 
-    /// Attach the provider-assigned message ID.
-    ///
-    /// An empty string is treated as absent: gateways that echo `""` for
-    /// fields they don't populate must not produce a `Some("")` that differs
-    /// from the streaming path. All identifier and model setters share this
-    /// rule so the invariant lives here rather than at every provider call
-    /// site.
-    pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
-        self.message_id = Some(message_id.into()).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-assigned message ID when the provider reported one.
-    pub fn with_optional_message_id(mut self, message_id: Option<impl Into<String>>) -> Self {
-        self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-assigned response-scoped ID.
-    pub fn with_response_id(mut self, response_id: impl Into<String>) -> Self {
-        self.response_id = Some(response_id.into()).filter(|id| !id.is_empty());
-        self
-    }
-
-    /// Attach the provider-assigned response-scoped ID when the provider
-    /// reported one.
-    pub fn with_optional_response_id(mut self, response_id: Option<impl Into<String>>) -> Self {
-        self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
-        self
-    }
-
     /// Why the model stopped generating, when the provider reported it.
     pub fn finish_reason(&self) -> Option<FinishReason> {
         self.finish_reason.clone()
+    }
+
+    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
+    pub fn identity(&self) -> ResponseIdentity {
+        ResponseIdentity {
+            message_id: self.message_id.clone(),
+            response_id: self.response_id.clone(),
+            provider_request_id: self.provider_request_id.clone(),
+        }
     }
 
     /// Attach the normalized finish reason, reconciled against the choice via
@@ -397,22 +405,9 @@ impl CompletionResponse {
             finish_reason.map(|reason| reason.reconcile_with_output(has_tool_call));
         self
     }
-
-    /// Attach the provider-reported model identifier.
-    ///
-    /// An empty string is treated as absent, matching the identifier setters.
-    pub fn with_model(mut self, model: impl Into<String>) -> Self {
-        self.model = Some(model.into()).filter(|model| !model.is_empty());
-        self
-    }
-
-    /// Attach the provider-reported model identifier when the response carried
-    /// one.
-    pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
-        self.model = model.map(Into::into).filter(|model| !model.is_empty());
-        self
-    }
 }
+
+crate::provider_response::response_metadata_setters!(CompletionResponse);
 
 /// Wire-shape mirror of [`CompletionResponse`], used only for deserialization.
 ///
@@ -426,12 +421,14 @@ impl CompletionResponse {
 /// itself, so the wire format is unchanged.
 #[derive(Deserialize)]
 struct CompletionResponseRepr {
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     usage: Usage,
     #[serde(default)]
     message_id: Option<String>,
     #[serde(default)]
     response_id: Option<String>,
+    #[serde(default)]
+    provider_request_id: Option<String>,
     #[serde(default)]
     finish_reason: Option<FinishReason>,
     provider: String,
@@ -446,6 +443,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             usage,
             message_id,
             response_id,
+            provider_request_id,
             finish_reason,
             provider,
             model,
@@ -453,6 +451,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
         Self::new(choice, usage, provider)
             .with_optional_message_id(message_id)
             .with_optional_response_id(response_id)
+            .with_optional_provider_request_id(provider_request_id)
             .with_optional_finish_reason(finish_reason)
             .with_optional_model(model)
     }
@@ -532,17 +531,9 @@ impl Default for Usage {
 impl Add for Usage {
     type Output = Self;
 
-    fn add(self, other: Self) -> Self::Output {
-        Self {
-            input_tokens: self.input_tokens + other.input_tokens,
-            output_tokens: self.output_tokens + other.output_tokens,
-            total_tokens: self.total_tokens + other.total_tokens,
-            cached_input_tokens: self.cached_input_tokens + other.cached_input_tokens,
-            cache_creation_input_tokens: self.cache_creation_input_tokens
-                + other.cache_creation_input_tokens,
-            tool_use_prompt_tokens: self.tool_use_prompt_tokens + other.tool_use_prompt_tokens,
-            reasoning_tokens: self.reasoning_tokens + other.reasoning_tokens,
-        }
+    fn add(mut self, other: Self) -> Self::Output {
+        self += other;
+        self
     }
 }
 
@@ -681,8 +672,13 @@ pub struct CompletionRequest {
     /// in `chat_history` as the canonical representation of system instructions.
     pub preamble: Option<String>,
     /// The chat history to be sent to the completion model provider.
-    /// The very last message will always be the prompt (hence why there is *always* one)
-    pub chat_history: OneOrMany<Message>,
+    /// The very last message is the prompt.
+    ///
+    /// This used to be a non-empty container, so "there is always at least one"
+    /// was a type guarantee. It is a `Vec` now and the field is public, so the
+    /// guarantee is a *rule* instead: it is checked by
+    /// [`CompletionRequest::validate_message_content`] at the request boundary.
+    pub chat_history: Vec<Message>,
     /// The documents to be sent to the completion model provider
     pub documents: Vec<Document>,
     /// The tools to be sent to the completion model provider
@@ -720,6 +716,112 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
+    /// Reject a request with no messages, or a message that carries no content.
+    ///
+    /// Removing the non-empty container removed two guarantees at once, and this
+    /// is where both are restated:
+    ///
+    /// - `chat_history` was non-empty by construction. As a `Vec` it is not, and
+    ///   the field is public, so `CompletionRequest { chat_history: vec![], .. }`
+    ///   is constructible and would reach a provider as `messages: []` — a remote
+    ///   400 in place of a local error that names the problem.
+    /// - Message content was likewise non-empty by construction, and every wire
+    ///   rejects an empty content block.
+    ///
+    /// The rule also covers the block list *inside* a tool result. A user
+    /// message carrying one `UserContent::ToolResult` is itself non-empty, but
+    /// `ToolResult::content` was non-empty by construction under the removed
+    /// container and is request-direction data just like the message content
+    /// around it — so its check is relocated here rather than dropped. Only a
+    /// tool result with *zero* blocks is rejected; a tool that legitimately
+    /// returned an empty string produces one block and still sends.
+    ///
+    /// This is the **request** direction only, and the asymmetry is deliberate.
+    /// Empty *assistant* content is a real provider outcome on the response path
+    /// — a tool-call-only turn, a content-filtered turn, a truncated stream — and
+    /// the agent layer drops such a turn rather than sending it, so it never
+    /// reaches here. The response direction is guarded per-wire instead, by
+    /// [`crate::message::require_non_empty`], because "this provider returned
+    /// nothing where its protocol promises content" is a judgement only the
+    /// provider's own conversion can make.
+    ///
+    /// `System` content is deliberately not checked. It is a `String` and always
+    /// has been, so the removed container never constrained it; rejecting an
+    /// empty one would be a new restriction rather than a relocated enforcement
+    /// point, and would break a history carrying a conditionally built preamble
+    /// that resolved to `""`.
+    ///
+    /// **Where this runs.** [`CompletionRequestBuilder::send`] and
+    /// [`CompletionRequestBuilder::stream`] call it, which covers both agent
+    /// surfaces too — the blocking and streaming turn drivers both issue their
+    /// request through the builder. Handing a request straight to a
+    /// [`CompletionModel`] bypasses it; call this yourself there.
+    pub fn validate_message_content(&self) -> Result<(), CompletionError> {
+        if self.chat_history.is_empty() {
+            return Err(CompletionError::RequestError(
+                "request has an empty chat history; providers require at least one message"
+                    .to_owned()
+                    .into(),
+            ));
+        }
+
+        let empty_message = |role: &str, index: usize| {
+            CompletionError::RequestError(
+                format!(
+                    "{role} message at index {index} has no content; \
+                     providers reject empty content blocks"
+                )
+                .into(),
+            )
+        };
+
+        // One match per message, with every per-variant rule in that
+        // variant's arm, so extending validation means extending one arm.
+        for (index, message) in self.chat_history.iter().enumerate() {
+            match message {
+                Message::System { .. } => {}
+                Message::Assistant { content, .. } => {
+                    if content.is_empty() {
+                        return Err(empty_message("assistant", index));
+                    }
+                }
+                Message::User { content } => {
+                    if content.is_empty() {
+                        return Err(empty_message("user", index));
+                    }
+
+                    for (position, item) in content.iter().enumerate() {
+                        // Exhaustive on purpose: a future variant that carries
+                        // its own request-direction block list must decide here
+                        // whether its emptiness is checked, instead of slipping
+                        // past a wildcard un-validated.
+                        match item {
+                            UserContent::ToolResult(result) if result.content.is_empty() => {
+                                let name = &result.name;
+                                return Err(CompletionError::RequestError(
+                                    format!(
+                                        "tool result for `{name}` at index {position} of the \
+                                         user message at index {index} has no content; \
+                                         providers reject empty content blocks"
+                                    )
+                                    .into(),
+                                ));
+                            }
+                            UserContent::ToolResult(_)
+                            | UserContent::Text(_)
+                            | UserContent::Image(_)
+                            | UserContent::Audio(_)
+                            | UserContent::Video(_)
+                            | UserContent::Document(_) => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
     /// Useful for providers that require a name alongside the JSON Schema (e.g., OpenAI).
     pub fn output_schema_name(&self) -> Option<String> {
@@ -759,34 +861,27 @@ impl CompletionRequest {
             })
             .collect::<Vec<_>>();
 
-        OneOrMany::from_iter_optional(messages).map(|content| Message::User { content })
+        crate::message::non_empty(messages).map(|content| Message::User { content })
     }
 
     pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
-        let mut chat_history = self.chat_history.iter().cloned().collect::<Vec<_>>();
+        let mut chat_history = self.chat_history.clone();
         if let Some(documents) = self.normalized_documents() {
-            let insert_at = chat_history
-                .iter()
-                .position(|message| !matches!(message, Message::System { .. }))
-                .unwrap_or(chat_history.len());
-            chat_history.insert(insert_at, documents);
+            insert_after_leading_system(&mut chat_history, documents);
         }
         chat_history
     }
+}
 
-    /// Adds a provider-hosted tool by storing it in `additional_params.tools`.
-    pub fn with_provider_tool(mut self, tool: ProviderToolDefinition) -> Self {
-        self.additional_params =
-            merge_provider_tools_into_additional_params(self.additional_params, vec![tool]);
-        self
-    }
-
-    /// Adds provider-hosted tools by storing them in `additional_params.tools`.
-    pub fn with_provider_tools(mut self, tools: Vec<ProviderToolDefinition>) -> Self {
-        self.additional_params =
-            merge_provider_tools_into_additional_params(self.additional_params, tools);
-        self
-    }
+/// Insert `message` at the first non-system position so document context lands
+/// after any leading system messages; telemetry and the sent request must
+/// agree on this placement.
+fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
+    let insert_at = chat_history
+        .iter()
+        .position(|message| !matches!(message, Message::System { .. }))
+        .unwrap_or(chat_history.len());
+    chat_history.insert(insert_at, message);
 }
 
 fn merge_provider_tools_into_additional_params(
@@ -1096,11 +1191,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         chat_history.push(self.prompt.clone());
 
         if let Some(documents) = CompletionRequest::normalized_documents_from(&self.documents) {
-            let insert_at = chat_history
-                .iter()
-                .position(|message| !matches!(message, Message::System { .. }))
-                .unwrap_or(chat_history.len());
-            chat_history.insert(insert_at, documents);
+            insert_after_leading_system(&mut chat_history, documents);
         }
 
         chat_history
@@ -1125,10 +1216,10 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             chat_history.insert(0, Message::system(preamble));
         }
 
-        chat_history.push(prompt.clone());
-
-        let chat_history =
-            OneOrMany::from_iter_optional(chat_history).unwrap_or_else(|| OneOrMany::one(prompt));
+        // The push is what makes the history non-empty, so the fallback that
+        // used to follow could never be taken — and it forced a clone of the
+        // prompt to feed it.
+        chat_history.push(prompt);
         let additional_params = merge_provider_tools_into_additional_params(
             self.additional_params,
             self.provider_tools,
@@ -1153,12 +1244,14 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
     /// Sends the completion request to the completion model provider and returns the completion response.
     pub async fn send(self) -> Result<CompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();
+        request.validate_message_content()?;
         model.completion(request).await
     }
 
     /// Stream the completion request
     pub async fn stream(self) -> Result<StreamingCompletionResponse, CompletionError> {
         let (model, request) = self.into_model_and_request();
+        request.validate_message_content()?;
         model.stream(request).await
     }
 }
@@ -1166,21 +1259,171 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
 #[cfg(test)]
 mod tests {
     use super::{CompletionResponse, FinishReason, ProviderCapabilities, Usage};
-    use crate::OneOrMany;
     use crate::message::AssistantContent;
 
-    fn tool_call_choice() -> OneOrMany<AssistantContent> {
-        OneOrMany::one(AssistantContent::tool_call(
+    mod message_content_validation {
+        use super::super::CompletionRequest;
+        use crate::message::{AssistantContent, Message, UserContent};
+
+        fn request(chat_history: Vec<Message>) -> CompletionRequest {
+            CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history,
+                documents: Vec::new(),
+                tools: Vec::new(),
+                temperature: None,
+                max_tokens: None,
+                tool_choice: None,
+                additional_params: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            }
+        }
+
+        #[test]
+        fn a_populated_history_passes() {
+            let request = request(vec![Message::user("hello")]);
+            assert!(request.validate_message_content().is_ok());
+        }
+
+        #[test]
+        fn an_empty_history_is_rejected() {
+            // `chat_history` was non-empty by construction until the container
+            // was removed; the field is public, so this is now constructible.
+            let error = request(Vec::new())
+                .validate_message_content()
+                .expect_err("an empty history must not reach a provider");
+            assert!(
+                error.to_string().contains("empty chat history"),
+                "unexpected error: {error}"
+            );
+        }
+
+        #[test]
+        fn an_empty_user_message_is_rejected_by_index_and_role() {
+            let error = request(vec![
+                Message::user("hello"),
+                Message::User {
+                    content: Vec::new(),
+                },
+            ])
+            .validate_message_content()
+            .expect_err("an empty user message must not reach a provider");
+            let message = error.to_string();
+            assert!(message.contains("user message at index 1"), "{message}");
+        }
+
+        #[test]
+        fn an_empty_assistant_message_is_rejected_by_index_and_role() {
+            let error = request(vec![Message::Assistant {
+                id: None,
+                content: Vec::new(),
+            }])
+            .validate_message_content()
+            .expect_err("an empty assistant message must not reach a provider");
+            let message = error.to_string();
+            assert!(
+                message.contains("assistant message at index 0"),
+                "{message}"
+            );
+        }
+
+        #[test]
+        fn an_empty_system_message_is_not_rejected() {
+            // System content is a `String` and always has been, so the removed
+            // container never constrained it. Rejecting an empty one would be a
+            // new restriction, and would break a history carrying a
+            // conditionally built preamble that resolved to `""`.
+            let request = request(vec![
+                Message::System {
+                    content: String::new(),
+                },
+                Message::user("hello"),
+            ]);
+            assert!(request.validate_message_content().is_ok());
+        }
+
+        #[test]
+        fn a_block_less_tool_result_is_rejected_naming_the_tool() {
+            use crate::message::{ToolCallId, ToolResult, ToolResultContent};
+            // `ToolResult::content` was non-empty by construction until the
+            // container was removed; the message around it has one item, so the
+            // message-level check alone would let this reach the wire as
+            // `"content": []`.
+            let error = request(vec![
+                Message::user("hello"),
+                Message::User {
+                    content: vec![UserContent::ToolResult(ToolResult {
+                        call: ToolCallId::new_or_mint("call_1"),
+                        provider: None,
+                        name: "lookup".to_owned(),
+                        content: Vec::<ToolResultContent>::new(),
+                    })],
+                },
+            ])
+            .validate_message_content()
+            .expect_err("a block-less tool result must not reach a provider");
+            let message = error.to_string();
+            assert!(message.contains("`lookup`"), "{message}");
+            assert!(message.contains("index 0"), "{message}");
+            assert!(message.contains("user message at index 1"), "{message}");
+        }
+
+        #[test]
+        fn a_tool_result_with_one_empty_string_block_is_accepted() {
+            use crate::message::{ToolCallId, ToolResult, ToolResultContent};
+            // The guard is on the cardinality of the block list, not on the
+            // blocks' content. A tool that legitimately returned an empty
+            // string produces one block and must still send — this pins the
+            // "no blocks" / "no content" distinction so a future tightening
+            // pass cannot collapse it.
+            let request = request(vec![Message::User {
+                content: vec![UserContent::ToolResult(ToolResult {
+                    call: ToolCallId::new_or_mint("call_1"),
+                    provider: None,
+                    name: "lookup".to_owned(),
+                    content: vec![ToolResultContent::text("")],
+                })],
+            }]);
+            assert!(request.validate_message_content().is_ok());
+        }
+
+        #[test]
+        fn the_legacy_fabricated_sentinel_still_passes() {
+            // Histories persisted before message content became a `Vec` encode a
+            // content-less assistant turn as a single empty text part. That is a
+            // one-element list, so it validates — the rule is block count, not
+            // block content — and, being caller-supplied history, it is never
+            // filtered: it goes to the wire as-is (where some providers reject
+            // it). Callers migrating pre-`Vec` histories drop such turns
+            // themselves; see MIGRATING.
+            let request = request(vec![
+                Message::user("hello"),
+                Message::Assistant {
+                    id: None,
+                    content: vec![AssistantContent::text("")],
+                },
+                Message::User {
+                    content: vec![UserContent::text("and again")],
+                },
+            ]);
+            assert!(request.validate_message_content().is_ok());
+        }
+    }
+
+    fn tool_call_choice() -> Vec<AssistantContent> {
+        vec![AssistantContent::tool_call(
             "call_1",
             "lookup",
             serde_json::json!({"query": "rig"}),
-        ))
+        )]
     }
 
     #[test]
     fn normalized_response_round_trips_through_serde() {
         let response = CompletionResponse::new(
-            OneOrMany::one(AssistantContent::text("hello")),
+            vec![AssistantContent::text("hello")],
             Usage {
                 input_tokens: 3,
                 output_tokens: 2,
@@ -1230,7 +1473,7 @@ mod tests {
     #[test]
     fn deserializing_empty_identifiers_yields_none() {
         let mut encoded = serde_json::to_value(CompletionResponse::new(
-            OneOrMany::one(AssistantContent::text("hello")),
+            vec![AssistantContent::text("hello")],
             Usage::new(),
             "example",
         ))
@@ -1297,7 +1540,7 @@ mod tests {
     #[test]
     fn reconciliation_leaves_a_stop_without_tool_calls_alone() {
         let response = CompletionResponse::new(
-            OneOrMany::one(AssistantContent::text("done")),
+            vec![AssistantContent::text("done")],
             Usage::new(),
             "example",
         )
@@ -1387,12 +1630,12 @@ mod tests {
         assert!(matches!(
             &messages[2],
             Message::User { content }
-                if matches!(content.first(), UserContent::Text(text) if text.text == "history")
+                if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "history")
         ));
         assert!(matches!(
             &messages[3],
             Message::User { content }
-                if matches!(content.first(), UserContent::Text(text) if text.text == "prompt")
+                if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "prompt")
         ));
 
         let request = builder.build();
@@ -1463,7 +1706,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one("What is the capital of France?".into()),
+            chat_history: vec!["What is the capital of France?".into()],
             documents: vec![doc1, doc2],
             tools: Vec::new(),
             temperature: None,
@@ -1475,7 +1718,7 @@ mod tests {
         };
 
         let expected = Message::User {
-            content: OneOrMany::many(vec![
+            content: vec![
                 UserContent::document(
                     "<file id: doc1>\nDocument 1 text.\n</file>\n".to_string(),
                     Some(DocumentMediaType::TXT),
@@ -1484,8 +1727,7 @@ mod tests {
                     "<file id: doc2>\nDocument 2 text.\n</file>\n".to_string(),
                     Some(DocumentMediaType::TXT),
                 ),
-            ])
-            .expect("There will be at least one document"),
+            ],
         };
 
         assert_eq!(request.normalized_documents(), Some(expected));
@@ -1496,7 +1738,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one("What is the capital of France?".into()),
+            chat_history: vec!["What is the capital of France?".into()],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -1616,13 +1858,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("System prompt"),
                 Message::assistant("Earlier assistant turn"),
                 Message::user("Earlier user turn"),
                 Message::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![test_document("doc1", "Document text.")],
             tools: Vec::new(),
             temperature: None,
@@ -1650,13 +1891,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("Leading system prompt"),
                 Message::assistant("Earlier assistant turn"),
                 Message::system("Mid-conversation instruction"),
                 Message::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![test_document("doc1", "Document text.")],
             tools: Vec::new(),
             temperature: None,
@@ -1688,13 +1928,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("System prompt"),
                 Message::user("Earlier user turn"),
                 Message::assistant("Earlier assistant turn"),
                 Message::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![test_document("doc1", "Document text.")],
             tools: Vec::new(),
             temperature: None,
@@ -1719,6 +1958,7 @@ mod tests {
         let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
             status: None,
             body: body.to_string(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some(body));
@@ -1742,6 +1982,7 @@ mod tests {
         let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
             status: Some(http::StatusCode::TOO_MANY_REQUESTS),
             body: body.to_string(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some(body));
@@ -1756,6 +1997,7 @@ mod tests {
         let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
             status: None,
             body: "provider exploded".to_string(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some("provider exploded"));
@@ -1822,6 +2064,7 @@ mod tests {
         let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
             status: None,
             body: String::new(),
+            provider_request_id: None,
         });
 
         assert_eq!(error.provider_response_body(), Some(""));
@@ -1830,6 +2073,48 @@ mod tests {
                 .provider_response_json()
                 .expect("empty body is not a JSON parse error"),
             None
+        );
+    }
+}
+
+#[cfg(test)]
+mod response_identity_tests {
+    use super::*;
+
+    /// Serde compatibility (rig#2265): responses persisted before
+    /// `provider_request_id` existed still load, with the field `None`.
+    #[test]
+    fn completion_response_without_request_id_still_deserializes() {
+        let response: CompletionResponse = serde_json::from_str(
+            r#"{"choice": [{"type": "text", "text": "hi"}],
+                "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2,
+                          "cached_input_tokens": 0, "cache_creation_input_tokens": 0,
+                          "reasoning_tokens": 0},
+                "provider": "test"}"#,
+        )
+        .expect("pre-identity CompletionResponse JSON should load");
+        assert_eq!(response.provider_request_id, None);
+        assert_eq!(response.identity(), ResponseIdentity::default());
+    }
+
+    /// The identity accessor mirrors the flat fields exactly.
+    #[test]
+    fn identity_accessor_mirrors_flat_fields() {
+        let response = CompletionResponse::new(
+            vec![crate::completion::AssistantContent::text("hi")],
+            Usage::new(),
+            "test",
+        )
+        .with_message_id("msg_1")
+        .with_response_id("resp_1")
+        .with_provider_request_id("req_1");
+        assert_eq!(
+            response.identity(),
+            ResponseIdentity {
+                message_id: Some("msg_1".into()),
+                response_id: Some("resp_1".into()),
+                provider_request_id: Some("req_1".into()),
+            }
         );
     }
 }

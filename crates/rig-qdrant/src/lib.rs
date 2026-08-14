@@ -18,7 +18,7 @@ use qdrant_client::{
     },
 };
 use rig_core::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
@@ -81,6 +81,38 @@ where
         params.filter = filter;
         params
     }
+
+    /// Embeds the query (unless overridden by `query_params`), applies the
+    /// request filter, and runs the Qdrant query, returning the scored points.
+    async fn run_query(
+        &self,
+        req: &VectorSearchRequest<QdrantFilter>,
+    ) -> Result<Vec<qdrant_client::qdrant::ScoredPoint>, VectorStoreError> {
+        let query = match self.query_params.query {
+            Some(ref q) => Some(q.clone()),
+            None => Some(Query::new_nearest(
+                self.generate_query_vector(req.query()).await?,
+            )),
+        };
+
+        let filter = req
+            .filter()
+            .as_ref()
+            .cloned()
+            .map(QdrantFilter::interpret)
+            .transpose()?
+            .flatten();
+
+        let params =
+            self.prepare_query_params(query, req.samples() as usize, req.threshold(), filter);
+
+        Ok(self
+            .client
+            .query(params)
+            .await
+            .map_err(VectorStoreError::datastore)?
+            .result)
+    }
 }
 
 impl<Model> InsertDocuments for QdrantVectorStore<Model>
@@ -89,14 +121,14 @@ where
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         let collection_name = self.query_params.collection_name.clone();
 
         for (document, embeddings) in documents {
             let json_document = serde_json::to_value(&document)?;
-            let doc_as_payload = Payload::try_from(json_document)
-                .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            let doc_as_payload =
+                Payload::try_from(json_document).map_err(VectorStoreError::datastore)?;
 
             let embeddings_as_point_structs = embeddings
                 .into_iter()
@@ -145,32 +177,8 @@ where
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let query = match self.query_params.query {
-            Some(ref q) => Some(q.clone()),
-            None => Some(Query::new_nearest(
-                self.generate_query_vector(req.query()).await?,
-            )),
-        };
-
-        let filter = req
-            .filter()
-            .as_ref()
-            .cloned()
-            .map(QdrantFilter::interpret)
-            .transpose()?
-            .flatten();
-
-        let params =
-            self.prepare_query_params(query, req.samples() as usize, req.threshold(), filter);
-
-        let result = self
-            .client
-            .query(params)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        result
-            .result
+        self.run_query(&req)
+            .await?
             .into_iter()
             .map(|item| {
                 let id =
@@ -190,32 +198,8 @@ where
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let query = match self.query_params.query {
-            Some(ref q) => Some(q.clone()),
-            None => Some(Query::new_nearest(
-                self.generate_query_vector(req.query()).await?,
-            )),
-        };
-
-        let filter = req
-            .filter()
-            .as_ref()
-            .cloned()
-            .map(QdrantFilter::interpret)
-            .transpose()?
-            .flatten();
-
-        let params =
-            self.prepare_query_params(query, req.samples() as usize, req.threshold(), filter);
-
-        let points = self
-            .client
-            .query(params)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
-            .result;
-
-        points
+        self.run_query(&req)
+            .await?
             .into_iter()
             .map(|point| {
                 let id =

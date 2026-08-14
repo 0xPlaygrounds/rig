@@ -12,14 +12,9 @@
 //! # }
 //! ```
 use crate::client::BearerAuth;
+use crate::client::{self, DebugExt, Provider};
 use crate::completion::CompletionError;
 use crate::providers::openai;
-use crate::{
-    client::{
-        self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder, ProviderClient,
-    },
-    http_client::{self, HttpClientExt},
-};
 
 // ================================================================
 // Main Perplexity Client
@@ -83,39 +78,15 @@ impl openai::completion::OpenAICompatibleProvider for PerplexityExt {
     }
 }
 
-impl<H> Capabilities<H> for PerplexityExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Transcription = Nothing;
-    type Embeddings = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(PerplexityExt, completion = CompletionModel<H>);
 
 impl DebugExt for PerplexityExt {}
 
-impl ProviderBuilder for PerplexityBuilder {
-    type Extension<H>
-        = PerplexityExt
-    where
-        H: HttpClientExt;
-    type ApiKey = PerplexityApiKey;
-
-    const BASE_URL: &'static str = PERPLEXITY_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(PerplexityExt)
-    }
-}
+client::impl_default_provider_builder!(
+    PerplexityBuilder => PerplexityExt,
+    api_key = PerplexityApiKey,
+    base_url = PERPLEXITY_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<PerplexityExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
@@ -128,20 +99,7 @@ pub type CompletionModel<H = reqwest::Client> =
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
 pub type CompletionResponse = openai::CompletionResponse;
 
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Perplexity client from the `PERPLEXITY_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("PERPLEXITY_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = String, api_key_env = "PERPLEXITY_API_KEY");
 
 // ================================================================
 // Perplexity Completion API
@@ -202,7 +160,7 @@ mod tests {
         let mut request = crate::completion::CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: crate::OneOrMany::one("Hello!".into()),
+            chat_history: vec!["Hello!".into()],
             documents: vec![],
             max_tokens: None,
             temperature: None,

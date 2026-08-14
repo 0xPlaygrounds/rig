@@ -118,17 +118,17 @@ pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionResponse as CompletionResponseEvent, HookContext,
     HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
-    ModelTurnAction, ModelTurnFinished, ObservationAction, RequestPatch, RetryRequest, RunId,
-    Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction,
-    ToolCallDelta, ToolResultAction, ToolResultEvent,
+    ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
+    RetryRequest, RunId, Scratchpad, StepEventKind, StreamResponseFinish, TextDelta, ToolCall,
+    ToolCallAction, ToolCallDelta, ToolResultAction, ToolResultEvent,
 };
 pub use model::ModelHandle;
 pub use prompt_request::streaming::{
     MultiTurnStreamItem, StreamingError, StreamingPromptRequest, StreamingResult, stream_to_stdout,
 };
 pub use prompt_request::{
-    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, Standard,
-    TypedPromptRequest, TypedPromptResponse,
+    CompletionCall, Extended, PromptRequest, PromptResponse, PromptType, ResponseIdentity,
+    Standard, TypedPromptRequest, TypedPromptResponse,
 };
 pub use rig_core::message::Text;
 pub use run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall};

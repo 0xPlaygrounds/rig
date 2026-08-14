@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::OneOrMany;
 use rig::completion::{Chat, CompletionModel, Message, Prompt};
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
 use rig::prelude::*;
@@ -396,15 +395,17 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
 
 /// Assert the provider-native metadata xAI reports on its own wire response.
 ///
-/// The response id (`resp_...`), the untyped `status`, and the raw usage
-/// envelope have no normalized home, so they are read from
-/// [`xai::CompletionModel::raw_completion`]. `completion` is that same call
-/// followed by the same conversion, so a cassette still records exactly one
-/// interaction.
+/// The response id (`resp_...`), typed status, and full usage envelope are read
+/// from [`xai::CompletionModel::raw_completion`]. `completion` is that same
+/// call followed by the shared Responses normalization, so a cassette still
+/// records exactly one interaction.
 fn assert_raw_response_metadata(raw: &xai::CompletionResponse) {
     assert_nonempty_response(&raw.id);
     assert_nonempty_response(&raw.model);
-    assert_eq!(raw.status.as_deref(), Some("completed"));
+    assert_eq!(
+        raw.status,
+        rig::providers::openai::responses_api::ResponseStatus::Completed
+    );
     assert!(
         raw.usage.is_some(),
         "raw xAI response should preserve usage metadata"
@@ -684,12 +685,12 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("Look up the harbor label with the tool."))
                 .message(Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(AssistantContent::tool_call_with_call_id(
+                    content: vec![AssistantContent::tool_call_with_call_id(
                         "call_REDACTED_1",
                         "call_REDACTED_1".to_string(),
                         AlphaSignal::NAME,
                         json!({}),
-                    )),
+                    )],
                 })
                 .message(Message::tool_result(
                     "call_REDACTED_1",
@@ -703,7 +704,8 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 
             let raw = model.raw_completion(request).await?;
             assert_raw_response_metadata(&raw);
-            let response: rig::completion::CompletionResponse = raw.try_into()?;
+            let response: rig::completion::CompletionResponse =
+                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -836,7 +838,8 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 .unwrap_or_default();
             assert_raw_response_metadata(&raw);
 
-            let response: rig::completion::CompletionResponse = raw.try_into()?;
+            let response: rig::completion::CompletionResponse =
+                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
 
             anyhow::ensure!(
                 response
@@ -914,7 +917,8 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
 
             let raw = model.raw_completion(request).await?;
             assert_raw_response_metadata(&raw);
-            let response: rig::completion::CompletionResponse = raw.try_into()?;
+            let response: rig::completion::CompletionResponse =
+                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("schema response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;
@@ -956,14 +960,13 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
 
             let response = agent
                 .prompt(Message::User {
-                    content: OneOrMany::many(vec![
+                    content: vec![
                         UserContent::text("First, note this is an image-analysis cassette test."),
                         image_content(),
                         UserContent::text(
                             "Then answer in one short sentence naming the main visible subject.",
                         ),
-                    ])
-                    .expect("content should be non-empty"),
+                    ],
                 })
                 .await?;
 

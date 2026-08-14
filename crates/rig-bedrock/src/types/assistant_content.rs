@@ -19,7 +19,9 @@ use rig_core::telemetry::ProviderResponseExt;
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AwsConverseOutput(pub InternalConverseOutput);
 
-fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
+/// Normalize Bedrock token counts into rig's usage record. Shared by the
+/// unary response path and the streaming terminal record.
+pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
     completion::Usage {
         input_tokens: usage.input_tokens as u64,
         output_tokens: usage.output_tokens as u64,
@@ -117,10 +119,14 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
             .to_owned()
             .try_into()?;
 
+        // This arm rejects a *role* mismatch, not an empty choice — the
+        // empty-converted-content case is rejected upstream in the message
+        // conversion — so it carries its own diagnostic rather than the
+        // shared empty-response wording.
         let choice = match message.0 {
             completion::Message::Assistant { content, .. } => Ok(content),
             _ => Err(CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
+                "Converse output message was not an assistant message".to_owned(),
             )),
         }?;
 
@@ -128,8 +134,14 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
 
         let finish_reason = map_stop_reason(&value.0.stop_reason);
 
+        // Bedrock's transport request id comes from the AWS SDK's response
+        // metadata (`x-amzn-RequestId`), captured when the SDK output was
+        // converted into `InternalConverseOutput`.
+        let provider_request_id = value.0.request_id().map(str::to_string);
+
         Ok(
             completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
+                .with_optional_provider_request_id(provider_request_id)
                 .with_finish_reason(finish_reason),
         )
     }
@@ -392,7 +404,7 @@ mod tests {
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use base64::{Engine as _, prelude::BASE64_STANDARD};
     use rig_core::{
-        OneOrMany, completion,
+        completion,
         message::{AssistantContent, ReasoningContent},
         telemetry::ProviderResponseExt,
     };
@@ -518,7 +530,7 @@ mod tests {
         let completion = completion.unwrap();
         assert_eq!(
             completion.choice,
-            OneOrMany::one(AssistantContent::Text("txt".into()))
+            vec![AssistantContent::Text("txt".into())]
         );
     }
 

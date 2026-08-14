@@ -8,13 +8,12 @@
 //! `scylladb` feature is enabled.
 
 use rig_core::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::{Filter, FilterError, SearchFilter, VectorSearchRequest},
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
@@ -192,13 +191,13 @@ impl TryFrom<Filter<serde_json::Value>> for ScyllaSearchFilter {
     type Error = FilterError;
 
     fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
-        match value {
-            Filter::Eq(k, val) => Ok(ScyllaSearchFilter::eq(k, cql_value_from_json(val)?)),
-            Filter::Gt(k, val) => Ok(ScyllaSearchFilter::gt(k, cql_value_from_json(val)?)),
-            Filter::Lt(k, val) => Ok(ScyllaSearchFilter::lt(k, cql_value_from_json(val)?)),
-            Filter::And(l, r) => Ok(Self::try_from(*l)?.and(Self::try_from(*r)?)),
-            Filter::Or(l, r) => Ok(Self::try_from(*l)?.or(Self::try_from(*r)?)),
-        }
+        value.try_interpret(cql_value_from_json)
+    }
+}
+
+impl DynamicSearchFilter for ScyllaSearchFilter {
+    fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
+        Self::try_from(filter)
     }
 }
 
@@ -233,7 +232,7 @@ where
         session
             .query_unpaged(create_keyspace_cql, &[])
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         // Create table for storing vectors
         // Note: Once ScyllaDB vector search is fully available, we'll use VECTOR type
@@ -249,7 +248,7 @@ where
         session
             .query_unpaged(create_table_cql, &[])
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         // Prepare statements for better performance
         let insert_stmt = session
@@ -257,21 +256,21 @@ where
                 "INSERT INTO {keyspace}.{table} (id, vector, metadata, created_at) VALUES (?, ?, ?, ?)"
             ))
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         let search_stmt = session
             .prepare(format!(
                 "SELECT id, vector, metadata, created_at FROM {keyspace}.{table}"
             ))
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         let get_by_id_stmt = session
             .prepare(format!(
                 "SELECT id, vector, metadata, created_at FROM {keyspace}.{table} WHERE id = ?"
             ))
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         Ok(Self {
             model,
@@ -306,26 +305,24 @@ where
         &self,
         id: &str,
     ) -> Result<Option<T>, VectorStoreError> {
-        let uuid =
-            Uuid::parse_str(id).map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let uuid = Uuid::parse_str(id).map_err(VectorStoreError::datastore)?;
 
         let result = self
             .session
             .execute_unpaged(&self.get_by_id_stmt, (uuid,))
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         let rows_result = result
             .into_rows_result()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         if let Some(first_row) = rows_result
             .rows::<(Uuid, Vec<f32>, String, i64)>()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
+            .map_err(VectorStoreError::datastore)?
             .next()
         {
-            let (_, _, metadata, _) =
-                first_row.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            let (_, _, metadata, _) = first_row.map_err(VectorStoreError::datastore)?;
 
             let payload: T = serde_json::from_str(&metadata)?;
             return Ok(Some(payload));
@@ -379,7 +376,7 @@ where
                     .session
                     .prepare(query)
                     .await
-                    .map_err(|e| VectorStoreError::DatastoreError(e.into()))?;
+                    .map_err(VectorStoreError::datastore)?;
 
                 let mut cache = self.cache.write().map_err(|e| {
                     VectorStoreError::DatastoreError(
@@ -395,6 +392,56 @@ where
             Ok(self.search_stmt.clone())
         }
     }
+
+    /// Runs the (optionally filtered) scan and scores every row against the
+    /// query, returning the sorted, truncated `(score, id, metadata)` list.
+    async fn search_candidates(
+        &self,
+        req: &VectorSearchRequest<ScyllaSearchFilter>,
+    ) -> Result<Vec<(f64, String, String)>, VectorStoreError> {
+        let query_vector = self.generate_query_vector(req.query()).await?;
+
+        let statement = self.get_filter_statement_or_default(req).await?;
+        let params = req
+            .filter()
+            .as_ref()
+            .map(ScyllaSearchFilter::params)
+            .unwrap_or_default();
+
+        // Fetch all vectors (this will be optimized once ScyllaDB vector search is available)
+        let results = self
+            .session
+            .execute_unpaged(&statement, params)
+            .await
+            .map_err(VectorStoreError::datastore)?;
+
+        let rows_result = results
+            .into_rows_result()
+            .map_err(VectorStoreError::datastore)?;
+
+        let mut candidates = Vec::new();
+
+        for row_result in rows_result
+            .rows::<(Uuid, Vec<f32>, String, i64)>()
+            .map_err(VectorStoreError::datastore)?
+        {
+            let (id, vector, metadata, _) = row_result.map_err(VectorStoreError::datastore)?;
+
+            let score = Self::cosine_similarity(&query_vector, &vector) as f64;
+
+            if req.threshold().is_some_and(|threshold| score < threshold) {
+                continue;
+            }
+
+            candidates.push((score, id.to_string(), metadata));
+        }
+
+        // Sort by similarity score (descending) and take top n
+        candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
+        candidates.truncate(req.samples() as usize);
+
+        Ok(candidates)
+    }
 }
 
 impl<Model> InsertDocuments for ScyllaDbVectorStore<Model>
@@ -403,7 +450,7 @@ where
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         for (document, embeddings) in documents {
             let metadata = serde_json::to_string(&document)?;
@@ -428,7 +475,7 @@ where
                 self.session
                     .execute_unpaged(&self.insert_stmt, (id, vector, &metadata, now))
                     .await
-                    .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+                    .map_err(VectorStoreError::datastore)?;
             }
         }
 
@@ -452,52 +499,11 @@ where
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let query_vector = self.generate_query_vector(req.query()).await?;
-
-        let statement = self.get_filter_statement_or_default(&req).await?;
-        let params = req
-            .filter()
-            .as_ref()
-            .map(ScyllaSearchFilter::params)
-            .unwrap_or([].as_slice());
-
-        // Fetch all vectors (this will be optimized once ScyllaDB vector search is available)
-        let results = self
-            .session
-            .execute_unpaged(&statement, params)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let rows_result = results
-            .into_rows_result()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let mut candidates = Vec::new();
-
-        for row_result in rows_result
-            .rows::<(Uuid, Vec<f32>, String, i64)>()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
-        {
-            let (id, vector, metadata, _) =
-                row_result.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-            let similarity = Self::cosine_similarity(&query_vector, &vector);
-            let score = similarity as f64;
-
-            if req.threshold().is_some_and(|threshold| score < threshold) {
-                continue;
-            }
-
-            let payload: T = serde_json::from_str(&metadata)?;
-
-            candidates.push((score, id.to_string(), payload));
-        }
-
-        // Sort by similarity score (descending) and take top n
-        candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
-        candidates.truncate(req.samples() as usize);
-
-        Ok(candidates)
+        self.search_candidates(&req)
+            .await?
+            .into_iter()
+            .map(|(score, id, metadata)| Ok((score, id, serde_json::from_str(&metadata)?)))
+            .collect()
     }
 
     /// Search for the top `n` nearest neighbors to the given query.
@@ -506,76 +512,12 @@ where
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let query_vector = self.generate_query_vector(req.query()).await?;
-
-        let statement = self.get_filter_statement_or_default(&req).await?;
-        let params = req
-            .filter()
-            .as_ref()
-            .map(ScyllaSearchFilter::params)
-            .unwrap_or_default();
-
-        let results = self
-            .session
-            .execute_unpaged(&statement, params)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let rows_result = results
-            .into_rows_result()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let mut candidates = Vec::new();
-
-        for row_result in rows_result
-            .rows::<(Uuid, Vec<f32>, String, i64)>()
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?
-        {
-            let (id, vector, _, _) =
-                row_result.map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-            let similarity = Self::cosine_similarity(&query_vector, &vector);
-            let score = similarity as f64;
-
-            if req.threshold().is_some_and(|threshold| score < threshold) {
-                continue;
-            }
-
-            candidates.push((score, id.to_string()));
-        }
-
-        // Sort by similarity score (descending) and take top n
-        candidates.sort_by(|a, b| b.0.total_cmp(&a.0));
-        candidates.truncate(req.samples() as usize);
-
-        Ok(candidates)
-    }
-}
-
-impl<M> VectorStoreIndexDyn for ScyllaDbVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        Box::pin(async move {
-            let req = req.try_map_filter(ScyllaSearchFilter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-            Ok(results)
-        })
-    }
-
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let req = req.try_map_filter(ScyllaSearchFilter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
-            Ok(results)
-        })
+        Ok(self
+            .search_candidates(&req)
+            .await?
+            .into_iter()
+            .map(|(score, id, _)| (score, id))
+            .collect())
     }
 }
 
@@ -586,5 +528,5 @@ pub async fn create_session(uri: &str) -> Result<Session, VectorStoreError> {
         .compression(Some(Compression::Lz4))
         .build()
         .await
-        .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))
+        .map_err(VectorStoreError::datastore)
 }

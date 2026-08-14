@@ -38,3 +38,19 @@ where
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
+
+/// Bogus-key variant for recording real 401s (rig#2314 error matrix).
+pub(super) async fn with_xai_cassette_bogus_key<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
+where
+    F: FnOnce(xai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette = ProviderCassette::start("xai", spec, "https://api.x.ai").await;
+    let client = xai::Client::builder()
+        .api_key("xai-invalid-edge-matrix-key")
+        .base_url(cassette.base_url())
+        .build()
+        .expect("xAI client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}

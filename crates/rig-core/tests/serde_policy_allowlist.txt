@@ -33,16 +33,11 @@ providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_s
 providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.
 # Single-file providers: unary/non-stream parses sharing a file with streaming code.
 providers/ollama.rs | serde_json::from_slice(&bytes)?; | unary embedding response body, not a stream frame
-providers/ollama.rs | serde_json::from_slice(&response_body)?; | unary completion response body, not a stream frame
-providers/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame
-providers/copilot/mod.rs | ChatApiResponse<ChatCompletionResponse>>(&body)? | unary chat completion body, not a stream frame
-providers/copilot/mod.rs | responses_api::CompletionResponse>(&body)? | unary responses completion body, not a stream frame
 providers/copilot/mod.rs | CopilotEmbeddingResponse = match serde_json::from_slice | unary embedding response body, not a stream frame
 providers/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | unary error-envelope decode on a non-2xx body, not a stream frame
-providers/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame
 
 # --- #[serde(untagged)] unions that are not frame triage --------------------
 providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.
 providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.
 providers/openai/completion/streaming.rs | #[serde(untagged)] | `FinishReason::Other(String)` preserves an unrecognized finish-reason token verbatim (surfacing gateway-invented reasons instead of misreading them as a stop); a scalar vocabulary field, not frame policy.
-providers/copilot/mod.rs | #[serde(untagged)] | Two sites: `ChatApiResponse<T>` distinguishes a success body from Copilot's error envelope on a UNARY response (no stream frame involved), and `ChatFinishReason::Other(String)` is the verbatim-preserving finish-reason vocabulary, as on the shared chat path.
+providers/copilot/mod.rs | #[serde(untagged)] | `ChatApiResponse<T>` distinguishes a success body from Copilot's error envelope on a UNARY response (no stream frame involved).

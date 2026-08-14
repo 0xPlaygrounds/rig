@@ -6,17 +6,15 @@
 //! state machine while leaving request parsing and provider-specific metadata to
 //! small profile hooks.
 
-use async_stream::stream;
-use futures::StreamExt;
 use http::Request;
-use tracing_futures::Instrument;
 
-use super::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use super::adapter::{AdapterOutput, WireAdapter, WireFrame};
+use super::sse_transport::{FrameDisposition, OpenLog, SseTransportOptions};
 use super::tool_call_bridge::{ToolCallBridge, ToolCallSlot};
 use super::wire::WireEvent;
 use crate::completion::{CompletionError, FinishReason, Usage};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::GenericEventSource;
 use crate::streaming::{
     self, MintKind, RawStreamingChoice, StreamPartId, ToolCallDecoration, ToolCallDeltaContent,
     UnparseableToolInput,
@@ -68,6 +66,68 @@ pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
         "content_filter" => FinishReason::ContentFilter,
         other => FinishReason::Other(other.to_owned()),
     }
+}
+
+/// Shared skeleton for normalizing an OpenAI-shaped *non-streaming* chat
+/// completion response (OpenAI, DeepSeek, Mistral): first choice or error,
+/// empty-string `finish_reason` treated as absent then mapped through
+/// [`map_openai_finish_reason`], non-assistant messages rejected, and the
+/// normalized response assembled with id/model/finish-reason metadata.
+///
+/// The per-provider deltas stay at the call site: `assistant_content` extracts
+/// the provider's own message shape (returning `None` for a non-assistant
+/// message), and `usage`/`id`/`model` are computed by the caller.
+pub(crate) fn normalize_openai_response<C>(
+    provider: &str,
+    choices: &[C],
+    id: Option<&str>,
+    model: Option<&str>,
+    usage: Usage,
+    finish_reason: impl for<'a> FnOnce(&'a C) -> &'a str,
+    assistant_content: impl FnOnce(&C) -> Option<Vec<crate::completion::AssistantContent>>,
+) -> Result<crate::completion::CompletionResponse, CompletionError> {
+    let choice = choices.first().ok_or_else(|| {
+        CompletionError::ResponseError("Response contained no choices".to_owned())
+    })?;
+
+    let finish_reason = Some(finish_reason(choice))
+        .filter(|reason| !reason.is_empty())
+        .map(map_openai_finish_reason);
+
+    let content = assistant_content(choice).ok_or_else(|| {
+        CompletionError::ResponseError(
+            "Response did not contain a valid message or tool call".into(),
+        )
+    })?;
+
+    let choice = crate::message::require_non_empty_response(content)?;
+
+    Ok(
+        crate::completion::CompletionResponse::new(choice, usage, provider)
+            .with_optional_response_id(id)
+            .with_optional_model(model)
+            .with_optional_finish_reason(finish_reason),
+    )
+}
+
+/// Text-then-tool-calls assistant content for wire messages carrying a single
+/// content string plus a tool-call list (DeepSeek, Mistral). `text_is_empty`
+/// is provider policy — DeepSeek trims before testing, Mistral does not — so
+/// the caller evaluates its own predicate.
+pub(crate) fn text_then_tool_calls<'a>(
+    text: &str,
+    text_is_empty: bool,
+    tool_calls: impl IntoIterator<Item = (&'a str, &'a str, serde_json::Value)>,
+) -> Vec<crate::completion::AssistantContent> {
+    let mut content = if text_is_empty {
+        vec![]
+    } else {
+        vec![crate::completion::AssistantContent::text(text)]
+    };
+    content.extend(tool_calls.into_iter().map(|(id, name, arguments)| {
+        crate::completion::AssistantContent::tool_call(id, name, arguments)
+    }));
+    content
 }
 
 /// A chunk's terminal reason, as reported by an OpenAI-compatible provider.
@@ -233,6 +293,11 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
     /// and map the `Known` payload via [`WireEvent::map`] — no triage here;
     /// the driver owns the unknown/corrupt policy.
     fn classify_chunk(&self, data: &str) -> WireEvent<CompatibleChunk<Self::Usage, Self::Detail>>;
+
+    /// Stamp the transport request id (captured off the SSE connection's
+    /// response headers) onto the profile's terminal record. The default
+    /// drops it — for profiles whose terminal has no slot for it.
+    fn stamp_request_id(_response: &mut Self::FinalResponse, _request_id: String) {}
 
     /// Build the provider's own terminal record from the stream's terminal
     /// state. The record stays provider-native for `raw_stream`; the normalized
@@ -589,59 +654,55 @@ where
 pub(crate) async fn send_compatible_raw_streaming_request<T, P>(
     http_client: T,
     req: Request<Vec<u8>>,
+    request_id_header: Option<&'static str>,
     profile: P,
 ) -> Result<streaming::RawStreamingResult<P::FinalResponse>, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
     P: CompatibleStreamProfile + 'static,
 {
-    let instrument_span = tracing::Span::current();
     let event_source = GenericEventSource::new(http_client, req);
-
-    // Transport layer: SSE events → `WireFrame`s. Byte splitting, framing,
-    // and the wire's in-band provider error envelope (a terminal transport
-    // condition, detected pre-classification exactly as an HTTP failure would
-    // be) — classification and policy live downstream.
-    let transport = stream! {
-        let mut event_source = Box::pin(event_source);
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => {
-                    tracing::trace!("SSE connection opened");
-                }
-                Ok(Event::Message(message)) => {
-                    if message.data != "[DONE]" && message.data.trim().is_empty() {
-                        continue;
-                    }
-
-                    if let Some(error) = provider_response_from_compatible_sse_data(&message.data) {
-                        // A terminal failure: the driver flushes
-                        // fully-delivered content, yields this error last,
-                        // and emits no terminal record.
-                        yield Err(error);
-                        break;
-                    }
-
-                    yield Ok(WireFrame::Text(message.data));
-                }
-                Err(crate::http_client::Error::StreamEnded) => {
-                    break;
-                }
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::from_stream_transport(error));
-                    break;
-                }
-            }
+    let (event_source, request_id_slot) = match request_id_header {
+        Some(header) => {
+            let (event_source, slot) = event_source.capture_request_id(header);
+            (event_source, Some(slot))
         }
-        event_source.close();
+        None => (event_source, None),
     };
 
-    let stream: streaming::RawStreamingResult<P::FinalResponse> = Box::pin(
-        run_wire_stream(transport, CompatAdapter::new(profile)).instrument(instrument_span),
+    // The wire's in-band provider error envelope is a terminal transport
+    // condition, detected pre-classification exactly as an HTTP failure
+    // would be.
+    let stream = super::sse_transport::open_wire_stream(
+        event_source,
+        SseTransportOptions {
+            open_log: OpenLog::Trace,
+            stream_ended_is_error: false,
+            log_transport_errors: true,
+        },
+        |data| {
+            // `[DONE]` passes through: the adapter treats it as the wire's
+            // terminal sentinel.
+            if data != "[DONE]" && data.trim().is_empty() {
+                return FrameDisposition::Skip;
+            }
+            if let Some(error) = provider_response_from_compatible_sse_data(&data) {
+                // A terminal failure: the driver flushes fully-delivered
+                // content, yields this error last, and emits no terminal
+                // record.
+                return FrameDisposition::Fail(error);
+            }
+            FrameDisposition::Frame(data)
+        },
+        CompatAdapter::new(profile),
+        tracing::Span::current(),
     );
-
-    Ok(stream)
+    Ok(super::sse_transport::stamp_terminal_request_id(
+        stream,
+        request_id_slot,
+        request_id_header,
+        P::stamp_request_id,
+    ))
 }
 
 fn record_usage(span: &tracing::Span, usage: &Usage) {
@@ -781,7 +842,7 @@ mod tests {
         T: crate::http_client::HttpClientExt + Clone + 'static,
         P: CompatibleStreamProfile<FinalResponse = crate::streaming::StreamFinal> + 'static,
     {
-        let raw = send_compatible_raw_streaming_request(http_client, req, profile).await?;
+        let raw = send_compatible_raw_streaming_request(http_client, req, None, profile).await?;
         Ok(crate::streaming::StreamingCompletionResponse::stream(
             "test-compatible",
             crate::streaming::normalize_stream(raw, Ok),

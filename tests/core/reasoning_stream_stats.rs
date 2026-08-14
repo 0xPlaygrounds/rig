@@ -1,5 +1,4 @@
 use futures::stream;
-use rig::OneOrMany;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::message::{AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent};
@@ -21,7 +20,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
         call: tool_call.id.clone(),
         provider: tool_call.provider.clone(),
         name: tool_call.function.name.clone(),
-        content: OneOrMany::one(ToolResultContent::text("72F and sunny")),
+        content: vec![ToolResultContent::text("72F and sunny")],
     };
 
     let items = vec![
@@ -41,7 +40,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
             StreamedAssistantContent::text("It's 72F and sunny in Tokyo."),
         )),
         Ok(MultiTurnStreamItem::final_response(
-            OneOrMany::one(AssistantContent::text("It's 72F and sunny in Tokyo.")),
+            vec![AssistantContent::text("It's 72F and sunny in Tokyo.")],
             Usage::new(),
         )),
     ];

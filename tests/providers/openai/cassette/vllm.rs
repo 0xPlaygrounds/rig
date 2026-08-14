@@ -56,7 +56,7 @@ async fn responses_api_accepts_null_metadata() {
             let response: rig::completion::CompletionResponse = raw.normalize("openai")
                 .expect("vLLM Responses API completion should normalize");
             assert!(
-                response.choice.iter().next().is_some(),
+                !response.choice.is_empty(),
                 "response should contain assistant content"
             );
         },

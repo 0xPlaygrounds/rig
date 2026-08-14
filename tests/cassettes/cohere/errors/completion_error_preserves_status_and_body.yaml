@@ -1,0 +1,16 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"messages":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"}],"model":"command-does-not-exist"}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"id":"2da0d1db-941a-4db3-ba16-436533566b78","message":"model ''command-does-not-exist'' not found, make sure the correct model ID was used and that you have access to the model."}'

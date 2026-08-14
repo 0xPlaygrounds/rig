@@ -37,9 +37,8 @@ use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
-use rig_core::{
-    OneOrMany,
-    message::{AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult},
+use rig_core::message::{
+    AssistantContent, Reasoning, ToolCall, ToolFunction, ToolResult, non_empty,
 };
 
 use crate::{
@@ -50,24 +49,77 @@ use crate::{
 };
 
 /// Assemble assistant content in canonical replay order: reasoning blocks,
-/// then text, then trailing items (tool calls, images).
-pub(crate) fn ordered_streaming_assistant_content(
+/// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
+/// so the result is empty exactly when every input is.
+pub(crate) fn ordered_assistant_content(
     reasoning_items: impl IntoIterator<Item = Reasoning>,
     text_items: impl IntoIterator<Item = AssistantContent>,
     trailing_items: impl IntoIterator<Item = AssistantContent>,
-) -> Option<OneOrMany<AssistantContent>> {
+) -> Vec<AssistantContent> {
     let mut content_items = reasoning_items
         .into_iter()
         .map(AssistantContent::Reasoning)
         .collect::<Vec<_>>();
     content_items.extend(text_items);
     content_items.extend(trailing_items);
+    content_items
+}
 
-    OneOrMany::from_iter_optional(content_items)
+/// [`ordered_assistant_content`], as an `Option` for slots where an empty
+/// assembly means "no message".
+pub(crate) fn ordered_streaming_assistant_content(
+    reasoning_items: impl IntoIterator<Item = Reasoning>,
+    text_items: impl IntoIterator<Item = AssistantContent>,
+    trailing_items: impl IntoIterator<Item = AssistantContent>,
+) -> Option<Vec<AssistantContent>> {
+    non_empty(ordered_assistant_content(
+        reasoning_items,
+        text_items,
+        trailing_items,
+    ))
+}
+
+/// Whether a [`StreamedAssistantContent::Unknown`] payload is rig assistant
+/// content, so excluding it from assembly loses transcript content.
+///
+/// The predicate is the decoder itself — a payload that parses as a tagged
+/// [`AssistantContent`] block (`toolcall`/`reasoning`/`image` today, every
+/// future variant automatically) is a replayed assistant block, not a
+/// stream-item shape: the untagged stream variants carry different keys, so
+/// it lands in `Unknown` and its content would silently vanish. A dropped
+/// tool call additionally desyncs the turn — no pending call, no result.
+///
+/// Well-formed text does not reach this path: the tolerant block decode
+/// ignores unknown keys, so a tagged text block or a text item with stray
+/// sibling keys (0.41's flatten shape) decodes as
+/// `StreamedAssistantContent::Text` and its text is *assembled*, with only
+/// the stray keys dropped. The one way a text-carrying item can still land
+/// in `Unknown` is a *malformed known field* — a non-object
+/// `additional_params` fails the strict decode — and that item carries real
+/// text, so it counts too. Anything else in `Unknown` is a provider-native
+/// unmodeled item and stays quiet.
+///
+/// The whole outcome space is pinned by the decode-outcome matrix test
+/// (`decode_outcome_matrix_is_total_and_no_shape_is_silent`): assembled,
+/// excluded-and-counted, or excluded-quiet — no shape is silent.
+fn unknown_payload_loses_assistant_content(payload: &serde_json::Value) -> bool {
+    // `&Value` is itself a `Deserializer`, so the probe allocates nothing —
+    // this runs on every `Unknown` item, and provider-native payloads can be
+    // large and frequent.
+    if AssistantContent::deserialize(payload).is_ok() {
+        return true;
+    }
+    // A string `text` alongside an `additional_params` key: a text item
+    // whose params were malformed enough to fail even the tolerant decode.
+    // Its text is real transcript content.
+    payload
+        .get("text")
+        .is_some_and(serde_json::Value::is_string)
+        && payload.get("additional_params").is_some()
 }
 
 pub(crate) fn assistant_text_items_from_choice(
-    choice: &OneOrMany<AssistantContent>,
+    choice: &[AssistantContent],
 ) -> Vec<AssistantContent> {
     choice
         .iter()
@@ -179,8 +231,10 @@ impl PartialStreamedTurn {
             feedback,
         ));
 
+        // `retry_results` is non-empty: the invalid call's own feedback result
+        // was just pushed unconditionally.
         let user_message = Message::User {
-            content: OneOrMany::from_iter_optional(retry_results)?,
+            content: retry_results,
         };
 
         Some((assistant_message, user_message))
@@ -197,7 +251,7 @@ pub struct StreamedTurn {
     /// The assistant content to record in history: canonical
     /// (reasoning → text → tool calls) when the turn produced reasoning or
     /// tool calls, otherwise the provider's aggregated choice as-is.
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     /// Executable Rig tools advertised to the provider for this turn.
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active tool choice for this turn.
@@ -286,12 +340,32 @@ struct ReasoningPart {
     state: ReasoningPartState,
 }
 
+#[derive(Clone)]
 enum ReasoningPartState {
     /// Delta text accumulated so far for a part with no completed block.
     Pending(String),
     /// The authoritative completed block (may carry signatures or encrypted
     /// content the deltas lacked).
     Completed(Reasoning),
+}
+
+/// Assemble one part's reasoning: a completed block as-is, a non-empty pending
+/// delta buffer as its own block carrying only the part's provider-issued id.
+fn reasoning_from_part(
+    state: ReasoningPartState,
+    provider_id: Option<String>,
+) -> Option<Reasoning> {
+    match state {
+        ReasoningPartState::Completed(reasoning) => Some(reasoning),
+        ReasoningPartState::Pending(text) if !text.is_empty() => {
+            let mut assembled = Reasoning::new(&text);
+            if let Some(id) = provider_id {
+                assembled = assembled.with_id(id);
+            }
+            Some(assembled)
+        }
+        ReasoningPartState::Pending(_) => None,
+    }
 }
 
 enum PendingInvalid {
@@ -315,6 +389,34 @@ pub struct StreamedTurnAssembler {
     pending_tool_calls: Vec<(ToolCall, String)>,
     delta_states: HashMap<String, ToolCallDeltaState>,
     pending_invalid: Option<PendingInvalid>,
+    /// Replayed assistant blocks excluded from assembly this turn (see
+    /// [`unknown_payload_loses_assistant_content`]): counted per item,
+    /// surfaced as one warning when the guard drops.
+    excluded_assistant_content: ExclusionCount,
+}
+
+/// Count of replayed assistant blocks excluded from assembly in one turn.
+///
+/// The loudness contract lives on this guard's `Drop`, so it holds on
+/// *every* termination path — `finish`, stream errors, hook cancellation,
+/// abandonment, truncation — exactly once, and zero exclusions stay silent.
+/// A dedicated one-field guard (not a `Drop` impl on the assembler itself)
+/// keeps the assembler's fields freely movable.
+#[derive(Default)]
+struct ExclusionCount(usize);
+
+impl Drop for ExclusionCount {
+    fn drop(&mut self) {
+        if self.0 > 0 {
+            tracing::warn!(
+                excluded = self.0,
+                "stream items matching rig's tagged assistant-content \
+                 serialization were excluded from the assembled assistant \
+                 message — replayed assistant blocks are not stream-item \
+                 shapes, and their content is lost from assembled history"
+            );
+        }
+    }
 }
 
 impl StreamedTurnAssembler {
@@ -333,7 +435,16 @@ impl StreamedTurnAssembler {
             pending_tool_calls: Vec::new(),
             delta_states: HashMap::new(),
             pending_invalid: None,
+            excluded_assistant_content: ExclusionCount::default(),
         }
+    }
+
+    /// Replayed assistant blocks excluded from assembly so far this turn.
+    /// Zero on well-formed provider streams; non-zero means transcript
+    /// content was lost (one warning summarizes the count at
+    /// [`Self::finish`]).
+    pub fn excluded_assistant_content(&self) -> usize {
+        self.excluded_assistant_content.0
     }
 
     /// Aggregated assistant text streamed so far this turn (empty until the
@@ -342,14 +453,34 @@ impl StreamedTurnAssembler {
         &self.text
     }
 
-    /// Normalize a snapshot of the provider aggregate into the content that
-    /// would be committed for this turn, without consuming the assembler.
-    fn canonical_choice(
-        &self,
-        provider_choice: &OneOrMany<AssistantContent>,
-    ) -> OneOrMany<AssistantContent> {
-        let reasoning = self.assembled_reasoning();
+    /// Reasoning text accumulated for the currently pending part identified by
+    /// `correlator`.
+    ///
+    /// Completed parts are deliberately skipped: a later delta may reuse a
+    /// correlator after a completed restatement, in which case ingestion opens
+    /// a new pending part and this returns that new part's aggregate.
+    pub fn aggregated_reasoning(&self, correlator: &str) -> Option<&str> {
+        self.reasoning_parts.iter().find_map(|part| {
+            match (&part.state, part.correlator.as_deref()) {
+                (ReasoningPartState::Pending(text), Some(id)) if id == correlator => {
+                    Some(text.as_str())
+                }
+                _ => None,
+            }
+        })
+    }
 
+    /// Normalize the provider aggregate into the content committed for this
+    /// turn. The reasoning is supplied by the caller: the finish path drains
+    /// its parts by value ([`Self::drain_reasoning`]) instead of cloning
+    /// them, while the partial-turn surface assembles borrowed
+    /// ([`Self::assembled_reasoning`]) — agreement between the two is pinned
+    /// by `canonical_choice_and_partial_turn_agree_on_multi_part_reasoning`.
+    fn canonical_choice_with(
+        &self,
+        reasoning: Vec<Reasoning>,
+        provider_choice: &[AssistantContent],
+    ) -> Vec<AssistantContent> {
         if !self.pending_tool_calls.is_empty() || !reasoning.is_empty() {
             let text_items = assistant_text_items_from_choice(provider_choice);
             let tool_items = self
@@ -357,10 +488,12 @@ impl StreamedTurnAssembler {
                 .iter()
                 .map(|(tool_call, _)| AssistantContent::ToolCall(tool_call.clone()))
                 .collect::<Vec<_>>();
-            ordered_streaming_assistant_content(reasoning, text_items, tool_items)
-                .unwrap_or_else(|| provider_choice.clone())
+            // Infallible on purpose: the enclosing guard makes at least one
+            // input non-empty and the assembly maps its inputs 1:1, so there
+            // is no empty case to fall back from.
+            ordered_assistant_content(reasoning, text_items, tool_items)
         } else {
-            provider_choice.clone()
+            provider_choice.to_vec()
         }
     }
 
@@ -382,27 +515,22 @@ impl StreamedTurnAssembler {
         // completed block always carries the whole content, the
         // accumulator having merged signatures before yielding). Checked
         // before the provider-id fallbacks so a signed restatement can
-        // never double-extend its own part.
-        let same_part = self
+        // never double-extend its own part. Failing that, the block
+        // supersedes a pending part sharing its durable provider id.
+        let replace_at = self
             .reasoning_parts
-            .iter_mut()
-            .find(|part| part.correlator.as_deref() == Some(correlator));
-        if let Some(part) = same_part {
-            if reasoning.id.is_some() {
-                part.provider_id = reasoning.id.clone();
-            }
-            part.state = ReasoningPartState::Completed(reasoning.clone());
-            return;
-        }
-
-        let superseded = self.reasoning_parts.iter_mut().find(|part| {
-            matches!(part.state, ReasoningPartState::Pending(_))
-                && matches!(
-                    (&part.provider_id, &reasoning.id),
-                    (Some(pending_id), Some(incoming_id)) if pending_id == incoming_id
-                )
-        });
-        if let Some(part) = superseded {
+            .iter()
+            .position(|part| part.correlator.as_deref() == Some(correlator))
+            .or_else(|| {
+                self.reasoning_parts.iter().position(|part| {
+                    matches!(part.state, ReasoningPartState::Pending(_))
+                        && matches!(
+                            (&part.provider_id, &reasoning.id),
+                            (Some(pending_id), Some(incoming_id)) if pending_id == incoming_id
+                        )
+                })
+            });
+        if let Some(part) = replace_at.and_then(|index| self.reasoning_parts.get_mut(index)) {
             if reasoning.id.is_some() {
                 part.provider_id = reasoning.id.clone();
             }
@@ -439,17 +567,17 @@ impl StreamedTurnAssembler {
     fn assembled_reasoning(&self) -> Vec<Reasoning> {
         self.reasoning_parts
             .iter()
-            .filter_map(|part| match &part.state {
-                ReasoningPartState::Completed(reasoning) => Some(reasoning.clone()),
-                ReasoningPartState::Pending(text) if !text.is_empty() => {
-                    let mut assembled = Reasoning::new(text);
-                    if let Some(id) = part.provider_id.clone() {
-                        assembled = assembled.with_id(id);
-                    }
-                    Some(assembled)
-                }
-                ReasoningPartState::Pending(_) => None,
-            })
+            .filter_map(|part| reasoning_from_part(part.state.clone(), part.provider_id.clone()))
+            .collect()
+    }
+
+    /// [`Self::assembled_reasoning`], consuming the parts — the finish path
+    /// owns the assembler, and reasoning blocks can carry large encrypted
+    /// payloads that should move rather than clone.
+    fn drain_reasoning(&mut self) -> Vec<Reasoning> {
+        std::mem::take(&mut self.reasoning_parts)
+            .into_iter()
+            .filter_map(|part| reasoning_from_part(part.state, part.provider_id))
             .collect()
     }
 
@@ -525,20 +653,17 @@ impl StreamedTurnAssembler {
                 internal_call_id,
             } => {
                 if !self.allowed_tool_names.contains(&tool_call.function.name) {
-                    let invalid = StreamedInvalidToolCall {
-                        tool_call: tool_call.clone(),
-                        internal_call_id: internal_call_id.clone(),
-                        args: Some(json_utils::serialize_json_value(
+                    return Ok(self.surface_invalid_call(
+                        tool_call.clone(),
+                        internal_call_id.clone(),
+                        Some(json_utils::serialize_json_value(
                             &tool_call.function.arguments,
                         )),
-                        executable_tool_names: self.executable_tool_names.clone(),
-                        allowed_tool_names: self.allowed_tool_names.clone(),
-                    };
-                    self.pending_invalid = Some(PendingInvalid::FullCall {
-                        tool_call: Box::new(tool_call.clone()),
-                        internal_call_id: internal_call_id.clone(),
-                    });
-                    return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
+                        PendingInvalid::FullCall {
+                            tool_call: Box::new(tool_call.clone()),
+                            internal_call_id: internal_call_id.clone(),
+                        },
+                    ));
                 }
 
                 self.pending_tool_calls
@@ -558,18 +683,16 @@ impl StreamedTurnAssembler {
                                 .get(&key)
                                 .map(|state| state.buffered_arguments.join(""))
                                 .unwrap_or_default();
-                            let invalid = StreamedInvalidToolCall {
-                                tool_call: self
-                                    .name_delta_diagnostic_tool_call(name, &buffered_args),
-                                internal_call_id: internal_call_id.clone(),
-                                args: Some(buffered_args),
-                                executable_tool_names: self.executable_tool_names.clone(),
-                                allowed_tool_names: self.allowed_tool_names.clone(),
-                            };
-                            self.pending_invalid = Some(PendingInvalid::NameDelta {
-                                internal_call_id: internal_call_id.clone(),
-                            });
-                            return Ok(vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]);
+                            let tool_call =
+                                self.name_delta_diagnostic_tool_call(name, &buffered_args);
+                            return Ok(self.surface_invalid_call(
+                                tool_call,
+                                internal_call_id.clone(),
+                                Some(buffered_args),
+                                PendingInvalid::NameDelta {
+                                    internal_call_id: internal_call_id.clone(),
+                                },
+                            ));
                         }
 
                         Ok(self.validate_delta_name(&key, name.clone()))
@@ -598,11 +721,26 @@ impl StreamedTurnAssembler {
                 self.saw_text = false;
                 Ok(vec![StreamedTurnEvent::Completed { usage, emit_final }])
             }
-            StreamedAssistantContent::Unknown(_) => {
+            StreamedAssistantContent::Unknown(payload) => {
                 // Unmodeled provider item (e.g. a hosted-tool result): forward it
                 // to the consumer but do not fold it into the accumulated
                 // assistant message — there is no `AssistantContent::Unknown`, and
                 // it must not perturb text/tool-call/reasoning accumulation.
+                //
+                // The exclusion loses transcript content when the payload is
+                // rig assistant content (a replayed tagged block, not a
+                // stream-item shape). Counted here — text deltas arrive
+                // per-token, so per-item warns could flood the log — and
+                // surfaced as one warning at turn end; the payload itself
+                // stays redacted.
+                if unknown_payload_loses_assistant_content(payload.value()) {
+                    self.excluded_assistant_content.0 += 1;
+                    tracing::debug!(
+                        excluded = self.excluded_assistant_content.0,
+                        "stream item is a replayed assistant block, not a \
+                         stream-item shape; excluded from assembly"
+                    );
+                }
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
         }
@@ -685,11 +823,12 @@ impl StreamedTurnAssembler {
     /// aggregated choice for the turn
     /// ([`crate::streaming::StreamingCompletionResponse::choice`]).
     pub fn finish(
-        self,
+        mut self,
         message_id: Option<String>,
-        final_choice: &OneOrMany<AssistantContent>,
+        final_choice: &[AssistantContent],
     ) -> StreamedTurn {
-        let choice = self.canonical_choice(final_choice);
+        let reasoning = self.drain_reasoning();
+        let choice = self.canonical_choice_with(reasoning, final_choice);
         let internal_call_ids: Vec<(String, String)> = self
             .pending_tool_calls
             .iter()
@@ -705,6 +844,26 @@ impl StreamedTurnAssembler {
             allowed_tool_names: self.allowed_tool_names,
             internal_call_ids,
         }
+    }
+
+    /// Park resolution on `pending` and surface the rejected call to the
+    /// caller as an [`StreamedTurnEvent::InvalidToolCall`].
+    fn surface_invalid_call(
+        &mut self,
+        tool_call: ToolCall,
+        internal_call_id: String,
+        args: Option<String>,
+        pending: PendingInvalid,
+    ) -> Vec<StreamedTurnEvent> {
+        let invalid = StreamedInvalidToolCall {
+            tool_call,
+            internal_call_id,
+            args,
+            executable_tool_names: self.executable_tool_names.clone(),
+            allowed_tool_names: self.allowed_tool_names.clone(),
+        };
+        self.pending_invalid = Some(pending);
+        vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]
     }
 
     fn name_delta_diagnostic_tool_call(&self, name: &str, buffered_args: &str) -> ToolCall {
@@ -838,6 +997,193 @@ mod tests {
         assert_eq!(asm.aggregated_text(), "answer");
     }
 
+    /// The decode-outcome contract, as a total matrix: every stream-item
+    /// payload has exactly one of three outcomes — assembled,
+    /// excluded-and-counted (one warning at turn end), or excluded-quiet
+    /// (provider-native unmodeled) — and no shape is silent. `expected` is a
+    /// wildcard-free match, so a new shape class cannot compile without a
+    /// mandated outcome, and the coverage assert below fails until it also
+    /// has a fixture.
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    enum ShapeClass {
+        WellFormedText,
+        UnknownKeyedText,
+        TaggedText,
+        TaggedRigBlock,
+        MalformedParamsText,
+        /// A provider-native frame that happens to carry a string `text`
+        /// key (e.g. an annotation event). Tolerance folds its text into
+        /// the message — the documented noise tradeoff: never losing real
+        /// text outranks occasionally ingesting a frame's caption.
+        ProviderNativeTextCarrying,
+        ProviderNativeUnmodeled,
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum ExpectedOutcome {
+        Assembled { text: &'static str },
+        ExcludedAndCounted,
+        ExcludedQuiet,
+    }
+
+    /// The matrix's outcome column. No wildcard arm — the compiler is the
+    /// missing-cell error.
+    fn expected(shape: ShapeClass) -> ExpectedOutcome {
+        match shape {
+            ShapeClass::WellFormedText
+            | ShapeClass::UnknownKeyedText
+            | ShapeClass::TaggedText
+            | ShapeClass::ProviderNativeTextCarrying => ExpectedOutcome::Assembled { text: "hi" },
+            ShapeClass::TaggedRigBlock | ShapeClass::MalformedParamsText => {
+                ExpectedOutcome::ExcludedAndCounted
+            }
+            ShapeClass::ProviderNativeUnmodeled => ExpectedOutcome::ExcludedQuiet,
+        }
+    }
+
+    /// The matrix's fixture rows. Every shape class appears at least once
+    /// (pinned by the coverage assert in the test); classes with several
+    /// wire spellings carry one fixture per spelling.
+    fn decode_matrix_cases() -> Vec<(ShapeClass, serde_json::Value)> {
+        vec![
+            (ShapeClass::WellFormedText, json!({"text": "hi"})),
+            (
+                ShapeClass::UnknownKeyedText,
+                json!({"text": "hi", "citations": ["stray"], "future": 1}),
+            ),
+            (
+                ShapeClass::TaggedText,
+                json!({"type": "text", "text": "hi"}),
+            ),
+            (
+                ShapeClass::TaggedRigBlock,
+                json!({"type": "toolcall", "id": "call_1",
+                       "function": {"name": "add", "arguments": {}}}),
+            ),
+            (
+                ShapeClass::TaggedRigBlock,
+                json!({"type": "reasoning", "id": null, "content": []}),
+            ),
+            (
+                ShapeClass::TaggedRigBlock,
+                json!({"type": "image", "data": {"type": "base64", "value": "aGk="}}),
+            ),
+            (
+                ShapeClass::MalformedParamsText,
+                json!({"text": "hi", "additional_params": []}),
+            ),
+            (
+                ShapeClass::MalformedParamsText,
+                json!({"type": "text", "text": "hi", "additional_params": []}),
+            ),
+            (
+                ShapeClass::ProviderNativeUnmodeled,
+                json!({"type": "web_search_call", "id": "ws_1"}),
+            ),
+            (
+                ShapeClass::ProviderNativeTextCarrying,
+                json!({"type": "output_text.annotation", "text": "hi"}),
+            ),
+            (ShapeClass::ProviderNativeUnmodeled, json!({"text": 42})),
+        ]
+    }
+
+    #[test]
+    fn decode_outcome_matrix_is_total_and_no_shape_is_silent() {
+        let cases = decode_matrix_cases();
+        // Vacuity floor: an emptied fixture table must fail loudly, not
+        // pass by checking nothing.
+        assert!(!cases.is_empty(), "decode_matrix_cases returned no rows");
+        // Coverage: every shape class has at least one fixture. Extend
+        // `witnesses` (and `decode_matrix_cases`) when adding a variant —
+        // `expected` already refuses to compile without a classification.
+        let witnesses = [
+            ShapeClass::WellFormedText,
+            ShapeClass::UnknownKeyedText,
+            ShapeClass::TaggedText,
+            ShapeClass::TaggedRigBlock,
+            ShapeClass::MalformedParamsText,
+            ShapeClass::ProviderNativeTextCarrying,
+            ShapeClass::ProviderNativeUnmodeled,
+        ];
+        for shape in witnesses {
+            assert!(
+                cases.iter().any(|(case_shape, _)| *case_shape == shape),
+                "no fixture for {shape:?} — add a row to decode_matrix_cases"
+            );
+        }
+
+        for (shape, payload) in cases {
+            let item = serde_json::from_value::<StreamedAssistantContent>(payload.clone())
+                .expect("stream-item decode is tolerant and must not fail");
+            let mut asm = assembler();
+            match expected(shape) {
+                ExpectedOutcome::Assembled { text } => {
+                    assert!(
+                        matches!(&item, StreamedAssistantContent::Text(t) if t.text == text),
+                        "{shape:?} must decode as stream text: {payload}"
+                    );
+                    asm.ingest(&item).expect("ingest");
+                    assert_eq!(asm.aggregated_text(), text, "{shape:?}: {payload}");
+                    assert_eq!(
+                        asm.excluded_assistant_content(),
+                        0,
+                        "{shape:?} must not count as excluded: {payload}"
+                    );
+                }
+                ExpectedOutcome::ExcludedAndCounted => {
+                    assert!(
+                        matches!(&item, StreamedAssistantContent::Unknown(_)),
+                        "{shape:?} must decode Unknown: {payload}"
+                    );
+                    asm.ingest(&item).expect("ingest");
+                    assert_eq!(asm.aggregated_text(), "", "{shape:?}: {payload}");
+                    assert_eq!(
+                        asm.excluded_assistant_content(),
+                        1,
+                        "{shape:?} loses assistant content and must be counted: {payload}"
+                    );
+                }
+                ExpectedOutcome::ExcludedQuiet => {
+                    assert!(
+                        matches!(&item, StreamedAssistantContent::Unknown(_)),
+                        "{shape:?} must decode Unknown: {payload}"
+                    );
+                    asm.ingest(&item).expect("ingest");
+                    assert_eq!(asm.aggregated_text(), "", "{shape:?}: {payload}");
+                    assert_eq!(
+                        asm.excluded_assistant_content(),
+                        0,
+                        "{shape:?} is provider-native and must stay quiet: {payload}"
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn choice_text_items_judge_annotation_by_presence() {
+        // `AdditionalParams` is non-empty by construction — an empty carrier
+        // is unrepresentable (`try_from_value(json!({}))` yields `None`) —
+        // so plain `is_some()` is the whole annotation rule and live and
+        // restored classification agree by type.
+        let unannotated = AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(json!({}))
+                .expect("object params"),
+        });
+        assert!(assistant_text_items_from_choice(&[unannotated]).is_empty());
+
+        // A genuinely annotated empty block is content and survives.
+        let annotated = AssistantContent::Text(Text {
+            text: String::new(),
+            additional_params: rig_core::message::AdditionalParams::try_from_value(
+                json!({"citations": [1]}),
+            )
+            .expect("object params"),
+        });
+        assert_eq!(assistant_text_items_from_choice(&[annotated]).len(), 1);
+    }
+
     #[test]
     fn argument_deltas_buffer_until_name_validates() {
         let mut asm = assembler();
@@ -895,11 +1241,10 @@ mod tests {
             .expect("ingest should succeed");
 
         // Provider aggregation order differs deliberately.
-        let final_choice = OneOrMany::many(vec![
+        let final_choice = vec![
             AssistantContent::text("answer"),
             AssistantContent::ToolCall(tool_call("tc_1", "add")),
-        ])
-        .expect("two items");
+        ];
 
         let turn = asm.finish(Some("msg_1".to_string()), &final_choice);
         let kinds: Vec<&'static str> = turn
@@ -945,6 +1290,47 @@ mod tests {
 
     fn assembled_reasoning_of(asm: &StreamedTurnAssembler) -> Vec<Reasoning> {
         asm.partial_turn(None).reasoning
+    }
+
+    #[test]
+    fn aggregated_reasoning_delta_is_scoped_to_each_interleaved_part() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", None, "first "))
+            .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_a"), Some("first "));
+
+        asm.ingest(&reasoning_delta("corr_b", Some("rs_b"), "second"))
+            .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_b"), Some("second"));
+
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "part"))
+            .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_a"), Some("first part"));
+        assert_eq!(asm.aggregated_reasoning("corr_b"), Some("second"));
+        assert_eq!(asm.aggregated_reasoning("missing"), None);
+
+        let reasoning = assembled_reasoning_of(&asm);
+        assert_eq!(reasoning[0].id.as_deref(), Some("rs_a"));
+        assert_eq!(reasoning[1].id.as_deref(), Some("rs_b"));
+    }
+
+    #[test]
+    fn aggregated_reasoning_delta_uses_a_new_pending_part_after_completion() {
+        let mut asm = assembler();
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_a"), "old"))
+            .expect("ingest");
+        asm.ingest(&completed_reasoning(
+            "corr_a",
+            Some("rs_a"),
+            "old",
+            Some("sig"),
+        ))
+        .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_a"), None);
+
+        asm.ingest(&reasoning_delta("corr_a", Some("rs_new"), "new"))
+            .expect("ingest");
+        assert_eq!(asm.aggregated_reasoning("corr_a"), Some("new"));
     }
 
     #[test]
@@ -1179,7 +1565,7 @@ mod tests {
         .expect("ingest");
 
         let partial = asm.partial_turn(None).reasoning;
-        let final_choice = OneOrMany::one(AssistantContent::text(""));
+        let final_choice = vec![AssistantContent::text("")];
         let turn = asm.finish(None, &final_choice);
         let finished: Vec<Reasoning> = turn
             .choice
@@ -1198,7 +1584,7 @@ mod tests {
         let mut asm = assembler();
         asm.ingest(&text_item("hi")).expect("ingest should succeed");
 
-        let final_choice = OneOrMany::one(AssistantContent::text("hi"));
+        let final_choice = vec![AssistantContent::text("hi")];
         let turn = asm.finish(None, &final_choice);
         assert_eq!(
             serde_json::to_value(&turn.choice).expect("serialize"),
@@ -1226,9 +1612,12 @@ mod tests {
             total_tokens: 12,
             ..Usage::new()
         };
-        run.record_streamed_completion_call(usage)
-            .expect("record should succeed");
-        let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
+        run.record_streamed_completion_call(
+            usage,
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record should succeed");
+        let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
         run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
             .expect("streamed_turn should succeed");
 
@@ -1240,7 +1629,7 @@ mod tests {
         run.tool_results(vec![UserContent::tool_result(
             "tc_1",
             "add",
-            OneOrMany::one(ToolResultContent::text("2")),
+            vec![ToolResultContent::text("2")],
         )])
         .expect("tool_results should succeed");
 
@@ -1249,9 +1638,12 @@ mod tests {
             panic!("expected CallModel");
         };
         let asm = assembler();
-        run.record_streamed_completion_call(Usage::new())
-            .expect("record should succeed");
-        let final_choice = OneOrMany::one(AssistantContent::text("done"));
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record should succeed");
+        let final_choice = vec![AssistantContent::text("done")];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
 
@@ -1310,8 +1702,11 @@ mod tests {
         asm.resolve_pending_invalid(&resolution);
 
         // Usage from the drained stream is recorded after the rollback.
-        run.record_streamed_completion_call(Usage::new())
-            .expect("record after rollback should succeed");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record after rollback should succeed");
 
         // The rollback appended the partial assistant turn and feedback.
         assert_eq!(run.messages().len(), 3);
@@ -1381,8 +1776,11 @@ mod tests {
                 skipped_tool_result: None
             }
         ));
-        run.record_streamed_completion_call(Usage::new())
-            .expect("completion call should be recorded");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("completion call should be recorded");
         assert_eq!(run.completion_calls().len(), 1);
 
         let err = run
@@ -1474,7 +1872,7 @@ mod tests {
 
         let turn = StreamedTurn {
             message_id: None,
-            choice: OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "unknown"))),
+            choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
             executable_tool_names: tool_names(&["add"]),
             allowed_tool_names: tool_names(&["add"]),
             internal_call_ids: Vec::new(),
@@ -1494,14 +1892,20 @@ mod tests {
         // even though the machine is in its initial PreparingRequest state.
         let mut run = AgentRun::new("hello");
         let err = run
-            .record_streamed_completion_call(Usage::new())
+            .record_streamed_completion_call(
+                Usage::new(),
+                rig_core::completion::ResponseIdentity::default(),
+            )
             .expect_err("recording before any model call must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
 
         // The run stays drivable.
         run.next_step().expect("next_step should still succeed");
-        run.record_streamed_completion_call(Usage::new())
-            .expect("recording during a pending model call succeeds");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("recording during a pending model call succeeds");
     }
 
     #[test]
@@ -1520,14 +1924,16 @@ mod tests {
             internal_call_id: "internal_b".to_string(),
         })
         .expect("ingest should succeed");
-        run.record_streamed_completion_call(Usage::new())
-            .expect("record should succeed");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record should succeed");
 
-        let final_choice = OneOrMany::many(vec![
+        let final_choice = vec![
             AssistantContent::ToolCall(tool_call("tc_1", "add")),
             AssistantContent::ToolCall(tool_call("tc_1", "add")),
-        ])
-        .expect("two items");
+        ];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
 
@@ -1549,7 +1955,7 @@ mod tests {
         run.next_step().expect("next_step");
 
         let asm = assembler();
-        let final_choice = OneOrMany::one(AssistantContent::text("done"));
+        let final_choice = vec![AssistantContent::text("done")];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
 
@@ -1564,10 +1970,16 @@ mod tests {
         let mut run = AgentRun::new("hello");
         run.next_step().expect("next_step");
 
-        run.record_streamed_completion_call(Usage::new())
-            .expect("first record succeeds");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("first record succeeds");
         let err = run
-            .record_streamed_completion_call(Usage::new())
+            .record_streamed_completion_call(
+                Usage::new(),
+                rig_core::completion::ResponseIdentity::default(),
+            )
             .expect_err("second record for the same turn must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
         assert_eq!(run.completion_calls().len(), 1);
@@ -1581,9 +1993,12 @@ mod tests {
         let mut asm = assembler();
         asm.ingest(&tool_call_item("tc_1", "add"))
             .expect("ingest should succeed");
-        run.record_streamed_completion_call(Usage::new())
-            .expect("record should succeed");
-        let final_choice = OneOrMany::one(AssistantContent::ToolCall(tool_call("tc_1", "add")));
+        run.record_streamed_completion_call(
+            Usage::new(),
+            rig_core::completion::ResponseIdentity::default(),
+        )
+        .expect("record should succeed");
+        let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
         run.streamed_turn(asm.finish(None, &final_choice))
             .expect("streamed_turn should succeed");
         run.next_step().expect("CallTools step");
@@ -1595,7 +2010,7 @@ mod tests {
             .tool_results(vec![UserContent::tool_result(
                 "tc_1",
                 "add",
-                OneOrMany::one(ToolResultContent::text("2")),
+                vec![ToolResultContent::text("2")],
             )])
             .expect("tool_results should succeed");
         assert!(matches!(

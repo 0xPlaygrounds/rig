@@ -7,7 +7,6 @@ use std::{cmp::max, collections::HashMap};
 use futures::{StreamExt, stream};
 
 use crate::{
-    OneOrMany,
     completion::Usage,
     embeddings::{
         Embed, EmbedError, Embedding, EmbeddingError, EmbeddingModel, EmbeddingResponse,
@@ -102,7 +101,7 @@ where
     ///
     /// Returns `(document, embeddings)` pairs. A document may produce one or many
     /// embeddings depending on how its [`Embed`] implementation uses [`TextEmbedder`].
-    pub async fn build(self) -> Result<Vec<(T, OneOrMany<Embedding>)>, EmbeddingError> {
+    pub async fn build(self) -> Result<Vec<(T, Vec<Embedding>)>, EmbeddingError> {
         let (result, _usage) = self.build_with_usage().await?;
         Ok(result)
     }
@@ -114,7 +113,7 @@ where
     /// [`Embed`] implementation uses [`TextEmbedder`].
     pub async fn build_with_usage(
         self,
-    ) -> Result<(Vec<(T, OneOrMany<Embedding>)>, Usage), EmbeddingError> {
+    ) -> Result<(Vec<(T, Vec<Embedding>)>, Usage), EmbeddingError> {
         use stream::TryStreamExt;
 
         // Store the documents and their texts in a HashMap for easy access.
@@ -147,15 +146,10 @@ where
             .buffer_unordered(max(1, 1024 / M::MAX_DOCUMENTS))
             // Collect the embeddings into a HashMap and accumulate usage.
             .try_fold(
-                (
-                    HashMap::<usize, OneOrMany<Embedding>>::new(),
-                    Usage::default(),
-                ),
+                (HashMap::<usize, Vec<Embedding>>::new(), Usage::default()),
                 |(mut acc, mut usage_acc), (chunk_embeddings, chunk_usage)| async move {
                     chunk_embeddings.into_iter().for_each(|(i, embedding)| {
-                        acc.entry(i)
-                            .and_modify(|embeddings| embeddings.push(embedding.clone()))
-                            .or_insert(OneOrMany::one(embedding.clone()));
+                        acc.entry(i).or_default().push(embedding);
                     });
                     usage_acc += chunk_usage;
                     Ok((acc, usage_acc))
@@ -244,15 +238,18 @@ mod tests {
         assert_eq!(first_definition.0.id, "doc0");
         assert_eq!(first_definition.1.len(), 2);
         assert_eq!(
-            first_definition.1.first().document,
-            "A green alien that lives on cold planets.".to_string()
+            first_definition.1.first().map(|e| e.document.as_str()),
+            Some("A green alien that lives on cold planets.")
         );
 
         let second_definition = &result[1];
         assert_eq!(second_definition.0.id, "doc1");
         assert_eq!(second_definition.1.len(), 2);
         assert_eq!(
-            second_definition.1.rest()[0].document, "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+            second_definition.1.get(1).map(|e| e.document.as_str()),
+            Some(
+                "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy."
+            )
         )
     }
 
@@ -278,15 +275,18 @@ mod tests {
         assert_eq!(first_definition.0.id, "doc0");
         assert_eq!(first_definition.1.len(), 1);
         assert_eq!(
-            first_definition.1.first().document,
-            "A green alien that lives on cold planets.".to_string()
+            first_definition.1.first().map(|e| e.document.as_str()),
+            Some("A green alien that lives on cold planets.")
         );
 
         let second_definition = &result[1];
         assert_eq!(second_definition.0.id, "doc1");
         assert_eq!(second_definition.1.len(), 1);
         assert_eq!(
-            second_definition.1.first().document, "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+            second_definition.1.first().map(|e| e.document.as_str()),
+            Some(
+                "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+            )
         )
     }
 
@@ -315,15 +315,18 @@ mod tests {
         assert_eq!(second_definition.0.id, "doc1");
         assert_eq!(second_definition.1.len(), 2);
         assert_eq!(
-            second_definition.1.first().document, "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.".to_string()
+            second_definition.1.first().map(|e| e.document.as_str()),
+            Some(
+                "An ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+            )
         );
 
         let third_definition = &result[2];
         assert_eq!(third_definition.0.id, "doc2");
         assert_eq!(third_definition.1.len(), 1);
         assert_eq!(
-            third_definition.1.first().document,
-            "Another fake definitions".to_string()
+            third_definition.1.first().map(|e| e.document.as_str()),
+            Some("Another fake definitions")
         )
     }
 
@@ -349,14 +352,17 @@ mod tests {
         let first_definition = &result[0];
         assert_eq!(first_definition.1.len(), 2);
         assert_eq!(
-            first_definition.1.first().document,
-            "A green alien that lives on cold planets.".to_string()
+            first_definition.1.first().map(|e| e.document.as_str()),
+            Some("A green alien that lives on cold planets.")
         );
 
         let second_definition = &result[1];
         assert_eq!(second_definition.1.len(), 2);
         assert_eq!(
-            second_definition.1.rest()[0].document, "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy.".to_string()
+            second_definition.1.get(1).map(|e| e.document.as_str()),
+            Some(
+                "A fictional creature found in the distant, swampy marshlands of the planet Glibbo in the Andromeda galaxy."
+            )
         )
     }
 }

@@ -1,8 +1,4 @@
-use async_stream::stream;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
 
 use super::completion::gemini_api_types::{
     ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
@@ -14,8 +10,11 @@ use super::completion::{
 };
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::http_client::sse::{Event, GenericEventSource};
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::http_client::sse::GenericEventSource;
+use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
+use crate::providers::internal::sse_transport::{
+    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
+};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -60,7 +59,11 @@ pub(crate) mod shared_parts {
             id,
             tool_id,
             internal_call_id: crate::id::generate(),
-            call_id: wire_id.filter(|id| !id.is_empty()),
+            // Gemini is a single-identifier wire: its one id travels as
+            // `tool_id` and `call_id` stays unset. Filling both from the same
+            // id would take the dual-wire arm downstream and fabricate an
+            // item id Gemini never issued.
+            call_id: None,
             name,
             arguments: args,
             signature,
@@ -434,13 +437,11 @@ where
         .build();
         let request = create_request_body(completion_request)?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::streaming",
-                "Gemini streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Streaming,
+            "Gemini streaming completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
 
@@ -451,42 +452,17 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        let event_source = GenericEventSource::new(self.client.clone(), req);
-
-        // Transport layer: SSE events → `WireFrame`s. Byte splitting and
-        // framing only — classification and policy live downstream.
-        let transport = stream! {
-            let mut event_source = Box::pin(event_source);
-            while let Some(event_result) = event_source.next().await {
-                match event_result {
-                    Ok(Event::Open) => {
-                        tracing::debug!("SSE connection opened");
-                    }
-                    Ok(Event::Message(message)) => {
-                        // Heartbeats carry no payload and are not wire frames.
-                        if message.data.trim().is_empty() {
-                            continue;
-                        }
-                        yield Ok(WireFrame::Text(message.data));
-                    }
-                    Err(crate::http_client::Error::StreamEnded) => {
-                        break;
-                    }
-                    Err(error) => {
-                        tracing::error!(?error, "SSE error");
-                        yield Err(CompletionError::from_stream_transport(error));
-                        break;
-                    }
-                }
-            }
-            // Ensure event source is closed when stream ends
-            event_source.close();
-        };
-
-        let stream: streaming::RawStreamingResult<StreamingCompletionResponse> =
-            Box::pin(run_wire_stream(transport, GeminiRestAdapter::default()).instrument(span));
-
-        Ok(stream)
+        Ok(open_wire_stream(
+            GenericEventSource::new(self.client.clone(), req),
+            SseTransportOptions {
+                open_log: OpenLog::Debug,
+                stream_ended_is_error: false,
+                log_transport_errors: true,
+            },
+            skip_blank_frames,
+            GeminiRestAdapter::default(),
+            span,
+        ))
     }
 
     pub(crate) async fn stream(

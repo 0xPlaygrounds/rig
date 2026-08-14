@@ -6,7 +6,7 @@
 
 use neo4rs::{Graph, Query};
 use rig_core::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
@@ -183,32 +183,16 @@ where
             .param("num_candidates", req.samples() as i64)
             .param("index_name", self.index_config.index_name.clone())
     }
-}
 
-/// Search parameters for a vector search. Neo4j currently only supports post-vector-search filtering.
-pub struct SearchParams {
-    /// Sets the **post-filter** field of the search params. Uses a WHERE clause.
-    /// See [Neo4j WHERE clause](https://neo4j.com/docs/cypher-manual/current/clauses/where/) for more information.
-    post_vector_search_filter: Option<String>,
-}
+    /// Embeds the query and runs the vector search, deserializing each row as `R`.
+    async fn run_search<R: for<'a> Deserialize<'a>>(
+        &self,
+        req: &VectorSearchRequest<Neo4jSearchFilter>,
+    ) -> Result<Vec<R>, VectorStoreError> {
+        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
+        let query = self.build_vector_search_query(prompt_embedding, true, req);
 
-impl SearchParams {
-    /// Initializes a new `SearchParams` with default values.
-    pub fn new(filter: Option<String>) -> Self {
-        Self {
-            post_vector_search_filter: filter,
-        }
-    }
-
-    pub fn filter(mut self, filter: String) -> Self {
-        self.post_vector_search_filter = Some(filter);
-        self
-    }
-}
-
-impl Default for SearchParams {
-    fn default() -> Self {
-        Self::new(None)
+        Neo4jClient::execute_and_collect::<R>(&self.graph, query).await
     }
 }
 
@@ -249,17 +233,12 @@ where
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
-        let query = self.build_vector_search_query(prompt_embedding, true, &req);
+        let rows = self.run_search::<RowResultNode<T>>(&req).await?;
 
-        let rows = Neo4jClient::execute_and_collect::<RowResultNode<T>>(&self.graph, query).await?;
-
-        let results = rows
+        Ok(rows
             .into_iter()
             .map(|row| (row.score, row.element_id.to_string(), row.node))
-            .collect::<Vec<_>>();
-
-        Ok(results)
+            .collect())
     }
 
     /// Get the top n ids and scores matching the query. Runs faster than top_n since it doesn't need to transfer and parse
@@ -268,18 +247,12 @@ where
         &self,
         req: VectorSearchRequest<Neo4jSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let prompt_embedding = self.embedding_model.embed_text(req.query()).await?;
+        let rows = self.run_search::<RowResult>(&req).await?;
 
-        let query = self.build_vector_search_query(prompt_embedding, true, &req);
-
-        let rows = Neo4jClient::execute_and_collect::<RowResult>(&self.graph, query).await?;
-
-        let results = rows
+        Ok(rows
             .into_iter()
             .map(|row| (row.score, row.element_id.to_string()))
-            .collect::<Vec<_>>();
-
-        Ok(results)
+            .collect())
     }
 }
 
@@ -299,10 +272,10 @@ where
     /// Inserts one node per embedding, flattening the document's JSON fields
     /// onto the node alongside the embedding (`embedding_property`) and its
     /// source text (`embedded_text`). Nodes are written under the index's
-    /// `node_label`, defaulting to [`DEFAULT_NODE_LABEL`].
+    /// `node_label`, defaulting to the `Document` label.
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         let node_label = self
             .index_config
@@ -340,7 +313,7 @@ where
         self.graph
             .run(neo4rs::query(&insert_documents_query(node_label)).param("items", items))
             .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+            .map_err(VectorStoreError::datastore)?;
 
         Ok(())
     }

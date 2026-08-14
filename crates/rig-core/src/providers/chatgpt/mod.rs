@@ -18,21 +18,17 @@
 
 mod auth;
 
-use crate::client::{
-    self, ApiKey, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient, Transport,
-};
+use crate::client::{self, ApiKey, DebugExt, Provider, ProviderBuilder, ProviderClient, Transport};
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::openai::responses_api::{
     self, CompletionRequest as ResponsesRequest, Include,
 };
 use crate::streaming::StreamingCompletionResponse;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use tracing::{Level, enabled};
 
 const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_ORIGINATOR: &str = "rig";
@@ -169,17 +165,7 @@ impl responses_api::ResponsesProviderExt for ChatGPTExt {
     }
 }
 
-impl<H> Capabilities<H> for ChatGPTExt {
-    type Completion = Capable<ResponsesCompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(ChatGPTExt, completion = ResponsesCompletionModel<H>);
 
 impl DebugExt for ChatGPTExt {}
 
@@ -522,8 +508,7 @@ where
         let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
 
         let span = tracing::Span::current();
-        span.record("gen_ai.response.id", &raw_response.id);
-        span.record("gen_ai.response.model", &raw_response.model);
+        span.record_response_metadata(&raw_response);
 
         Ok((raw_response, text))
     }
@@ -589,12 +574,7 @@ where
             async move {
                 let response = self.normalized_completion(request).await?;
                 let span = tracing::Span::current();
-                span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
-                span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
-                span.record(
-                    "gen_ai.usage.cache_read.input_tokens",
-                    response.usage.cached_input_tokens,
-                );
+                span.record_token_usage(&response.usage);
                 Ok(response)
             },
             span,
@@ -642,13 +622,11 @@ where
         let record_telemetry_content = completion_request.record_telemetry_content;
         let request = self.create_request(completion_request)?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "ChatGPT Responses streaming completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "ChatGPT Responses streaming completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
         let auth = self
@@ -700,19 +678,7 @@ fn default_auth_file() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("chatgpt").join("auth.json"))
 }
 
-fn config_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        std::env::var_os("APPDATA").map(PathBuf::from)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
-    }
-}
+use crate::providers::internal::auth::config_dir;
 
 fn merge_instructions(default_instructions: &str, existing_instructions: Option<&str>) -> String {
     match existing_instructions
@@ -728,7 +694,6 @@ fn merge_instructions(default_instructions: &str, existing_instructions: Option<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OneOrMany;
 
     #[test]
     fn test_parse_chatgpt_sse_completion() {
@@ -777,9 +742,7 @@ data: [DONE]"#;
         );
     }
 
-    fn chatgpt_conversion_request(
-        chat_history: OneOrMany<completion::Message>,
-    ) -> ResponsesRequest {
+    fn chatgpt_conversion_request(chat_history: Vec<completion::Message>) -> ResponsesRequest {
         let client = crate::providers::chatgpt::Client::builder()
             .oauth()
             .build()
@@ -806,13 +769,10 @@ data: [DONE]"#;
 
     #[test]
     fn test_conversion_lifts_leading_system_messages_into_instructions() {
-        let request = chatgpt_conversion_request(
-            OneOrMany::many(vec![
-                completion::Message::system("System two"),
-                completion::Message::user("hi"),
-            ])
-            .expect("history"),
-        );
+        let request = chatgpt_conversion_request(vec![
+            completion::Message::system("System two"),
+            completion::Message::user("hi"),
+        ]);
 
         assert_eq!(
             request.instructions.as_deref(),
@@ -823,14 +783,11 @@ data: [DONE]"#;
 
     #[test]
     fn test_conversion_lifts_mid_conversation_system_messages() {
-        let request = chatgpt_conversion_request(
-            OneOrMany::many(vec![
-                completion::Message::user("hi"),
-                completion::Message::system("Mid-conversation instruction"),
-                completion::Message::user("again"),
-            ])
-            .expect("history"),
-        );
+        let request = chatgpt_conversion_request(vec![
+            completion::Message::user("hi"),
+            completion::Message::system("Mid-conversation instruction"),
+            completion::Message::user("again"),
+        ]);
 
         assert_eq!(
             request.instructions.as_deref(),
@@ -852,7 +809,7 @@ data: [DONE]"#;
                 record_telemetry_content: false,
                 model: None,
                 preamble: Some("Respond tersely.".to_string()),
-                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                chat_history: vec![completion::Message::user("hello")],
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: None,
@@ -879,7 +836,7 @@ data: [DONE]"#;
             .create_request(completion::CompletionRequest {
                 model: None,
                 preamble: None,
-                chat_history: OneOrMany::one(completion::Message::user("hello")),
+                chat_history: vec![completion::Message::user("hello")],
                 documents: Vec::new(),
                 tools: Vec::new(),
                 temperature: Some(0.5),

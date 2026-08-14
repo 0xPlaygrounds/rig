@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(streaming)* [**behavior**] streamed function calls carry a single-wire identity: the wire's one id travels as the part id only, so `provider` is `{call_id, item_id: None}` — filling both slots fabricated a dual identity the wire never issued (mirrors the rig-core gemini fix)
+
+- *(completion)* message and tool-result content conversions follow rig-core's message-content change from `OneOrMany<T>` to `Vec<T>`; wire payloads are unchanged
+
 ### Fixed
 
 - *(gemini)* [**behavior**] the gRPC surface now reports `MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL` and `TOO_MANY_TOOL_CALLS` as errors and stops the stream, matching REST — previously an aborted turn was reported as a completed one, and the wire's `finish_message` was never read

@@ -1,10 +1,10 @@
-use super::{Client, client::ApiResponse};
-use crate::http_client::HttpClientExt;
+use super::{OpenAICompletionsExt, OpenAIResponsesExt};
+use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
-use crate::{http_client, image_generation};
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
+use crate::providers::internal::image_generation::{
+    GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
+};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -34,101 +34,66 @@ impl TryFrom<ImageGenerationResponse>
     type Error = ImageGenerationError;
 
     fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        let b64_json = value
-            .data
-            .first()
-            .ok_or_else(|| ImageGenerationError::ResponseError("missing image data".into()))?
-            .b64_json
-            .clone();
-
-        let bytes = BASE64_STANDARD
-            .decode(&b64_json)
-            .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
-
-        Ok(image_generation::ImageGenerationResponse {
-            image: bytes,
-            response: value,
-        })
+        decode_base64_image(
+            value,
+            |response| response.data.first().map(|image| image.b64_json.as_str()),
+            "missing image data",
+            None,
+        )
     }
 }
 
-#[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: dall-e-2)
-    pub model: String,
-}
+/// OpenAI image generation model.
+pub type ImageGenerationModel<T = reqwest::Client> =
+    GenericImageGenerationModel<OpenAIResponsesExt, T>;
 
-impl<T> ImageGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
+/// OpenAI image generation model for a client using Chat Completions.
+pub type CompletionsImageGenerationModel<T = reqwest::Client> =
+    GenericImageGenerationModel<OpenAICompletionsExt, T>;
+
+fn build_request(
+    model: &str,
+    generation_request: ImageGenerationRequest,
+) -> Result<serde_json::Value, ImageGenerationError> {
+    let mut request = json!({
+        "model": model,
+        "prompt": generation_request.prompt,
+        "size": format!("{}x{}", generation_request.width, generation_request.height),
+    });
+
+    if !matches!(model, GPT_IMAGE_1 | GPT_IMAGE_1_5 | GPT_IMAGE_2) {
+        merge_inplace(
+            &mut request,
+            json!({
+                "response_format": "b64_json"
+            }),
+        );
     }
+
+    Ok(request)
 }
 
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
+impl JsonImageGenerationProvider for OpenAIResponsesExt {
+    const IMAGE_GENERATION_PATH: &'static str = "/images/generations";
     type Response = ImageGenerationResponse;
 
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
+    fn image_generation_request_body(
+        model: &str,
+        request: ImageGenerationRequest,
+    ) -> Result<serde_json::Value, ImageGenerationError> {
+        build_request(model, request)
     }
+}
 
-    async fn image_generation(
-        &self,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
-        let mut request = json!({
-            "model": self.model,
-            "prompt": generation_request.prompt,
-            "size": format!("{}x{}", generation_request.width, generation_request.height),
-        });
+impl JsonImageGenerationProvider for OpenAICompletionsExt {
+    const IMAGE_GENERATION_PATH: &'static str = "/images/generations";
+    type Response = ImageGenerationResponse;
 
-        if !matches!(
-            self.model.as_str(),
-            GPT_IMAGE_1 | GPT_IMAGE_1_5 | GPT_IMAGE_2
-        ) {
-            merge_inplace(
-                &mut request,
-                json!({
-                    "response_format": "b64_json"
-                }),
-            );
-        }
-
-        let body = serde_json::to_vec(&request)?;
-
-        let request = self
-            .client
-            .post("/images/generations")?
-            .body(body)
-            .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-        let response = self.client.send(request).await?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let text = http_client::text(response).await?;
-
-            return Err(ImageGenerationError::from_http_response(status, text));
-        }
-
-        let text = http_client::text(response).await?;
-
-        match serde_json::from_str::<ApiResponse<ImageGenerationResponse>>(&text)? {
-            ApiResponse::Ok(response) => response.try_into(),
-            ApiResponse::Err(err) => {
-                tracing::warn!(message = %err.message, "provider returned an error response");
-                Err(ImageGenerationError::from_http_response(status, text))
-            }
-        }
+    fn image_generation_request_body(
+        model: &str,
+        request: ImageGenerationRequest,
+    ) -> Result<serde_json::Value, ImageGenerationError> {
+        build_request(model, request)
     }
 }
 
@@ -137,6 +102,7 @@ mod tests {
     use super::*;
     use crate::client::image_generation::ImageGenerationClient;
     use crate::image_generation::ImageGenerationModel as _;
+    use crate::providers::openai::Client;
     use crate::test_utils::RecordingHttpClient;
 
     fn request() -> ImageGenerationRequest {

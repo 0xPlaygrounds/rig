@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use syn::visit::{self, Visit};
-use syn::{Expr, ExprCall, ExprLit, Lit};
+use syn::{Expr, ExprCall, ExprLit, ItemFn, Lit};
 
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cassettes");
 
@@ -22,6 +22,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/openai/cassette",
         wrapper_names: &[
             "with_openai_cassette",
+            "with_openai_cassette_bogus_key",
             "with_openai_completions_cassette",
             "with_openai_cassette_result",
             "with_openai_completions_cassette_result",
@@ -53,7 +54,9 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_anthropic_cassette",
             "with_anthropic_cassette_result",
+            "with_anthropic_cassette_bogus_key",
             "with_anthropic_files_cassette",
+            "with_anthropic_gateway_cassette",
         ],
     },
     ProviderCassetteSuite {
@@ -70,9 +73,27 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         ],
     },
     ProviderCassetteSuite {
+        provider: "cohere",
+        source_dir: "tests/providers/cohere/cassette",
+        wrapper_names: &["with_cohere_cassette"],
+    },
+    ProviderCassetteSuite {
+        provider: "venice",
+        source_dir: "tests/providers/venice/cassette",
+        wrapper_names: &[
+            "with_venice_cassette",
+            "with_venice_cassette_result",
+            "with_venice_direct_cassette",
+        ],
+    },
+    ProviderCassetteSuite {
         provider: "gemini",
         source_dir: "tests/providers/gemini/cassette",
-        wrapper_names: &["with_gemini_cassette", "with_gemini_interactions_cassette"],
+        wrapper_names: &[
+            "with_gemini_cassette",
+            "with_gemini_cassette_bogus_key",
+            "with_gemini_interactions_cassette",
+        ],
     },
     ProviderCassetteSuite {
         provider: "ollama",
@@ -87,7 +108,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "xai",
         source_dir: "tests/providers/xai",
-        wrapper_names: &["with_xai_cassette", "with_xai_cassette_result"],
+        wrapper_names: &[
+            "with_xai_cassette",
+            "with_xai_cassette_bogus_key",
+            "with_xai_cassette_result",
+        ],
     },
     ProviderCassetteSuite {
         provider: "openrouter",
@@ -106,7 +131,10 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "groq",
         source_dir: "tests/providers/groq",
-        wrapper_names: &["with_groq_cassette_result"],
+        wrapper_names: &[
+            "with_groq_cassette_result",
+            "with_groq_cassette_bogus_key_result",
+        ],
     },
     ProviderCassetteSuite {
         provider: "mistral",
@@ -118,9 +146,6 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/perplexity/cassette",
         wrapper_names: &["with_perplexity_cassette"],
     },
-    // NOTE(#2258): `tests/providers/cohere/cassette` is written but ready-to-record
-    // (no COHERE_API_KEY in the environment); register it here once its
-    // cassettes are recorded and the `#[ignore]` markers are dropped.
     ProviderCassetteSuite {
         provider: "mistralrs",
         source_dir: "tests/providers/mistralrs/cassette",
@@ -419,6 +444,17 @@ struct CassetteScenarioVisitor<'a> {
 }
 
 impl<'ast, 'a> Visit<'ast> for CassetteScenarioVisitor<'a> {
+    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
+        // A `#[ignore]`d test documents that its cassette isn't recorded yet
+        // (e.g. no provider API key available to record with); don't require
+        // a file for scenarios it references.
+        if node.attrs.iter().any(|attr| attr.path().is_ident("ignore")) {
+            return;
+        }
+
+        visit::visit_item_fn(self, node);
+    }
+
     fn visit_expr_call(&mut self, node: &'ast ExprCall) {
         if let Some(wrapper_name) = cassette_wrapper_name(node)
             && self.wrapper_names.contains(&wrapper_name.as_str())

@@ -70,3 +70,22 @@ where
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
+
+/// Like [`with_openai_cassette`], but authenticating with a deliberately
+/// invalid API key — for recording real 401s with no secret near the fixture.
+pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
+    let client = openai::Client::builder()
+        .api_key("sk-invalid-edge-matrix-key")
+        .base_url(cassette.base_url())
+        .build()
+        .expect("client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}

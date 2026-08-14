@@ -1,0 +1,16 @@
+when:
+  path: /model/anthropic.claude-3-5-sonnet-20240620-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{"maxTokens":8},"messages":[{"content":[{"text":"Say hi."}],"role":"user"}]}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-amzn-errortype
+    value: ResourceNotFoundException:http://internal.amazon.com/coral/com.amazon.bedrock/
+  body: '{"message":"This model version has reached the end of its life. Please refer to the AWS documentation for more details."}'

@@ -1,10 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::client::{MistralExt, Usage};
-use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
 use crate::providers::openai;
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError},
     json_utils,
 };
@@ -185,62 +183,39 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 /// descriptor that actually produced it.
 impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
-        let response = self;
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
+        use crate::providers::internal::openai_chat_completions_compatible as compat;
 
-        let finish_reason = Some(choice.finish_reason.as_str())
-            .filter(|reason| !reason.is_empty())
-            .map(map_openai_finish_reason);
-
-        let content = match &choice.message {
-            Message::Assistant {
-                content,
-                tool_calls,
-                ..
-            } => {
-                let mut content = if content.is_empty() {
-                    vec![]
-                } else {
-                    vec![completion::AssistantContent::text(content.clone())]
-                };
-
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
-                                call.function.arguments.clone(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
-                Ok(content)
-            }
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a valid message or tool call".into(),
-            )),
-        }?;
-
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
-
-        let usage = response
+        let usage = self
             .usage
             .as_ref()
             .map(completion::Usage::from)
             .unwrap_or_default();
-
-        Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_response_id(response.id.as_str())
-            .with_model(response.model.as_str())
-            .with_optional_finish_reason(finish_reason))
+        compat::normalize_openai_response(
+            provider,
+            &self.choices,
+            Some(self.id.as_str()),
+            Some(self.model.as_str()),
+            usage,
+            |choice| choice.finish_reason.as_str(),
+            |choice| match &choice.message {
+                Message::Assistant {
+                    content,
+                    tool_calls,
+                    ..
+                } => Some(compat::text_then_tool_calls(
+                    content,
+                    content.is_empty(),
+                    tool_calls.iter().map(|call| {
+                        (
+                            call.id.as_str(),
+                            call.function.name.as_str(),
+                            call.function.arguments.clone(),
+                        )
+                    }),
+                )),
+                _ => None,
+            },
+        )
     }
 }
 

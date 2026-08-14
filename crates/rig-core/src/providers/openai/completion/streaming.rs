@@ -2,7 +2,6 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use http::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{Level, enabled};
 
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
@@ -175,6 +174,11 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// Provider-reported model identifier, when the stream emitted one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The transport request id from the SSE connection's `x-request-id`
+    /// response header — not part of any stream frame; stamped by the
+    /// transport. `None` when the provider did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 impl<U> StreamingCompletionResponse<U> {
@@ -186,6 +190,7 @@ impl<U> StreamingCompletionResponse<U> {
             finish_reason: None,
             response_id: None,
             model: None,
+            provider_request_id: None,
         }
     }
 
@@ -197,6 +202,9 @@ impl<U> StreamingCompletionResponse<U> {
             finish_reason: terminal.finish_reason,
             response_id: terminal.response_id,
             model: terminal.model,
+            // Stamped by the transport layer; the shared chunk accumulator
+            // never sees connection headers.
+            provider_request_id: None,
         }
     }
 }
@@ -215,6 +223,7 @@ where
         StreamFinal::new(provider, response.usage.into())
             .with_optional_finish_reason(response.finish_reason)
             .with_optional_response_id(response.response_id)
+            .with_optional_provider_request_id(response.provider_request_id)
             .with_optional_model(response.model)
     }
 }
@@ -286,13 +295,11 @@ where
             .ext()
             .finalize_request_body_with_options(&mut request_as_json, options)?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "OpenAI Chat Completions streaming completion request: {}",
-                serde_json::to_string_pretty(&request_as_json)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "OpenAI Chat Completions streaming completion request",
+            &request_as_json,
+        );
 
         let req_body = serde_json::to_vec(&request_as_json)?;
 
@@ -316,6 +323,7 @@ where
             openai_chat_completions_compatible::send_compatible_raw_streaming_request(
                 client,
                 req,
+                Ext::REQUEST_ID_HEADER,
                 OpenAICompatibleProfile::<Ext, Ext::StreamingUsage> {
                     provider: self.client.ext().clone(),
                     emits_complete_single_chunk_tool_calls:
@@ -367,6 +375,10 @@ where
     type Usage = U;
     type Detail = serde_json::Value;
     type FinalResponse = StreamingCompletionResponse<Self::Usage>;
+
+    fn stamp_request_id(response: &mut Self::FinalResponse, request_id: String) {
+        response.provider_request_id = Some(request_id);
+    }
 
     fn classify_chunk(
         &self,
@@ -446,6 +458,7 @@ where
     openai_chat_completions_compatible::send_compatible_raw_streaming_request(
         http_client,
         req,
+        <crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
         OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletionsExt, Usage>::default(),
     )
     .await

@@ -22,13 +22,9 @@
 //! let glm_4_6 = client.completion_model(zai::GLM_4_6);
 //! ```
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-    ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
-use crate::providers::anthropic::client::{
-    AnthropicBuilder as AnthropicCompatBuilder, AnthropicKey, finish_anthropic_builder,
+use crate::client;
+use crate::providers::internal::anthropic_compatible::{
+    AnthropicBaseUrl, impl_dual_dialect_provider,
 };
 
 /// General-purpose OpenAI-compatible base URL.
@@ -53,69 +49,24 @@ pub const GLM_4_5V: &str = "glm-4.5v";
 /// `glm-4.5-airx`
 pub const GLM_4_5_AIRX: &str = "glm-4.5-airx";
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiExt;
+impl_dual_dialect_provider!(
+    ext = ZAiExt,
+    builder = ZAiBuilder,
+    anthropic_ext = ZAiAnthropicExt,
+    anthropic_builder = ZAiAnthropicBuilder,
+    client_input = client::BearerAuth,
+    api_key_env = "ZAI_API_KEY",
+    base_url = GENERAL_API_BASE_URL,
+    base_url_env = "ZAI_API_BASE",
+    anthropic_provider_name = "z.ai",
+    anthropic_base_url = ANTHROPIC_API_BASE_URL,
+    anthropic_base_url_env = "ZAI_ANTHROPIC_API_BASE",
+);
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiBuilder;
-
-#[derive(Debug, Default, Clone)]
-pub struct ZAiAnthropicBuilder {
-    anthropic: AnthropicCompatBuilder,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ZAiAnthropicExt;
-
-type ZAiApiKey = BearerAuth;
-
-pub type Client<H = reqwest::Client> = client::Client<ZAiExt, H>;
-pub type ClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<ZAiBuilder, ZAiApiKey, H>;
-
-pub type AnthropicClient<H = reqwest::Client> = client::Client<ZAiAnthropicExt, H>;
-pub type AnthropicClientBuilder<H = crate::markers::Missing> =
-    client::ClientBuilder<ZAiAnthropicBuilder, AnthropicKey, H>;
-
-impl Provider for ZAiExt {
-    type Builder = ZAiBuilder;
-
-    const VERIFY_PATH: &'static str = "/models";
-}
-
-impl Provider for ZAiAnthropicExt {
-    type Builder = ZAiAnthropicBuilder;
-
-    const VERIFY_PATH: &'static str = "/v1/models";
-}
-
-impl<H> Capabilities<H> for ZAiExt {
-    type Completion = Capable<super::openai::completion::GenericCompletionModel<ZAiExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl<H> Capabilities<H> for ZAiAnthropicExt {
-    type Completion =
-        Capable<super::anthropic::completion::GenericCompletionModel<ZAiAnthropicExt, H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
-
-impl DebugExt for ZAiExt {}
-impl DebugExt for ZAiAnthropicExt {}
+client::impl_capabilities!(
+    ZAiExt,
+    completion = super::openai::completion::GenericCompletionModel<ZAiExt, H>,
+);
 
 impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
     const PROVIDER_NAME: &'static str = "zai";
@@ -125,141 +76,19 @@ impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
     type Response = super::openai::CompletionResponse;
 }
 
-impl ProviderBuilder for ZAiBuilder {
-    type Extension<H>
-        = ZAiExt
-    where
-        H: HttpClientExt;
-    type ApiKey = ZAiApiKey;
-
-    const BASE_URL: &'static str = GENERAL_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(ZAiExt)
-    }
-}
-
-impl ProviderBuilder for ZAiAnthropicBuilder {
-    type Extension<H>
-        = ZAiAnthropicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = AnthropicKey;
-
-    const BASE_URL: &'static str = ANTHROPIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(ZAiAnthropicExt)
-    }
-
-    fn finish<H>(
-        &self,
-        builder: client::ClientBuilder<Self, AnthropicKey, H>,
-    ) -> http_client::Result<client::ClientBuilder<Self, AnthropicKey, H>> {
-        finish_anthropic_builder(&self.anthropic, builder)
-    }
-}
-
-impl super::anthropic::completion::AnthropicCompatibleProvider for ZAiAnthropicExt {
-    const PROVIDER_NAME: &'static str = "z.ai";
-
-    fn default_max_tokens(_model: &str) -> Option<u64> {
-        Some(4096)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = ZAiApiKey;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("ZAI_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) = crate::client::optional_env_var("ZAI_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-impl ProviderClient for AnthropicClient {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("ZAI_API_KEY")?;
-        let mut builder = Self::builder().api_key(api_key);
-
-        if let Some(base_url) = anthropic_base_override("ZAI_ANTHROPIC_API_BASE", "ZAI_API_BASE")? {
-            builder = builder.base_url(base_url);
-        }
-
-        builder.build().map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::builder().api_key(input).build().map_err(Into::into)
-    }
-}
-
-fn anthropic_base_override(
-    primary_env: &'static str,
-    fallback_env: &'static str,
-) -> crate::client::ProviderClientResult<Option<String>> {
-    let primary = crate::client::optional_env_var(primary_env)?;
-    let fallback = crate::client::optional_env_var(fallback_env)?;
-
-    Ok(resolve_anthropic_base_override(
-        primary.as_deref(),
-        fallback.as_deref(),
-    ))
-}
-
-fn resolve_anthropic_base_override(
-    primary: Option<&str>,
-    fallback: Option<&str>,
-) -> Option<String> {
-    primary
-        .map(str::to_owned)
-        .or_else(|| fallback.and_then(normalize_anthropic_base_url))
-}
-
-fn normalize_anthropic_base_url(base_url: &str) -> Option<String> {
-    if base_url.contains("/anthropic") {
-        return Some(base_url.to_owned());
-    }
-
-    match base_url.trim_end_matches('/') {
-        GENERAL_API_BASE_URL | CODING_API_BASE_URL => Some(ANTHROPIC_API_BASE_URL.to_owned()),
-        _ => {
-            let mut url = url::Url::parse(base_url).ok()?;
-            if !matches!(
-                url.path(),
-                "/api/paas/v4" | "/api/paas/v4/" | "/api/coding/paas/v4" | "/api/coding/paas/v4/"
-            ) {
-                return None;
-            }
-            url.set_path("/api/anthropic");
-            Some(url.to_string())
-        }
-    }
-}
+const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
+    &[
+        (GENERAL_API_BASE_URL, ANTHROPIC_API_BASE_URL),
+        (CODING_API_BASE_URL, ANTHROPIC_API_BASE_URL),
+    ],
+    &[
+        "/api/paas/v4",
+        "/api/paas/v4/",
+        "/api/coding/paas/v4",
+        "/api/coding/paas/v4/",
+    ],
+    "/api/anthropic",
+);
 
 impl<H> ClientBuilder<H> {
     pub fn general(self) -> Self {
@@ -275,36 +104,12 @@ impl<H> AnthropicClientBuilder<H> {
     pub fn general(self) -> Self {
         self.base_url(ANTHROPIC_API_BASE_URL)
     }
-
-    pub fn anthropic_version(self, anthropic_version: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_version = anthropic_version.into();
-            ext
-        })
-    }
-
-    pub fn anthropic_betas(self, anthropic_betas: &[&str]) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic
-                .anthropic_betas
-                .extend(anthropic_betas.iter().copied().map(String::from));
-            ext
-        })
-    }
-
-    pub fn anthropic_beta(self, anthropic_beta: &str) -> Self {
-        self.over_ext(|mut ext| {
-            ext.anthropic.anthropic_betas.push(anthropic_beta.into());
-            ext
-        })
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        ANTHROPIC_API_BASE_URL, CODING_API_BASE_URL, GENERAL_API_BASE_URL,
-        normalize_anthropic_base_url, resolve_anthropic_base_override,
+        ANTHROPIC_API_BASE_URL, ANTHROPIC_BASE_URLS, CODING_API_BASE_URL, GENERAL_API_BASE_URL,
     };
 
     #[test]
@@ -325,19 +130,27 @@ mod tests {
     #[test]
     fn normalize_openai_style_bases_to_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url(GENERAL_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize(GENERAL_API_BASE_URL)
+                .as_deref(),
             Some(ANTHROPIC_API_BASE_URL)
         );
         assert_eq!(
-            normalize_anthropic_base_url(CODING_API_BASE_URL).as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize(CODING_API_BASE_URL)
+                .as_deref(),
             Some(ANTHROPIC_API_BASE_URL)
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/api/paas/v4").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/api/paas/v4")
+                .as_deref(),
             Some("https://proxy.example.com/api/anthropic")
         );
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/api/coding/paas/v4").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/api/coding/paas/v4")
+                .as_deref(),
             Some("https://proxy.example.com/api/anthropic")
         );
     }
@@ -345,14 +158,16 @@ mod tests {
     #[test]
     fn normalize_preserves_existing_anthropic_base() {
         assert_eq!(
-            normalize_anthropic_base_url("https://proxy.example.com/api/anthropic").as_deref(),
+            ANTHROPIC_BASE_URLS
+                .normalize("https://proxy.example.com/api/anthropic")
+                .as_deref(),
             Some("https://proxy.example.com/api/anthropic")
         );
     }
 
     #[test]
     fn anthropic_primary_override_wins() {
-        let override_url = resolve_anthropic_base_override(
+        let override_url = ANTHROPIC_BASE_URLS.resolve(
             Some("https://primary.example.com/api/anthropic"),
             Some(GENERAL_API_BASE_URL),
         );

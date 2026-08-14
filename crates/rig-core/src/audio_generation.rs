@@ -1,51 +1,21 @@
 //! Everything related to audio generation (ie, Text To Speech).
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
 use crate::markers::{Missing, Provided};
-use crate::{
-    http_client, provider_response,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
-};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde_json::Value;
-use thiserror::Error;
 
-/// Errors returned by audio generation models.
-///
-/// Inspect provider failures with [`Self::provider_response_body`],
-/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
-///
-/// HTTP audio failures preserve the provider's status and body: a non-success
-/// response surfaces as [`Self::HttpError`], and a provider error envelope
-/// returned with a 2xx status surfaces as [`Self::ProviderResponse`] (for
-/// example the Hyperbolic audio path). Both are read by the helpers.
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum AudioGenerationError {
-    /// Http error (e.g.: connection error, timeout, etc.)
-    #[error("HttpError: {0}")]
-    HttpError(#[from] http_client::Error),
-
-    /// Json error (e.g.: serialization, deserialization)
-    #[error("JsonError: {0}")]
-    JsonError(#[from] serde_json::Error),
-
-    /// Error building the audio generation request
-    #[error("RequestError: {0}")]
-    RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-    /// Error parsing the audio generation response
-    #[error("ResponseError: {0}")]
-    ResponseError(String),
-
-    /// Error returned by the audio generation model provider
-    #[error("ProviderError: {0}")]
-    ProviderError(String),
-
-    /// Raw error response preserved from the audio generation model provider
-    #[error("ProviderResponseError: {0}")]
-    ProviderResponse(provider_response::ProviderResponseError),
-}
-
-crate::provider_response::impl_provider_response_helpers!(AudioGenerationError);
+crate::provider_response::provider_error_enum!(
+    ///
+    /// HTTP audio failures preserve the provider's status and body: a non-success
+    /// response surfaces as [`Self::HttpError`], and a provider error envelope
+    /// returned with a 2xx status surfaces as [`Self::ProviderResponse`] (for
+    /// example the Hyperbolic audio path). Both are read by the helpers.
+    AudioGenerationError, "audio generation" {
+        /// Error building the audio generation request
+        #[error("RequestError: {0}")]
+        RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
+    }
+);
 
 pub struct AudioGenerationResponse<T> {
     pub audio: Vec<u8>,
@@ -53,7 +23,7 @@ pub struct AudioGenerationResponse<T> {
 }
 
 pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync {
-    type Response: Send + Sync;
+    type Response: WasmCompatSend + WasmCompatSync;
 
     type Client;
 
@@ -64,7 +34,7 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
         request: AudioGenerationRequest,
     ) -> impl std::future::Future<
         Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
-    > + Send;
+    > + WasmCompatSend;
 
     fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing> {
         AudioGenerationRequestBuilder::new(self.clone())
@@ -167,6 +137,7 @@ where
 #[cfg(test)]
 mod provider_response_tests {
     use super::*;
+    use crate::{http_client, provider_response};
     use http::StatusCode;
 
     #[test]
@@ -176,6 +147,7 @@ mod provider_response_tests {
             AudioGenerationError::ProviderResponse(provider_response::ProviderResponseError {
                 status: None,
                 body: body.to_string(),
+                provider_request_id: None,
             });
 
         assert_eq!(error.provider_response_body(), Some(body));

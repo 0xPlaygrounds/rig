@@ -167,6 +167,7 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
     ),
     ("perplexity", Exempt(OPENAI_CHAT_GATEWAY)),
     ("together", Exempt(OPENAI_CHAT_GATEWAY)),
+    ("venice", Exempt(OPENAI_CHAT_GATEWAY)),
     ("xiaomimimo", Exempt(OPENAI_CHAT_GATEWAY)),
     ("zai", Exempt(OPENAI_CHAT_GATEWAY)),
     (

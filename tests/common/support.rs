@@ -345,7 +345,7 @@ pub(crate) fn assert_nonempty_response(response: &str) {
     );
 }
 
-pub(crate) fn assistant_text_response(choice: &rig::OneOrMany<AssistantContent>) -> Option<String> {
+pub(crate) fn assistant_text_response(choice: &[AssistantContent]) -> Option<String> {
     let response = choice
         .iter()
         .filter_map(|content| match content {
@@ -1056,4 +1056,79 @@ pub(crate) fn assert_smoke_structured_output(output: &SmokeStructuredOutput) {
     assert_nonempty_response(&output.title);
     assert_nonempty_response(&output.category);
     assert_nonempty_response(&output.summary);
+}
+
+/// Shared identity-observing hook for the rig#2265 response-identity
+/// cassettes: captures each event's [`rig::completion::ResponseIdentity`]
+/// so provider suites can assert per-attempt identity on every observer
+/// surface.
+#[derive(Clone, Default)]
+pub(crate) struct IdentityProbe {
+    pub(crate) blocking: std::sync::Arc<std::sync::Mutex<Vec<rig::completion::ResponseIdentity>>>,
+    pub(crate) stream_finishes:
+        std::sync::Arc<std::sync::Mutex<Vec<rig::completion::ResponseIdentity>>>,
+    pub(crate) turns: std::sync::Arc<std::sync::Mutex<Vec<rig::completion::ResponseIdentity>>>,
+}
+
+impl IdentityProbe {
+    pub(crate) fn turn_identities(&self) -> Vec<rig::completion::ResponseIdentity> {
+        self.turns.lock().expect("turn identities").clone()
+    }
+
+    pub(crate) fn blocking_identities(&self) -> Vec<rig::completion::ResponseIdentity> {
+        self.blocking.lock().expect("blocking identities").clone()
+    }
+
+    pub(crate) fn stream_finish_identities(&self) -> Vec<rig::completion::ResponseIdentity> {
+        self.stream_finishes
+            .lock()
+            .expect("stream finish identities")
+            .clone()
+    }
+}
+
+impl rig::agent::AgentHook for IdentityProbe {
+    async fn on_completion_response(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::CompletionResponseEvent<'_>,
+    ) -> rig::agent::ObservationAction {
+        self.blocking
+            .lock()
+            .expect("blocking identities")
+            .push(event.identity.clone());
+        rig::agent::ObservationAction::continue_run()
+    }
+
+    async fn on_stream_response_finish(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::StreamResponseFinish<'_>,
+    ) -> rig::agent::ObservationAction {
+        self.stream_finishes
+            .lock()
+            .expect("stream finish identities")
+            .push(event.identity.clone());
+        rig::agent::ObservationAction::continue_run()
+    }
+
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: rig::agent::ModelTurnFinished<'_>,
+    ) -> rig::agent::ModelTurnAction {
+        self.turns
+            .lock()
+            .expect("turn identities")
+            .push(event.identity.clone());
+        rig::agent::ModelTurnAction::continue_run()
+    }
+}
+
+/// Assert a transport request id is populated and non-empty.
+pub(crate) fn assert_transport_request_id(id: Option<&str>, context: &str) {
+    assert!(
+        id.is_some_and(|id| !id.trim().is_empty()),
+        "{context}: provider_request_id must be populated"
+    );
 }

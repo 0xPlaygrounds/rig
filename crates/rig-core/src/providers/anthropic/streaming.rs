@@ -1,19 +1,18 @@
-use async_stream::stream;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tracing::{Level, enabled};
-use tracing_futures::Instrument;
 
 use super::completion::{
     AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
     Content, GenericCompletionModel, Usage, map_finish_reason,
 };
 use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::sse::{Event, GenericEventSource};
+use crate::http_client::sse::GenericEventSource;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame, run_wire_stream};
+use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
+use crate::providers::internal::sse_transport::{
+    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
+};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{
     self, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
@@ -33,25 +32,32 @@ use std::collections::HashMap;
 /// streaming-only difference — an explicit `tool_choice: auto` when tools are
 /// advertised but the caller left the choice unset — is re-applied below so the
 /// streaming request bytes stay stable.
-fn create_streaming_request_body(
+/// The typed request's `TryFrom` requires `max_tokens`; the caller must have
+/// resolved it onto `completion_request` (the request's own value, else the
+/// model default) before calling.
+fn create_streaming_request_body<Ext>(
     request_model: String,
-    mut completion_request: CompletionRequest,
-    max_tokens: u64,
+    completion_request: CompletionRequest,
     prompt_caching: bool,
     automatic_caching: bool,
     automatic_caching_ttl: Option<CacheTtl>,
-) -> Result<Value, CompletionError> {
-    // The typed request's `TryFrom` requires `max_tokens`; feed it the value the
-    // caller already resolved (the request's own value, else the model default).
-    completion_request.max_tokens = Some(max_tokens);
-
-    let request = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-        model: &request_model,
-        request: completion_request,
-        prompt_caching,
-        automatic_caching,
-        automatic_caching_ttl,
-    })?;
+    static_prefix_cache_ttl: Option<CacheTtl>,
+    strict_tools: bool,
+) -> Result<Value, CompletionError>
+where
+    Ext: AnthropicCompatibleProvider,
+{
+    let request = AnthropicCompletionRequest::try_from_params::<Ext>(
+        AnthropicRequestParams {
+            model: &request_model,
+            request: completion_request,
+            prompt_caching,
+            automatic_caching,
+            automatic_caching_ttl,
+            static_prefix_cache_ttl,
+        },
+        strict_tools,
+    )?;
 
     let mut body = serde_json::to_value(&request)?;
     if let Some(map) = body.as_object_mut() {
@@ -261,6 +267,11 @@ pub struct PartialUsage {
     pub input_tokens: Option<usize>,
     #[serde(default)]
     pub cache_creation_input_tokens: Option<u64>,
+    /// Per-TTL breakdown of `cache_creation_input_tokens`. Anthropic reports
+    /// it on `message_start`, not the terminal `message_delta`; the adapter
+    /// carries it forward onto the terminal usage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation: Option<super::completion::CacheCreation>,
     #[serde(default)]
     pub cache_read_input_tokens: Option<u64>,
 }
@@ -342,6 +353,9 @@ struct AnthropicAdapter {
     server_tool_uses: HashMap<usize, ServerToolUseState>,
     current_thinking: Option<ThinkingState>,
     input_tokens: u64,
+    /// Per-TTL cache-write breakdown from `message_start`; the terminal
+    /// `message_delta` usage omits it.
+    cache_creation: Option<super::completion::CacheCreation>,
     message_id: Option<String>,
     response_model: Option<String>,
     /// A provider `error` event ended the turn; later frames are dead — the
@@ -372,6 +386,7 @@ impl WireAdapter for AnthropicAdapter {
                 // body is a no-op, not an error.
                 let Some(message) = message else { return };
                 self.input_tokens = message.usage.input_tokens;
+                self.cache_creation = message.usage.cache_creation.clone();
                 self.message_id = Some(message.id.clone());
                 self.response_model = Some(message.model.clone());
 
@@ -389,10 +404,55 @@ impl WireAdapter for AnthropicAdapter {
                 // cache_creation_input_tokens and cache_read_input_tokens are
                 // cumulative totals on message_delta.usage per the Anthropic
                 // streaming API spec — use them directly.
+                //
+                // `input_tokens` prefers the terminal `message_delta` and falls
+                // back to `message_start`.
+                //
+                // Anthropic proper sends the count on *both* frames and they
+                // agree (every recorded cassette under
+                // `tests/cassettes/anthropic/` reporting it on the delta reports
+                // the same value on the start), so the preference is what runs
+                // there and the fallback is inert. The fallback covers the
+                // reverse split — a delta that omits the count, leaving the one
+                // `message_start` reported.
+                //
+                // It does *not* rescue the Bedrock-compat body-less
+                // `message_start`: that shape returns early above without
+                // setting `self.input_tokens`, so the fallback yields
+                // `Some(0)`. Preferring the delta is what carries a real count
+                // there — do not drop the preference on the theory that the
+                // fallback covers that case.
+                //
+                // Anthropic-*compatible* gateways do not all agree. OpenRouter's
+                // Messages endpoint can send `input_tokens: 0` on
+                // `message_start` and the real count on `message_delta`
+                // (recorded in `gateway_message_delta_metadata`, which OpenRouter
+                // served from an Amazon Bedrock upstream — the split follows what
+                // it routes to, so it is not every response from that endpoint).
+                // Without this preference such a turn surfaces a silent
+                // `Usage { input_tokens: 0 }` — worse than a missing value for a
+                // consumer sizing its context window from it.
+                //
+                // Zero on the delta is read as "not reported" so a gateway with
+                // the inverse split cannot erase a count `message_start` got
+                // right. Note this is a heuristic, not an invariant: a fully
+                // cache-hit prompt legitimately bills zero *uncached* input
+                // tokens, and its real size lives in the cache fields. Nothing
+                // is lost today because both frames then carry the same zero and
+                // the fallback yields it anyway — but do not extend the `> 0`
+                // filter to the `message_start` side or the cache fields, where
+                // a genuine zero would be discarded.
                 let usage = PartialUsage {
                     output_tokens: usage.output_tokens,
-                    input_tokens: usize::try_from(self.input_tokens).ok(),
+                    input_tokens: usage
+                        .input_tokens
+                        .filter(|tokens| *tokens > 0)
+                        .or_else(|| usize::try_from(self.input_tokens).ok()),
                     cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                    cache_creation: usage
+                        .cache_creation
+                        .clone()
+                        .or_else(|| self.cache_creation.clone()),
                     cache_read_input_tokens: usage.cache_read_input_tokens,
                 };
 
@@ -404,6 +464,9 @@ impl WireAdapter for AnthropicAdapter {
                         stop_reason: Some(reason.clone()),
                         message_id: self.message_id.clone(),
                         model: self.response_model.clone(),
+                        // Stamped by the transport layer; the adapter never
+                        // sees connection headers.
+                        provider_request_id: None,
                     },
                 )));
                 return;
@@ -467,6 +530,11 @@ pub struct StreamingCompletionResponse {
     /// The model named by `message_start`, when the stream reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// The transport request id from the SSE connection's `request-id`
+    /// response header — not part of any stream frame; stamped by the
+    /// transport. `None` when the provider did not report one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_request_id: Option<String>,
 }
 
 /// Normalize an Anthropic terminal stream record.
@@ -479,6 +547,7 @@ impl From<(&str, StreamingCompletionResponse)> for StreamFinal {
         StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
             .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
             .with_optional_message_id(response.message_id)
+            .with_optional_provider_request_id(response.provider_request_id)
             .with_optional_model(response.model)
     }
 }
@@ -498,7 +567,7 @@ where
     /// [`crate::streaming::normalize_stream`] — one network request either way.
     pub async fn raw_stream(
         &self,
-        completion_request: CompletionRequest,
+        mut completion_request: CompletionRequest,
     ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
         let request_model = completion_request
             .model
@@ -514,32 +583,31 @@ where
             completion_request.record_telemetry_content,
         )
         .build();
-        let max_tokens = if let Some(tokens) = completion_request.max_tokens {
-            tokens
-        } else if let Some(tokens) = self.default_max_tokens {
-            tokens
-        } else {
-            return Err(CompletionError::RequestError(
-                "`max_tokens` must be set for Anthropic".into(),
-            ));
-        };
+        if completion_request.max_tokens.is_none() {
+            if let Some(tokens) = self.default_max_tokens {
+                completion_request.max_tokens = Some(tokens);
+            } else {
+                return Err(CompletionError::RequestError(
+                    "`max_tokens` must be set for Anthropic".into(),
+                ));
+            }
+        }
 
-        let body = create_streaming_request_body(
+        let body = create_streaming_request_body::<Ext>(
             request_model,
             completion_request,
-            max_tokens,
             self.prompt_caching,
             self.automatic_caching,
             self.automatic_caching_ttl.clone(),
+            self.static_prefix_cache_ttl.clone(),
+            self.strict_tools,
         )?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Anthropic completion request: {}",
-                serde_json::to_string_pretty(&body)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Anthropic completion request",
+            &body,
+        );
 
         let body: Vec<u8> = serde_json::to_vec(&body)?;
 
@@ -549,37 +617,37 @@ where
             .body(body)
             .map_err(http_client::Error::Protocol)?;
 
-        let stream = GenericEventSource::new(self.client.clone(), req);
-
-        // Transport layer: SSE events → `WireFrame`s. Byte splitting and
-        // framing only — classification and policy live downstream.
-        let transport = stream! {
-            let mut sse_stream = Box::pin(stream);
-            while let Some(sse_result) = sse_stream.next().await {
-                match sse_result {
-                    Ok(Event::Open) => {}
-                    Ok(Event::Message(sse)) => {
-                        // Data-less frames (keep-alive comments) carry no
-                        // payload and are not wire frames.
-                        if sse.data.trim().is_empty() {
-                            continue;
-                        }
-                        yield Ok(WireFrame::Text(sse.data));
-                    }
-                    Err(e) => {
-                        yield Err(CompletionError::from_stream_transport(e));
-                        break;
-                    }
-                }
+        let event_source = GenericEventSource::new(self.client.clone(), req);
+        let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {
+            Some(header) => {
+                let (event_source, slot) = event_source.capture_request_id(header);
+                (event_source, Some(slot))
             }
-            // Ensure event source is closed when stream ends
-            sse_stream.close();
+            None => (event_source, None),
         };
 
-        let stream: RawStreamingResult<StreamingCompletionResponse> =
-            Box::pin(run_wire_stream(transport, AnthropicAdapter::default()).instrument(span));
-
-        Ok(stream)
+        // Anthropic's loop historically had no separate `StreamEnded` arm and
+        // no transport-error log: `StreamEnded` folds into the generic error
+        // mapping, preserved via the options below.
+        let stream = open_wire_stream(
+            event_source,
+            SseTransportOptions {
+                open_log: OpenLog::Silent,
+                stream_ended_is_error: true,
+                log_transport_errors: false,
+            },
+            skip_blank_frames,
+            AnthropicAdapter::default(),
+            span,
+        );
+        Ok(
+            crate::providers::internal::sse_transport::stamp_terminal_request_id(
+                stream,
+                request_id_slot,
+                Ext::REQUEST_ID_HEADER,
+                |response, id| response.provider_request_id = Some(id),
+            ),
+        )
     }
 
     pub(crate) async fn stream(
@@ -651,9 +719,8 @@ fn handle_event(
                 None
             }
             ContentDelta::CitationsDelta { citation } => {
-                Some(Ok(RawStreamingChoice::TextAdditionalParams(json!({
-                    "citations": [citation]
-                }))))
+                crate::message::AdditionalParams::from_entries([("citations", json!([citation]))])
+                    .map(|params| Ok(RawStreamingChoice::TextAdditionalParams(params)))
             }
             ContentDelta::Unknown(value) => {
                 // Structural metadata only: a novel delta type can carry
@@ -670,12 +737,18 @@ fn handle_event(
             index,
             content_block,
         } => match content_block {
-            Content::Text { citations, .. } => {
-                let additional_params = (!citations.is_empty()).then(|| {
-                    json!({
-                        "citations": citations
-                    })
-                });
+            // Keep this destructuring exhaustive so new wire fields force an
+            // explicit capture-or-drop decision: block-start `text` arrives
+            // via the deltas, and `cache_control` is a request-side
+            // directive — both deliberately dropped here.
+            Content::Text {
+                text: _,
+                citations,
+                cache_control: _,
+            } => {
+                let additional_params = crate::message::AdditionalParams::from_entries(
+                    (!citations.is_empty()).then(|| ("citations", json!(citations))),
+                );
                 Some(Ok(RawStreamingChoice::TextStart {
                     // Anthropic has no text item id; the content-block index
                     // is stable for the block's lifetime.
@@ -698,9 +771,10 @@ fn handle_event(
             raw @ (Content::WebSearchToolResult { .. }
             | Content::CodeExecutionToolResult { .. }) => Some(Ok(RawStreamingChoice::TextStart {
                 id: MintKind::Block.for_wire_index(*index as u64),
-                additional_params: Some(json!({
-                    super::completion::ANTHROPIC_RAW_CONTENT_KEY: raw
-                })),
+                additional_params: crate::message::AdditionalParams::from_entries([(
+                    super::completion::ANTHROPIC_RAW_CONTENT_KEY,
+                    json!(raw),
+                )]),
             })),
             Content::ToolUse { id, name, .. } => {
                 *current_tool_call = Some(id.clone());
@@ -784,13 +858,14 @@ fn handle_event(
 
                 return Some(Ok(RawStreamingChoice::TextStart {
                     id: MintKind::Block.for_wire_index(*index as u64),
-                    additional_params: Some(json!({
-                        super::completion::ANTHROPIC_RAW_CONTENT_KEY: Content::ServerToolUse {
+                    additional_params: crate::message::AdditionalParams::from_entries([(
+                        super::completion::ANTHROPIC_RAW_CONTENT_KEY,
+                        json!(Content::ServerToolUse {
                             id: server_tool_use.id,
                             name: server_tool_use.name,
                             input,
-                        }
-                    })),
+                        }),
+                    )]),
                 }));
             }
 
@@ -821,7 +896,6 @@ mod tests {
         apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control,
     };
     use super::*;
-    use crate::OneOrMany;
     use crate::completion::Message as RigMessage;
     use crate::completion::request::Document as RigDocument;
     use crate::streaming::RawStreamingToolCall;
@@ -864,18 +938,21 @@ mod tests {
             }]
         });
 
-        let mut tools = build_tool_definitions(
-            vec![crate::completion::ToolDefinition {
-                name: "rig_tool".to_string(),
-                description: "Rig tool".to_string(),
-                parameters: json!({"type": "object", "properties": {}}),
-            }],
-            &mut additional_params,
-        )
-        .unwrap();
+        let mut tools =
+            build_tool_definitions::<crate::providers::anthropic::client::AnthropicExt>(
+                vec![crate::completion::ToolDefinition {
+                    name: "rig_tool".to_string(),
+                    description: "Rig tool".to_string(),
+                    parameters: json!({"type": "object", "properties": {}}),
+                }],
+                &mut additional_params,
+                false,
+            )
+            .unwrap();
         let mut system: Vec<SystemContent> = Vec::new();
         let mut messages: Vec<Message> = Vec::new();
-        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None).unwrap();
+        apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None, None)
+            .unwrap();
 
         assert_eq!(tools.len(), 2);
         assert!(tools[0].get("cache_control").is_none());
@@ -888,13 +965,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 RigMessage::system("System prompt"),
                 RigMessage::assistant("Earlier assistant turn"),
                 RigMessage::system("Mid-conversation instruction"),
                 RigMessage::user("Prompt"),
-            ])
-            .unwrap(),
+            ],
             documents: vec![RigDocument {
                 id: "doc1".to_string(),
                 text: "Document text.".to_string(),
@@ -909,15 +985,17 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body = create_streaming_request_body(
-            CLAUDE_OPUS_4_8.to_string(),
-            request,
-            64,
-            false,
-            false,
-            None,
-        )
-        .expect("streaming request body should build");
+        let body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request,
+                false,
+                false,
+                None,
+                None,
+                false,
+            )
+            .expect("streaming request body should build");
 
         assert_eq!(body["system"][0]["text"], "System prompt");
         assert_eq!(body["system"][1]["text"], "Mid-conversation instruction");
@@ -954,7 +1032,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: Some("You are helpful".to_string()),
-            chat_history: OneOrMany::one(RigMessage::user("What's the weather?")),
+            chat_history: vec![RigMessage::user("What's the weather?")],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.5),
@@ -965,15 +1043,17 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let streaming_body = create_streaming_request_body(
-            CLAUDE_OPUS_4_8.to_string(),
-            request.clone(),
-            64,
-            false,
-            false,
-            None,
-        )
-        .expect("streaming request body should build");
+        let streaming_body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request.clone(),
+                false,
+                false,
+                None,
+                None,
+                false,
+            )
+            .expect("streaming request body should build");
 
         // The streaming endpoint flag is set.
         assert_eq!(streaming_body["stream"], serde_json::Value::Bool(true));
@@ -999,6 +1079,7 @@ mod tests {
             prompt_caching: false,
             automatic_caching: false,
             automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
         })
         .expect("blocking request body should build");
         let mut expected = serde_json::to_value(&blocking).expect("serialize blocking body");
@@ -1015,7 +1096,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(RigMessage::user("Add 2 and 3")),
+            chat_history: vec![RigMessage::user("Add 2 and 3")],
             documents: vec![],
             tools: vec![crate::completion::ToolDefinition {
                 name: "add".to_string(),
@@ -1033,21 +1114,70 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body = create_streaming_request_body(
-            CLAUDE_OPUS_4_8.to_string(),
-            request,
-            64,
-            false,
-            false,
-            None,
-        )
-        .expect("streaming request body should build");
+        let body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request,
+                false,
+                false,
+                None,
+                None,
+                false,
+            )
+            .expect("streaming request body should build");
 
         // Tools advertised + `tool_choice` unset must still carry the explicit
         // `auto` the streaming wire format has always sent (parity with recorded
         // fixtures), even though the blocking typed request omits it.
         assert_eq!(body["tool_choice"], json!({ "type": "auto" }));
         assert!(body["tools"].is_array());
+    }
+
+    #[test]
+    fn streaming_body_applies_strict_tool_opt_in() {
+        let request = CompletionRequest {
+            model: None,
+            preamble: None,
+            chat_history: vec![RigMessage::user("Look this up")],
+            documents: vec![],
+            tools: vec![crate::completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Look up a value".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": { "query": { "type": "string" } },
+                    "required": ["query"]
+                }),
+            }],
+            temperature: None,
+            max_tokens: Some(64),
+            tool_choice: None,
+            additional_params: None,
+            output_schema: None,
+            record_telemetry_content: false,
+        };
+
+        let body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request,
+                false,
+                false,
+                None,
+                None,
+                true,
+            )
+            .expect("streaming request body should build");
+
+        assert_eq!(body["tools"][0]["strict"], true);
+        assert_eq!(
+            body["tools"][0]["input_schema"]["additionalProperties"],
+            false
+        );
+        assert_eq!(
+            body["tools"][0]["input_schema"]["required"],
+            json!(["query"])
+        );
     }
 
     #[test]
@@ -1059,7 +1189,7 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(RigMessage::user("Hi")),
+            chat_history: vec![RigMessage::user("Hi")],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -1070,15 +1200,17 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body = create_streaming_request_body(
-            CLAUDE_OPUS_4_8.to_string(),
-            request,
-            64,
-            false,
-            false,
-            None,
-        )
-        .expect("streaming request body should build");
+        let body =
+            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
+                CLAUDE_OPUS_4_8.to_string(),
+                request,
+                false,
+                false,
+                None,
+                None,
+                false,
+            )
+            .expect("streaming request body should build");
 
         assert!(
             body.get("tool_choice").is_none(),
@@ -1094,15 +1226,17 @@ mod tests {
         });
         let top_level_cache_control =
             resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
-        let mut tools = build_tool_definitions(
-            vec![crate::completion::ToolDefinition {
-                name: "rig_tool".to_string(),
-                description: "Rig tool".to_string(),
-                parameters: json!({"type": "object", "properties": {}}),
-            }],
-            &mut additional_params,
-        )
-        .unwrap();
+        let mut tools =
+            build_tool_definitions::<crate::providers::anthropic::client::AnthropicExt>(
+                vec![crate::completion::ToolDefinition {
+                    name: "rig_tool".to_string(),
+                    description: "Rig tool".to_string(),
+                    parameters: json!({"type": "object", "properties": {}}),
+                }],
+                &mut additional_params,
+                false,
+            )
+            .unwrap();
         let mut system = vec![SystemContent::Text {
             text: "System prompt".to_string(),
             cache_control: None,
@@ -1114,6 +1248,7 @@ mod tests {
             &mut messages,
             &mut tools,
             true,
+            None,
             top_level_cache_control.as_ref(),
         )
         .unwrap();
@@ -2279,6 +2414,55 @@ mod tests {
         assert!(out.is_empty(), "an unmodeled nested delta is a no-op");
     }
 
+    /// Anthropic reports the per-TTL `cache_creation` split on
+    /// `message_start` only; the terminal `message_delta` usage omits it. The
+    /// adapter must carry it onto the terminal record. Unit-tested (not a
+    /// cassette) because the carry-forward is internal adapter state — the
+    /// wire evidence lives in the recorded `prompt_caching/matrix_*` streaming
+    /// cassettes, whose `message_start` frames hold the split.
+    #[test]
+    fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
+        let mut adapter = AnthropicAdapter::default();
+        let mut out = Vec::new();
+
+        let start = WireFrame::Text(
+            r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":9366,"ephemeral_5m_input_tokens":336}}}}"#
+                .into(),
+        );
+        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(start)
+        else {
+            panic!("message_start must classify Known");
+        };
+        adapter.interpret(event, &mut out);
+
+        let delta = WireFrame::Text(
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7,"input_tokens":3,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0}}"#
+                .into(),
+        );
+        let crate::providers::internal::wire::WireEvent::Known(event) = adapter.classify(delta)
+        else {
+            panic!("message_delta must classify Known");
+        };
+        adapter.interpret(event, &mut out);
+
+        let terminal = out
+            .iter()
+            .find_map(|item| match item {
+                Ok(crate::streaming::RawStreamingChoice::FinalResponse(response)) => {
+                    Some(response.clone())
+                }
+                _ => None,
+            })
+            .expect("terminal message_delta must yield a final response");
+        let split = terminal
+            .usage
+            .cache_creation
+            .expect("terminal usage must carry the message_start cache_creation split");
+        assert_eq!(split.ephemeral_1h_input_tokens, 9366);
+        assert_eq!(split.ephemeral_5m_input_tokens, 336);
+        assert_eq!(terminal.usage.cache_creation_input_tokens, Some(9702));
+    }
+
     /// A `content_block_delta` whose `delta` omits `type` is malformed, not
     /// novel: silently skipping it would turn a compat gateway's untagged
     /// text delta into a successful *empty* completion. It classifies
@@ -2370,11 +2554,13 @@ mod tests {
                     output_tokens: 5,
                     input_tokens: Some(3),
                     cache_creation_input_tokens: None,
+                    cache_creation: None,
                     cache_read_input_tokens: Some(2),
                 },
                 stop_reason: Some("max_tokens".to_string()),
                 message_id: Some("msg_1".to_string()),
                 model: Some(CLAUDE_OPUS_4_8.to_string()),
+                provider_request_id: None,
             }));
         };
 
@@ -2595,6 +2781,75 @@ mod tests {
                 "a message_delta after an in-band provider error must not read as a completed turn"
             );
             assert!(stream.response.is_none());
+        }
+
+        /// `input_tokens` precedence between `message_start` and the terminal
+        /// `message_delta`, across all three wire splits at once.
+        ///
+        /// Not a cassette test: one recording can only witness whichever split
+        /// the endpoint it was recorded against happens to use, and the defect
+        /// here is the *precedence rule* relating three of them — the gateway
+        /// split, Anthropic proper, and the inverse. The gateway split is also
+        /// covered end-to-end by the recorded
+        /// `anthropic::cassette::streaming::gateway_reports_input_tokens_on_message_delta`;
+        /// this pins the two cases a single recording structurally cannot show
+        /// beside it.
+        #[tokio::test]
+        async fn input_tokens_prefer_the_terminal_delta_and_fall_back_to_message_start() {
+            fn message_start(input_tokens: usize) -> String {
+                format!(
+                    r#"{{"type":"message_start","message":{{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{{"input_tokens":{input_tokens},"output_tokens":0}}}}}}"#
+                )
+            }
+            fn message_delta(input_tokens: usize) -> String {
+                format!(
+                    r#"{{"type":"message_delta","delta":{{"stop_reason":"end_turn","stop_sequence":null}},"usage":{{"input_tokens":{input_tokens},"output_tokens":3}}}}"#
+                )
+            }
+
+            for (start, delta, expected, case) in [
+                // OpenRouter's Anthropic Messages shape: `message_start`
+                // reports a placeholder zero and the real prompt size lands on
+                // the terminal `message_delta`.
+                (
+                    message_start(0),
+                    message_delta(9),
+                    9,
+                    "a gateway reporting the prompt size on message_delta must reach the consumer",
+                ),
+                // A delta that omits `input_tokens` entirely — the Bedrock-compat
+                // and older/leaner shapes. (Not current Anthropic, which sends
+                // the count on both frames; that case is the one below, since
+                // the two always agree.)
+                (
+                    message_start(5),
+                    MESSAGE_DELTA.to_owned(),
+                    5,
+                    "a delta without input_tokens falls back to message_start",
+                ),
+                // Anthropic proper: both frames carry the same count.
+                (
+                    message_start(5),
+                    message_delta(5),
+                    5,
+                    "agreeing frames report that count",
+                ),
+                // The inverse split: a zero on the delta must not erase the
+                // real count `message_start` already gave us.
+                (
+                    message_start(5),
+                    message_delta(0),
+                    5,
+                    "a zero on the delta must not erase the message_start count",
+                ),
+            ] {
+                let (_texts, _saw_error, saw_terminal, stream) =
+                    collect(sse(&[&start, TEXT_START, TEXT_DELTA, &delta])).await;
+
+                assert!(saw_terminal, "{case}: the turn must complete");
+                let terminal = stream.response.expect("terminal record");
+                assert_eq!(terminal.usage.input_tokens, expected, "{case}");
+            }
         }
 
         #[tokio::test]

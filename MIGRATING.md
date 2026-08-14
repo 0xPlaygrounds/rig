@@ -350,9 +350,269 @@ defined a `wasm` feature and expected it to drive these macros, you now get the
 target's answer instead. Gate on the target directly if you need the old
 association.
 
+### next
+
+#### An assistant turn that carried nothing is empty, not a fabricated empty text part
+
+Message content was a non-empty container, so a turn the model ended without
+text and without tool calls — a tool-call-only turn whose calls were all
+dropped, a content-filtered turn, a truncated stream, a local model emitting
+EOS immediately — could not be represented. Six production sites papered over
+that by pushing an `AssistantContent::text("")` the model never produced, and
+that fabricated part reached history and the wire indistinguishably from a real
+empty text block. (A seventh `text("")`, in the streaming accumulator's
+`ensure_text_block`, is not a sentinel: it opens a slot that deltas fill, and
+`finish` drops it if nothing ever arrives. That one stays.)
+
+Content is a `Vec` now, so the honest representation exists and the fabrication
+is gone. What changes for you:
+
+- A streamed turn that produces nothing yields `choice == []` where it used to
+  yield one empty-text part. Code matching `choice.first()` for a `Text` block
+  to detect "the model said nothing" needs to check `choice.is_empty()` as
+  well — both spellings appear: a blocking wire can still deliver a turn whose
+  only part is an empty text block, and histories persisted before this
+  release encode empty turns that way too.
+- The agent loop neutralizes empty turns in **both** spellings: a model turn
+  that is a zero-part list or a single empty, unannotated text block is kept
+  out of history. That is the loop curating its own turns, not a filter on
+  yours — history **you** supply is never rewritten, so an empty text block
+  you replay goes to the wire exactly as this release's predecessor sent it
+  (and some providers reject it there). If you carry pre-`Vec` histories with
+  the fabricated empty-text part, drop those turns yourself before replaying.
+- Three internal guards no longer fire: two that cancelled a run on "lost
+  assistant content" and one in `rig-candle`. All three were unreachable while
+  the padding existed, and reachable they would have failed runs that previously
+  succeeded.
+- Anthropic's empty `end_turn` follow-up — documented by Anthropic, and the
+  reason the sentinel existed on that path — now normalizes to an empty choice
+  rather than one empty-text part. The recorded provider response is unchanged;
+  only rig's spelling of it is.
+
+#### Decoding accepts two shapes it used to reject: `[]` and `null`
+
+The removed container's `Deserialize` implemented only `visit_seq`. Its JSON was
+otherwise byte-identical to `Vec`'s, which is why no recorded provider fixture
+changes in this release — but two inputs that used to raise a local parse error
+now decode to an empty `Vec`:
+
+- an **empty array** (`[]`), which the container rejected outright;
+- **`null`**, on the fields that moved from the deleted `string_or_one_or_many`
+  onto `json_utils::string_or_vec` — anthropic `Message.content` and
+  `Content::ToolResult.content`, plus the OpenAI chat and Responses-API
+  system/user content. `string_or_vec` carries `visit_none`/`visit_unit` arms
+  its predecessor did not, and those arms cannot simply be dropped: the OpenAI
+  assistant-content field that already used this helper depends on them, because
+  OpenAI sends `"content": null` for a message whose only payload is tool calls.
+
+If you fed rig a history with a null or empty content field and relied on the
+decode to reject it, that check is now yours. The value survives as an empty
+content list; on the request path it is caught by
+`CompletionRequest::validate_message_content` before the network — including a
+tool result whose own block list decoded to empty, which the validator rejects
+by tool name even though the user message carrying it is non-empty — but a
+value you hand straight to a provider is re-emitted as `"content": []`, which
+providers generally reject at the API.
+
+#### A tool whose `Output` is `Vec<ToolResultContent>` now sends rich content
+
+This is the change in this release that alters a wire payload with no compile
+error to announce it, so check any tool that returns a list of
+`ToolResultContent`.
+
+`IntoToolOutput` preserves the canonical rich-content types ahead of its
+`Serialize` fallback, so returning an image does not silently become a JSON
+object. That guard used to name `OneOrMany<ToolResultContent>`; it now names
+`Vec<ToolResultContent>`. Three consequences:
+
+- `type Output = OneOrMany<ToolResultContent>` no longer compiles. Change it to
+  `Vec<ToolResultContent>` and the behaviour you had is preserved.
+- `type Output = Vec<ToolResultContent>` **compiles unchanged and behaves
+  differently.** It used to miss the guard and fall through to serialization,
+  reaching the model as a single JSON tool result
+  (`[{"type":"text",...}, ...]`). It now takes the rich path and reaches the
+  model as N ordered content blocks, with images sent as image parts. For nearly
+  every tool that is the intended result — it is what the `OneOrMany` guard
+  always did — but it is a payload change, and a prompt that parsed that JSON
+  array out of the tool result needs updating.
+- An **empty** `Vec<ToolResultContent>` is now an eager `ToolExecutionError`
+  where it used to produce `json([])`. A zero-block tool result cannot be sent
+  (the request boundary rejects it), so the error fires at the tool instead —
+  as an ordinary tool failure the agent feeds back to the model, not a
+  run-aborting request error one turn later. Return an explicit
+  `serde_json::json!([])` for the old shape, or one empty text block for a
+  genuinely empty result. (An empty **MCP** result is different: it is
+  protocol-legal and outside the tool author's control, so the MCP path
+  normalizes it to one empty text block instead of erroring.)
+- The check lives in `ToolOutput::content`, which is now **fallible**:
+  `content(Vec<ToolResultContent>) -> Result<ToolOutput, ToolExecutionError>`,
+  and `impl From<Vec<ToolResultContent>>` becomes `TryFrom`. On 0.41 the
+  argument type (`OneOrMany`) made the empty case unrepresentable, so the
+  constructor could not fail; the `Vec` argument moves that guarantee into the
+  return type. `text`, `json`, and `one` stay infallible — they construct
+  exactly one block.
+
+#### A local generation that produces nothing keeps succeeding
+
+- A degenerate local generation on `rig-candle` — a model that emits EOS
+  immediately, or only whitespace, which the parser trims — used to be padded to
+  non-empty and succeed. Removing the padding exposed an emptiness check that
+  would have turned it into a hard `CandleError::Inference`. That check is
+  removed: an empty turn is legal here exactly as it is everywhere else, so this
+  case keeps succeeding, now with genuinely empty content.
+- Requests are validated before the network: an empty `chat_history`, or a user
+  or assistant message with no content, is rejected locally with a message
+  naming the offending index instead of becoming a provider 400. System content
+  is not checked — it is a `String` and the removed container never constrained
+  it.
+
+#### Cohere token counts come from `tokens`, not `billed_units`
+
+`GetTokenUsage for cohere::completion::Usage` read `usage.billed_units`, while
+the non-streaming response conversion and the streaming final read
+`usage.tokens`. The same response therefore reported two different numbers
+depending on which surface you asked. All three now share one mapping, sourced
+from `tokens`.
+
+`billed_units` excludes cached input and system-prompt overhead, so the counters
+it produced were much smaller: a short prompt that reported 27 input / 66 output
+now reports 556 / 69. Nothing to change, but **telemetry dashboards and any
+cost estimates keyed on Cohere token counts will step up**, by roughly 10-20x on
+the input side. `cached_input_tokens` is also populated now, from Cohere's
+`usage.cached_tokens`, which was previously discarded.
+
+#### Cohere now honors `max_tokens`
+
+`CohereCompletionRequest` had no `max_tokens` field, so the value was dropped
+before the request was built and never reached `/v2/chat`, which defines it as a
+top-level parameter. It is now sent.
+
+Nothing to change — but if you set `max_tokens` on a Cohere agent at any point
+and moved on when it appeared to do nothing, **it starts applying now**, and
+generations that previously ran to the model's own output limit will be cut off
+at your value.
+
+#### Persisted Cohere `ToolResultContent` JSON no longer round-trips
+
+`cohere::completion::ToolResultContent` was missing the `#[serde(tag = "type")]`
+its sibling content enums carry, so it serialized externally-tagged as
+`{"Text":{"text":"-3"}}` — a shape Cohere rejects with a 422, which is why tool
+calling failed on the second turn. It now serializes as
+`{"type":"text","text":"-3"}`.
+
+The type is public. If you persisted it directly, records written by 0.41 or
+earlier fail to deserialize; re-encode them to the tagged form.
+
+#### Cohere HTTP errors surface as `InvalidStatusCodeWithMessage`
+
+`CompletionModel::completion` boxed transport failures into
+`http_client::Error::Instance`, which hid the status and body from
+`CompletionError::provider_response_status()` and `provider_response_body()` —
+both returned `None` on every real HTTP failure. The error is now propagated
+unwrapped.
+
+If you matched on the inner `http_client::Error` variant, the payload for a
+non-success response moves from `Instance(..)` to
+`InvalidStatusCodeWithMessage(status, body)`. Code that only used the
+`provider_response_*` helpers starts getting answers instead of `None`.
+
 ---
 
 ## 0.41 → next
+
+### xAI uses the shared Responses wire response
+
+`providers::xai::completion::CompletionResponse` is now an alias for
+`providers::openai::responses_api::CompletionResponse`. The xAI model still
+sends xAI's request shape to `/v1/responses`, preserves xAI error envelopes and
+request ids, and emits completed streamed tool calls at the same boundary; only
+the duplicated response and streaming implementation is gone.
+
+Code inspecting `raw_completion()` results should use the shared field names
+and types: `created_at` replaces `created`, `status` is a `ResponseStatus`
+instead of `Option<String>`, and the complete Responses metadata surface is
+available. To normalize a raw value explicitly, import
+`completion::NormalizeCompletionResponse` and call `raw.normalize("xai")`;
+the xAI-specific `TryFrom` implementation no longer exists.
+
+`ResponseStatus` also gains `Other(String)`. This lets OpenAI-compatible
+providers preserve a newly introduced status instead of failing wire
+deserialization, but exhaustive matches need an `Other` arm.
+
+### `OneOrMany<T>` is gone; lists are `Vec<T>`
+
+`rig_core::OneOrMany` and `rig_core::EmptyListError` are removed, along with the
+`one_or_many` module and both prelude re-exports. Every use becomes `Vec<T>`.
+There is no replacement crate and no bespoke non-empty type.
+
+The type promised something untrue. It asserted "at least one item" on a
+response path where zero items is a real outcome, so the code fabricated data to
+satisfy it (see [Silent behavior changes](#next)). Its `is_empty()` returned a
+hardcoded `false`, which meant every caller asking a list whether it was empty
+got the wrong answer with no compile error — two live defects were hiding behind
+that, one of them a provider guard that could never fire.
+
+**The serialized format is unchanged**, so persisted histories and stored
+embeddings need no migration: the container already serialized as a plain
+sequence. This is a source-only break, and it is why not one recorded provider
+fixture changes.
+
+The migration at your call sites:
+
+| Was | Now |
+| --- | --- |
+| `OneOrMany<T>` | `Vec<T>` |
+| `OneOrMany::one(x)` | `vec![x]` |
+| `OneOrMany::many(xs)` → `Result<_, EmptyListError>` | the `Vec` itself; use `message::require_non_empty` where you were relying on the rejection |
+| `OneOrMany::merge(xs)` → `Result<_, EmptyListError>` | `xs.into_iter().flatten().collect()` — the `?` is gone: `merge` returned `Err(EmptyListError)` when the flattened result was empty, this yields an empty `Vec`. Add your own check if you relied on the rejection |
+| `OneOrMany::from_iter_optional(xs)` | `message::non_empty(xs)`, or inline `Some(xs).filter(\|items\| !items.is_empty())` |
+| `.first()` / `.last()` → owned `T` | `.first()` / `.last()` → `Option<&T>` |
+| `.first_ref()` / `.last_ref()` → `&T` | `.first()` / `.last()` → `Option<&T>` |
+| `.rest()` → `Vec<T>` | `.iter().skip(1)` or `.get(1..)` |
+| `.is_empty()` → always `false` | `.is_empty()` → the real answer |
+| `one_or_many::string_or_one_or_many` | `json_utils::string_or_vec` |
+
+`.len()`, `.iter()`, `.iter_mut()`, `.into_iter()`, `.push()` and `.insert()`
+carry over unchanged.
+
+Two conversions could not stay trait impls: with both sides now foreign types,
+`impl TryFrom<Vec<..>> for Vec<..>` violates the orphan rule. They are `pub`
+free functions in `providers::openai::completion`, so the surface is not
+narrowed:
+
+| Was | Now |
+| --- | --- |
+| `<Vec<Message>>::try_from(v)` where `v: Vec<message::UserContent>` | `user_content_to_messages(v)` |
+| `<Vec<Message>>::try_from(v)` where `v: Vec<message::AssistantContent>` | `assistant_content_to_messages(v)` |
+| `impl From<OneOrMany<String>> for Vec<ReasoningSummary>` | `providers::openai::responses_api::reasoning_summaries(v)` |
+
+`<Vec<Message>>::try_from(m)` for a whole `message::Message` is unaffected.
+
+### Where the container's enforcement went
+
+The container was doing two jobs in opposite directions, and they separate:
+
+- **Outbound (request path).** `CompletionRequest::validate_message_content`
+  rejects an empty `chat_history` and any user or assistant message with no
+  content, before the request is sent. `CompletionRequestBuilder::send`/`::stream`
+  call it, which is also how both agent surfaces issue their requests, so agent
+  traffic is covered without a second check. Handing a request straight to a
+  `CompletionModel` bypasses it — call it yourself there.
+- **Inbound (response path).** Per-wire guards route through the new
+  `message::require_non_empty(items, || error)`, each naming its own error
+  rather than sharing the constructor's context-free one. Most keep the message
+  they already had verbatim; the exception is bedrock, whose guards previously
+  surfaced `EmptyListError` — a message naming the deleted container — and now
+  say which message came back empty, as `ResponseError` rather than
+  `RequestError`. These reject a provider that returned nothing where its
+  protocol promises content — a provider defect, which is a different claim from
+  "empty assistant content is illegal". It is not: on the response path an empty
+  turn is legal, which is the whole reason the container had to go.
+
+If you implement `CompletionModel` yourself, nothing is required of you. If you
+built messages by hand and relied on the constructor to reject empties, call
+`message::require_non_empty` at that point, or let the request boundary catch it.
+
 
 ### The raw grammar is a part lifecycle: Start / Delta / End per content kind
 
@@ -470,7 +730,7 @@ pub struct ToolResult {
     pub provider: Option<ProviderCallId>,
     /// The *executed* tool's name. Required, not `Option`.
     pub name: String,
-    pub content: OneOrMany<ToolResultContent>,
+    pub content: Vec<ToolResultContent>,
 }
 ```
 
@@ -507,14 +767,20 @@ What this changes for you:
   minted handles never travel upstream there.
 - **Persisted histories**: the canonical serde shape changed (`ToolCall`
   gains `provider`, loses `call_id`; `ToolResult` renames `id` → `call`,
-  requires `name`). Legacy `ToolCall` JSON still loads: the old `call_id`
-  key is lifted into `provider` (dual-identifier payloads keep the
-  correlator and the `fc_…` item handle; single-identifier payloads keep
-  the provider-supplied `id` as `provider.call_id`), never silently
-  dropped. Legacy `ToolResult` JSON does **not** deserialize (no `call`,
-  no `name`); re-run the conversation or migrate the JSON by hand
-  (`id`/`call_id` → `call` + `provider.call_id`, add the executed tool's
-  `name`). Empty-string ids in old JSON are rejected by construction.
+  requires `name`). Pre-provider-split `ToolCall` JSON is **not migrated
+  on load**: a legacy `call_id` key is an unknown field and is ignored, so
+  a dual-identifier payload loses its correlator and a single-identifier
+  payload's `id` is read as rig's handle with no provider provenance.
+  Migrate the JSON before upgrading if you need those identifiers
+  (`call_id` → `provider.call_id`; for old dual-identifier payloads the
+  `fc_…` `id` becomes `provider.item_id`, **and the top-level `id` becomes
+  the `call_…` correlator** — `id` is required, and rig pairs a
+  `ToolResult.call` against `ToolCall.id`, so leaving the `fc_…` handle
+  there breaks the pairing the adjacent `ToolResult` recipe produces). Legacy `ToolResult` JSON does
+  **not** deserialize (no `call`, no `name`); re-run the conversation or
+  migrate the JSON by hand (`id`/`call_id` → `call` + `provider.call_id`,
+  add the executed tool's `name`). Empty-string ids in old JSON are
+  rejected by construction.
 - **The back-compat pairing shim is deleted**:
   `providers::internal::resolve_tool_result_names` (and the name-in-id
   legacy encodings it supported) no longer exist — `ToolResult::name` is
@@ -812,7 +1078,7 @@ callers actually reached into `raw_response` for:
 
 ```rust
 pub struct CompletionResponse {
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     pub usage: Usage,
     pub message_id: Option<String>,
     pub response_id: Option<String>,
@@ -1060,6 +1326,191 @@ Because the stored model is a handle, it can now change at runtime:
 merged `RequestPatch` and the previous model, and may pick a different handle
 per model call). `CompletionModel::capabilities()` is captured by value when
 the handle is created.
+
+### Assistant content is tagged and provider extras are a named field
+
+`AssistantContent` serializes with a `"type"` tag, exactly like `UserContent`
+always has:
+
+```json
+{"type": "text",      "text": "hello"}
+{"type": "toolcall",  "id": "call_1", "function": {"name": "add", "arguments": {}}}
+{"type": "reasoning", "id": null, "content": [...]}
+{"type": "image",     "data": ...}
+```
+
+The tag is **required** on deserialize, and there is no untagged fallback.
+**This breaks released data**: 0.41 serialized assistant content untagged, so
+a history or run persisted under 0.41 carries the bare shape
+(`{"text": "hello"}`) and fails to load with ``missing field `type` `` (the
+internally-tagged enum's wording — grep your logs for that, not for an
+untagged-enum error). Migrate stored assistant blocks by inserting the tag:
+
+- text block (`"text"` key) → add `"type": "text"`
+- tool call (`"id"` + `"function"` keys) → add `"type": "toolcall"`
+- reasoning (`"content"` list of reasoning blocks) → add `"type": "reasoning"`
+- image (`"data"` key, assistant side) → add `"type": "image"`
+
+The tag alone is not always enough: 0.41's flatten also wrote provider extras
+as top-level siblings on **assistant** text (anthropic citations, raw server
+tool content) and **assistant** images (openrouter response images always
+carry an `"openrouter"` extras object). Under this release those keys are
+**silently dropped on load** — an unknown key on a content block is ignored,
+never captured, never an error — so re-nest them under `additional_params` in
+the same pass, exactly as the user-content instructions below describe —
+`{"text": "…", "citations": […]}` becomes `{"type": "text", "text": "…",
+"additional_params": {"citations": […]}}`, and `{"data": …, "openrouter":
+{…}}` becomes `{"type": "image", "data": …, "additional_params":
+{"openrouter": {…}}}`. The missing *tag* is the loud migration signal; the
+un-re-nested extras are the quiet one. Verify your migration with the
+round-trip recipe at the end of this section.
+
+`additional_params` on every content block (`Text`, `Image`, `Audio`, `Video`,
+`Document`) is now a **named** field instead of a serde flatten, typed
+`Option<message::AdditionalParams>` — a newtype that is a non-empty JSON
+object *by construction* (build one with `AdditionalParams::from_entries`,
+`::new`, or `::try_from_value`; read with `::get`; `Some` always carries
+data). The wire shape is unchanged:
+
+```json
+{"type": "text", "text": "", "additional_params": {"citations": [...]}}
+```
+
+Two defect classes die with the flatten: a stray key can no longer be
+silently captured into `additional_params` and replayed to providers, and an
+absent field round-trips as `None` instead of the flatten's `Some({})`
+artifact — so turn-emptiness classification is identical before and after a
+persist/restore. The unknown-key policy is now **uniform and tolerant**
+across every content block (the five structs above plus `ToolCall` and
+`Reasoning`): a known field with the wrong shape is a loud decode error, an
+unknown key is ignored, and an unknown content-block *tag* is a loud error.
+Histories written by a newer rig therefore stay loadable by this one. The
+params remain provider-specific: a serializer replays only params it
+recognizes as its own wire's. The 0.41 helper family
+(`non_empty_params`, `params_carry_data`) is gone — the newtype carries the
+whole contract, and plain `is_none()`/`is_some()` are always correct.
+
+**Released *user*-content blocks need the same re-nesting.** 0.41's flatten
+wrote provider extras at the block's top level — e.g. an Anthropic document
+block serialized as `{"type": "document", "data": …, "title": "t",
+"citations": …}`. Those keys load silently dropped; re-nest every non-schema
+key under `additional_params`: `{"type": "document", "data": …,
+"additional_params": {"title": "t", "citations": …}}`. Cover the nested
+blocks too: a tool result's content list (`UserContent::ToolResult` →
+`ToolResultContent::Text`/`Image`) reuses these same structs, so flattened
+extras inside a persisted tool result drop the same way and need the same
+re-nesting. (An empty `"additional_params": {}` or `null` is fine — it
+canonicalizes to absent on load. Any other non-object value is a decode
+error: extras are a keyed namespace, so a re-nesting script that writes
+`"additional_params": []` or a bare string fails loudly instead of loading
+as an annotation no extractor can read.)
+
+**Verify the migration** with the round-trip recipe: load each persisted
+message tolerantly, re-serialize it, and ask
+[`message::keys_lost_in_round_trip`] for every key that did not survive —
+an empty result means the history migrated whole. (The canonical copy of
+this snippet is the compiled doc example on `keys_lost_in_round_trip`
+itself, so the recipe and the behavior cannot drift.)
+
+```rust
+let loaded: message::Message = serde_json::from_value(original.clone())?;
+let round_tripped = serde_json::to_value(&loaded)?;
+let lost = message::keys_lost_in_round_trip(&original, &round_tripped);
+assert!(lost.is_empty(), "keys dropped by tolerant load: {lost:?}");
+```
+
+Run it once over your store at migration time; the runtime load path stays
+tolerant on purpose (loudness at the migration boundary, not on every
+restore).
+
+**Streaming events**: `StreamedAssistantContent` is a tolerant decode with an
+`Unknown` catch-all. A stream item whose text block carries stray sibling
+keys — 0.41's flatten shape, or a relay stamping bookkeeping keys onto text
+items — decodes as stream *text* with the stray keys dropped: the text is
+assembled, nothing is excluded. A replayed **tagged** assistant block
+(`toolcall`/`reasoning`/`image` — the tagged `AssistantContent`
+serialization is not a stream-item shape) decodes as `Unknown` and is
+excluded from assembly, as is a text item whose `additional_params` is
+malformed (a non-object — the strict decode rejects the known field); the
+**agent assembler** — the one rig component that ingests replayed stream
+events — counts both kinds of exclusion and logs a single `tracing` warning
+per turn, on every termination path
+(`StreamedTurnAssembler::excluded_assistant_content` exposes the count). A consumer assembling self-deserialized events with its
+own logic gets no warning and should apply the same check itself.
+
+### Two pre-`Vec` serde accommodations are gone
+
+Backwards compatibility with data persisted before this release is no longer
+carried:
+
+- `PromptResponse` JSON serialized **before the `content` field existed** no
+  longer deserializes — `content` is a required field. (On self-describing
+  formats like JSON the serialized shape is unchanged; a non-self-describing
+  format sees `content` as a bare list where the old shadow repr encoded an
+  `Option`.) This reaches further than standalone response values: `AgentRun`
+  embeds a `PromptResponse` in its `Done` state, so a **persisted run** that
+  reached `Done` before the field existed fails to load too — migrate stored
+  runs (add `"content": [{"type": "text", "text": <output>}]` to the embedded
+  response) before upgrading. Assistant content is tagged with `"type"` in
+  this release, exactly like user content — see "Assistant content is tagged
+  and provider extras are a named field" below.
+- Pre-provider-split `ToolCall` JSON is no longer migrated on load — see the
+  "Persisted histories" bullet in the tool-call identity section above for
+  what a legacy `call_id` key now means and how to migrate the JSON by hand.
+
+### Errors carry the transport request id; two error-shape changes (#2314)
+
+Failed calls now preserve the provider's transport request id. Two breaks:
+
+- **`http_client::Error` gains the `InvalidStatusCodeWithDetails { status, body, headers }` variant** (the reqwest transport now reports non-success through it, preserving the failed response's headers). Exhaustive matches on `http_client::Error` need a new arm; its Display is identical to `InvalidStatusCodeWithMessage`, and `provider_response_status()`/`provider_response_body()` read both.
+- **`ProviderResponseError` is `#[non_exhaustive]`** with a new `provider_request_id` field. Construct via `ProviderResponseError::new(status, body)` / `::without_status(body)` instead of a struct literal; read the id via the `provider_request_id()` accessor on the error enums (also forwarded through `PromptError`).
+
+Behavior: providers with a request-id contract (anthropic, openai, xai, groq, copilot) classify non-success HTTP responses as `CompletionError::ProviderResponse` instead of `HttpError`. Matchers on `CompletionError::HttpError(_)` for those providers' 4xx/5xx need updating; the `provider_response_*` accessors are shape-independent and keep working. Contract-less providers are unchanged.
+
+### Response identity metadata reaches agent observers (#2265)
+
+Completed model calls now report a `rig_core::completion::ResponseIdentity`
+(message-scoped id, response-scoped id, and the provider's transport request
+id) on hook events and `PromptResponse.completion_calls`. Three source-level
+breaks come with it:
+
+- **`CompletionCall` is no longer `Copy`** — it carries owned identity
+  strings. Replace `.copied()` with `.cloned()` (or borrow):
+
+  ```rust
+  // Was
+  let last = response.completion_calls().last().copied();
+  // Now
+  let last = response.completion_calls().last().cloned();
+  ```
+
+  Persisted call records are unaffected: the new `message_id`, `response_id`,
+  and `provider_request_id` fields are serde-defaulted, so pre-identity JSON
+  still loads (with each field `None`).
+
+- **`AgentRun::record_streamed_completion_call` takes the attempt's identity
+  as a second argument.** Hand-driven streaming drivers pass the identity
+  read from their stream's terminal record; pass
+  `ResponseIdentity::default()` when the provider reported none:
+
+  ```rust
+  // Was
+  run.record_streamed_completion_call(usage)?;
+  // Now
+  run.record_streamed_completion_call(usage, ResponseIdentity {
+      message_id: stream.message_id.clone(),
+      response_id: terminal.and_then(|t| t.response_id.clone()),
+      provider_request_id: terminal.and_then(|t| t.provider_request_id.clone()),
+  })?;
+  ```
+
+- **The `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished`
+  hook events gain an `identity: &ResponseIdentity` field.** Hooks that only
+  *read* events are unaffected; code constructing these events by hand (test
+  harnesses) must supply the field — `&ResponseIdentity::default()` preserves
+  the old no-identity behavior. `ModelTurnFinished` now carries identity for
+  every accepted turn on both surfaces, so an observer of that one event
+  records identity for every completed call.
 
 ---
 
@@ -1522,8 +1973,8 @@ Bound the loop with `.max_invalid_tool_call_retries(n)` on either prompt builder
 
 ### 3. The streaming final response carries content, not a string
 
-`MultiTurnStreamItem::final_response` and `final_response_with_history` take
-`OneOrMany<AssistantContent>` where they took `&str`:
+`MultiTurnStreamItem::final_response` takes
+`OneOrMany<AssistantContent>` where it took `&str`:
 
 ```rust
 // before
@@ -2120,6 +2571,8 @@ Renamed or relocated items, for searching.
 
 | Old | New | Version |
 | --- | --- | --- |
+| `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → next" | next |
+| `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | next |
 | `rig_core::tool::Tool` (portable) | `rig_core::tool::PortableTool` | 0.41 |
 | `rig_agent::<item>` (portable re-export) | `rig_agent::core::<item>` | 0.41 |
 | `client.agent(...)` inherent method | `AgentClientExt::agent` (via `rig::prelude::*`) | 0.41 |
@@ -2143,7 +2596,7 @@ Renamed or relocated items, for searching.
 | `Output::Unknown` | `Output::Unknown(Value)` | 0.40 |
 | provider-specific `StreamingCompletionResponse` | shared `openai::StreamingCompletionResponse` | 0.40 |
 | `GenericCompletionModel::with_model` | `GenericCompletionModel::new` | 0.40 |
-| `MultiTurnStreamItem::final_response(&str, ..)` | `final_response(OneOrMany<AssistantContent>, ..)` | 0.38 |
+| `MultiTurnStreamItem::final_response(&str, ..)` | `final_response(OneOrMany<AssistantContent>, ..)`; if you are skipping straight past 0.41, `OneOrMany` is itself removed in the next release — go directly to `Vec<AssistantContent>` | 0.38 |
 | `DeltaTextChunkWithItemId.item_id` | none | 0.38 |
 | library target `rig` in `rig-core` | `rig_core`, or the new `rig` facade crate | 0.37 |
 | `Chat::chat(prompt, impl IntoIterator)` | `Chat::chat(prompt, &mut Vec<Message>)` | 0.37 |

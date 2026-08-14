@@ -1,7 +1,6 @@
 //! Gemini streaming regression for multimodal tool results in chat history.
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::agent::MultiTurnStreamItem;
 use rig::message::{
     AssistantContent, DocumentSourceKind, ImageMediaType, Message, ToolResultContent, UserContent,
@@ -55,15 +54,15 @@ impl Tool for HybridImageTool {
         _context: &mut rig::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        let mut content = OneOrMany::one(ToolResultContent::json(json!({
+        let mut content = vec![ToolResultContent::json(json!({
             "instruction": "Use the image part to answer the user's question."
-        })));
+        }))];
         content.push(ToolResultContent::image_base64(
             RED_PIXEL_PNG_BASE64,
             Some(ImageMediaType::PNG),
             None,
         ));
-        Ok(ToolOutput::content(content))
+        Ok(ToolOutput::content(content).expect("fixture content is non-empty"))
     }
 }
 

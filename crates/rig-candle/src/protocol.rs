@@ -360,65 +360,52 @@ fn render_plain_chat(
         ));
     }
     let messages = messages_with_documents(request);
-    let mut rendered = match family {
-        ModelFamily::Llama3 => String::from(BEGIN_OF_TEXT),
-        ModelFamily::SmolLm2 => {
-            if !matches!(messages.first(), Some(Message::System { .. })) {
-                format!("{IM_START}system\n{SMOLLM2_DEFAULT_SYSTEM_PROMPT}{IM_END}\n")
-            } else {
-                String::new()
-            }
-        }
-        ModelFamily::Qwen3 => {
-            return Err(CandleError::UnsupportedModelFamily(
-                "Qwen3 requires its dedicated conversation renderer".to_string(),
-            ));
-        }
-    };
-    for message in messages {
-        let (role, content) = render_plain_message(&message)?;
+    // Byte-exact turn framing per family: turn_start, role, role_suffix
+    // pieces, content, then turn_end pieces.
+    type Pieces = &'static [&'static str];
+    let (turn_start, role_suffix, turn_end, mut rendered): (&str, Pieces, Pieces, String) =
         match family {
-            ModelFamily::Llama3 => {
-                rendered.push_str(START_HEADER);
-                rendered.push_str(role);
-                rendered.push_str(END_HEADER);
-                rendered.push_str("\n\n");
-                rendered.push_str(&content);
-                rendered.push_str(END_OF_TURN);
-            }
-            ModelFamily::SmolLm2 => {
-                rendered.push_str(IM_START);
-                rendered.push_str(role);
-                rendered.push('\n');
-                rendered.push_str(&content);
-                rendered.push_str(IM_END);
-                rendered.push('\n');
-            }
+            ModelFamily::Llama3 => (
+                START_HEADER,
+                &[END_HEADER, "\n\n"],
+                &[END_OF_TURN],
+                String::from(BEGIN_OF_TEXT),
+            ),
+            ModelFamily::SmolLm2 => (
+                IM_START,
+                &["\n"],
+                &[IM_END, "\n"],
+                if matches!(messages.first(), Some(Message::System { .. })) {
+                    String::new()
+                } else {
+                    format!("{IM_START}system\n{SMOLLM2_DEFAULT_SYSTEM_PROMPT}{IM_END}\n")
+                },
+            ),
             ModelFamily::Qwen3 => {
                 return Err(CandleError::UnsupportedModelFamily(
                     "Qwen3 requires its dedicated conversation renderer".to_string(),
                 ));
             }
+        };
+    for message in messages {
+        let (role, content) = render_plain_message(&message)?;
+        for piece in [&[turn_start, role][..], role_suffix, &[&content], turn_end].concat() {
+            rendered.push_str(piece);
         }
     }
-    match family {
-        ModelFamily::Llama3 => {
-            rendered.push_str(START_HEADER);
-            rendered.push_str("assistant");
-            rendered.push_str(END_HEADER);
-            rendered.push_str("\n\n");
-        }
-        ModelFamily::SmolLm2 => {
-            rendered.push_str(IM_START);
-            rendered.push_str("assistant\n");
-        }
-        ModelFamily::Qwen3 => {
-            return Err(CandleError::UnsupportedModelFamily(
-                "Qwen3 requires its dedicated conversation renderer".to_string(),
-            ));
-        }
-    }
+    rendered.extend([&[turn_start, "assistant"][..], role_suffix].concat());
     Ok(rendered)
+}
+
+fn unsupported_user_content(item: &UserContent) -> CandleError {
+    CandleError::UnsupportedPromptContent(match item {
+        UserContent::Text(_) => "text content",
+        UserContent::ToolResult(_) => "tool results",
+        UserContent::Image(_) => "image content",
+        UserContent::Audio(_) => "audio content",
+        UserContent::Video(_) => "video content",
+        UserContent::Document(_) => "message document content",
+    })
 }
 
 fn render_plain_message(message: &Message) -> Result<(&'static str, String), CandleError> {
@@ -429,23 +416,7 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
             for item in content.iter() {
                 match item {
                     UserContent::Text(text) => parts.push(text.text.clone()),
-                    UserContent::ToolResult(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("tool results"));
-                    }
-                    UserContent::Image(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("image content"));
-                    }
-                    UserContent::Audio(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("audio content"));
-                    }
-                    UserContent::Video(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("video content"));
-                    }
-                    UserContent::Document(_) => {
-                        return Err(CandleError::UnsupportedPromptContent(
-                            "message document content",
-                        ));
-                    }
+                    unsupported => return Err(unsupported_user_content(unsupported)),
                 }
             }
             Ok(("user", parts.join("\n")))
@@ -700,20 +671,7 @@ fn render_qwen_message(
                         }
                         results.push(items.join("\n"));
                     }
-                    UserContent::Image(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("image content"));
-                    }
-                    UserContent::Audio(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("audio content"));
-                    }
-                    UserContent::Video(_) => {
-                        return Err(CandleError::UnsupportedPromptContent("video content"));
-                    }
-                    UserContent::Document(_) => {
-                        return Err(CandleError::UnsupportedPromptContent(
-                            "message document content",
-                        ));
-                    }
+                    unsupported => return Err(unsupported_user_content(unsupported)),
                 }
             }
             if !text.is_empty() && !results.is_empty() {
@@ -826,9 +784,9 @@ fn parse_qwen3_assistant(
             "the model returned no tool call for a required/specific choice".to_string(),
         ));
     }
-    if items.is_empty() {
-        items.push(AssistantContent::text(""));
-    }
+    // A turn that produced nothing is left empty. This used to push a
+    // fabricated empty-text part, purely because the assistant content type
+    // could not be empty; the part was never something the model emitted.
     let visible_text = canonicalize_visible_text(&mut items);
     Ok(ParsedAssistant {
         items,
@@ -883,7 +841,6 @@ fn push_text(items: &mut Vec<AssistantContent>, text: &str) {
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
-    use rig_core::OneOrMany;
     use rig_core::completion::{CompletionRequest, Document};
     use rig_core::message::{Message, ProviderCallId, ToolCallId, ToolChoice};
 
@@ -908,8 +865,11 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(messages)
-                .unwrap_or_else(|_| OneOrMany::one(Message::user("fallback"))),
+            chat_history: if messages.is_empty() {
+                vec![Message::user("fallback")]
+            } else {
+                messages
+            },
             documents: Vec::new(),
             tools: vec![tool("calculate"), tool("lookup")],
             temperature: Some(0.0),
@@ -1156,12 +1116,12 @@ mod tests {
             Message::from(first),
             Message::from(second),
             Message::User {
-                content: OneOrMany::one(UserContent::tool_result_for(
+                content: vec![UserContent::tool_result_for(
                     ToolCallId::new("internal-a").expect("non-empty id"),
                     ProviderCallId::new("provider-b"),
                     "calculate",
-                    OneOrMany::one(ToolResultContent::text("wrong call")),
-                )),
+                    vec![ToolResultContent::text("wrong call")],
+                )],
             },
         ];
 

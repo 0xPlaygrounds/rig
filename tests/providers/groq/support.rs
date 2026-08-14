@@ -29,3 +29,22 @@ where
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
+
+/// Bogus-key variant for recording real 401s (rig#2314 error matrix).
+pub(super) async fn with_groq_cassette_bogus_key_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(groq::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let cassette = ProviderCassette::start("groq", spec, "https://api.groq.com/openai/v1").await;
+    let client = groq::Client::builder()
+        .api_key("gsk-invalid-edge-matrix-key")
+        .base_url(cassette.base_url())
+        .build()
+        .expect("client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}

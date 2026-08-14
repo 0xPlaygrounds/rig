@@ -1,0 +1,108 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":128,"messages":[{"content":[{"text":"Use the subtract tool to calculate 8 - 3.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tool_choice":"REQUIRED","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: message-start
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"1bbe60bc-652f-42a7-b446-223df4f51019","type":"message-start"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":"I"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" will"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" use"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" one"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" or"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" more"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" of"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" the"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" available"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" tools"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" to"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" find"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" the"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" answer"}},"type":"tool-plan-delta"}
+
+    event: tool-call-start
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"subtract"},"id":"call_REDACTED_1","type":"function"}}},"index":0,"type":"tool-call-start"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"x"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"\":"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" "}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"8"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":","}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" \""}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"y"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"\":"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" "}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"3"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"}"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-end
+    data: {"index":0,"type":"tool-call-end"}
+
+    event: message-end
+    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":68,"output_tokens":24},"cached_tokens":992,"tokens":{"input_tokens":1493,"output_tokens":38}}},"type":"message-end"}
+
+    data: [DONE]
+

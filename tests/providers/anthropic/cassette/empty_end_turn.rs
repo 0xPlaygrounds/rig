@@ -137,7 +137,7 @@ fn history_has_empty_assistant_text(messages: &[Message]) -> bool {
 }
 
 #[tokio::test]
-async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
+async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice",
         |client| async move {
@@ -166,9 +166,9 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                     tool_call.id.clone(),
                     tool_call.provider.clone(),
                     tool_call.function.name.clone(),
-                    rig::OneOrMany::one(rig::message::ToolResultContent::text(
+                    vec![rig::message::ToolResultContent::text(
                         "sent: deploy finished",
-                    )),
+                    )],
                 )))
                 .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
                 .max_tokens(1024)
@@ -180,21 +180,15 @@ async fn raw_followup_empty_end_turn_normalizes_to_empty_text_choice() {
                 .await
                 .expect("follow-up Anthropic turn should not error on empty end_turn");
 
-            assert_eq!(
-                followup.choice.len(),
-                1,
-                "expected normalized empty follow-up choice, got {:?}",
+            // The recorded provider response is unchanged; what changed is how
+            // rig spells it. An empty `end_turn` used to be normalized into one
+            // fabricated empty-text part because the content type could not be
+            // empty. It is now the empty list it always was.
+            assert!(
+                followup.choice.is_empty(),
+                "expected an empty follow-up choice, got {:?}",
                 followup.choice
             );
-
-            match followup.choice.first() {
-                AssistantContent::Text(text) => assert!(
-                    text.text.is_empty(),
-                    "expected empty follow-up text sentinel, got {:?}",
-                    text.text
-                ),
-                other => panic!("expected empty text sentinel, got {other:?}"),
-            }
         },
     )
     .await;

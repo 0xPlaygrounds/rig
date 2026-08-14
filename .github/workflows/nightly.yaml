@@ -132,9 +132,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # protoc: required to compile rig-lancedb — and the `lancedb` crate
-      # itself, which the `rig` facade carries as an unconditional
-      # dev-dependency. See the longer note on ci.yaml's `test` job.
+      # protoc: required because this all-features lane enables rig-lancedb
+      # and the facade's feature-gated raw lancedb test dependency.
       #
       # No sccache: the all-features sweep mints by far the most
       # per-compilation-unit cache entries, this lane is not

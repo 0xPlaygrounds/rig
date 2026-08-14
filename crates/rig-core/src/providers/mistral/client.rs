@@ -1,9 +1,5 @@
 use crate::{
-    client::{
-        self, BearerAuth, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder,
-        ProviderClient,
-    },
-    http_client,
+    client::{self, BearerAuth, DebugExt, Provider},
     providers::mistral::MistralModelLister,
 };
 use serde::{Deserialize, Serialize};
@@ -101,58 +97,23 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
     }
 }
 
-impl<H> Capabilities<H> for MistralExt {
-    type Completion = Capable<super::CompletionModel<H>>;
-    type Embeddings = Capable<super::EmbeddingModel<H>>;
-
-    type Transcription = Capable<super::TranscriptionModel<H>>;
-    type ModelListing = Capable<MistralModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    MistralExt,
+    completion = super::CompletionModel<H>,
+    embeddings = super::EmbeddingModel<H>,
+    transcription = super::TranscriptionModel<H>,
+    model_listing = MistralModelLister<H>,
+);
 
 impl DebugExt for MistralExt {}
 
-impl ProviderBuilder for MistralBuilder {
-    type Extension<H>
-        = MistralExt
-    where
-        H: http_client::HttpClientExt;
-    type ApiKey = MistralApiKey;
+client::impl_default_provider_builder!(
+    MistralBuilder => MistralExt,
+    api_key = MistralApiKey,
+    base_url = MISTRAL_API_BASE_URL,
+);
 
-    const BASE_URL: &'static str = MISTRAL_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: http_client::HttpClientExt,
-    {
-        Ok(MistralExt)
-    }
-}
-
-impl ProviderClient for Client {
-    type Input = String;
-    type Error = crate::client::ProviderClientError;
-
-    /// Create a new Mistral client from the `MISTRAL_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error>
-    where
-        Self: Sized,
-    {
-        let api_key = crate::client::required_env_var("MISTRAL_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(&input).map_err(Into::into)
-    }
-}
+client::impl_provider_client!(Client, input = String, api_key_env = "MISTRAL_API_KEY");
 
 /// In-depth details on prompt tokens.
 ///

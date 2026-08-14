@@ -71,21 +71,16 @@ where
 }
 
 /// Build [`RmcpTool`]s from MCP tool definitions, applying the given per-call
-/// timeout to each (`None` disables it; see issue #1914). Returns
-/// `(tool_name, tool)` pairs.
+/// timeout to each (`None` disables it; see issue #1914).
 #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
 fn build_rmcp_tools(
     tools: Vec<rmcp::model::Tool>,
     client: rmcp::service::ServerSink,
     timeout: Option<std::time::Duration>,
-) -> Vec<(String, RmcpTool)> {
+) -> Vec<RmcpTool> {
     tools
         .into_iter()
-        .map(|tool| {
-            let name = tool.name.to_string();
-            let rmcp_tool = RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout);
-            (name, rmcp_tool)
-        })
+        .map(|tool| RmcpTool::from_mcp_server(tool, client.clone()).with_timeout(timeout))
         .collect()
 }
 
@@ -348,6 +343,53 @@ impl<ToolState> AgentBuilder<ToolState> {
         self.hooks.push(hook);
         self
     }
+
+    /// Move every non-tool field into a builder with a new tool state.
+    fn with_tool_state<S>(self, tool_state: S) -> AgentBuilder<S> {
+        AgentBuilder {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
+            max_tokens: self.max_tokens,
+            temperature: self.temperature,
+            tool_choice: self.tool_choice,
+            default_max_turns: self.default_max_turns,
+            tool_state,
+            hooks: self.hooks,
+            output_schema: self.output_schema,
+            output_mode: self.output_mode,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
+        }
+    }
+
+    /// Assemble the [`Agent`], resolving the tool server handle from the final
+    /// tool state.
+    fn build_agent(self, handle: impl FnOnce(ToolState) -> ToolServerHandle) -> Agent {
+        Agent {
+            name: self.name,
+            description: self.description,
+            model: self.model,
+            preamble: self.preamble,
+            static_context: self.static_context,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
+            additional_params: self.additional_params,
+            record_telemetry_content: self.record_telemetry_content,
+            tool_choice: self.tool_choice,
+            tool_server_handle: handle(self.tool_state),
+            default_max_turns: self.default_max_turns,
+            hooks: self.hooks,
+            output_schema: self.output_schema,
+            output_mode: self.output_mode,
+            memory: self.memory,
+            default_conversation_id: self.default_conversation_id,
+        }
+    }
 }
 
 impl AgentBuilder<NoToolConfig> {
@@ -396,25 +438,17 @@ impl AgentBuilder<NoToolConfig> {
         self,
         handle: ToolServerHandle,
     ) -> AgentBuilder<WithToolServerHandle> {
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            tool_state: WithToolServerHandle { handle },
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
+        self.with_tool_state(WithToolServerHandle { handle })
+    }
+
+    /// Transition into the `WithBuilderTools` state with no tools yet; every
+    /// tool-adding method below is the `WithBuilderTools` method after this
+    /// one-way step.
+    fn into_tool_builder(self) -> AgentBuilder<WithBuilderTools> {
+        self.with_tool_state(WithBuilderTools {
+            tools: ToolSet::default(),
+            retrieval_indexes: vec![],
+        })
     }
 
     /// Add a static tool to the agent.
@@ -425,74 +459,7 @@ impl AgentBuilder<NoToolConfig> {
     where
         T: Tool + 'static,
     {
-        let mut tools = ToolSet::default();
-        tools.add_tool(tool);
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            tool_state: WithBuilderTools {
-                tools,
-                retrieval_indexes: vec![],
-            },
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
-    }
-
-    /// Add one runtime-defined tool to the agent.
-    pub fn dynamic_tool(self, tool: DynamicTool) -> AgentBuilder<WithBuilderTools> {
-        self.dynamic_tools(vec![tool])
-    }
-
-    /// Add one context-free dynamic tool through the classic registry adapter.
-    pub fn portable_dynamic_tool(
-        self,
-        tool: PortableDynamicTool,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.dynamic_tool(DynamicTool::from_portable(tool))
-    }
-
-    /// Add runtime-defined tools to the agent.
-    ///
-    /// This is useful when tool definitions and callbacks are constructed at runtime.
-    /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> AgentBuilder<WithBuilderTools> {
-        let tools = ToolSet::from_dynamic_tools(tools);
-
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                tools,
-                retrieval_indexes: vec![],
-            },
-        }
+        self.into_tool_builder().tool(tool)
     }
 
     /// Add an MCP tool (from `rmcp`) to the agent, bounded by
@@ -525,8 +492,47 @@ impl AgentBuilder<NoToolConfig> {
         client: rmcp::service::ServerSink,
         timeout: impl Into<Option<std::time::Duration>>,
     ) -> AgentBuilder<WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(vec![tool], client, timeout.into()))
+        self.rmcp_tools_with_timeout(vec![tool], client, timeout)
     }
+
+    /// Build the agent with no tools configured.
+    ///
+    /// An empty `ToolServer` will be created for the agent.
+    pub fn build(self) -> Agent {
+        self.build_agent(|_| ToolServer::new().run())
+    }
+}
+
+/// Generate the `NoToolConfig` tool methods that transition into the
+/// `WithBuilderTools` state by forwarding verbatim through
+/// [`AgentBuilder::into_tool_builder`] to the `WithBuilderTools` method of the
+/// same name. Doc comments live at each invocation; `tool` (generic over the
+/// tool type) and the single-tool rmcp helpers stay hand-written above.
+macro_rules! forward_into_tool_builder {
+    ($( $(#[$attr:meta])* $name:ident ( $($arg:ident : $ty:ty),* $(,)? ) );* $(;)?) => {
+        impl AgentBuilder<NoToolConfig> {
+            $(
+                $(#[$attr])*
+                pub fn $name(self, $($arg: $ty),*) -> AgentBuilder<WithBuilderTools> {
+                    self.into_tool_builder().$name($($arg),*)
+                }
+            )*
+        }
+    };
+}
+
+forward_into_tool_builder! {
+    /// Add one runtime-defined tool to the agent.
+    dynamic_tool(tool: DynamicTool);
+
+    /// Add one context-free dynamic tool through the classic registry adapter.
+    portable_dynamic_tool(tool: PortableDynamicTool);
+
+    /// Add runtime-defined tools to the agent.
+    ///
+    /// This is useful when tool definitions and callbacks are constructed at runtime.
+    /// Transitions the builder to the `WithBuilderTools` state.
+    dynamic_tools(tools: Vec<DynamicTool>);
 
     /// Add an array of MCP tools (from `rmcp`) to the agent, each bounded by
     /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
@@ -536,13 +542,7 @@ impl AgentBuilder<NoToolConfig> {
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tools(
-        self,
-        tools: Vec<rmcp::model::Tool>,
-        client: rmcp::service::ServerSink,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
-    }
+    rmcp_tools(tools: Vec<rmcp::model::Tool>, client: rmcp::service::ServerSink);
 
     /// Add an array of MCP tools (from `rmcp`) with a per-call timeout (see
     /// issue #1914).
@@ -553,134 +553,26 @@ impl AgentBuilder<NoToolConfig> {
     /// Transitions the builder to the `WithBuilderTools` state.
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
     #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
-    pub fn rmcp_tools_with_timeout(
-        self,
+    rmcp_tools_with_timeout(
         tools: Vec<rmcp::model::Tool>,
         client: rmcp::service::ServerSink,
-        timeout: impl Into<Option<std::time::Duration>>,
-    ) -> AgentBuilder<WithBuilderTools> {
-        self.with_rmcp_toolset(build_rmcp_tools(tools, client, timeout.into()))
-    }
-
-    /// Transition into the `WithBuilderTools` state carrying the given built
-    /// MCP tools.
-    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    fn with_rmcp_toolset(self, built: Vec<(String, RmcpTool)>) -> AgentBuilder<WithBuilderTools> {
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                tools: {
-                    let mut set = ToolSet::default();
-                    for (_, tool) in built {
-                        set.add_erased(std::sync::Arc::new(tool));
-                    }
-                    set
-                },
-                retrieval_indexes: vec![],
-            },
-        }
-    }
+        timeout: impl Into<Option<std::time::Duration>>
+    );
 
     /// Configure tools retrieved from a vector index for each prompt.
     ///
     /// Transitions the builder to the `WithBuilderTools` state.
-    pub fn retrieved_tools(
-        self,
+    retrieved_tools(
         sample: usize,
         index: impl VectorStoreIndexDyn + Send + Sync + 'static,
-        toolset: ToolSet,
-    ) -> AgentBuilder<WithBuilderTools> {
-        let mut tools = ToolSet::default();
-        tools.add_retrievable_tools(toolset);
-        AgentBuilder {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            max_tokens: self.max_tokens,
-            temperature: self.temperature,
-            tool_choice: self.tool_choice,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-            tool_state: WithBuilderTools {
-                tools,
-                retrieval_indexes: vec![(sample, Arc::new(index))],
-            },
-        }
-    }
-
-    /// Build the agent with no tools configured.
-    ///
-    /// An empty `ToolServer` will be created for the agent.
-    pub fn build(self) -> Agent {
-        let tool_server_handle = ToolServer::new().run();
-
-        Agent {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            tool_choice: self.tool_choice,
-            tool_server_handle,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
-    }
+        toolset: ToolSet
+    );
 }
 
 impl AgentBuilder<WithToolServerHandle> {
     /// Build the agent using the pre-configured ToolServerHandle.
     pub fn build(self) -> Agent {
-        Agent {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            tool_choice: self.tool_choice,
-            tool_server_handle: self.tool_state.handle,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
+        self.build_agent(|state| state.handle)
     }
 }
 
@@ -745,8 +637,8 @@ impl AgentBuilder<WithBuilderTools> {
     }
 
     #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
-    fn add_rmcp_tools(mut self, built: Vec<(String, RmcpTool)>) -> Self {
-        for (_, tool) in built {
+    fn add_rmcp_tools(mut self, built: Vec<RmcpTool>) -> Self {
+        for tool in built {
             self.tool_state.tools.add_erased(std::sync::Arc::new(tool));
         }
 
@@ -773,30 +665,12 @@ impl AgentBuilder<WithBuilderTools> {
     /// `.tool()`, `.dynamic_tool()`, `.dynamic_tools()`, and
     /// `.retrieved_tools()`.
     pub fn build(self) -> Agent {
-        let tool_server_handle = ToolServer::new()
-            .add_tools(self.tool_state.tools)
-            .add_retrieval_indexes(self.tool_state.retrieval_indexes)
-            .run();
-
-        Agent {
-            name: self.name,
-            description: self.description,
-            model: self.model,
-            preamble: self.preamble,
-            static_context: self.static_context,
-            temperature: self.temperature,
-            max_tokens: self.max_tokens,
-            additional_params: self.additional_params,
-            record_telemetry_content: self.record_telemetry_content,
-            tool_choice: self.tool_choice,
-            tool_server_handle,
-            default_max_turns: self.default_max_turns,
-            hooks: self.hooks,
-            output_schema: self.output_schema,
-            output_mode: self.output_mode,
-            memory: self.memory,
-            default_conversation_id: self.default_conversation_id,
-        }
+        self.build_agent(|state| {
+            ToolServer::new()
+                .add_tools(state.tools)
+                .add_retrieval_indexes(state.retrieval_indexes)
+                .run()
+        })
     }
 }
 #[cfg(test)]
@@ -990,9 +864,9 @@ mod tests {
             peer.clone(),
             Some(DEFAULT_MCP_TOOL_TIMEOUT),
         );
-        assert_eq!(built_default[0].1.timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
+        assert_eq!(built_default[0].timeout(), Some(DEFAULT_MCP_TOOL_TIMEOUT));
         let built_none = build_rmcp_tools(vec![tool("b")], peer.clone(), None);
-        assert_eq!(built_none[0].1.timeout(), None);
+        assert_eq!(built_none[0].timeout(), None);
 
         // ...and the threaded timeout actually bounds a hanging call.
         let built = build_rmcp_tools(
@@ -1001,10 +875,9 @@ mod tests {
             Some(Duration::from_millis(200)),
         );
         assert_eq!(built.len(), 1);
-        assert_eq!(built[0].0, "hang_forever");
         let handle = ToolServer::new().run();
         handle
-            .add_erased_tool(Arc::new(built.into_iter().next().unwrap().1))
+            .add_erased_tool(Arc::new(built.into_iter().next().unwrap()))
             .await;
         let timed = tokio::time::timeout(Duration::from_secs(5), async {
             let mut context = ToolContext::new();

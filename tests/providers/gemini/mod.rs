@@ -14,6 +14,7 @@ mod cassette {
     mod document_ordering;
     mod dynamic_tools;
     mod embeddings;
+    mod error_envelope;
     mod extractor;
     mod generate_behaviors;
     mod generate_sessions;
@@ -31,6 +32,8 @@ mod cassette {
     mod multi_turn_streaming;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod regression_suite;
+    mod response_identity;
     mod streaming;
     mod streaming_grammar;
     mod streaming_multimodal_tool_results;

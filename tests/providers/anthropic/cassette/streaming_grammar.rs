@@ -12,7 +12,6 @@
 //! mint literal IDs.
 
 use futures::StreamExt;
-use rig::OneOrMany;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ToolCall};
 use rig::prelude::*;
@@ -28,7 +27,7 @@ struct StreamRun {
     reasoning_delta: String,
     tool_calls: Vec<ToolCall>,
     finals: Vec<StreamFinal>,
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
     message_id: Option<String>,
 }
@@ -40,7 +39,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
         reasoning_delta: String::new(),
         tool_calls: Vec::new(),
         finals: Vec::new(),
-        choice: OneOrMany::one(AssistantContent::text("")),
+        choice: vec![AssistantContent::text("")],
         response: None,
         message_id: None,
     };

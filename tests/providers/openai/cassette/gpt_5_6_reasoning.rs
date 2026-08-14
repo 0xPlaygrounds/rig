@@ -434,8 +434,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     user: user_message,
                     assistant: Message::Assistant {
                         id: message_id,
-                        content: rig::OneOrMany::many(reasoning_blocks)
-                            .expect("streamed assistant message should not be empty"),
+                        content: reasoning_blocks,
                     },
                     final_response,
                 });

@@ -8,12 +8,25 @@
 //! crate-private.
 
 pub mod adapter;
+pub(crate) mod anthropic_compatible;
+#[cfg(feature = "audio")]
+pub(crate) mod audio_generation;
 pub(crate) mod auth;
 pub(crate) mod chunk_lifecycle;
+pub(crate) mod completion_send;
+#[cfg(not(target_family = "wasm"))]
+pub(crate) mod device_auth;
+pub(crate) mod envelope;
+#[cfg(feature = "image")]
+pub(crate) mod image_generation;
+pub(crate) mod model_listing;
 pub(crate) mod openai_chat_completions_compatible;
+pub(crate) mod schema;
 #[cfg(any(test, debug_assertions))]
 pub(crate) mod sequence_law;
+pub(crate) mod sse_transport;
 pub mod tool_call_bridge;
+pub(crate) mod transcription;
 pub mod wire;
 
 /// Fill empty [`ToolResult::name`](crate::message::ToolResult::name)s from
@@ -86,6 +99,34 @@ pub fn resolve_empty_tool_result_names(history: &mut [crate::message::Message]) 
     }
 }
 
+/// A rig logging target for [`trace_json`]. An enum (not a `&str`) because
+/// `tracing` targets must be literals, so the dispatch is total by
+/// construction.
+#[derive(Clone, Copy)]
+pub(crate) enum LogTarget {
+    Completions,
+    Streaming,
+}
+
+/// Trace-log `value` as pretty-printed JSON under one of rig's logging
+/// targets. Infallible: does nothing when TRACE is disabled for the target or
+/// the value fails to serialize.
+pub(crate) fn trace_json(target: LogTarget, label: &str, value: &impl serde::Serialize) {
+    macro_rules! emit {
+        ($target:literal) => {
+            if tracing::enabled!(target: $target, tracing::Level::TRACE) {
+                if let Ok(json) = serde_json::to_string_pretty(value) {
+                    tracing::trace!(target: $target, "{label}: {json}");
+                }
+            }
+        };
+    }
+    match target {
+        LogTarget::Streaming => emit!("rig::streaming"),
+        LogTarget::Completions => emit!("rig::completions"),
+    }
+}
+
 pub(crate) fn completion_usage(
     input_tokens: u64,
     output_tokens: u64,
@@ -105,7 +146,6 @@ pub(crate) fn completion_usage(
 
 #[cfg(test)]
 mod tests {
-    use crate::OneOrMany;
     use crate::message::{
         AssistantContent, Message, ToolCall, ToolFunction, ToolResultContent, UserContent,
     };
@@ -113,23 +153,23 @@ mod tests {
     fn call(wire_id: &str, name: &str) -> Message {
         Message::Assistant {
             id: None,
-            content: OneOrMany::one(AssistantContent::ToolCall(ToolCall::from_wire(
+            content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
                 wire_id,
                 ToolFunction {
                     name: name.to_owned(),
                     arguments: serde_json::json!({}),
                 },
-            ))),
+            ))],
         }
     }
 
     fn nameless_result(wire_id: &str) -> Message {
         Message::User {
-            content: OneOrMany::one(UserContent::tool_result_from_wire(
+            content: vec![UserContent::tool_result_from_wire(
                 wire_id,
                 "",
-                OneOrMany::one(ToolResultContent::text("out")),
-            )),
+                vec![ToolResultContent::text("out")],
+            )],
         }
     }
 
@@ -178,11 +218,11 @@ mod tests {
         let mut history = vec![
             call("toolu_1", "add"),
             Message::User {
-                content: OneOrMany::one(UserContent::tool_result_from_wire(
+                content: vec![UserContent::tool_result_from_wire(
                     "toolu_1",
                     "sum",
-                    OneOrMany::one(ToolResultContent::text("3")),
-                )),
+                    vec![ToolResultContent::text("3")],
+                )],
             },
         ];
         super::resolve_empty_tool_result_names(&mut history);
@@ -205,14 +245,14 @@ mod tests {
         let mut history = vec![
             Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(id_less)),
+                content: vec![AssistantContent::ToolCall(id_less)],
             },
             Message::User {
-                content: OneOrMany::one(UserContent::tool_result(
+                content: vec![UserContent::tool_result(
                     handle,
                     "",
-                    OneOrMany::one(ToolResultContent::text("out")),
-                )),
+                    vec![ToolResultContent::text("out")],
+                )],
             },
         ];
         super::resolve_empty_tool_result_names(&mut history);

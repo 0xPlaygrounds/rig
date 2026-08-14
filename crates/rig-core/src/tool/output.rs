@@ -4,7 +4,7 @@ use std::{any::Any, fmt};
 
 use serde::Serialize;
 
-use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
+use crate::{message::ToolResultContent, tool::ToolExecutionError};
 
 /// The canonical model-visible output produced by a tool.
 ///
@@ -17,7 +17,7 @@ use crate::{OneOrMany, message::ToolResultContent, tool::ToolExecutionError};
 /// guess whether it represents rich content.
 #[derive(Clone, PartialEq)]
 pub struct ToolOutput {
-    content: OneOrMany<ToolResultContent>,
+    content: Vec<ToolResultContent>,
 }
 
 impl fmt::Debug for ToolOutput {
@@ -54,13 +54,31 @@ impl ToolOutput {
     }
 
     /// Construct explicit model content.
-    pub fn content(content: OneOrMany<ToolResultContent>) -> Self {
-        Self { content }
+    ///
+    /// Rejects an empty list. On `main` the argument type made emptiness
+    /// unrepresentable; as a `Vec` the check lives here instead, because this
+    /// is the one funnel every multi-block construction passes through —
+    /// tools returning [`ToolOutput`] directly and hooks rewriting one
+    /// included. A zero-block tool result cannot be sent (the request
+    /// boundary rejects it), so rejecting at construction surfaces the
+    /// defect where it is made rather than one request later. A tool with a
+    /// genuinely empty result returns one empty text block ([`Self::text`]
+    /// with `""`).
+    pub fn content(content: Vec<ToolResultContent>) -> Result<Self, ToolExecutionError> {
+        let content = crate::message::require_non_empty(content, || {
+            ToolExecutionError::other(
+                "tool output has no content blocks; return at least one block — \
+                 an empty text block is valid",
+            )
+        })?;
+        Ok(Self { content })
     }
 
     /// Construct one explicit model-content block.
     pub fn one(content: ToolResultContent) -> Self {
-        Self::content(OneOrMany::one(content))
+        Self {
+            content: vec![content],
+        }
     }
 
     /// Return literal text when this output is exactly one plain text block.
@@ -69,7 +87,10 @@ impl ToolOutput {
             return None;
         }
 
-        match self.content.first_ref() {
+        match self.content.first()? {
+            // `Some` params always carry data (`AdditionalParams` is
+            // non-empty by construction), so plain `is_none` is the whole
+            // annotation check.
             ToolResultContent::Text(text) if text.additional_params.is_none() => Some(&text.text),
             ToolResultContent::Text(_)
             | ToolResultContent::Image(_)
@@ -83,19 +104,19 @@ impl ToolOutput {
             return None;
         }
 
-        match self.content.first_ref() {
+        match self.content.first()? {
             ToolResultContent::Json { value } => Some(value),
             ToolResultContent::Text(_) | ToolResultContent::Image(_) => None,
         }
     }
 
     /// Borrow the canonical ordered content blocks.
-    pub fn as_content(&self) -> &OneOrMany<ToolResultContent> {
+    pub fn as_content(&self) -> &[ToolResultContent] {
         &self.content
     }
 
     /// Convert this output into the canonical message content sent to a model.
-    pub fn into_content(self) -> OneOrMany<ToolResultContent> {
+    pub fn into_content(self) -> Vec<ToolResultContent> {
         self.content
     }
 
@@ -139,8 +160,14 @@ impl From<ToolResultContent> for ToolOutput {
     }
 }
 
-impl From<OneOrMany<ToolResultContent>> for ToolOutput {
-    fn from(content: OneOrMany<ToolResultContent>) -> Self {
+impl TryFrom<Vec<ToolResultContent>> for ToolOutput {
+    type Error = ToolExecutionError;
+
+    // `From` on `main` — the source type was non-empty by construction, so the
+    // conversion could not fail. With `Vec` the emptiness check makes it
+    // fallible; a `From` here would be the unguarded bypass around
+    // [`ToolOutput::content`].
+    fn try_from(content: Vec<ToolResultContent>) -> Result<Self, Self::Error> {
         Self::content(content)
     }
 }
@@ -166,20 +193,14 @@ mod debug_tests {
 
     #[test]
     fn debug_reports_shape_without_tool_content() {
-        let output = ToolOutput::content(
-            OneOrMany::many(vec![
-                ToolResultContent::text("Bearer secret-tool-output"),
-                ToolResultContent::json(serde_json::json!({
-                    "credential": "secret-json-output"
-                })),
-                ToolResultContent::image_base64(
-                    "secret-image-output",
-                    Some(ImageMediaType::PNG),
-                    None,
-                ),
-            ])
-            .unwrap(),
-        );
+        let output = ToolOutput::content(vec![
+            ToolResultContent::text("Bearer secret-tool-output"),
+            ToolResultContent::json(serde_json::json!({
+                "credential": "secret-json-output"
+            })),
+            ToolResultContent::image_base64("secret-image-output", Some(ImageMediaType::PNG), None),
+        ])
+        .expect("fixture content is non-empty");
 
         let debug = format!("{output:?}");
         assert!(debug.contains("content_count: 3"));
@@ -201,7 +222,7 @@ where
     T: Serialize + 'static,
 {
     fn into_tool_output(self) -> Result<ToolOutput, ToolExecutionError> {
-        // `ToolResultContent` and `OneOrMany<ToolResultContent>` are serializable
+        // `ToolResultContent` and `Vec<ToolResultContent>` are serializable
         // because they also serve as transcript types. They nevertheless mean
         // explicit rich output here; serializing them through the fallback would
         // silently turn an image into a JSON object. Stable Rust cannot express
@@ -211,8 +232,15 @@ where
         if let Some(content) = value.downcast_ref::<ToolResultContent>() {
             return Ok(ToolOutput::one(content.clone()));
         }
-        if let Some(content) = value.downcast_ref::<OneOrMany<ToolResultContent>>() {
-            return Ok(ToolOutput::content(content.clone()));
+        if let Some(content) = value.downcast_ref::<Vec<ToolResultContent>>() {
+            // `ToolOutput::content` rejects an empty list, so an empty
+            // rich-content return surfaces here as a normal tool failure the
+            // agent feeds back to the model, instead of a zero-block result
+            // entering history and aborting the whole run at the next
+            // request's boundary validation. Deliberately not normalized to
+            // an empty text block: inventing content the tool never produced
+            // is the fabrication this crate removed.
+            return ToolOutput::content(content.clone());
         }
         let is_explicit_json = value.is::<serde_json::Value>();
 
@@ -241,13 +269,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_empty_content_list_cannot_become_a_tool_output() {
+        // A zero-block tool result cannot be sent — the request boundary
+        // rejects it — so the failure surfaces at construction as an ordinary
+        // tool error instead of aborting the run one request later. Every
+        // route is closed: the rich-content tool return, the explicit
+        // constructor, and the fallible conversion. One empty text block, by
+        // contrast, is a legitimate empty result and passes.
+        let error = Vec::<ToolResultContent>::new()
+            .into_tool_output()
+            .expect_err("an empty rich-content list must not become a ToolOutput");
+        assert!(error.to_string().contains("no content blocks"));
+
+        assert!(ToolOutput::content(Vec::new()).is_err());
+        assert!(ToolOutput::try_from(Vec::<ToolResultContent>::new()).is_err());
+
+        let output = vec![ToolResultContent::text("")]
+            .into_tool_output()
+            .unwrap();
+        assert_eq!(output, ToolOutput::text(""));
+    }
+
+    #[test]
     fn json_shaped_strings_remain_literal_text() {
         let text = r#"{"type":"image","data":"not-an-envelope"}"#.to_string();
         let output = text.clone().into_tool_output().unwrap();
 
         assert_eq!(output, ToolOutput::text(text.clone()));
         let content = output.into_content();
-        assert!(matches!(content.first(), ToolResultContent::Text(value) if value.text == text));
+        assert!(
+            matches!(content.first(), Some(ToolResultContent::Text(value)) if value.text == text)
+        );
     }
 
     #[test]
@@ -260,7 +312,7 @@ mod tests {
         let content = output.into_content();
         assert!(matches!(
             content.first(),
-            ToolResultContent::Json { value: content_value } if content_value == value
+            Some(ToolResultContent::Json { value: content_value }) if *content_value == value
         ));
     }
 
@@ -287,7 +339,7 @@ mod tests {
         let content = output.into_content();
         assert!(matches!(
             content.first(),
-            ToolResultContent::Image(image)
+            Some(ToolResultContent::Image(image))
                 if image.media_type == Some(ImageMediaType::JPEG)
                     && matches!(&image.data, DocumentSourceKind::Base64(data) if data == "base64data==")
         ));
@@ -295,12 +347,11 @@ mod tests {
 
     #[test]
     fn direct_ordered_content_is_not_serialized_as_json() {
-        let content = OneOrMany::many(vec![
+        let content = vec![
             ToolResultContent::text("before"),
             ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
             ToolResultContent::json(serde_json::json!({"after": true})),
-        ])
-        .unwrap();
+        ];
 
         let output = content.clone().into_tool_output().unwrap();
 

@@ -8,6 +8,7 @@ More information about this crate can be found in the [crate documentation](http
   - [Table of contents](#table-of-contents)
   - [Features](#features)
   - [Installation](#installation)
+  - [WASM target support](#wasm-target-support)
   - [Simple example:](#simple-example)
   - [Integrations](#integrations)
   - [Who is using Rig?](#who-is-using-rig)
@@ -26,6 +27,13 @@ More information about this crate can be found in the [crate documentation](http
 ```bash
 cargo add rig-core
 ```
+
+## WASM target support
+
+`rig-core` supports the browser-oriented `wasm32-unknown-unknown` target. When
+the `pdf` feature is enabled, the host must provide the Web Crypto API's
+`Crypto.getRandomValues` implementation, as modern browsers, Web Workers, and
+Node.js 19 or later do. WASI targets are not supported.
 
 ## Simple example
 ```rust
@@ -80,6 +88,7 @@ Rig supports the following LLM providers out of the box:
 - OpenRouter
 - Perplexity
 - Together
+- Venice
 - Voyage AI
 - xAI
 - Xiaomi MiMo

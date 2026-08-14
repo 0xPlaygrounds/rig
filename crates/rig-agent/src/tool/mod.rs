@@ -65,9 +65,9 @@
 //! ```
 //!
 //! Return [`ToolOutput`] for explicit JSON or multimodal presentation. A
-//! [`ToolResultContent`](rig_core::message::ToolResultContent) or
-//! [`OneOrMany`](rig_core::OneOrMany) of content blocks can also be used directly
-//! as a typed tool output without being mistaken for ordinary JSON.
+//! [`ToolResultContent`](rig_core::message::ToolResultContent) or a `Vec` of
+//! content blocks can also be used directly as a typed tool output without
+//! being mistaken for ordinary JSON.
 //!
 //! ```
 //! use rig_core::{
@@ -81,8 +81,8 @@
 //!     None,
 //! ));
 //! assert!(matches!(
-//!     output.as_content().first_ref(),
-//!     ToolResultContent::Image(_)
+//!     output.as_content().first(),
+//!     Some(ToolResultContent::Image(_))
 //! ));
 //! ```
 //!
@@ -168,7 +168,7 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     ///
     /// Every owned serializable value implements [`IntoToolOutput`]
     /// automatically. [`ToolResultContent`](rig_core::message::ToolResultContent)
-    /// and [`OneOrMany`](rig_core::OneOrMany) preserve rich content when returned
+    /// and `Vec<ToolResultContent>` preserve rich content when returned
     /// directly; use [`ToolOutput`] when constructing the presentation
     /// explicitly.
     type Output: IntoToolOutput;
@@ -570,6 +570,16 @@ pub(crate) struct ToolDispatch {
     pub(crate) context: ToolContext,
 }
 
+impl ToolDispatch {
+    /// Publish the dispatch's result metadata back to the caller's context and
+    /// surface the result. Mutations to the tool's inbound snapshot are
+    /// discarded.
+    pub(crate) fn publish_to(self, context: &mut ToolContext) -> ToolResult {
+        context.accept_dispatch_result(self.context);
+        self.result
+    }
+}
+
 /// Execute a resolved registry entry through the single dispatch boundary.
 ///
 /// Every surface enters here with its caller-owned context. The helper clones
@@ -726,12 +736,8 @@ impl ToolSet {
     ) -> ToolResult {
         context.clear_dispatch_result();
         let tool = self.get(name).cloned();
-        let ToolDispatch {
-            result,
-            context: dispatch_context,
-        } = dispatch_tool(name, args.into(), tool, context).await;
-        context.accept_dispatch_result(dispatch_context);
-        result
+        let dispatch = dispatch_tool(name, args.into(), tool, context).await;
+        dispatch.publish_to(context)
     }
 
     /// Documents describing all registered tools.
@@ -841,29 +847,24 @@ mod tests {
     };
 
     use super::*;
-    use rig_core::{
-        OneOrMany,
-        message::{ImageMediaType, ToolResultContent},
-    };
+    use rig_core::message::{ImageMediaType, ToolResultContent};
 
     fn rich_error_output(label: &str) -> ToolOutput {
-        ToolOutput::content(
-            OneOrMany::many([
-                ToolResultContent::text(label),
-                ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
-            ])
-            .unwrap(),
-        )
+        ToolOutput::content(vec![
+            ToolResultContent::text(label),
+            ToolResultContent::image_base64("base64data==", Some(ImageMediaType::PNG), None),
+        ])
+        .expect("fixture content is non-empty")
     }
 
     fn assert_rich_error_output(result: &ToolResult, label: &str) {
         let content = result.output().as_content();
         assert_eq!(content.len(), 2);
         assert!(matches!(
-            content.first_ref(),
-            ToolResultContent::Text(text) if text.text == label
+            content.first(),
+            Some(ToolResultContent::Text(text)) if text.text == label
         ));
-        assert!(matches!(content.last_ref(), ToolResultContent::Image(_)));
+        assert!(matches!(content.last(), Some(ToolResultContent::Image(_))));
     }
 
     struct CloneTracked(Arc<AtomicUsize>);
@@ -1158,8 +1159,8 @@ mod tests {
 
         assert!(result.is_success());
         assert!(matches!(
-            result.output().as_content().first_ref(),
-            ToolResultContent::Image(_)
+            result.output().as_content().first(),
+            Some(ToolResultContent::Image(_))
         ));
         assert_eq!(result.output().as_json(), None);
     }
@@ -1261,7 +1262,6 @@ mod migrated_tests {
     /// crate; used only by these migrated tests.
     mod portable_fixtures {
         use rig_core::{
-            OneOrMany,
             message::{ImageMediaType, ToolResultContent},
             tool::{
                 PortableDynamicTool, PortableTool, PortableToolEmbedding, ToolExecutionError,
@@ -1289,15 +1289,15 @@ mod migrated_tests {
         pub struct PortableFixtureError;
 
         pub fn portable_fixture_output(label: impl Into<String>) -> ToolOutput {
-            let mut content = OneOrMany::one(ToolResultContent::json(
+            let mut content = vec![ToolResultContent::json(
                 serde_json::json!({"label": label.into()}),
-            ));
+            )];
             content.push(ToolResultContent::image_base64(
                 PORTABLE_FIXTURE_IMAGE,
                 Some(ImageMediaType::PNG),
                 None,
             ));
-            ToolOutput::content(content)
+            ToolOutput::content(content).expect("fixture content is non-empty")
         }
 
         pub fn portable_dynamic_fixture() -> PortableDynamicTool {
@@ -1838,7 +1838,7 @@ mod migrated_tests {
 
         assert_eq!(content.len(), 1);
         match content.first() {
-            ToolResultContent::Image(image) => {
+            Some(ToolResultContent::Image(image)) => {
                 assert!(matches!(image.data, DocumentSourceKind::Base64(_)));
                 assert_eq!(
                     image.media_type,

@@ -5,7 +5,6 @@ use aws_sdk_bedrockruntime::types::{
     CachePointBlock, CachePointType, InferenceConfiguration, SystemContentBlock, Tool,
     ToolConfiguration, ToolInputSchema, ToolSpecification,
 };
-use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, Message};
 use rig_core::message::{DocumentMediaType, UserContent};
 
@@ -51,20 +50,21 @@ impl AwsCompletionRequest {
             return Ok(None);
         }
 
-        let mut tools = vec![];
-        for tool_definition in self.inner.tools.iter() {
-            let doc: AwsDocument = tool_definition.parameters.clone().into();
-            let schema = ToolInputSchema::Json(doc.0);
-            let tool = Tool::ToolSpec(
+        let tools = self
+            .inner
+            .tools
+            .iter()
+            .map(|tool_definition| {
+                let doc: AwsDocument = tool_definition.parameters.clone().into();
                 ToolSpecification::builder()
                     .name(tool_definition.name.clone())
                     .set_description(Some(tool_definition.description.clone()))
-                    .set_input_schema(Some(schema))
+                    .set_input_schema(Some(ToolInputSchema::Json(doc.0)))
                     .build()
-                    .map_err(|e| CompletionError::RequestError(e.into()))?,
-            );
-            tools.push(tool);
-        }
+                    .map(Tool::ToolSpec)
+                    .map_err(|e| CompletionError::RequestError(e.into()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         if !tools.is_empty() {
             // Convert rig's ToolChoice to AWS Bedrock ToolChoice
@@ -183,19 +183,21 @@ impl AwsCompletionRequest {
                 .collect::<Vec<_>>()
                 .join(" | ");
 
-            let content = OneOrMany::one(UserContent::document(
+            let content = vec![UserContent::document(
                 messages,
                 Some(DocumentMediaType::TXT),
-            ));
+            )];
 
             full_history.push(Message::User { content });
         }
 
-        self.inner.chat_history.iter().for_each(|message| {
-            if !matches!(message, Message::System { .. }) {
-                full_history.push(message.clone());
-            }
-        });
+        full_history.extend(
+            self.inner
+                .chat_history
+                .iter()
+                .filter(|message| !matches!(message, Message::System { .. }))
+                .cloned(),
+        );
 
         let mut messages: Vec<aws_bedrock::Message> = full_history
             .into_iter()
@@ -237,7 +239,6 @@ impl AwsCompletionRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rig_core::OneOrMany;
     use rig_core::completion::{CompletionRequest, ToolDefinition};
     use rig_core::message::{Message, Text, ToolChoice, UserContent};
 
@@ -246,9 +247,9 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
-            }),
+            chat_history: vec![Message::User {
+                content: vec![UserContent::Text(Text::new("test".to_string()))],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -505,13 +506,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("History system instruction"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
+                    content: vec![UserContent::Text(Text::new("test".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 
@@ -561,13 +561,12 @@ mod tests {
         let request = CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::system("History system instruction"),
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("test".to_string()))),
+                    content: vec![UserContent::Text(Text::new("test".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 
@@ -601,23 +600,18 @@ mod tests {
         let reasoning =
             rig_core::message::Reasoning::new_with_signature("thinking", Some("sig".to_string()));
         let request = CompletionRequest {
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new(
-                        "user prompt".to_string(),
-                    ))),
+                    content: vec![UserContent::Text(Text::new("user prompt".to_string()))],
                 },
                 Message::Assistant {
                     id: None,
-                    content: OneOrMany::one(rig_core::completion::AssistantContent::Reasoning(
-                        reasoning,
-                    )),
+                    content: vec![rig_core::completion::AssistantContent::Reasoning(reasoning)],
                 },
                 Message::User {
-                    content: OneOrMany::one(UserContent::Text(Text::new("follow up".to_string()))),
+                    content: vec![UserContent::Text(Text::new("follow up".to_string()))],
                 },
-            ])
-            .expect("history should be non-empty"),
+            ],
             ..minimal_request()
         };
 

@@ -206,7 +206,10 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
         let documents_as_strings: Vec<String> = documents.into_iter().collect();
 
         let documents_as_vec = embedder
-            .embed(documents_as_strings.clone(), None)
+            .embed(
+                documents_as_strings.iter().map(String::as_str).collect(),
+                None,
+            )
             .map_err(|err| EmbeddingError::ProviderError(err.to_string()))?;
 
         let docs = documents_as_strings

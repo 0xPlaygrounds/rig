@@ -20,7 +20,7 @@ use rig_core::{
     embeddings::EmbeddingModel,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
+        request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ pub struct CreateRecord {
     embedded_text: String,
 }
 
-// NOTE: Cannot be used in dynamic store due to aws_smithy_types::Document not impl'ing Serialize or Deserialize
+/// S3Vectors filter backed by the AWS SDK's native document type.
 #[derive(Clone, Debug)]
 pub struct S3SearchFilter(aws_smithy_types::Document);
 
@@ -62,6 +62,12 @@ impl SearchFilter for S3SearchFilter {
 
     fn or(self, rhs: Self) -> Self {
         Self(document!({ "$or": [ self.0, rhs.0 ]}))
+    }
+}
+
+impl DynamicSearchFilter for S3SearchFilter {
+    fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
+        Ok(filter.interpret_with(|value| json_value_to_document(&value)))
     }
 }
 
@@ -136,6 +142,67 @@ where
     pub fn client(&self) -> &Client {
         &self.client
     }
+
+    /// Validates the sample count, embeds the query, and runs the S3Vectors
+    /// query, returning the `(distance, vector)` pairs passing the threshold.
+    async fn run_query(
+        &self,
+        req: &VectorSearchRequest<S3SearchFilter>,
+        return_metadata: bool,
+    ) -> Result<Vec<(f64, aws_sdk_s3vectors::types::QueryOutputVector)>, VectorStoreError> {
+        if req.samples() > i32::MAX as u64 {
+            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
+        }
+
+        let embedding = self
+            .embedding_model
+            .embed_text(req.query())
+            .await?
+            .vec
+            .into_iter()
+            .map(|x| x as f32)
+            .collect();
+
+        let mut query_builder = self
+            .client
+            .query_vectors()
+            .query_vector(VectorData::Float32(embedding))
+            .top_k(req.samples() as i32)
+            .return_distance(true)
+            .vector_bucket_name(self.bucket_name())
+            .index_name(self.index_name());
+
+        if return_metadata {
+            query_builder = query_builder.return_metadata(true);
+        }
+
+        if let Some(filter) = req.filter() {
+            query_builder = query_builder.filter(filter.inner().clone())
+        }
+
+        let query = query_builder
+            .send()
+            .await
+            .map_err(VectorStoreError::datastore)?;
+
+        Ok(query
+            .vectors
+            .into_iter()
+            .map(|x| {
+                let distance = x.distance.ok_or_else(|| {
+                    VectorStoreError::DatastoreError("S3Vectors response missing distance".into())
+                })? as f64;
+
+                Ok((distance, x))
+            })
+            .collect::<Result<Vec<_>, VectorStoreError>>()?
+            .into_iter()
+            .filter(|(distance, _)| {
+                !req.threshold()
+                    .is_some_and(|threshold| *distance < threshold)
+            })
+            .collect())
+    }
 }
 
 impl<M> InsertDocuments for S3VectorsVectorStore<M>
@@ -144,45 +211,34 @@ where
 {
     async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + Send>(
         &self,
-        documents: Vec<(Doc, rig_core::OneOrMany<rig_core::embeddings::Embedding>)>,
+        documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), rig_core::vector_store::VectorStoreError> {
-        let docs: Vec<PutInputVector> = documents
-            .into_iter()
-            .map(|x| {
-                let json_value = serde_json::to_value(&x.0).map_err(VectorStoreError::JsonError)?;
-
-                x.1.into_iter()
-                    .map(|y| {
-                        let document = CreateRecord {
-                            document: json_value.clone(),
-                            embedded_text: y.document,
-                        };
-                        let document =
-                            serde_json::to_value(&document).map_err(VectorStoreError::JsonError)?;
-                        let document = json_value_to_document(&document);
-                        let vec = y.vec.into_iter().map(|item| item as f32).collect();
-                        PutInputVector::builder()
-                            .metadata(document.clone())
-                            .data(VectorData::Float32(vec))
-                            .key(Uuid::new_v4())
-                            .build()
-                            .map_err(|x| {
-                                VectorStoreError::DatastoreError(
-                                    format!("Couldn't build vector input: {x}").into(),
-                                )
-                            })
+        let docs: Vec<PutInputVector> =
+            rig_core::vector_store::flatten_embedded(documents, |json_value, y| {
+                let document = CreateRecord {
+                    document: json_value.clone(),
+                    embedded_text: y.document,
+                };
+                let document =
+                    serde_json::to_value(&document).map_err(VectorStoreError::JsonError)?;
+                let document = json_value_to_document(&document);
+                let vec = y.vec.into_iter().map(|item| item as f32).collect();
+                PutInputVector::builder()
+                    .metadata(document.clone())
+                    .data(VectorData::Float32(vec))
+                    .key(Uuid::new_v4())
+                    .build()
+                    .map_err(|x| {
+                        VectorStoreError::DatastoreError(
+                            format!("Couldn't build vector input: {x}").into(),
+                        )
                     })
-                    .collect()
             })
-            .collect::<Result<Vec<Vec<PutInputVector>>, VectorStoreError>>()
             .map_err(|x| {
                 VectorStoreError::DatastoreError(
                     format!("Could not build vector store data: {x}").into(),
                 )
-            })?
-            .into_iter()
-            .flatten()
-            .collect();
+            })?;
 
         self.client
             .put_vectors()
@@ -264,132 +320,59 @@ where
         &self,
         req: VectorSearchRequest<S3SearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        if req.samples() > i32::MAX as u64 {
-            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
-        }
-
-        let embedding = self
-            .embedding_model
-            .embed_text(req.query())
+        self.run_query(&req, true)
             .await?
-            .vec
             .into_iter()
-            .map(|x| x as f32)
-            .collect();
-
-        let mut query_builder = self
-            .client
-            .query_vectors()
-            .query_vector(VectorData::Float32(embedding))
-            .top_k(req.samples() as i32)
-            .return_distance(true)
-            .return_metadata(true)
-            .vector_bucket_name(self.bucket_name())
-            .index_name(self.index_name());
-
-        if let Some(filter) = req.filter() {
-            query_builder = query_builder.filter(filter.inner().clone())
-        }
-
-        let query = query_builder
-            .send()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
-
-        let res: Vec<(f64, String, T)> = query
-            .vectors
-            .into_iter()
-            .map(|x| {
-                let distance = x.distance.ok_or_else(|| {
-                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                        "S3Vectors response missing distance",
-                    )))
-                })? as f64;
-
-                if req
-                    .threshold()
-                    .is_some_and(|threshold| distance < threshold)
-                {
-                    return Ok(None);
-                }
-
+            .map(|(distance, x)| {
                 let metadata_document = x.metadata.ok_or_else(|| {
-                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                        "S3Vectors response missing metadata",
-                    )))
+                    VectorStoreError::DatastoreError("S3Vectors response missing metadata".into())
                 })?;
                 let val = document_to_json_value(&metadata_document);
                 let metadata: T = serde_json::from_value(val)?;
 
-                Ok(Some((distance, x.key, metadata)))
+                Ok((distance, x.key, metadata))
             })
-            .collect::<Result<Vec<_>, VectorStoreError>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        Ok(res)
+            .collect()
     }
 
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<S3SearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        if req.samples() > i32::MAX as u64 {
-            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
-        }
-
-        let embedding = self
-            .embedding_model
-            .embed_text(req.query())
+        Ok(self
+            .run_query(&req, false)
             .await?
-            .vec
             .into_iter()
-            .map(|x| x as f32)
-            .collect();
+            .map(|(distance, x)| (distance, x.key))
+            .collect())
+    }
+}
 
-        let mut query_builder = self
-            .client
-            .query_vectors()
-            .query_vector(VectorData::Float32(embedding))
-            .top_k(req.samples() as i32)
-            .return_distance(true)
-            .vector_bucket_name(self.bucket_name())
-            .index_name(self.index_name());
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        if let Some(filter) = req.filter() {
-            query_builder = query_builder.filter(filter.inner().clone())
-        }
+    #[test]
+    fn dynamic_filter_compiles_to_native_aws_documents() {
+        let filter = Filter::eq("status", serde_json::json!("ready"))
+            .and(Filter::eq("tags", serde_json::json!(["rust", "ai"])))
+            .and(Filter::gt("score", serde_json::json!(4.5)));
 
-        let query = query_builder
-            .send()
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let compiled = S3SearchFilter::from_dynamic_filter(filter)
+            .expect("JSON values should compile to AWS documents");
 
-        let res: Vec<(f64, String)> = query
-            .vectors
-            .into_iter()
-            .map(|x| {
-                let distance = x.distance.ok_or_else(|| {
-                    VectorStoreError::DatastoreError(Box::new(std::io::Error::other(
-                        "S3Vectors response missing distance",
-                    )))
-                })? as f64;
-
-                if req
-                    .threshold()
-                    .is_some_and(|threshold| distance < threshold)
-                {
-                    return Ok(None);
-                }
-
-                Ok(Some((distance, x.key)))
+        assert_eq!(
+            document_to_json_value(compiled.inner()),
+            serde_json::json!({
+                "$and": [{
+                    "$and": [
+                        { "status": { "$eq": "ready" } },
+                        { "tags": { "$eq": ["rust", "ai"] } }
+                    ]
+                }, {
+                    "score": { "$gt": 4.5 }
+                }]
             })
-            .collect::<Result<Vec<_>, VectorStoreError>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        Ok(res)
+        );
     }
 }

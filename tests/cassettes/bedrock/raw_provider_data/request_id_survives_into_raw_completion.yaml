@@ -1,0 +1,16 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{"maxTokens":16},"messages":[{"content":[{"text":"Reply with the single word: ready."}],"role":"user"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-amzn-requestid
+    value: req_REDACTED_1
+  body: '{"metrics":{"latencyMs":378},"output":{"message":{"content":[{"text":"Ready."}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":8,"outputTokens":3,"serverToolUsage":{},"totalTokens":11}}'

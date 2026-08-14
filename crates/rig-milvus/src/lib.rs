@@ -10,13 +10,12 @@ mod filter;
 
 use reqwest::StatusCode;
 use rig_core::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::{Filter as CoreFilter, SearchFilter, VectorSearchRequest},
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
 };
 use serde::{Deserialize, Serialize};
 
@@ -61,11 +60,12 @@ struct SearchRequest<'a> {
     output_fields: Vec<&'a str>,
 }
 
+/// Milvus search response envelope, generic over the row shape.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct SearchResult<T> {
+struct SearchResult<Row> {
     code: i64,
-    data: Vec<SearchResultData<T>>,
+    data: Vec<Row>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,16 +74,9 @@ struct SearchResultData<T> {
     id: i64,
     distance: f64,
     document: T,
-    embedded_text: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchResultOnlyId {
-    code: i64,
-    data: Vec<SearchResultDataOnlyId>,
-}
-
+/// Row shape for the id-only search path.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchResultDataOnlyId {
@@ -167,6 +160,39 @@ where
             output_fields,
         }
     }
+
+    /// Embeds the query, runs the Milvus search endpoint, and parses the response.
+    async fn search<T: for<'a> Deserialize<'a>>(
+        &self,
+        req: &VectorSearchRequest<Filter>,
+        id_only: bool,
+    ) -> Result<T, VectorStoreError> {
+        let embedding = self.model.embed_text(req.query()).await?;
+        let url = format!(
+            "{base_url}/v2/vectordb/entities/search",
+            base_url = self.base_url
+        );
+
+        let body = self.create_search_request(embedding.vec, req, id_only);
+
+        let mut client = self.client.post(url);
+        if let Some(ref token) = self.token {
+            client = client.header("Authorization", format!("Bearer {token}"));
+        }
+
+        let body = serde_json::to_string(&body)?;
+
+        let res = client.body(body).send().await?;
+
+        if res.status() != StatusCode::OK {
+            let status = res.status();
+            let text = res.text().await?;
+
+            return Err(VectorStoreError::ExternalAPIError(status, text));
+        }
+
+        Ok(res.json().await?)
+    }
 }
 
 impl<Model> InsertDocuments for MilvusVectorStore<Model>
@@ -175,42 +201,25 @@ where
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         let url = format!(
             "{base_url}/v2/vectordb/entities/insert",
             base_url = self.base_url
         );
 
-        let data = documents
-            .into_iter()
-            .map(|(document, embeddings)| {
-                let json_document: serde_json::Value = serde_json::to_value(&document)?;
-                let json_document_as_string = serde_json::to_string(&json_document)?;
-
-                let embeddings = embeddings
-                    .into_iter()
-                    .map(|embedding| {
-                        let embedded_text = embedding.document;
-                        let embedding: Vec<f64> = embedding.vec;
-
-                        CreateRecord {
-                            document: json_document_as_string.clone(),
-                            embedded_text,
-                            embedding,
-                        }
-                    })
-                    .collect::<Vec<CreateRecord>>();
-                Ok(embeddings)
-            })
-            .collect::<Result<Vec<Vec<CreateRecord>>, VectorStoreError>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<CreateRecord>>();
+        let data =
+            rig_core::vector_store::flatten_embedded(documents, |json_document, embedding| {
+                Ok(CreateRecord {
+                    document: serde_json::to_string(json_document)?,
+                    embedded_text: embedding.document,
+                    embedding: embedding.vec,
+                })
+            })?;
 
         let mut client = self.client.post(url);
         if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
+            client = client.header("Authorization", format!("Bearer {token}"));
         }
 
         let insert_request = self.create_insert_request(data);
@@ -242,31 +251,7 @@ where
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        let embedding = self.model.embed_text(req.query()).await?;
-        let url = format!(
-            "{base_url}/v2/vectordb/entities/search",
-            base_url = self.base_url
-        );
-
-        let body = self.create_search_request(embedding.vec, &req, false);
-
-        let mut client = self.client.post(url);
-        if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
-        }
-
-        let body = serde_json::to_string(&body)?;
-
-        let res = client.body(body).send().await?;
-
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await?;
-
-            return Err(VectorStoreError::ExternalAPIError(status, text));
-        }
-
-        let json: SearchResult<T> = res.json().await?;
+        let json: SearchResult<SearchResultData<T>> = self.search(&req, false).await?;
 
         let res = json
             .data
@@ -283,31 +268,7 @@ where
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        let embedding = self.model.embed_text(req.query()).await?;
-        let url = format!(
-            "{base_url}/v2/vectordb/entities/search",
-            base_url = self.base_url
-        );
-
-        let body = self.create_search_request(embedding.vec, &req, true);
-
-        let mut client = self.client.post(url);
-        if let Some(ref token) = self.token {
-            client = client.header("Authentication", format!("Bearer {token}"));
-        }
-
-        let body = serde_json::to_string(&body)?;
-
-        let res = client.body(body).send().await?;
-
-        if res.status() != StatusCode::OK {
-            let status = res.status();
-            let text = res.text().await?;
-
-            return Err(VectorStoreError::ExternalAPIError(status, text));
-        }
-
-        let json: SearchResultOnlyId = res.json().await?;
+        let json: SearchResult<SearchResultDataOnlyId> = self.search(&req, true).await?;
 
         let res = json
             .data
@@ -316,35 +277,5 @@ where
             .collect();
 
         Ok(res)
-    }
-}
-
-impl<M> VectorStoreIndexDyn for MilvusVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<CoreFilter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        Box::pin(async move {
-            let req = req.try_map_filter(Filter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-
-            Ok(results)
-        })
-    }
-
-    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<CoreFilter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let req = req.try_map_filter(Filter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
-
-            Ok(results)
-        })
     }
 }

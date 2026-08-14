@@ -12,9 +12,8 @@
 //! # }
 //! ```
 
-use crate::client::{self, Capabilities, Capable, DebugExt, Nothing, Provider, ProviderBuilder};
-use crate::client::{BearerAuth, ProviderClient};
-use crate::http_client::{self, HttpClientExt};
+use crate::client::BearerAuth;
+use crate::client::{self, DebugExt, Provider};
 
 // ================================================================
 // Main Hyperbolic Client
@@ -34,17 +33,12 @@ impl Provider for HyperbolicExt {
     const VERIFY_PATH: &'static str = "/models";
 }
 
-impl<H> Capabilities<H> for HyperbolicExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Nothing;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Capable<ImageGenerationModel<H>>;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Capable<AudioGenerationModel<H>>;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    HyperbolicExt,
+    completion = CompletionModel<H>,
+    image_generation = ImageGenerationModel<H>,
+    audio_generation = AudioGenerationModel<H>,
+);
 
 impl DebugExt for HyperbolicExt {}
 
@@ -88,60 +82,24 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
     }
 }
 
-impl ProviderBuilder for HyperbolicBuilder {
-    type Extension<H>
-        = HyperbolicExt
-    where
-        H: HttpClientExt;
-    type ApiKey = HyperbolicApiKey;
-
-    const BASE_URL: &'static str = HYPERBOLIC_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &crate::client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(HyperbolicExt)
-    }
-}
+client::impl_default_provider_builder!(
+    HyperbolicBuilder => HyperbolicExt,
+    api_key = HyperbolicApiKey,
+    base_url = HYPERBOLIC_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<HyperbolicExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
     client::ClientBuilder<HyperbolicBuilder, HyperbolicApiKey, H>;
 
-impl ProviderClient for Client {
-    type Input = HyperbolicApiKey;
-    type Error = crate::client::ProviderClientError;
+client::impl_provider_client!(
+    Client,
+    input = HyperbolicApiKey,
+    api_key_env = "HYPERBOLIC_API_KEY",
+);
 
-    /// Create a new Hyperbolic client from the `HYPERBOLIC_API_KEY` environment variable.
-    fn from_env() -> Result<Self, Self::Error> {
-        let api_key = crate::client::required_env_var("HYPERBOLIC_API_KEY")?;
-        Self::new(&api_key).map_err(Into::into)
-    }
-
-    fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
-        Self::new(input).map_err(Into::into)
-    }
-}
-
-#[cfg(any(feature = "image", feature = "audio"))]
-use serde::Deserialize;
-
-#[cfg(any(feature = "image", feature = "audio"))]
-#[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
-    message: String,
-}
-
-#[cfg(any(feature = "image", feature = "audio"))]
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
+#[cfg(feature = "audio")]
+use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
 // Hyperbolic Completion API
@@ -189,13 +147,13 @@ pub use image_generation::*;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
-    use super::{ApiResponse, Client};
-    use crate::http_client::HttpClientExt;
+    use super::HyperbolicExt;
     use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::json_utils::merge_inplace;
-    use base64::Engine;
-    use base64::prelude::BASE64_STANDARD;
+    use crate::providers::internal::image_generation::{
+        GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
+    };
     use serde::Deserialize;
     use serde_json::json;
 
@@ -207,27 +165,8 @@ mod image_generation {
     pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
     pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
-    #[derive(Clone)]
-    pub struct ImageGenerationModel<T> {
-        client: Client<T>,
-        pub model: String,
-    }
-
-    impl<T> ImageGenerationModel<T> {
-        pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-            Self {
-                client,
-                model: model.into(),
-            }
-        }
-
-        pub fn with_model(client: Client<T>, model: &str) -> Self {
-            Self {
-                client,
-                model: model.into(),
-            }
-        }
-    }
+    /// Hyperbolic image generation model.
+    pub type ImageGenerationModel<T> = GenericImageGenerationModel<HyperbolicExt, T>;
 
     #[derive(Clone, Deserialize)]
     pub struct Image {
@@ -245,40 +184,25 @@ mod image_generation {
         type Error = ImageGenerationError;
 
         fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-            let image = value
-                .images
-                .first()
-                .ok_or_else(|| ImageGenerationError::ResponseError("missing image data".into()))?;
-            let data = BASE64_STANDARD
-                .decode(&image.image)
-                .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
-
-            Ok(Self {
-                image: data,
-                response: value,
-            })
+            decode_base64_image(
+                value,
+                |response| response.images.first().map(|image| image.image.as_str()),
+                "missing image data",
+                None,
+            )
         }
     }
 
-    impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-    where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-    {
+    impl JsonImageGenerationProvider for HyperbolicExt {
+        const IMAGE_GENERATION_PATH: &'static str = "/v1/image/generation";
         type Response = ImageGenerationResponse;
 
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-            Self::new(client.clone(), model)
-        }
-
-        async fn image_generation(
-            &self,
+        fn image_generation_request_body(
+            model: &str,
             generation_request: ImageGenerationRequest,
-        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-        {
+        ) -> Result<serde_json::Value, ImageGenerationError> {
             let mut request = json!({
-                "model_name": self.model,
+                "model_name": model,
                 "prompt": generation_request.prompt,
                 "height": generation_request.height,
                 "width": generation_request.width,
@@ -288,37 +212,7 @@ mod image_generation {
                 merge_inplace(&mut request, params);
             }
 
-            let body = serde_json::to_vec(&request)?;
-
-            let request = self
-                .client
-                .post("/v1/image/generation")?
-                .header("Content-Type", "application/json")
-                .body(body)
-                .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
-
-            let response = self.client.send::<_, bytes::Bytes>(request).await?;
-
-            let status = response.status();
-            let response_body = response.into_body().into_future().await?.to_vec();
-
-            if !status.is_success() {
-                return Err(ImageGenerationError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&response_body),
-                ));
-            }
-
-            match serde_json::from_slice::<ApiResponse<ImageGenerationResponse>>(&response_body)? {
-                ApiResponse::Ok(response) => response.try_into(),
-                ApiResponse::Err(err) => {
-                    tracing::warn!(message = %err.message, "provider returned an error response");
-                    Err(ImageGenerationError::from_http_response(
-                        status,
-                        String::from_utf8_lossy(&response_body),
-                    ))
-                }
-            }
+            Ok(request)
         }
     }
 }

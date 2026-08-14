@@ -1,12 +1,12 @@
 use crate::http_client::HttpClientExt;
+use crate::providers::internal::transcription::send_json_transcription;
 use crate::providers::openrouter::Client;
 use crate::transcription;
 use crate::transcription::TranscriptionError;
 use crate::wasm_compat::WasmCompatSend;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use bytes::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 // ================================================================
 // Model constants
@@ -28,24 +28,6 @@ pub const CHIRP_3: &str = "google/chirp-3";
 // ================================================================
 // Request/Response types
 // ================================================================
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct InputAudio {
-    data: String,
-    format: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize)]
-struct TranscriptionRequestInput {
-    model: String,
-    input_audio: InputAudio,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    language: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-}
 
 #[derive(Debug, Deserialize)]
 pub struct TranscriptionResponse {
@@ -85,20 +67,11 @@ impl TryFrom<TranscriptionResponse>
 // Model
 // ================================================================
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
+pub type TranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::GenericTranscriptionModel<
+        crate::providers::openrouter::client::OpenRouterExt,
+        T,
+    >;
 
 fn infer_format_from_filename(filename: &str) -> String {
     std::path::Path::new(filename)
@@ -181,26 +154,18 @@ where
 
         let body = serde_json::to_vec(&serde_json::Value::Object(body_map))?;
 
-        let req = self
-            .client
-            .post("/audio/transcriptions")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
-
-        let response = self.client.send::<_, Bytes>(req).await?;
-        let status = response.status();
-        let body_bytes = response.into_body().await?;
-
-        if status.is_success() {
-            let resp: TranscriptionResponse = serde_json::from_slice(&body_bytes)?;
-            resp.try_into()
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body_bytes),
-            ))
-        }
+        send_json_transcription(
+            &self.client,
+            self.client
+                .post("/audio/transcriptions")?
+                .header("Content-Type", "application/json"),
+            body,
+            |_, body_bytes| {
+                let resp: TranscriptionResponse = serde_json::from_slice(body_bytes)?;
+                resp.try_into()
+            },
+        )
+        .await
     }
 }
 
@@ -223,24 +188,6 @@ mod tests {
         assert_eq!(infer_format_from_filename("noextension"), "wav");
         assert_eq!(infer_format_from_filename("meeting.final.mp3"), "mp3");
         assert_eq!(infer_format_from_filename("audio.tar.gz"), "wav");
-    }
-
-    #[test]
-    fn test_transcription_request_serialization() {
-        let audio_b64 = STANDARD.encode(b"test audio data");
-        let req = TranscriptionRequestInput {
-            model: "openai/whisper-1".to_string(),
-            input_audio: InputAudio {
-                data: audio_b64,
-                format: "mp3".to_string(),
-            },
-            language: Some("en".to_string()),
-            temperature: None,
-        };
-        let json = serde_json::to_string(&req).unwrap();
-        assert!(json.contains("\"model\":\"openai/whisper-1\""));
-        assert!(json.contains("\"input_audio\""));
-        assert!(json.contains("\"language\":\"en\""));
     }
 
     #[test]

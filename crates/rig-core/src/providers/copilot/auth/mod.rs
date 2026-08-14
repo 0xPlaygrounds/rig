@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+pub use crate::providers::internal::auth::{DeviceCodeHandler, DeviceCodePrompt};
+
 #[cfg(not(target_family = "wasm"))]
 mod native;
 #[cfg(target_family = "wasm")]
@@ -12,34 +14,6 @@ mod wasm;
 use native as platform;
 #[cfg(target_family = "wasm")]
 use wasm as platform;
-
-#[derive(Debug, Clone)]
-pub struct DeviceCodePrompt {
-    pub verification_uri: String,
-    pub user_code: String,
-}
-
-#[derive(Clone, Default)]
-pub struct DeviceCodeHandler(Option<Arc<dyn Fn(DeviceCodePrompt) + Send + Sync>>);
-
-impl DeviceCodeHandler {
-    pub fn new<F>(handler: F) -> Self
-    where
-        F: Fn(DeviceCodePrompt) + Send + Sync + 'static,
-    {
-        Self(Some(Arc::new(handler)))
-    }
-}
-
-impl fmt::Debug for DeviceCodeHandler {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.is_some() {
-            f.write_str("DeviceCodeHandler(<callback>)")
-        } else {
-            f.write_str("DeviceCodeHandler(None)")
-        }
-    }
-}
 
 #[derive(Clone)]
 pub enum AuthSource {

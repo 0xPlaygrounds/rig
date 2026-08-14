@@ -6,7 +6,6 @@ use std::{
 };
 
 use crate::{
-    OneOrMany,
     completion::{
         AssistantContent, CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
         Usage,
@@ -24,6 +23,8 @@ pub enum MockError {
     Provider(String),
     /// Request construction error.
     Request(String),
+    /// A preserved provider error response (rig#2314), id included.
+    ProviderResponse(crate::provider_response::ProviderResponseError),
 }
 
 impl MockError {
@@ -41,6 +42,7 @@ impl MockError {
         match self {
             Self::Provider(message) => CompletionError::ProviderError(message),
             Self::Request(message) => CompletionError::RequestError(message.into()),
+            Self::ProviderResponse(response) => CompletionError::ProviderResponse(response),
         }
     }
 }
@@ -53,10 +55,11 @@ pub struct MockTurn {
 
 #[derive(Clone, Debug)]
 struct MockTurnResponse {
-    choice: OneOrMany<AssistantContent>,
+    choice: Vec<AssistantContent>,
     usage: Usage,
     message_id: Option<String>,
     response_id: Option<String>,
+    provider_request_id: Option<String>,
 }
 
 impl MockTurn {
@@ -84,6 +87,22 @@ impl MockTurn {
         }
     }
 
+    /// Create a provider-response error turn carrying a transport request id
+    /// (rig#2314): the scripted failure a test uses to assert error-identity
+    /// attribution.
+    pub fn provider_response_error(
+        status: http::StatusCode,
+        body: impl Into<String>,
+        request_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            response: Err(MockError::ProviderResponse(
+                crate::provider_response::ProviderResponseError::new(status, body)
+                    .with_provider_request_id(Some(request_id.into())),
+            )),
+        }
+    }
+
     /// Create a request-error response turn.
     pub fn request_error(message: impl Into<String>) -> Self {
         Self {
@@ -95,26 +114,29 @@ impl MockTurn {
     pub fn from_content(content: AssistantContent) -> Self {
         Self {
             response: Ok(MockTurnResponse {
-                choice: OneOrMany::one(content),
+                choice: vec![content],
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
+                provider_request_id: None,
             }),
         }
     }
 
-    /// Create a response turn from multiple assistant content items.
-    pub fn from_contents(
-        content: impl IntoIterator<Item = AssistantContent>,
-    ) -> Result<Self, crate::one_or_many::EmptyListError> {
-        Ok(Self {
+    /// Create a response turn from assistant content items.
+    ///
+    /// Infallible now that content is a `Vec`: an empty turn is a shape a
+    /// provider can genuinely return, so it is a value to build, not an error.
+    pub fn from_contents(content: impl IntoIterator<Item = AssistantContent>) -> Self {
+        Self {
             response: Ok(MockTurnResponse {
-                choice: OneOrMany::many(content)?,
+                choice: content.into_iter().collect(),
                 usage: Usage::new(),
                 message_id: None,
                 response_id: None,
+                provider_request_id: None,
             }),
-        })
+        }
     }
 
     /// Attach a provider-specific call ID to a tool-call response turn.
@@ -155,12 +177,21 @@ impl MockTurn {
         self
     }
 
+    /// Set a provider transport request id for this turn.
+    pub fn with_provider_request_id(mut self, request_id: impl Into<String>) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.provider_request_id = Some(request_id.into());
+        }
+        self
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(
             CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER)
                 .with_optional_message_id(response.message_id)
-                .with_optional_response_id(response.response_id),
+                .with_optional_response_id(response.response_id)
+                .with_optional_provider_request_id(response.provider_request_id),
         )
     }
 }
@@ -318,7 +349,7 @@ mod tests {
         CompletionRequest {
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::user(prompt)),
+            chat_history: vec![Message::user(prompt)],
             documents: Vec::new(),
             tools: Vec::new(),
             temperature: None,
@@ -345,7 +376,7 @@ mod tests {
         assert_eq!(first.message_id.as_deref(), Some("msg_1"));
         assert!(matches!(
             first.choice.first(),
-            AssistantContent::Text(text) if text.text == "first"
+            Some(AssistantContent::Text(text)) if text.text == "first"
         ));
 
         let second = model
@@ -354,7 +385,7 @@ mod tests {
             .expect("second scripted turn should succeed");
         assert!(matches!(
             second.choice.first(),
-            AssistantContent::ToolCall(tool_call)
+            Some(AssistantContent::ToolCall(tool_call))
                 if tool_call.id == "tool_1"
                     && tool_call
                         .provider

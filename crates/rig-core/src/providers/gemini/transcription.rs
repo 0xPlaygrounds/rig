@@ -9,6 +9,7 @@ use crate::{
     providers::gemini::completion::gemini_api_types::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
     },
+    providers::internal::transcription::send_json_transcription,
     transcription::{self, TranscriptionError},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
@@ -18,21 +19,11 @@ use super::{Client, completion::gemini_api_types::GenerateContentResponse};
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
-#[derive(Clone)]
-pub struct TranscriptionModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: gemini-1.5-flash)
-    pub model: String,
-}
-
-impl<T> TranscriptionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
+pub type TranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::GenericTranscriptionModel<
+        crate::providers::gemini::client::GeminiExt,
+        T,
+    >;
 
 impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
 where
@@ -103,39 +94,31 @@ where
         );
 
         let body = serde_json::to_vec(&request)?;
-        let req = self
-            .client
-            .post(format!("/v1beta/models/{}:generateContent", self.model))?
-            .body(body)
-            .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
+        send_json_transcription(
+            &self.client,
+            self.client
+                .post(format!("/v1beta/models/{}:generateContent", self.model))?,
+            body,
+            |_, body| {
+                let body: GenerateContentResponse = serde_json::from_slice(body)?;
 
-        if response.status().is_success() {
-            let body: GenerateContentResponse =
-                serde_json::from_slice(&response.into_body().await?)?;
+                match body.usage_metadata {
+                    Some(ref usage) => tracing::info!(target: "rig",
+                    "Gemini completion token usage: {}",
+                    usage
+                    ),
+                    None => tracing::info!(target: "rig",
+                        "Gemini completion token usage: n/a",
+                    ),
+                }
 
-            match body.usage_metadata {
-                Some(ref usage) => tracing::info!(target: "rig",
-                "Gemini completion token usage: {}",
-                usage
-                ),
-                None => tracing::info!(target: "rig",
-                    "Gemini completion token usage: n/a",
-                ),
-            }
+                tracing::debug!("Received response");
 
-            tracing::debug!("Received response");
-
-            Ok(transcription::TranscriptionResponse::try_from(body)?)
-        } else {
-            let status = response.status();
-            let body = response.into_body().await?;
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&body),
-            ))
-        }
+                transcription::TranscriptionResponse::try_from(body)
+            },
+        )
+        .await
     }
 }
 

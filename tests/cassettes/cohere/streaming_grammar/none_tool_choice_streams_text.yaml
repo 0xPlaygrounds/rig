@@ -1,0 +1,33 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":32,"messages":[{"content":[{"text":"Calculate 8 - 3. Answer directly without calling a tool.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tool_choice":"NONE","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: message-start
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"5b097990-c77d-4255-afd8-277e325ab9f2","type":"message-start"}
+
+    event: content-start
+    data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"5"}}},"index":0,"type":"content-delta"}
+
+    event: content-end
+    data: {"index":0,"type":"content-end"}
+
+    event: message-end
+    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":70,"output_tokens":1},"cached_tokens":704,"tokens":{"input_tokens":1478,"output_tokens":3}}},"type":"message-end"}
+
+    data: [DONE]
+

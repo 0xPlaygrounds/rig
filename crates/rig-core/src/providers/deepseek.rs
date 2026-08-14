@@ -14,20 +14,12 @@
 
 use serde_json::Value;
 
-use crate::client::{
-    self, BearerAuth, Capabilities, Capable, DebugExt, ModelLister, Nothing, Provider,
-    ProviderBuilder, ProviderClient,
-};
-use crate::http_client::{self, HttpClientExt};
-use crate::model::{Model, ModelList, ModelListingError};
-use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
+use crate::client::{self, BearerAuth, DebugExt, Provider, ProviderClient};
 use crate::providers::openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
-    OneOrMany,
     completion::{self, CompletionError},
     json_utils,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
 
@@ -118,38 +110,19 @@ impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
     }
 }
 
-impl<H> Capabilities<H> for DeepSeekExt {
-    type Completion = Capable<CompletionModel<H>>;
-    type Embeddings = Nothing;
-    type Transcription = Nothing;
-    type ModelListing = Capable<DeepSeekModelLister<H>>;
-    #[cfg(feature = "image")]
-    type ImageGeneration = Nothing;
-    #[cfg(feature = "audio")]
-    type AudioGeneration = Nothing;
-    type Rerank = Nothing;
-}
+client::impl_capabilities!(
+    DeepSeekExt,
+    completion = CompletionModel<H>,
+    model_listing = DeepSeekModelLister<H>,
+);
 
 impl DebugExt for DeepSeekExt {}
 
-impl ProviderBuilder for DeepSeekExtBuilder {
-    type Extension<H>
-        = DeepSeekExt
-    where
-        H: HttpClientExt;
-    type ApiKey = DeepSeekApiKey;
-
-    const BASE_URL: &'static str = DEEPSEEK_API_BASE_URL;
-
-    fn build<H>(
-        _builder: &client::ClientBuilder<Self, Self::ApiKey, H>,
-    ) -> http_client::Result<Self::Extension<H>>
-    where
-        H: HttpClientExt,
-    {
-        Ok(DeepSeekExt)
-    }
-}
+client::impl_default_provider_builder!(
+    DeepSeekExtBuilder => DeepSeekExt,
+    api_key = DeepSeekApiKey,
+    base_url = DEEPSEEK_API_BASE_URL,
+);
 
 pub type Client<H = reqwest::Client> = client::Client<DeepSeekExt, H>;
 pub type ClientBuilder<H = crate::markers::Missing> =
@@ -259,7 +232,9 @@ impl From<&Usage> for crate::completion::Usage {
                 .as_ref()
                 .and_then(|details| details.cached_tokens)
                 .map(u64::from)
-                .unwrap_or(0),
+                // DeepSeek's native usage reports cache hits outside the
+                // OpenAI-style details object.
+                .unwrap_or(u64::from(usage.prompt_cache_hit_tokens)),
         );
         normalized.reasoning_tokens = usage
             .completion_tokens_details
@@ -301,16 +276,6 @@ pub struct Choice {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum Message {
-    System {
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    User {
-        content: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
     Assistant {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -324,11 +289,6 @@ pub enum Message {
         /// only exists on `deepseek-reasoner` model at time of addition
         #[serde(skip_serializing_if = "Option::is_none")]
         reasoning_content: Option<String>,
-    },
-    #[serde(rename = "tool")]
-    ToolResult {
-        tool_call_id: String,
-        content: String,
     },
 }
 
@@ -363,142 +323,54 @@ pub enum ToolType {
 /// wire type.
 impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
-        let response = self;
-        let choice = response.choices.first().ok_or_else(|| {
-            CompletionError::ResponseError("Response contained no choices".to_owned())
-        })?;
+        use crate::providers::internal::openai_chat_completions_compatible as compat;
 
-        let finish_reason = Some(choice.finish_reason.as_str())
-            .filter(|reason| !reason.is_empty())
-            .map(map_openai_finish_reason);
-
-        let content = match &choice.message {
-            Message::Assistant {
-                content,
-                tool_calls,
-                reasoning_content,
-                ..
-            } => {
-                let mut content = if content.trim().is_empty() {
-                    vec![]
-                } else {
-                    vec![completion::AssistantContent::text(content)]
-                };
-
-                content.extend(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            completion::AssistantContent::tool_call(
-                                &call.id,
-                                &call.function.name,
-                                call.function.arguments.clone(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
+        let usage = crate::completion::Usage::from(&self.usage);
+        compat::normalize_openai_response(
+            provider,
+            &self.choices,
+            self.id.as_deref(),
+            self.model.as_deref(),
+            usage,
+            |choice| choice.finish_reason.as_str(),
+            |choice| {
+                let Message::Assistant {
+                    content,
+                    tool_calls,
+                    reasoning_content,
+                    ..
+                } = &choice.message;
+                let mut content = compat::text_then_tool_calls(
+                    content,
+                    content.trim().is_empty(),
+                    tool_calls.iter().map(|call| {
+                        (
+                            call.id.as_str(),
+                            call.function.name.as_str(),
+                            call.function.arguments.clone(),
+                        )
+                    }),
                 );
 
                 if let Some(reasoning_content) = reasoning_content {
                     content.push(completion::AssistantContent::reasoning(reasoning_content));
                 }
 
-                Ok(content)
-            }
-            _ => Err(CompletionError::ResponseError(
-                "Response did not contain a valid message or tool call".into(),
-            )),
-        }?;
-
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
-
-        let usage = crate::completion::Usage::from(&response.usage);
-
-        Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_response_id(response.id.as_deref())
-            .with_optional_model(response.model.as_deref())
-            .with_optional_finish_reason(finish_reason))
+                Some(content)
+            },
+        )
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct ListModelsResponse {
-    data: Vec<ListModelEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListModelEntry {
-    id: String,
-    owned_by: String,
-}
-
-impl From<ListModelEntry> for Model {
-    fn from(value: ListModelEntry) -> Self {
-        let mut model = Model::from_id(value.id);
-        model.owned_by = Some(value.owned_by);
-        model
-    }
-}
-
-/// [`ModelLister`] implementation for the DeepSeek API (`GET /models`).
-#[derive(Clone)]
-pub struct DeepSeekModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for DeepSeekModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let path = "/models";
-        let req = self.client.get(path)?.body(http_client::NoBody)?;
-        let response = self
-            .client
-            .send::<_, Vec<u8>>(req)
-            .await
-            .map_err(|error| match error {
-                http_client::Error::InvalidStatusCodeWithMessage(status, message) => {
-                    ModelListingError::api_error_with_context(
-                        "DeepSeek",
-                        path,
-                        status.as_u16(),
-                        message.as_bytes(),
-                    )
-                }
-                other => ModelListingError::from(other),
-            })?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "DeepSeek",
-                path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {
-            ModelListingError::parse_error_with_context("DeepSeek", path, &error, &body)
-        })?;
-
-        let models = api_resp.data.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
-    }
-}
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// DeepSeek API (`GET /models`).
+    DeepSeekModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "DeepSeek",
+    "/models"
+);
 
 // ================================================================
 // DeepSeek Completion API
@@ -528,6 +400,7 @@ mod tests {
         CompletionRequestBuilder, FinishReason, ToolDefinition as RigToolDefinition,
     };
     use crate::message::ToolChoice as RigToolChoice;
+    use crate::model::ModelListingError;
     use crate::providers::openai::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
@@ -571,7 +444,6 @@ mod tests {
         assert_eq!(choices.len(), 1);
         match &choices.first().unwrap().message {
             Message::Assistant { content, .. } => assert_eq!(content, "Hello, world!"),
-            _ => panic!("Expected assistant message"),
         }
     }
 
@@ -598,7 +470,6 @@ mod tests {
         match result {
             Ok(response) => match &response.choices.first().unwrap().message {
                 Message::Assistant { content, .. } => assert_eq!(content, "Hello, world!"),
-                _ => panic!("Expected assistant message"),
             },
             Err(err) => {
                 panic!("Deserialization error at {}: {}", err.path(), err);
@@ -892,7 +763,6 @@ mod tests {
                     content,
                     "Why don’t skeletons fight each other?  \nBecause they don’t have the guts! 😄"
                 ),
-                _ => panic!("Expected assistant message"),
             },
             Err(err) => {
                 panic!("Deserialization error at {}: {}", err.path(), err);
@@ -934,7 +804,6 @@ mod tests {
                 assert_eq!(call.function.name, "subtract");
                 assert_eq!(call.index, 0);
             }
-            _ => panic!("Expected assistant message"),
         }
 
         let serialized = serde_json::to_value(&choice).expect("choice should serialize");
@@ -964,11 +833,12 @@ mod tests {
             ]
         }"#;
 
-        let response: ListModelsResponse =
-            serde_json::from_str(data).expect("list models response should deserialize");
+        let response: crate::providers::internal::model_listing::DataEnvelope<
+            crate::providers::internal::model_listing::ListModelEntry,
+        > = serde_json::from_str(data).expect("list models response should deserialize");
         assert_eq!(response.data.len(), 2);
         assert_eq!(response.data[0].id, "deepseek-chat");
-        assert_eq!(response.data[0].owned_by, "deepseek");
+        assert_eq!(response.data[0].owned_by.as_deref(), Some("deepseek"));
     }
 
     #[tokio::test]

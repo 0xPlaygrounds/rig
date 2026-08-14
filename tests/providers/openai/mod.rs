@@ -3,10 +3,13 @@ mod support;
 mod regressions;
 
 mod cassette {
+    mod additional_params_tools;
     mod agent;
     mod chat_history;
     mod completions_api;
     mod document_ordering;
+    mod error_envelope;
+    mod error_identity_edge;
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;
@@ -16,7 +19,10 @@ mod cassette {
     mod permission_control;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod regression_suite;
     mod request_hook;
+    mod response_identity;
+    mod response_identity_edge;
     mod response_retry;
     mod response_schema;
     mod responses_behaviors;

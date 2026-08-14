@@ -19,6 +19,19 @@ pub enum Error {
     InvalidStatusCode(StatusCode),
     #[error("Invalid status code {0} with message: {1}")]
     InvalidStatusCodeWithMessage(StatusCode, String),
+    /// A non-success HTTP response whose headers were preserved alongside the
+    /// body, so provider layers can read transport metadata — e.g. their
+    /// request-id contract — off the failed response (rig#2314). Displays
+    /// identically to [`Self::InvalidStatusCodeWithMessage`].
+    #[error("Invalid status code {status} with message: {body}")]
+    InvalidStatusCodeWithDetails {
+        /// The non-success status.
+        status: StatusCode,
+        /// The raw response body.
+        body: String,
+        /// The failed response's headers, verbatim.
+        headers: Box<http::HeaderMap>,
+    },
     #[error("Header value outside of legal range: {0}")]
     InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
     #[error("Request in error state, cannot access headers")]
@@ -42,6 +55,7 @@ impl Error {
             Self::InvalidStatusCode(status) | Self::InvalidStatusCodeWithMessage(status, _) => {
                 Some(*status)
             }
+            Self::InvalidStatusCodeWithDetails { status, .. } => Some(*status),
             _ => None,
         }
     }
@@ -49,6 +63,7 @@ impl Error {
     pub(crate) fn non_success_body(&self) -> Option<&str> {
         match self {
             Self::InvalidStatusCodeWithMessage(_, body) => Some(body.as_str()),
+            Self::InvalidStatusCodeWithDetails { body, .. } => Some(body.as_str()),
             _ => None,
         }
     }
@@ -68,11 +83,19 @@ fn instance_error<E: std::error::Error + 'static>(error: E) -> Error {
 
 async fn non_success_status_error(response: reqwest::Response) -> Error {
     let status = response.status();
-    let message = response
+    // Preserve the failed response's headers: provider layers read their
+    // request-id contract off them (rig#2314). The Display is identical to
+    // the header-less variant, so surfaced error text is unchanged.
+    let headers = Box::new(response.headers().clone());
+    let body = response
         .text()
         .await
         .unwrap_or_else(|error| format!("failed to read error response body: {error}"));
-    Error::InvalidStatusCodeWithMessage(status, message)
+    Error::InvalidStatusCodeWithDetails {
+        status,
+        body,
+        headers,
+    }
 }
 
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
@@ -113,12 +136,6 @@ pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Resu
     headers.insert(k, v);
 
     Ok(())
-}
-
-pub fn with_bearer_auth(mut req: Builder, auth: &str) -> Result<Builder> {
-    bearer_auth_header(req.headers_mut().ok_or(Error::NoHeaders)?, auth)?;
-
-    Ok(req)
 }
 
 /// A helper trait to make generic requests (both regular and SSE) possible.

@@ -1,53 +1,25 @@
 //! This module provides functionality for working with audio transcription models.
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
+use crate::json_utils;
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::{http_client, json_utils, provider_response};
 use std::io;
 use std::{fs, path::Path};
-use thiserror::Error;
 
-// Errors
-/// Errors returned by transcription models.
-///
-/// Inspect provider failures with [`Self::provider_response_body`],
-/// [`Self::provider_response_json`], and [`Self::provider_response_status`].
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum TranscriptionError {
-    /// Http error (e.g.: connection error, timeout, etc.)
-    #[error("HttpError: {0}")]
-    HttpError(#[from] http_client::Error),
+crate::provider_response::provider_error_enum!(
+    TranscriptionError, "transcription" {
+        #[cfg(not(target_family = "wasm"))]
+        /// Error building the transcription request
+        #[error("RequestError: {0}")]
+        RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
 
-    /// Json error (e.g.: serialization, deserialization)
-    #[error("JsonError: {0}")]
-    JsonError(#[from] serde_json::Error),
-
-    #[cfg(not(target_family = "wasm"))]
-    /// Error building the transcription request
-    #[error("RequestError: {0}")]
-    RequestError(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-    #[cfg(target_family = "wasm")]
-    /// Error building the transcription request
-    #[error("RequestError: {0}")]
-    RequestError(#[from] Box<dyn std::error::Error + 'static>),
-
-    /// Error parsing the transcription response
-    #[error("ResponseError: {0}")]
-    ResponseError(String),
-
-    /// Error returned by the transcription model provider
-    #[error("ProviderError: {0}")]
-    ProviderError(String),
-
-    /// Raw error response preserved from the transcription model provider
-    #[error("ProviderResponseError: {0}")]
-    ProviderResponse(provider_response::ProviderResponseError),
-}
-
-crate::provider_response::impl_provider_response_helpers!(TranscriptionError);
+        #[cfg(target_family = "wasm")]
+        /// Error building the transcription request
+        #[error("RequestError: {0}")]
+        RequestError(#[from] Box<dyn std::error::Error + 'static>),
+    }
+);
 
 /// General transcription response struct that contains the transcription text
 /// and the raw response.
@@ -288,6 +260,7 @@ where
 #[cfg(test)]
 mod provider_response_tests {
     use super::*;
+    use crate::{http_client, provider_response};
     use http::StatusCode;
 
     #[test]
@@ -297,6 +270,7 @@ mod provider_response_tests {
             TranscriptionError::ProviderResponse(provider_response::ProviderResponseError {
                 status: None,
                 body: body.to_string(),
+                provider_request_id: None,
             });
 
         assert_eq!(error.provider_response_body(), Some(body));
@@ -333,6 +307,7 @@ mod provider_response_tests {
             TranscriptionError::ProviderResponse(provider_response::ProviderResponseError {
                 status: None,
                 body: "not json".to_string(),
+                provider_request_id: None,
             });
 
         assert_eq!(error.provider_response_body(), Some("not json"));

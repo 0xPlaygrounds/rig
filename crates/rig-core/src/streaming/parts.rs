@@ -153,7 +153,7 @@ impl PartsAccumulator {
     pub(crate) fn text_start(
         &mut self,
         id: &StreamPartId,
-        additional_params: Option<serde_json::Value>,
+        additional_params: Option<crate::message::AdditionalParams>,
     ) {
         match self.text_ids.get(id) {
             Some(_) => {
@@ -185,16 +185,21 @@ impl PartsAccumulator {
 
     /// Merge provider metadata into the active text block, opening an empty
     /// block if none is active.
-    pub(crate) fn text_additional_params(&mut self, additional_params: serde_json::Value) {
-        if additional_params.is_null() {
-            return;
-        }
+    ///
+    /// [`crate::message::AdditionalParams`] is non-empty by construction, so
+    /// there is no empty-carrier case to filter: an arriving params value is
+    /// always data, and the stored-params invariant (`None` or data) holds by
+    /// type.
+    pub(crate) fn text_additional_params(
+        &mut self,
+        additional_params: crate::message::AdditionalParams,
+    ) {
         let index = self.ensure_text_block();
         let Some(AssistantContent::Text(text)) = self.parts.get_mut(index) else {
             return;
         };
         match text.additional_params.as_mut() {
-            Some(existing) => merge_text_additional_params(existing, additional_params),
+            Some(existing) => existing.merge(additional_params),
             None => text.additional_params = Some(additional_params),
         }
     }
@@ -343,15 +348,7 @@ impl PartsAccumulator {
                             ))
                     );
                     if part_already_signed {
-                        let index = self.push_reasoning_part(Reasoning {
-                            id: None,
-                            content: vec![ReasoningContent::Text {
-                                text: String::new(),
-                                signature: Some(signature),
-                            }],
-                        });
-                        self.finished_reasoning.insert(id.clone(), index);
-                        return self.reasoning_at(index);
+                        return self.finish_signature_only(id, signature);
                     }
                     attach_signature(self.parts.get_mut(index), signature);
                     return self.reasoning_at(index);
@@ -361,42 +358,49 @@ impl PartsAccumulator {
                 (None, None) => return None,
                 // A whole block under a finished key is a NEW sibling part
                 // reusing the key.
-                (Some(mut restatement), signature) => {
-                    if let Some(signature) = signature {
-                        attach_reasoning_signature(&mut restatement, signature);
-                    }
-                    let index = self.push_reasoning_part(restatement);
-                    self.finished_reasoning.insert(id.clone(), index);
-                    return self.reasoning_at(index);
+                (Some(restatement), signature) => {
+                    return self.finish_restated(id, restatement, signature);
                 }
             }
         }
 
         // Never-seen key: create the part whole from the end payload.
         match (restatement, signature) {
-            (Some(mut restatement), signature) => {
-                if let Some(signature) = signature {
-                    attach_reasoning_signature(&mut restatement, signature);
-                }
-                let index = self.push_reasoning_part(restatement);
-                self.finished_reasoning.insert(id.clone(), index);
-                self.reasoning_at(index)
-            }
-            (None, Some(signature)) => {
-                // Signature-only stream: replay-required provider state with
-                // nothing streamed to sign. Record it alone.
-                let index = self.push_reasoning_part(Reasoning {
-                    id: None,
-                    content: vec![ReasoningContent::Text {
-                        text: String::new(),
-                        signature: Some(signature),
-                    }],
-                });
-                self.finished_reasoning.insert(id.clone(), index);
-                self.reasoning_at(index)
-            }
+            (Some(restatement), signature) => self.finish_restated(id, restatement, signature),
+            // Signature-only stream: replay-required provider state with
+            // nothing streamed to sign. Record it alone.
+            (None, Some(signature)) => self.finish_signature_only(id, signature),
             (None, None) => None,
         }
+    }
+
+    /// Record a whole reasoning block as a finished part under `id`.
+    fn finish_restated(
+        &mut self,
+        id: &StreamPartId,
+        mut restatement: Reasoning,
+        signature: Option<String>,
+    ) -> Option<Reasoning> {
+        if let Some(signature) = signature {
+            attach_reasoning_signature(&mut restatement, signature);
+        }
+        let index = self.push_reasoning_part(restatement);
+        self.finished_reasoning.insert(id.clone(), index);
+        self.reasoning_at(index)
+    }
+
+    /// Record a signature with no chain-of-thought as its own finished part
+    /// under `id`.
+    fn finish_signature_only(&mut self, id: &StreamPartId, signature: String) -> Option<Reasoning> {
+        let index = self.push_reasoning_part(Reasoning {
+            id: None,
+            content: vec![ReasoningContent::Text {
+                text: String::new(),
+                signature: Some(signature),
+            }],
+        });
+        self.finished_reasoning.insert(id.clone(), index);
+        self.reasoning_at(index)
     }
 
     fn open_fresh_reasoning(
@@ -708,17 +712,8 @@ impl PartsAccumulator {
         // `provider` stays `None` — the empty-string sentinel is
         // unrepresentable here.
         let wire_tool_id = end.tool_id.map(WireId::into_string).or(opened_wire_id);
-        let call_id = end.call_id.filter(|call_id| !call_id.is_empty());
-        let provider = match (call_id, wire_tool_id) {
-            (Some(call_id), tool_id) => {
-                crate::message::ProviderCallId::new(call_id).map(|provider| match tool_id {
-                    Some(tool_id) => provider.with_item_id(tool_id),
-                    None => provider,
-                })
-            }
-            (None, Some(tool_id)) => crate::message::ProviderCallId::new(tool_id),
-            (None, None) => None,
-        };
+        let provider =
+            crate::message::ProviderCallId::from_optional_wire(end.call_id, wire_tool_id);
         let id = crate::message::ToolCallId::for_provider(provider.as_ref());
         let tool_call = ToolCall {
             id,
@@ -769,7 +764,7 @@ impl PartsAccumulator {
     /// truncation contract; reasoning still open is kept as-is (its deltas
     /// are real content).
     pub(crate) fn finish(&mut self) -> Vec<AssistantContent> {
-        let mut parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
+        let parts: Vec<AssistantContent> = std::mem::take(&mut self.parts)
             .into_iter()
             .filter(|part| match part {
                 // A lazily opened block that got content survives; the
@@ -789,9 +784,10 @@ impl PartsAccumulator {
         self.open_tool_inputs.clear();
         self.finished_tools.clear();
         self.saw_tool_call = false;
-        if parts.is_empty() {
-            parts.push(AssistantContent::text(""));
-        }
+        // A turn that streamed no parts finishes empty. The fabricated
+        // empty-text part that used to be pushed here existed only to satisfy
+        // the non-empty content type, and it reached history and the wire as if
+        // the model had emitted it.
         parts
     }
 }
@@ -861,34 +857,6 @@ fn attach_reasoning_signature(reasoning: &mut Reasoning, signature: String) {
             text: String::new(),
             signature: Some(signature),
         }),
-    }
-}
-
-/// Deep-merge streamed text metadata: arrays concatenate (citation deltas),
-/// objects merge recursively, scalars take the incoming value.
-fn merge_text_additional_params(existing: &mut serde_json::Value, incoming: serde_json::Value) {
-    match (existing, incoming) {
-        (serde_json::Value::Object(existing_map), serde_json::Value::Object(incoming_map)) => {
-            for (key, incoming_value) in incoming_map {
-                match existing_map.get_mut(&key) {
-                    Some(existing_value) => match (existing_value, incoming_value) {
-                        (
-                            serde_json::Value::Array(existing_array),
-                            serde_json::Value::Array(mut incoming_array),
-                        ) => existing_array.append(&mut incoming_array),
-                        (existing_value, incoming_value) => {
-                            merge_text_additional_params(existing_value, incoming_value);
-                        }
-                    },
-                    None => {
-                        existing_map.insert(key, incoming_value);
-                    }
-                }
-            }
-        }
-        (existing, incoming) => {
-            *existing = incoming;
-        }
     }
 }
 
@@ -1339,10 +1307,13 @@ mod tests {
     }
 
     #[test]
-    fn finish_on_an_empty_stream_yields_one_empty_text_part() {
+    fn finish_on_an_empty_stream_yields_no_parts() {
         let mut accumulator = PartsAccumulator::new();
         let parts = accumulator.finish();
-        assert_eq!(parts, vec![AssistantContent::text("")]);
+        // Was one fabricated empty-text part, which the old non-empty content
+        // type forced and which was indistinguishable on the wire from a real
+        // empty text block.
+        assert!(parts.is_empty());
     }
 
     // --- tool-call lifecycle (the settled semantics) ---
@@ -1688,7 +1659,10 @@ mod tests {
         accumulator.tool_name_delta(&pid("call_1"), "ping");
         accumulator.tool_args_delta(&pid("call_1"), "{\"x\":");
         let parts = accumulator.finish();
-        assert_eq!(parts, vec![AssistantContent::text("")]);
+        // Discarding the only (incomplete) call leaves the turn with nothing,
+        // which is now representable instead of being padded with an empty
+        // text part.
+        assert!(parts.is_empty());
         assert!(!accumulator.saw_tool_call());
     }
 

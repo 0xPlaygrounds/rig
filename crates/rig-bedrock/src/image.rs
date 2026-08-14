@@ -6,12 +6,15 @@ use rig_core::image_generation::{
     self, ImageGenerationError, ImageGenerationRequest, ImageGenerationResponse,
 };
 
-/// `amazon.titan-image-generator-v1`
-pub const AMAZON_TITAN_IMAGE_GENERATOR_V1: &str = "amazon.titan-image-generator-v1";
-/// `amazon.titan-image-generator-v2:0`
-pub const AMAZON_TITAN_IMAGE_GENERATOR_V2_0: &str = "amazon.titan-image-generator-v2:0";
-/// `amazon.nova-canvas-v1:0`
-pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
+// The model-id string values are canonically defined in `crate::completion`.
+// The Titan image generators are gone: `amazon.titan-image-generator-v1` and
+// `-v2:0` are absent from `ListFoundationModels` in every region checked
+// (us-east-1, us-west-2, eu-central-1, ap-northeast-1), so their aliases are
+// removed rather than left pointing at identifiers Bedrock rejects.
+pub use crate::completion::{
+    AMAZON_NOVA_CANVAS, STABILITY_SD3_5_LARGE, STABILITY_STABLE_IMAGE_CORE_1_0,
+    STABILITY_STABLE_IMAGE_ULTRA_1_0,
+};
 
 #[derive(Clone)]
 pub struct ImageGenerationModel {

@@ -34,6 +34,8 @@ use tokio::task::JoinHandle;
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const CASSETTE_ROOT: &str = "tests/cassettes";
 const REDACTED: &str = "[REDACTED]";
+/// Stand-in for a generated image payload (`"hello"` in base64).
+const IMAGE_PAYLOAD_PLACEHOLDER: &str = "aGVsbG8=";
 const DUMMY_API_KEY: &str = REDACTED;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -107,7 +109,7 @@ pub(crate) struct CassettePolicy {
 impl CassettePolicy {
     fn for_scenario(provider: &str, scenario: &str, replay_matching: ReplayMatching) -> Self {
         let required_request_headers = match provider {
-            "openai" | "doubleword" => OPENAI_REQUIRED_REQUEST_HEADERS,
+            "openai" | "doubleword" | "venice" => OPENAI_REQUIRED_REQUEST_HEADERS,
             "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
             "anthropic" => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
             "gemini" if scenario.starts_with("interactions_api/") => {
@@ -428,6 +430,18 @@ impl ProviderCassette {
 
     pub(crate) fn base_url(&self) -> String {
         format!("{}{}", self.server.base_url(), self.base_path)
+    }
+
+    /// A deliberately invalid API key for recording real auth failures: the
+    /// bogus literal in record mode, the dummy key in replay — so providers
+    /// that carry the key in a *matched* location (Gemini's query string)
+    /// still replay (the recorded value is scrubbed either way).
+    pub(crate) fn bogus_api_key(&self) -> String {
+        if self.mode.records() {
+            "invalid-edge-matrix-key".to_string()
+        } else {
+            DUMMY_API_KEY.to_string()
+        }
     }
 
     pub(crate) fn api_key(&self, env_name: &str) -> String {
@@ -1077,7 +1091,14 @@ fn body_matches(
     expected_encoding: BodyEncoding,
 ) -> bool {
     let Some(expected) = expected else {
-        return actual.is_empty();
+        // A cassette recorded through the httpmock proxy stores bodies as
+        // strings, so a non-UTF-8 multipart upload (an audio file posted to a
+        // transcription endpoint) is exported with no body at all. Requiring
+        // an empty request body there would make every such scenario
+        // unreplayable; the multipart *shape* those endpoints receive is
+        // pinned by unit tests next to each provider instead. Non-multipart
+        // requests still have to be body-less to match.
+        return actual.is_empty() || is_multipart_request(actual_headers, expected_headers);
     };
     let expected_bytes = decode_body(expected, expected_encoding)
         .unwrap_or_else(|error| panic!("cassette request body should decode: {error}"));
@@ -1682,6 +1703,11 @@ const FORBIDDEN_CASSETTE_PATTERNS: &[&str] = &[
     "openai_api_key",
     "anthropic_api_key",
     "gemini_api_key",
+    "venice_api_key",
+    // Venice inference keys carry this literal prefix, so a recording that
+    // ever echoes one back (Venice quotes request material in some error
+    // bodies) fails the scan instead of being committed.
+    "venice_inference_key_",
     "__cf_bm=",
     "proj_",
     "set-cookie",
@@ -1736,7 +1762,22 @@ const SENSITIVE_QUERY_PARAMS: &[&str] = &[
     "x-amz-security-token",
 ];
 
-const RESPONSE_HEADER_ALLOWLIST: &[&str] = &["content-type"];
+// `x-amzn-errortype` is how the AWS SDKs classify an error response into a
+// modeled exception; dropping it made every recorded AWS error replay as an
+// unclassified `Unhandled` error, so a cassette could not reproduce the error
+// path it recorded. The value is an exception class name, not account state.
+// `x-amzn-requestid` is the only place the AWS request id appears — the SDK
+// reads it off the header, not the body — so a cassette that drops it cannot
+// replay any behavior that reads the id. It is a per-call opaque identifier,
+// not account state, and the scrubber placeholders its value.
+const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
+    "content-type",
+    "x-amzn-errortype",
+    "x-amzn-requestid",
+    // Provider transport request ids (rig#2265): Anthropic / OpenAI-and-xAI.
+    "request-id",
+    "x-request-id",
+];
 
 const VOLATILE_JSON_KEYS: &[&str] = &[
     "completed_at",
@@ -1755,6 +1796,9 @@ const SENSITIVE_STRING_KEYS: &[&str] = &[
     "signature",
     "thoughtsignature",
 ];
+
+/// Allowlisted response headers whose value is a generated per-call id.
+const GENERATED_ID_HEADERS: &[&str] = &["x-amzn-requestid", "request-id", "x-request-id"];
 
 const GENERATED_ID_KEYS: &[&str] = &[
     "call_id",
@@ -1822,6 +1866,15 @@ impl CassetteScrubber {
 
     fn scrub_response(&mut self, response: &mut CassetteResponse) {
         scrub_headers(self.policy, &mut response.header, HeaderMode::Response);
+
+        // An allowlisted header is kept for its *shape*, not its value: the
+        // request id is a per-call generated token and gets the same
+        // placeholder treatment as one carried in a body.
+        for header in response.header.iter_mut() {
+            if contains_case_insensitive(GENERATED_ID_HEADERS, &header.name) {
+                header.value = self.placeholder(&header.value, "req_");
+            }
+        }
 
         if let Some(body) = &mut response.body {
             *body = self.scrub_encoded_body(body, response.body_encoding);
@@ -1934,6 +1987,19 @@ impl CassetteScrubber {
                     .get("object")
                     .and_then(Value::as_str)
                     .map(str::to_ascii_lowercase);
+                // Venice's image payload carries neither `object` nor `type`:
+                // it is `{ id, images: [base64], … }`, and its `id` is a bare
+                // account-scoped token with no prefix for the generated-token
+                // rules to recognize. Both halves of the shape are required —
+                // cohere's image-embedding *request* also has an `images`
+                // array of (data-URI) strings but no `id`, and its response's
+                // `images` holds metadata objects rather than payloads.
+                let venice_image_payload = map.get("id").is_some_and(Value::is_string)
+                    && map.get("images").is_some_and(|images| {
+                        images
+                            .as_array()
+                            .is_some_and(|images| images.iter().all(Value::is_string))
+                    });
 
                 for (key, value) in map {
                     if key == "data" && object_type.as_deref() == Some("reasoning.encrypted") {
@@ -1949,6 +2015,34 @@ impl CassetteScrubber {
                     if key == "data" && object_type.as_deref() == Some("redacted_thinking") {
                         if let Value::String(data) = value {
                             *data = self.placeholder(data, "redacted_thinking_");
+                        }
+                        continue;
+                    }
+
+                    if key == "id"
+                        && venice_image_payload
+                        && let Value::String(id) = value
+                    {
+                        *id = self.placeholder(id, "id_");
+                        continue;
+                    }
+
+                    // Venice returns generated images as bare base64 strings
+                    // in an `images` array rather than OpenAI's `b64_json`
+                    // objects; same payload, same treatment — keeping the
+                    // bytes would commit generated media and inflate the
+                    // fixture (Gemini's unscrubbed image cassette is 328 KB).
+                    // Scoped to the response shape, not the key name: cohere's
+                    // image-embedding requests carry their own `images` array
+                    // of data URIs that must survive verbatim.
+                    if key == "images"
+                        && venice_image_payload
+                        && let Value::Array(images) = value
+                    {
+                        for image in images.iter_mut() {
+                            if let Value::String(image) = image {
+                                *image = IMAGE_PAYLOAD_PLACEHOLDER.to_string();
+                            }
                         }
                         continue;
                     }
@@ -2006,7 +2100,7 @@ impl CassetteScrubber {
                     }
 
                     if key == "b64_json" {
-                        *text = "aGVsbG8=".to_string();
+                        *text = IMAGE_PAYLOAD_PLACEHOLDER.to_string();
                         return;
                     }
                 }
@@ -2033,7 +2127,53 @@ impl CassetteScrubber {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
         let scrubbed = self.scrub_grounding_redirects(&scrubbed);
+        let scrubbed = self.scrub_aws_account_ids(&scrubbed);
         self.scrub_generated_tokens(&scrubbed)
+    }
+
+    /// Replace the account-id segment of every ARN.
+    ///
+    /// A Bedrock guardrail assessment echoes the guardrail's ARN, which
+    /// carries the caller's 12-digit AWS account id — a provider account
+    /// identifier, which cassettes must not commit. The rest of the ARN
+    /// (partition, service, region, resource) stays readable so the fixture
+    /// still shows which resource answered.
+    fn scrub_aws_account_ids(&mut self, text: &str) -> String {
+        const PREFIX: &str = "arn:";
+        const ACCOUNT_FIELD: usize = 4;
+        const ACCOUNT_LEN: usize = 12;
+
+        let mut output = String::with_capacity(text.len());
+        let mut rest = text;
+
+        while let Some(start) = rest.find(PREFIX) {
+            output.push_str(&rest[..start]);
+            let arn = &rest[start..];
+            // An ARN ends at the first character that cannot appear in one;
+            // the surrounding JSON quote or comma is the usual terminator.
+            let end = arn
+                .find(['"', ',', ' ', '\n', '}', ']'])
+                .unwrap_or(arn.len());
+            let (arn, tail) = arn.split_at(end);
+
+            let mut fields = arn.split(':').map(str::to_string).collect::<Vec<_>>();
+            match fields.get(ACCOUNT_FIELD) {
+                Some(account)
+                    if account.len() == ACCOUNT_LEN
+                        && account.chars().all(|ch| ch.is_ascii_digit()) =>
+                {
+                    let placeholder = self.placeholder(account, "account_");
+                    fields[ACCOUNT_FIELD] = placeholder;
+                    output.push_str(&fields.join(":"));
+                }
+                _ => output.push_str(arn),
+            }
+
+            rest = tail;
+        }
+
+        output.push_str(rest);
+        output
     }
 
     fn scrub_grounding_redirects(&mut self, text: &str) -> String {
@@ -2843,8 +2983,23 @@ mod tests {
             .expect("interaction should be recorded");
         assert_eq!(interaction.when.header.len(), 1);
         assert_eq!(interaction.when.header[0].name, "content-type");
-        assert_eq!(interaction.then.header.len(), 1);
-        assert_eq!(interaction.then.header[0].name, "content-type");
+
+        // The response keeps `x-amzn-requestid` — the SDK reads the AWS
+        // request id off that header and nowhere else — with its value
+        // placeholdered, and still drops everything outside the allowlist.
+        let response_headers = interaction
+            .then
+            .header
+            .iter()
+            .map(|header| (header.name.as_str(), header.value.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            response_headers,
+            vec![
+                ("content-type", "application/json"),
+                ("x-amzn-requestid", "req_REDACTED_1"),
+            ]
+        );
     }
 
     #[test]
@@ -3380,7 +3535,12 @@ then:
 
         assert!(scrubbed.contains("value: '[REDACTED]'"));
         assert!(!scrubbed.contains("AIzaSySecret"));
-        assert!(!scrubbed.contains("x-request-id"));
+        // `x-request-id` is allowlisted since rig#2265 (provider transport
+        // request ids are feature data), but its value is a generated id and
+        // must record scrubbed.
+        assert!(scrubbed.contains("x-request-id"));
+        assert!(!scrubbed.contains("req_abc123456789"));
+        assert!(scrubbed.contains("req_REDACTED"));
         assert!(!scrubbed.contains("set-cookie"));
         assert!(scrubbed.contains("content-type"));
     }

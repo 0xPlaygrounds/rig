@@ -324,6 +324,185 @@ pub trait ProviderBuilder: Sized + Default + Clone {
     }
 }
 
+// These implementations are declarations of associated types and constants,
+// so ordinary helper functions cannot express the repeated structure. Keeping
+// the variation points in one invocation makes each provider's configuration
+// visible without duplicating the generic builder plumbing.
+macro_rules! impl_default_provider_builder {
+    (
+        $builder:ty => $extension:ty,
+        api_key = $api_key:ty,
+        base_url = $base_url:expr
+        $(, finish = $finish:path, state = $state:ident)? $(,)?
+    ) => {
+        impl $crate::client::ProviderBuilder for $builder {
+            type Extension<H>
+                = $extension
+            where
+                H: $crate::http_client::HttpClientExt;
+            type ApiKey = $api_key;
+
+            const BASE_URL: &'static str = $base_url;
+
+            fn build<H>(
+                _builder: &$crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+            ) -> $crate::http_client::Result<Self::Extension<H>>
+            where
+                H: $crate::http_client::HttpClientExt,
+            {
+                Ok(<$extension>::default())
+            }
+
+            $(
+                fn finish<H>(
+                    &self,
+                    builder: $crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+                ) -> $crate::http_client::Result<
+                    $crate::client::ClientBuilder<Self, Self::ApiKey, H>,
+                > {
+                    $finish(&self.$state, builder)
+                }
+            )?
+        }
+    };
+}
+pub(crate) use impl_default_provider_builder;
+
+// A provider's Capabilities impl is a pure associated-type table where every
+// slot a provider does not support is `Nothing`. The named optional slots
+// keep each provider's invocation down to what it actually supports, and the
+// macro owns the feature gating on the image/audio slots.
+macro_rules! impl_capabilities {
+    (
+        $ext:ty
+        $(, completion = $completion:ty)?
+        $(, embeddings = $embeddings:ty)?
+        $(, transcription = $transcription:ty)?
+        $(, model_listing = $model_listing:ty)?
+        $(, image_generation = $image_generation:ty)?
+        $(, audio_generation = $audio_generation:ty)?
+        $(, rerank = $rerank:ty)?
+        $(,)?
+    ) => {
+        impl<H> $crate::client::Capabilities<H> for $ext {
+            type Completion = $crate::client::impl_capabilities!(@slot $($completion)?);
+            type Embeddings = $crate::client::impl_capabilities!(@slot $($embeddings)?);
+            type Transcription = $crate::client::impl_capabilities!(@slot $($transcription)?);
+            type ModelListing = $crate::client::impl_capabilities!(@slot $($model_listing)?);
+            #[cfg(feature = "image")]
+            type ImageGeneration = $crate::client::impl_capabilities!(@slot $($image_generation)?);
+            #[cfg(feature = "audio")]
+            type AudioGeneration = $crate::client::impl_capabilities!(@slot $($audio_generation)?);
+            type Rerank = $crate::client::impl_capabilities!(@slot $($rerank)?);
+        }
+    };
+    (@slot $model:ty) => { $crate::client::Capable<$model> };
+    (@slot) => { $crate::client::Nothing };
+}
+pub(crate) use impl_capabilities;
+
+// ProviderClient is implemented for concrete client aliases, which likewise
+// cannot be factored into a function. The optional base-URL form captures the
+// only common construction variation without hiding provider-specific auth.
+macro_rules! impl_provider_client {
+    (
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal,
+        base_url_env_first = $base_url_env:literal $(,)?
+    ) => {
+        $crate::client::impl_provider_client!(@with_base
+            $client,
+            input = $input,
+            api_key_env = $api_key_env,
+            configuration = {
+                let base_url = $crate::client::optional_env_var($base_url_env)?;
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                (api_key, base_url)
+            }
+        );
+    };
+    (
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal,
+        base_url_env = $base_url_env:literal $(,)?
+    ) => {
+        $crate::client::impl_provider_client!(@with_base
+            $client,
+            input = $input,
+            api_key_env = $api_key_env,
+            configuration = {
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                let base_url = $crate::client::optional_env_var($base_url_env)?;
+                (api_key, base_url)
+            }
+        );
+    };
+    (
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal,
+        base_url = $base_url:expr $(,)?
+    ) => {
+        $crate::client::impl_provider_client!(@with_base
+            $client,
+            input = $input,
+            api_key_env = $api_key_env,
+            configuration = {
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                (api_key, $base_url)
+            }
+        );
+    };
+    (@with_base
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal,
+        configuration = $configuration:block
+    ) => {
+        impl $crate::client::ProviderClient for $client {
+            type Input = $input;
+            type Error = $crate::client::ProviderClientError;
+
+            #[doc = concat!("Create this provider client from the `", $api_key_env, "` environment variable.")]
+            fn from_env() -> Result<Self, Self::Error> {
+                let (api_key, base_url) = $configuration;
+                let mut builder = Self::builder().api_key(api_key);
+                if let Some(base_url) = base_url {
+                    builder = builder.base_url(base_url);
+                }
+                builder.build().map_err(Into::into)
+            }
+
+            fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+                Self::new(input).map_err(Into::into)
+            }
+        }
+    };
+    (
+        $client:ty,
+        input = $input:ty,
+        api_key_env = $api_key_env:literal $(,)?
+    ) => {
+        impl $crate::client::ProviderClient for $client {
+            type Input = $input;
+            type Error = $crate::client::ProviderClientError;
+
+            #[doc = concat!("Create this provider client from the `", $api_key_env, "` environment variable.")]
+            fn from_env() -> Result<Self, Self::Error> {
+                let api_key = $crate::client::required_env_var($api_key_env)?;
+                Self::new(api_key).map_err(Into::into)
+            }
+
+            fn from_val(input: Self::Input) -> Result<Self, Self::Error> {
+                Self::new(input).map_err(Into::into)
+            }
+        }
+    };
+}
+pub(crate) use impl_provider_client;
+
 /// `new` is pinned to `H = reqwest::Client` so the call site infers without an explicit `H`
 /// annotation. Callers who want a different backend should go through [`Client::builder`] and
 /// chain [`ClientBuilder::http_client`] before [`ClientBuilder::build`].
@@ -436,22 +615,29 @@ impl<Ext, H> Client<Ext, H>
 where
     Ext: Provider,
 {
-    /// Build a provider-customized POST request for a regular HTTP endpoint.
-    pub fn post<S>(&self, path: S) -> http_client::Result<Builder>
-    where
-        S: AsRef<str>,
-    {
-        let uri = self
-            .ext
-            .build_uri(&self.base_url, path.as_ref(), Transport::Http);
+    fn request(
+        &self,
+        method: http::Method,
+        path: &str,
+        transport: Transport,
+    ) -> http_client::Result<Builder> {
+        let uri = self.ext.build_uri(&self.base_url, path, transport);
 
-        let mut req = Request::post(uri);
+        let mut req = Request::builder().method(method).uri(uri);
 
         if let Some(hs) = req.headers_mut() {
             hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
         }
 
         self.ext.with_custom(req)
+    }
+
+    /// Build a provider-customized POST request for a regular HTTP endpoint.
+    pub fn post<S>(&self, path: S) -> http_client::Result<Builder>
+    where
+        S: AsRef<str>,
+    {
+        self.request(http::Method::POST, path.as_ref(), Transport::Http)
     }
 
     /// Build a provider-customized POST request for an SSE endpoint.
@@ -459,17 +645,7 @@ where
     where
         S: AsRef<str>,
     {
-        let uri = self
-            .ext
-            .build_uri(&self.base_url, path.as_ref(), Transport::Sse);
-
-        let mut req = Request::post(uri);
-
-        if let Some(hs) = req.headers_mut() {
-            hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
-        }
-
-        self.ext.with_custom(req)
+        self.request(http::Method::POST, path.as_ref(), Transport::Sse)
     }
 
     /// Build a provider-customized GET request for an SSE endpoint.
@@ -477,17 +653,7 @@ where
     where
         S: AsRef<str>,
     {
-        let uri = self
-            .ext
-            .build_uri(&self.base_url, path.as_ref(), Transport::Sse);
-
-        let mut req = Request::get(uri);
-
-        if let Some(hs) = req.headers_mut() {
-            hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
-        }
-
-        self.ext.with_custom(req)
+        self.request(http::Method::GET, path.as_ref(), Transport::Sse)
     }
 
     /// Build a provider-customized GET request for a regular HTTP endpoint.
@@ -495,17 +661,7 @@ where
     where
         S: AsRef<str>,
     {
-        let uri = self
-            .ext
-            .build_uri(&self.base_url, path.as_ref(), Transport::Http);
-
-        let mut req = Request::get(uri);
-
-        if let Some(hs) = req.headers_mut() {
-            hs.extend(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())));
-        }
-
-        self.ext.with_custom(req)
+        self.request(http::Method::GET, path.as_ref(), Transport::Http)
     }
 }
 
@@ -522,7 +678,22 @@ where
             .body(http_client::NoBody)
             .map_err(http_client::Error::from)?;
 
-        let response = self.http_client.send(req).await?;
+        // The reqwest transport reports non-success as an error before this
+        // status match can run (found live on rig#2315's error matrix: the
+        // 401/403 arms below were dead and every bogus key surfaced as a raw
+        // HttpError). Recover the status from the transport error so the
+        // documented VerifyError classification actually fires.
+        let response = match self.http_client.send(req).await {
+            Ok(response) => response,
+            Err(error) => {
+                return Err(match error.non_success_status() {
+                    Some(StatusCode::UNAUTHORIZED) | Some(StatusCode::FORBIDDEN) => {
+                        VerifyError::InvalidAuthentication
+                    }
+                    _ => VerifyError::HttpError(error),
+                });
+            }
+        };
 
         match response.status() {
             StatusCode::OK => Ok(()),
@@ -754,6 +925,33 @@ where
     }
 }
 
+// Every single-model capability client impl on `Client<Ext, H>` shares the
+// same shape: gate on the matching `Capabilities` slot, name the model type,
+// and construct it with `M::make`. The macro keeps the per-capability
+// variation (trait, slot, associated type, method, extra model bounds, and
+// feature gate) in one invocation each. `CompletionClient` (different
+// constructor protocol) and `EmbeddingsClient` (extra `_with_ndims` method)
+// stay hand-written below.
+macro_rules! impl_capability_client {
+    (
+        $(#[cfg(feature = $feature:literal)])?
+        $client_trait:ident { $slot:ident, $assoc:ident, $method:ident, $model_trait:ident $(+ $extra:path)* }
+    ) => {
+        $(#[cfg(feature = $feature)])?
+        impl<M, Ext, H> $client_trait for Client<Ext, H>
+        where
+            Ext: Capabilities<H, $slot = Capable<M>>,
+            M: $model_trait<Client = Self> $(+ $extra)*,
+        {
+            type $assoc = M;
+
+            fn $method(&self, model: impl Into<String>) -> Self::$assoc {
+                M::make(self, model)
+            }
+        }
+    };
+}
+
 impl<M, Ext, H> CompletionClient for Client<Ext, H>
 where
     Ext: Capabilities<H, Completion = Capable<M>>,
@@ -786,55 +984,39 @@ where
     }
 }
 
-impl<M, Ext, H> RerankingClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, Rerank = Capable<M>>,
-    M: RerankModel<Client = Self>,
-{
-    type RerankModel = M;
+impl_capability_client!(RerankingClient {
+    Rerank,
+    RerankModel,
+    rerank_model,
+    RerankModel
+});
 
-    fn rerank_model(&self, model: impl Into<String>) -> Self::RerankModel {
-        M::make(self, model)
+impl_capability_client!(TranscriptionClient {
+    Transcription,
+    TranscriptionModel,
+    transcription_model,
+    TranscriptionModel + WasmCompatSend
+});
+
+impl_capability_client!(
+    #[cfg(feature = "image")]
+    ImageGenerationClient {
+        ImageGeneration,
+        ImageGenerationModel,
+        image_generation_model,
+        ImageGenerationModel
     }
-}
+);
 
-impl<M, Ext, H> TranscriptionClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, Transcription = Capable<M>>,
-    M: TranscriptionModel<Client = Self> + WasmCompatSend,
-{
-    type TranscriptionModel = M;
-
-    fn transcription_model(&self, model: impl Into<String>) -> Self::TranscriptionModel {
-        M::make(self, model)
+impl_capability_client!(
+    #[cfg(feature = "audio")]
+    AudioGenerationClient {
+        AudioGeneration,
+        AudioGenerationModel,
+        audio_generation_model,
+        AudioGenerationModel
     }
-}
-
-#[cfg(feature = "image")]
-impl<M, Ext, H> ImageGenerationClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, ImageGeneration = Capable<M>>,
-    M: ImageGenerationModel<Client = Self>,
-{
-    type ImageGenerationModel = M;
-
-    fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel {
-        M::make(self, model)
-    }
-}
-
-#[cfg(feature = "audio")]
-impl<M, Ext, H> AudioGenerationClient for Client<Ext, H>
-where
-    Ext: Capabilities<H, AudioGeneration = Capable<M>>,
-    M: AudioGenerationModel<Client = Self>,
-{
-    type AudioGenerationModel = M;
-
-    fn audio_generation_model(&self, model: impl Into<String>) -> Self::AudioGenerationModel {
-        M::make(self, model)
-    }
-}
+);
 
 impl<M, Ext, H> ModelListingClient for Client<Ext, H>
 where

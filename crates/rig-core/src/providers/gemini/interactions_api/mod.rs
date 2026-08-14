@@ -1,15 +1,14 @@
 //! Google Gemini Interactions API integration.
 //! From <https://ai.google.dev/api/interactions-api>
 
-use base64::{Engine, prelude::BASE64_STANDARD};
-
-use crate::OneOrMany;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
+use crate::providers::internal::completion_send::send_completion;
+use crate::providers::internal::envelope::DirectPayload;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use serde_json::{Map, Value};
-use tracing::{Level, enabled};
 use tracing_futures::Instrument;
 use url::form_urlencoded;
 
@@ -142,13 +141,11 @@ where
 
         let request = self.create_completion_request(completion_request, Some(false))?;
 
-        if enabled!(Level::TRACE) {
-            tracing::trace!(
-                target: "rig::completions",
-                "Gemini interactions completion request: {}",
-                serde_json::to_string_pretty(&request)?
-            );
-        }
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Gemini interactions completion request",
+            &request,
+        );
 
         let body = serde_json::to_vec(&request)?;
         let request = self
@@ -157,56 +154,23 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
-        async move {
-            let response = self.client.send::<_, Vec<u8>>(request).await?;
-
-            if response.status().is_success() {
-                let response_body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                let response_text = String::from_utf8_lossy(&response_body).to_string();
-
-                let response: Interaction =
-                    serde_json::from_slice(&response_body).map_err(|err| {
-                        tracing::error!(
-                            error = %err,
-                            body = %response_text,
-                            "Failed to deserialize Gemini interactions response"
-                        );
-                        CompletionError::JsonError(err)
-                    })?;
-
+        send_completion::<_, DirectPayload<Interaction>, _>(
+            &self.client,
+            request,
+            "Gemini interactions completion",
+            // Gemini reports no transport request-id response header (verified
+            // against the live API); the normalized id is None by design.
+            None,
+            |response| {
                 let span = tracing::Span::current();
-                span.record_response_metadata(&response);
-                let usage = crate::completion::Usage::from(&response);
+                span.record_response_metadata(response);
+                let usage = crate::completion::Usage::from(response);
                 span.record_token_usage(&usage);
-
-                if enabled!(Level::TRACE) {
-                    tracing::trace!(
-                        target: "rig::completions",
-                        "Gemini interactions completion response: {}",
-                        serde_json::to_string_pretty(&response)?
-                    );
-                }
-
-                Ok(response)
-            } else {
-                let status = response.status();
-                let body = response
-                    .into_body()
-                    .await
-                    .map_err(CompletionError::HttpError)?;
-
-                Err(CompletionError::from_http_response(
-                    status,
-                    String::from_utf8_lossy(&body),
-                ))
-            }
-        }
+            },
+        )
         .instrument(span)
         .await
+        .map(|(payload, _)| payload)
     }
 }
 
@@ -421,21 +385,7 @@ pub(crate) fn create_request_body(
     })
 }
 
-fn split_system_messages_from_history(
-    history: Vec<completion::Message>,
-) -> (Vec<String>, Vec<completion::Message>) {
-    let mut system = Vec::new();
-    let mut remaining = Vec::new();
-
-    for message in history {
-        match message {
-            completion::Message::System { content } => system.push(content),
-            other => remaining.push(other),
-        }
-    }
-
-    (system, remaining)
-}
+use super::completion::split_system_messages_from_history;
 
 async fn send_interaction_request<T>(
     client: &InteractionsClient<T>,
@@ -517,11 +467,7 @@ impl TryFrom<Interaction> for completion::CompletionResponse {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let choice = OneOrMany::many(content).map_err(|_| {
-            CompletionError::ResponseError(
-                "Response contained no message or tool call (empty)".to_owned(),
-            )
-        })?;
+        let choice = crate::message::require_non_empty_response(content)?;
 
         let usage = response
             .usage
@@ -643,6 +589,23 @@ fn assistant_content_from_output(
     }
 }
 
+/// Shared preamble for Gemini Interactions media parts: require the media
+/// type, render its MIME string, and split the source into data/uri.
+fn media_parts<M: MimeType>(
+    data: message::DocumentSourceKind,
+    media_type: Option<M>,
+    kind: &str,
+) -> Result<(Option<String>, Option<String>, String), message::MessageError> {
+    let media_type = media_type.ok_or_else(|| {
+        message::MessageError::ConversionError(format!(
+            "Media type for {kind} is required for Gemini"
+        ))
+    })?;
+    let mime_type = media_type.to_mime_type().to_string();
+    let (data, uri) = split_data_uri(data)?;
+    Ok((data, uri, mime_type))
+}
+
 fn split_data_uri(
     src: message::DocumentSourceKind,
 ) -> Result<(Option<String>, Option<String>), message::MessageError> {
@@ -664,7 +627,7 @@ fn split_data_uri(
 
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
-    use super::split_data_uri;
+    use super::{media_parts, split_data_uri};
     use crate::completion::{CompletionError, Usage};
     use crate::message::{self, MimeType};
     use crate::telemetry::ProviderResponseExt;
@@ -824,115 +787,263 @@ pub mod interactions_api_types {
         }
     }
 
-    /// Groups Google Search tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct GoogleSearchExchange {
+    /// Groups tool calls and results of one built-in tool family for a single
+    /// interaction.
+    #[derive(Clone, Debug)]
+    pub struct Exchange<C, R> {
         /// Call identifier used to match calls to results.
         pub call_id: Option<String>,
-        /// One or more Google Search tool calls.
-        pub calls: Vec<GoogleSearchCallContent>,
-        /// One or more Google Search tool results.
-        pub results: Vec<GoogleSearchResultContent>,
+        /// One or more tool calls.
+        pub calls: Vec<C>,
+        /// One or more tool results.
+        pub results: Vec<R>,
     }
+
+    impl<C, R> Default for Exchange<C, R> {
+        fn default() -> Self {
+            Self {
+                call_id: None,
+                calls: Vec::new(),
+                results: Vec::new(),
+            }
+        }
+    }
+
+    /// A tool call content type that carries an optional call identifier.
+    trait ExchangeCall {
+        fn id(&self) -> Option<&str>;
+    }
+
+    /// A tool result content type that carries an optional call identifier.
+    trait ExchangeResult {
+        fn call_id(&self) -> Option<&str>;
+    }
+
+    macro_rules! impl_exchange_ids {
+        ($call:ty, $result:ty) => {
+            impl ExchangeCall for $call {
+                fn id(&self) -> Option<&str> {
+                    self.id.as_deref()
+                }
+            }
+            impl ExchangeResult for $result {
+                fn call_id(&self) -> Option<&str> {
+                    self.call_id.as_deref()
+                }
+            }
+        };
+    }
+
+    impl_exchange_ids!(GoogleSearchCallContent, GoogleSearchResultContent);
+    impl_exchange_ids!(UrlContextCallContent, UrlContextResultContent);
+    impl_exchange_ids!(CodeExecutionCallContent, CodeExecutionResultContent);
+
+    /// Pairs tool calls with their results by call_id.
+    ///
+    /// When a call_id is missing, results are grouped with the most recent
+    /// call (identified or not) as a best-effort fallback.
+    fn pair_exchanges<C, R>(
+        contents: &[Content],
+        as_call: impl Fn(&Content) -> Option<&C>,
+        as_result: impl Fn(&Content) -> Option<&R>,
+    ) -> Vec<Exchange<C, R>>
+    where
+        C: Clone + ExchangeCall,
+        R: Clone + ExchangeResult,
+    {
+        let mut exchanges: Vec<Exchange<C, R>> = Vec::new();
+        let mut last_call_index: Option<usize> = None;
+        let position_of = |exchanges: &[Exchange<C, R>], call_id: &str| {
+            exchanges
+                .iter()
+                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
+        };
+
+        for content in contents {
+            if let Some(call) = as_call(content) {
+                let index = match call.id() {
+                    Some(call_id) => match position_of(&exchanges, call_id) {
+                        Some(index) => {
+                            if let Some(exchange) = exchanges.get_mut(index) {
+                                exchange.calls.push(call.clone());
+                            }
+                            index
+                        }
+                        None => {
+                            exchanges.push(Exchange {
+                                call_id: Some(call_id.to_string()),
+                                calls: vec![call.clone()],
+                                results: Vec::new(),
+                            });
+                            exchanges.len() - 1
+                        }
+                    },
+                    None => {
+                        exchanges.push(Exchange {
+                            call_id: None,
+                            calls: vec![call.clone()],
+                            results: Vec::new(),
+                        });
+                        exchanges.len() - 1
+                    }
+                };
+                last_call_index = Some(index);
+            } else if let Some(result) = as_result(content) {
+                if let Some(call_id) = result.call_id() {
+                    if let Some(index) = position_of(&exchanges, call_id) {
+                        if let Some(exchange) = exchanges.get_mut(index) {
+                            exchange.results.push(result.clone());
+                        }
+                    } else {
+                        exchanges.push(Exchange {
+                            call_id: Some(call_id.to_string()),
+                            calls: Vec::new(),
+                            results: vec![result.clone()],
+                        });
+                    }
+                } else if let Some(index) = last_call_index {
+                    if let Some(exchange) = exchanges.get_mut(index) {
+                        exchange.results.push(result.clone());
+                    }
+                } else {
+                    exchanges.push(Exchange {
+                        call_id: None,
+                        calls: Vec::new(),
+                        results: vec![result.clone()],
+                    });
+                    last_call_index = Some(exchanges.len() - 1);
+                }
+            }
+        }
+
+        exchanges
+    }
+
+    /// Groups Google Search tool calls and results for a single interaction.
+    pub type GoogleSearchExchange = Exchange<GoogleSearchCallContent, GoogleSearchResultContent>;
 
     impl GoogleSearchExchange {
         /// Collects all queries from the stored Google Search tool calls.
         pub fn queries(&self) -> Vec<String> {
-            let mut queries = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(call_queries) = &args.queries
-                {
-                    queries.extend(call_queries.clone());
-                }
-            }
-            queries
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.queries.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
 
         /// Collects all Google Search result entries from tool results.
         pub fn result_items(&self) -> Vec<GoogleSearchResult> {
-            let mut items = Vec::new();
-            for result in &self.results {
-                if let Some(entries) = &result.result {
-                    items.extend(entries.clone());
-                }
-            }
-            items
+            self.results
+                .iter()
+                .filter_map(|result| result.result.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
     }
 
     /// Groups URL context tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct UrlContextExchange {
-        /// Call identifier used to match calls to results.
-        pub call_id: Option<String>,
-        /// One or more URL context tool calls.
-        pub calls: Vec<UrlContextCallContent>,
-        /// One or more URL context tool results.
-        pub results: Vec<UrlContextResultContent>,
-    }
+    pub type UrlContextExchange = Exchange<UrlContextCallContent, UrlContextResultContent>;
 
     impl UrlContextExchange {
         /// Collects all URLs from the stored URL context tool calls.
         pub fn urls(&self) -> Vec<String> {
-            let mut urls = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(call_urls) = &args.urls
-                {
-                    urls.extend(call_urls.clone());
-                }
-            }
-            urls
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.urls.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
 
         /// Collects all URL context result entries from tool results.
         pub fn result_items(&self) -> Vec<UrlContextResult> {
-            let mut items = Vec::new();
-            for result in &self.results {
-                if let Some(entries) = &result.result {
-                    items.extend(entries.clone());
-                }
-            }
-            items
+            self.results
+                .iter()
+                .filter_map(|result| result.result.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
         }
     }
 
     /// Groups code execution tool calls and results for a single interaction.
-    #[derive(Clone, Debug, Default)]
-    pub struct CodeExecutionExchange {
-        /// Call identifier used to match calls to results.
-        pub call_id: Option<String>,
-        /// One or more code execution tool calls.
-        pub calls: Vec<CodeExecutionCallContent>,
-        /// One or more code execution tool results.
-        pub results: Vec<CodeExecutionResultContent>,
-    }
+    pub type CodeExecutionExchange = Exchange<CodeExecutionCallContent, CodeExecutionResultContent>;
 
     impl CodeExecutionExchange {
         /// Collects all code snippets from the stored code execution tool calls.
         pub fn code_snippets(&self) -> Vec<String> {
-            let mut snippets = Vec::new();
-            for call in &self.calls {
-                if let Some(args) = &call.arguments
-                    && let Some(code) = &args.code
-                {
-                    snippets.push(code.clone());
-                }
-            }
-            snippets
+            self.calls
+                .iter()
+                .filter_map(|call| call.arguments.as_ref()?.code.clone())
+                .collect()
         }
 
         /// Collects all code execution outputs from tool results.
         pub fn outputs(&self) -> Vec<String> {
-            let mut outputs = Vec::new();
-            for result in &self.results {
-                if let Some(output) = &result.result {
-                    outputs.push(output.clone());
-                }
-            }
-            outputs
+            self.results
+                .iter()
+                .filter_map(|result| result.result.clone())
+                .collect()
         }
+    }
+
+    /// Generates the `Interaction` accessor family for one built-in tool:
+    /// the call_id-grouped exchanges plus flattened views over their calls,
+    /// results, and per-exchange collector methods.
+    macro_rules! interaction_exchange_accessors {
+        (
+            $tool:literal, $exchange:ty, $call_variant:ident, $result_variant:ident,
+            $exchanges_fn:ident, $call_contents_fn:ident -> $call_ty:ty,
+            $result_contents_fn:ident -> $result_ty:ty,
+            $($flat_doc:literal $flat_fn:ident => $method:ident -> $flat_ty:ty),* $(,)?
+        ) => {
+            #[doc = concat!("Groups ", $tool, " tool calls and results by call_id.")]
+            ///
+            /// When a call_id is missing, results are grouped with the most recent
+            /// call (identified or not) as a best-effort fallback.
+            pub fn $exchanges_fn(&self) -> Vec<$exchange> {
+                pair_exchanges(
+                    &self.output_contents(),
+                    |content| match content {
+                        Content::$call_variant(call) => Some(call),
+                        _ => None,
+                    },
+                    |content| match content {
+                        Content::$result_variant(result) => Some(result),
+                        _ => None,
+                    },
+                )
+            }
+
+            #[doc = concat!("Collects ", $tool, " tool call contents from the interaction outputs.")]
+            pub fn $call_contents_fn(&self) -> Vec<$call_ty> {
+                self.$exchanges_fn()
+                    .into_iter()
+                    .flat_map(|exchange| exchange.calls)
+                    .collect()
+            }
+
+            #[doc = concat!("Collects ", $tool, " result contents from the interaction outputs.")]
+            pub fn $result_contents_fn(&self) -> Vec<$result_ty> {
+                self.$exchanges_fn()
+                    .into_iter()
+                    .flat_map(|exchange| exchange.results)
+                    .collect()
+            }
+
+            $(
+                #[doc = $flat_doc]
+                pub fn $flat_fn(&self) -> Vec<$flat_ty> {
+                    self.$exchanges_fn()
+                        .into_iter()
+                        .flat_map(|exchange| exchange.$method())
+                        .collect()
+                }
+            )*
+        };
     }
 
     impl Interaction {
@@ -940,326 +1051,38 @@ pub mod interactions_api_types {
             self.steps.iter().flat_map(Step::output_contents).collect()
         }
 
-        /// Groups Google Search tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn google_search_exchanges(&self) -> Vec<GoogleSearchExchange> {
-            let mut exchanges: Vec<GoogleSearchExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
+        interaction_exchange_accessors!(
+            "Google Search", GoogleSearchExchange, GoogleSearchCall, GoogleSearchResult,
+            google_search_exchanges,
+            google_search_call_contents -> GoogleSearchCallContent,
+            google_search_result_contents -> GoogleSearchResultContent,
+            "Collects all Google Search queries from tool calls in the outputs."
+                google_search_queries => queries -> String,
+            "Collects all Google Search result entries from tool results in the outputs."
+                google_search_results => result_items -> GoogleSearchResult,
+        );
 
-            for content in &output_contents {
-                match content {
-                    Content::GoogleSearchCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(GoogleSearchExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(GoogleSearchExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::GoogleSearchResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(GoogleSearchExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(GoogleSearchExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
+        interaction_exchange_accessors!(
+            "URL context", UrlContextExchange, UrlContextCall, UrlContextResult,
+            url_context_exchanges,
+            url_context_call_contents -> UrlContextCallContent,
+            url_context_result_contents -> UrlContextResultContent,
+            "Collects all URLs from URL context tool calls in the outputs."
+                url_context_urls => urls -> String,
+            "Collects all URL context result entries from tool results in the outputs."
+                url_context_results => result_items -> UrlContextResult,
+        );
 
-            exchanges
-        }
-
-        /// Collects Google Search tool call contents from the interaction outputs.
-        pub fn google_search_call_contents(&self) -> Vec<GoogleSearchCallContent> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
-
-        /// Collects Google Search result contents from the interaction outputs.
-        pub fn google_search_result_contents(&self) -> Vec<GoogleSearchResultContent> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all Google Search queries from tool calls in the outputs.
-        pub fn google_search_queries(&self) -> Vec<String> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.queries())
-                .collect()
-        }
-
-        /// Collects all Google Search result entries from tool results in the outputs.
-        pub fn google_search_results(&self) -> Vec<GoogleSearchResult> {
-            self.google_search_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.result_items())
-                .collect()
-        }
-
-        /// Groups URL context tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn url_context_exchanges(&self) -> Vec<UrlContextExchange> {
-            let mut exchanges: Vec<UrlContextExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
-
-            for content in &output_contents {
-                match content {
-                    Content::UrlContextCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(UrlContextExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(UrlContextExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::UrlContextResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(UrlContextExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(UrlContextExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            exchanges
-        }
-
-        /// Collects URL context tool call contents from the interaction outputs.
-        pub fn url_context_call_contents(&self) -> Vec<UrlContextCallContent> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
-
-        /// Collects URL context result contents from the interaction outputs.
-        pub fn url_context_result_contents(&self) -> Vec<UrlContextResultContent> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all URLs from URL context tool calls in the outputs.
-        pub fn url_context_urls(&self) -> Vec<String> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.urls())
-                .collect()
-        }
-
-        /// Collects all URL context result entries from tool results in the outputs.
-        pub fn url_context_results(&self) -> Vec<UrlContextResult> {
-            self.url_context_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.result_items())
-                .collect()
-        }
-
-        /// Groups code execution tool calls and results by call_id.
-        ///
-        /// When a call_id is missing, results are grouped with the most recent
-        /// call (identified or not) as a best-effort fallback.
-        pub fn code_execution_exchanges(&self) -> Vec<CodeExecutionExchange> {
-            let mut exchanges: Vec<CodeExecutionExchange> = Vec::new();
-            let mut last_call_index: Option<usize> = None;
-            let output_contents = self.output_contents();
-
-            for content in &output_contents {
-                match content {
-                    Content::CodeExecutionCall(call) => {
-                        let index = if let Some(call_id) = call.id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.calls.push(call.clone());
-                                }
-                                index
-                            } else {
-                                exchanges.push(CodeExecutionExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: vec![call.clone()],
-                                    results: Vec::new(),
-                                });
-                                exchanges.len() - 1
-                            }
-                        } else {
-                            exchanges.push(CodeExecutionExchange {
-                                call_id: None,
-                                calls: vec![call.clone()],
-                                results: Vec::new(),
-                            });
-                            exchanges.len() - 1
-                        };
-                        last_call_index = Some(index);
-                    }
-                    Content::CodeExecutionResult(result) => {
-                        if let Some(call_id) = result.call_id.as_ref() {
-                            if let Some(index) = exchanges
-                                .iter()
-                                .position(|exchange| exchange.call_id.as_deref() == Some(call_id))
-                            {
-                                if let Some(exchange) = exchanges.get_mut(index) {
-                                    exchange.results.push(result.clone());
-                                }
-                            } else {
-                                exchanges.push(CodeExecutionExchange {
-                                    call_id: Some(call_id.clone()),
-                                    calls: Vec::new(),
-                                    results: vec![result.clone()],
-                                });
-                            }
-                        } else if let Some(index) = last_call_index {
-                            if let Some(exchange) = exchanges.get_mut(index) {
-                                exchange.results.push(result.clone());
-                            }
-                        } else {
-                            exchanges.push(CodeExecutionExchange {
-                                call_id: None,
-                                calls: Vec::new(),
-                                results: vec![result.clone()],
-                            });
-                            last_call_index = Some(exchanges.len() - 1);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            exchanges
-        }
-
-        /// Collects code execution tool call contents from the interaction outputs.
-        pub fn code_execution_call_contents(&self) -> Vec<CodeExecutionCallContent> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.calls)
-                .collect()
-        }
-
-        /// Collects code execution result contents from the interaction outputs.
-        pub fn code_execution_result_contents(&self) -> Vec<CodeExecutionResultContent> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.results)
-                .collect()
-        }
-
-        /// Collects all code snippets from code execution calls in the outputs.
-        pub fn code_execution_snippets(&self) -> Vec<String> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.code_snippets())
-                .collect()
-        }
-
-        /// Collects all code execution outputs from tool results in the outputs.
-        pub fn code_execution_outputs(&self) -> Vec<String> {
-            self.code_execution_exchanges()
-                .into_iter()
-                .flat_map(|exchange| exchange.outputs())
-                .collect()
-        }
+        interaction_exchange_accessors!(
+            "code execution", CodeExecutionExchange, CodeExecutionCall, CodeExecutionResult,
+            code_execution_exchanges,
+            code_execution_call_contents -> CodeExecutionCallContent,
+            code_execution_result_contents -> CodeExecutionResultContent,
+            "Collects all code snippets from code execution calls in the outputs."
+                code_execution_snippets => code_snippets -> String,
+            "Collects all code execution outputs from tool results in the outputs."
+                code_execution_outputs => outputs -> String,
+        );
 
         /// Returns concatenated text outputs with inline citations appended.
         pub fn text_with_inline_citations(&self) -> Option<String> {
@@ -1980,13 +1803,7 @@ pub mod interactions_api_types {
                 message::UserContent::Image(message::Image {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for image is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "image")?;
                     Ok(Self::Image(ImageContent {
                         data,
                         uri,
@@ -1997,13 +1814,7 @@ pub mod interactions_api_types {
                 message::UserContent::Audio(message::Audio {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for audio is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "audio")?;
                     Ok(Self::Audio(AudioContent {
                         data,
                         uri,
@@ -2013,13 +1824,7 @@ pub mod interactions_api_types {
                 message::UserContent::Video(message::Video {
                     data, media_type, ..
                 }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for video is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, media_type, "video")?;
                     Ok(Self::Video(VideoContent {
                         data,
                         uri,
@@ -2079,8 +1884,7 @@ pub mod interactions_api_types {
                             annotations: None,
                         }));
                     }
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
+                    let (data, uri, mime_type) = media_parts(data, Some(media_type), "document")?;
                     Ok(Self::Document(DocumentContent {
                         data,
                         uri,
@@ -2683,7 +2487,6 @@ pub mod interactions_api_types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OneOrMany;
     use crate::completion::{CompletionRequest, Message};
     use crate::message::{self, ToolChoice as MessageToolChoice};
     use serde_json::json;
@@ -2691,14 +2494,14 @@ mod tests {
     #[test]
     fn test_create_request_body_simple() {
         let prompt = Message::User {
-            content: OneOrMany::one(message::UserContent::text("Hello")),
+            content: vec![message::UserContent::text("Hello")],
         };
 
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
             preamble: Some("Be precise.".to_string()),
-            chat_history: OneOrMany::one(prompt),
+            chat_history: vec![prompt],
             documents: vec![],
             tools: vec![],
             temperature: Some(0.7),
@@ -2755,30 +2558,30 @@ mod tests {
             };
             Message::Assistant {
                 id: None,
-                content: OneOrMany::one(AssistantContent::ToolCall(tool_call)),
+                content: vec![AssistantContent::ToolCall(tool_call)],
             }
         };
         let result = |item_id: Option<&str>, call_id: &str, name: &str| Message::User {
-            content: OneOrMany::one(match item_id {
+            content: vec![match item_id {
                 Some(item_id) => message::UserContent::tool_result_with_call_id(
                     item_id,
                     call_id,
                     name,
-                    OneOrMany::one(ToolResultContent::text("out")),
+                    vec![ToolResultContent::text("out")],
                 ),
                 None => message::UserContent::tool_result_from_wire(
                     call_id,
                     name,
-                    OneOrMany::one(ToolResultContent::text("out")),
+                    vec![ToolResultContent::text("out")],
                 ),
-            }),
+            }],
         };
 
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
             preamble: None,
-            chat_history: OneOrMany::many(vec![
+            chat_history: vec![
                 // A driver-built result carries the executed name (a repair
                 // hook renamed the call: `sum` ran, not `add`).
                 call(None, "call_1", "sum"),
@@ -2794,8 +2597,7 @@ mod tests {
                 // wire as a name.
                 call(Some("fc_1"), "call_9", "get_time"),
                 result(Some("fc_1"), "call_9", "get_time"),
-            ])
-            .expect("non-empty history"),
+            ],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -2863,7 +2665,7 @@ mod tests {
             call: call.clone(),
             provider: None,
             name: "get_weather".to_string(),
-            content: OneOrMany::one(message::ToolResultContent::text("ok")),
+            content: vec![message::ToolResultContent::text("ok")],
         });
 
         let converted = Content::try_from(content).expect("tool result should convert");
@@ -2880,11 +2682,10 @@ mod tests {
             call: message::ToolCallId::new_or_mint("call-123"),
             provider: message::ProviderCallId::new("call-123"),
             name: "get_weather".to_string(),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::ToolResultContent::text(r#"{"status":"literal"}"#),
                 message::ToolResultContent::json(json!({ "status": "structured" })),
-            ])
-            .expect("tool result content is non-empty"),
+            ],
         });
 
         let converted = Content::try_from(content).expect("tool result should convert");
@@ -2936,7 +2737,7 @@ mod tests {
                 call: message::ToolCallId::new_or_mint("call-123"),
                 provider: message::ProviderCallId::new("call-123"),
                 name: "get_weather".to_string(),
-                content: OneOrMany::one(tool_content),
+                content: vec![tool_content],
             });
 
             let Content::FunctionResult(result) =
@@ -2977,7 +2778,7 @@ mod tests {
                 call: message::ToolCallId::new_or_mint("call-123"),
                 provider: message::ProviderCallId::new("call-123"),
                 name: "get_weather".to_string(),
-                content: OneOrMany::one(tool_content),
+                content: vec![tool_content],
             });
 
             let Content::FunctionResult(result) =
@@ -2995,7 +2796,7 @@ mod tests {
             call: message::ToolCallId::new_or_mint("call-image"),
             provider: message::ProviderCallId::new("call-image"),
             name: "render".to_string(),
-            content: OneOrMany::many(vec![
+            content: vec![
                 message::ToolResultContent::image_base64(
                     "first-image",
                     Some(message::ImageMediaType::PNG),
@@ -3010,16 +2811,15 @@ mod tests {
                     detail: None,
                     additional_params: None,
                 }),
-            ])
-            .expect("tool result content should be non-empty"),
+            ],
         });
         let request = CompletionRequest {
             record_telemetry_content: false,
             model: None,
             preamble: None,
-            chat_history: OneOrMany::one(Message::User {
-                content: OneOrMany::one(tool_result),
-            }),
+            chat_history: vec![Message::User {
+                content: vec![tool_result],
+            }],
             documents: vec![],
             tools: vec![],
             temperature: None,
@@ -3081,7 +2881,7 @@ mod tests {
 
         let choice = response.choice.first();
         match choice {
-            completion::AssistantContent::ToolCall(tool_call) => {
+            Some(completion::AssistantContent::ToolCall(tool_call)) => {
                 assert_eq!(tool_call.function.name, "get_weather");
                 assert_eq!(tool_call.id, "call-123");
                 assert_eq!(

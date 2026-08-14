@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"Reply with exactly: identity probe","role":"user"}],"model":"Qwen/Qwen3.5-9B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"reasoning_content":"Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: \"Reply with exactly: identity probe\"\n    *   Constraint: \"Reply with exactly: identity probe\"\n    *   Goal: The user wants me to output the specific string \"identity probe\".\n\n2.  **Check for Constraints/Policies:**\n    *   Is this a security test? It looks like a common prompt injection or instruction following test.\n    *   Is it harmful? No.\n    *   Is it asking for sensitive information? No.\n    *   Does it violate any system instructions? No","reasoning_details":[{"format":"unknown","index":0,"text":"Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: \"Reply with exactly: identity probe\"\n    *   Constraint: \"Reply with exactly: identity probe\"\n    *   Goal: The user wants me to output the specific string \"identity probe\".\n\n2.  **Check for Constraints/Policies:**\n    *   Is this a security test? It looks like a common prompt injection or instruction following test.\n    *   Is it harmful? No.\n    *   Is it asking for sensitive information? No.\n    *   Does it violate any system instructions? No","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":128,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":132},"prompt_tokens":16,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":144}}'

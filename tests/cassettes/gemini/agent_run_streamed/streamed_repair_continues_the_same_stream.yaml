@@ -17,7 +17,7 @@ then:
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":2,\"y\":3},\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":166,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":166}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"totalTokenCount\":221}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":2,\"y\":3},\"name\":\"add\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":166,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":166}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":47,\"totalTokenCount\":231}}\r\n\r\n"
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
@@ -38,4 +38,4 @@ then:
   header:
   - name: content-type
     value: text/event-stream
-  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"5\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":234,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":234}],\"serviceTier\":\"standard\",\"totalTokenCount\":235}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":234,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":234}],\"serviceTier\":\"standard\",\"totalTokenCount\":235}}\r\n\r\n"
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"5\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":244,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":244}],\"serviceTier\":\"standard\",\"totalTokenCount\":245}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":244,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":244}],\"serviceTier\":\"standard\",\"totalTokenCount\":245}}\r\n\r\n"

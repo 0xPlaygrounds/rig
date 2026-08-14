@@ -10,7 +10,7 @@ use rig::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
 
 use crate::support::assert_nonempty_response;
 
-fn extract_text(choice: &rig::OneOrMany<AssistantContent>) -> String {
+fn extract_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
         .filter_map(|content| match content {

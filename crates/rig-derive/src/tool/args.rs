@@ -30,6 +30,16 @@ impl MacroArgs {
     }
 }
 
+fn unsupported_argument(path: &syn::Path) -> syn::Error {
+    let message = if let Some(ident) = path.get_ident() {
+        format!("unsupported top-level #[rig_tool] argument `{ident}`")
+    } else {
+        "unsupported top-level #[rig_tool] argument".to_string()
+    };
+
+    syn::Error::new_spanned(path, message)
+}
+
 fn parse_string_literal(expr: &Expr, field_name: &str) -> syn::Result<String> {
     match expr {
         Expr::Lit(ExprLit {
@@ -107,12 +117,10 @@ impl Parse for MacroArgs {
         for meta in meta_list {
             match meta {
                 Meta::NameValue(nv) => {
-                    let ident = nv.path.get_ident().ok_or_else(|| {
-                        syn::Error::new_spanned(
-                            &nv.path,
-                            "unsupported top-level #[rig_tool] argument",
-                        )
-                    })?;
+                    let ident = nv
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| unsupported_argument(&nv.path))?;
 
                     match ident.to_string().as_str() {
                         "name" => {
@@ -126,20 +134,15 @@ impl Parse for MacroArgs {
                             description = Some(parse_string_literal(&nv.value, "description")?);
                         }
                         _ => {
-                            return Err(syn::Error::new_spanned(
-                                &nv.path,
-                                format!("unsupported top-level #[rig_tool] argument `{ident}`"),
-                            ));
+                            return Err(unsupported_argument(&nv.path));
                         }
                     }
                 }
                 Meta::List(list) => {
-                    let ident = list.path.get_ident().ok_or_else(|| {
-                        syn::Error::new_spanned(
-                            &list.path,
-                            "unsupported top-level #[rig_tool] argument",
-                        )
-                    })?;
+                    let ident = list
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| unsupported_argument(&list.path))?;
 
                     match ident.to_string().as_str() {
                         "params" => {
@@ -196,21 +199,12 @@ impl Parse for MacroArgs {
                             required = Some(names);
                         }
                         _ => {
-                            return Err(syn::Error::new_spanned(
-                                &list.path,
-                                format!("unsupported top-level #[rig_tool] argument `{ident}`"),
-                            ));
+                            return Err(unsupported_argument(&list.path));
                         }
                     }
                 }
                 Meta::Path(path) => {
-                    let message = if let Some(ident) = path.get_ident() {
-                        format!("unsupported top-level #[rig_tool] argument `{ident}`")
-                    } else {
-                        "unsupported top-level #[rig_tool] argument".to_string()
-                    };
-
-                    return Err(syn::Error::new_spanned(path, message));
+                    return Err(unsupported_argument(&path));
                 }
             }
         }

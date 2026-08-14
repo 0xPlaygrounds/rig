@@ -11,7 +11,7 @@
 use std::{fmt::Display, ops::RangeInclusive};
 
 use rig_core::{
-    Embed, OneOrMany,
+    Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
@@ -120,14 +120,14 @@ impl PgSearchFilter {
 
     pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
         Self {
-            condition: format!("{key} >= ?"),
+            condition: format!("{key} >= $"),
             values: vec![value],
         }
     }
 
     pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
         Self {
-            condition: format!("{key} <= ?"),
+            condition: format!("{key} <= $"),
             values: vec![value],
         }
     }
@@ -274,18 +274,47 @@ where
         Self::new(model, pg_pool, None, PgVectorDistanceFunction::Cosine)
     }
 
-    fn search_query_full(
+    /// Validates the sample count, embeds the query, and runs the similarity
+    /// search, returning one row per result.
+    async fn run_search<R>(
         &self,
         req: &VectorSearchRequest<PgSearchFilter>,
-    ) -> (String, Vec<serde_json::Value>) {
-        self.search_query(true, req)
-    }
+        with_document: bool,
+    ) -> Result<Vec<R>, VectorStoreError>
+    where
+        R: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> + Send + Unpin,
+    {
+        if req.samples() > i64::MAX as u64 {
+            return Err(VectorStoreError::DatastoreError(
+                format!(
+                    "The maximum amount of samples to return with the `rig` Postgres integration cannot be larger than {}",
+                    i64::MAX
+                )
+                .into(),
+            ));
+        }
 
-    fn search_query_only_ids(
-        &self,
-        req: &VectorSearchRequest<PgSearchFilter>,
-    ) -> (String, Vec<serde_json::Value>) {
-        self.search_query(false, req)
+        let embedded_query: pgvector::Vector = self
+            .model
+            .embed_text(req.query())
+            .await?
+            .vec
+            .iter()
+            .map(|&x| x as f32)
+            .collect::<Vec<f32>>()
+            .into();
+
+        let (search_query, params) = self.search_query(with_document, req);
+        let builder = sqlx::query_as(sqlx::AssertSqlSafe(search_query))
+            .bind(embedded_query)
+            .bind(req.samples() as i64);
+
+        let builder = params.iter().cloned().fold(builder, bind_value);
+
+        builder
+            .fetch_all(&self.pg_pool)
+            .await
+            .map_err(VectorStoreError::datastore)
     }
 
     fn search_query(
@@ -349,7 +378,7 @@ where
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
         for (document, embeddings) in documents {
             let id = Uuid::new_v4();
@@ -369,7 +398,7 @@ where
                 .bind(&embedding)
                 .execute(&self.pg_pool)
                 .await
-                .map_err(|e| VectorStoreError::DatastoreError(e.into()))?;
+                .map_err(VectorStoreError::datastore)?;
             }
         }
 
@@ -389,37 +418,7 @@ where
         &self,
         req: VectorSearchRequest<PgSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
-        if req.samples() > i64::MAX as u64 {
-            return Err(VectorStoreError::DatastoreError(
-                format!(
-                    "The maximum amount of samples to return with the `rig` Postgres integration cannot be larger than {}",
-                    i64::MAX
-                )
-                .into(),
-            ));
-        }
-
-        let embedded_query: pgvector::Vector = self
-            .model
-            .embed_text(req.query())
-            .await?
-            .vec
-            .iter()
-            .map(|&x| x as f32)
-            .collect::<Vec<f32>>()
-            .into();
-
-        let (search_query, params) = self.search_query_full(&req);
-        let builder = sqlx::query_as(sqlx::AssertSqlSafe(search_query))
-            .bind(embedded_query)
-            .bind(req.samples() as i64);
-
-        let builder = params.iter().cloned().fold(builder, bind_value);
-
-        let rows = builder
-            .fetch_all(&self.pg_pool)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let rows: Vec<SearchResult> = self.run_search(&req, true).await?;
 
         let rows: Vec<(f64, String, T)> = rows
             .into_iter()
@@ -434,36 +433,7 @@ where
         &self,
         req: VectorSearchRequest<PgSearchFilter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        if req.samples() > i64::MAX as u64 {
-            return Err(VectorStoreError::DatastoreError(
-                format!(
-                    "The maximum amount of samples to return with the `rig` Postgres integration cannot be larger than {}",
-                    i64::MAX
-                )
-                .into(),
-            ));
-        }
-        let embedded_query: pgvector::Vector = self
-            .model
-            .embed_text(req.query())
-            .await?
-            .vec
-            .iter()
-            .map(|&x| x as f32)
-            .collect::<Vec<f32>>()
-            .into();
-
-        let (search_query, params) = self.search_query_only_ids(&req);
-        let builder = sqlx::query_as(sqlx::AssertSqlSafe(search_query))
-            .bind(embedded_query)
-            .bind(req.samples() as i64);
-
-        let builder = params.iter().cloned().fold(builder, bind_value);
-
-        let rows: Vec<SearchResultOnlyId> = builder
-            .fetch_all(&self.pg_pool)
-            .await
-            .map_err(|e| VectorStoreError::DatastoreError(Box::new(e)))?;
+        let rows: Vec<SearchResultOnlyId> = self.run_search(&req, false).await?;
 
         let rows: Vec<(f64, String)> = rows
             .into_iter()
@@ -471,5 +441,25 @@ where
             .collect();
 
         Ok(rows)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PgSearchFilter, SearchFilter};
+    use serde_json::json;
+
+    /// `gte`/`lte` previously emitted `?` placeholders while `eq`/`gt`/`lt`
+    /// emitted `$`; the query renumbering only rewrites `$`, so any `?` would
+    /// reach Postgres verbatim and break the query.
+    #[test]
+    fn gte_and_lte_use_dollar_placeholders() {
+        let gte = PgSearchFilter::gte("price".into(), json!(5));
+        let lte = PgSearchFilter::lte("price".into(), json!(10));
+
+        let (cond, values) = gte.and(lte).into_clause();
+        assert_eq!(cond, "(price >= $) AND (price <= $)");
+        assert!(!cond.contains('?'));
+        assert_eq!(cond.matches('$').count(), values.len());
     }
 }

@@ -47,13 +47,13 @@ impl CompletionModel {
         }
     }
 
-    fn model_path(&self) -> Result<String, CompletionError> {
+    fn model_path(&self) -> String {
         let project = self.client.project();
         let location = self.client.location();
-        Ok(format!(
+        format!(
             "projects/{project}/locations/{location}/publishers/google/models/{}",
             self.model
-        ))
+        )
     }
 }
 
@@ -79,7 +79,7 @@ impl CompletionModel {
         let system_instruction = vertex_request.system_instruction();
         let tools = vertex_request.tools();
         let tool_config = vertex_request.tool_config();
-        let model_path = self.model_path()?;
+        let model_path = self.model_path();
 
         let mut request_builder = self
             .client

@@ -62,7 +62,7 @@ use crate::{
     completion::{CompletionError, CompletionModel, Document, Message, PromptError, Usage},
     json_utils,
     tool::{
-        ToolContext, ToolDispatch, ToolOutput, ToolResult,
+        ToolContext, ToolDispatch, ToolResult,
         server::{ToolRegistrySnapshot, ToolServerHandle},
     },
 };
@@ -140,50 +140,6 @@ pub(crate) fn resolve_model_turn_action(
     }
 }
 
-pub(crate) enum ToolCallDecision {
-    Proceed,
-    ProceedWith(serde_json::Value),
-    Skip(String),
-    Terminate(String),
-}
-
-pub(crate) fn tool_call_decision(action: ToolCallAction) -> ToolCallDecision {
-    match action {
-        ToolCallAction::Run => ToolCallDecision::Proceed,
-        ToolCallAction::Rewrite(args) => ToolCallDecision::ProceedWith(args),
-        ToolCallAction::Skip(reason) => ToolCallDecision::Skip(reason),
-        ToolCallAction::Stop(reason) => ToolCallDecision::Terminate(reason),
-    }
-}
-
-pub(crate) enum ToolResultDecision {
-    Keep,
-    Replace(ToolOutput),
-    Terminate(String),
-}
-
-pub(crate) fn tool_result_decision(action: ToolResultAction) -> ToolResultDecision {
-    match action {
-        ToolResultAction::Keep => ToolResultDecision::Keep,
-        ToolResultAction::Rewrite(result) => ToolResultDecision::Replace(result),
-        ToolResultAction::Stop(reason) => ToolResultDecision::Terminate(reason),
-    }
-}
-
-pub(crate) enum CompletionCallDecision {
-    Proceed,
-    Patch(RequestPatch),
-    Terminate(String),
-}
-
-pub(crate) fn completion_call_decision(action: CompletionCallAction) -> CompletionCallDecision {
-    match action {
-        CompletionCallAction::Continue => CompletionCallDecision::Proceed,
-        CompletionCallAction::Patch(patch) => CompletionCallDecision::Patch(patch),
-        CompletionCallAction::Stop(reason) => CompletionCallDecision::Terminate(reason),
-    }
-}
-
 /// A hook-aware driver over [`AgentRun`].
 ///
 /// Construct one from an [`Agent`] with [`Agent::runner`], attach hooks with
@@ -224,6 +180,13 @@ pub struct AgentRunner {
     pub(crate) hooks: HookStack,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
+
+/// The `(history_override, memory_handle)` pair resolved for one run by
+/// [`AgentRunner::resolve_history_and_memory`].
+pub(crate) type HistoryAndMemory = (
+    Option<Vec<Message>>,
+    Option<(Arc<dyn ConversationMemory>, String)>,
+);
 
 impl AgentRunner {
     /// Build a runner from an agent, seeding it with the agent's default hook
@@ -470,8 +433,9 @@ impl AgentRunner {
     /// order** (never completion order), for the tools whose body actually ran.
     /// The persisted message history is unchanged.
     ///
-    /// A `concurrency` of 0 is clamped to 1; `0` and `1` both run a turn's tools
-    /// sequentially (the `buffer_unordered` path is used only at `concurrency > 1`).
+    /// A `concurrency` of 0 is clamped to 1; at `1` the tools of a turn run
+    /// strictly sequentially in call order, failing fast on the first
+    /// terminating error.
     pub fn tool_concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency.max(1);
         self
@@ -600,21 +564,20 @@ pub(crate) async fn resolve_completion_call(
     history: &[Message],
     turn: usize,
 ) -> CompletionCallOutcome {
-    match completion_call_decision(
-        hooks
-            .on_completion_call(
-                ctx,
-                CompletionCall {
-                    prompt,
-                    history,
-                    turn,
-                },
-            )
-            .await,
-    ) {
-        CompletionCallDecision::Terminate(reason) => CompletionCallOutcome::Terminate(reason),
-        CompletionCallDecision::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
-        CompletionCallDecision::Proceed => CompletionCallOutcome::Proceed(None),
+    match hooks
+        .on_completion_call(
+            ctx,
+            CompletionCall {
+                prompt,
+                history,
+                turn,
+            },
+        )
+        .await
+    {
+        CompletionCallAction::Stop(reason) => CompletionCallOutcome::Terminate(reason),
+        CompletionCallAction::Patch(patch) => CompletionCallOutcome::Proceed(Some(patch)),
+        CompletionCallAction::Continue => CompletionCallOutcome::Proceed(None),
     }
 }
 
@@ -695,8 +658,8 @@ pub(crate) async fn run_single_tool(
     }
 
     // Resolve the `ToolCall` hook chain. A proceeding chain carries any
-    // `ToolCallAction::Rewrite` in the action itself (→ `ProceedWith`); a chain that a
-    // later hook short-circuits with `Skip`/`Terminate` salvages the accumulated
+    // `ToolCallAction::Rewrite` in the action itself; a chain that a later hook
+    // short-circuits with `Skip`/`Stop` salvages the accumulated
     // rewrite into `salvaged_rewrite` so it is *not* lost — the rewritten args
     // must still be reported on the skipped `ToolResult` and in tracing rather
     // than leaking the model's original args (see [`HookStack::resolve_tool_call`]).
@@ -731,14 +694,14 @@ pub(crate) async fn run_single_tool(
     // `ToolCallAction::Rewrite` replacement, or a salvaged rewrite) — surfaced in the
     // execution-commit event so a redaction rewrite does not leak. Unused for a skip.
     let mut skipped: Option<ToolResult> = None;
-    let effective_args: serde_json::Value = match tool_call_decision(action) {
-        ToolCallDecision::Terminate(reason) => {
+    let effective_args: serde_json::Value = match action {
+        ToolCallAction::Stop(reason) => {
             return Err(PromptError::prompt_cancelled(
                 error_history.to_vec(),
                 reason,
             ));
         }
-        ToolCallDecision::Skip(reason) => {
+        ToolCallAction::Skip(reason) => {
             tracing::info!(tool_name = tool_name, reason = reason, "Tool call rejected");
             // Synthetic rejection: `Skipped` outcome, message delivered verbatim.
             // Still fires the `ToolResult` hook so a policy observes the skip.
@@ -747,7 +710,7 @@ pub(crate) async fn run_single_tool(
             // (if any) so tracing/history stay consistent, though they go unused.
             salvaged_rewrite.unwrap_or_else(|| tool_call.function.arguments.clone())
         }
-        ToolCallDecision::ProceedWith(replacement) => {
+        ToolCallAction::Rewrite(replacement) => {
             // Proceeding rewrite: re-record the span so the trace, and the
             // downstream `ToolResult` event, reflect what the tool actually
             // received rather than what the model emitted.
@@ -761,7 +724,7 @@ pub(crate) async fn run_single_tool(
             );
             replacement
         }
-        ToolCallDecision::Proceed => tool_call.function.arguments.clone(),
+        ToolCallAction::Run => tool_call.function.arguments.clone(),
     };
 
     // Resolve the structured execution result and how the call surfaced. A skip
@@ -785,33 +748,31 @@ pub(crate) async fn run_single_tool(
     };
     // Presentation rewrites happen after execution. The raw structured result
     // and per-dispatch context remain unchanged for every hook.
-    let result_decision = tool_result_decision(
-        hooks
-            .on_tool_result(
-                ctx,
-                ToolResultEvent {
-                    tool_name,
-                    tool_call_id: Some(tool_call.id.as_str()),
-                    internal_call_id,
-                    args: &args,
-                    presentation: exec.output(),
-                    raw_result: &exec,
-                    tool_context: &dispatch_context,
-                },
-            )
-            .await,
-    );
+    let result_action = hooks
+        .on_tool_result(
+            ctx,
+            ToolResultEvent {
+                tool_name,
+                tool_call_id: Some(tool_call.id.as_str()),
+                internal_call_id,
+                args: &args,
+                presentation: exec.output(),
+                raw_result: &exec,
+                tool_context: &dispatch_context,
+            },
+        )
+        .await;
     // Outcome metadata describes the execution itself, while result content
     // follows the same presentation policy as the model. This keeps redaction
     // and stop hooks from leaking raw tool output through telemetry.
     record_tool_result(&tool_span, &exec);
 
-    match result_decision {
-        ToolResultDecision::Terminate(reason) => Err(PromptError::prompt_cancelled(
+    match result_action {
+        ToolResultAction::Stop(reason) => Err(PromptError::prompt_cancelled(
             error_history.to_vec(),
             reason,
         )),
-        ToolResultDecision::Replace(replacement) => {
+        ToolResultAction::Rewrite(replacement) => {
             if record_content {
                 tool_span.record("gen_ai.tool.call.result", replacement.render());
             }
@@ -825,7 +786,7 @@ pub(crate) async fn run_single_tool(
                 execution,
             })
         }
-        ToolResultDecision::Keep => {
+        ToolResultAction::Keep => {
             if record_content {
                 tool_span.record("gen_ai.tool.call.result", exec.output().render());
             }
@@ -927,6 +888,17 @@ impl TurnSource for UnaryTurnSource {
         current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
+            // Content telemetry for the accepted provider turn. Called at each
+            // terminal site (stop, terminate, accept) rather than hoisted: a
+            // retried turn must not record output for the discarded attempt.
+            let record_accepted_turn = |run: &AgentRun| {
+                if runner.record_telemetry_content
+                    && let Some(choice) = run.accepted_turn_choice()
+                {
+                    rig_core::telemetry::record_model_output(&chat_span, &choice, true);
+                }
+            };
+
             let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
                 Ok(resp) => resp,
                 Err(err) => {
@@ -935,13 +907,19 @@ impl TurnSource for UnaryTurnSource {
                 }
             };
 
-            let mut outcome = match run.model_response(ModelTurn::new(
-                resp.message_id.clone(),
-                resp.choice.clone(),
-                resp.usage,
-                prepared.executable_tool_names,
-                prepared.allowed_tool_names,
-            )) {
+            let mut outcome = match run.model_response(
+                ModelTurn::new(
+                    resp.message_id.clone(),
+                    resp.choice.clone(),
+                    resp.usage,
+                    prepared.executable_tool_names,
+                    prepared.allowed_tool_names,
+                )
+                .with_identity(
+                    resp.response_id.clone(),
+                    resp.provider_request_id.clone(),
+                ),
+            ) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     yield Err(Box::new(err).into());
@@ -983,6 +961,12 @@ impl TurnSource for UnaryTurnSource {
                             // normalized per-turn event. The first observes;
                             // the second can accept, retry, or stop the canonical
                             // turn. Both are suppressed for recovered turns.
+                            //
+                            // Identity comes from this attempt's own `resp` —
+                            // a retried turn re-enters `run_model_turn` with a
+                            // fresh response, so a stale attempt's ids can
+                            // never be attributed here.
+                            let identity = resp.identity();
                             if let Some(reason) = observe_action(
                                 runner
                                     .hooks
@@ -993,17 +977,12 @@ impl TurnSource for UnaryTurnSource {
                                             content: &resp.choice,
                                             usage: resp.usage,
                                             message_id: resp.message_id.as_deref(),
+                                            identity: &identity,
                                         },
                                     )
                                     .await,
                             ) {
-                                if runner.record_telemetry_content
-                                    && let Some(choice) = run.accepted_turn_choice()
-                                {
-                                    rig_core::telemetry::record_model_output(
-                                        &chat_span, &choice, true,
-                                    );
-                                }
+                                record_accepted_turn(run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
                                 return;
                             }
@@ -1015,6 +994,7 @@ impl TurnSource for UnaryTurnSource {
                                         turn: hook_ctx.turn(),
                                         content: &resp.choice,
                                         usage: resp.usage,
+                                        identity: &identity,
                                     },
                                 )
                                 .await;
@@ -1022,13 +1002,7 @@ impl TurnSource for UnaryTurnSource {
                                 Ok(ModelTurnDecision::Advance) => {}
                                 Ok(ModelTurnDecision::Retried) => break,
                                 Ok(ModelTurnDecision::Terminate(reason)) => {
-                                    if runner.record_telemetry_content
-                                        && let Some(choice) = run.accepted_turn_choice()
-                                    {
-                                        rig_core::telemetry::record_model_output(
-                                            &chat_span, &choice, true,
-                                        );
-                                    }
+                                    record_accepted_turn(run);
                                     yield Err(StreamingError::Prompt(Box::new(
                                         run.cancel_error(reason),
                                     )));
@@ -1041,11 +1015,7 @@ impl TurnSource for UnaryTurnSource {
                             }
                         }
 
-                        if runner.record_telemetry_content
-                            && let Some(choice) = run.accepted_turn_choice()
-                        {
-                            rig_core::telemetry::record_model_output(&chat_span, &choice, true);
-                        }
+                        record_accepted_turn(run);
                         break;
                     }
                 }
@@ -1114,10 +1084,9 @@ impl AgentRunner {
         (result, observed)
     }
 
-    /// Drive the agent loop to completion, returning the aggregated
-    /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
-    /// to terminate cancels the run.
-    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+    /// Open the per-run agent span, recording the prompt when content
+    /// telemetry is enabled. Shared by the blocking and streaming surfaces.
+    pub(crate) fn open_agent_span(&self) -> (tracing::Span, bool) {
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
             self.preamble.as_deref(),
@@ -1130,20 +1099,36 @@ impl AgentRunner {
             agent_span.record("gen_ai.prompt", text);
         }
 
-        // When the caller passes explicit history, memory is fully bypassed for
-        // this run (no load AND no save). Otherwise, if a memory backend and
-        // conversation id are both configured, load prior history.
-        let (history_override, memory_handle) = match &self.chat_history {
-            Some(_) => (None, None),
+        (agent_span, created_agent_span)
+    }
+
+    /// Resolve the history override and memory handle for this run.
+    ///
+    /// When the caller passes explicit history, memory is fully bypassed
+    /// (no load AND no save). Otherwise, if a memory backend and conversation
+    /// id are both configured, prior history is loaded. Each surface adapts a
+    /// load failure to its own error channel.
+    pub(crate) async fn resolve_history_and_memory(
+        &self,
+    ) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
+        match &self.chat_history {
+            Some(_) => Ok((None, None)),
             None => match (&self.memory, &self.conversation_id) {
                 (Some(memory), Some(id)) => {
                     let loaded = memory.load(id).await?;
-                    (Some(loaded), Some((memory.clone(), id.clone())))
+                    Ok((Some(loaded), Some((memory.clone(), id.clone()))))
                 }
-                _ => (None, None),
+                _ => Ok((None, None)),
             },
-        };
+        }
+    }
 
+    /// Drive the agent loop to completion, returning the aggregated
+    /// [`PromptResponse`]. Hooks fire at every observable point; the first hook
+    /// to terminate cancels the run.
+    pub async fn run(self) -> Result<PromptResponse, PromptError> {
+        let (agent_span, created_agent_span) = self.open_agent_span();
+        let (history_override, memory_handle) = self.resolve_history_and_memory().await?;
         let run = self.build_run(history_override);
 
         // Fold the shared engine to its final response. The blocking surface
@@ -1623,8 +1608,8 @@ mod migrated_tests {
     use crate::agent::{
         CompletionCallAction, CompletionCallEvent, HookStack, InvalidToolCallAction,
         InvalidToolCallContext, ModelTurnAction, ModelTurnFinished, ObservationAction,
-        StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta, ToolResultAction,
-        ToolResultEvent,
+        ReasoningDelta, StreamResponseFinish, TextDelta, ToolCall, ToolCallAction, ToolCallDelta,
+        ToolResultAction, ToolResultEvent,
     };
 
     use std::sync::{
@@ -1653,7 +1638,6 @@ mod migrated_tests {
         Tool, ToolContext, ToolExecutionError, ToolSet,
         server::{ToolServer, ToolServerHandle},
     };
-    use rig_core::OneOrMany;
     use rig_core::message::{
         AssistantContent, ToolCall as MessageToolCall, ToolChoice, ToolFunction, UserContent,
     };
@@ -1767,6 +1751,14 @@ mod migrated_tests {
             self.record(StepEventKind::TextDelta);
             ObservationAction::continue_run()
         }
+        async fn on_reasoning_delta(
+            &self,
+            _: &HookContext,
+            _: ReasoningDelta<'_>,
+        ) -> ObservationAction {
+            self.record(StepEventKind::ReasoningDelta);
+            ObservationAction::continue_run()
+        }
         async fn on_tool_call_delta(
             &self,
             _: &HookContext,
@@ -1788,7 +1780,7 @@ mod migrated_tests {
     #[derive(Clone, Debug, PartialEq)]
     struct CanonicalResponseSnapshot {
         prompt: Message,
-        content: OneOrMany<AssistantContent>,
+        content: Vec<AssistantContent>,
         usage: Usage,
         message_id: Option<String>,
     }
@@ -1797,7 +1789,7 @@ mod migrated_tests {
     struct CanonicalResponseHook {
         blocking: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
         streaming: Arc<Mutex<Vec<CanonicalResponseSnapshot>>>,
-        committed: Arc<Mutex<Vec<OneOrMany<AssistantContent>>>>,
+        committed: Arc<Mutex<Vec<Vec<AssistantContent>>>>,
     }
 
     impl AgentHook for CanonicalResponseHook {
@@ -1895,6 +1887,13 @@ mod migrated_tests {
         }
     }
 
+    /// A `'static` empty identity for hand-built hook events in tests.
+    fn no_identity() -> &'static rig_core::completion::ResponseIdentity {
+        static EMPTY: std::sync::OnceLock<rig_core::completion::ResponseIdentity> =
+            std::sync::OnceLock::new();
+        EMPTY.get_or_init(Default::default)
+    }
+
     fn canonical_usage() -> Usage {
         Usage {
             input_tokens: 11,
@@ -1924,10 +1923,344 @@ mod migrated_tests {
             *hook.blocking.lock().expect("blocking snapshots"),
             [CanonicalResponseSnapshot {
                 prompt,
-                content: OneOrMany::one(AssistantContent::text("canonical response")),
+                content: vec![AssistantContent::text("canonical response")],
                 usage: canonical_usage(),
                 message_id: Some("msg-canonical".to_string()),
             }]
+        );
+    }
+
+    /// One hook observation per completed model call carries the attempt's
+    /// full identity triple, and the run's `completion_calls` record it
+    /// per-attempt (mock-model unit test; the live header-capture halves are
+    /// cassette-tested per provider).
+    #[tokio::test]
+    async fn completion_response_hook_and_calls_carry_identity_metadata() {
+        type IdentityTriple = (Option<String>, Option<String>, Option<String>);
+
+        #[derive(Clone, Default)]
+        struct IdentityHook {
+            seen: Arc<Mutex<Vec<IdentityTriple>>>,
+        }
+
+        impl AgentHook for IdentityHook {
+            async fn on_completion_response(
+                &self,
+                _ctx: &HookContext,
+                event: crate::agent::hook::CompletionResponse<'_>,
+            ) -> ObservationAction {
+                self.seen.lock().expect("identity snapshots").push((
+                    event.message_id.map(str::to_owned),
+                    event.identity.response_id.clone(),
+                    event.identity.provider_request_id.clone(),
+                ));
+                ObservationAction::continue_run()
+            }
+        }
+
+        let hook = IdentityHook::default();
+        let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")
+            .with_message_id("msg_1")
+            .with_response_id("resp_1")
+            .with_provider_request_id("req_1")]))
+        .add_hook(hook.clone())
+        .build()
+        .runner(Message::user("prompt"))
+        .run()
+        .await
+        .expect("blocking response");
+
+        assert_eq!(
+            *hook.seen.lock().expect("identity snapshots"),
+            [(
+                Some("msg_1".to_string()),
+                Some("resp_1".to_string()),
+                Some("req_1".to_string()),
+            )]
+        );
+        let call = &response.completion_calls[0];
+        assert_eq!(call.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(call.response_id.as_deref(), Some("resp_1"));
+        assert_eq!(call.provider_request_id.as_deref(), Some("req_1"));
+    }
+
+    /// A provider that reports no ids yields `None` everywhere — never an
+    /// error and never a fabricated value.
+    #[tokio::test]
+    async fn absent_identity_metadata_stays_none() {
+        let response = AgentBuilder::new(MockCompletionModel::new([MockTurn::text("reply")]))
+            .build()
+            .runner(Message::user("prompt"))
+            .run()
+            .await
+            .expect("blocking response");
+
+        let call = &response.completion_calls[0];
+        assert_eq!(call.message_id, None);
+        assert_eq!(call.response_id, None);
+        assert_eq!(call.provider_request_id, None);
+    }
+
+    /// rig#2314 error matrix: a failed attempt's error carries its *own*
+    /// transport id through the surfaced `PromptError`, and a run that fails
+    /// after a successful call never cross-attributes — the error's id and
+    /// the earlier success's id stay distinct.
+    #[tokio::test]
+    async fn failed_attempt_error_carries_its_own_request_id() {
+        let hook = TurnIdentityHook::default();
+        let error = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::tool_call("tc1", "add", serde_json::json!({"x": 2, "y": 3}))
+                .with_provider_request_id("req-success-1"),
+            MockTurn::provider_response_error(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                r#"{"error":"rate limited"}"#,
+                "req-failed-2",
+            ),
+        ]))
+        .tool(crate::test_utils::MockAddTool)
+        .add_hook(hook.clone())
+        .build()
+        .runner(Message::user("add 2 and 3"))
+        .max_turns(4)
+        .run()
+        .await
+        .expect_err("the second attempt fails");
+
+        assert_eq!(
+            error.provider_request_id(),
+            Some("req-failed-2"),
+            "the surfaced error reports the failing attempt's id: {error:?}"
+        );
+        let turns = hook.turns.lock().expect("turn identities").clone();
+        assert_eq!(turns.len(), 1, "only the successful call fired the event");
+        assert_eq!(
+            turns[0].provider_request_id.as_deref(),
+            Some("req-success-1"),
+            "the success keeps its own id — no cross-attribution"
+        );
+    }
+
+    /// Hook capturing every `ModelTurnFinished` identity plus whether a
+    /// `StreamResponseFinish` fired — the cross-surface "every completed
+    /// call" observer #2265 requires.
+    #[derive(Clone, Default)]
+    struct TurnIdentityHook {
+        turns: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
+        stream_finishes: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
+    }
+
+    impl AgentHook for TurnIdentityHook {
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            self.turns
+                .lock()
+                .expect("turn identities")
+                .push(event.identity.clone());
+            ModelTurnAction::continue_run()
+        }
+
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            event: StreamResponseFinish<'_>,
+        ) -> ObservationAction {
+            self.stream_finishes
+                .lock()
+                .expect("stream finish identities")
+                .push(event.identity.clone());
+            ObservationAction::continue_run()
+        }
+    }
+
+    fn stream_final_with_ids(request_id: &str, response_id: &str) -> MockStreamEvent {
+        MockStreamEvent::FinalResponse(
+            rig_core::streaming::StreamFinal::new("mock", Usage::new())
+                .with_response_id(response_id)
+                .with_provider_request_id(request_id),
+        )
+    }
+
+    /// Blocking surface: a tool-only turn and the following text turn each
+    /// fire `ModelTurnFinished` with their *own* attempt's identity.
+    #[tokio::test]
+    async fn model_turn_finished_identity_blocking_tool_only_and_text() {
+        let hook = TurnIdentityHook::default();
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3}))
+                .with_provider_request_id("req-turn-1")
+                .with_response_id("resp-turn-1"),
+            MockTurn::text("5")
+                .with_provider_request_id("req-turn-2")
+                .with_response_id("resp-turn-2"),
+        ]))
+        .tool(crate::test_utils::MockAddTool)
+        .add_hook(hook.clone())
+        .build()
+        .runner(Message::user("add 2 and 3"))
+        .max_turns(3)
+        .run()
+        .await
+        .expect("blocking tool run");
+
+        let turns = hook.turns.lock().expect("turn identities").clone();
+        let request_ids: Vec<_> = turns
+            .iter()
+            .map(|identity| identity.provider_request_id.clone())
+            .collect();
+        assert_eq!(
+            request_ids,
+            [
+                Some("req-turn-1".to_string()),
+                Some("req-turn-2".to_string())
+            ],
+            "each attempt reports its own transport id, in order"
+        );
+        // The run's completion_calls agree with the hook observations.
+        let call_ids: Vec<_> = response
+            .completion_calls
+            .iter()
+            .map(|call| call.provider_request_id.clone())
+            .collect();
+        assert_eq!(request_ids, call_ids);
+    }
+
+    /// Streamed surface: a tool-only turn fires no `StreamResponseFinish`
+    /// (that event is text-turn-scoped by design) but its `ModelTurnFinished`
+    /// carries full identity — so an observer of that one event still records
+    /// every completed call. The two turns report distinct per-attempt ids.
+    #[tokio::test]
+    async fn model_turn_finished_identity_streamed_tool_only_and_text() {
+        let hook = TurnIdentityHook::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call_name_delta("tc1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                stream_final_with_ids("req-stream-1", "resp-stream-1"),
+            ],
+            vec![
+                MockStreamEvent::text("5"),
+                stream_final_with_ids("req-stream-2", "resp-stream-2"),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(crate::test_utils::MockAddTool)
+            .add_hook(hook.clone())
+            .build()
+            .runner(Message::user("add 2 and 3"))
+            .max_turns(3)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let turns = hook.turns.lock().expect("turn identities").clone();
+        let request_ids: Vec<_> = turns
+            .iter()
+            .map(|identity| identity.provider_request_id.clone())
+            .collect();
+        assert_eq!(
+            request_ids,
+            [
+                Some("req-stream-1".to_string()),
+                Some("req-stream-2".to_string())
+            ],
+            "streamed tool-only and text turns each carry their own identity"
+        );
+        let finishes = hook.stream_finishes.lock().expect("finishes").clone();
+        assert_eq!(
+            finishes.len(),
+            1,
+            "StreamResponseFinish stays text-turn-scoped; the tool-only turn fires none"
+        );
+        assert_eq!(
+            finishes[0].provider_request_id.as_deref(),
+            Some("req-stream-2"),
+            "the text turn's finish event carries that turn's identity"
+        );
+    }
+
+    /// A reasoning-only streamed turn (no text, no tool calls) also fires
+    /// `ModelTurnFinished` with identity.
+    #[tokio::test]
+    async fn model_turn_finished_identity_streamed_reasoning_only() {
+        let hook = TurnIdentityHook::default();
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::reasoning("thinking quietly"),
+            stream_final_with_ids("req-reasoning-only", "resp-reasoning-only"),
+        ]]);
+        let mut stream = AgentBuilder::new(model)
+            .add_hook(hook.clone())
+            .build()
+            .runner(Message::user("think"))
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+
+        let turns = hook.turns.lock().expect("turn identities").clone();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            turns[0].provider_request_id.as_deref(),
+            Some("req-reasoning-only")
+        );
+        assert_eq!(turns[0].response_id.as_deref(), Some("resp-reasoning-only"));
+        assert!(
+            hook.stream_finishes.lock().expect("finishes").is_empty(),
+            "a reasoning-only turn streams no text, so no StreamResponseFinish"
+        );
+    }
+
+    /// A retried turn's `ModelTurnFinished` carries the retried attempt's own
+    /// identity — the first attempt's ids never leak into the second event.
+    #[tokio::test]
+    async fn retried_turn_reports_the_retried_attempts_own_identity() {
+        #[derive(Clone, Default)]
+        struct RetryOnceCapturingIdentity {
+            seen: Arc<Mutex<Vec<Option<String>>>>,
+        }
+
+        impl AgentHook for RetryOnceCapturingIdentity {
+            async fn on_model_turn_finished(
+                &self,
+                _ctx: &HookContext,
+                event: ModelTurnFinished<'_>,
+            ) -> ModelTurnAction {
+                let mut seen = self.seen.lock().expect("retry identities");
+                seen.push(event.identity.provider_request_id.clone());
+                if seen.len() == 1 {
+                    ModelTurnAction::repeat()
+                } else {
+                    ModelTurnAction::continue_run()
+                }
+            }
+        }
+
+        let hook = RetryOnceCapturingIdentity::default();
+        AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::text("first attempt").with_provider_request_id("req-attempt-1"),
+            MockTurn::text("second attempt").with_provider_request_id("req-attempt-2"),
+        ]))
+        .add_hook(hook.clone())
+        .build()
+        .runner(Message::user("prompt"))
+        .max_turns(3)
+        .run()
+        .await
+        .expect("retried run");
+
+        assert_eq!(
+            *hook.seen.lock().expect("retry identities"),
+            [
+                Some("req-attempt-1".to_string()),
+                Some("req-attempt-2".to_string())
+            ],
+            "each attempt's event carries that attempt's id — no stale leak"
         );
     }
 
@@ -3345,8 +3678,7 @@ mod migrated_tests {
                     "tc_flaky",
                     ToolFunction::new("flaky_tool".to_string(), json!({})),
                 )),
-            ])
-            .expect("two tool calls");
+            ]);
 
             let observer = OutcomeHook::default();
             let response = AgentBuilder::new(MockCompletionModel::from_turns([
@@ -4343,8 +4675,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 2, "y": 3})),
                 tool_call_content("tc2", json!({"x": 10, "y": 20})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let blocking = AgentBuilder::new(blocking_model)
@@ -4449,8 +4780,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 1, "y": 0})),
                 tool_call_content("tc2", json!({"x": 2, "y": 0})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let response = AgentBuilder::new(model)
@@ -4527,8 +4857,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 2, "y": 3})),
                 tool_call_content("tc2", json!({"x": 10, "y": 20})),
-            ])
-            .expect("two tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
         let blocking = AgentBuilder::new(blocking_model)
@@ -4958,8 +5287,7 @@ mod migrated_tests {
             MockTurn::from_contents([
                 tool_call_content("tc1", json!({"x": 1, "y": 1})),
                 tool_call_content("tc2", json!({"x": 2, "y": 2})),
-            ])
-            .expect("two tool calls is non-empty"),
+            ]),
             MockTurn::text("unreachable"),
         ])
     }
@@ -5677,8 +6005,7 @@ mod migrated_tests {
                 tool_call_content("c2", json!({})),
                 tool_call_content("c3", json!({})),
                 tool_call_content("c4", json!({})),
-            ])
-            .expect("four tool calls is a valid turn"),
+            ]),
             MockTurn::text("done"),
         ]);
 
@@ -6211,7 +6538,6 @@ mod migrated_tests {
                             ToolFunction::new(call.name.to_string(), call.args.clone()),
                         ))
                     }))
-                    .expect("a scripted tool-call turn has at least one call")
                 }
             }
         }
@@ -6518,8 +6844,7 @@ mod migrated_tests {
                     "tc1",
                     ToolFunction::new("default_api".to_string(), json!({"x": 2, "y": 3})),
                 )),
-            ])
-            .expect("a text + tool-call turn is valid"),
+            ]),
             MockTurn::text("the answer is 5"),
         ]);
         let blocking_hook = RecordingHook::default();
@@ -6931,23 +7256,6 @@ mod migrated_tests {
         let _other_agent = AgentBuilder::new(other_model).add_hook(hook).build();
     }
 
-    /// `ToolCallAction::Rewrite` resolves to a `ProceedWith` tool-call decision that
-    /// carries the replacement arguments, and is named for fail-closed
-    /// diagnostics.
-    #[test]
-    fn rewrite_args_resolves_to_proceed_with_for_tool_call() {
-        let args = json!({"x": 1, "y": 2});
-        match super::tool_call_decision(ToolCallAction::rewrite(args.clone())) {
-            super::ToolCallDecision::ProceedWith(replacement) => assert_eq!(replacement, args),
-            _ => panic!("ToolCallAction::Rewrite should resolve to ProceedWith"),
-        }
-        // The typed convenience builds the same variant as the value constructor.
-        assert_eq!(
-            ToolCallAction::try_rewrite(&json!({"x": 1, "y": 2})).expect("serializes"),
-            ToolCallAction::rewrite(json!({"x": 1, "y": 2})),
-        );
-    }
-
     /// A hook that rewrites a *valid* tool call's arguments (`ToolCallAction::Rewrite`
     /// on `ToolCall`) is honored identically under `run()` and `stream()`: the
     /// tool executes with the replacement, so both drivers observe the same
@@ -7240,18 +7548,6 @@ mod migrated_tests {
         }
     }
 
-    /// `ToolResultAction::Rewrite` resolves to a `Replace` tool-result decision carrying
-    /// the replacement, and is named for fail-closed diagnostics.
-    #[test]
-    fn rewrite_result_resolves_to_replace_for_tool_result() {
-        match super::tool_result_decision(ToolResultAction::rewrite("redacted")) {
-            super::ToolResultDecision::Replace(result) => {
-                assert_eq!(result.as_text(), Some("redacted"))
-            }
-            _ => panic!("ToolResultAction::Rewrite should resolve to Replace"),
-        }
-    }
-
     /// A hook that rewrites a tool's result (`ToolResultAction::Rewrite` on
     /// `ToolResult`) is honored identically under `run()` and `stream()`: the
     /// model-visible history carries the replacement while the `ToolResult` event
@@ -7397,19 +7693,6 @@ mod migrated_tests {
 
     const OVERRIDE_PREAMBLE: &str = "overridden: critical-step instructions";
     const OVERRIDE_MAX_TOKENS: u64 = 512;
-
-    /// `CompletionCallAction::Patch` resolves to a `Patch` completion-call decision
-    /// carrying the patch, and is named for fail-closed diagnostics.
-    #[test]
-    fn patch_request_resolves_to_patch_for_completion_call() {
-        let patch = RequestPatch::new()
-            .temperature(0.25)
-            .tool_choice(ToolChoice::Required);
-        match super::completion_call_decision(CompletionCallAction::patch(patch.clone())) {
-            super::CompletionCallDecision::Patch(got) => assert_eq!(got, patch),
-            _ => panic!("PatchRequest should resolve to Patch for a completion call"),
-        }
-    }
 
     /// A `CompletionCallAction::Patch` hook patches the request for the turn identically
     /// under `run()` and `stream()`: the captured completion request shows the
@@ -7782,11 +8065,11 @@ mod migrated_tests {
             )
             .build()
             .runner(Message::User {
-                content: OneOrMany::one(UserContent::image_url(
+                content: vec![UserContent::image_url(
                     "https://example.com/prompt.png",
                     None,
                     None,
-                )),
+                )],
             })
             .history(vec![
                 Message::user("older history query"),
@@ -7961,11 +8244,11 @@ mod migrated_tests {
             )
             .build()
             .runner(Message::User {
-                content: OneOrMany::one(UserContent::image_url(
+                content: vec![UserContent::image_url(
                     "https://example.com/blocking.png",
                     None,
                     None,
-                )),
+                )],
             })
             .history(vec![
                 Message::user("older blocking history query"),
@@ -8006,11 +8289,11 @@ mod migrated_tests {
         )
         .build()
         .runner(Message::User {
-            content: OneOrMany::one(UserContent::image_url(
+            content: vec![UserContent::image_url(
                 "https://example.com/streaming.png",
                 None,
                 None,
-            )),
+            )],
         })
         .history(vec![
             Message::user("older streaming history query"),
@@ -8211,6 +8494,7 @@ mod migrated_tests {
     async fn reasoning_only_turn_does_not_gain_stream_response_finish() {
         let hook = RecordingHook::default();
         let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning_delta("think"),
             MockStreamEvent::reasoning("think"),
             MockStreamEvent::final_response_with_total_tokens(0),
         ]]))
@@ -8232,6 +8516,11 @@ mod migrated_tests {
             hook.count(StepEventKind::ModelTurnFinished),
             1,
             "the accepted reasoning-only turn still fires ModelTurnFinished"
+        );
+        assert_eq!(
+            hook.count(StepEventKind::ReasoningDelta),
+            1,
+            "the reasoning fragment is observed once and its completed restatement is not a delta"
         );
     }
 
@@ -9461,9 +9750,16 @@ mod migrated_tests {
             ctx: &HookContext,
             event: ModelTurnFinished<'_>,
         ) -> ModelTurnAction {
-            let rejected = event.content.iter().any(
+            let has_rejected_text = event.content.iter().any(
                 |content| matches!(content, AssistantContent::Text(text) if text.text == self.rejected_text),
             );
+            // A hook watching for the empty response has to recognise both
+            // spellings of it. Blocking turns carry an explicit empty text part;
+            // a stream that produced nothing now carries no parts at all, where
+            // it used to be padded with a fabricated empty-text part that made
+            // the two look alike.
+            let rejected =
+                has_rejected_text || (self.rejected_text.is_empty() && event.content.is_empty());
             if !rejected {
                 return ModelTurnAction::continue_run();
             }
@@ -9532,8 +9828,8 @@ mod migrated_tests {
 
         let requests = model.requests();
         assert_eq!(requests.len(), 2);
-        let first = requests[0].chat_history.iter().cloned().collect::<Vec<_>>();
-        let second = requests[1].chat_history.iter().cloned().collect::<Vec<_>>();
+        let first = requests[0].chat_history.clone();
+        let second = requests[1].chat_history.clone();
         assert_eq!(first, vec![Message::user("question")]);
         assert_eq!(
             second, first,
@@ -9575,11 +9871,7 @@ mod migrated_tests {
         );
         let second_request = &model.requests()[1];
         assert_eq!(
-            second_request
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            second_request.chat_history.clone(),
             vec![
                 Message::user("question"),
                 Message::assistant("rejected"),
@@ -9621,11 +9913,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1]
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            model.requests()[1].chat_history.clone(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),
@@ -9812,11 +10100,7 @@ mod migrated_tests {
             ]
         );
         assert_eq!(
-            model.requests()[1]
-                .chat_history
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>(),
+            model.requests()[1].chat_history.clone(),
             vec![
                 Message::user("question"),
                 Message::user("provide an answer"),
@@ -10132,11 +10416,12 @@ mod migrated_tests {
         let shared_hook = BoundedResponseRetry::new("rejected", 1, TestRetryMode::Repeat);
         let first_ctx = HookContext::new(false, None);
         let second_ctx = HookContext::new(false, None);
-        let content = OneOrMany::one(AssistantContent::text("rejected"));
+        let content = vec![AssistantContent::text("rejected")];
         let first_event = ModelTurnFinished {
             turn: 1,
             content: &content,
             usage: Usage::new(),
+            identity: no_identity(),
         };
         let second_event = first_event;
 
@@ -10156,8 +10441,8 @@ mod migrated_tests {
         let same_run_ctx = HookContext::new(false, None);
         let first_hook = BoundedResponseRetry::new("first", 1, TestRetryMode::Repeat);
         let second_hook = BoundedResponseRetry::new("second", 1, TestRetryMode::Repeat);
-        let first_content = OneOrMany::one(AssistantContent::text("first"));
-        let second_content = OneOrMany::one(AssistantContent::text("second"));
+        let first_content = vec![AssistantContent::text("first")];
+        let second_content = vec![AssistantContent::text("second")];
         let first_action = first_hook
             .on_model_turn_finished(
                 &same_run_ctx,
@@ -10165,6 +10450,7 @@ mod migrated_tests {
                     turn: 1,
                     content: &first_content,
                     usage: Usage::new(),
+                    identity: no_identity(),
                 },
             )
             .await;
@@ -10175,6 +10461,7 @@ mod migrated_tests {
                     turn: 2,
                     content: &second_content,
                     usage: Usage::new(),
+                    identity: no_identity(),
                 },
             )
             .await;
@@ -10201,11 +10488,12 @@ mod migrated_tests {
 
     #[tokio::test]
     async fn model_turn_action_short_circuits_flat_and_nested_hook_stacks() {
-        let content = OneOrMany::one(AssistantContent::text("response"));
+        let content = vec![AssistantContent::text("response")];
         let event = ModelTurnFinished {
             turn: 1,
             content: &content,
             usage: Usage::new(),
+            identity: no_identity(),
         };
         let ctx = HookContext::new(false, None);
 

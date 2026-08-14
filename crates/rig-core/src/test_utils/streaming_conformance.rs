@@ -26,7 +26,6 @@ use futures::StreamExt;
 use futures::future::BoxFuture;
 
 use crate::{
-    OneOrMany,
     completion::{CompletionError, FinishReason},
     http_client,
     message::AssistantContent,
@@ -384,7 +383,7 @@ pub fn transport_error_chunk() -> http_client::Result<WireInput> {
 ///    their concatenation.
 pub fn assert_valid_event_stream(
     items: &[Result<crate::streaming::StreamedAssistantContent, CompletionError>],
-    choice: &OneOrMany<AssistantContent>,
+    choice: &[AssistantContent],
 ) {
     use crate::message::AssistantContent;
     use crate::streaming::StreamedAssistantContent as Item;
@@ -538,7 +537,7 @@ pub struct DrainedStream {
     /// Every item the stream yielded, in order.
     pub items: Vec<Result<StreamedAssistantContent, CompletionError>>,
     /// The final aggregated assistant message.
-    pub choice: OneOrMany<AssistantContent>,
+    pub choice: Vec<AssistantContent>,
     /// The normalized terminal record, absent on truncation or terminal error.
     pub response: Option<StreamFinal>,
 }
@@ -692,7 +691,7 @@ pub struct InterleavedReasoningFixture {
 }
 
 type BufferedDriveFn = Box<
-    dyn Fn(String) -> BoxFuture<'static, Result<OneOrMany<AssistantContent>, CompletionError>>
+    dyn Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, CompletionError>>
         + Send
         + Sync,
 >;
@@ -709,10 +708,7 @@ impl BufferedBodyDriver {
     /// Wrap a buffered pipeline closure.
     pub fn new(
         provider: &'static str,
-        drive: impl Fn(
-            String,
-        )
-            -> BoxFuture<'static, Result<OneOrMany<AssistantContent>, CompletionError>>
+        drive: impl Fn(String) -> BoxFuture<'static, Result<Vec<AssistantContent>, CompletionError>>
         + Send
         + Sync
         + 'static,
@@ -724,10 +720,7 @@ impl BufferedBodyDriver {
     }
 
     /// Run the buffered pipeline over a complete SSE body.
-    pub async fn drive(
-        &self,
-        body: String,
-    ) -> Result<OneOrMany<AssistantContent>, CompletionError> {
+    pub async fn drive(&self, body: String) -> Result<Vec<AssistantContent>, CompletionError> {
         (self.drive)(body).await
     }
 }
@@ -2809,7 +2802,8 @@ pub mod fixtures {
                         .api_key("test-key")
                         .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
                         .build()?;
-                    let model = client.completion_model(crate::providers::cohere::COMMAND_R);
+                    let model =
+                        client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
                     let request = model.completion_request("hello").build();
                     let stream = model.stream(request).await?;
                     Ok(drain(stream).await)

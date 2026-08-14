@@ -1,6 +1,5 @@
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
-use glob::glob;
 use lopdf::{Document, Error as LopdfError};
 use thiserror::Error;
 
@@ -22,10 +21,7 @@ pub enum PdfLoaderError {
 // Implementing Loadable trait for loading pdfs
 // ================================================================
 
-pub(crate) trait Loadable {
-    fn load(self) -> Result<Document, PdfLoaderError>;
-    fn load_with_path(self) -> Result<(PathBuf, Document), PdfLoaderError>;
-}
+loadable_trait!(Loadable, PdfLoaderError, Document, load, load_with_path);
 
 impl Loadable for PathBuf {
     fn load(self) -> Result<Document, PdfLoaderError> {
@@ -34,18 +30,6 @@ impl Loadable for PathBuf {
     fn load_with_path(self) -> Result<(PathBuf, Document), PdfLoaderError> {
         let contents = Document::load(&self);
         Ok((self, contents?))
-    }
-}
-
-impl<T> Loadable for Result<T, PdfLoaderError>
-where
-    T: Loadable,
-{
-    fn load(self) -> Result<Document, PdfLoaderError> {
-        self.map(|t| t.load())?
-    }
-    fn load_with_path(self) -> Result<(PathBuf, Document), PdfLoaderError> {
-        self.map(|t| t.load_with_path())?
     }
 }
 
@@ -106,7 +90,8 @@ pub struct PdfFileLoader<'a, T> {
     iterator: Box<dyn Iterator<Item = T> + 'a>,
 }
 
-impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
+#[allow(private_bounds)] // `Loadable` deliberately seals which states expose these methods
+impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// Loads the contents of the pdfs within the iterator returned by [PdfFileLoader::with_glob]
     ///  or [PdfFileLoader::with_dir]. Loaded PDF documents are raw PDF instances that can be
     ///  further processed (by page, etc).
@@ -160,7 +145,27 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     }
 }
 
-impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
+/// Extract each page's text, paired with its zero-based page number.
+fn page_texts(doc: &Document) -> Vec<(usize, Result<String, PdfLoaderError>)> {
+    doc.page_iter()
+        .enumerate()
+        .map(|(page_no, _)| {
+            (
+                page_no,
+                doc.extract_text(&[page_no as u32 + 1])
+                    .map_err(PdfLoaderError::PdfError),
+            )
+        })
+        .collect()
+}
+
+/// Concatenate the text of every page, failing on the first unreadable page.
+fn all_text(doc: &Document) -> Result<String, PdfLoaderError> {
+    page_texts(doc).into_iter().map(|(_, text)| text).collect()
+}
+
+#[allow(private_bounds)] // `Loadable` deliberately seals which states expose these methods
+impl<'a, T: Loadable + 'a> PdfFileLoader<'a, T> {
     /// Directly reads the contents of the pdfs within the iterator returned by
     ///  [PdfFileLoader::with_glob] or [PdfFileLoader::with_dir].
     ///
@@ -182,19 +187,7 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
     /// ```
     pub fn read(self) -> PdfFileLoader<'a, Result<String, PdfLoaderError>> {
         PdfFileLoader {
-            iterator: Box::new(self.iterator.map(|res| {
-                let doc = res.load()?;
-                Ok(doc
-                    .page_iter()
-                    .enumerate()
-                    .map(|(page_no, _)| {
-                        doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
-                    })
-                    .collect::<Result<Vec<String>, PdfLoaderError>>()?
-                    .into_iter()
-                    .collect::<String>())
-            })),
+            iterator: Box::new(self.iterator.map(|res| all_text(&res.load()?))),
         }
     }
 
@@ -222,22 +215,7 @@ impl<'a> PdfFileLoader<'a, Result<PathBuf, PdfLoaderError>> {
         PdfFileLoader {
             iterator: Box::new(self.iterator.map(|res| {
                 let (path, doc) = res.load_with_path()?;
-                println!(
-                    "Loaded {:?} PDF: {:?}",
-                    path,
-                    doc.page_iter().collect::<Vec<_>>()
-                );
-                let content = doc
-                    .page_iter()
-                    .enumerate()
-                    .map(|(page_no, _)| {
-                        doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
-                    })
-                    .collect::<Result<Vec<String>, PdfLoaderError>>()?
-                    .into_iter()
-                    .collect::<String>();
-
+                let content = all_text(&doc)?;
                 Ok((path, content))
             })),
         }
@@ -269,15 +247,10 @@ impl<'a> PdfFileLoader<'a, Document> {
     /// ```
     pub fn by_page(self) -> PdfFileLoader<'a, Result<String, PdfLoaderError>> {
         PdfFileLoader {
-            iterator: Box::new(self.iterator.flat_map(|doc| {
-                doc.page_iter()
-                    .enumerate()
-                    .map(|(page_no, _)| {
-                        doc.extract_text(&[page_no as u32 + 1])
-                            .map_err(PdfLoaderError::PdfError)
-                    })
-                    .collect::<Vec<_>>()
-            })),
+            iterator: Box::new(
+                self.iterator
+                    .flat_map(|doc| page_texts(&doc).into_iter().map(|(_, text)| text)),
+            ),
         }
     }
 }
@@ -313,21 +286,7 @@ impl<'a> PdfFileLoader<'a, (PathBuf, Document)> {
     /// ```
     pub fn by_page(self) -> PdfFileLoader<'a, ByPage> {
         PdfFileLoader {
-            iterator: Box::new(self.iterator.map(|(path, doc)| {
-                (
-                    path,
-                    doc.page_iter()
-                        .enumerate()
-                        .map(|(page_no, _)| {
-                            (
-                                page_no,
-                                doc.extract_text(&[page_no as u32 + 1])
-                                    .map_err(PdfLoaderError::PdfError),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })),
+            iterator: Box::new(self.iterator.map(|(path, doc)| (path, page_texts(&doc)))),
         }
     }
 }
@@ -366,139 +325,8 @@ impl<'a> PdfFileLoader<'a, ByPage> {
     }
 }
 
-impl<'a, T> PdfFileLoader<'a, Result<T, PdfLoaderError>>
-where
-    T: 'a,
-{
-    /// Ignores errors in the iterator, returning only successful results. This can be used on any
-    ///  [PdfFileLoader] state of iterator whose items are results.
-    ///
-    /// # Example
-    /// Read files in directory "tests/data/*.pdf" and ignore errors from unreadable files.
-    ///
-    /// ```no_run
-    /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let content = PdfFileLoader::with_glob("tests/data/*.pdf")?.read().ignore_errors();
-    /// for content in content {
-    ///     println!("{}", content)
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn ignore_errors(self) -> PdfFileLoader<'a, T> {
-        PdfFileLoader {
-            iterator: Box::new(self.iterator.filter_map(|res| res.ok())),
-        }
-    }
-}
-
-impl PdfFileLoader<'_, Result<PathBuf, FileLoaderError>> {
-    /// Creates a new [PdfFileLoader] using a glob pattern to match files.
-    ///
-    /// # Example
-    /// Create a [PdfFileLoader] for all `.pdf` files that match the glob "tests/data/*.pdf".
-    ///
-    /// ```no_run
-    /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let loader = PdfFileLoader::with_glob("tests/data/*.pdf")?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn with_glob(
-        pattern: &str,
-    ) -> Result<PdfFileLoader<'_, Result<PathBuf, PdfLoaderError>>, PdfLoaderError> {
-        let paths = glob(pattern).map_err(FileLoaderError::PatternError)?;
-        Ok(PdfFileLoader {
-            iterator: Box::new(paths.into_iter().map(|path| {
-                path.map_err(FileLoaderError::GlobError)
-                    .map_err(PdfLoaderError::FileLoaderError)
-            })),
-        })
-    }
-
-    /// Creates a new [PdfFileLoader] on all files within a directory.
-    ///
-    /// # Example
-    /// Create a [PdfFileLoader] for all files that are in the directory "files".
-    ///
-    /// ```no_run
-    /// # use rig_core::loaders::PdfFileLoader;
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let loader = PdfFileLoader::with_dir("files")?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn with_dir(
-        directory: &str,
-    ) -> Result<PdfFileLoader<'_, Result<PathBuf, PdfLoaderError>>, PdfLoaderError> {
-        Ok(PdfFileLoader {
-            iterator: Box::new(
-                fs::read_dir(directory)
-                    .map_err(FileLoaderError::IoError)?
-                    .map(|entry| Ok(entry.map_err(FileLoaderError::IoError)?.path())),
-            ),
-        })
-    }
-}
-
-impl<'a> PdfFileLoader<'a, Vec<u8>> {
-    /// Ingest a PDF as a byte array.
-    pub fn from_bytes(bytes: Vec<u8>) -> PdfFileLoader<'a, Vec<u8>> {
-        PdfFileLoader {
-            iterator: Box::new(vec![bytes].into_iter()),
-        }
-    }
-
-    /// Ingest multiple byte arrays.
-    pub fn from_bytes_multi(bytes_vec: Vec<Vec<u8>>) -> PdfFileLoader<'a, Vec<u8>> {
-        PdfFileLoader {
-            iterator: Box::new(bytes_vec.into_iter()),
-        }
-    }
-
-    /// Use this once you've created the loader to load the document in.
-    pub fn load(self) -> PdfFileLoader<'a, Result<Document, PdfLoaderError>> {
-        PdfFileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.load())),
-        }
-    }
-
-    /// Use this once you've created the loader to load the document in (and get the path).
-    pub fn load_with_path(self) -> PdfFileLoader<'a, Result<(PathBuf, Document), PdfLoaderError>> {
-        PdfFileLoader {
-            iterator: Box::new(self.iterator.map(|res| res.load_with_path())),
-        }
-    }
-}
-
-// ================================================================
-// PDFFileLoader iterator implementations
-// ================================================================
-
-pub struct IntoIter<'a, T> {
-    iterator: Box<dyn Iterator<Item = T> + 'a>,
-}
-
-impl<'a, T> IntoIterator for PdfFileLoader<'a, T> {
-    type Item = T;
-    type IntoIter = IntoIter<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        IntoIter {
-            iterator: self.iterator,
-        }
-    }
-}
-
-impl<T> Iterator for IntoIter<'_, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iterator.next()
-    }
-}
+loader_scaffold!(PdfFileLoader, PdfLoaderError, dir: all_entries);
+loader_from_bytes!(PdfFileLoader);
 
 #[cfg(test)]
 mod tests {
@@ -594,6 +422,32 @@ mod tests {
         assert_eq!(
             actual,
             vec![
+                "Page\n1\n".to_string(),
+                "Page\n2\n".to_string(),
+                "Page\n3\n".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_pdf_loader_bytes_multi() {
+        let dummy = std::fs::read(fixture_path("dummy.pdf")).unwrap();
+        let pages = std::fs::read(fixture_path("pages.pdf")).unwrap();
+
+        let loader = PdfFileLoader::from_bytes_multi(vec![dummy, pages]);
+
+        let actual = loader
+            .load()
+            .ignore_errors()
+            .by_page()
+            .ignore_errors()
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                "Test\nPDF\nDocument\n".to_string(),
                 "Page\n1\n".to_string(),
                 "Page\n2\n".to_string(),
                 "Page\n3\n".to_string(),

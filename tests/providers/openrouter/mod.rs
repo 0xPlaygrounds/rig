@@ -16,6 +16,7 @@ mod cassette {
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
     mod request_hook;
+    mod response_identity_edge;
     mod streaming;
     mod streaming_tools;
     mod transcription;

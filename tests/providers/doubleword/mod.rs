@@ -9,6 +9,7 @@ mod cassette {
     mod embeddings;
     mod extractor;
     mod request_hook;
+    mod response_identity_edge;
     mod streaming;
     mod streaming_tools;
     mod structured_output;

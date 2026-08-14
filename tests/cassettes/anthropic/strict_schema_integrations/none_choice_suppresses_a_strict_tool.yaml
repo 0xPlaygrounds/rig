@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":32,"messages":[{"content":[{"text":"Reply with exactly: strict tool suppressed","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"none"},"tools":[{"description":"Record one exact string value.","input_schema":{"additionalProperties":false,"properties":{"value":{"type":"string"}},"required":["value"],"type":"object"},"name":"unused_strict_tool","strict":true}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"\n<function_calls\">\n<invoke name=\"unused_strict_tool\">\n<parameter name=\"value","type":"text"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"max_tokens","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":574,"output_tokens":32,"service_tier":"standard"}}'

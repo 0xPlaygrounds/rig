@@ -1,0 +1,93 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use the add tool for arithmetic; do not calculate by hand.","type":"text"}],"role":"system"},{"content":"Use add to calculate 17 + 25, then state the final number.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant","tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":null,"usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant","tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":[{"function":{"arguments":"{\"a\": 17, \"b\": 25}","name":null},"id":null,"index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":null,"reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":"tool_calls","index":0,"logprobs":null}],"cost":{"diem":0,"usd":0.00010828125},"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":{"completion_tokens":18,"prompt_tokens":1107,"total_tokens":1125}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use the add tool for arithmetic; do not calculate by hand.","type":"text"}],"role":"system"},{"content":"Use add to calculate 17 + 25, then state the final number.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\":17,\"b\":25}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"42","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"mistral-small-3-2-24b-instruct","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant","tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":null,"usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant","tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"The","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":" final","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":" number","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":" is","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":" ","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"4","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"2","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":".","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":null}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":null,"tool_calls":null},"finish_reason":"stop","index":0,"logprobs":null}],"cost":{"diem":0,"usd":0.00010978125},"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion.chunk","service_tier":"default","usage":{"completion_tokens":9,"prompt_tokens":1147,"total_tokens":1156}}
+
+    data: [DONE]
+

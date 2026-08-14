@@ -264,11 +264,6 @@ impl ToolContext {
     pub(crate) fn clear_dispatch_result(&mut self) {
         self.result = TypeMap::EMPTY;
     }
-
-    /// Clone only the inbound values, for nested tool execution.
-    pub(crate) fn inbound_only(&self) -> Self {
-        self.for_dispatch()
-    }
 }
 
 impl std::fmt::Debug for ToolContext {

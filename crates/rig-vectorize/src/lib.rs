@@ -34,13 +34,13 @@ use client::{QueryRequest as ApiQueryRequest, VectorInput as ApiVectorInput};
 use rig_core::embeddings::EmbeddingModel;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreError, VectorStoreIndex};
-use rig_core::{Embed, OneOrMany, embeddings::Embedding};
+use rig_core::{Embed, embeddings::Embedding};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 impl From<VectorizeError> for VectorStoreError {
     fn from(err: VectorizeError) -> Self {
-        VectorStoreError::DatastoreError(Box::new(err))
+        VectorStoreError::datastore(err)
     }
 }
 
@@ -77,16 +77,16 @@ impl<M> VectorizeVectorStore<M> {
     }
 }
 
-impl<M> VectorStoreIndex for VectorizeVectorStore<M>
+impl<M> VectorizeVectorStore<M>
 where
     M: EmbeddingModel + Sync + Send,
 {
-    type Filter = VectorizeFilter;
-
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    /// Validates the filter, embeds the query, and returns the threshold-filtered matches.
+    async fn query_matches(
         &self,
-        req: VectorSearchRequest<Self::Filter>,
-    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        req: &VectorSearchRequest<VectorizeFilter>,
+        return_metadata: ReturnMetadata,
+    ) -> Result<Vec<VectorMatch>, VectorStoreError> {
         if let Some(filter) = req.filter() {
             filter.validate()?;
         }
@@ -97,17 +97,35 @@ where
             vector: embedding.vec,
             top_k: req.samples(),
             return_values: Some(false),
-            return_metadata: Some(ReturnMetadata::All),
+            return_metadata: Some(return_metadata),
             filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
         };
 
         let result = self.client.query(query_request).await?;
 
-        // Convert results to the expected format
-        let results = result
+        Ok(result
             .matches
             .into_iter()
             .filter(|m| req.threshold().is_none_or(|t| m.score >= t))
+            .collect())
+    }
+}
+
+impl<M> VectorStoreIndex for VectorizeVectorStore<M>
+where
+    M: EmbeddingModel + Sync + Send,
+{
+    type Filter = VectorizeFilter;
+
+    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+        &self,
+        req: VectorSearchRequest<Self::Filter>,
+    ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+        let matches = self.query_matches(&req, ReturnMetadata::All).await?;
+
+        // Convert results to the expected format
+        let results = matches
+            .into_iter()
             .map(|m| {
                 let metadata = m.metadata.unwrap_or(serde_json::Value::Null);
                 let doc: T = serde_json::from_value(metadata)?;
@@ -122,31 +140,10 @@ where
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String)>, VectorStoreError> {
-        if let Some(filter) = req.filter() {
-            filter.validate()?;
-        }
-
-        let embedding = self.model.embed_text(req.query()).await?;
-
-        let query_request = ApiQueryRequest {
-            vector: embedding.vec,
-            top_k: req.samples(),
-            return_values: Some(false),
-            return_metadata: Some(ReturnMetadata::None),
-            filter: req.filter().as_ref().map(|f| f.clone().into_inner()),
-        };
-
-        let result = self.client.query(query_request).await?;
+        let matches = self.query_matches(&req, ReturnMetadata::None).await?;
 
         // Convert results to (score, id) tuples
-        let results = result
-            .matches
-            .into_iter()
-            .filter(|m| req.threshold().is_none_or(|t| m.score >= t))
-            .map(|m| (m.score, m.id))
-            .collect();
-
-        Ok(results)
+        Ok(matches.into_iter().map(|m| (m.score, m.id)).collect())
     }
 }
 
@@ -156,22 +153,17 @@ where
 {
     async fn insert_documents<Doc: Serialize + Embed + Send>(
         &self,
-        documents: Vec<(Doc, OneOrMany<Embedding>)>,
+        documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
-        let mut vectors: Vec<ApiVectorInput> = Vec::new();
-
-        for (doc, embeddings) in documents {
-            let metadata = serde_json::to_value(&doc)?;
-
-            for embedding in embeddings {
-                vectors.push(ApiVectorInput {
+        let vectors =
+            rig_core::vector_store::flatten_embedded(documents, |metadata, embedding| {
+                Ok(ApiVectorInput {
                     id: Uuid::new_v4().to_string(),
                     values: embedding.vec,
                     metadata: Some(metadata.clone()),
                     namespace: None,
-                });
-            }
-        }
+                })
+            })?;
 
         if vectors.is_empty() {
             return Ok(());
