@@ -43,16 +43,16 @@ pin_project! {
     /// Internal state variants for the SSE state machine.
     #[project = SourceStateProjection]
     enum SourceState {
-        /// Initial connection attempt (no retry history yet)
+        /// A connection attempt in flight, carrying the retry that produced it
+        /// — `None` for the initial connect. The history belongs in the state
+        /// rather than in a separate `Reconnecting` variant because it is the
+        /// only thing a reconnect ever did differently: everything else (the
+        /// response check, the request-id capture, the handoff to `Open`) was
+        /// identical, so two variants meant two copies of it.
         Connecting {
             #[pin]
             response_future: ResponseFuture,
-        },
-        /// Reconnection attempt after a retry delay (always has retry history)
-        Reconnecting {
-            #[pin]
-            response_future: ResponseFuture,
-            last_retry: (usize, Duration),
+            last_retry: Option<(usize, Duration)>,
         },
         /// Actively receiving SSE events
         Open {
@@ -100,7 +100,10 @@ where
     /// Create a new event source that will connect to the given request.
     pub fn new(client: HttpClient, req: Request<RequestBody>) -> Self {
         let response_future = Self::create_response_future(&client, &req, None);
-        let state = SourceState::Connecting { response_future };
+        let state = SourceState::Connecting {
+            response_future,
+            last_retry: None,
+        };
 
         Self {
             client,
@@ -192,7 +195,13 @@ where
 
         loop {
             match this.state.as_mut().project() {
-                SourceStateProjection::Connecting { response_future } => {
+                SourceStateProjection::Connecting {
+                    response_future,
+                    last_retry,
+                } => {
+                    // Copied out before the poll so the state projection's
+                    // borrow ends before the transition writes `this.state`.
+                    let last_retry = *last_retry;
                     match response_future.poll(cx) {
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(Ok(response)) => {
@@ -213,77 +222,23 @@ where
                                     return Poll::Ready(Some(Ok(Event::Open)));
                                 }
                                 Err(err) => {
-                                    // Transition: Connecting -> Closed (non-retryable error)
+                                    // Transition: Connecting -> Closed. A rejected
+                                    // response is terminal: the retry policy governs
+                                    // transport failures, not a server that answered.
                                     this.state.set(SourceState::Closed);
                                     return Poll::Ready(Some(Err(err)));
                                 }
                             }
                         }
                         Poll::Ready(Err(err)) => {
-                            // First connection attempt failed - start retry cycle
-                            if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
-                                // Transition: Connecting -> WaitingToRetry
-                                this.state.set(SourceState::WaitingToRetry {
-                                    retry_delay: Delay::new(delay_duration),
-                                    current_retry: (1, delay_duration),
-                                });
-                                return Poll::Ready(Some(Err(err)));
-                            } else {
-                                // Transition: Connecting -> Closed
-                                this.state.set(SourceState::Closed);
-                                return Poll::Ready(Some(Err(err)));
-                            }
-                        }
-                    }
-                }
-
-                SourceStateProjection::Reconnecting {
-                    response_future,
-                    last_retry,
-                } => {
-                    match response_future.poll(cx) {
-                        Poll::Pending => return Poll::Pending,
-                        Poll::Ready(Ok(response)) => {
-                            match check_response(response, *this.allow_missing_content_type) {
-                                Ok(response) => {
-                                    // Transition: Reconnecting -> Open (retry cycle complete)
-                                    capture_request_id_header(
-                                        this.request_id_capture.as_ref(),
-                                        &response,
-                                    );
-                                    let mut event_stream = response.into_body().eventsource();
-                                    if let Some(id) = &this.last_event_id {
-                                        event_stream.set_last_event_id(id.clone());
-                                    }
-                                    this.state.set(SourceState::Open {
-                                        event_stream: Box::pin(event_stream),
-                                    });
-                                    return Poll::Ready(Some(Ok(Event::Open)));
-                                }
-                                Err(err) => {
-                                    // Transition: Reconnecting -> Closed (non-retryable error)
-                                    this.state.set(SourceState::Closed);
-                                    return Poll::Ready(Some(Err(err)));
-                                }
-                            }
-                        }
-                        Poll::Ready(Err(err)) => {
-                            // Reconnection attempt failed - continue retry cycle
-                            if let Some(delay_duration) =
-                                this.retry_policy.retry(&err, Some(*last_retry))
-                            {
-                                let (retry_num, _) = *last_retry;
-                                // Transition: Reconnecting -> WaitingToRetry
-                                this.state.set(SourceState::WaitingToRetry {
-                                    retry_delay: Delay::new(delay_duration),
-                                    current_retry: (retry_num + 1, delay_duration),
-                                });
-                                return Poll::Ready(Some(Err(err)));
-                            } else {
-                                // Transition: Reconnecting -> Closed (max retries exceeded)
-                                this.state.set(SourceState::Closed);
-                                return Poll::Ready(Some(Err(err)));
-                            }
+                            // Transition: Connecting -> WaitingToRetry or Closed,
+                            // continuing the retry cycle `last_retry` describes.
+                            this.state.set(state_after_transport_error(
+                                this.retry_policy,
+                                &err,
+                                last_retry,
+                            ));
+                            return Poll::Ready(Some(Err(err)));
                         }
                     }
                 }
@@ -301,19 +256,16 @@ where
                             return Poll::Ready(Some(Ok(Event::Message(event))));
                         }
                         Poll::Ready(Some(Err(EventStreamError::Transport(err)))) => {
-                            // Connection error while open - start fresh retry cycle
-                            if let Some(delay_duration) = this.retry_policy.retry(&err, None) {
-                                // Transition: Open -> WaitingToRetry
-                                this.state.set(SourceState::WaitingToRetry {
-                                    retry_delay: Delay::new(delay_duration),
-                                    current_retry: (1, delay_duration),
-                                });
-                                return Poll::Ready(Some(Err(err)));
-                            } else {
-                                // Transition: Open -> Closed
-                                this.state.set(SourceState::Closed);
-                                return Poll::Ready(Some(Err(err)));
-                            }
+                            // Transition: Open -> WaitingToRetry or Closed. A
+                            // failure mid-stream starts a *fresh* cycle (history
+                            // `None`): this connection had already succeeded, so
+                            // the attempts that preceded it no longer apply.
+                            this.state.set(state_after_transport_error(
+                                this.retry_policy,
+                                &err,
+                                None,
+                            ));
+                            return Poll::Ready(Some(Err(err)));
                         }
                         Poll::Ready(Some(Err(EventStreamError::Parser(_)))) => {
                             // Parser errors are recoverable - continue polling
@@ -340,16 +292,16 @@ where
                     match retry_delay.poll(cx) {
                         Poll::Pending => return Poll::Pending,
                         Poll::Ready(()) => {
-                            // Transition: WaitingToRetry -> Reconnecting
+                            // Transition: WaitingToRetry -> Connecting
                             let response_future =
                                 GenericEventSource::<HttpClient, RequestBody>::create_response_future(
                                     this.client,
                                     this.req,
                                     this.last_event_id.as_deref(),
                                 );
-                            this.state.set(SourceState::Reconnecting {
+                            this.state.set(SourceState::Connecting {
                                 response_future,
-                                last_retry: retry_info,
+                                last_retry: Some(retry_info),
                             });
                             continue;
                         }
@@ -361,6 +313,26 @@ where
                 }
             }
         }
+    }
+}
+
+/// The state a transport failure moves the machine to: wait out the policy's
+/// next delay, or close when it declines to retry.
+///
+/// `last_retry` is the retry that produced the failed attempt, so the retry
+/// number the policy sees and the one recorded for the next attempt advance
+/// together — the numbering is stated once instead of per call site.
+fn state_after_transport_error(
+    retry_policy: &impl RetryPolicy,
+    error: &super::Error,
+    last_retry: Option<(usize, Duration)>,
+) -> SourceState {
+    match retry_policy.retry(error, last_retry) {
+        Some(delay) => SourceState::WaitingToRetry {
+            retry_delay: Delay::new(delay),
+            current_retry: (last_retry.map_or(1, |(retry_num, _)| retry_num + 1), delay),
+        },
+        None => SourceState::Closed,
     }
 }
 
@@ -427,8 +399,10 @@ mod tests {
     use std::future::Future;
     use std::sync::{Arc, Mutex};
 
-    /// One scripted connection: its request-id header value and body chunks.
-    type ScriptedConnection = (Option<&'static str>, Vec<StreamResult<Bytes>>);
+    /// One scripted connection: `Err` to fail the connect outright, else the
+    /// request-id header value and body chunks the connection delivers.
+    type ScriptedConnection =
+        Result<(Option<&'static str>, Vec<StreamResult<Bytes>>), http_client::Error>;
 
     /// Scripted connection outcomes: each `send_streaming` call pops one
     /// [`ScriptedConnection`].
@@ -489,7 +463,7 @@ mod tests {
                 .pop_front();
             async move {
                 let (request_id, chunks) =
-                    next.expect("a scripted connection should remain for each connect");
+                    next.expect("a scripted connection should remain for each connect")?;
                 let boxed: BoxedStream = Box::pin(futures::stream::iter(chunks));
                 let mut builder = Response::builder()
                     .status(StatusCode::OK)
@@ -502,6 +476,48 @@ mod tests {
         }
     }
 
+    /// The retry number advances across reconnects, so a bounded policy
+    /// actually terminates. One arm now serves the initial connect and every
+    /// reconnect, distinguished only by the retry history it carries; were
+    /// that history dropped on the way into a reconnect, the policy would see
+    /// attempt 1 forever and `max_retries` would never be reached.
+    ///
+    /// A unit test rather than a cassette test: the behavior under test is the
+    /// state machine's own accounting, and no provider traffic can express
+    /// "the third connect attempt is refused".
+    #[tokio::test]
+    async fn a_bounded_retry_policy_stops_after_its_last_reconnect() {
+        // Four scripted failures for a policy that allows two retries: the
+        // fourth stays unused unless the numbering regresses, and the client
+        // panics past the end rather than silently looping.
+        let client = SequencedStreamingClient::new(
+            std::iter::repeat_with(|| Err(http_client::Error::StreamEnded)).take(4),
+        );
+        let req = Request::builder()
+            .uri("http://mock.invalid/stream")
+            .body(Vec::<u8>::new())
+            .expect("request should build");
+        let mut source = GenericEventSource::new(client, req);
+        source.retry_policy = ExponentialBackoff::new(
+            Duration::from_millis(1),
+            1.,
+            Some(Duration::from_millis(1)),
+            Some(2),
+        );
+        let mut source = Box::pin(source);
+
+        let mut failures = 0;
+        while let Some(item) = source.next().await {
+            assert!(item.is_err(), "every scripted connect fails");
+            failures += 1;
+        }
+
+        assert_eq!(
+            failures, 3,
+            "the initial connect plus two retries, then the policy declines"
+        );
+    }
+
     /// Regression (rig#2265): after a mid-stream failure and reconnect, the
     /// slot must describe the connection that is now open — a reconnect whose
     /// response omits the header resets it to `None` instead of leaking the
@@ -509,14 +525,14 @@ mod tests {
     #[tokio::test]
     async fn reconnect_replaces_request_id_slot_including_with_none() {
         let client = SequencedStreamingClient::new([
-            (
+            Ok((
                 Some("req-first-connection"),
                 vec![
                     Ok(Bytes::from_static(b"data: one\n\n")),
                     Err(http_client::Error::StreamEnded),
                 ],
-            ),
-            (None, vec![Ok(Bytes::from_static(b"data: two\n\n"))]),
+            )),
+            Ok((None, vec![Ok(Bytes::from_static(b"data: two\n\n"))])),
         ]);
         let req = Request::builder()
             .uri("http://mock.invalid/stream")

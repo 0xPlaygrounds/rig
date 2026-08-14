@@ -197,48 +197,10 @@ where
     deserializer.deserialize_any(StringOrVec(PhantomData))
 }
 
-pub fn null_or_vec<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: Deserializer<'de>,
-{
-    struct NullOrVec<T>(PhantomData<fn() -> T>);
-
-    impl<'de, T> Visitor<'de> for NullOrVec<T>
-    where
-        T: Deserialize<'de>,
-    {
-        type Value = Vec<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a sequence or null")
-        }
-
-        fn visit_seq<A>(self, seq: A) -> Result<Vec<T>, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
-        }
-
-        fn visit_none<E>(self) -> Result<Vec<T>, E>
-        where
-            E: de::Error,
-        {
-            Ok(vec![])
-        }
-
-        fn visit_unit<E>(self) -> Result<Vec<T>, E>
-        where
-            E: de::Error,
-        {
-            Ok(vec![])
-        }
-    }
-
-    deserializer.deserialize_any(NullOrVec(PhantomData))
-}
-
+/// Deserializes `T`, mapping an explicit `null` to `T::default()`.
+///
+/// Driven through `deserialize_option` rather than `deserialize_any`; the two
+/// agree only for self-describing formats, which is all rig decodes (JSON).
 pub fn null_or_default<'de, T, D>(deserializer: D) -> Result<T, D::Error>
 where
     T: Deserialize<'de> + Default,

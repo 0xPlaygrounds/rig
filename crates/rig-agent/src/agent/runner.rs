@@ -45,7 +45,7 @@ use super::{
         PromptResponse,
         streaming::{
             DriveItem, DriveStream, MultiTurnStreamItem, StreamingError, TurnSource, drive_agent,
-            drive_tool_calls, record_usage_on_span, streaming_error_into_prompt,
+            drive_tool_calls, streaming_error_into_prompt,
         },
         tool_result_output,
     },
@@ -56,6 +56,7 @@ use super::{
 use rig_core::{
     memory::ConversationMemory,
     message::{ToolCall, ToolChoice, UserContent},
+    telemetry::SpanCombinator,
 };
 
 use crate::{
@@ -195,29 +196,29 @@ impl AgentRunner {
         Self {
             prompt: prompt.into(),
             chat_history: None,
-            max_turns: agent.default_max_turns.unwrap_or(1),
+            max_turns: agent.config.default_max_turns.unwrap_or(1),
             max_invalid_tool_call_retries: 0,
-            model: agent.model.clone(),
-            agent_name: agent.name.clone(),
-            preamble: agent.preamble.clone(),
-            static_context: agent.static_context.clone(),
-            temperature: agent.temperature,
-            max_tokens: agent.max_tokens,
-            additional_params: agent.additional_params.clone(),
-            record_telemetry_content: agent.record_telemetry_content,
+            model: agent.config.model.clone(),
+            agent_name: agent.config.name.clone(),
+            preamble: agent.config.preamble.clone(),
+            static_context: agent.config.static_context.clone(),
+            temperature: agent.config.temperature,
+            max_tokens: agent.config.max_tokens,
+            additional_params: agent.config.additional_params.clone(),
+            record_telemetry_content: agent.config.record_telemetry_content,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
-            tool_choice: agent.tool_choice.clone(),
-            output_schema: agent.output_schema.clone(),
-            output_mode: agent.output_mode.clone(),
+            tool_choice: agent.config.tool_choice.clone(),
+            output_schema: agent.config.output_schema.clone(),
+            output_mode: agent.config.output_mode.clone(),
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
             unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
             concurrency: 1,
-            memory: agent.memory.clone(),
-            conversation_id: agent.default_conversation_id.clone(),
-            hooks: agent.hooks.clone(),
+            memory: agent.config.memory.clone(),
+            conversation_id: agent.config.default_conversation_id.clone(),
+            hooks: agent.config.hooks.clone(),
             error_usage: None,
         }
     }
@@ -1060,7 +1061,7 @@ impl TurnSource for UnaryTurnSource {
             if self.record_telemetry_content {
                 agent_span.record("gen_ai.completion", &response.output);
             }
-            record_usage_on_span(agent_span, response.usage);
+            agent_span.record_token_usage(&response.usage);
         }
     }
 

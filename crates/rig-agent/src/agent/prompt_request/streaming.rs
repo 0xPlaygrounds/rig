@@ -1,5 +1,6 @@
 use rig_core::{
     message::{AssistantContent, UserContent},
+    telemetry::SpanCombinator,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend},
 };
 
@@ -193,24 +194,6 @@ async fn drain_stream_usage(
     }
 
     Ok(crate::completion::Usage::new())
-}
-
-pub(crate) fn record_usage_on_span(span: &tracing::Span, usage: crate::completion::Usage) {
-    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-    span.record(
-        "gen_ai.usage.cache_read.input_tokens",
-        usage.cached_input_tokens,
-    );
-    span.record(
-        "gen_ai.usage.cache_creation.input_tokens",
-        usage.cache_creation_input_tokens,
-    );
-    span.record(
-        "gen_ai.usage.tool_use_prompt_tokens",
-        usage.tool_use_prompt_tokens,
-    );
-    span.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
 }
 
 /// Build the final streamed content for a finished run (#1928).
@@ -1063,25 +1046,12 @@ impl TurnSource for StreamingTurnSource {
                     let usage = $usage;
                     last_usage = usage;
                     if !completion_call_emitted {
-                        if usage.has_values() {
-                            record_usage_on_span(&chat_span, usage);
-                        }
+                        chat_span.record_token_usage(&usage);
                         // The terminal record (when the provider delivered
                         // one) carries this attempt's identity metadata.
-                        let identity = rig_core::completion::ResponseIdentity {
-                            message_id: stream.message_id.clone(),
-                            response_id: stream
-                                .response
-                                .as_ref()
-                                .and_then(|response| response.response_id.clone()),
-                            provider_request_id: stream
-                                .response
-                                .as_ref()
-                                .and_then(|response| response.provider_request_id.clone()),
-                        };
                         match run.record_streamed_completion_call(
                             usage,
-                            identity,
+                            stream.identity(),
                             $finish_reason,
                         ) {
                             Ok(call) => {
@@ -1344,31 +1314,20 @@ impl TurnSource for StreamingTurnSource {
             }
 
             // Final fallback: no usage was ever learned, so there is nothing to
-            // record onto the span and this is the last read of the flag — kept
-            // inline (not `emit_completion_call!`) so it doesn't emit a dead
-            // `completion_call_emitted = true` write. Identity is built the
-            // same way the hook events build theirs (from this stream's state,
-            // not `default()`), so `completion_calls` and hook observations
-            // agree even on this path.
+            // record onto the span (zero usage is the missing-metrics sentinel)
+            // and this is the last read of the flag — kept inline (not
+            // `emit_completion_call!`) so it doesn't emit a dead
+            // `completion_call_emitted = true` write, which `unused_assignments`
+            // rejects. Identity comes from the same accessor the macro uses, so
+            // `completion_calls` and hook observations agree on this path too.
             if !completion_call_emitted {
-                let fallback_identity = rig_core::completion::ResponseIdentity {
-                    message_id: stream.message_id.clone(),
-                    response_id: stream
-                        .response
-                        .as_ref()
-                        .and_then(|response| response.response_id.clone()),
-                    provider_request_id: stream
-                        .response
-                        .as_ref()
-                        .and_then(|response| response.provider_request_id.clone()),
-                };
                 let fallback_finish_reason = stream
                     .response
                     .as_ref()
                     .and_then(|response| response.finish_reason.clone());
                 match run.record_streamed_completion_call(
                     crate::completion::Usage::new(),
-                    fallback_identity,
+                    stream.identity(),
                     fallback_finish_reason,
                 ) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
@@ -1388,14 +1347,7 @@ impl TurnSource for StreamingTurnSource {
             // explicit `MessageId` event; the terminal's ids fill the rest.
             let identity = rig_core::completion::ResponseIdentity {
                 message_id: streamed_turn.message_id.clone(),
-                response_id: stream
-                    .response
-                    .as_ref()
-                    .and_then(|response| response.response_id.clone()),
-                provider_request_id: stream
-                    .response
-                    .as_ref()
-                    .and_then(|response| response.provider_request_id.clone()),
+                ..stream.identity()
             };
             if pending_final.is_some()
                 && !turn_recovered
@@ -1525,7 +1477,7 @@ impl TurnSource for StreamingTurnSource {
         created_agent_span: bool,
     ) {
         if created_agent_span {
-            record_usage_on_span(agent_span, response.usage);
+            agent_span.record_token_usage(&response.usage);
         }
     }
 

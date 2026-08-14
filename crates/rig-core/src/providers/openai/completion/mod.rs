@@ -182,7 +182,7 @@ pub enum Message {
         name: Option<String>,
         #[serde(
             default,
-            deserialize_with = "json_utils::null_or_vec",
+            deserialize_with = "json_utils::null_or_default",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -1080,9 +1080,7 @@ impl From<String> for UserContent {
 
 impl From<&str> for UserContent {
     fn from(s: &str) -> Self {
-        UserContent::Text {
-            text: s.to_string(),
-        }
+        s.to_owned().into()
     }
 }
 
@@ -1090,9 +1088,7 @@ impl FromStr for UserContent {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(UserContent::Text {
-            text: s.to_string(),
-        })
+        Ok(s.to_owned().into())
     }
 }
 
@@ -1106,9 +1102,7 @@ impl FromStr for AssistantContent {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(AssistantContent::Text {
-            text: s.to_string(),
-        })
+        Ok(s.to_owned().into())
     }
 }
 impl From<String> for SystemContent {
@@ -1124,10 +1118,7 @@ impl FromStr for SystemContent {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(SystemContent {
-            r#type: SystemContentType::default(),
-            text: s.to_string(),
-        })
+        Ok(s.to_owned().into())
     }
 }
 
@@ -1214,7 +1205,6 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 }
 
 impl ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Choice;
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
@@ -1223,10 +1213,6 @@ impl ProviderResponseExt for CompletionResponse {
 
     fn get_response_model_name(&self) -> Option<String> {
         Some(self.model.to_owned())
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.choices.clone()
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -1946,14 +1932,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         let additional_params = if let Some(schema) = output_schema
             && should_apply_response_format
         {
-            let name = schema
-                .as_object()
-                .and_then(|o| o.get("title"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("response_schema")
-                .to_string();
-            let mut schema_value = schema.to_value();
-            super::sanitize_schema(&mut schema_value);
+            let (name, schema_value) = super::structured_output_schema(schema);
             let response_format = serde_json::json!({
                 "response_format": {
                     "type": "json_schema",

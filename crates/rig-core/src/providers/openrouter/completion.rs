@@ -773,7 +773,6 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 }
 
 impl ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Choice;
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
@@ -784,15 +783,13 @@ impl ProviderResponseExt for CompletionResponse {
         Some(self.model.clone())
     }
 
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.choices.clone()
-    }
-
     fn get_text_response(&self) -> Option<String> {
         let response = self
             .choices
             .iter()
-            .filter_map(|choice| assistant_message_text_response(&choice.message))
+            .filter_map(|choice| {
+                openai::completion::assistant_message_text_response(&choice.message)
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -802,33 +799,6 @@ impl ProviderResponseExt for CompletionResponse {
     fn get_usage(&self) -> Option<Self::Usage> {
         self.usage.clone()
     }
-}
-
-fn assistant_message_text_response(message: &Message) -> Option<String> {
-    let Message::Assistant {
-        content, refusal, ..
-    } = message
-    else {
-        return None;
-    };
-
-    let mut segments = content
-        .iter()
-        .filter_map(|content| match content {
-            openai::AssistantContent::Text { text, .. } => (!text.is_empty()).then(|| text.clone()),
-            openai::AssistantContent::Refusal { refusal } => {
-                (!refusal.is_empty()).then(|| refusal.clone())
-            }
-        })
-        .collect::<Vec<_>>();
-
-    if let Some(refusal) = refusal
-        && !refusal.is_empty()
-    {
-        segments.push(refusal.clone());
-    }
-
-    (!segments.is_empty()).then(|| segments.join("\n"))
 }
 
 // OpenRouter shares OpenAI's Chat Completions message model. The request and

@@ -25,6 +25,7 @@ impl Agent {
     /// statically named [`Tool`](crate::tool::Tool) trait.
     pub fn into_tool(self) -> DynamicTool {
         let name = self
+            .config
             .name
             .clone()
             .unwrap_or_else(|| DEFAULT_AGENT_TOOL_NAME.to_string());
@@ -37,8 +38,8 @@ impl Agent {
             Agent system prompt: {sysprompt}
             ",
             name = name,
-            description = self.description.clone().unwrap_or_default(),
-            sysprompt = self.preamble.clone().unwrap_or_default()
+            description = self.config.description.clone().unwrap_or_default(),
+            sysprompt = self.config.preamble.clone().unwrap_or_default()
         );
         let parameters = json!(schema_for!(AgentToolArgs));
         let agent = Arc::new(self);

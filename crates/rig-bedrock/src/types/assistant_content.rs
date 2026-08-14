@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use crate::types::message::RigMessage;
 
 use super::{
-    converse_output::{ContentBlock, InternalConverseOutput, StopReason, TokenUsage},
+    converse_output::{
+        ContentBlock, InternalConverseOutput, ReasoningContentBlock, StopReason, TokenUsage,
+    },
     json::AwsDocument,
 };
 use rig_core::completion::{self};
@@ -34,7 +36,6 @@ pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
 }
 
 impl ProviderResponseExt for AwsConverseOutput {
-    type OutputMessage = serde_json::Value;
     type Usage = completion::Usage;
 
     fn get_response_id(&self) -> Option<String> {
@@ -43,14 +44,6 @@ impl ProviderResponseExt for AwsConverseOutput {
 
     fn get_response_model_name(&self) -> Option<String> {
         None // Bedrock doesn't echo model name in response
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.0
-            .output
-            .as_ref()
-            .map(|output| vec![serde_json::to_value(output).unwrap_or_default()])
-            .unwrap_or_default()
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -149,41 +142,33 @@ impl TryFrom<AwsConverseOutput> for completion::CompletionResponse {
 
 pub struct RigAssistantContent(pub AssistantContent);
 
-impl TryFrom<aws_bedrock::ContentBlock> for RigAssistantContent {
+impl TryFrom<ContentBlock> for RigAssistantContent {
     type Error = CompletionError;
 
-    fn try_from(value: aws_bedrock::ContentBlock) -> Result<Self, Self::Error> {
+    fn try_from(value: ContentBlock) -> Result<Self, Self::Error> {
         match value {
-            aws_bedrock::ContentBlock::Text(text) => {
+            ContentBlock::Text(text) => {
                 Ok(RigAssistantContent(AssistantContent::Text(Text::new(text))))
             }
-            aws_bedrock::ContentBlock::ToolUse(call) => Ok(RigAssistantContent(
-                completion::AssistantContent::tool_call(
-                    &call.tool_use_id,
-                    &call.name,
-                    AwsDocument(call.input).into(),
-                ),
+            ContentBlock::ToolUse(call) => Ok(RigAssistantContent(
+                completion::AssistantContent::tool_call(&call.tool_use_id, &call.name, call.input),
             )),
-            aws_bedrock::ContentBlock::ReasoningContent(reasoning_block) => match reasoning_block {
-                aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text) => {
-                    Ok(RigAssistantContent(AssistantContent::Reasoning(
-                        rig_core::message::Reasoning::new_with_signature(
-                            &reasoning_text.text,
-                            reasoning_text.signature,
-                        ),
-                    )))
-                }
+            ContentBlock::ReasoningContent(reasoning_block) => match reasoning_block {
+                ReasoningContentBlock::ReasoningText(reasoning_text) => Ok(RigAssistantContent(
+                    AssistantContent::Reasoning(rig_core::message::Reasoning::new_with_signature(
+                        &reasoning_text.text,
+                        reasoning_text.signature,
+                    )),
+                )),
                 // Content the safety classifier encrypted. It is normal model
                 // output, not a protocol violation: erroring here failed the
                 // whole response over a block the streaming path and the
                 // direct-Anthropic adapter both carry. The blob is bytes and
                 // rig's canonical reasoning content is a string, so it travels
                 // base64-encoded and decodes on the way back out.
-                aws_bedrock::ReasoningContentBlock::RedactedContent(blob) => {
+                ReasoningContentBlock::RedactedContent(blob) => {
                     Ok(RigAssistantContent(AssistantContent::Reasoning(
-                        rig_core::message::Reasoning::redacted(
-                            BASE64_STANDARD.encode(blob.as_ref()),
-                        ),
+                        rig_core::message::Reasoning::redacted(BASE64_STANDARD.encode(blob.inner)),
                     )))
                 }
                 _ => Err(CompletionError::ProviderError(
@@ -396,8 +381,10 @@ impl RigAssistantContent {
 #[cfg(test)]
 mod tests {
     use crate::types::{
-        assistant_content::RigAssistantContent, converse_output::InternalConverseOutput,
-        errors::TypeConversionError, json::AwsDocument,
+        assistant_content::RigAssistantContent,
+        converse_output::{ContentBlock, InternalConverseOutput},
+        errors::TypeConversionError,
+        json::AwsDocument,
     };
 
     use super::AwsConverseOutput;
@@ -409,6 +396,12 @@ mod tests {
         telemetry::ProviderResponseExt,
     };
     use serde_json::json;
+
+    /// The inbound path reads the mirror, but what Bedrock sends is the SDK
+    /// block, so the tests still start there and mirror it first.
+    fn mirrored(block: aws_bedrock::ContentBlock) -> ContentBlock {
+        block.try_into().expect("the SDK block mirrors")
+    }
 
     /// Helper: build an AwsConverseOutput with text content and optional usage.
     fn make_output(text: &str, usage: Option<aws_bedrock::TokenUsage>) -> AwsConverseOutput {
@@ -469,15 +462,6 @@ mod tests {
     fn provider_response_ext_get_usage_none_when_missing() {
         let out = make_output("x", None);
         assert!(out.get_usage().is_none());
-    }
-
-    #[test]
-    fn provider_response_ext_output_messages_serializable() {
-        let out = make_output("test", None);
-        let msgs = out.get_output_messages();
-        assert_eq!(msgs.len(), 1);
-        // Should be valid JSON
-        assert!(msgs[0].is_object());
     }
 
     #[test]
@@ -626,7 +610,7 @@ mod tests {
 
     #[test]
     fn aws_content_block_to_assistant_content() {
-        let content_block = aws_bedrock::ContentBlock::Text("text".into());
+        let content_block = mirrored(aws_bedrock::ContentBlock::Text("text".into()));
         let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
         assert!(rig_assistant_content.is_ok());
         assert_eq!(
@@ -643,9 +627,9 @@ mod tests {
             .build()
             .unwrap();
 
-        let content_block = aws_bedrock::ContentBlock::ReasoningContent(
+        let content_block = mirrored(aws_bedrock::ContentBlock::ReasoningContent(
             aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
-        );
+        ));
 
         let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
         assert!(rig_assistant_content.is_ok());
@@ -672,9 +656,9 @@ mod tests {
             .build()
             .unwrap();
 
-        let content_block = aws_bedrock::ContentBlock::ReasoningContent(
+        let content_block = mirrored(aws_bedrock::ContentBlock::ReasoningContent(
             aws_bedrock::ReasoningContentBlock::ReasoningText(reasoning_text_block),
-        );
+        ));
 
         let rig_assistant_content: Result<RigAssistantContent, _> = content_block.try_into();
         assert!(rig_assistant_content.is_ok());
@@ -836,11 +820,11 @@ mod tests {
     fn aws_redacted_reasoning_content_becomes_redacted_reasoning_not_an_error() {
         // Previously this failed the WHOLE response with "unsupported
         // ReasoningContentBlock variant".
-        let content_block = aws_bedrock::ContentBlock::ReasoningContent(
+        let content_block = mirrored(aws_bedrock::ContentBlock::ReasoningContent(
             aws_bedrock::ReasoningContentBlock::RedactedContent(aws_smithy_types::Blob::new(
                 REDACTED_BLOB.to_vec(),
             )),
-        );
+        ));
 
         let rig_content: RigAssistantContent = content_block
             .try_into()
@@ -881,11 +865,11 @@ mod tests {
 
     #[test]
     fn redacted_reasoning_round_trips_byte_for_byte() {
-        let inbound = aws_bedrock::ContentBlock::ReasoningContent(
+        let inbound = mirrored(aws_bedrock::ContentBlock::ReasoningContent(
             aws_bedrock::ReasoningContentBlock::RedactedContent(aws_smithy_types::Blob::new(
                 REDACTED_BLOB.to_vec(),
             )),
-        );
+        ));
 
         let rig_content: RigAssistantContent =
             inbound.try_into().expect("inbound conversion should work");

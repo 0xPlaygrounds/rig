@@ -556,6 +556,18 @@ pub(crate) async fn build_prepared_completion_request(
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct Agent {
+    pub(crate) config: AgentConfig,
+    pub(crate) tool_server_handle: ToolServerHandle,
+}
+
+/// Everything an [`AgentBuilder`](crate::agent::AgentBuilder) configures and the
+/// built [`Agent`] carries unchanged.
+///
+/// Building only moves this across and resolves the tool state into a
+/// [`ToolServerHandle`], so a new setting is declared once here instead of in
+/// two parallel field lists.
+#[derive(Clone)]
+pub(crate) struct AgentConfig {
     /// Name of the agent used for logging and debugging
     pub(crate) name: Option<String>,
     /// Agent description. Primarily useful when using sub-agents as part of an agent workflow and converting agents to other formats.
@@ -566,10 +578,6 @@ pub struct Agent {
     pub(crate) preamble: Option<String>,
     /// Context documents always available to the agent
     pub(crate) static_context: Vec<Document>,
-    /// Temperature of the model
-    pub(crate) temperature: Option<f64>,
-    /// Maximum number of tokens for the completion
-    pub(crate) max_tokens: Option<u64>,
     /// Additional parameters to be passed to the model
     pub(crate) additional_params: Option<serde_json::Value>,
     /// Whether to record sensitive request, response, and tool content on GenAI spans.
@@ -579,7 +587,10 @@ pub struct Agent {
     /// through OpenTelemetry span attributes, which can increase observability
     /// backend storage and query costs.
     pub(crate) record_telemetry_content: bool,
-    pub(crate) tool_server_handle: ToolServerHandle,
+    /// Maximum number of tokens for the completion
+    pub(crate) max_tokens: Option<u64>,
+    /// Temperature of the model
+    pub(crate) temperature: Option<f64>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     pub(crate) tool_choice: Option<ToolChoice>,
     /// Default total model-call budget, including the initial call and every
@@ -600,19 +611,43 @@ pub struct Agent {
     pub(crate) default_conversation_id: Option<String>,
 }
 
+impl AgentConfig {
+    /// The unconfigured starting point for a builder over `model`.
+    pub(crate) fn new(model: ModelHandle) -> Self {
+        Self {
+            name: None,
+            description: None,
+            model,
+            preamble: None,
+            static_context: vec![],
+            additional_params: None,
+            record_telemetry_content: false,
+            max_tokens: None,
+            temperature: None,
+            tool_choice: None,
+            default_max_turns: None,
+            hooks: HookStack::new(),
+            output_schema: None,
+            output_mode: OutputMode::default(),
+            memory: None,
+            default_conversation_id: None,
+        }
+    }
+}
+
 impl Agent {
     /// Returns the configured agent name.
     pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.config.name.as_deref()
     }
 
     /// Returns the configured agent description.
     pub fn description(&self) -> Option<&str> {
-        self.description.as_deref()
+        self.config.description.as_deref()
     }
 
     pub(crate) fn name_or_default(&self) -> &str {
-        self.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
+        self.name().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
     /// Build a hook-aware [`AgentRunner`] for this agent, seeded with the
@@ -624,7 +659,7 @@ impl Agent {
 
     /// Returns the agent's current default model handle.
     pub fn model_handle(&self) -> &ModelHandle {
-        &self.model
+        &self.config.model
     }
 
     /// Replace the default model used by runners created after this call.
@@ -633,7 +668,7 @@ impl Agent {
     /// agent does not mutate another clone. Model-selection hooks may replace
     /// the captured default at each model-call boundary.
     pub fn set_model_handle(&mut self, model: ModelHandle) {
-        self.model = model;
+        self.config.model = model;
     }
 
     /// Erase and install a typed completion model as this agent's new default.

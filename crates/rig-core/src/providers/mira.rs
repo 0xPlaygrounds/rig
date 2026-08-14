@@ -150,7 +150,6 @@ pub type CompletionModel<H = reqwest::Client> =
     crate::providers::openai::completion::GenericCompletionModel<MiraExt, H>;
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
-    type OutputMessage = ChatChoice;
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
@@ -164,20 +163,6 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
         match self {
             Self::Structured { model, .. } => Some(model.clone()),
             Self::Simple(_) => None,
-        }
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        match self {
-            Self::Structured { choices, .. } => choices
-                .iter()
-                .map(|choice| ChatChoice {
-                    message: choice.message.clone(),
-                    finish_reason: choice.finish_reason.clone(),
-                    index: choice.index,
-                })
-                .collect(),
-            Self::Simple(_) => Vec::new(),
         }
     }
 

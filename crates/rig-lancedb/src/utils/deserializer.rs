@@ -40,11 +40,11 @@ impl RecordBatchDeserializer for Vec<RecordBatch> {
 /// Trait used to deserialize data returned from LanceDB queries into a serde_json::Value vector.
 impl RecordBatchDeserializer for RecordBatch {
     fn deserialize(&self) -> Result<Vec<serde_json::Value>, VectorStoreError> {
-        let binding = self.schema();
-        let column_names = binding
+        let schema = self.schema();
+        let column_names = schema
             .fields()
             .iter()
-            .map(|field| field.name())
+            .map(|field| field.name().as_str())
             .collect::<Vec<_>>();
 
         let columns = self
@@ -53,21 +53,9 @@ impl RecordBatchDeserializer for RecordBatch {
             .map(type_matcher)
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok((0..self.num_rows())
-            .map(|row_i| {
-                columns
-                    .iter()
-                    .enumerate()
-                    .fold(serde_json::Map::new(), |mut acc, (col_i, col)| {
-                        if let (Some(name), Some(value)) = (column_names.get(col_i), col.get(row_i))
-                        {
-                            acc.insert((*name).to_string(), value.clone());
-                        }
-                        acc
-                    })
-            })
-            .map(Value::Object)
-            .collect())
+        // A record batch is assembled exactly like a nested struct column: one
+        // JSON object per row, keyed by column name.
+        Ok(columns.build_struct(self.num_rows(), column_names))
     }
 }
 

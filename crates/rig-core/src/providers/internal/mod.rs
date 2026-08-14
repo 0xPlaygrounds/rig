@@ -1,9 +1,10 @@
 //! Shared provider infrastructure: the wire-adapter contract, its
 //! single-policy-site driver, and the decode-then-validate classify layer.
 //!
-//! [`adapter`], [`wire`], and [`tool_call_bridge`] are public so out-of-tree
-//! providers implement [`adapter::WireAdapter`] and inherit the shared driver,
-//! frame-triage policy, and index→identity tool-call bridging instead of
+//! [`adapter`], [`wire`], [`tool_call_bridge`], and [`chunk_lifecycle`] are
+//! public so out-of-tree providers implement [`adapter::WireAdapter`] and
+//! inherit the shared driver, frame-triage policy, index→identity tool-call
+//! bridging, and the boundary-less reasoning lifecycle derivation instead of
 //! hand-rolling per-provider assemblers; the remaining helpers are
 //! crate-private.
 
@@ -12,7 +13,7 @@ pub(crate) mod anthropic_compatible;
 #[cfg(feature = "audio")]
 pub(crate) mod audio_generation;
 pub(crate) mod auth;
-pub(crate) mod chunk_lifecycle;
+pub mod chunk_lifecycle;
 pub(crate) mod completion_send;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod device_auth;

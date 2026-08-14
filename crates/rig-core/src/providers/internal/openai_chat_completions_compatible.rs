@@ -9,6 +9,7 @@
 use http::Request;
 
 use super::adapter::{AdapterOutput, WireAdapter, WireFrame};
+use super::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use super::sse_transport::{FrameDisposition, OpenLog, SseTransportOptions};
 use super::tool_call_bridge::{ToolCallBridge, ToolCallSlot};
 use super::wire::WireEvent;
@@ -389,9 +390,10 @@ pub(crate) enum CompatEvent<U, D> {
 /// Fragment assembly itself lives in the shared accumulator.
 struct CompatAdapter<P: CompatibleStreamProfile> {
     profile: P,
-    /// Whether a `reasoning_content` block is open — synthesizes the
-    /// lifecycle end this wire never announces.
-    reasoning_open: bool,
+    /// Owns the constant-key `reasoning_content` lifecycle: `reasoning_content`
+    /// deltas carry no wire id or block boundaries, so the shared derivation
+    /// synthesizes the end this wire never announces.
+    reasoning: MintedReasoningLifecycle,
     /// Index-to-identity bridge only: the Chat Completions wire keys tool
     /// call fragments by chunk index, so the adapter must correlate.
     open_tool_calls: ToolCallBridge<usize>,
@@ -412,7 +414,7 @@ impl<P: CompatibleStreamProfile> CompatAdapter<P> {
     fn new(profile: P) -> Self {
         Self {
             profile,
-            reasoning_open: false,
+            reasoning: MintedReasoningLifecycle::new(StreamPartId::minted(MintKind::Reasoning, 0)),
             open_tool_calls: ToolCallBridge::new(),
             final_usage: None,
             final_finish_reason: None,
@@ -494,50 +496,12 @@ where
             }
         }
 
-        // This chunk's parts are emitted reasoning → text → tool calls, so
-        // a chunk carrying several classes at once keeps the wire's logical
-        // order: the model reasons, speaks, then acts. Each later class
-        // closes a still-open reasoning block before its first fragment —
-        // the boundary this wire never announces.
-        if let Some(reasoning) = choice.reasoning
-            && !reasoning.is_empty()
-        {
-            self.reasoning_open = true;
-            out.push(Ok(RawStreamingChoice::ReasoningDelta {
-                // `reasoning_content` deltas carry no wire id; per-stream
-                // constant minted key.
-                id: StreamPartId::minted(MintKind::Reasoning, 0),
-                provider_id: None,
-                reasoning,
-            }));
-        }
-
-        if let Some(content) = choice.text
-            && !content.is_empty()
-        {
-            if self.reasoning_open {
-                self.reasoning_open = false;
-                out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                    id: StreamPartId::minted(MintKind::Reasoning, 0),
-                    reasoning: None,
-                    signature: None,
-                    wire_sent: false,
-                }));
-            }
-            out.push(Ok(RawStreamingChoice::Message(content)));
-        }
-
-        // A tool call starting is as much a reasoning boundary as text is.
-        if !choice.tool_calls.is_empty() && self.reasoning_open {
-            self.reasoning_open = false;
-            out.push(Ok(RawStreamingChoice::ReasoningEnd {
-                id: StreamPartId::minted(MintKind::Reasoning, 0),
-                reasoning: None,
-                signature: None,
-                wire_sent: false,
-            }));
-        }
-
+        // The tool-call events are built before they are emitted: the shared
+        // lifecycle emits this chunk's classes in canonical order (reasoning,
+        // its derived boundary end, text, then tool calls), so a chunk
+        // carrying several at once keeps the wire's logical order — the model
+        // reasons, speaks, then acts.
+        let mut tool_events = Vec::new();
         for incoming in choice.tool_calls {
             let profile = &self.profile;
             if let Some(evicted) = self.open_tool_calls.evict_if(incoming.index, |existing| {
@@ -546,9 +510,9 @@ where
                 // The wire reused this call's slot: the evicted call is
                 // delivered even when its arguments never parse
                 // (empty-object fallback).
-                out.push(Ok(RawStreamingChoice::ToolInputEnd(
+                tool_events.push(RawStreamingChoice::ToolInputEnd(
                     evicted.end_event(UnparseableToolInput::EmptyObject),
-                )));
+                ));
             }
 
             // The bridge fixes the assembly key at open — the wire id, or a
@@ -563,19 +527,19 @@ where
             if let Some(name) = incoming.name.as_ref()
                 && !name.is_empty()
             {
-                out.push(Ok(RawStreamingChoice::ToolCallDelta {
+                tool_events.push(RawStreamingChoice::ToolCallDelta {
                     id: slot.key().clone(),
                     content: ToolCallDeltaContent::Name(name.clone()),
-                }));
+                });
             }
 
             if let Some(arguments) = incoming.arguments.as_ref()
                 && !arguments.is_empty()
             {
-                out.push(Ok(RawStreamingChoice::ToolCallDelta {
+                tool_events.push(RawStreamingChoice::ToolCallDelta {
                     id: slot.key().clone(),
                     content: ToolCallDeltaContent::Delta(arguments.clone()),
-                }));
+                });
             }
 
             if self
@@ -586,11 +550,24 @@ where
                 // if its input parses, and keeps it open otherwise (`Keep`).
                 // The slot stays in the bridge either way — a later flush of
                 // an already finalized key is a no-op downstream.
-                out.push(Ok(RawStreamingChoice::ToolInputEnd(
+                tool_events.push(RawStreamingChoice::ToolInputEnd(
                     slot.end_event(UnparseableToolInput::Keep),
-                )));
+                ));
             }
         }
+
+        self.reasoning.emit_chunk(
+            ChunkParts {
+                reasoning: choice.reasoning,
+                // The chat-completions wire never signs a reasoning block:
+                // encrypted reasoning details ride the profile's
+                // `detail_reasoning` hook as whole blocks instead.
+                reasoning_signature: None,
+                text: choice.text,
+                tool_events,
+            },
+            out,
+        );
 
         // Decorations run after the tool-call loop: they match an in-flight
         // call by its established provider id, which this chunk may have just

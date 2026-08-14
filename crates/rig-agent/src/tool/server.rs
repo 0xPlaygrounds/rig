@@ -144,19 +144,6 @@ impl ToolServer {
         }
     }
 
-    pub(crate) fn add_tools(mut self, tools: ToolSet) -> Self {
-        self.toolset = tools;
-        self
-    }
-
-    pub(crate) fn add_retrieval_indexes(
-        mut self,
-        indexes: Vec<(usize, Arc<dyn VectorStoreIndexDyn + Send + Sync>)>,
-    ) -> Self {
-        self.retrieval_indexes = indexes;
-        self
-    }
-
     /// Add a static tool to the agent. Re-registering an existing name
     /// replaces the implementation (last wins) and keeps its position.
     pub fn tool(mut self, tool: impl Tool + 'static) -> Self {
@@ -169,6 +156,11 @@ impl ToolServer {
     pub fn dynamic_tool(mut self, tool: DynamicTool) -> Self {
         self.toolset.add_dynamic_tool(tool);
         self
+    }
+
+    /// Add several runtime-defined tools in order.
+    pub fn dynamic_tools(self, tools: Vec<DynamicTool>) -> Self {
+        tools.into_iter().fold(self, Self::dynamic_tool)
     }
 
     /// Add a context-free dynamic tool through the classic registry adapter.
@@ -204,6 +196,39 @@ impl ToolServer {
             McpTool::from_mcp_server(tool, client).with_timeout(timeout),
         ));
         self
+    }
+
+    /// Add several MCP tools (from `rmcp`) sharing one client, each bounded by
+    /// [`DEFAULT_MCP_TOOL_TIMEOUT`](crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    /// (see issue #1914). Use [`rmcp_tools_with_timeout`](Self::rmcp_tools_with_timeout)
+    /// to change or disable it.
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+    pub fn rmcp_tools(
+        self,
+        tools: Vec<rmcp::model::Tool>,
+        client: rmcp::service::ServerSink,
+    ) -> Self {
+        self.rmcp_tools_with_timeout(tools, client, crate::tool::rmcp::DEFAULT_MCP_TOOL_TIMEOUT)
+    }
+
+    /// Add several MCP tools (from `rmcp`) sharing one client, each with the same
+    /// per-call timeout (see issue #1914).
+    ///
+    /// Pass a [`Duration`](std::time::Duration) to bound the calls, or `None` to
+    /// disable the timeout (unbounded).
+    #[cfg_attr(docsrs, doc(cfg(feature = "rmcp")))]
+    #[cfg(all(feature = "rmcp", not(target_family = "wasm")))]
+    pub fn rmcp_tools_with_timeout(
+        self,
+        tools: Vec<rmcp::model::Tool>,
+        client: rmcp::service::ServerSink,
+        timeout: impl Into<Option<std::time::Duration>>,
+    ) -> Self {
+        let timeout = timeout.into();
+        tools.into_iter().fold(self, |server, tool| {
+            server.rmcp_tool_with_timeout(tool, client.clone(), timeout)
+        })
     }
 
     /// Configure tools retrieved from a vector index for each prompt.
@@ -266,11 +291,6 @@ impl ToolServerHandle {
     pub async fn add_portable_dynamic_tool(&self, tool: PortableDynamicTool) {
         self.register(|toolset| toolset.add_portable_dynamic_tool(tool))
             .await
-    }
-
-    #[cfg(all(feature = "rmcp", test))]
-    pub(crate) async fn add_erased_tool(&self, tool: Arc<dyn ErasedTool>) {
-        self.register(|toolset| toolset.add_erased(tool)).await
     }
 
     /// Atomically install the initial tools owned by one MCP handler.
@@ -806,7 +826,8 @@ mod tests {
 
     #[tokio::test]
     pub async fn retrieval_resolves_canonical_key() {
-        let toolset = ToolSet::builder().retrieved_tool(NamedTool::new()).build();
+        let mut toolset = ToolSet::default();
+        toolset.add_retrieved_tool(NamedTool::new());
         let handle = ToolServer::new()
             .retrieved_tools(1, MockToolIndex::new([NamedTool::NAME]), toolset)
             .run();

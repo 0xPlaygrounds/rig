@@ -157,6 +157,21 @@ impl InputItem {
         }
     }
 
+    /// A user-role input item carrying one content part.
+    ///
+    /// Every user block the history conversion emits — text, image, file, a
+    /// document flattened to text — becomes its own single-part item, so the
+    /// wrapper is built here once instead of per block.
+    fn user_content(content: UserContent) -> Self {
+        Self {
+            role: Some(Role::User),
+            input: InputContent::Message(Message::User {
+                content: vec![content],
+                name: None,
+            }),
+        }
+    }
+
     pub(crate) fn system_text(&self) -> Option<String> {
         match &self.input {
             InputContent::Message(Message::System { content, .. }) => Some(
@@ -316,6 +331,23 @@ pub enum ToolResultOutputContent {
     },
 }
 
+/// The request error for a document or image source this API cannot carry.
+///
+/// Raw bytes must be base64-encoded by the caller (the wire has no binary
+/// channel); any other source kind is one the Responses input conversion does
+/// not model, and is reported with its own rendering rather than a `Debug`
+/// name.
+fn unsupported_document_source(source: DocumentSourceKind) -> CompletionError {
+    match source {
+        DocumentSourceKind::Raw(_) => CompletionError::RequestError(
+            "Raw file data not supported, encode as base64 first".into(),
+        ),
+        source => {
+            CompletionError::RequestError(format!("Unsupported document type: {source}").into())
+        }
+    }
+}
+
 fn responses_tool_result_output(
     content: Vec<message::ToolResultContent>,
 ) -> Result<ToolResultOutput, MessageError> {
@@ -438,13 +470,7 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                 for user_content in content {
                     match user_content {
                         crate::message::UserContent::Text(Text { text, .. }) => {
-                            items.push(InputItem {
-                                role: Some(Role::User),
-                                input: InputContent::Message(Message::User {
-                                    content: vec![UserContent::InputText { text }],
-                                    name: None,
-                                }),
-                            });
+                            items.push(InputItem::user_content(UserContent::InputText { text }));
                         }
                         crate::message::UserContent::ToolResult(tool_result) => {
                             // Provider-issued call id when one exists, else
@@ -467,18 +493,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                         crate::message::UserContent::Document(Document {
                             data: DocumentSourceKind::FileId(file_id),
                             ..
-                        }) => items.push(InputItem {
-                            role: Some(Role::User),
-                            input: InputContent::Message(Message::User {
-                                content: vec![UserContent::InputFile {
-                                    file_id: Some(file_id),
-                                    file_data: None,
-                                    file_url: None,
-                                    filename: None,
-                                }],
-                                name: None,
-                            }),
-                        }),
+                        }) => items.push(InputItem::user_content(UserContent::InputFile {
+                            file_id: Some(file_id),
+                            file_data: None,
+                            file_url: None,
+                            filename: None,
+                        })),
                         crate::message::UserContent::Document(Document {
                             data,
                             media_type: Some(DocumentMediaType::PDF),
@@ -491,43 +511,21 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     Some("document.pdf".to_string()),
                                 ),
                                 DocumentSourceKind::Url(url) => (None, Some(url), None),
-                                DocumentSourceKind::Raw(_) => {
-                                    return Err(CompletionError::RequestError(
-                                        "Raw file data not supported, encode as base64 first"
-                                            .into(),
-                                    ));
-                                }
-                                doc => {
-                                    return Err(CompletionError::RequestError(
-                                        format!("Unsupported document type: {doc}").into(),
-                                    ));
-                                }
+                                source => return Err(unsupported_document_source(source)),
                             };
 
-                            items.push(InputItem {
-                                role: Some(Role::User),
-                                input: InputContent::Message(Message::User {
-                                    content: vec![UserContent::InputFile {
-                                        file_id: None,
-                                        file_data,
-                                        file_url,
-                                        filename,
-                                    }],
-                                    name: None,
-                                }),
-                            })
+                            items.push(InputItem::user_content(UserContent::InputFile {
+                                file_id: None,
+                                file_data,
+                                file_url,
+                                filename,
+                            }))
                         }
                         crate::message::UserContent::Document(Document {
                             data:
                                 DocumentSourceKind::Base64(text) | DocumentSourceKind::String(text),
                             ..
-                        }) => items.push(InputItem {
-                            role: Some(Role::User),
-                            input: InputContent::Message(Message::User {
-                                content: vec![UserContent::InputText { text }],
-                                name: None,
-                            }),
-                        }),
+                        }) => items.push(InputItem::user_content(UserContent::InputText { text })),
                         crate::message::UserContent::Image(crate::message::Image {
                             data,
                             media_type,
@@ -544,28 +542,12 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
                                     format!("data:{media_type};base64,{data}")
                                 }
                                 DocumentSourceKind::Url(url) => url,
-                                DocumentSourceKind::Raw(_) => {
-                                    return Err(CompletionError::RequestError(
-                                        "Raw file data not supported, encode as base64 first"
-                                            .into(),
-                                    ));
-                                }
-                                doc => {
-                                    return Err(CompletionError::RequestError(
-                                        format!("Unsupported document type: {doc}").into(),
-                                    ));
-                                }
+                                source => return Err(unsupported_document_source(source)),
                             };
-                            items.push(InputItem {
-                                role: Some(Role::User),
-                                input: InputContent::Message(Message::User {
-                                    content: vec![UserContent::InputImage {
-                                        image_url: url,
-                                        detail: detail.unwrap_or_default(),
-                                    }],
-                                    name: None,
-                                }),
-                            });
+                            items.push(InputItem::user_content(UserContent::InputImage {
+                                image_url: url,
+                                detail: detail.unwrap_or_default(),
+                            }));
                         }
                         message => {
                             return Err(CompletionError::ProviderError(format!(
@@ -662,6 +644,43 @@ pub fn reasoning_summaries(value: Vec<String>) -> Vec<ReasoningSummary> {
         .into_iter()
         .map(|text| ReasoningSummary::SummaryText { text })
         .collect()
+}
+
+/// The canonical blocks of one Responses reasoning item, in the wire's own
+/// field order: every summary, then every raw reasoning text, then the opaque
+/// `encrypted_content` payload.
+///
+/// One builder because both directions of the same item must agree: the unary
+/// decode ([`Output::Reasoning`] → assistant content) and the streaming
+/// done-item restatement (`streaming::reasoning_end_from_done_item`) read the
+/// identical triple, and an empty `encrypted_content` is the wire's "absent"
+/// spelling — it must contribute no block on either path.
+pub(crate) fn reasoning_content_blocks(
+    summary: Vec<ReasoningSummary>,
+    content: Vec<String>,
+    encrypted_content: Option<String>,
+) -> Vec<message::ReasoningContent> {
+    let mut blocks = summary
+        .into_iter()
+        .map(|summary| match summary {
+            ReasoningSummary::SummaryText { text } => message::ReasoningContent::Summary(text),
+        })
+        .collect::<Vec<_>>();
+
+    blocks.extend(
+        content
+            .into_iter()
+            .map(|text| message::ReasoningContent::Text {
+                text,
+                signature: None,
+            }),
+    );
+
+    if let Some(encrypted_content) = encrypted_content.filter(|content| !content.is_empty()) {
+        blocks.push(message::ReasoningContent::Encrypted(encrypted_content));
+    }
+
+    blocks
 }
 
 fn openai_reasoning_from_core(
@@ -988,31 +1007,32 @@ impl From<ResponsesUsage> for crate::completion::Usage {
     }
 }
 
+/// Sum two optional token-detail breakdowns: both present adds them, one
+/// present carries through unchanged, both absent stays absent — a partial
+/// breakdown must never zero out the side that reported one.
+fn add_optional_details<T: Add<Output = T>>(lhs: Option<T>, rhs: Option<T>) -> Option<T> {
+    match (lhs, rhs) {
+        (Some(lhs), Some(rhs)) => Some(lhs + rhs),
+        (lhs, rhs) => lhs.or(rhs),
+    }
+}
+
 impl Add for ResponsesUsage {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let input_tokens = self.input_tokens + rhs.input_tokens;
-        let input_tokens_details = match (self.input_tokens_details, rhs.input_tokens_details) {
-            (Some(lhs), Some(rhs)) => Some(lhs + rhs),
-            (Some(lhs), None) => Some(lhs),
-            (None, Some(rhs)) => Some(rhs),
-            (None, None) => None,
-        };
-        let output_tokens = self.output_tokens + rhs.output_tokens;
-        let output_tokens_details = match (self.output_tokens_details, rhs.output_tokens_details) {
-            (Some(lhs), Some(rhs)) => Some(lhs + rhs),
-            (Some(lhs), None) => Some(lhs),
-            (None, Some(rhs)) => Some(rhs),
-            (None, None) => None,
-        };
-        let total_tokens = self.total_tokens + rhs.total_tokens;
         Self {
-            input_tokens,
-            input_tokens_details,
-            output_tokens,
-            output_tokens_details,
-            total_tokens,
+            input_tokens: self.input_tokens + rhs.input_tokens,
+            input_tokens_details: add_optional_details(
+                self.input_tokens_details,
+                rhs.input_tokens_details,
+            ),
+            output_tokens: self.output_tokens + rhs.output_tokens,
+            output_tokens_details: add_optional_details(
+                self.output_tokens_details,
+                rhs.output_tokens_details,
+            ),
+            total_tokens: self.total_tokens + rhs.total_tokens,
         }
     }
 }
@@ -1453,14 +1473,7 @@ impl TryFrom<ResponsesRequestParams> for CompletionRequest {
         if additional_parameters.text.is_none()
             && let Some(schema) = req.output_schema
         {
-            let name = schema
-                .as_object()
-                .and_then(|o| o.get("title"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("response_schema")
-                .to_string();
-            let mut schema_value = schema.to_value();
-            super::sanitize_schema(&mut schema_value);
+            let (name, schema_value) = super::structured_output_schema(schema);
             additional_parameters.text = Some(TextConfig::structured_output(name, schema_value));
         }
 
@@ -2322,36 +2335,15 @@ impl From<Output> for Vec<completion::AssistantContent> {
             Output::Reasoning {
                 id,
                 summary,
-                content: reasoning_content,
+                content,
                 encrypted_content,
                 ..
-            } => {
-                let mut content = summary
-                    .into_iter()
-                    .map(|summary| match summary {
-                        ReasoningSummary::SummaryText { text } => {
-                            message::ReasoningContent::Summary(text)
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                content.extend(reasoning_content.into_iter().map(|text| {
-                    message::ReasoningContent::Text {
-                        text,
-                        signature: None,
-                    }
-                }));
-                if let Some(encrypted_content) =
-                    encrypted_content.filter(|content| !content.is_empty())
-                {
-                    content.push(message::ReasoningContent::Encrypted(encrypted_content));
-                }
-                vec![completion::AssistantContent::Reasoning(
-                    message::Reasoning {
-                        id: Some(id),
-                        content,
-                    },
-                )]
-            }
+            } => vec![completion::AssistantContent::Reasoning(
+                message::Reasoning {
+                    id: Some(id),
+                    content: reasoning_content_blocks(summary, content, encrypted_content),
+                },
+            )],
             Output::Unknown(_) => Vec::new(),
         };
 
@@ -2470,7 +2462,6 @@ pub enum OutputRole {
 }
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Output;
     type Usage = ResponsesUsage;
 
     /// The response ID (`resp_...`), which is deliberately *not* the assistant
@@ -2481,10 +2472,6 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 
     fn get_response_model_name(&self) -> Option<String> {
         Some(self.model.clone())
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.output.clone()
     }
 
     fn get_text_response(&self) -> Option<String> {

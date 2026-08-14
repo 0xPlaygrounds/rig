@@ -742,8 +742,6 @@ pub fn record_model_output(span: &tracing::Span, content: &[AssistantContent], e
 
 /// Provider response metadata used to populate GenAI telemetry spans.
 pub trait ProviderResponseExt {
-    /// Provider-native output message type.
-    type OutputMessage: Serialize;
     /// Provider-native usage type.
     type Usage: Serialize;
 
@@ -752,9 +750,6 @@ pub trait ProviderResponseExt {
 
     /// Returns the provider response model name, if supplied.
     fn get_response_model_name(&self) -> Option<String>;
-
-    /// Returns serialized output messages produced by the provider.
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage>;
 
     /// Returns the primary text response, when available.
     fn get_text_response(&self) -> Option<String>;

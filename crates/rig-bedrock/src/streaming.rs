@@ -49,7 +49,10 @@ impl From<&BedrockStreamingResponse> for rig_core::completion::Usage {
 
 #[derive(Default)]
 struct ReasoningState {
-    content: String,
+    /// Signature carried by this block's `signature` delta — the only
+    /// adapter-side state, because the wire delivers it out of band from the
+    /// thinking text. Thinking TEXT accumulates in the shared accumulator via
+    /// `ReasoningDelta`s; no restatement buffer exists.
     signature: Option<String>,
 }
 
@@ -65,33 +68,31 @@ fn block_id(content_block_index: i32) -> rig_core::streaming::StreamPartId {
     rig_core::streaming::MintKind::Block.for_wire_index(index)
 }
 
-/// Convert an accumulated [`ReasoningState`] into a streaming reasoning chunk.
+/// Close the open thinking block for `content_block_index`.
 ///
-/// Adaptive-thinking blocks from Bedrock can arrive as signature-only — i.e. a
-/// `Signature` delta with no preceding non-empty `Text` delta. Dropping such
-/// blocks loses the signature on the way back to the consumer, which then
-/// fails on the next turn with `messages.N.content.0.thinking.signature:
-/// Field required` when the conversation is replayed to Bedrock. We must emit
-/// whenever either the content or the signature is present; both-empty is
-/// still skipped.
-fn finalize_reasoning(
+/// The end carries no restatement — the shared accumulator already holds every
+/// `ReasoningDelta` this block streamed, so restating the text would supersede
+/// the accumulation with a second copy of itself — only the signature, which
+/// the wire never restates. Adaptive-thinking blocks can even be
+/// signature-only (a `Signature` delta with no non-empty `Text` delta), and
+/// dropping that signature makes the next turn fail with
+/// `messages.N.content.0.thinking.signature: Field required` on replay. A
+/// wholly empty block still lands nowhere: a payload-less end creates no part.
+fn reasoning_end(
     state: ReasoningState,
     content_block_index: i32,
-) -> Option<RawStreamingChoice<BedrockStreamingResponse>> {
-    if state.content.is_empty() && state.signature.is_none() {
-        return None;
-    }
-    Some(RawStreamingChoice::Reasoning {
+) -> RawStreamingChoice<BedrockStreamingResponse> {
+    RawStreamingChoice::ReasoningEnd {
         // Bedrock has no reasoning item id; the block's `contentBlockIndex`
-        // is stable across its deltas and stop, so the full block supersedes
-        // the accumulated deltas.
+        // is stable across its deltas and its close.
         id: block_id(content_block_index),
-        provider_id: None,
-        content: ReasoningContent::Text {
-            text: state.content,
-            signature: state.signature,
-        },
-    })
+        reasoning: None,
+        signature: state.signature,
+        // Both call sites close on a frame the wire actually sent — its own
+        // `contentBlockStop`, or the redacted sibling delta that ends the
+        // plaintext block — so the completed block reaches the consumer.
+        wire_sent: true,
+    }
 }
 
 /// Accumulated per-stream state for [`process_event`].
@@ -157,11 +158,11 @@ fn process_event(
                 }
                 aws_bedrock::ContentBlockDelta::ReasoningContent(reasoning) => match reasoning {
                     aws_bedrock::ReasoningContentBlockDelta::Text(text) => {
+                        // Marks the block open so its stop emits an end; the
+                        // text itself belongs to the shared accumulator.
                         state
                             .current_reasoning
-                            .get_or_insert_with(ReasoningState::default)
-                            .content
-                            .push_str(text.as_str());
+                            .get_or_insert_with(ReasoningState::default);
 
                         if !text.is_empty() {
                             items.push(Ok(RawStreamingChoice::ReasoningDelta {
@@ -186,11 +187,8 @@ fn process_event(
                         // block index would otherwise make the redacted block
                         // *replace* the delta-built thinking part instead of
                         // landing beside it as a sibling.
-                        if let Some(open) = state.current_reasoning.take()
-                            && let Some(choice) =
-                                finalize_reasoning(open, event.content_block_index)
-                        {
-                            items.push(Ok(choice));
+                        if let Some(open) = state.current_reasoning.take() {
+                            items.push(Ok(reasoning_end(open, event.content_block_index)));
                         }
 
                         items.push(Ok(RawStreamingChoice::Reasoning {
@@ -256,13 +254,14 @@ fn process_event(
             }
         }
         aws_bedrock::ConverseStreamOutput::ContentBlockStop(event) => {
-            if let Some(reasoning_state) = state.current_reasoning.take()
-                && let Some(choice) = finalize_reasoning(reasoning_state, event.content_block_index)
-            {
-                items.push(Ok(choice));
+            if let Some(reasoning_state) = state.current_reasoning.take() {
+                items.push(Ok(reasoning_end(
+                    reasoning_state,
+                    event.content_block_index,
+                )));
             }
             // A closed tool-use block is complete: finalize and emit it here,
-            // mirroring the reasoning finalize above, so every call in a
+            // mirroring the reasoning close above, so every call in a
             // multi-tool-call message reaches the consumer. The shared
             // accumulator finalizes the assembled input: an empty accumulated
             // input means a tool with no parameters, and malformed JSON
@@ -618,6 +617,19 @@ mod tests {
         .await;
         assert!(drained.errors.is_empty(), "{:?}", drained.errors);
         assert_eq!(drained.reasoning.len(), 1);
+        assert_eq!(
+            drained
+                .reasoning
+                .iter()
+                .flat_map(|reasoning| reasoning.content.iter())
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![ReasoningContent::Text {
+                text: "let me think".to_string(),
+                signature: None,
+            }],
+            "an unsigned block closes carrying just its accumulated text"
+        );
     }
 
     const REDACTED_BLOB: &[u8] = b"\x00opaque-stream-ciphertext\xff";
@@ -866,153 +878,76 @@ mod tests {
         assert_eq!(usage.cache_write_input_tokens, Some(15));
     }
 
-    #[test]
-    fn test_reasoning_state_default() {
-        // Test that ReasoningState defaults are correct
-        let state = ReasoningState::default();
-        assert_eq!(state.content, "");
-        assert_eq!(state.signature, None);
+    /// A signed thinking block closes with its signature attached to the
+    /// text the shared accumulator assembled from the deltas — the exact
+    /// shape the next turn must replay to Bedrock.
+    #[tokio::test]
+    async fn signed_thinking_block_closes_with_its_signature() {
+        let mut events = vec![
+            reasoning_text_delta(0, "I am "),
+            reasoning_text_delta(0, "thinking"),
+            reasoning_signature_delta(0, "sig-abc"),
+            block_stop(0),
+        ];
+        events.extend(terminal());
+
+        let drained = drain(events).await;
+
+        assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
+        assert_eq!(
+            drained
+                .reasoning
+                .iter()
+                .flat_map(|reasoning| reasoning.content.iter())
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![ReasoningContent::Text {
+                text: "I am thinking".to_string(),
+                signature: Some("sig-abc".to_string()),
+            }]
+        );
     }
 
-    #[test]
-    fn test_reasoning_state_accumulate_content() {
-        // Test accumulating content in ReasoningState
-        let mut state = ReasoningState::default();
-        state.content.push_str("First chunk");
-        state.content.push_str(" Second chunk");
-        state.content.push_str(" Third chunk");
+    /// Adaptive thinking on Bedrock can produce a `Signature` delta with no
+    /// non-empty `Text` delta. The signature is replay-required provider
+    /// state, so a signature-only block must still reach the consumer —
+    /// dropping it fails the next turn with
+    /// `messages.N.content.0.thinking.signature: Field required`.
+    #[tokio::test]
+    async fn signature_only_thinking_block_still_reaches_the_consumer() {
+        let mut events = vec![reasoning_signature_delta(0, "sig-only"), block_stop(0)];
+        events.extend(terminal());
 
-        assert_eq!(state.content, "First chunk Second chunk Third chunk");
-        assert_eq!(state.signature, None);
+        let drained = drain(events).await;
+
+        assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
+        assert_eq!(
+            drained
+                .reasoning
+                .iter()
+                .flat_map(|reasoning| reasoning.content.iter())
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec![ReasoningContent::Text {
+                text: String::new(),
+                signature: Some("sig-only".to_string()),
+            }]
+        );
     }
 
-    #[test]
-    fn test_reasoning_state_with_signature() {
-        // Test ReasoningState with signature
-        let mut state = ReasoningState::default();
-        state.content.push_str("Reasoning content");
-        state.signature = Some("test_signature_456".to_string());
+    /// A block that streamed nothing at all — an empty `Text` delta and no
+    /// signature — says nothing at its stop: the payload-less end must not
+    /// conjure an empty reasoning part.
+    #[tokio::test]
+    async fn wholly_empty_thinking_block_emits_nothing() {
+        let mut events = vec![reasoning_text_delta(0, ""), block_stop(0)];
+        events.extend(terminal());
 
-        assert_eq!(state.content, "Reasoning content");
-        assert_eq!(state.signature, Some("test_signature_456".to_string()));
-    }
+        let drained = drain(events).await;
 
-    #[test]
-    fn test_reasoning_state_empty_content() {
-        // Test that ReasoningState can have empty content
-        let state = ReasoningState {
-            signature: Some("signature_only".to_string()),
-            ..Default::default()
-        };
-
-        assert_eq!(state.content, "");
-        assert!(state.signature.is_some());
-    }
-
-    #[test]
-    fn test_reasoning_state_accumulation() {
-        let mut state = ReasoningState::default();
-
-        state.content.push_str("First, ");
-        state.content.push_str("I need to ");
-        state.content.push_str("analyze the problem.");
-
-        assert_eq!(state.content, "First, I need to analyze the problem.");
-        assert!(state.signature.is_none());
-    }
-
-    #[test]
-    fn test_reasoning_state_with_signature_accumulation() {
-        let mut state = ReasoningState::default();
-
-        state.content.push_str("Reasoning content here");
-        state.signature = Some("sig_part1".to_string());
-
-        // Simulate signature being built up (in practice it comes in one chunk)
-        if let Some(ref mut sig) = state.signature {
-            sig.push_str("_part2");
-        }
-
-        assert_eq!(state.content, "Reasoning content here");
-        assert_eq!(state.signature, Some("sig_part1_part2".to_string()));
-    }
-
-    #[test]
-    fn finalize_reasoning_with_content_and_signature_emits_text_block() {
-        let state = ReasoningState {
-            content: "I am thinking".to_string(),
-            signature: Some("sig-abc".to_string()),
-        };
-
-        let choice = finalize_reasoning(state, 0).expect("should emit reasoning");
-        match choice {
-            RawStreamingChoice::Reasoning {
-                id,
-                provider_id: _,
-                content,
-            } => {
-                assert_eq!(id, block_id(0));
-                match content {
-                    ReasoningContent::Text { text, signature } => {
-                        assert_eq!(text, "I am thinking");
-                        assert_eq!(signature.as_deref(), Some("sig-abc"));
-                    }
-                    other => panic!("expected ReasoningContent::Text, got {:?}", other),
-                }
-            }
-            _ => panic!("expected RawStreamingChoice::Reasoning"),
-        }
-    }
-
-    #[test]
-    fn finalize_reasoning_signature_only_still_emits_block() {
-        // Adaptive-thinking on Bedrock can produce a Signature delta with no
-        // accompanying non-empty Text delta. Previously this was silently
-        // dropped, losing the signature and breaking next-turn replay.
-        let state = ReasoningState {
-            content: String::new(),
-            signature: Some("sig-only".to_string()),
-        };
-
-        let choice =
-            finalize_reasoning(state, 0).expect("should emit reasoning for signature-only state");
-        match choice {
-            RawStreamingChoice::Reasoning { content, .. } => match content {
-                ReasoningContent::Text { text, signature } => {
-                    assert!(text.is_empty());
-                    assert_eq!(signature.as_deref(), Some("sig-only"));
-                }
-                other => panic!("expected ReasoningContent::Text, got {:?}", other),
-            },
-            _ => panic!("expected RawStreamingChoice::Reasoning"),
-        }
-    }
-
-    #[test]
-    fn finalize_reasoning_content_only_still_emits_block() {
-        let state = ReasoningState {
-            content: "thoughts without sig".to_string(),
-            signature: None,
-        };
-
-        let choice =
-            finalize_reasoning(state, 0).expect("should emit reasoning for content-only state");
-        match choice {
-            RawStreamingChoice::Reasoning { content, .. } => match content {
-                ReasoningContent::Text { text, signature } => {
-                    assert_eq!(text, "thoughts without sig");
-                    assert!(signature.is_none());
-                }
-                other => panic!("expected ReasoningContent::Text, got {:?}", other),
-            },
-            _ => panic!("expected RawStreamingChoice::Reasoning"),
-        }
-    }
-
-    #[test]
-    fn finalize_reasoning_both_empty_emits_nothing() {
-        let state = ReasoningState::default();
-        assert!(finalize_reasoning(state, 0).is_none());
+        assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
+        assert!(drained.reasoning.is_empty());
+        assert!(drained.reached_terminal);
     }
 
     fn tool_start_event(index: i32, id: &str, name: &str) -> aws_bedrock::ConverseStreamOutput {

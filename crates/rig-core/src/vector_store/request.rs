@@ -124,6 +124,103 @@ pub trait SearchFilter {
     fn or(self, rhs: Self) -> Self;
 }
 
+/// A rendered SQL-style condition together with its positional bind parameters.
+///
+/// Shared by the SQL-flavoured vector stores, whose filter algebra differs only
+/// in the parameter type `P` and in the placeholder token their driver expects
+/// (`$` for Postgres, `?` for CQL). The placeholder is therefore supplied by the
+/// caller on every leaf constructor rather than baked into this type.
+///
+/// Parameters are collected left to right in the order their placeholders appear
+/// in [`SqlCondition::condition`], which is the order drivers bind them in.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SqlCondition<P> {
+    condition: String,
+    params: Vec<P>,
+}
+
+/// Hand-written so that `P` needs no [`Default`] of its own: a parameterless
+/// empty condition is meaningful for every parameter type.
+impl<P> Default for SqlCondition<P> {
+    fn default() -> Self {
+        Self {
+            condition: String::new(),
+            params: Vec::new(),
+        }
+    }
+}
+
+impl<P> SqlCondition<P> {
+    /// Renders `<key> <op> <placeholder>` bound to a single parameter, e.g.
+    /// `price >= $`.
+    pub fn binary(key: impl AsRef<str>, op: &str, placeholder: &str, value: P) -> Self {
+        Self {
+            condition: format!("{} {op} {placeholder}", key.as_ref()),
+            params: vec![value],
+        }
+    }
+
+    /// Renders `<key> <op> (<placeholder>, ...)` with one placeholder per value,
+    /// e.g. `id IN (?, ?)`.
+    pub fn list(key: impl AsRef<str>, op: &str, placeholder: &str, values: Vec<P>) -> Self {
+        let placeholders = vec![placeholder; values.len()].join(", ");
+
+        Self {
+            condition: format!("{} {op} ({placeholders})", key.as_ref()),
+            params: values,
+        }
+    }
+
+    /// Wraps an already-rendered, parameterless condition such as `id is null`.
+    pub fn raw(condition: impl Into<String>) -> Self {
+        Self {
+            condition: condition.into(),
+            params: Vec::new(),
+        }
+    }
+
+    /// Conjoins two conditions as `(lhs) AND (rhs)`, concatenating their parameters.
+    pub fn and(self, rhs: Self) -> Self {
+        self.combine("AND", rhs)
+    }
+
+    /// Disjoins two conditions as `(lhs) OR (rhs)`, concatenating their parameters.
+    pub fn or(self, rhs: Self) -> Self {
+        self.combine("OR", rhs)
+    }
+
+    /// Negates the condition as `NOT (condition)`, keeping its parameters.
+    #[allow(clippy::should_implement_trait)]
+    pub fn not(self) -> Self {
+        Self {
+            condition: format!("NOT ({})", self.condition),
+            ..self
+        }
+    }
+
+    fn combine(self, joiner: &str, rhs: Self) -> Self {
+        Self {
+            condition: format!("({}) {joiner} ({})", self.condition, rhs.condition),
+            params: self.params.into_iter().chain(rhs.params).collect(),
+        }
+    }
+
+    /// The rendered condition, with placeholders as the caller supplied them.
+    pub fn condition(&self) -> &str {
+        &self.condition
+    }
+
+    /// The bind parameters, in placeholder order.
+    pub fn params(&self) -> &[P] {
+        &self.params
+    }
+
+    /// Consumes the condition, returning the rendered text and its parameters.
+    pub fn into_parts(self) -> (String, Vec<P>) {
+        (self.condition, self.params)
+    }
+}
+
 /// Converts the canonical JSON-valued [`Filter`] used by type-erased vector
 /// searches into a backend's native filter representation.
 ///

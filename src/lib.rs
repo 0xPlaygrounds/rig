@@ -161,8 +161,8 @@ pub mod tool {
     #[cfg(feature = "agent")]
     #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
     pub use rig_agent::tool::{
-        DynamicTool, MissingToolContext, Tool, ToolContext, ToolEmbedding, ToolSet, ToolSetBuilder,
-        server, tool_definition,
+        DynamicTool, MissingToolContext, Tool, ToolContext, ToolEmbedding, ToolSet, server,
+        tool_definition,
     };
 
     /// The complete portable `rig-core` tool surface, under one explicit path.
@@ -198,116 +198,68 @@ pub mod memory {
     pub use rig_memory::*;
 }
 
-#[cfg(feature = "bedrock")]
-#[cfg_attr(docsrs, doc(cfg(feature = "bedrock")))]
-pub mod bedrock {
-    pub use rig_bedrock::*;
+/// Declare one feature-gated facade module per companion crate.
+///
+/// Each row expands to the same four items — the `cfg` gate, the matching
+/// docs.rs `doc(cfg)` note, the module, and its glob re-export. A module
+/// declaration cannot come from a function or a trait, so a macro is the only
+/// way to state that shape once instead of per crate; the rows keep the
+/// module → crate → feature mapping readable as a table.
+///
+/// The single- and multi-feature arms are separate on purpose: a one-feature
+/// module must render rustdoc's "Available on crate feature `x` only", which
+/// `doc(cfg(any(feature = "x")))` would spell as a one-element `any`.
+macro_rules! companion_modules {
+    () => {};
+    (
+        $(#[doc = $doc:literal])*
+        $module:ident = $krate:ident [$feature:literal];
+        $($rest:tt)*
+    ) => {
+        $(#[doc = $doc])*
+        #[cfg(feature = $feature)]
+        #[cfg_attr(docsrs, doc(cfg(feature = $feature)))]
+        pub mod $module {
+            pub use $krate::*;
+        }
+        companion_modules! { $($rest)* }
+    };
+    (
+        $(#[doc = $doc:literal])*
+        $module:ident = $krate:ident [$($feature:literal),+ $(,)?];
+        $($rest:tt)*
+    ) => {
+        $(#[doc = $doc])*
+        #[cfg(any($(feature = $feature),+))]
+        #[cfg_attr(docsrs, doc(cfg(any($(feature = $feature),+))))]
+        pub mod $module {
+            pub use $krate::*;
+        }
+        companion_modules! { $($rest)* }
+    };
 }
 
-/// Local CPU inference with validated Llama/SmolLM2 and native tool-capable Qwen3 models.
-#[cfg(feature = "candle")]
-#[cfg_attr(docsrs, doc(cfg(feature = "candle")))]
-pub mod candle {
-    pub use rig_candle::*;
-}
-
-#[cfg(any(
-    feature = "fastembed",
-    feature = "fastembed-hf-hub",
-    feature = "fastembed-ort-download-binaries",
-))]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(any(
-        feature = "fastembed",
-        feature = "fastembed-hf-hub",
-        feature = "fastembed-ort-download-binaries"
-    )))
-)]
-pub mod fastembed {
-    pub use rig_fastembed::*;
-}
-
-#[cfg(feature = "gemini-grpc")]
-#[cfg_attr(docsrs, doc(cfg(feature = "gemini-grpc")))]
-pub mod gemini_grpc {
-    pub use rig_gemini_grpc::*;
-}
-
-#[cfg(feature = "helixdb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "helixdb")))]
-pub mod helixdb {
-    pub use rig_helixdb::*;
-}
-
-#[cfg(feature = "lancedb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "lancedb")))]
-pub mod lancedb {
-    pub use rig_lancedb::*;
-}
-
-#[cfg(feature = "milvus")]
-#[cfg_attr(docsrs, doc(cfg(feature = "milvus")))]
-pub mod milvus {
-    pub use rig_milvus::*;
-}
-
-#[cfg(feature = "mongodb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "mongodb")))]
-pub mod mongodb {
-    pub use rig_mongodb::*;
-}
-
-#[cfg(feature = "neo4j")]
-#[cfg_attr(docsrs, doc(cfg(feature = "neo4j")))]
-pub mod neo4j {
-    pub use rig_neo4j::*;
-}
-
-#[cfg(feature = "postgres")]
-#[cfg_attr(docsrs, doc(cfg(feature = "postgres")))]
-pub mod postgres {
-    pub use rig_postgres::*;
-}
-
-#[cfg(feature = "qdrant")]
-#[cfg_attr(docsrs, doc(cfg(feature = "qdrant")))]
-pub mod qdrant {
-    pub use rig_qdrant::*;
-}
-
-#[cfg(feature = "s3vectors")]
-#[cfg_attr(docsrs, doc(cfg(feature = "s3vectors")))]
-pub mod s3vectors {
-    pub use rig_s3vectors::*;
-}
-
-#[cfg(feature = "scylladb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "scylladb")))]
-pub mod scylladb {
-    pub use rig_scylladb::*;
-}
-
-#[cfg(feature = "sqlite")]
-#[cfg_attr(docsrs, doc(cfg(feature = "sqlite")))]
-pub mod sqlite {
-    pub use rig_sqlite::*;
-}
-
-#[cfg(feature = "surrealdb")]
-#[cfg_attr(docsrs, doc(cfg(feature = "surrealdb")))]
-pub mod surrealdb {
-    pub use rig_surrealdb::*;
-}
-
-#[cfg(feature = "vectorize")]
-#[cfg_attr(docsrs, doc(cfg(feature = "vectorize")))]
-pub mod vectorize {
-    pub use rig_vectorize::*;
-}
-
-#[cfg(feature = "vertexai")]
-#[cfg_attr(docsrs, doc(cfg(feature = "vertexai")))]
-pub mod vertexai {
-    pub use rig_vertexai::*;
+companion_modules! {
+    bedrock = rig_bedrock ["bedrock"];
+    /// Local CPU inference with validated Llama/SmolLM2 and native tool-capable Qwen3 models.
+    candle = rig_candle ["candle"];
+    fastembed = rig_fastembed [
+        "fastembed",
+        "fastembed-hf-hub",
+        "fastembed-ort-download-binaries",
+    ];
+    gemini_grpc = rig_gemini_grpc ["gemini-grpc"];
+    helixdb = rig_helixdb ["helixdb"];
+    lancedb = rig_lancedb ["lancedb"];
+    milvus = rig_milvus ["milvus"];
+    mongodb = rig_mongodb ["mongodb"];
+    neo4j = rig_neo4j ["neo4j"];
+    postgres = rig_postgres ["postgres"];
+    qdrant = rig_qdrant ["qdrant"];
+    s3vectors = rig_s3vectors ["s3vectors"];
+    scylladb = rig_scylladb ["scylladb"];
+    sqlite = rig_sqlite ["sqlite"];
+    surrealdb = rig_surrealdb ["surrealdb"];
+    vectorize = rig_vectorize ["vectorize"];
+    vertexai = rig_vertexai ["vertexai"];
 }

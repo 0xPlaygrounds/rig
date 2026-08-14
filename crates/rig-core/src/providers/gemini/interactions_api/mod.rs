@@ -749,7 +749,6 @@ pub mod interactions_api_types {
     }
 
     impl ProviderResponseExt for Interaction {
-        type OutputMessage = Content;
         type Usage = InteractionUsage;
 
         fn get_response_id(&self) -> Option<String> {
@@ -762,10 +761,6 @@ pub mod interactions_api_types {
 
         fn get_response_model_name(&self) -> Option<String> {
             self.model.clone()
-        }
-
-        fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-            self.output_contents()
         }
 
         fn get_text_response(&self) -> Option<String> {
@@ -2255,28 +2250,35 @@ pub mod interactions_api_types {
     }
 
     /// Content delta item in streaming events.
+    ///
+    /// Most deltas repeat a whole [`Content`] payload rather than a fragment of
+    /// one, so they reuse the `*Content` types directly; the wire tags come
+    /// from this enum's own `type` tagging. Only the variants whose payloads
+    /// genuinely differ from their `Content` counterpart — a partial text run,
+    /// a raw arguments fragment, and the identity-less thought deltas — carry
+    /// their own struct.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ContentDelta {
         Text(TextDelta),
-        Image(ImageDelta),
-        Audio(AudioDelta),
-        Document(DocumentDelta),
-        Video(VideoDelta),
+        Image(ImageContent),
+        Audio(AudioContent),
+        Document(DocumentContent),
+        Video(VideoContent),
         ThoughtSummary(ThoughtSummaryDelta),
         ThoughtSignature(ThoughtSignatureDelta),
-        FunctionCall(FunctionCallDelta),
+        FunctionCall(FunctionCallContent),
         ArgumentsDelta(ArgumentsDelta),
-        FunctionResult(FunctionResultDelta),
-        CodeExecutionCall(CodeExecutionCallDelta),
-        CodeExecutionResult(CodeExecutionResultDelta),
-        UrlContextCall(UrlContextCallDelta),
-        UrlContextResult(UrlContextResultDelta),
-        GoogleSearchCall(GoogleSearchCallDelta),
-        GoogleSearchResult(GoogleSearchResultDelta),
-        McpServerToolCall(McpServerToolCallDelta),
-        McpServerToolResult(McpServerToolResultDelta),
-        FileSearchResult(FileSearchResultDelta),
+        FunctionResult(FunctionResultContent),
+        CodeExecutionCall(CodeExecutionCallContent),
+        CodeExecutionResult(CodeExecutionResultContent),
+        UrlContextCall(UrlContextCallContent),
+        UrlContextResult(UrlContextResultContent),
+        GoogleSearchCall(GoogleSearchCallContent),
+        GoogleSearchResult(GoogleSearchResultContent),
+        McpServerToolCall(McpServerToolCallContent),
+        McpServerToolResult(McpServerToolResultContent),
+        FileSearchResult(FileSearchResultContent),
     }
 
     /// Streaming function-call arguments fragment: the wire fragments a
@@ -2300,54 +2302,6 @@ pub mod interactions_api_types {
         pub annotations: Option<Vec<Annotation>>,
     }
 
-    /// Streaming image delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct ImageDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub resolution: Option<MediaResolution>,
-    }
-
-    /// Streaming audio delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct AudioDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-    }
-
-    /// Streaming document delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct DocumentDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-    }
-
-    /// Streaming video delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct VideoDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub resolution: Option<MediaResolution>,
-    }
-
     /// Streaming thought summary delta.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ThoughtSummaryDelta {
@@ -2358,129 +2312,6 @@ pub mod interactions_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ThoughtSignatureDelta {
         pub signature: String,
-    }
-
-    /// Streaming function call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct FunctionCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming function result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct FunctionResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-    }
-
-    /// Streaming code execution call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct CodeExecutionCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<CodeExecutionCallArguments>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming code execution result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct CodeExecutionResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
-    /// Streaming URL context call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct UrlContextCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<UrlContextCallArguments>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming URL context result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct UrlContextResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<UrlContextResult>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
-    /// Streaming Google Search call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct GoogleSearchCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<GoogleSearchCallArguments>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming Google Search result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct GoogleSearchResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<GoogleSearchResult>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
-    /// Streaming MCP server tool call delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct McpServerToolCallDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub server_name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
-    /// Streaming MCP server tool result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct McpServerToolResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub server_name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Value>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
-    /// Streaming file search result delta.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct FileSearchResultDelta {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<FileSearchResult>>,
     }
 }
 

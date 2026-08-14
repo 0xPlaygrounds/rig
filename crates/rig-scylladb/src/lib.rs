@@ -12,7 +12,10 @@ use rig_core::{
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
-        request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
+        request::{
+            DynamicSearchFilter, Filter, FilterError, SearchFilter, SqlCondition,
+            VectorSearchRequest,
+        },
     },
 };
 use scylla::{
@@ -92,15 +95,18 @@ fn cql_value_from_json(value: serde_json::Value) -> Result<CqlValue, FilterError
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ScyllaSearchFilter {
-    condition: String,
-    params: Vec<CqlValue>,
-}
+/// Placeholder token CQL expects for every bind parameter.
+const PLACEHOLDER: &str = "?";
 
+/// ScyllaDB query filter: a CQL `WHERE` fragment plus the values to bind to it.
+#[derive(Clone, Debug)]
+pub struct ScyllaSearchFilter(SqlCondition<CqlValue>);
+
+/// Only the condition is hashed: it is what the prepared-statement cache is
+/// keyed on, and the bound parameters do not change the statement text.
 impl std::hash::Hash for ScyllaSearchFilter {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.condition.hash(state)
+        self.0.condition().hash(state)
     }
 }
 
@@ -108,82 +114,54 @@ impl SearchFilter for ScyllaSearchFilter {
     type Value = CqlValue;
 
     fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self {
-            condition: format!("{} = ?", key.as_ref()),
-            params: vec![value],
-        }
+        Self(SqlCondition::binary(key, "=", PLACEHOLDER, value))
     }
 
     fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self {
-            condition: format!("{} > ?", key.as_ref()),
-            params: vec![value],
-        }
+        Self(SqlCondition::binary(key, ">", PLACEHOLDER, value))
     }
 
     fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        Self {
-            condition: format!("{} < ?", key.as_ref()),
-            params: vec![value],
-        }
+        Self(SqlCondition::binary(key, "<", PLACEHOLDER, value))
     }
 
     fn and(self, rhs: Self) -> Self {
-        Self {
-            condition: format!("({}) AND ({})", self.condition, rhs.condition),
-            params: self.params.into_iter().chain(rhs.params).collect(),
-        }
+        Self(self.0.and(rhs.0))
     }
 
     fn or(self, rhs: Self) -> Self {
-        Self {
-            condition: format!("({}) OR ({})", self.condition, rhs.condition),
-            params: self.params.into_iter().chain(rhs.params).collect(),
-        }
+        Self(self.0.or(rhs.0))
     }
 }
 
 impl ScyllaSearchFilter {
+    fn condition(&self) -> &str {
+        self.0.condition()
+    }
+
     fn params(&self) -> &[CqlValue] {
-        self.params.as_slice()
+        self.0.params()
     }
 
     #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
-        Self {
-            condition: format!("NOT ({})", self.condition),
-            ..self
-        }
+        Self(self.0.not())
     }
 
     pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
-        Self {
-            condition: format!("{key} >= ?"),
-            params: vec![value],
-        }
+        Self(SqlCondition::binary(key, ">=", PLACEHOLDER, value))
     }
 
     pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
-        Self {
-            condition: format!("{key} <= ?"),
-            params: vec![value],
-        }
+        Self(SqlCondition::binary(key, "<=", PLACEHOLDER, value))
     }
 
     pub fn ne(key: String, value: <Self as SearchFilter>::Value) -> Self {
-        Self {
-            condition: format!("{key} != ?"),
-            params: vec![value],
-        }
+        Self(SqlCondition::binary(key, "!=", PLACEHOLDER, value))
     }
 
     pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
-        let placeholders = vec!["?"; values.len()].join(", ");
-
-        Self {
-            condition: format!("{key} IN ({placeholders})"),
-            params: values,
-        }
+        Self(SqlCondition::list(key, "IN", PLACEHOLDER, values))
     }
 }
 
@@ -369,7 +347,9 @@ where
             } else {
                 let query = format!(
                     "SELECT id, vector, metadata, created_at FROM {}.{} WHERE {} ALLOW FILTERING",
-                    self.keyspace, self.table, filter.condition
+                    self.keyspace,
+                    self.table,
+                    filter.condition()
                 );
 
                 let prepared = self
@@ -529,4 +509,28 @@ pub async fn create_session(uri: &str) -> Result<Session, VectorStoreError> {
         .build()
         .await
         .map_err(VectorStoreError::datastore)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CqlValue, ScyllaSearchFilter, SearchFilter};
+
+    /// CQL binds positionally, so the rendered condition must carry exactly one
+    /// `?` per parameter — including `IN`, which renders one per value.
+    #[test]
+    fn every_parameterised_operator_uses_question_mark_placeholders() {
+        let filter = ScyllaSearchFilter::gte("price".into(), CqlValue::BigInt(5))
+            .and(ScyllaSearchFilter::member(
+                "id".into(),
+                vec![CqlValue::BigInt(1), CqlValue::BigInt(2)],
+            ))
+            .or(ScyllaSearchFilter::ne("kind".into(), CqlValue::Text("veg".into())).not());
+
+        assert_eq!(
+            filter.condition(),
+            "((price >= ?) AND (id IN (?, ?))) OR (NOT (kind != ?))"
+        );
+        assert_eq!(filter.condition().matches('?').count(), 4);
+        assert_eq!(filter.params().len(), 4);
+    }
 }

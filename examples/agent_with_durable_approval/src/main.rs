@@ -151,10 +151,9 @@ async fn main() -> Result<()> {
     let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
-    let tools = ToolSet::builder()
-        .static_tool(GetBalance)
-        .static_tool(TransferFunds)
-        .build();
+    let mut tools = ToolSet::default();
+    tools.add_tool(GetBalance);
+    tools.add_tool(TransferFunds);
     let tool_definitions = tools.get_tool_definitions();
 
     let prompt = "Check the balance of account A-1, then transfer $500 to account B-2.";
