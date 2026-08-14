@@ -40,6 +40,7 @@ mod cassette {
     mod streaming_multimodal_tool_results;
     mod streaming_tools;
     mod structured_output;
+    mod thought_text_matrix;
     mod tool_choice;
     mod tool_definitions;
     mod tool_hooks;

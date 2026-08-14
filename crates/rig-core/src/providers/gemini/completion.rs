@@ -628,20 +628,7 @@ pub mod gemini_api_types {
                         return None;
                     }
 
-                    let res = content
-                        .parts
-                        .iter()
-                        .filter_map(|part| {
-                            if let PartKind::Text(ref str) = part.part {
-                                Some(str.to_owned())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<String>>()
-                        .join("\n");
-
-                    Some(res)
+                    Some(visible_text_parts(content).collect::<Vec<_>>().join("\n"))
                 })
                 .collect::<Vec<String>>()
                 .join("\n");
@@ -652,6 +639,21 @@ pub mod gemini_api_types {
         fn get_usage(&self) -> Option<Self::Usage> {
             self.usage_metadata.clone()
         }
+    }
+
+    /// The model-visible text of a content's parts, in order.
+    ///
+    /// A `thought: true` part is the model's chain-of-thought, not its answer:
+    /// `thinkingConfig.includeThoughts` puts both in the same `parts` array,
+    /// distinguished only by that flag. Every reader that wants the response
+    /// *text* must skip them — the completion mapper routes them to
+    /// [`crate::message::AssistantContent::Reasoning`] instead, and a reader
+    /// that takes them for output text reports reasoning as the answer.
+    pub(crate) fn visible_text_parts(content: &Content) -> impl Iterator<Item = &str> {
+        content.parts.iter().filter_map(|part| match &part.part {
+            PartKind::Text(text) if !part.thought.unwrap_or(false) => Some(text.as_str()),
+            _ => None,
+        })
     }
 
     /// A response candidate generated from the model.

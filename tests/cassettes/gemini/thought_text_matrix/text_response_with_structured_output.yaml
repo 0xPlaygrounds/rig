@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Give the city and country of the Eiffel Tower.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"responseJsonSchema":{"properties":{"city":{"type":"string"},"country":{"type":"string"}},"required":["city","country"],"type":"object"},"responseMimeType":"application/json","temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**JSONifying the Eiffel Tower''s Location**\n\nOkay, so the user wants the Eiffel Tower''s location, straightforward enough. They''re expecting a JSON response, and I need to be precise about it. Let me check the schema... right, it''s pretty simple: \"city\" and \"country\", both strings, both required. No problem. Eiffel Tower... that''s in Paris, France. Therefore, the JSON has to be:\n\n```json\n{\n  \"city\": \"Paris\",\n  \"country\": \"France\"\n}\n```\n\nThat should satisfy the user''s request and adhere perfectly to the specified structure. Excellent.\n","thought":true},{"text":"{\"city\": \"Paris\", \"country\": \"France\"}"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":12,"promptTokenCount":11,"promptTokensDetails":[{"modality":"TEXT","tokenCount":11}],"serviceTier":"standard","thoughtsTokenCount":89,"totalTokenCount":112}}'
