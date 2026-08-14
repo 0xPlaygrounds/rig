@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one short paragraph, explain what a solar eclipse is.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly in plain text.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, casting a shadow on our planet and temporarily blocking the Sun''s light. This alignment can result in a total eclipse, where the Sun is completely obscured, or a partial eclipse, where only a portion is covered. During the event, the sky darkens significantly as the Moon''s shadow moves across specific regions of the Earth''s surface.","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":85,"promptTokenCount":26,"promptTokensDetails":[{"modality":"TEXT","tokenCount":26}],"serviceTier":"standard","thoughtsTokenCount":266,"totalTokenCount":377}}'

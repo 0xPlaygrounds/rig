@@ -227,17 +227,12 @@ pub(crate) fn create_request_body(
     // reached `maxOutputTokens` and the model ran to its own limit. Create the
     // config when either field is set, mirroring the `output_schema` arm above.
     //
-    // Seeded with the two fields cleared rather than `GenerationConfig::default()`
-    // (which is `temperature: 1.0`, `max_output_tokens: 4096`) so a caller who
-    // sets one does not silently acquire the other: every field is
-    // `skip_serializing_if = "Option::is_none"`, so an unset field stays off the
-    // wire and Gemini applies its own default.
+    // `GenerationConfig::default()` is all-`None` and every field is
+    // `skip_serializing_if = "Option::is_none"`, so a caller who sets one field
+    // does not silently acquire the other: the unset field stays off the wire
+    // and Gemini applies its own default.
     if temperature.is_some() || max_tokens.is_some() {
-        let cfg = generation_config.get_or_insert_with(|| GenerationConfig {
-            temperature: None,
-            max_output_tokens: None,
-            ..Default::default()
-        });
+        let cfg = generation_config.get_or_insert_with(GenerationConfig::default);
 
         if let Some(temp) = temperature {
             cfg.temperature = Some(temp);
@@ -1635,7 +1630,16 @@ pub mod gemini_api_types {
     /// Can be serialized into a type-safe
     /// [`CompletionRequest::additional_params`](crate::completion::CompletionRequest::additional_params)
     /// value or a runtime builder's additional parameters.
-    #[derive(Debug, Deserialize, Serialize)]
+    ///
+    /// Every field defaults to `None`, and every field is
+    /// `skip_serializing_if = "Option::is_none"`. A default config therefore
+    /// puts *nothing* on the wire and lets Gemini apply each model's own
+    /// documented default. Do not reintroduce non-`None` defaults here: this
+    /// type seeds request construction, so a value set here is silently imposed
+    /// on callers who never asked for it (rig#2322 — a hardcoded
+    /// `max_output_tokens: Some(4096)` capped structured-output and image
+    /// requests at 4096 tokens regardless of the caller's budget).
+    #[derive(Debug, Default, Deserialize, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct GenerationConfig {
         /// The set of character sequences (up to 5) that will stop output generation. If specified, the API will stop
@@ -1725,30 +1729,6 @@ pub mod gemini_api_types {
         pub response_modalities: Option<Vec<ResponseModality>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub image_config: Option<ImageConfig>,
-    }
-
-    impl Default for GenerationConfig {
-        fn default() -> Self {
-            Self {
-                temperature: Some(1.0),
-                max_output_tokens: Some(4096),
-                stop_sequences: None,
-                response_mime_type: None,
-                response_schema: None,
-                _response_json_schema: None,
-                response_json_schema: None,
-                candidate_count: None,
-                top_p: None,
-                top_k: None,
-                presence_penalty: None,
-                frequency_penalty: None,
-                response_logprobs: None,
-                logprobs: None,
-                thinking_config: None,
-                response_modalities: None,
-                image_config: None,
-            }
-        }
     }
 
     /// Response modalities supported by Gemini multimodal output models.
