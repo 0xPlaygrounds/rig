@@ -3,12 +3,17 @@
 //!
 //! See `many_rigs/rig-regression-cassette-suite-proposal.md` for the catalogue.
 
+use rig::agent::OutputMode;
+use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
 use rig::streaming::StreamingPrompt;
+use rig_agent::test_utils::decode_structured_output;
 
+use super::super::support::assert_recorded_sampling_fields;
 use crate::support::{
-    STREAMING_PREAMBLE, STREAMING_PROMPT, collect_stream_final_response_and_provider_final,
+    STREAMING_PREAMBLE, STREAMING_PROMPT, STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput,
+    assert_smoke_structured_output, collect_stream_final_response_and_provider_final,
 };
 
 /// C15 — Regression: agent-level `max_tokens` reaches Gemini's
@@ -59,23 +64,131 @@ async fn agent_max_tokens_reaches_generation_config_without_additional_params() 
     // the guarantee is stated in the test and not only implied by mock matching
     // (a future harness change that relaxed body matching would otherwise make
     // this test silently stop covering the bug).
-    let recorded = std::fs::read_to_string(crate::cassettes::cassette_path(
-        "gemini",
+    //
+    // The `temperature` half of this assertion is the rig#2322 direction: an
+    // unset field must stay off the wire, so setting one sampling field does not
+    // silently acquire the other.
+    assert_recorded_sampling_fields(
         "regression/agent_max_tokens_without_additional_params",
-    ))
-    .expect("cassette should be readable");
-
-    assert!(
-        recorded.contains(r#""maxOutputTokens":512"#),
-        "the recorded request must carry the agent's max_tokens as \
-         generationConfig.maxOutputTokens — without it the value was dropped \
-         before it reached Gemini"
+        &[("maxOutputTokens", serde_json::json!(512))],
     );
-    assert!(
-        !recorded.contains(r#""temperature""#),
-        "an unset temperature must stay off the wire: the config is seeded with \
-         both fields cleared, not with GenerationConfig::default() (which is \
-         temperature 1.0 / maxOutputTokens 4096), so setting one field does not \
-         silently send the other"
+}
+
+/// rig#2322 — Regression: a native structured-output turn that sets **no**
+/// `max_tokens` must not acquire one.
+///
+/// This is the reported bug's primary path. `create_request_body`'s
+/// `output_schema` arm seeded its config with `GenerationConfig::default()`,
+/// which hardcoded `temperature: Some(1.0)` and `max_output_tokens: Some(4096)`.
+/// Any structured-output call was therefore capped at 4096 output tokens and
+/// pinned to temperature 1.0 regardless of the caller's budget — silently, since
+/// neither field appears anywhere in the caller's code.
+///
+/// The #2283 fix that introduced the sibling arm below it deliberately avoided
+/// `Default::default()` for exactly this reason, but did not fix this arm; the
+/// hazard is now removed at the root by making the `Default` all-`None`.
+///
+/// **The recorded request body is the assertion** — an injected
+/// `maxOutputTokens` reappears in the cassette and fails the check below.
+#[tokio::test]
+async fn structured_output_without_max_tokens_sends_no_sampling_fields() {
+    super::super::support::with_gemini_cassette(
+        "regression/structured_output_without_max_tokens",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .output_schema::<SmokeStructuredOutput>()
+                .output_mode(OutputMode::Native)
+                // Deliberately no `.max_tokens(...)` and no `.temperature(...)`:
+                // the caller is relying on the model's own output limit.
+                .build();
+
+            let response = agent
+                .prompt(STRUCTURED_OUTPUT_PROMPT)
+                .await
+                .expect("structured output prompt should succeed");
+            let structured: SmokeStructuredOutput = decode_structured_output(
+                "gemini_regression_structured_output_without_max_tokens",
+                &response,
+            )
+            .expect("structured output should deserialize");
+
+            assert_smoke_structured_output(&structured);
+        },
+    )
+    .await;
+
+    assert_recorded_sampling_fields("regression/structured_output_without_max_tokens", &[]);
+}
+
+/// rig#2322 — Regression: a native structured-output turn that *does* set
+/// `max_tokens` sends the caller's value and still acquires no `temperature`.
+///
+/// The complement of the test above: the previous code overwrote the injected
+/// 4096 with the caller's value at the `max_tokens` arm, so an explicit budget
+/// masked the defect. Pinning this direction keeps a future fix from
+/// "resolving" the bug by dropping the caller's value instead.
+#[tokio::test]
+async fn structured_output_with_max_tokens_sends_only_the_caller_value() {
+    super::super::support::with_gemini_cassette(
+        "regression/structured_output_with_max_tokens",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .output_schema::<SmokeStructuredOutput>()
+                .output_mode(OutputMode::Native)
+                .max_tokens(16_384)
+                .build();
+
+            let response = agent
+                .prompt(STRUCTURED_OUTPUT_PROMPT)
+                .await
+                .expect("structured output prompt should succeed");
+            let structured: SmokeStructuredOutput = decode_structured_output(
+                "gemini_regression_structured_output_with_max_tokens",
+                &response,
+            )
+            .expect("structured output should deserialize");
+
+            assert_smoke_structured_output(&structured);
+        },
+    )
+    .await;
+
+    assert_recorded_sampling_fields(
+        "regression/structured_output_with_max_tokens",
+        &[("maxOutputTokens", serde_json::json!(16_384))],
+    );
+}
+
+/// rig#2322 — Regression: the mirror of C15. Setting `temperature` alone must
+/// not acquire a `maxOutputTokens`.
+///
+/// C15 pins `max_tokens` without `temperature`; this pins `temperature` without
+/// `max_tokens`. Together they cover both halves of the shared seed, so a
+/// reintroduced non-`None` default is caught whichever field it lands on — the
+/// `maxOutputTokens` half being the one that truncated real workloads.
+#[tokio::test]
+async fn temperature_without_max_tokens_sends_no_max_output_tokens() {
+    super::super::support::with_gemini_cassette(
+        "regression/temperature_without_max_tokens",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .preamble(STREAMING_PREAMBLE)
+                .temperature(0.0)
+                .build();
+
+            agent
+                .prompt(STREAMING_PROMPT)
+                .await
+                .expect("prompt should succeed");
+        },
+    )
+    .await;
+
+    assert_recorded_sampling_fields(
+        "regression/temperature_without_max_tokens",
+        &[("temperature", serde_json::json!(0.0))],
     );
 }
