@@ -142,14 +142,24 @@ impl TryFrom<GenerateContentResponse>
         // the first. `visible_text_parts` is the shared skip-the-thoughts rule
         // — no separator is invented between parts, because Gemini's split
         // points are not sentence boundaries.
-        let text = candidate
+        //
+        // "No text" stays a *structural* question — are there visible text
+        // parts at all — rather than "is the joined string empty". A turn
+        // whose text part is genuinely empty still converted before this
+        // change, and still does.
+        let mut parts = candidate
             .content
             .as_ref()
-            .map(|content| visible_text_parts(content).collect::<String>())
-            .filter(|text| !text.is_empty())
-            .ok_or_else(|| {
-                TranscriptionError::ResponseError("Response content contains no text".to_string())
-            })?;
+            .map(visible_text_parts)
+            .into_iter()
+            .flatten()
+            .peekable();
+        if parts.peek().is_none() {
+            return Err(TranscriptionError::ResponseError(
+                "Response content contains no text".to_string(),
+            ));
+        }
+        let text = parts.collect::<String>();
 
         Ok(transcription::TranscriptionResponse { text, response })
     }

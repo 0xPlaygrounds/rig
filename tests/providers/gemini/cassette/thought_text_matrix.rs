@@ -53,8 +53,9 @@
 //! | 22 | `transcription_rejects_a_candidate_with_no_text_part` (unit) | transcription | see below |
 //! | 23 | `text_response_is_none_for_a_thought_only_candidate` (unit) | `get_text_response` | see below |
 //! | 24 | `text_response_still_ignores_non_model_roles` (unit) | `get_text_response` | see below |
+//! | 25 | `transcription_keeps_an_empty_visible_text_part` (unit) | transcription | see below |
 //!
-//! Cells 19–24 are unit tests because a live turn cannot be made to produce
+//! Cells 19–25 are unit tests because a live turn cannot be made to produce
 //! their states: Gemini does not split a short transcript across several
 //! visible text parts on demand, does not return a transcription candidate
 //! consisting only of thoughts, and never labels a `generateContent`
@@ -1115,6 +1116,20 @@ mod unit {
                 "{context}: expected a ResponseError, got {error:?}"
             ),
         }
+    }
+
+    /// Not a recording: Gemini answers this fixture's audio with a real
+    /// transcript, so an empty-but-present text part has no live source. "No
+    /// text" is a structural question — are there visible text parts at all —
+    /// not "is the joined string empty", so a turn whose text part is
+    /// genuinely empty converts, exactly as it did before the rewrite.
+    #[test]
+    fn transcription_keeps_an_empty_visible_text_part() {
+        let response = response_with(vec![thought_part("hmm"), text_part("")], "model");
+        let transcription: TranscriptionResponse<GenerateContentResponse> = response
+            .try_into()
+            .expect("an empty visible text part is still a (blank) transcript");
+        assert_eq!(transcription.text, "");
     }
 
     /// Not a recording: `generateContent` does not answer a transcription
