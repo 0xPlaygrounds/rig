@@ -1,3 +1,6 @@
+// Tests assert on filter shapes, where a failed conversion should panic loudly
+// rather than be handled; matches the other vector-store crates (e.g. rig-lancedb).
+#![cfg_attr(test, allow(clippy::expect_used))]
 //! AWS S3Vectors vector store integration for Rig.
 //!
 //! This crate provides [`S3VectorsVectorStore`], a Rig vector store backed by
@@ -7,9 +10,6 @@
 //!
 //! The root `rig` facade re-exports this crate as `rig::s3vectors` when the
 //! `s3vectors` feature is enabled.
-
-#[macro_use]
-mod document;
 
 use aws_sdk_s3vectors::{
     Client,
@@ -42,27 +42,49 @@ impl SearchFilter for S3SearchFilter {
     type Value = aws_smithy_types::Document;
 
     fn eq(key: impl AsRef<str>, value: Self::Value) -> Self {
-        let key = key.as_ref().to_owned();
-        Self(document!({ key: { "$eq": value } }))
+        Self(document_comparison(key, "$eq", value))
     }
 
     fn gt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        let key = key.as_ref().to_owned();
-        Self(document!({ key: { "$gt": value } }))
+        Self(document_comparison(key, "$gt", value))
     }
 
     fn lt(key: impl AsRef<str>, value: Self::Value) -> Self {
-        let key = key.as_ref().to_owned();
-        Self(document!({ key: { "$lt": value } }))
+        Self(document_comparison(key, "$lt", value))
     }
 
     fn and(self, rhs: Self) -> Self {
-        Self(document!({ "$and": [ self.0, rhs.0 ]}))
+        Self(document_object([(
+            "$and",
+            Document::Array(vec![self.0, rhs.0]),
+        )]))
     }
 
     fn or(self, rhs: Self) -> Self {
-        Self(document!({ "$or": [ self.0, rhs.0 ]}))
+        Self(document_object([(
+            "$or",
+            Document::Array(vec![self.0, rhs.0]),
+        )]))
     }
+}
+
+/// Builds a `Document::Object` from the given entries.
+fn document_object<K>(entries: impl IntoIterator<Item = (K, Document)>) -> Document
+where
+    K: Into<String>,
+{
+    Document::Object(
+        entries
+            .into_iter()
+            .map(|(key, value)| (key.into(), value))
+            .collect(),
+    )
+}
+
+/// Builds the `{ key: { op: value } }` shape S3Vectors uses for comparison
+/// operators such as `$eq` and `$gt`.
+fn document_comparison(key: impl AsRef<str>, op: &str, value: Document) -> Document {
+    document_object([(key.as_ref(), document_object([(op, value)]))])
 }
 
 impl DynamicSearchFilter for S3SearchFilter {
@@ -81,20 +103,23 @@ impl S3SearchFilter {
     }
 
     pub fn gte(key: String, value: <Self as SearchFilter>::Value) -> Self {
-        Self(document!({ key: { "$gte": value } }))
+        Self(document_comparison(key, "$gte", value))
     }
 
     pub fn lte(key: String, value: <Self as SearchFilter>::Value) -> Self {
-        Self(document!({ key: { "$lte": value } }))
+        Self(document_comparison(key, "$lte", value))
     }
 
     pub fn exists(key: String) -> Self {
-        Self(document!({ "$exists": { key: true } }))
+        Self(document_object([(
+            "$exists",
+            document_object([(key, Document::Bool(true))]),
+        )]))
     }
 
     #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
-        Self(document!({ "$not": self.0 }))
+        Self(document_object([("$not", self.0)]))
     }
 }
 
@@ -372,6 +397,30 @@ mod tests {
                 }, {
                     "score": { "$gt": 4.5 }
                 }]
+            })
+        );
+    }
+
+    #[test]
+    fn extension_operators_build_the_documented_filter_shapes() {
+        let number = |n| Document::Number(aws_smithy_types::Number::PosInt(n));
+        let filter = S3SearchFilter::gte("score".into(), number(5))
+            .or(S3SearchFilter::lte("score".into(), number(1)))
+            .or(S3SearchFilter::exists("status".into()))
+            .not();
+
+        assert_eq!(
+            document_to_json_value(filter.inner()),
+            serde_json::json!({
+                "$not": {
+                    "$or": [
+                        { "$or": [
+                            { "score": { "$gte": 5 } },
+                            { "score": { "$lte": 1 } }
+                        ]},
+                        { "$exists": { "status": true } }
+                    ]
+                }
             })
         );
     }

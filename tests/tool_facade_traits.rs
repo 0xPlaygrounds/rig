@@ -88,7 +88,8 @@ fn portable_tool_impls_facade_portable_tool() {
 /// classic `Tool`) accepts it directly.
 #[test]
 fn portable_tool_registers_with_classic_toolset() {
-    let set: ToolSet = ToolSet::builder().static_tool(PortableAdder).build();
+    let mut set = ToolSet::default();
+    set.add_tool(PortableAdder);
     let names: Vec<String> = set
         .get_tool_definitions()
         .into_iter()

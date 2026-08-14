@@ -192,20 +192,39 @@ impl std::fmt::Display for Usage {
     }
 }
 
+/// Aggregate an Anthropic token report into rig's usage shape.
+///
+/// Anthropic reports cache reads and cache writes *alongside* `input_tokens`
+/// rather than inside it, so the total is the sum of all four counters. Shared
+/// with the streaming path, whose `PartialUsage` carries the same counters.
+pub(super) fn anthropic_usage_totals(
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_read: Option<u64>,
+    cache_creation: Option<u64>,
+) -> crate::completion::Usage {
+    let mut usage = crate::completion::Usage::new();
+
+    usage.input_tokens = input_tokens;
+    usage.output_tokens = output_tokens;
+    usage.cached_input_tokens = cache_read.unwrap_or_default();
+    usage.cache_creation_input_tokens = cache_creation.unwrap_or_default();
+    usage.total_tokens = usage.input_tokens
+        + usage.cached_input_tokens
+        + usage.cache_creation_input_tokens
+        + usage.output_tokens;
+
+    usage
+}
+
 impl From<&Usage> for crate::completion::Usage {
     fn from(value: &Usage) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-
-        usage.input_tokens = value.input_tokens;
-        usage.output_tokens = value.output_tokens;
-        usage.cached_input_tokens = value.cache_read_input_tokens.unwrap_or_default();
-        usage.cache_creation_input_tokens = value.cache_creation_input_tokens.unwrap_or_default();
-        usage.total_tokens = value.input_tokens
-            + value.cache_read_input_tokens.unwrap_or_default()
-            + value.cache_creation_input_tokens.unwrap_or_default()
-            + value.output_tokens;
-
-        usage
+        anthropic_usage_totals(
+            value.input_tokens,
+            value.output_tokens,
+            value.cache_read_input_tokens,
+            value.cache_creation_input_tokens,
+        )
     }
 }
 
@@ -427,11 +446,7 @@ impl FromStr for Content {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Content::Text {
-            text: s.to_owned(),
-            citations: Vec::new(),
-            cache_control: None,
-        })
+        Ok(Content::from(s.to_owned()))
     }
 }
 
@@ -475,124 +490,101 @@ pub struct CitationsConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Citation {
     /// A citation locating a character span in a plain text document.
-    CharLocation {
-        /// The exact text being cited. Not counted toward output tokens.
-        cited_text: String,
-        /// 0-indexed position of the source document in the request's document list.
-        document_index: usize,
-        /// Optional title of the source document, echoed back from the request.
-        document_title: Option<String>,
-        /// 0-indexed character offset where the cited span begins.
-        start_char_index: usize,
-        /// Character offset where the cited span ends (exclusive).
-        end_char_index: usize,
-    },
+    CharLocation(CharLocationCitation),
     /// A citation locating a page range in a PDF document.
-    PageLocation {
-        /// The exact text being cited. Not counted toward output tokens.
-        cited_text: String,
-        /// 0-indexed position of the source document in the request's document list.
-        document_index: usize,
-        /// Optional title of the source document, echoed back from the request.
-        document_title: Option<String>,
-        /// 1-indexed page number where the cited span begins.
-        start_page_number: u32,
-        /// 1-indexed page number where the cited span ends (exclusive).
-        end_page_number: u32,
-    },
+    PageLocation(PageLocationCitation),
     /// A citation locating a block range in a custom-content document.
-    ContentBlockLocation {
-        /// The exact text being cited. Not counted toward output tokens.
-        cited_text: String,
-        /// 0-indexed position of the source document in the request's document list.
-        document_index: usize,
-        /// Optional title of the source document, echoed back from the request.
-        document_title: Option<String>,
-        /// 0-indexed content block index where the cited span begins.
-        start_block_index: usize,
-        /// Content block index where the cited span ends (exclusive).
-        end_block_index: usize,
-    },
+    ContentBlockLocation(ContentBlockLocationCitation),
     /// A citation locating a block range in a user-provided search result.
-    SearchResultLocation {
-        /// The exact text being cited. Not counted toward output tokens.
-        cited_text: String,
-        /// Source URL or identifier from the original search result.
-        source: String,
-        /// Title from the original search result.
-        title: Option<String>,
-        /// 0-indexed position of the cited search result across all search
-        /// result blocks in the request.
-        search_result_index: usize,
-        /// 0-indexed content block index where the cited span begins.
-        start_block_index: usize,
-        /// Content block index where the cited span ends (exclusive).
-        end_block_index: usize,
-    },
+    SearchResultLocation(SearchResultLocationCitation),
     /// A citation emitted by Anthropic's server-side web search tool.
-    WebSearchResultLocation {
-        /// The exact text being cited. Not counted toward output tokens.
-        cited_text: String,
-        /// URL of the cited source.
-        url: String,
-        /// Title of the cited source.
-        title: Option<String>,
-        /// Encrypted reference that must be preserved for multi-turn
-        /// conversations.
-        encrypted_index: String,
-    },
+    WebSearchResultLocation(WebSearchResultLocationCitation),
     /// A forward-compatible raw citation payload for citation types this crate
     /// does not yet model.
     Unknown(serde_json::Value),
 }
 
-#[derive(Serialize, Deserialize)]
-struct CharLocationCitationFields {
-    cited_text: String,
-    document_index: usize,
+/// Payload of a [`Citation::CharLocation`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharLocationCitation {
+    /// The exact text being cited. Not counted toward output tokens.
+    pub cited_text: String,
+    /// 0-indexed position of the source document in the request's document list.
+    pub document_index: usize,
+    /// Optional title of the source document, echoed back from the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    document_title: Option<String>,
-    start_char_index: usize,
-    end_char_index: usize,
+    pub document_title: Option<String>,
+    /// 0-indexed character offset where the cited span begins.
+    pub start_char_index: usize,
+    /// Character offset where the cited span ends (exclusive).
+    pub end_char_index: usize,
 }
 
-#[derive(Serialize, Deserialize)]
-struct PageLocationCitationFields {
-    cited_text: String,
-    document_index: usize,
+/// Payload of a [`Citation::PageLocation`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageLocationCitation {
+    /// The exact text being cited. Not counted toward output tokens.
+    pub cited_text: String,
+    /// 0-indexed position of the source document in the request's document list.
+    pub document_index: usize,
+    /// Optional title of the source document, echoed back from the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    document_title: Option<String>,
-    start_page_number: u32,
-    end_page_number: u32,
+    pub document_title: Option<String>,
+    /// 1-indexed page number where the cited span begins.
+    pub start_page_number: u32,
+    /// 1-indexed page number where the cited span ends (exclusive).
+    pub end_page_number: u32,
 }
 
-#[derive(Serialize, Deserialize)]
-struct ContentBlockLocationCitationFields {
-    cited_text: String,
-    document_index: usize,
+/// Payload of a [`Citation::ContentBlockLocation`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContentBlockLocationCitation {
+    /// The exact text being cited. Not counted toward output tokens.
+    pub cited_text: String,
+    /// 0-indexed position of the source document in the request's document list.
+    pub document_index: usize,
+    /// Optional title of the source document, echoed back from the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    document_title: Option<String>,
-    start_block_index: usize,
-    end_block_index: usize,
+    pub document_title: Option<String>,
+    /// 0-indexed content block index where the cited span begins.
+    pub start_block_index: usize,
+    /// Content block index where the cited span ends (exclusive).
+    pub end_block_index: usize,
 }
 
-#[derive(Serialize, Deserialize)]
-struct SearchResultLocationCitationFields {
-    cited_text: String,
-    source: String,
+/// Payload of a [`Citation::SearchResultLocation`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchResultLocationCitation {
+    /// The exact text being cited. Not counted toward output tokens.
+    pub cited_text: String,
+    /// Source URL or identifier from the original search result.
+    pub source: String,
+    /// Title from the original search result.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
-    search_result_index: usize,
-    start_block_index: usize,
-    end_block_index: usize,
+    pub title: Option<String>,
+    /// 0-indexed position of the cited search result across all search
+    /// result blocks in the request.
+    pub search_result_index: usize,
+    /// 0-indexed content block index where the cited span begins.
+    pub start_block_index: usize,
+    /// Content block index where the cited span ends (exclusive).
+    pub end_block_index: usize,
 }
 
-#[derive(Serialize, Deserialize)]
-struct WebSearchResultLocationCitationFields {
-    cited_text: String,
-    url: String,
-    title: Option<String>,
-    encrypted_index: String,
+/// Payload of a [`Citation::WebSearchResultLocation`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebSearchResultLocationCitation {
+    /// The exact text being cited. Not counted toward output tokens.
+    pub cited_text: String,
+    /// URL of the cited source.
+    pub url: String,
+    /// Title of the cited source. Unlike the document-citation titles this
+    /// carries no `skip_serializing_if`: the wire writes it even when absent,
+    /// as an explicit `"title": null`.
+    pub title: Option<String>,
+    /// Encrypted reference that must be preserved for multi-turn
+    /// conversations.
+    pub encrypted_index: String,
 }
 
 impl Serialize for Citation {
@@ -614,93 +606,17 @@ impl Serialize for Citation {
         }
 
         match self {
-            Citation::CharLocation {
-                cited_text,
-                document_index,
-                document_title,
-                start_char_index,
-                end_char_index,
-            } => tagged(
-                serializer,
-                "char_location",
-                &CharLocationCitationFields {
-                    cited_text: cited_text.clone(),
-                    document_index: *document_index,
-                    document_title: document_title.clone(),
-                    start_char_index: *start_char_index,
-                    end_char_index: *end_char_index,
-                },
-            ),
-            Citation::PageLocation {
-                cited_text,
-                document_index,
-                document_title,
-                start_page_number,
-                end_page_number,
-            } => tagged(
-                serializer,
-                "page_location",
-                &PageLocationCitationFields {
-                    cited_text: cited_text.clone(),
-                    document_index: *document_index,
-                    document_title: document_title.clone(),
-                    start_page_number: *start_page_number,
-                    end_page_number: *end_page_number,
-                },
-            ),
-            Citation::ContentBlockLocation {
-                cited_text,
-                document_index,
-                document_title,
-                start_block_index,
-                end_block_index,
-            } => tagged(
-                serializer,
-                "content_block_location",
-                &ContentBlockLocationCitationFields {
-                    cited_text: cited_text.clone(),
-                    document_index: *document_index,
-                    document_title: document_title.clone(),
-                    start_block_index: *start_block_index,
-                    end_block_index: *end_block_index,
-                },
-            ),
-            Citation::SearchResultLocation {
-                cited_text,
-                source,
-                title,
-                search_result_index,
-                start_block_index,
-                end_block_index,
-            } => tagged(
-                serializer,
-                "search_result_location",
-                &SearchResultLocationCitationFields {
-                    cited_text: cited_text.clone(),
-                    source: source.clone(),
-                    title: title.clone(),
-                    search_result_index: *search_result_index,
-                    start_block_index: *start_block_index,
-                    end_block_index: *end_block_index,
-                },
-            ),
-            Citation::WebSearchResultLocation {
-                cited_text,
-                url,
-                title,
-                encrypted_index,
-            } => tagged(
-                serializer,
-                "web_search_result_location",
-                // `title` stays a plain field here: the wire writes it even
-                // when `None` (as an explicit `"title": null`).
-                &WebSearchResultLocationCitationFields {
-                    cited_text: cited_text.clone(),
-                    url: url.clone(),
-                    title: title.clone(),
-                    encrypted_index: encrypted_index.clone(),
-                },
-            ),
+            Citation::CharLocation(fields) => tagged(serializer, "char_location", fields),
+            Citation::PageLocation(fields) => tagged(serializer, "page_location", fields),
+            Citation::ContentBlockLocation(fields) => {
+                tagged(serializer, "content_block_location", fields)
+            }
+            Citation::SearchResultLocation(fields) => {
+                tagged(serializer, "search_result_location", fields)
+            }
+            Citation::WebSearchResultLocation(fields) => {
+                tagged(serializer, "web_search_result_location", fields)
+            }
             Citation::Unknown(raw) => raw.serialize(serializer),
         }
     }
@@ -711,67 +627,32 @@ impl<'de> Deserialize<'de> for Citation {
     where
         D: serde::Deserializer<'de>,
     {
+        /// Decode the payload of an already tag-matched citation. A modeled tag
+        /// carrying a defective payload is an error, never a silent
+        /// [`Citation::Unknown`].
+        fn payload<T, E>(value: serde_json::Value) -> Result<T, E>
+        where
+            T: serde::de::DeserializeOwned,
+            E: serde::de::Error,
+        {
+            serde_json::from_value(value).map_err(E::custom)
+        }
+
+        // Hand-written tag dispatch rather than `#[serde(untagged)]`: an
+        // untagged fallback would swallow a *modeled* citation type carrying a
+        // defective payload as `Unknown`, hiding provider drift. Only an
+        // absent, non-string or unmodeled tag reaches `Unknown` here.
         let value = serde_json::Value::deserialize(deserializer)?;
         let Some(citation_type) = value.get("type").and_then(serde_json::Value::as_str) else {
             return Ok(Citation::Unknown(value));
         };
 
         match citation_type {
-            "char_location" => {
-                let fields: CharLocationCitationFields =
-                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
-                Ok(Citation::CharLocation {
-                    cited_text: fields.cited_text,
-                    document_index: fields.document_index,
-                    document_title: fields.document_title,
-                    start_char_index: fields.start_char_index,
-                    end_char_index: fields.end_char_index,
-                })
-            }
-            "page_location" => {
-                let fields: PageLocationCitationFields =
-                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
-                Ok(Citation::PageLocation {
-                    cited_text: fields.cited_text,
-                    document_index: fields.document_index,
-                    document_title: fields.document_title,
-                    start_page_number: fields.start_page_number,
-                    end_page_number: fields.end_page_number,
-                })
-            }
-            "content_block_location" => {
-                let fields: ContentBlockLocationCitationFields =
-                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
-                Ok(Citation::ContentBlockLocation {
-                    cited_text: fields.cited_text,
-                    document_index: fields.document_index,
-                    document_title: fields.document_title,
-                    start_block_index: fields.start_block_index,
-                    end_block_index: fields.end_block_index,
-                })
-            }
-            "search_result_location" => {
-                let fields: SearchResultLocationCitationFields =
-                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
-                Ok(Citation::SearchResultLocation {
-                    cited_text: fields.cited_text,
-                    source: fields.source,
-                    title: fields.title,
-                    search_result_index: fields.search_result_index,
-                    start_block_index: fields.start_block_index,
-                    end_block_index: fields.end_block_index,
-                })
-            }
-            "web_search_result_location" => {
-                let fields: WebSearchResultLocationCitationFields =
-                    serde_json::from_value(value).map_err(serde::de::Error::custom)?;
-                Ok(Citation::WebSearchResultLocation {
-                    cited_text: fields.cited_text,
-                    url: fields.url,
-                    title: fields.title,
-                    encrypted_index: fields.encrypted_index,
-                })
-            }
+            "char_location" => Ok(Citation::CharLocation(payload(value)?)),
+            "page_location" => Ok(Citation::PageLocation(payload(value)?)),
+            "content_block_location" => Ok(Citation::ContentBlockLocation(payload(value)?)),
+            "search_result_location" => Ok(Citation::SearchResultLocation(payload(value)?)),
+            "web_search_result_location" => Ok(Citation::WebSearchResultLocation(payload(value)?)),
             _ => Ok(Citation::Unknown(value)),
         }
     }
@@ -1147,29 +1028,6 @@ impl TryFrom<DocumentMediaType> for DocumentFormat {
     }
 }
 
-impl TryFrom<message::AssistantContent> for Content {
-    type Error = MessageError;
-    fn try_from(text: message::AssistantContent) -> Result<Self, Self::Error> {
-        match text {
-            message::AssistantContent::Text(text) => anthropic_text_content_from_message_text(text),
-            message::AssistantContent::Image(_) => Err(MessageError::ConversionError(
-                "Anthropic currently doesn't support images.".to_string(),
-            )),
-            message::AssistantContent::ToolCall(tool_call) => Ok(Content::ToolUse {
-                // The wire requires a non-empty id: the provider-issued one
-                // when it exists, else rig's minted handle.
-                id: tool_call.wire_call_id().to_owned(),
-                name: tool_call.function.name,
-                input: coerce_tool_input(tool_call.function.arguments),
-            }),
-            message::AssistantContent::Reasoning(reasoning) => Ok(Content::Thinking {
-                thinking: reasoning.display_text(),
-                signature: reasoning.first_signature().map(str::to_owned),
-            }),
-        }
-    }
-}
-
 /// The Anthropic Messages API requires `tool_use.input` to be a JSON OBJECT.
 /// `ToolCall.function.arguments` can arrive as a JSON-encoded STRING (some
 /// providers / replayed conversation history) or as `null`/empty (a tool called
@@ -1214,6 +1072,8 @@ fn anthropic_content_from_assistant_content(
             "Anthropic currently doesn't support images.".to_string(),
         )),
         message::AssistantContent::ToolCall(tool_call) => Ok(vec![Content::ToolUse {
+            // The wire requires a non-empty id: the provider-issued one when it
+            // exists, else rig's minted handle.
             id: tool_call.wire_call_id().to_owned(),
             name: tool_call.function.name,
             input: coerce_tool_input(tool_call.function.arguments),
@@ -1260,11 +1120,9 @@ impl TryFrom<message::Message> for Message {
             message::Message::User { content } => Message {
                 role: Role::User,
                 content: content.into_iter().map(|content| match content {
-                    message::UserContent::Text(message::Text { text, .. }) => Ok(Content::Text {
-                        text,
-                        citations: Vec::new(),
-                        cache_control: None,
-                    }),
+                    message::UserContent::Text(message::Text { text, .. }) => {
+                        Ok(Content::from(text))
+                    }
                     message::UserContent::ToolResult(tool_result) => Ok(Content::ToolResult {
                         tool_use_id: tool_result.wire_call_id().to_owned(),
                         content: tool_result.content.into_iter().map(|content| match content {
@@ -1418,11 +1276,7 @@ impl TryFrom<message::Message> for Message {
 
             message::Message::System { content } => Message {
                 role: Role::System,
-                content: vec![Content::Text {
-                    text: content,
-                    citations: Vec::new(),
-                    cache_control: None,
-                }],
+                content: vec![Content::from(content)],
             },
 
             message::Message::Assistant { content, .. } => {
@@ -1677,10 +1531,66 @@ where
     T: HttpClientExt,
     Ext: AnthropicCompatibleProvider + Clone + 'static,
 {
-    pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
-        let model = model.into();
-        let default_max_tokens = Ext::default_max_tokens(&model);
+    /// The request prelude both the unary and the streaming path run: resolve
+    /// the model, open the telemetry span, default `max_tokens`, and build the
+    /// typed request.
+    ///
+    /// The span is built *before* `max_tokens` defaulting so a request rejected
+    /// for a missing limit is still attributable to a model and operation. The
+    /// caller applies the span its own way — `.instrument(..)` around the unary
+    /// send, handed to the SSE transport when streaming.
+    ///
+    /// Each caller TRACE-logs its own final body rather than this typed request:
+    /// the streaming body is this request plus `stream` and a reconciled
+    /// `tool_choice`, and those two fields are the whole reason the streaming
+    /// path logs at all.
+    pub(super) fn prepare_request(
+        &self,
+        mut completion_request: completion::CompletionRequest,
+        operation: CompletionOperation,
+    ) -> Result<(tracing::Span, AnthropicCompletionRequest), CompletionError> {
+        let request_model = completion_request
+            .model
+            .clone()
+            .unwrap_or_else(|| self.model.clone());
+        let span = CompletionSpanBuilder::new(Ext::PROVIDER_NAME, &request_model, operation)
+            .system_instructions(
+                completion_request.preamble.as_deref(),
+                completion_request.record_telemetry_content,
+            )
+            .build();
 
+        if completion_request.max_tokens.is_none() {
+            let Some(tokens) = self.default_max_tokens else {
+                return Err(CompletionError::RequestError(
+                    "`max_tokens` must be set for Anthropic".into(),
+                ));
+            };
+            completion_request.max_tokens = Some(tokens);
+        }
+
+        let request = AnthropicCompletionRequest::try_from_params::<Ext>(
+            AnthropicRequestParams {
+                model: &request_model,
+                request: completion_request,
+                prompt_caching: self.prompt_caching,
+                automatic_caching: self.automatic_caching,
+                automatic_caching_ttl: self.automatic_caching_ttl.clone(),
+                static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
+            },
+            self.strict_tools,
+        )?;
+
+        Ok((span, request))
+    }
+
+    /// A model with every caching / strictness knob off, differing from its
+    /// siblings only in how `default_max_tokens` was resolved.
+    fn with_defaults(
+        client: crate::client::Client<Ext, T>,
+        model: String,
+        default_max_tokens: Option<u64>,
+    ) -> Self {
         Self {
             client,
             model,
@@ -1693,18 +1603,18 @@ where
         }
     }
 
+    pub fn new(client: crate::client::Client<Ext, T>, model: impl Into<String>) -> Self {
+        let model = model.into();
+        let default_max_tokens = Ext::default_max_tokens(&model);
+
+        Self::with_defaults(client, model, default_max_tokens)
+    }
+
     pub fn with_model(client: crate::client::Client<Ext, T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-            default_max_tokens: Ext::default_max_tokens(model)
-                .or_else(|| Some(default_max_tokens_with_fallback(model))),
-            prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
-            static_prefix_cache_ttl: None,
-            strict_tools: false,
-        }
+        let default_max_tokens = Ext::default_max_tokens(model)
+            .or_else(|| Some(default_max_tokens_with_fallback(model)));
+
+        Self::with_defaults(client, model.to_string(), default_max_tokens)
     }
 
     /// Enable manual prompt caching.
@@ -2421,31 +2331,6 @@ fn set_content_cache_control(content: &mut Content, value: Option<CacheControl>)
 
 const MAX_CACHE_CONTROL_MARKERS: usize = 4;
 
-/// Apply cache control breakpoints to system prompt and messages.
-/// Strategy: cache the system prompt, and mark the last content block of the last message
-/// for caching. This allows the conversation history to be cached while new messages
-/// are added.
-pub fn apply_cache_control(system: &mut [SystemContent], messages: &mut [Message]) {
-    // Add cache_control to the system prompt (if non-empty)
-    if let Some(SystemContent::Text { cache_control, .. }) = system.last_mut() {
-        *cache_control = Some(CacheControl::ephemeral());
-    }
-
-    // Clear any existing cache_control from all message content blocks
-    for msg in messages.iter_mut() {
-        for content in msg.content.iter_mut() {
-            set_content_cache_control(content, None);
-        }
-    }
-
-    // Add cache_control to the last content block of the last message
-    if let Some(last_msg) = messages.last_mut()
-        && let Some(last_content) = last_msg.content.last_mut()
-    {
-        set_content_cache_control(last_content, Some(CacheControl::ephemeral()));
-    }
-}
-
 fn final_cacheable_tool_idx(tools: &[serde_json::Value]) -> Option<usize> {
     tools.iter().rposition(|tool| {
         tool.as_object().is_some_and(|tool| {
@@ -3056,45 +2941,10 @@ where
     /// request either way.
     pub async fn raw_completion(
         &self,
-        mut completion_request: completion::CompletionRequest,
+        completion_request: completion::CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let request_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let span = CompletionSpanBuilder::new(
-            Ext::PROVIDER_NAME,
-            &request_model,
-            CompletionOperation::Chat,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        // Check if max_tokens is set, required for Anthropic
-        if completion_request.max_tokens.is_none() {
-            if let Some(tokens) = self.default_max_tokens {
-                completion_request.max_tokens = Some(tokens);
-            } else {
-                return Err(CompletionError::RequestError(
-                    "`max_tokens` must be set for Anthropic".into(),
-                ));
-            }
-        }
-
-        let request = AnthropicCompletionRequest::try_from_params::<Ext>(
-            AnthropicRequestParams {
-                model: &request_model,
-                request: completion_request,
-                prompt_caching: self.prompt_caching,
-                automatic_caching: self.automatic_caching,
-                automatic_caching_ttl: self.automatic_caching_ttl.clone(),
-                static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
-            },
-            self.strict_tools,
-        )?;
+        let (span, request) =
+            self.prepare_request(completion_request, CompletionOperation::Chat)?;
 
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -3605,7 +3455,8 @@ mod tests {
         let json_content = serde_json::to_string(&content).unwrap();
         assert!(json_content.contains(r#""cache_control":{"type":"ephemeral"}"#));
 
-        // Test apply_cache_control function
+        // Manual prompt caching over a bare system prompt + conversation: the
+        // system block and the tail of the last message get the marker.
         let mut system_vec = vec![SystemContent::Text {
             text: "System prompt".to_string(),
             cache_control: None,
@@ -3629,7 +3480,8 @@ mod tests {
             },
         ];
 
-        apply_cache_control(&mut system_vec, &mut messages);
+        apply_prompt_cache_control(&mut system_vec, &mut messages, &mut [], true, None, None)
+            .unwrap();
 
         // System should have cache_control
         match &system_vec[0] {
@@ -6270,16 +6122,11 @@ mod tests {
             panic!("expected Content::Text");
         };
         assert_eq!(citations.len(), 1);
-        let Citation::CharLocation {
-            start_char_index,
-            end_char_index,
-            ..
-        } = &citations[0]
-        else {
+        let Citation::CharLocation(citation) = &citations[0] else {
             panic!("expected CharLocation");
         };
-        assert_eq!(*start_char_index, 0);
-        assert_eq!(*end_char_index, 20);
+        assert_eq!(citation.start_char_index, 0);
+        assert_eq!(citation.end_char_index, 20);
     }
 
     #[test]
@@ -6305,14 +6152,14 @@ mod tests {
 
         assert!(matches!(
             &citations[0],
-            Citation::SearchResultLocation {
+            Citation::SearchResultLocation(SearchResultLocationCitation {
                 source,
                 title: Some(title),
                 search_result_index: 0,
                 start_block_index: 0,
                 end_block_index: 1,
                 ..
-            } if source == "https://docs.example.com/api-reference" && title == "API Reference"
+            }) if source == "https://docs.example.com/api-reference" && title == "API Reference"
         ));
     }
 
@@ -6337,12 +6184,12 @@ mod tests {
 
         assert!(matches!(
             &citations[0],
-            Citation::WebSearchResultLocation {
+            Citation::WebSearchResultLocation(WebSearchResultLocationCitation {
                 url,
                 title,
                 encrypted_index,
                 ..
-            } if url == "https://example.com/shannon"
+            }) if url == "https://example.com/shannon"
                 && title.as_deref() == Some("Claude Shannon")
                 && encrypted_index == "encrypted-reference"
         ));
@@ -6367,10 +6214,10 @@ mod tests {
             panic!("expected Content::Text");
         };
 
-        let Citation::WebSearchResultLocation { title, .. } = &citations[0] else {
+        let Citation::WebSearchResultLocation(citation) = &citations[0] else {
             panic!("expected WebSearchResultLocation");
         };
-        assert_eq!(title, &None);
+        assert_eq!(citation.title, None);
 
         let serialized = serde_json::to_value(&citations[0]).unwrap();
         assert!(serialized.get("title").is_some());
@@ -6461,10 +6308,8 @@ mod tests {
         let citations = anthropic_citations(answer).unwrap();
         assert!(matches!(
             citations.first(),
-            Some(Citation::WebSearchResultLocation {
-                encrypted_index,
-                ..
-            }) if encrypted_index == "encrypted-index"
+            Some(Citation::WebSearchResultLocation(citation))
+                if citation.encrypted_index == "encrypted-index"
         ));
 
         let round_trip: Message = message::Message::Assistant {
@@ -6674,13 +6519,13 @@ mod tests {
 
     #[test]
     fn page_location_citation_roundtrips() {
-        let citation = Citation::PageLocation {
+        let citation = Citation::PageLocation(PageLocationCitation {
             cited_text: "Water is essential for life.".into(),
             document_index: 1,
             document_title: Some("PDF Doc".into()),
             start_page_number: 5,
             end_page_number: 6,
-        };
+        });
         let value = serde_json::to_value(&citation).unwrap();
         assert_eq!(value["type"], "page_location");
         assert_eq!(value["start_page_number"], 5);
@@ -6690,13 +6535,13 @@ mod tests {
 
     #[test]
     fn content_block_location_citation_roundtrips() {
-        let citation = Citation::ContentBlockLocation {
+        let citation = Citation::ContentBlockLocation(ContentBlockLocationCitation {
             cited_text: "These are important findings.".into(),
             document_index: 2,
             document_title: None,
             start_block_index: 0,
             end_block_index: 1,
-        };
+        });
         let value = serde_json::to_value(&citation).unwrap();
         assert_eq!(value["type"], "content_block_location");
         assert!(value.get("document_title").is_none());
@@ -6733,13 +6578,13 @@ mod tests {
     fn content_text_with_citations_survives_assistant_conversion() {
         let content = Content::Text {
             text: "the grass is green".into(),
-            citations: vec![Citation::CharLocation {
+            citations: vec![Citation::CharLocation(CharLocationCitation {
                 cited_text: "The grass is green.".into(),
                 document_index: 0,
                 document_title: None,
                 start_char_index: 0,
                 end_char_index: 20,
-            }],
+            })],
             cache_control: None,
         };
         let assistant: message::AssistantContent = content.try_into().unwrap();
@@ -6821,13 +6666,13 @@ mod tests {
         assert_eq!(text, "the grass is green");
         assert_eq!(
             citations,
-            &vec![Citation::CharLocation {
+            &vec![Citation::CharLocation(CharLocationCitation {
                 cited_text: "The grass is green.".into(),
                 document_index: 0,
                 document_title: None,
                 start_char_index: 0,
                 end_char_index: 20,
-            }]
+            })]
         );
     }
 
@@ -6844,7 +6689,7 @@ mod tests {
             .expect("object params"),
         });
 
-        let result = Content::try_from(text);
+        let result = anthropic_content_from_assistant_content(text);
 
         assert!(
             result.is_err(),

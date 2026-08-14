@@ -24,28 +24,6 @@ mod image {
         /// # }
         /// ```
         fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel;
-
-        /// Create an image generation model with the given name.
-        ///
-        /// # Example with OpenAI
-        /// ```no_run
-        /// use rig_core::prelude::*;
-        /// use rig_core::providers::openai::{Client, self};
-        ///
-        /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-        /// // Initialize the OpenAI client
-        /// let openai = Client::new("your-open-ai-api-key")?;
-        ///
-        /// let gpt4 = openai.image_generation_model(openai::DALL_E_3);
-        /// # Ok(())
-        /// # }
-        /// ```
-        fn custom_image_generation_model(
-            &self,
-            model: impl Into<String>,
-        ) -> Self::ImageGenerationModel {
-            Self::ImageGenerationModel::make(self, model)
-        }
     }
 }
 

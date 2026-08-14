@@ -13,7 +13,7 @@ use base64::Engine as _;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::message::{self, MimeType, Reasoning};
 use rig_core::providers::gemini::completion::gemini_api_types::{
-    Schema as GeminiSchema, tool_parameters_to_schema,
+    Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
 };
 use rig_core::telemetry::ProviderResponseExt;
 use std::convert::TryFrom;
@@ -45,9 +45,10 @@ pub const PROVIDER_NAME: &str = "gemini-grpc";
 
 /// Map Gemini's protobuf `finishReason` onto rig's normalized vocabulary.
 ///
-/// The wire value is a prost enum discriminant; unmapped values are carried
-/// verbatim in their SCREAMING_SNAKE proto spelling so a reason Google adds
-/// later surfaces rather than reading as a natural stop.
+/// The wire value is a prost enum discriminant; `as_str_name` recovers the
+/// SCREAMING_SNAKE proto spelling the shared Google table keys on, and a
+/// discriminant this proto does not model keeps its numeric identity so a
+/// reason Google adds later surfaces rather than reading as a natural stop.
 pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
     use proto::candidate::FinishReason as Wire;
 
@@ -57,18 +58,7 @@ pub fn map_finish_reason(reason: i32) -> Option<completion::FinishReason> {
         )));
     };
 
-    let normalized = match reason {
-        // The proto default; Gemini reports it when no reason applies.
-        Wire::Unspecified => return None,
-        Wire::Stop => completion::FinishReason::Stop,
-        Wire::MaxTokens => completion::FinishReason::Length,
-        Wire::Safety | Wire::Blocklist | Wire::ProhibitedContent | Wire::Spii => {
-            completion::FinishReason::ContentFilter
-        }
-        other => completion::FinishReason::Other(other.as_str_name().to_owned()),
-    };
-
-    Some(normalized)
+    map_google_finish_reason(reason.as_str_name())
 }
 
 /// Turn a tool-protocol terminal `finishReason` into an error, mirroring the

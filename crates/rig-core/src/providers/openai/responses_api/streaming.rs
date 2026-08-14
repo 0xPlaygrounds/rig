@@ -3,7 +3,6 @@
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
-use crate::message::ReasoningContent;
 use crate::providers::internal::adapter::{
     AdapterOutput, WireAdapter, WireFrame, run_wire_buffered,
 };
@@ -158,25 +157,13 @@ pub(crate) fn normalize_responses_stream(
 pub(crate) fn reasoning_end_from_done_item(
     id: &crate::streaming::StreamPartId,
     provider_id: Option<&crate::streaming::WireId>,
-    summary: &[ReasoningSummary],
-    content: &[String],
-    encrypted_content: Option<&str>,
+    summary: Vec<ReasoningSummary>,
+    content: Vec<String>,
+    encrypted_content: Option<String>,
 ) -> Option<RawStreamingChoice<StreamingCompletionResponse>> {
-    let mut blocks = summary
-        .iter()
-        .map(|reasoning_summary| match reasoning_summary {
-            ReasoningSummary::SummaryText { text } => ReasoningContent::Summary(text.to_owned()),
-        })
-        .collect::<Vec<_>>();
-
-    blocks.extend(content.iter().map(|text| ReasoningContent::Text {
-        text: text.to_owned(),
-        signature: None,
-    }));
-
-    if let Some(encrypted_content) = encrypted_content.filter(|s| !s.is_empty()) {
-        blocks.push(ReasoningContent::Encrypted(encrypted_content.to_owned()));
-    }
+    // Same builder as the unary decode, so the restatement and the
+    // non-streaming conversion of one item cannot drift.
+    let blocks = super::reasoning_content_blocks(summary, content, encrypted_content);
 
     if blocks.is_empty() {
         return None;
@@ -313,21 +300,28 @@ impl ResponsesStreamOptions {
     }
 }
 
+/// The payload of every content-bearing `data:` line in a buffered SSE body.
+///
+/// Blank lines, non-`data:` fields (SSE comments, `event:`), and the `[DONE]`
+/// sentinel are skipped, so both buffered readers below see exactly the frame
+/// payloads a live transport would deliver.
+fn sse_data_frames(body: &str) -> impl Iterator<Item = &str> {
+    body.lines()
+        .map(|line| {
+            line.strip_prefix("data:")
+                .map(str::trim)
+                .unwrap_or_default()
+        })
+        .filter(|data| !data.is_empty() && *data != "[DONE]")
+}
+
 pub(crate) fn parse_sse_completion_body(
     body: &str,
     provider_name: &str,
 ) -> Result<CompletionResponse, CompletionError> {
     let mut completed = None;
 
-    for line in body.lines() {
-        let data = line
-            .strip_prefix("data:")
-            .map(str::trim)
-            .unwrap_or_default();
-        if data.is_empty() || data == "[DONE]" {
-            continue;
-        }
-
+    for data in sse_data_frames(body) {
         if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
             if let StreamingCompletionChunk::Response(chunk) = chunk {
                 let ResponseChunk { kind, response, .. } = *chunk;
@@ -555,11 +549,19 @@ impl RawChoiceAccumulator {
                     options.emits_completed_tool_calls_immediately(),
                 );
             }
-            ItemChunkKind::OutputTextDelta(delta) => {
+            // Text and refusal deltas are the same visible-text stream: a
+            // refusal is the assistant's message for that turn, and both
+            // (re)open the item's text block before their fragment.
+            ItemChunkKind::OutputTextDelta(DeltaTextChunk { delta, .. })
+            | ItemChunkKind::RefusalDelta(DeltaTextChunk { delta, .. }) => {
                 self.start_text_item(&outer_item_id, &mut immediate);
-                immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
+                immediate.push(streaming::RawStreamingChoice::Message(delta));
             }
-            ItemChunkKind::ReasoningSummaryTextDelta(delta) => {
+            // Summary and raw-reasoning deltas differ only in which wire
+            // event carries them; both are fragments of the output item's
+            // reasoning block and accumulate under its slot identity.
+            ItemChunkKind::ReasoningSummaryTextDelta(SummaryTextChunk { delta, .. })
+            | ItemChunkKind::ReasoningTextDelta(DeltaTextChunkWithItemId { delta, .. }) => {
                 // Reasoning interleaving text closes the open text block
                 // downstream (`PartsAccumulator::reasoning_delta`); forget the
                 // open message item so a later delta for the *same* item
@@ -572,24 +574,8 @@ impl RawChoiceAccumulator {
                     provider_id: outer_item_id
                         .clone()
                         .and_then(crate::streaming::WireId::new),
-                    reasoning: delta.delta,
+                    reasoning: delta,
                 });
-            }
-            ItemChunkKind::ReasoningTextDelta(delta) => {
-                // Same interleaving boundary as the summary-delta arm above.
-                self.current_text_item = None;
-                let id = self.reasoning_slot_key(output_index, outer_item_id.as_deref());
-                immediate.push(streaming::RawStreamingChoice::ReasoningDelta {
-                    id,
-                    provider_id: outer_item_id
-                        .clone()
-                        .and_then(crate::streaming::WireId::new),
-                    reasoning: delta.delta,
-                });
-            }
-            ItemChunkKind::RefusalDelta(delta) => {
-                self.start_text_item(&outer_item_id, &mut immediate);
-                immediate.push(streaming::RawStreamingChoice::Message(delta.delta));
             }
             ItemChunkKind::FunctionCallArgsDelta(delta) => {
                 // Tool output interleaving text is a block boundary too.
@@ -783,9 +769,9 @@ impl RawChoiceAccumulator {
                 immediate.extend(reasoning_end_from_done_item(
                     &key,
                     provider_id.as_ref(),
-                    &summary,
-                    &content,
-                    encrypted_content.as_deref(),
+                    summary,
+                    content,
+                    encrypted_content,
                 ));
             }
             Output::Message(message) => {
@@ -909,15 +895,7 @@ pub(crate) fn raw_choices_from_sse_body(
     // pre-check (which fails the operation, mirroring the live transport).
     // Classification and policy live in the buffered driver.
     let mut frames = Vec::new();
-    for line in body.lines() {
-        let data = line
-            .strip_prefix("data:")
-            .map(str::trim)
-            .unwrap_or_default();
-        if data.is_empty() || data == "[DONE]" {
-            continue;
-        }
-
+    for data in sse_data_frames(body) {
         if let Some(error) = provider_response_from_responses_sse_data(data) {
             return Err(error);
         }
@@ -1936,9 +1914,9 @@ mod tests {
         let end = reasoning_end_from_done_item(
             &crate::streaming::StreamPartId::wire("rs_1"),
             crate::streaming::WireId::new("rs_1").as_ref(),
-            &summary,
-            &content,
-            Some("enc_blob"),
+            summary,
+            content,
+            Some("enc_blob".to_string()),
         );
 
         // ONE end event carrying every block in wire field order — never a
@@ -2120,8 +2098,8 @@ mod tests {
         let end = reasoning_end_from_done_item(
             &crate::streaming::StreamPartId::wire("rs_2"),
             crate::streaming::WireId::new("rs_2").as_ref(),
-            &summary,
-            &[],
+            summary,
+            Vec::new(),
             None,
         );
 
@@ -2147,9 +2125,9 @@ mod tests {
         let end = reasoning_end_from_done_item(
             &crate::streaming::StreamPartId::wire("rs_1"),
             crate::streaming::WireId::new("rs_1").as_ref(),
-            &[],
-            &content,
-            Some(""),
+            Vec::new(),
+            content,
+            Some(String::new()),
         );
 
         let Some(RawStreamingChoice::ReasoningEnd {
@@ -2173,9 +2151,9 @@ mod tests {
             reasoning_end_from_done_item(
                 &crate::streaming::StreamPartId::wire("rs_1"),
                 crate::streaming::WireId::new("rs_1").as_ref(),
-                &[],
-                &[],
-                Some(""),
+                Vec::new(),
+                Vec::new(),
+                Some(String::new()),
             )
             .is_none()
         );

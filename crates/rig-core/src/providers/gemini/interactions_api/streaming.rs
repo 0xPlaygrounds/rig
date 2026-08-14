@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
 use super::interactions_api_types::{
-    Content, ContentDelta, FunctionCallContent, FunctionCallDelta, Interaction,
-    InteractionSseEvent, InteractionUsage, Step, TextDelta, ThoughtSignatureDelta,
-    ThoughtSummaryContent, ThoughtSummaryDelta, map_interaction_status,
+    Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
+    Step, TextDelta, ThoughtSignatureDelta, ThoughtSummaryContent, ThoughtSummaryDelta,
+    map_interaction_status,
 };
 use super::{InteractionsCompletionModel, PROVIDER_NAME, create_request_body};
 use crate::completion::{CompletionError, CompletionRequest};
@@ -578,7 +578,7 @@ fn content_delta_to_choice(
         ContentDelta::Text(TextDelta {
             text: Some(text), ..
         }) => Some(streaming::RawStreamingChoice::Message(text)),
-        ContentDelta::FunctionCall(FunctionCallDelta {
+        ContentDelta::FunctionCall(FunctionCallContent {
             name,
             arguments,
             id,

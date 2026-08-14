@@ -148,10 +148,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
 
-    let toolset = ToolSet::builder()
-        .retrieved_tool(Add)
-        .retrieved_tool(Subtract)
-        .build();
+    let mut toolset = ToolSet::default();
+    toolset.add_retrieved_tool(Add);
+    toolset.add_retrieved_tool(Subtract);
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?

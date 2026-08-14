@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{
-    ContentCandidate, FinishReason, ModalityTokenCount, Part, PartKind, TrafficType,
-    map_finish_reason,
+    ContentCandidate, FinishReason, Part, PartKind, UsageMetadata, map_finish_reason,
 };
 use super::completion::{
     CompletionModel, PROVIDER_NAME, create_request_body, function_call_finish_reason_error,
@@ -73,53 +72,12 @@ pub(crate) mod shared_parts {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Default, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PartialUsage {
-    #[serde(default)]
-    pub total_token_count: i32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cached_content_token_count: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub candidates_token_count: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub thoughts_token_count: Option<i32>,
-    #[serde(default)]
-    pub prompt_token_count: i32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_tokens_details: Option<Vec<ModalityTokenCount>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub candidates_tokens_details: Option<Vec<ModalityTokenCount>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_use_prompt_token_count: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_use_prompt_tokens_details: Option<Vec<ModalityTokenCount>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub traffic_type: Option<TrafficType>,
-}
-
-impl From<&PartialUsage> for crate::completion::Usage {
-    fn from(value: &PartialUsage) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-
-        usage.input_tokens = value.prompt_token_count as u64;
-        usage.output_tokens = value.candidates_token_count.unwrap_or_default() as u64;
-        usage.cached_input_tokens = value.cached_content_token_count.unwrap_or_default() as u64;
-        usage.reasoning_tokens = value.thoughts_token_count.unwrap_or_default() as u64;
-        usage.tool_use_prompt_tokens = value.tool_use_prompt_token_count.unwrap_or_default() as u64;
-        usage.total_tokens = value.total_token_count as u64;
-
-        usage
-    }
-}
-
-impl From<PartialUsage> for crate::completion::Usage {
-    fn from(value: PartialUsage) -> crate::completion::Usage {
-        (&value).into()
-    }
-}
+/// The usage record on a `streamGenerateContent` chunk.
+///
+/// Identical to the unary wire's [`UsageMetadata`] — Gemini sends the same
+/// `usageMetadata` object on streaming frames — so the streaming name is an
+/// alias, not a second declaration that can drift from it.
+pub type PartialUsage = UsageMetadata;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -481,6 +439,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::gemini::completion::gemini_api_types::TrafficType;
     use serde_json::json;
 
     #[test]

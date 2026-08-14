@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::completion::{
-    AnthropicCompatibleProvider, AnthropicCompletionRequest, AnthropicRequestParams, CacheTtl,
-    Content, GenericCompletionModel, Usage, map_finish_reason,
+    AnthropicCompatibleProvider, AnthropicCompletionRequest, Content, GenericCompletionModel,
+    Usage, anthropic_usage_totals, map_finish_reason,
 };
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::sse::GenericEventSource;
@@ -18,48 +18,20 @@ use crate::streaming::{
     self, MintKind, RawStreamingChoice, RawStreamingResult, StreamFinal, StreamPartId,
     ToolCallDeltaContent, ToolInputEnd, UnparseableToolInput,
 };
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::telemetry::{CompletionOperation, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
 
-/// Build the Anthropic streaming request body.
+/// Patch the shared typed request into the Anthropic *streaming* request body.
 ///
-/// Derives it from the *same* typed [`AnthropicCompletionRequest`] the blocking
-/// path builds (in `completion.rs`), rather than re-assembling the body by hand.
-/// The previous hand-rolled `json!` body had drifted from the blocking one and
-/// silently dropped `output_schema` (structured-output config); reaching for the
-/// typed request fixes that and keeps the two in lockstep. The one intentional
-/// streaming-only difference — an explicit `tool_choice: auto` when tools are
-/// advertised but the caller left the choice unset — is re-applied below so the
-/// streaming request bytes stay stable.
-/// The typed request's `TryFrom` requires `max_tokens`; the caller must have
-/// resolved it onto `completion_request` (the request's own value, else the
-/// model default) before calling.
-fn create_streaming_request_body<Ext>(
-    request_model: String,
-    completion_request: CompletionRequest,
-    prompt_caching: bool,
-    automatic_caching: bool,
-    automatic_caching_ttl: Option<CacheTtl>,
-    static_prefix_cache_ttl: Option<CacheTtl>,
-    strict_tools: bool,
-) -> Result<Value, CompletionError>
-where
-    Ext: AnthropicCompatibleProvider,
-{
-    let request = AnthropicCompletionRequest::try_from_params::<Ext>(
-        AnthropicRequestParams {
-            model: &request_model,
-            request: completion_request,
-            prompt_caching,
-            automatic_caching,
-            automatic_caching_ttl,
-            static_prefix_cache_ttl,
-        },
-        strict_tools,
-    )?;
-
-    let mut body = serde_json::to_value(&request)?;
+/// The body derives from the *same* typed [`AnthropicCompletionRequest`] the
+/// blocking path builds (in `completion.rs`), rather than being re-assembled by
+/// hand. The previous hand-rolled `json!` body had drifted from the blocking one
+/// and silently dropped `output_schema` (structured-output config); reaching for
+/// the typed request fixes that and keeps the two in lockstep. Only the two
+/// streaming-only differences documented below are applied here.
+fn streaming_body(request: &AnthropicCompletionRequest) -> Result<Value, CompletionError> {
+    let mut body = serde_json::to_value(request)?;
     if let Some(map) = body.as_object_mut() {
         // `AnthropicCompletionRequest` has no `stream` field (the blocking path
         // omits it, defaulting to non-streaming); set it for the streaming endpoint.
@@ -278,17 +250,12 @@ pub struct PartialUsage {
 
 impl From<&PartialUsage> for crate::completion::Usage {
     fn from(value: &PartialUsage) -> crate::completion::Usage {
-        let mut usage = crate::completion::Usage::new();
-
-        usage.input_tokens = value.input_tokens.unwrap_or_default() as u64;
-        usage.output_tokens = value.output_tokens as u64;
-        usage.cached_input_tokens = value.cache_read_input_tokens.unwrap_or(0);
-        usage.cache_creation_input_tokens = value.cache_creation_input_tokens.unwrap_or(0);
-        usage.total_tokens = usage.input_tokens
-            + usage.cached_input_tokens
-            + usage.cache_creation_input_tokens
-            + usage.output_tokens;
-        usage
+        anthropic_usage_totals(
+            value.input_tokens.unwrap_or_default() as u64,
+            value.output_tokens as u64,
+            value.cache_read_input_tokens,
+            value.cache_creation_input_tokens,
+        )
     }
 }
 
@@ -567,42 +534,15 @@ where
     /// [`crate::streaming::normalize_stream`] — one network request either way.
     pub async fn raw_stream(
         &self,
-        mut completion_request: CompletionRequest,
+        completion_request: CompletionRequest,
     ) -> Result<RawStreamingResult<StreamingCompletionResponse>, CompletionError> {
-        let request_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let span = CompletionSpanBuilder::new(
-            Ext::PROVIDER_NAME,
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(
-            completion_request.preamble.as_deref(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-        if completion_request.max_tokens.is_none() {
-            if let Some(tokens) = self.default_max_tokens {
-                completion_request.max_tokens = Some(tokens);
-            } else {
-                return Err(CompletionError::RequestError(
-                    "`max_tokens` must be set for Anthropic".into(),
-                ));
-            }
-        }
+        let (span, request) =
+            self.prepare_request(completion_request, CompletionOperation::ChatStreaming)?;
 
-        let body = create_streaming_request_body::<Ext>(
-            request_model,
-            completion_request,
-            self.prompt_caching,
-            self.automatic_caching,
-            self.automatic_caching_ttl.clone(),
-            self.static_prefix_cache_ttl.clone(),
-            self.strict_tools,
-        )?;
-
+        // Logged after the streaming-only patches, not on the shared typed
+        // request: `stream` and the reconciled `tool_choice` are exactly what
+        // makes this body differ from the blocking one.
+        let body = streaming_body(&request)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "Anthropic completion request",
@@ -892,7 +832,7 @@ fn handle_event(
 #[cfg(test)]
 mod tests {
     use super::super::completion::{
-        CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent,
+        AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent,
         apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control,
     };
     use super::*;
@@ -926,6 +866,31 @@ mod tests {
         crate::streaming::normalize_stream(Box::pin(stream), |response| {
             Ok(StreamFinal::from(("anthropic", response)))
         })
+    }
+
+    /// Build the streaming request body the way [`GenericCompletionModel::raw_stream`]
+    /// does — the shared typed request, then the streaming-only patches — without
+    /// needing a client to reach the prelude.
+    fn built_streaming_body(
+        model: &str,
+        request: CompletionRequest,
+        strict_tools: bool,
+    ) -> Result<Value, CompletionError> {
+        let typed = AnthropicCompletionRequest::try_from_params::<
+            crate::providers::anthropic::client::AnthropicExt,
+        >(
+            AnthropicRequestParams {
+                model,
+                request,
+                prompt_caching: false,
+                automatic_caching: false,
+                automatic_caching_ttl: None,
+                static_prefix_cache_ttl: None,
+            },
+            strict_tools,
+        )?;
+
+        streaming_body(&typed)
     }
 
     #[test]
@@ -985,16 +950,7 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body =
-            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
-                CLAUDE_OPUS_4_8.to_string(),
-                request,
-                false,
-                false,
-                None,
-                None,
-                false,
-            )
+        let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
             .expect("streaming request body should build");
 
         assert_eq!(body["system"][0]["text"], "System prompt");
@@ -1043,16 +999,7 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let streaming_body =
-            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
-                CLAUDE_OPUS_4_8.to_string(),
-                request.clone(),
-                false,
-                false,
-                None,
-                None,
-                false,
-            )
+        let streaming_body = built_streaming_body(CLAUDE_OPUS_4_8, request.clone(), false)
             .expect("streaming request body should build");
 
         // The streaming endpoint flag is set.
@@ -1114,16 +1061,7 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body =
-            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
-                CLAUDE_OPUS_4_8.to_string(),
-                request,
-                false,
-                false,
-                None,
-                None,
-                false,
-            )
+        let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
             .expect("streaming request body should build");
 
         // Tools advertised + `tool_choice` unset must still carry the explicit
@@ -1157,16 +1095,7 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body =
-            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
-                CLAUDE_OPUS_4_8.to_string(),
-                request,
-                false,
-                false,
-                None,
-                None,
-                true,
-            )
+        let body = built_streaming_body(CLAUDE_OPUS_4_8, request, true)
             .expect("streaming request body should build");
 
         assert_eq!(body["tools"][0]["strict"], true);
@@ -1200,16 +1129,7 @@ mod tests {
             record_telemetry_content: false,
         };
 
-        let body =
-            create_streaming_request_body::<crate::providers::anthropic::client::AnthropicExt>(
-                CLAUDE_OPUS_4_8.to_string(),
-                request,
-                false,
-                false,
-                None,
-                None,
-                false,
-            )
+        let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
             .expect("streaming request body should build");
 
         assert!(
@@ -1826,16 +1746,12 @@ mod tests {
         let ContentDelta::CitationsDelta { citation } = delta else {
             panic!("expected CitationsDelta");
         };
-        let crate::providers::anthropic::completion::Citation::CharLocation {
-            start_char_index,
-            end_char_index,
-            ..
-        } = citation
+        let crate::providers::anthropic::completion::Citation::CharLocation(citation) = citation
         else {
             panic!("expected CharLocation");
         };
-        assert_eq!(start_char_index, 0);
-        assert_eq!(end_char_index, 20);
+        assert_eq!(citation.start_char_index, 0);
+        assert_eq!(citation.end_char_index, 20);
     }
 
     #[test]
@@ -1866,12 +1782,14 @@ mod tests {
         };
         assert!(matches!(
             citation,
-            crate::providers::anthropic::completion::Citation::SearchResultLocation {
-                search_result_index: 0,
-                start_block_index: 0,
-                end_block_index: 1,
-                ..
-            }
+            crate::providers::anthropic::completion::Citation::SearchResultLocation(
+                crate::providers::anthropic::completion::SearchResultLocationCitation {
+                    search_result_index: 0,
+                    start_block_index: 0,
+                    end_block_index: 1,
+                    ..
+                }
+            )
         ));
     }
 
@@ -1901,12 +1819,9 @@ mod tests {
         };
         assert!(matches!(
             citation,
-            crate::providers::anthropic::completion::Citation::WebSearchResultLocation {
-                ref url,
-                ref encrypted_index,
-                ..
-            } if url == "https://example.com/shannon"
-                && encrypted_index == "encrypted-reference"
+            crate::providers::anthropic::completion::Citation::WebSearchResultLocation(ref citation)
+                if citation.url == "https://example.com/shannon"
+                    && citation.encrypted_index == "encrypted-reference"
         ));
     }
 
@@ -1936,10 +1851,12 @@ mod tests {
         };
         assert!(matches!(
             citation,
-            crate::providers::anthropic::completion::Citation::WebSearchResultLocation {
-                title: None,
-                ..
-            }
+            crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
+                crate::providers::anthropic::completion::WebSearchResultLocationCitation {
+                    title: None,
+                    ..
+                }
+            )
         ));
     }
 
@@ -2180,12 +2097,15 @@ mod tests {
                 &StreamingEvent::ContentBlockDelta {
                     index: 2,
                     delta: ContentDelta::CitationsDelta {
-                        citation: crate::providers::anthropic::completion::Citation::WebSearchResultLocation {
-                            cited_text: "Claude Shannon was born on April 30, 1916.".to_string(),
-                            url: "https://example.com/shannon".to_string(),
-                            title: Some("Claude Shannon".to_string()),
-                            encrypted_index: "encrypted-index".to_string(),
-                        },
+                        citation: crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
+                            crate::providers::anthropic::completion::WebSearchResultLocationCitation {
+                                cited_text: "Claude Shannon was born on April 30, 1916."
+                                    .to_string(),
+                                url: "https://example.com/shannon".to_string(),
+                                title: Some("Claude Shannon".to_string()),
+                                encrypted_index: "encrypted-index".to_string(),
+                            },
+                        ),
                     },
                 },
                 &mut tool_call_state,
@@ -2247,10 +2167,8 @@ mod tests {
             .expect("expected preserved citations");
         assert!(matches!(
             citations.first(),
-            Some(crate::providers::anthropic::completion::Citation::WebSearchResultLocation {
-                encrypted_index,
-                ..
-            }) if encrypted_index == "encrypted-index"
+            Some(crate::providers::anthropic::completion::Citation::WebSearchResultLocation(citation))
+                if citation.encrypted_index == "encrypted-index"
         ));
     }
 
@@ -2259,13 +2177,15 @@ mod tests {
         let event = StreamingEvent::ContentBlockDelta {
             index: 0,
             delta: ContentDelta::CitationsDelta {
-                citation: crate::providers::anthropic::completion::Citation::CharLocation {
-                    cited_text: "The grass is green.".to_string(),
-                    document_index: 0,
-                    document_title: Some("Example".to_string()),
-                    start_char_index: 0,
-                    end_char_index: 20,
-                },
+                citation: crate::providers::anthropic::completion::Citation::CharLocation(
+                    crate::providers::anthropic::completion::CharLocationCitation {
+                        cited_text: "The grass is green.".to_string(),
+                        document_index: 0,
+                        document_title: Some("Example".to_string()),
+                        start_char_index: 0,
+                        end_char_index: 20,
+                    },
+                ),
             },
         };
 
@@ -2283,13 +2203,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_citation_deltas_are_preserved_on_final_text() {
-        let citation = crate::providers::anthropic::completion::Citation::CharLocation {
-            cited_text: "The grass is green.".to_string(),
-            document_index: 0,
-            document_title: Some("Example".to_string()),
-            start_char_index: 0,
-            end_char_index: 20,
-        };
+        let citation = crate::providers::anthropic::completion::Citation::CharLocation(
+            crate::providers::anthropic::completion::CharLocationCitation {
+                cited_text: "The grass is green.".to_string(),
+                document_index: 0,
+                document_title: Some("Example".to_string()),
+                start_char_index: 0,
+                end_char_index: 20,
+            },
+        );
 
         let raw_stream = stream! {
             let mut tool_call_state = None;
@@ -2325,13 +2247,15 @@ mod tests {
                 &StreamingEvent::ContentBlockDelta {
                     index: 0,
                     delta: ContentDelta::CitationsDelta {
-                        citation: crate::providers::anthropic::completion::Citation::CharLocation {
-                            cited_text: "The grass is green.".to_string(),
-                            document_index: 0,
-                            document_title: Some("Example".to_string()),
-                            start_char_index: 0,
-                            end_char_index: 20,
-                        },
+                        citation: crate::providers::anthropic::completion::Citation::CharLocation(
+                            crate::providers::anthropic::completion::CharLocationCitation {
+                                cited_text: "The grass is green.".to_string(),
+                                document_index: 0,
+                                document_title: Some("Example".to_string()),
+                                start_char_index: 0,
+                                end_char_index: 20,
+                            },
+                        ),
                     },
                 },
                 &mut tool_call_state,

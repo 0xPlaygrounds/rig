@@ -6,6 +6,7 @@ use rig_core::message::{
     AssistantContent, ImageDetail, ImageMediaType, MediaType, MimeType, Reasoning, Text, ToolCall,
     ToolFunction,
 };
+use rig_core::providers::gemini::completion::gemini_api_types::map_google_finish_reason;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -21,30 +22,16 @@ pub const PROVIDER_NAME: &str = "vertexai";
 pub fn map_finish_reason(
     reason: vertexai::model::candidate::FinishReason,
 ) -> Option<rig_core::completion::FinishReason> {
-    use rig_core::completion::FinishReason as Normalized;
-    use vertexai::model::candidate::FinishReason as Wire;
+    // `name()` yields the wire form (`MALFORMED_FUNCTION_CALL`) the shared
+    // Google table keys on; a value the SDK does not model falls back to
+    // `Display`, which prints the raw enum value. Formatting the variant with
+    // `Debug` would silently drop the underscores.
+    let wire_name = reason
+        .name()
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| reason.to_string());
 
-    let normalized = match reason {
-        Wire::Stop => Normalized::Stop,
-        Wire::MaxTokens => Normalized::Length,
-        Wire::Safety | Wire::Blocklist | Wire::ProhibitedContent | Wire::Spii => {
-            Normalized::ContentFilter
-        }
-        // `Unspecified` is Vertex's "no reason reported" value, not a reason.
-        Wire::Unspecified => return None,
-        // Everything else keeps Vertex's own spelling. `name()` yields the wire
-        // form (`MALFORMED_FUNCTION_CALL`); a value the SDK does not model
-        // falls back to `Display`, which prints the raw enum value. Formatting
-        // the variant with `Debug` would silently drop the underscores.
-        ref other => Normalized::Other(
-            other
-                .name()
-                .map(ToOwned::to_owned)
-                .unwrap_or_else(|| other.to_string()),
-        ),
-    };
-
-    Some(normalized)
+    map_google_finish_reason(&wire_name)
 }
 
 impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {

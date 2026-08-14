@@ -203,17 +203,12 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
             let citations = collect_anthropic_citations(&first_turn.choice);
             assert!(!citations.is_empty(), "expected citations: {first_turn:?}");
             assert!(citations.iter().any(|citation| match citation {
-                Citation::CharLocation {
-                    cited_text,
-                    document_index,
-                    document_title,
-                    ..
-                } => {
-                    *document_index == 0
-                        && document_title.as_deref() == Some("Rust Goals")
+                Citation::CharLocation(citation) => {
+                    citation.document_index == 0
+                        && citation.document_title.as_deref() == Some("Rust Goals")
                         && ["safety", "speed", "concurrency"]
                             .iter()
-                            .any(|needle| cited_text.to_lowercase().contains(needle))
+                            .any(|needle| citation.cited_text.to_lowercase().contains(needle))
                 }
                 _ => false,
             }));

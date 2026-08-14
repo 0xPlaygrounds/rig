@@ -96,7 +96,8 @@ async fn main() -> Result<()> {
         .preamble("You are a calculator. Always use the provided tools to compute results.")
         .tool(Add)
         .build();
-    let local_tools = ToolSet::builder().static_tool(Add).build();
+    let mut local_tools = ToolSet::default();
+    local_tools.add_tool(Add);
     let tool_definitions = local_tools.get_tool_definitions();
 
     let mut run = AgentRun::new("What is 2 + 5?").max_turns(2);

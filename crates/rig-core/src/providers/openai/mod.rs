@@ -51,6 +51,26 @@ pub(crate) fn sanitize_schema(schema: &mut serde_json::Value) {
     );
 }
 
+/// The `(name, schema)` pair OpenAI's structured-output configs need from a
+/// request's output schema: the schema's `title` (falling back to
+/// `response_schema`, which OpenAI requires a name for) and the schema
+/// sanitized for the strict subset.
+///
+/// Derived once for both API surfaces — Chat Completions' `response_format`
+/// and Responses' `text.format` — so a turn's structured output is named and
+/// sanitized identically whichever endpoint serves it.
+pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, serde_json::Value) {
+    let name = schema
+        .as_object()
+        .and_then(|object| object.get("title"))
+        .and_then(|title| title.as_str())
+        .unwrap_or("response_schema")
+        .to_string();
+    let mut value = schema.to_value();
+    sanitize_schema(&mut value);
+    (name, value)
+}
+
 #[cfg(feature = "audio")]
 pub use audio_generation::{TTS_1, TTS_1_HD};
 

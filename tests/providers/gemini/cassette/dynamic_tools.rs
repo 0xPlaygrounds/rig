@@ -53,10 +53,9 @@ async fn dynamic_tool_retrieved_and_merged_with_static() {
     with_gemini_cassette(
         "dynamic_tools/dynamic_tool_retrieved_and_merged_with_static",
         |client| async move {
-            let toolset = ToolSet::builder()
-                .retrieved_tool(subtract)
-                .retrieved_tool(EmbedMultiply::default())
-                .build();
+            let mut toolset = ToolSet::default();
+            toolset.add_retrieved_tool(subtract);
+            toolset.add_retrieved_tool(EmbedMultiply::default());
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
@@ -97,10 +96,9 @@ async fn dynamic_only_agent_retrieves_tool_per_prompt() {
     with_gemini_cassette(
         "dynamic_tools/dynamic_only_agent_retrieves_tool_per_prompt",
         |client| async move {
-            let toolset = ToolSet::builder()
-                .retrieved_tool(add)
-                .retrieved_tool(EmbedSubtract::default())
-                .build();
+            let mut toolset = ToolSet::default();
+            toolset.add_retrieved_tool(add);
+            toolset.add_retrieved_tool(EmbedSubtract::default());
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client
@@ -135,11 +133,10 @@ async fn sample_caps_retrieved_definitions() {
     with_gemini_cassette(
         "dynamic_tools/sample_caps_retrieved_definitions",
         |client| async move {
-            let toolset = ToolSet::builder()
-                .retrieved_tool(EmbedAdd::default())
-                .retrieved_tool(EmbedSubtract::default())
-                .retrieved_tool(EmbedMultiply::default())
-                .build();
+            let mut toolset = ToolSet::default();
+            toolset.add_retrieved_tool(EmbedAdd::default());
+            toolset.add_retrieved_tool(EmbedSubtract::default());
+            toolset.add_retrieved_tool(EmbedMultiply::default());
             let index = build_tool_index(&client, &toolset).await;
 
             let agent = client

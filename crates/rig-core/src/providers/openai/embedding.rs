@@ -327,13 +327,7 @@ where
     }
 
     pub fn with_model(client: crate::client::Client<Ext, H>, model: &str, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            encoding_format: None,
-            ndims,
-            user: None,
-        }
+        Self::new(client, model, ndims)
     }
 
     pub fn with_encoding_format(
@@ -342,13 +336,7 @@ where
         ndims: usize,
         encoding_format: EncodingFormat,
     ) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            encoding_format: Some(encoding_format),
-            ndims,
-            user: None,
-        }
+        Self::new(client, model, ndims).encoding_format(encoding_format)
     }
 
     pub fn encoding_format(mut self, encoding_format: EncodingFormat) -> Self {

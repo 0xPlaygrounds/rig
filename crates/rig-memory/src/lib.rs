@@ -40,6 +40,7 @@
 //! ```
 
 use std::{
+    borrow::Cow,
     collections::HashMap,
     sync::{Arc, Mutex as StdMutex},
 };
@@ -197,22 +198,29 @@ impl MemoryPolicy for SlidingWindowMemory {
             return Ok((messages, Vec::new()));
         }
 
-        let start = messages.len() - self.max_messages;
-        let mut iter = messages.into_iter();
-        let mut demoted: Vec<Message> = (&mut iter).take(start).collect();
-        let mut window: Vec<Message> = iter.collect();
-
-        // The orphan tool-result, if any, becomes part of the demoted set so
-        // it is preserved end-to-end through the demotion hook even though
-        // the model never sees it again.
-        if let Some(Message::User { content }) = window.first()
-            && matches!(content.first(), Some(UserContent::ToolResult(_)))
-        {
-            demoted.push(window.remove(0));
-        }
-
-        Ok((window, demoted))
+        let keep_from = messages.len() - self.max_messages;
+        Ok(split_window(messages, keep_from))
     }
+}
+
+/// Split `messages` at `keep_from` into `(window, demoted)`.
+///
+/// A window that opens on a tool result has lost the assistant call it
+/// answers, which providers reject; that orphan joins the demoted set rather
+/// than being dropped, so the demotion hook still observes it end-to-end even
+/// though the model never sees it again.
+fn split_window(messages: Vec<Message>, keep_from: usize) -> (Vec<Message>, Vec<Message>) {
+    let mut iter = messages.into_iter();
+    let mut demoted: Vec<Message> = (&mut iter).take(keep_from).collect();
+    let mut window: Vec<Message> = iter.collect();
+
+    if let Some(Message::User { content }) = window.first()
+        && matches!(content.first(), Some(UserContent::ToolResult(_)))
+    {
+        demoted.push(window.remove(0));
+    }
+
+    (window, demoted)
 }
 
 /// Counts the tokens contributed by a single [`Message`].
@@ -464,17 +472,7 @@ impl MemoryPolicy for TokenWindowMemory {
             keep_from = idx;
         }
 
-        let mut iter = messages.into_iter();
-        let mut demoted: Vec<Message> = (&mut iter).take(keep_from).collect();
-        let mut window: Vec<Message> = iter.collect();
-
-        if let Some(Message::User { content }) = window.first()
-            && matches!(content.first(), Some(UserContent::ToolResult(_)))
-        {
-            demoted.push(window.remove(0));
-        }
-
-        Ok((window, demoted))
+        Ok(split_window(messages, keep_from))
     }
 }
 
@@ -1379,75 +1377,51 @@ fn truncate_summary(buf: &str, cap: usize) -> String {
 fn render_message_line(msg: &Message) -> String {
     use rig_core::message::AssistantContent;
 
-    match msg {
-        Message::System { content } => {
-            if content.is_empty() {
-                String::new()
-            } else {
-                format!("system: {content}")
-            }
-        }
-        Message::User { content } => {
-            let mut text = String::new();
-            for c in content.iter() {
-                match c {
-                    UserContent::Text(t) => {
-                        if !text.is_empty() {
-                            text.push(' ');
-                        }
-                        text.push_str(&t.text);
-                    }
-                    UserContent::ToolResult(_) => {
-                        if !text.is_empty() {
-                            text.push(' ');
-                        }
-                        text.push_str("[tool result]");
-                    }
-                    _ => {
-                        if !text.is_empty() {
-                            text.push(' ');
-                        }
-                        text.push_str("[attachment]");
-                    }
+    let (role, text) = match msg {
+        Message::System { content } => ("system", content.clone()),
+        Message::User { content } => (
+            "user",
+            join_parts(content.iter().map(|item| match item {
+                UserContent::Text(text) => Cow::Borrowed(text.text.as_str()),
+                UserContent::ToolResult(_) => Cow::Borrowed("[tool result]"),
+                _ => Cow::Borrowed("[attachment]"),
+            })),
+        ),
+        Message::Assistant { content, .. } => (
+            "assistant",
+            join_parts(content.iter().map(|item| match item {
+                AssistantContent::Text(text) => Cow::Borrowed(text.text.as_str()),
+                AssistantContent::ToolCall(call) => {
+                    Cow::Owned(format!("[tool call: {}]", call.function.name))
                 }
-            }
-            if text.is_empty() {
-                String::new()
-            } else {
-                format!("user: {text}")
-            }
-        }
-        Message::Assistant { content, .. } => {
-            let mut text = String::new();
-            for c in content.iter() {
-                match c {
-                    AssistantContent::Text(t) => {
-                        if !text.is_empty() {
-                            text.push(' ');
-                        }
-                        text.push_str(&t.text);
-                    }
-                    AssistantContent::ToolCall(call) => {
-                        if !text.is_empty() {
-                            text.push(' ');
-                        }
-                        text.push_str(&format!("[tool call: {}]", call.function.name));
-                    }
-                    _ => {
-                        if !text.is_empty() {
-                            text.push(' ');
-                        }
-                        text.push_str("[reasoning]");
-                    }
-                }
-            }
-            if text.is_empty() {
-                String::new()
-            } else {
-                format!("assistant: {text}")
-            }
-        }
+                _ => Cow::Borrowed("[reasoning]"),
+            })),
+        ),
+    };
+
+    if text.is_empty() {
+        String::new()
+    } else {
+        format!("{role}: {text}")
     }
+}
+
+/// Space-join rendered parts, suppressing the separator while the line is
+/// still empty.
+///
+/// Not `Vec::join(" ")`: that would emit a leading separator for a message
+/// whose first part renders empty, while still collapsing nothing elsewhere.
+/// The rollup text these lines feed is compared byte-for-byte by the
+/// compaction tests, so the asymmetry is behavior, not an accident.
+fn join_parts<'a>(parts: impl Iterator<Item = Cow<'a, str>>) -> String {
+    let mut text = String::new();
+    for part in parts {
+        if !text.is_empty() {
+            text.push(' ');
+        }
+        text.push_str(&part);
+    }
+    text
 }
 
 #[cfg(test)]
@@ -2783,6 +2757,29 @@ mod tests {
         let s = summary.as_str();
         assert!(s.contains("[tool call: t]"), "got: {s}");
         assert!(s.contains("[tool result]"), "got: {s}");
+    }
+
+    /// The separator is suppressed only while the line is still empty, so an
+    /// empty *leading* part contributes nothing while an empty *interior* one
+    /// still spends its space. `Vec::join(" ")` would flatten that asymmetry;
+    /// this pins the rendered bytes so a future tidy-up cannot.
+    #[tokio::test]
+    async fn template_compactor_separates_parts_asymmetrically_around_empty_text() {
+        let compactor = TemplateCompactor::new();
+        let evicted = vec![Message::User {
+            content: vec![
+                UserContent::text(""),
+                UserContent::text("a"),
+                UserContent::text(""),
+                UserContent::text("b"),
+            ],
+        }];
+        let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        let rendered = summary.as_str();
+        assert!(
+            rendered.contains("user: a  b"),
+            "leading empty part adds no separator, interior one adds its own; got: {rendered}"
+        );
     }
 
     #[tokio::test]
