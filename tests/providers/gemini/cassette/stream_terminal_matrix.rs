@@ -831,6 +831,15 @@ mod unit {
             run.errors, 1,
             "the transport failure must reach the consumer"
         );
+        // The deliberate half of the trade-off. Before the fix, a connection
+        // that dropped after *any* finishReason still handed the consumer a
+        // terminal record, because the stream had already ended there. It now
+        // reports truncation instead — and it must: on this wire a
+        // finishReason is not proof the turn finished (that is the whole bug),
+        // so the two cases are indistinguishable in-band and the safe reading
+        // is the module's stated truncation semantics. A terminal here would
+        // report a successful completion for a turn that may have been cut in
+        // half.
         assert!(
             run.terminals.is_empty(),
             "a failed stream must not be dressed up as a completed turn by the deferred terminal"
