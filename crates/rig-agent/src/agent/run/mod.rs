@@ -852,14 +852,31 @@ impl AgentRun {
                 if turn_delivered_no_answer(&items)
                     && let Some(reason) = self.truncating_finish_reason()
                 {
+                    // The remedy differs by reason, and giving the wrong one is
+                    // worse than giving none: telling someone to raise
+                    // `max_tokens` after a safety block sends them to change a
+                    // setting that cannot possibly help.
+                    //
+                    // No `PromptResponse` is built on this path — the run ends
+                    // in `Err` — so the message must not send the caller to
+                    // `completion_calls` for the reason. It is named here
+                    // because here is the only place it appears.
+                    let remedy = match reason {
+                        FinishReason::Length => {
+                            "the turn ran out of output budget before producing one — \
+                             raise max_tokens for this request"
+                        }
+                        FinishReason::ContentFilter => {
+                            "the provider filtered the response — the content, not the \
+                             budget, is what it objected to"
+                        }
+                        // `truncating_finish_reason` admits only the two above;
+                        // this arm keeps the match total without inventing advice.
+                        _ => "the turn ended before producing one",
+                    };
                     return Err(CompletionError::ResponseError(format!(
-                        // No `PromptResponse` is built on this path — the run
-                        // ends in `Err` — so the message must not send the
-                        // caller to `completion_calls` for the reason. It is
-                        // named here because here is the only place it appears.
                         "the model produced no answer and stopped with \
-                         finish_reason={reason:?}; the turn was cut short before it \
-                         produced one — raise max_tokens for this request"
+                         finish_reason={reason:?}; {remedy}"
                     ))
                     .into());
                 }

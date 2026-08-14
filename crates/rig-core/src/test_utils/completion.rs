@@ -60,6 +60,7 @@ struct MockTurnResponse {
     message_id: Option<String>,
     response_id: Option<String>,
     provider_request_id: Option<String>,
+    finish_reason: Option<crate::completion::FinishReason>,
 }
 
 impl MockTurn {
@@ -119,6 +120,7 @@ impl MockTurn {
                 message_id: None,
                 response_id: None,
                 provider_request_id: None,
+                finish_reason: None,
             }),
         }
     }
@@ -135,6 +137,7 @@ impl MockTurn {
                 message_id: None,
                 response_id: None,
                 provider_request_id: None,
+                finish_reason: None,
             }),
         }
     }
@@ -185,13 +188,27 @@ impl MockTurn {
         self
     }
 
+    /// Set the terminal finish reason for this turn.
+    ///
+    /// Without this, a mocked blocking turn always reports `None`, which
+    /// leaves the whole blocking half of the truncation contract (rig#2322)
+    /// unexercisable — the streamed mock could script a reason and the
+    /// blocking one could not.
+    pub fn with_finish_reason(mut self, finish_reason: crate::completion::FinishReason) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.finish_reason = Some(finish_reason);
+        }
+        self
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(
             CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER)
                 .with_optional_message_id(response.message_id)
                 .with_optional_response_id(response.response_id)
-                .with_optional_provider_request_id(response.provider_request_id),
+                .with_optional_provider_request_id(response.provider_request_id)
+                .with_optional_finish_reason(response.finish_reason),
         )
     }
 }

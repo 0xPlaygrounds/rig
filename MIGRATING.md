@@ -1554,6 +1554,15 @@ and finalized as a successful empty string. Four source-level breaks:
   for debugging. If you were relying on an empty string from a truncated turn,
   handle the error — or inspect `completion_calls` and raise `max_tokens`.
 
+  **This also narrows `OutputMode::Tool` recovery.** An agent with an output
+  tool that received an answerless turn used to consume an output-retry and
+  re-prompt with corrective feedback. When that turn reports `Length` or
+  `ContentFilter` it now fails immediately instead. The re-prompt could not
+  have helped — the budget or the filter, not the phrasing, is what stopped
+  the turn, so the retry would truncate again and report a less specific
+  failure at the end. Re-prompting is unchanged for answerless turns with any
+  other finish reason.
+
   `CompletionCall.finish_reason` is serde-defaulted; pre-#2322 run JSON loads
   with it `None`.
 

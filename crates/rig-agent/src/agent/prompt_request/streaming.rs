@@ -6747,6 +6747,10 @@ mod migrated_tests {
             rendered.contains("Length"),
             "the error must name the terminal reason so the cause is diagnosable, got: {rendered}"
         );
+        assert!(
+            rendered.contains("max_tokens"),
+            "a budget truncation must point at the setting that fixes it: {rendered}"
+        );
     }
 
     /// rig#2322 — the guard against over-correcting the test above: a turn that
@@ -6811,7 +6815,7 @@ mod migrated_tests {
         let agent = AgentBuilder::new(model).build();
 
         let mut stream = agent.stream_prompt("something the filter rejects").await;
-        let mut errored = false;
+        let mut errored = None;
 
         while let Some(item) = stream.next().await {
             match item {
@@ -6821,14 +6825,23 @@ mod migrated_tests {
                     res.output()
                 ),
                 Ok(_) => {}
-                Err(_) => {
-                    errored = true;
+                Err(err) => {
+                    errored = Some(err);
                     break;
                 }
             }
         }
 
-        assert!(errored, "the filtered turn should surface an error");
+        let rendered = format!("{:?}", errored.expect("the filtered turn should error"));
+        assert!(
+            rendered.contains("ContentFilter"),
+            "the error must name the terminal reason, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("max_tokens"),
+            "a safety block must not advise raising max_tokens — that setting \
+             cannot fix a filtered response: {rendered}"
+        );
     }
 
     /// rig#2322 — the narrowing that keeps the rule from failing benign runs:
@@ -6925,7 +6938,7 @@ mod migrated_tests {
         let agent = AgentBuilder::new(model).build();
 
         let mut stream = agent.stream_prompt("something borderline").await;
-        let mut errored = false;
+        let mut errored = None;
 
         while let Some(item) = stream.next().await {
             match item {
@@ -6935,14 +6948,22 @@ mod migrated_tests {
                     res.output()
                 ),
                 Ok(_) => {}
-                Err(_) => {
-                    errored = true;
+                Err(err) => {
+                    errored = Some(err);
                     break;
                 }
             }
         }
 
-        assert!(errored, "the filtered reasoning-only turn should error");
+        let rendered = format!(
+            "{:?}",
+            errored.expect("the filtered reasoning-only turn should error")
+        );
+        assert!(
+            rendered.contains("ContentFilter") && !rendered.contains("max_tokens"),
+            "a filtered turn must name its reason and must not advise raising \
+             max_tokens: {rendered}"
+        );
     }
 
     /// rig#2322 — the guard against over-correcting into "reasoning present

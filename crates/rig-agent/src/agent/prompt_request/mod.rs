@@ -976,8 +976,8 @@ mod tests {
             },
         },
         completion::{
-            AssistantContent, CompletionError, CompletionRequest, Message, Prompt, PromptError,
-            StructuredOutputError, TypedPrompt, Usage,
+            AssistantContent, CompletionError, CompletionRequest, FinishReason, Message, Prompt,
+            PromptError, StructuredOutputError, TypedPrompt, Usage,
         },
         test_utils::{
             AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
@@ -995,6 +995,87 @@ mod tests {
         Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     };
+
+    /// rig#2322 — the **blocking** surface enforces the same truncation
+    /// contract as the streamed one.
+    ///
+    /// The premise of the whole fix is that the two surfaces disagreeing is
+    /// what let truncation surface as a blank answer, yet every other guard
+    /// test drives `stream_prompt`. Until `MockTurn::with_finish_reason`
+    /// existed the blocking mock could not report a reason at all, so
+    /// `runner.rs`'s `.with_finish_reason(resp.finish_reason())` — and its
+    /// propagation through `model_response` → `record_completion_call` → this
+    /// guard — was never exercised. Deleting that one line failed nothing.
+    #[tokio::test]
+    async fn blocking_prompt_rejects_an_empty_truncated_turn() {
+        let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_contents(
+            [],
+        )
+        .with_finish_reason(FinishReason::Length)]))
+        .build();
+
+        let err = agent
+            .prompt("write a long essay")
+            .await
+            .expect_err("a content-less truncated turn must not return an empty answer");
+
+        let rendered = format!("{err:?}");
+        assert!(
+            rendered.contains("Length") && rendered.contains("max_tokens"),
+            "the blocking error must name the reason and the remedy: {rendered}"
+        );
+    }
+
+    /// rig#2322 — blocking counterpart of the reasoning-only case: the shape
+    /// that motivated the predicate fix must be caught on both surfaces.
+    #[tokio::test]
+    async fn blocking_prompt_rejects_a_reasoning_only_truncated_turn() {
+        let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::from_content(
+            AssistantContent::Reasoning(rig_core::message::Reasoning::new(
+                "thinking, never answering",
+            )),
+        )
+        .with_finish_reason(FinishReason::Length)]))
+        .build();
+
+        let err = agent
+            .prompt("solve this")
+            .await
+            .expect_err("a reasoning-only truncated turn must not return an empty answer");
+
+        assert!(format!("{err:?}").contains("Length"));
+    }
+
+    /// rig#2322 — and the blocking surface keeps a truncated turn that *did*
+    /// answer, with the reason reaching `completion_calls`.
+    ///
+    /// This is the half that proves the blocking plumbing carries the reason
+    /// rather than merely erroring: the value has to survive into the returned
+    /// `PromptResponse`.
+    #[tokio::test]
+    async fn blocking_prompt_keeps_partial_output_and_records_the_reason() {
+        let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text(
+            "a partial ans",
+        )
+        .with_finish_reason(FinishReason::Length)]))
+        .build();
+
+        let response = agent
+            .prompt("write a long essay")
+            .extended_details()
+            .await
+            .expect("a truncated turn that produced text must still succeed");
+
+        assert_eq!(response.output, "a partial ans");
+        assert_eq!(
+            response
+                .completion_calls
+                .last()
+                .and_then(|call| call.finish_reason.clone()),
+            Some(FinishReason::Length),
+            "the terminal reason must reach the caller on the blocking surface too"
+        );
+    }
 
     /// rig#2322 follow-up — every `AssistantContent` variant's answer
     /// classification, pinned one variant at a time.
