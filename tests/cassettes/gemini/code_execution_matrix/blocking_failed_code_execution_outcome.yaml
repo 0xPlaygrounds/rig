@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to run exactly `print(1/0)` first. After it fails, say the word DIVISIONERROR in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"print(1/0)\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_FAILED","output":"Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nZeroDivisionError: division by zero\n"}},{"text":"DIVISIONERROR"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":8,"promptTokenCount":31,"promptTokensDetails":[{"modality":"TEXT","tokenCount":31}],"serviceTier":"standard","thoughtsTokenCount":64,"toolUsePromptTokenCount":133,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":133}],"totalTokenCount":236}}'

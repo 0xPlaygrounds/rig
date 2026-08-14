@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"What is 123 multiplied by 456?","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator. Always use the code execution tool, then state the numeric result in plain text.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"executableCode\":{\"code\":\"print(123 * 456)\\n\",\"language\":\"PYTHON\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":11,\"promptTokenCount\":36,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":36}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":21,\"totalTokenCount\":68}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"codeExecutionResult\":{\"outcome\":\"OUTCOME_OK\",\"output\":\"56088\\n\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":11,\"promptTokenCount\":36,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":36}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":21,\"totalTokenCount\":68}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"5\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":12,\"promptTokenCount\":36,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":36}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":21,\"toolUsePromptTokenCount\":75,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":75}],\"totalTokenCount\":144}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"6088\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":36,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":36}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":21,\"toolUsePromptTokenCount\":75,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":75}],\"totalTokenCount\":148}}\r\n\r\n"

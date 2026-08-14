@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool twice, in two separate runs: first compute 6*7, then in a second run compute 6*7 plus 100. State both numbers in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Here is the first computation:\n\n"},{"executableCode":{"code":"print(6 * 7)\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"42\n"}},{"text":"The first number is 42.\n\nHere is the second computation:\n\n"},{"executableCode":{"code":"print(6 * 7 + 100)\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"142\n"}},{"text":"The second number is 142."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":49,"promptTokenCount":43,"promptTokensDetails":[{"modality":"TEXT","tokenCount":43}],"serviceTier":"standard","thoughtsTokenCount":50,"toolUsePromptTokenCount":255,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":255}],"totalTokenCount":397}}'

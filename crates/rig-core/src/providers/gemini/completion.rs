@@ -412,6 +412,78 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
+/// Map one response `Part` onto the assistant content it carries.
+///
+/// `Ok(None)` means the part is real Gemini output that carries no
+/// rig-modeled assistant content, so it contributes nothing to the choice and
+/// the rest of the turn still converts. Only a part rig cannot account for at
+/// all is an `Err`.
+fn map_response_part(part: &Part) -> Result<Option<completion::AssistantContent>, CompletionError> {
+    let Part {
+        thought,
+        thought_signature,
+        part,
+        ..
+    } = part;
+
+    Ok(Some(match part {
+        PartKind::Text(text) => {
+            if let Some(thought) = thought
+                && *thought
+            {
+                completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
+                    text,
+                    thought_signature.clone(),
+                ))
+            } else {
+                completion::AssistantContent::text(text)
+            }
+        }
+        PartKind::InlineData(inline_data) => {
+            let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
+
+            match mime_type {
+                Some(message::MediaType::Image(media_type)) => {
+                    message::AssistantContent::image_base64(
+                        &inline_data.data,
+                        Some(media_type),
+                        Some(message::ImageDetail::default()),
+                    )
+                }
+                _ => {
+                    return Err(CompletionError::ResponseError(format!(
+                        "Unsupported media type {mime_type:?}"
+                    )));
+                }
+            }
+        }
+        PartKind::FunctionCall(function_call) => {
+            let tool_call = message::ToolCall::from_wire(
+                function_call.id.clone().unwrap_or_default(),
+                message::ToolFunction::new(function_call.name.clone(), function_call.args.clone()),
+            )
+            .with_signature(thought_signature.clone());
+            completion::AssistantContent::ToolCall(tool_call)
+        }
+        // The `codeExecution` tool's own output. Rig lets callers enable that
+        // tool (`additional_params.tools = [{"codeExecution": {}}]`, lifted
+        // onto the request by `extract_tools_from_additional_params`), and
+        // Gemini then answers with `executableCode`/`codeExecutionResult`
+        // parts alongside the text. Neither has a slot in
+        // `AssistantContent` — the same position OpenAI Responses' hosted-tool
+        // items are in, which decode to `Output::Unknown` and contribute no
+        // content rather than failing the response. Erroring here discarded
+        // the entire turn, final text answer included, while the streaming
+        // adapter skipped the parts and kept it.
+        PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_) => return Ok(None),
+        _ => {
+            return Err(CompletionError::ResponseError(
+                "Response did not contain a message or tool call".into(),
+            ));
+        }
+    }))
+}
+
 /// Normalize a Gemini `generateContent` response.
 impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
@@ -449,63 +521,10 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             })?
             .parts
             .iter()
-            .map(
-                |Part {
-                     thought,
-                     thought_signature,
-                     part,
-                     ..
-                 }| {
-                    Ok(match part {
-                        PartKind::Text(text) => {
-                            if let Some(thought) = thought
-                                && *thought
-                            {
-                                completion::AssistantContent::Reasoning(
-                                    Reasoning::new_with_signature(text, thought_signature.clone()),
-                                )
-                            } else {
-                                completion::AssistantContent::text(text)
-                            }
-                        }
-                        PartKind::InlineData(inline_data) => {
-                            let mime_type =
-                                message::MediaType::from_mime_type(&inline_data.mime_type);
-
-                            match mime_type {
-                                Some(message::MediaType::Image(media_type)) => {
-                                    message::AssistantContent::image_base64(
-                                        &inline_data.data,
-                                        Some(media_type),
-                                        Some(message::ImageDetail::default()),
-                                    )
-                                }
-                                _ => {
-                                    return Err(CompletionError::ResponseError(format!(
-                                        "Unsupported media type {mime_type:?}"
-                                    )));
-                                }
-                            }
-                        }
-                        PartKind::FunctionCall(function_call) => {
-                            let tool_call = message::ToolCall::from_wire(
-                                function_call.id.clone().unwrap_or_default(),
-                                message::ToolFunction::new(
-                                    function_call.name.clone(),
-                                    function_call.args.clone(),
-                                ),
-                            )
-                            .with_signature(thought_signature.clone());
-                            completion::AssistantContent::ToolCall(tool_call)
-                        }
-                        _ => {
-                            return Err(CompletionError::ResponseError(
-                                "Response did not contain a message or tool call".into(),
-                            ));
-                        }
-                    })
-                },
-            )
+            // `transpose` turns the "carries no assistant content" answer into
+            // a skipped part instead of a failed response: see
+            // `map_response_part`.
+            .filter_map(|part| map_response_part(part).transpose())
             .collect::<Result<Vec<_>, _>>()?;
 
         let choice = crate::message::require_non_empty_response(content)?;

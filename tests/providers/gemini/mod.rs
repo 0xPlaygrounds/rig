@@ -11,6 +11,7 @@ mod cassette {
     mod agent_run_streamed;
     mod agent_tools_e2e;
     mod chat_history;
+    mod code_execution_matrix;
     mod document_ordering;
     mod dynamic_tools;
     mod embeddings;

@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to run exactly `print(''θερμοκρασία 🌡️ 25°C'')` and then repeat its output verbatim in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"executableCode\":{\"code\":\"print('θερμοκρασία 🌡️ 25°C')\\n\",\"language\":\"PYTHON\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":37,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":37}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"totalTokenCount\":90}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"codeExecutionResult\":{\"outcome\":\"OUTCOME_OK\",\"output\":\"θερμοκρασία 🌡️ 25°C\\n\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":16,\"promptTokenCount\":37,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":37}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"totalTokenCount\":90}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"θε\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":17,\"promptTokenCount\":37,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":37}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"toolUsePromptTokenCount\":105,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":105}],\"totalTokenCount\":196}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ρμοκρασία 🌡️ 25°C\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":29,\"promptTokenCount\":37,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":37}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"toolUsePromptTokenCount\":105,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":105}],\"totalTokenCount\":208}}\r\n\r\n"
