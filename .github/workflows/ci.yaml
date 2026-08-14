@@ -79,10 +79,10 @@ jobs:
   #
   # The runtime split adds wasm-sensitive code to rig-agent, feature forwarding
   # in the `rig` facade, and explicit feature wiring in the Candle runtime and
-  # browser example, so check each on the wasm target too. These are plain
-  # checks with no feature flags: the relaxed async bounds now follow from the
-  # target alone, so building for `wasm32-unknown-unknown` is the whole opt-in.
-  # None of them download a model.
+  # browser example, so check each on the wasm target too. The baseline checks
+  # use default features; rig-core also gets an all-feature pass so optional
+  # loaders cannot introduce browser-incompatible transitive dependencies.
+  # None of these checks download a model.
   #
   # Each package must be checked **on its own**: cargo unifies features across
   # packages built in one invocation, so a workspace-wide `--all-features` build
@@ -117,6 +117,10 @@ jobs:
 
       - name: Run cargo check wasm target
         run: cargo check --package ${{ matrix.package }} --target wasm32-unknown-unknown
+
+      - name: Run rig-core all-features wasm check
+        if: matrix.package == 'rig-core'
+        run: cargo check --package rig-core --all-features --target wasm32-unknown-unknown
 
   # `rmcp` is native-only: rmcp's `ClientHandler` requires `Send + Sync`
   # unconditionally, which rig's wasm tool registry cannot satisfy. Asking for it
