@@ -27,6 +27,11 @@ struct ListModelEntry {
     display_name: Option<String>,
     description: Option<String>,
     input_token_limit: Option<u64>,
+    /// The model's output ceiling. Gemini reports this for every model
+    /// (`gemini-2.5-flash`: 65536) and rig used to drop it on the floor, which
+    /// is why a hardcoded 4096 default went unnoticed for so long — nothing in
+    /// the library ever knew the real limit was ~16x larger (rig#2322).
+    output_token_limit: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +77,9 @@ impl TryFrom<ListModelEntry> for Model {
         model.description = value.description;
         model.context_length = value
             .input_token_limit
+            .and_then(|limit| u32::try_from(limit).ok());
+        model.max_output_tokens = value
+            .output_token_limit
             .and_then(|limit| u32::try_from(limit).ok());
         Ok(model)
     }

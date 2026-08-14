@@ -2,6 +2,7 @@ pub mod streaming;
 
 use super::{Agent, hook::AgentHook, run::OutputMode, runner::AgentRunner};
 use rig_core::{
+    completion::FinishReason,
     message::{
         AssistantContent, ProviderCallId, ToolCallId, ToolResultContent, UserContent, non_empty,
     },
@@ -348,6 +349,21 @@ pub struct CompletionCall {
     /// for. `None` means the provider did not report one, never an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
+    /// Why the model stopped generating on this call, when the provider
+    /// reported it. `None` means the provider reported no reason.
+    ///
+    /// Recorded **per call** rather than once per run: a multi-turn run makes N
+    /// completion requests, each with its own terminal reason, and collapsing
+    /// them to a single run-level value would lose exactly the information that
+    /// makes a truncated turn diagnosable — which turn hit the limit. A caller
+    /// that wants the run's last reason reads it off the final entry.
+    ///
+    /// This is the field whose absence hid rig#2322: the provider layer carried
+    /// [`FinishReason::Length`] on the stream's terminal record, but the agent
+    /// assembler dropped it, so a turn truncated at the output-token limit was
+    /// indistinguishable from a turn that simply had nothing to say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<FinishReason>,
 }
 
 impl CompletionCall {
@@ -360,6 +376,7 @@ impl CompletionCall {
             message_id: None,
             response_id: None,
             provider_request_id: None,
+            finish_reason: None,
         }
     }
 
@@ -368,6 +385,16 @@ impl CompletionCall {
         self.message_id = identity.message_id;
         self.response_id = identity.response_id;
         self.provider_request_id = identity.provider_request_id;
+        self
+    }
+
+    /// Attach the terminal finish reason this call's attempt reported.
+    ///
+    /// Kept separate from [`Self::with_identity`] because a finish reason is
+    /// not identity: [`ResponseIdentity`] answers "which response was this",
+    /// while this answers "why did it stop".
+    pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
+        self.finish_reason = finish_reason;
         self
     }
 

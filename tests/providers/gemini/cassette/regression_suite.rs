@@ -7,6 +7,9 @@ use rig::agent::OutputMode;
 use rig::completion::Prompt;
 use rig::prelude::*;
 use rig::providers::gemini;
+use rig::providers::gemini::completion::gemini_api_types::{
+    AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
+};
 use rig::streaming::StreamingPrompt;
 use rig_agent::test_utils::decode_structured_output;
 
@@ -190,5 +193,105 @@ async fn temperature_without_max_tokens_sends_no_max_output_tokens() {
     assert_recorded_sampling_fields(
         "regression/temperature_without_max_tokens",
         &[("temperature", serde_json::json!(0.0))],
+    );
+}
+
+/// rig#2322 — Regression: a caller who supplies an `additional_params`
+/// `generationConfig` for `thinkingConfig` gets *that* on the wire and nothing
+/// else.
+///
+/// This is the usage pattern that hid the original #2283 defect: every
+/// pre-existing Gemini cassette passed a `GenerationConfig` for thinking, which
+/// made the `Option` `Some` and masked the dropped `max_tokens`. It is also the
+/// pattern most exposed to a reintroduced non-`None` `Default`, because callers
+/// build these configs with `..Default::default()` — so a value restored to the
+/// `Default` would silently ride along with every thinking request.
+#[tokio::test]
+async fn thinking_config_without_max_tokens_sends_no_sampling_fields() {
+    super::super::support::with_gemini_cassette(
+        "regression/thinking_config_without_max_tokens",
+        |client| async move {
+            let config = GenerationConfig {
+                thinking_config: Some(ThinkingConfig {
+                    thinking_budget: None,
+                    thinking_level: Some(ThinkingLevel::Low),
+                    include_thoughts: Some(true),
+                }),
+                ..Default::default()
+            };
+            let params = AdditionalParameters::default().with_config(config);
+
+            let agent = client
+                .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .preamble(STREAMING_PREAMBLE)
+                .additional_params(serde_json::to_value(params).expect("params should serialize"))
+                // Again no `.max_tokens(...)`: the thinking budget is the only
+                // generation setting this caller asked for.
+                .build();
+
+            agent
+                .prompt(STREAMING_PROMPT)
+                .await
+                .expect("thinking-config prompt should succeed");
+        },
+    )
+    .await;
+
+    assert_recorded_sampling_fields("regression/thinking_config_without_max_tokens", &[]);
+
+    // The point of the scenario: thinkingConfig survived, so the assertion
+    // above is proving absence in a request that *did* carry a generationConfig
+    // — not one that omitted the object entirely.
+    let recorded = std::fs::read_to_string(crate::cassettes::cassette_path(
+        "gemini",
+        "regression/thinking_config_without_max_tokens",
+    ))
+    .expect("cassette should be readable");
+    assert!(
+        recorded.contains("thinkingConfig"),
+        "the caller's thinkingConfig must still reach Gemini"
+    );
+}
+
+/// rig#2322 — Regression: the streaming surface gets the same request-boundary
+/// guarantee as the blocking one for native structured output.
+///
+/// `create_request_body` is shared, so this cannot diverge by construction
+/// today — but the streaming path is the one that truncated silently (a
+/// content-less `MAX_TOKENS` turn used to finalize as a successful empty
+/// answer), so it is pinned explicitly rather than left implied.
+#[tokio::test]
+async fn streaming_structured_output_without_max_tokens_sends_no_sampling_fields() {
+    super::super::support::with_gemini_cassette(
+        "regression/streaming_structured_output_without_max_tokens",
+        |client| async move {
+            let agent = client
+                .agent(gemini::completion::GEMINI_3_FLASH_PREVIEW)
+                .output_schema::<SmokeStructuredOutput>()
+                .output_mode(OutputMode::Native)
+                .build();
+
+            let mut stream = agent.stream_prompt(STRUCTURED_OUTPUT_PROMPT).await;
+            let (_response, provider_final): (_, rig::streaming::StreamFinal) =
+                collect_stream_final_response_and_provider_final(&mut stream)
+                    .await
+                    .expect("streaming structured output should succeed");
+
+            assert_eq!(provider_final.provider, "gcp.gemini");
+            // The turn completed on its own rather than being cut short — the
+            // condition that, when violated with no content, must now error.
+            assert_ne!(
+                provider_final.finish_reason,
+                Some(rig::completion::FinishReason::Length),
+                "an unbudgeted structured-output turn should not be hitting the \
+                 output-token limit"
+            );
+        },
+    )
+    .await;
+
+    assert_recorded_sampling_fields(
+        "regression/streaming_structured_output_without_max_tokens",
+        &[],
     );
 }

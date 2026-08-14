@@ -1049,6 +1049,17 @@ impl TurnSource for StreamingTurnSource {
             // the terminal error to surface.
             macro_rules! emit_completion_call {
                 ($usage:expr) => {{
+                    // Same source as identity below: the provider's terminal
+                    // record. A path that never saw one yields `None`, which is
+                    // "the provider reported no reason" — not "the turn stopped
+                    // normally".
+                    let reason = stream
+                        .response
+                        .as_ref()
+                        .and_then(|response| response.finish_reason.clone());
+                    emit_completion_call!($usage, reason)
+                }};
+                ($usage:expr, $finish_reason:expr) => {{
                     let usage = $usage;
                     last_usage = usage;
                     if !completion_call_emitted {
@@ -1068,7 +1079,11 @@ impl TurnSource for StreamingTurnSource {
                                 .as_ref()
                                 .and_then(|response| response.provider_request_id.clone()),
                         };
-                        match run.record_streamed_completion_call(usage, identity) {
+                        match run.record_streamed_completion_call(
+                            usage,
+                            identity,
+                            $finish_reason,
+                        ) {
                             Ok(call) => {
                                 completion_call_emitted = true;
                                 Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
@@ -1205,8 +1220,12 @@ impl TurnSource for StreamingTurnSource {
                                 },
                             ));
                         }
-                        StreamedTurnEvent::Completed { usage, emit_final } => {
-                            match emit_completion_call!(usage) {
+                        StreamedTurnEvent::Completed {
+                            usage,
+                            emit_final,
+                            finish_reason,
+                        } => {
+                            match emit_completion_call!(usage, finish_reason) {
                                 Ok(Some(item)) => yield Ok(item),
                                 Ok(None) => {}
                                 Err(err) => {
@@ -1343,7 +1362,15 @@ impl TurnSource for StreamingTurnSource {
                         .as_ref()
                         .and_then(|response| response.provider_request_id.clone()),
                 };
-                match run.record_streamed_completion_call(crate::completion::Usage::new(), fallback_identity) {
+                let fallback_finish_reason = stream
+                    .response
+                    .as_ref()
+                    .and_then(|response| response.finish_reason.clone());
+                match run.record_streamed_completion_call(
+                    crate::completion::Usage::new(),
+                    fallback_identity,
+                    fallback_finish_reason,
+                ) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
                         yield Err(Box::new(err).into());
@@ -1655,12 +1682,14 @@ mod migrated_tests {
     use crate::agent::hook::{AgentHook, HookContext};
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
     use crate::client::AgentClientExt;
-    use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
+    use crate::completion::{
+        CompletionRequest, FinishReason, Prompt, PromptError, ToolDefinition, Usage,
+    };
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
         MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError, MockTurn,
-        SessionId,
+        SessionId, mock_final,
     };
     use crate::tool::{Tool, ToolContext};
     use futures::{StreamExt, TryStreamExt};
@@ -6668,6 +6697,167 @@ mod migrated_tests {
         }
 
         assert!(streamed_text.is_empty());
+        assert_eq!(final_response_text.as_deref(), Some(""));
+    }
+
+    /// rig#2322 — a turn that produced **nothing** and was cut short at the
+    /// output-token limit must not finalize as a successful empty answer.
+    ///
+    /// Not a cassette test: a provider cannot be made to emit an exactly-empty
+    /// `MAX_TOKENS` turn on demand, so the wire shape is scripted. The Gemini
+    /// cassette suite pins the *request* side of rig#2322; this pins what the
+    /// agent does with the response.
+    ///
+    /// This is the failure users actually saw. The 4096 cap truncated the turn,
+    /// the assembler dropped `FinishReason::Length`, and the run finished as a
+    /// successful `""` — a blank answer with no error and nothing to inspect.
+    #[tokio::test]
+    async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
+        let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
+            mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+        )]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("write a long essay").await;
+        let mut error = None;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response_text = Some(res.output().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            final_response_text.is_none(),
+            "a truncated, content-less turn must not finalize as a successful \
+             answer — it did, yielding {final_response_text:?}"
+        );
+        let error = error.expect("the truncated turn should surface an error");
+        let rendered = format!("{error:?}");
+        assert!(
+            rendered.contains("Length"),
+            "the error must name the terminal reason so the cause is diagnosable, got: {rendered}"
+        );
+    }
+
+    /// rig#2322 — the guard against over-correcting the test above: a turn that
+    /// streamed **real output** before hitting the limit stays valid.
+    ///
+    /// Truncation after partial output is a normal, useful result — the caller
+    /// gets the prefix the model produced. Only a turn that delivered nothing
+    /// is an error. Scripted for the same reason as above.
+    #[tokio::test]
+    async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::Text("a partial ans".to_string()),
+            MockStreamEvent::FinalResponse(
+                mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            ),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("write a long essay").await;
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response = Some(res);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("a truncated turn that produced text must not error: {err:?}"),
+            }
+        }
+
+        let final_response =
+            final_response.expect("a turn with partial output should still finalize");
+        assert_eq!(final_response.output(), "a partial ans");
+
+        // ...and the reason is preserved, so a caller can tell this answer was
+        // cut short rather than complete.
+        let truncated = final_response
+            .completion_calls
+            .iter()
+            .any(|call| call.finish_reason == Some(FinishReason::Length));
+        assert!(
+            truncated,
+            "the terminal reason must reach the caller on completion_calls; \
+             without it a truncated answer is indistinguishable from a complete \
+             one — calls: {:?}",
+            final_response.completion_calls
+        );
+    }
+
+    /// rig#2322 — a content-filtered turn that delivered nothing gets the same
+    /// treatment as a truncated one: it is not a successful empty answer.
+    ///
+    /// Scripted rather than recorded because a safety filter cannot be
+    /// provoked reliably or ethically on demand.
+    #[tokio::test]
+    async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
+        let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
+            mock_final(Usage::new()).with_finish_reason(FinishReason::ContentFilter),
+        )]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("something the filter rejects").await;
+        let mut errored = false;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => panic!(
+                    "a content-filtered, content-less turn must not finalize as a \
+                     successful answer, got {:?}",
+                    res.output()
+                ),
+                Ok(_) => {}
+                Err(_) => {
+                    errored = true;
+                    break;
+                }
+            }
+        }
+
+        assert!(errored, "the filtered turn should surface an error");
+    }
+
+    /// rig#2322 — the narrowing that keeps the rule from failing benign runs:
+    /// a provider-specific `Other` reason is **not** treated as truncation.
+    ///
+    /// `Other` carries a provider's own wire spelling with no normalized
+    /// meaning, so erroring on it would fail runs on stops rig does not model.
+    #[tokio::test]
+    async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
+        let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
+            mock_final(Usage::new())
+                .with_finish_reason(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
+        )]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("say nothing").await;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response_text = Some(res.output().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("an unmodeled finish reason must not error: {err:?}"),
+            }
+        }
+
         assert_eq!(final_response_text.as_deref(), Some(""));
     }
 

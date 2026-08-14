@@ -24,6 +24,10 @@ impl From<ModelEntry> for Model {
             created_at: Some(value.created),
             owned_by: None,
             context_length: value.context_length,
+            // OpenRouter reports an output ceiling under
+            // `top_provider.max_completion_tokens`, which this entry does not
+            // parse. Left unreported rather than guessed (rig#2322).
+            max_output_tokens: None,
         }
     }
 }

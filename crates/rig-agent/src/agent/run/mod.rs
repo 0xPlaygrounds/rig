@@ -69,6 +69,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use rig_core::completion::{CompletionError, FinishReason};
 use rig_core::message::{
     AssistantContent, ToolCall, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
@@ -208,6 +209,11 @@ pub struct ModelTurn {
     pub executable_tool_names: BTreeSet<String>,
     /// Tools allowed by the active [`ToolChoice`] for this turn.
     pub allowed_tool_names: BTreeSet<String>,
+    /// Why the model stopped generating on this turn, when the provider
+    /// reported it. Carried so the blocking surface records the same terminal
+    /// reason the streamed surface does (rig#2322).
+    #[serde(default)]
+    pub finish_reason: Option<FinishReason>,
 }
 
 impl ModelTurn {
@@ -228,6 +234,7 @@ impl ModelTurn {
             usage,
             executable_tool_names,
             allowed_tool_names,
+            finish_reason: None,
         }
     }
 
@@ -239,6 +246,12 @@ impl ModelTurn {
     ) -> Self {
         self.response_id = response_id;
         self.provider_request_id = provider_request_id;
+        self
+    }
+
+    /// Attach the terminal finish reason this attempt reported.
+    pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
+        self.finish_reason = finish_reason;
         self
     }
 }
@@ -797,17 +810,43 @@ impl AgentRun {
                     return Ok(self.finish(output, final_items, output_tool_calls));
                 }
 
-                // An empty turn is not a lost turn. Cancelling here would fail
-                // runs that previously succeeded: with the fabricated empty-text
-                // padding gone, a textless turn — a tool-call-only turn whose
-                // calls were all dropped, a content-filtered turn, a truncated
-                // stream — arrives honestly empty. `is_empty_assistant_turn`
-                // does the right thing: keep the turn out of history and carry on.
+                // An empty turn is not, on its own, a lost turn. Cancelling on
+                // every textless turn would fail runs that previously
+                // succeeded: with the fabricated empty-text padding gone, a
+                // tool-call-only turn whose calls were all dropped arrives
+                // honestly empty. `is_empty_assistant_turn` does the right
+                // thing: keep the turn out of history and carry on.
                 if !is_empty_assistant_turn(&items) {
                     self.new_messages.push(Message::Assistant {
                         id: message_id,
                         content: items.clone(),
                     });
+                }
+
+                // rig#2322 — but an empty turn the provider *cut short* is a
+                // lost turn, and finishing it as a successful empty answer is
+                // how a truncated response reached users as an unexplained
+                // blank. The blocking Gemini path already rejects a
+                // content-less candidate with a `ResponseError` naming the
+                // finish reason; this makes the agent surface agree.
+                //
+                // Deliberately narrow, so it cannot regress the case above:
+                //   - empty **and** truncated → error (nothing was delivered);
+                //   - empty and `Stop`/`ToolCalls`/`Other` → unchanged, still a
+                //     successful empty turn;
+                //   - partial output **then** truncated → unchanged, still
+                //     valid, and the reason is on the `CompletionCall` for a
+                //     caller that wants to act on it.
+                if is_empty_assistant_turn(&items)
+                    && let Some(reason) = self.truncating_finish_reason()
+                {
+                    return Err(CompletionError::ResponseError(format!(
+                        "the model returned no content and stopped with \
+                         finish_reason={reason:?}; the turn was cut short before it \
+                         produced an answer (raise max_tokens, or inspect \
+                         PromptResponse::completion_calls for the terminal reason)"
+                    ))
+                    .into());
                 }
 
                 if has_tool_calls {
@@ -922,6 +961,7 @@ impl AgentRun {
                 response_id: turn.response_id.clone(),
                 provider_request_id: turn.provider_request_id.clone(),
             },
+            turn.finish_reason.clone(),
         );
 
         let items: Vec<AssistantContent> = turn.choice.clone();
@@ -949,12 +989,30 @@ impl AgentRun {
     /// ingestion paths. Callers own the once-per-turn `streamed_completion_call_recorded`
     /// guard/flag; this helper never touches it, so it cannot be mistaken for
     /// "a completion call happened" and re-introduce a double count.
+    /// The most recent completion call's terminal reason, when it describes a
+    /// turn the provider **cut short** rather than one that ended on its own.
+    ///
+    /// [`FinishReason::Length`] and [`FinishReason::ContentFilter`] are
+    /// truncating: the model was stopped with more to say.
+    /// [`FinishReason::Other`] is deliberately excluded — it carries a
+    /// provider's own wire spelling with no normalized meaning, so treating it
+    /// as truncation would fail runs on benign provider-specific stops.
+    fn truncating_finish_reason(&self) -> Option<&FinishReason> {
+        match self.completion_calls.last()?.finish_reason.as_ref()? {
+            reason @ (FinishReason::Length | FinishReason::ContentFilter) => Some(reason),
+            FinishReason::Stop | FinishReason::ToolCalls | FinishReason::Other(_) => None,
+        }
+    }
+
     fn record_completion_call(
         &mut self,
         usage: Usage,
         identity: ResponseIdentity,
+        finish_reason: Option<FinishReason>,
     ) -> CompletionCall {
-        let call = CompletionCall::new(self.completion_call_index, usage).with_identity(identity);
+        let call = CompletionCall::new(self.completion_call_index, usage)
+            .with_identity(identity)
+            .with_finish_reason(finish_reason);
         self.completion_call_index += 1;
         self.completion_calls.push(call.clone());
         self.usage += usage;
@@ -1308,6 +1366,7 @@ impl AgentRun {
         &mut self,
         usage: Usage,
         identity: ResponseIdentity,
+        finish_reason: Option<FinishReason>,
     ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
@@ -1323,7 +1382,7 @@ impl AgentRun {
         }
         self.streamed_completion_call_recorded = true;
 
-        Ok(self.record_completion_call(usage, identity))
+        Ok(self.record_completion_call(usage, identity, finish_reason))
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
@@ -1471,6 +1530,7 @@ impl AgentRun {
                     message_id: turn.message_id.clone(),
                     ..ResponseIdentity::default()
                 },
+                turn.finish_reason.clone(),
             );
             self.streamed_completion_call_recorded = true;
         }
@@ -2246,7 +2306,7 @@ mod tests {
     fn model_response_rejected_after_streamed_completion_call_record() {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
-        run.record_streamed_completion_call(Usage::new(), ResponseIdentity::default())
+        run.record_streamed_completion_call(Usage::new(), ResponseIdentity::default(), None)
             .expect("record should succeed");
 
         let err = run
