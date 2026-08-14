@@ -431,9 +431,15 @@ mod tests {
     }
 
     // Two id-less calls to the same tool in one turn are two distinct calls,
-    // correlated by order rather than by the tool name. The per-stream minter
-    // now gives each its own stream key (the fixed `Tool.for_wire_index(0)`
-    // key gave both the same one), matching the REST wire's policy.
+    // correlated by order rather than by the tool name.
+    //
+    // That is all this pins. The per-stream minter also gives each call its own
+    // stream key now, where the fixed `Tool.for_wire_index(0)` key gave both the
+    // same one — but no assertion here can tell the two apart: a whole tool call
+    // is emitted immediately with a freshly generated `internal_call_id`, so the
+    // shared key never collided anything downstream. It was a latent identity
+    // bug, not an observable one, and pinning it would mean asserting on
+    // internal keys.
     #[tokio::test]
     async fn two_id_less_function_calls_stay_distinct() {
         let events = vec![response(
