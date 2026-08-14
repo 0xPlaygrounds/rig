@@ -98,7 +98,7 @@ client::impl_provider_client!(
     api_key_env = "HYPERBOLIC_API_KEY",
 );
 
-#[cfg(any(feature = "image", feature = "audio"))]
+#[cfg(feature = "audio")]
 use crate::providers::openai::client::ApiResponse;
 
 // ================================================================
@@ -147,13 +147,13 @@ pub use image_generation::*;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 mod image_generation {
-    use super::{ApiResponse, Client};
-    use crate::http_client::HttpClientExt;
+    use super::HyperbolicExt;
     use crate::image_generation;
     use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
     use crate::json_utils::merge_inplace;
-    use base64::Engine;
-    use base64::prelude::BASE64_STANDARD;
+    use crate::providers::internal::image_generation::{
+        GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
+    };
     use serde::Deserialize;
     use serde_json::json;
 
@@ -165,27 +165,8 @@ mod image_generation {
     pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
     pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
-    #[derive(Clone)]
-    pub struct ImageGenerationModel<T> {
-        client: Client<T>,
-        pub model: String,
-    }
-
-    impl<T> ImageGenerationModel<T> {
-        pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-            Self {
-                client,
-                model: model.into(),
-            }
-        }
-
-        pub fn with_model(client: Client<T>, model: &str) -> Self {
-            Self {
-                client,
-                model: model.into(),
-            }
-        }
-    }
+    /// Hyperbolic image generation model.
+    pub type ImageGenerationModel<T> = GenericImageGenerationModel<HyperbolicExt, T>;
 
     #[derive(Clone, Deserialize)]
     pub struct Image {
@@ -203,40 +184,25 @@ mod image_generation {
         type Error = ImageGenerationError;
 
         fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-            let image = value
-                .images
-                .first()
-                .ok_or_else(|| ImageGenerationError::ResponseError("missing image data".into()))?;
-            let data = BASE64_STANDARD
-                .decode(&image.image)
-                .map_err(|err| ImageGenerationError::ResponseError(err.to_string()))?;
-
-            Ok(Self {
-                image: data,
-                response: value,
-            })
+            decode_base64_image(
+                value,
+                |response| response.images.first().map(|image| image.image.as_str()),
+                "missing image data",
+                None,
+            )
         }
     }
 
-    impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-    where
-        T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-    {
+    impl JsonImageGenerationProvider for HyperbolicExt {
+        const IMAGE_GENERATION_PATH: &'static str = "/v1/image/generation";
         type Response = ImageGenerationResponse;
 
-        type Client = Client<T>;
-
-        fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-            Self::new(client.clone(), model)
-        }
-
-        async fn image_generation(
-            &self,
+        fn image_generation_request_body(
+            model: &str,
             generation_request: ImageGenerationRequest,
-        ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-        {
+        ) -> Result<serde_json::Value, ImageGenerationError> {
             let mut request = json!({
-                "model_name": self.model,
+                "model_name": model,
                 "prompt": generation_request.prompt,
                 "height": generation_request.height,
                 "width": generation_request.width,
@@ -246,18 +212,7 @@ mod image_generation {
                 merge_inplace(&mut request, params);
             }
 
-            // The explicit Content-Type header the hand-rolled request set is
-            // supplied by `Client::send` for every JSON request, so the wire
-            // shape is unchanged.
-            crate::providers::internal::image_generation::send_image_generation::<
-                _,
-                ApiResponse<ImageGenerationResponse>,
-            >(
-                &self.client,
-                self.client.post("/v1/image/generation")?,
-                request,
-            )
-            .await
+            Ok(request)
         }
     }
 }

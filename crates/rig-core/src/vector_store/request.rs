@@ -124,6 +124,60 @@ pub trait SearchFilter {
     fn or(self, rhs: Self) -> Self;
 }
 
+/// Converts the canonical JSON-valued [`Filter`] used by type-erased vector
+/// searches into a backend's native filter representation.
+///
+/// JSON-valued [`SearchFilter`] implementations receive this automatically.
+/// Backends with native value types implement the conversion once here rather
+/// than hand-writing both [`VectorStoreIndexDyn`](super::VectorStoreIndexDyn)
+/// methods.
+pub trait DynamicSearchFilter: SearchFilter + Sized {
+    /// Converts a canonical dynamic filter into this backend's filter type.
+    fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError>;
+
+    /// Normalizes a document returned through the type-erased search surface.
+    ///
+    /// Native backend filters retain their documents exactly. JSON-valued
+    /// filters override this to preserve the dynamic surface's historical
+    /// payload pruning.
+    fn normalize_dynamic_document(document: serde_json::Value) -> serde_json::Value {
+        document
+    }
+}
+
+impl<F> DynamicSearchFilter for F
+where
+    F: SearchFilter<Value = serde_json::Value>,
+{
+    fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
+        Ok(filter.interpret())
+    }
+
+    fn normalize_dynamic_document(document: serde_json::Value) -> serde_json::Value {
+        prune_document(document).unwrap_or_default()
+    }
+}
+
+fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
+    match document {
+        serde_json::Value::Object(mut map) => {
+            let new_map = map
+                .iter_mut()
+                .filter_map(|(key, value)| {
+                    prune_document(value.take()).map(|value| (key.clone(), value))
+                })
+                .collect::<serde_json::Map<_, _>>();
+
+            Some(serde_json::Value::Object(new_map))
+        }
+        serde_json::Value::Array(vec) if vec.len() > 400 => None,
+        serde_json::Value::Array(vec) => Some(serde_json::Value::Array(
+            vec.into_iter().filter_map(prune_document).collect(),
+        )),
+        value => Some(value),
+    }
+}
+
 /// Canonical, serializable filter representation.
 ///
 /// Use for serialization, runtime inspection, or translating between backends via

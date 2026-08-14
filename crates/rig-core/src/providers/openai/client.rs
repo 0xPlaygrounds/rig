@@ -86,10 +86,10 @@ client::impl_capabilities!(
     OpenAICompletionsExt,
     completion = super::completion::CompletionModel<H>,
     embeddings = super::GenericEmbeddingModel<OpenAICompletionsExt, H>,
-    transcription = super::TranscriptionModel<H>,
-    model_listing = super::OpenAIModelLister<H>,
-    image_generation = super::ImageGenerationModel<H>,
-    audio_generation = super::audio_generation::AudioGenerationModel<H>,
+    transcription = super::CompletionsTranscriptionModel<H>,
+    model_listing = super::OpenAICompletionsModelLister<H>,
+    image_generation = super::CompletionsImageGenerationModel<H>,
+    audio_generation = super::audio_generation::CompletionsAudioGenerationModel<H>,
 );
 
 impl DebugExt for OpenAIResponsesExt {}
@@ -626,5 +626,39 @@ mod tests {
 
         let _model: crate::providers::openai::EmbeddingModel<reqwest::Client> =
             client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
+    }
+
+    #[test]
+    fn api_switch_preserves_non_completion_capabilities() {
+        use crate::client::ModelListingClient;
+        use crate::client::transcription::TranscriptionClient;
+
+        let client = crate::providers::openai::Client::new("dummy-key")
+            .expect("Client::new() failed")
+            .completions_api();
+
+        let _: crate::providers::openai::GenericEmbeddingModel<
+            crate::providers::openai::OpenAICompletionsExt,
+            reqwest::Client,
+        > = client.embedding_model(crate::providers::openai::TEXT_EMBEDDING_3_SMALL);
+        let _: crate::providers::openai::CompletionsTranscriptionModel =
+            client.transcription_model(crate::providers::openai::WHISPER_1);
+
+        fn assert_model_listing<T: ModelListingClient>(_: &T) {}
+        assert_model_listing(&client);
+
+        #[cfg(feature = "image")]
+        {
+            use crate::client::image_generation::ImageGenerationClient;
+            let _: crate::providers::openai::CompletionsImageGenerationModel =
+                client.image_generation_model(crate::providers::openai::DALL_E_3);
+        }
+
+        #[cfg(feature = "audio")]
+        {
+            use crate::client::audio_generation::AudioGenerationClient;
+            let _: crate::providers::openai::audio_generation::CompletionsAudioGenerationModel =
+                client.audio_generation_model(crate::providers::openai::TTS_1);
+        }
     }
 }

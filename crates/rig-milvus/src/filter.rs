@@ -1,4 +1,6 @@
-use rig_core::vector_store::request::{Filter as CoreFilter, FilterError, SearchFilter};
+use rig_core::vector_store::request::{
+    DynamicSearchFilter, Filter as CoreFilter, FilterError, SearchFilter,
+};
 use serde::{Deserialize, Serialize};
 
 pub enum MilvusValue {
@@ -216,5 +218,11 @@ impl TryFrom<CoreFilter<serde_json::Value>> for Filter {
     type Error = FilterError;
     fn try_from(value: CoreFilter<serde_json::Value>) -> Result<Self, Self::Error> {
         value.try_interpret(MilvusValue::try_from)
+    }
+}
+
+impl DynamicSearchFilter for Filter {
+    fn from_dynamic_filter(filter: CoreFilter<serde_json::Value>) -> Result<Self, FilterError> {
+        Self::try_from(filter)
     }
 }

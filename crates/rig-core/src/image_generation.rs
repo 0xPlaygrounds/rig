@@ -1,6 +1,7 @@
 //! Everything related to core image generation abstractions in Rig.
 //! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
 use crate::markers::{Missing, Provided};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde_json::Value;
 
 crate::provider_response::provider_error_enum!(
@@ -18,8 +19,8 @@ pub struct ImageGenerationResponse<T> {
     pub response: T,
 }
 
-pub trait ImageGenerationModel: Clone + Send + Sync {
-    type Response: Send + Sync;
+pub trait ImageGenerationModel: Clone + WasmCompatSend + WasmCompatSync {
+    type Response: WasmCompatSend + WasmCompatSync;
 
     type Client;
 
@@ -30,7 +31,7 @@ pub trait ImageGenerationModel: Clone + Send + Sync {
         request: ImageGenerationRequest,
     ) -> impl std::future::Future<
         Output = Result<ImageGenerationResponse<Self::Response>, ImageGenerationError>,
-    > + Send;
+    > + WasmCompatSend;
 
     fn image_generation_request(&self) -> ImageGenerationRequestBuilder<Self, Missing> {
         ImageGenerationRequestBuilder::new(self.clone())

@@ -1,6 +1,6 @@
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
-use crate::providers::openai::Client;
+use crate::providers::openai::{Client, CompletionsClient};
 use crate::transcription;
 use crate::transcription::TranscriptionError;
 use serde::Deserialize;
@@ -33,7 +33,25 @@ impl TryFrom<TranscriptionResponse>
 pub type TranscriptionModel<T = reqwest::Client> =
     crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
 
+/// OpenAI transcription model for a client using Chat Completions.
+pub type CompletionsTranscriptionModel<T = reqwest::Client> =
+    crate::providers::internal::transcription::OpenAiTranscriptionModel<CompletionsClient<T>>;
+
 impl<T> OpenAiTranscriptionClient for Client<T>
+where
+    T: HttpClientExt + Clone + 'static,
+{
+    const MODEL_IN_FORM: bool = true;
+
+    fn transcription_request(
+        &self,
+        _model: &str,
+    ) -> crate::http_client::Result<crate::http_client::Builder> {
+        self.post("/audio/transcriptions")
+    }
+}
+
+impl<T> OpenAiTranscriptionClient for CompletionsClient<T>
 where
     T: HttpClientExt + Clone + 'static,
 {

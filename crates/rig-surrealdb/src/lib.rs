@@ -13,10 +13,9 @@ use rig_core::{
     Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::{Filter, FilterError, SearchFilter, VectorSearchRequest},
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use surrealdb::{
@@ -141,6 +140,12 @@ impl TryFrom<Filter<serde_json::Value>> for SurrealSearchFilter {
 
     fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
         value.try_interpret(|v| Ok(Value::from_t(v)))
+    }
+}
+
+impl DynamicSearchFilter for SurrealSearchFilter {
+    fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
+        Self::try_from(filter)
     }
 }
 
@@ -359,35 +364,6 @@ where
             .collect();
 
         Ok(rows)
-    }
-}
-
-// SurrealDB keeps a native filter value type, so it cannot use the blanket
-// `VectorStoreIndexDyn` impl that assumes JSON-valued filters.
-impl<C, Model> VectorStoreIndexDyn for SurrealVectorStore<C, Model>
-where
-    C: Connection,
-    Model: EmbeddingModel + Send + Sync,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        Box::pin(async move {
-            let req = req.try_map_filter(SurrealSearchFilter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-            Ok(results)
-        })
-    }
-
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let req = req.try_map_filter(SurrealSearchFilter::try_from)?;
-            <Self as VectorStoreIndex>::top_n_ids(self, req).await
-        })
     }
 }
 

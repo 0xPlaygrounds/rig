@@ -1,14 +1,13 @@
 //! Venice text-to-speech (`POST /audio/speech`).
 
-use bytes::Bytes;
 use serde_json::json;
 
-use super::client::Client;
-use crate::audio_generation::{
-    self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
-};
-use crate::http_client::HttpClientExt;
+use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
 use crate::json_utils::merge_inplace;
+use crate::providers::internal::audio_generation::{
+    GenericAudioGenerationModel, RawAudioGenerationProvider,
+};
+use crate::providers::venice::VeniceExt;
 
 // ================================================================
 // Venice TTS API
@@ -26,38 +25,15 @@ pub const TTS_INWORLD_1_5_MAX: &str = "tts-inworld-1-5-max";
 const DEFAULT_VOICE: &str = "af_sky";
 
 /// Venice audio generation model.
-#[derive(Clone)]
-pub struct AudioGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: `tts-kokoro`).
-    pub model: String,
-}
+pub type AudioGenerationModel<T = reqwest::Client> = GenericAudioGenerationModel<VeniceExt, T>;
 
-impl<T> AudioGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
+impl RawAudioGenerationProvider for VeniceExt {
+    const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
 
-impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    type Response = Bytes;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn audio_generation(
-        &self,
+    fn audio_generation_request_body(
+        model: &str,
         request: AudioGenerationRequest,
-    ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
+    ) -> Result<serde_json::Value, AudioGenerationError> {
         // Venice validates `voice` against the model's own voice list and
         // rejects an empty string, so an unset voice falls back to the
         // documented default rather than being sent blank.
@@ -68,7 +44,7 @@ where
         };
 
         let mut body = json!({
-            "model": self.model,
+            "model": model,
             "input": request.text,
             "voice": voice,
             "speed": request.speed,
@@ -78,12 +54,7 @@ where
             merge_inplace(&mut body, additional_params);
         }
 
-        crate::providers::internal::audio_generation::send_audio_generation(
-            &self.client,
-            self.client.post("/audio/speech")?,
-            body,
-        )
-        .await
+        Ok(body)
     }
 }
 
