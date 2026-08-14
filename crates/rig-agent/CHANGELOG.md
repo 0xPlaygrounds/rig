@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(agent)* `AgentBuilder`, `Agent`, and `AgentRunner` now share one private `AgentConfig`; `AgentRunner::from_agent` clones it as a single unit instead of copying 15 settings field by field, so a new agent setting can no longer compile while silently failing to propagate to execution (#2326). Per-run overrides mutate only the runner's cloned config, never the source agent. Internal renames within the private config: `default_max_turns` is now a resolved `max_turns: usize` (default `1`, preserving the one-call budget) and `default_conversation_id` is now `conversation_id`. No public API change
+
 - *(agent)* [**breaking**] persisted histories and `AgentRun`/`PromptResponse` JSON carry rig-core's tagged assistant content (`{"type": "text", ...}`); the untagged shape does not load — see rig-core's entry and MIGRATING. The flatten `Some({})` round-trip artifact is gone, so `is_empty_assistant_turn`'s classification is identical before and after a persist/restore with no special-casing
 
 - *(agent)* [**behavior**] the streamed assembler counts the stream items it excludes from assembly that carry assistant content — replayed tagged assistant blocks (the tagged `AssistantContent` serialization is not a stream-item shape) and text items whose `additional_params` is malformed — and logs a single warning per turn, on every termination path, instead of one per stream item; `StreamedTurnAssembler::excluded_assistant_content` exposes the count, and the full decode-outcome contract is pinned by an enum-driven matrix test. A stream item whose text block carries stray sibling keys decodes as stream *text* — the text is assembled and only the stray keys drop

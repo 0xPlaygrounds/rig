@@ -450,7 +450,7 @@ where
         // Run-scoped hook context: minted once, shared by every hook event on
         // both surfaces. `is_streaming` records which surface is driving; the
         // per-turn index is advanced on each `CallModel` step below.
-        let hook_ctx = HookContext::new(is_streaming, runner.agent_name.clone());
+        let hook_ctx = HookContext::new(is_streaming, runner.config.name.clone());
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
@@ -501,8 +501,8 @@ where
             match step {
                 AgentRunStep::CallModel { prompt, history, turn } => {
                     drop(pending_tool_snapshot.take());
-                    if runner.max_turns > 1 {
-                        tracing::info!("Current conversation Turns: {}/{}", turn, runner.max_turns);
+                    if runner.config.max_turns > 1 {
+                        tracing::info!("Current conversation Turns: {}/{}", turn, runner.config.max_turns);
                     }
                     hook_ctx.set_turn(turn);
 
@@ -510,7 +510,7 @@ where
                     // model selection entirely, and their merged `RequestPatch`
                     // is handed to the selection hooks below.
                     let request_patch =
-                        match resolve_completion_call(&runner.hooks, &hook_ctx, &prompt, &history, turn).await {
+                        match resolve_completion_call(&runner.config.hooks, &hook_ctx, &prompt, &history, turn).await {
                             CompletionCallOutcome::Terminate(reason) => {
                                 store_error_usage(&runner, &run);
                                 yield Err(StreamingError::Prompt(Box::new(run.cancel_error(reason))));
@@ -524,18 +524,18 @@ where
                     // cloned into the prepared attempt, so request preparation
                     // inspects the *selected* model's captured capabilities and
                     // the same handle executes the request.
-                    let selected_model = match runner.hooks.on_model_select(
+                    let selected_model = match runner.config.hooks.on_model_select(
                         &hook_ctx,
                         ModelSelection {
                             prompt: &prompt,
                             history: &history,
                             request_patch: request_patch.as_ref(),
                             previous_model: previous_model.as_ref(),
-                            default_model: &runner.model,
-                            selected_model: &runner.model,
+                            default_model: &runner.config.model,
+                            selected_model: &runner.config.model,
                         },
                     ) {
-                        ModelSelectionAction::Continue => runner.model.clone(),
+                        ModelSelectionAction::Continue => runner.config.model.clone(),
                         ModelSelectionAction::Select(model) => model,
                         ModelSelectionAction::Stop(reason) => {
                             store_error_usage(&runner, &run);
@@ -551,7 +551,7 @@ where
                     let effective_preamble = request_patch
                         .as_ref()
                         .and_then(|o| o.preamble.as_deref())
-                        .or(runner.preamble.as_deref());
+                        .or(runner.config.preamble.as_deref());
 
                     let chat_span = source.open_chat_span(&runner, effective_preamble);
 
@@ -577,7 +577,7 @@ where
                     };
                     run.set_output_tool_name(prepared.output_tool_name.clone());
                     let turn_tool_snapshot = prepared.tool_snapshot.clone();
-                    if runner.record_telemetry_content {
+                    if runner.config.record_telemetry_content {
                         let input_messages = prepared.builder.messages_for_telemetry();
                         rig_core::telemetry::record_model_input(&chat_span, &input_messages, true);
                         prepared.builder = prepared.builder.record_content_telemetry(false);
@@ -624,7 +624,7 @@ where
                     // drivers' run-finished logs into one shared event.
                     tracing::info!(
                         turn = run.turn(),
-                        max_turns = runner.max_turns,
+                        max_turns = runner.config.max_turns,
                         "Agent run finished"
                     );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
@@ -1100,7 +1100,7 @@ impl TurnSource for StreamingTurnSource {
                                     item_slot.as_ref()
                                 && let Some(reason) = observe_action(
                                     runner
-                                        .hooks
+                                        .config.hooks
                                         .on_text_delta(
                                             hook_ctx,
                                             TextDelta {
@@ -1132,7 +1132,7 @@ impl TurnSource for StreamingTurnSource {
                                 };
                                 if let Some(reason) = observe_action(
                                     runner
-                                        .hooks
+                                        .config.hooks
                                         .on_reasoning_delta(
                                             hook_ctx,
                                             ReasoningDelta {
@@ -1165,7 +1165,7 @@ impl TurnSource for StreamingTurnSource {
                                 };
                                 if let Some(reason) = observe_action(
                                     runner
-                                        .hooks
+                                        .config.hooks
                                         .on_tool_call_delta(
                                             hook_ctx,
                                             ToolCallDelta {
@@ -1223,7 +1223,7 @@ impl TurnSource for StreamingTurnSource {
                                 let context =
                                     run.streamed_invalid_tool_call_context(&partial, &invalid);
                                 runner
-                                    .hooks
+                                    .config.hooks
                                     .on_invalid_tool_call(hook_ctx, &context)
                                     .await
                                     .unwrap_or_else(InvalidToolCallAction::fail)
@@ -1353,7 +1353,7 @@ impl TurnSource for StreamingTurnSource {
                 && !turn_recovered
                 && let Some(reason) = observe_action(
                     runner
-                        .hooks
+                        .config.hooks
                         .on_stream_response_finish(
                             hook_ctx,
                             StreamResponseFinish {
@@ -1389,7 +1389,7 @@ impl TurnSource for StreamingTurnSource {
             // `Continue` arm.
             if !turn_recovered {
                 let action = runner
-                    .hooks
+                    .config.hooks
                     .on_model_turn_finished(
                         hook_ctx,
                         ModelTurnFinished {
@@ -1418,7 +1418,7 @@ impl TurnSource for StreamingTurnSource {
                             agent_span,
                             &chat_span,
                             &canonical_choice,
-                            runner.record_telemetry_content,
+                            runner.config.record_telemetry_content,
                         );
                         if let Some(item) = pending_final.take() {
                             yield Ok(MultiTurnStreamItem::stream_item(item));
@@ -1439,7 +1439,7 @@ impl TurnSource for StreamingTurnSource {
                 agent_span,
                 &chat_span,
                 &canonical_choice,
-                runner.record_telemetry_content,
+                runner.config.record_telemetry_content,
             );
 
             if let Some(item) = pending_final {
@@ -1535,10 +1535,10 @@ impl AgentRunner {
 
         let run = self.build_run(history_override);
         let source = StreamingTurnSource::new(
-            &self.hooks,
+            &self.config.hooks,
             self.agent_name_or_default().to_string(),
             created_agent_span,
-            self.record_telemetry_content,
+            self.config.record_telemetry_content,
         );
 
         // The blocking surface folds this same engine; the streaming surface

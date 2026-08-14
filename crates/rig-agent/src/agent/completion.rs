@@ -229,16 +229,16 @@ pub(crate) async fn build_prepared_completion_request(
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
 ) -> Result<PreparedCompletionRequest, CompletionError> {
-    let preamble = runner.preamble.as_deref();
-    let static_context = &runner.static_context;
-    let temperature = runner.temperature;
-    let max_tokens = runner.max_tokens;
-    let additional_params = runner.additional_params.as_ref();
-    let record_telemetry_content = runner.record_telemetry_content;
-    let tool_choice = runner.tool_choice.as_ref();
+    let preamble = runner.config.preamble.as_deref();
+    let static_context = &runner.config.static_context;
+    let temperature = runner.config.temperature;
+    let max_tokens = runner.config.max_tokens;
+    let additional_params = runner.config.additional_params.as_ref();
+    let record_telemetry_content = runner.config.record_telemetry_content;
+    let tool_choice = runner.config.tool_choice.as_ref();
     let tool_server_handle = &runner.tool_server_handle;
-    let output_schema = runner.output_schema.as_ref();
-    let output_mode = &runner.output_mode;
+    let output_schema = runner.config.output_schema.as_ref();
+    let output_mode = &runner.config.output_mode;
     let output_tool_description = runner.output_tool_description.as_deref();
     let augment_output_preamble = runner.augment_output_preamble;
     // Apply a per-turn request patch (the merged patch from every `CompletionCall`
@@ -593,9 +593,9 @@ pub(crate) struct AgentConfig {
     pub(crate) temperature: Option<f64>,
     /// Whether or not the underlying LLM should be forced to use a tool before providing a response.
     pub(crate) tool_choice: Option<ToolChoice>,
-    /// Default total model-call budget, including the initial call and every
-    /// retry or continuation. `None` uses the implicit budget of one.
-    pub(crate) default_max_turns: Option<usize>,
+    /// Total model-call budget, including the initial call and every retry or
+    /// continuation. Defaults to `1` (the initial call only).
+    pub(crate) max_turns: usize,
     /// Default hook stack applied to every prompt request and runner created
     /// from this agent. Empty by default.
     pub(crate) hooks: HookStack,
@@ -607,8 +607,8 @@ pub(crate) struct AgentConfig {
     pub(crate) output_mode: OutputMode,
     /// Optional conversation memory backend that loads/saves history per conversation id.
     pub(crate) memory: Option<Arc<dyn rig_core::memory::ConversationMemory>>,
-    /// Optional default conversation id used when none is set per-request.
-    pub(crate) default_conversation_id: Option<String>,
+    /// Optional conversation id used when none is set per-request.
+    pub(crate) conversation_id: Option<String>,
 }
 
 impl AgentConfig {
@@ -625,12 +625,12 @@ impl AgentConfig {
             max_tokens: None,
             temperature: None,
             tool_choice: None,
-            default_max_turns: None,
+            max_turns: 1,
             hooks: HookStack::new(),
             output_schema: None,
             output_mode: OutputMode::default(),
             memory: None,
-            default_conversation_id: None,
+            conversation_id: None,
         }
     }
 }

@@ -824,14 +824,14 @@ where
     pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         let mut inner = PromptRequest::from_agent(agent, prompt);
         // Override the output schema with the schema for T
-        inner.runner.output_schema = Some(schema_for!(T));
+        inner.runner.config.output_schema = Some(schema_for!(T));
         // Typed prompts deserialize the model's final string, so they pin
         // `Native` structured output to keep the typed API's behavior unchanged
         // across all providers (#1928). Routing the typed path through `Tool`
         // output mode for tool-using agents on non-composing providers is a
         // follow-up; use the untyped `output_schema`/`output_mode` API for
         // tool-composing structured output today.
-        inner.runner.output_mode = OutputMode::Native;
+        inner.runner.config.output_mode = OutputMode::Native;
         Self {
             inner,
             _phantom: std::marker::PhantomData,

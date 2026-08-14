@@ -33,7 +33,7 @@ use futures::StreamExt;
 use tracing::{Instrument, info_span, span::Id};
 
 use super::{
-    completion::{Agent, PreparedCompletionRequest},
+    completion::{Agent, AgentConfig, PreparedCompletionRequest},
     hook::{
         AgentHook, CompletionCall, CompletionCallAction,
         CompletionResponse as CompletionResponseEvent, HookContext, HookStack,
@@ -49,9 +49,7 @@ use super::{
         },
         tool_result_output,
     },
-    run::{
-        AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall,
-    },
+    run::{AgentRun, DEFAULT_OUTPUT_RETRIES, ModelTurn, ModelTurnOutcome, PendingToolCall},
 };
 use rig_core::{
     memory::ConversationMemory,
@@ -89,7 +87,7 @@ macro_rules! build_chat_span {
     ($runner:expr, $effective_preamble:expr, $name:literal, $operation:literal) => {{
         let system_instructions = $crate::core::telemetry::system_instructions_json(
             $effective_preamble,
-            $runner.record_telemetry_content,
+            $runner.config.record_telemetry_content,
         );
         // The core macro is the single source of the completion-parent
         // contract (marker + required fields); only the agent-specific field
@@ -153,32 +151,22 @@ pub(crate) fn resolve_model_turn_action(
 /// events the medium adds.
 #[non_exhaustive]
 pub struct AgentRunner {
+    /// The run's own copy of the agent's configuration, cloned as one unit by
+    /// [`from_agent`](Self::from_agent). Per-run overrides mutate this copy and
+    /// never the source [`Agent`]. `description` rides along unused during
+    /// execution — an accepted tradeoff for a single shared config type.
+    pub(crate) config: AgentConfig,
     pub(crate) prompt: Message,
     pub(crate) chat_history: Option<Vec<Message>>,
-    pub(crate) max_turns: usize,
     pub(crate) max_invalid_tool_call_retries: usize,
-    pub(crate) model: ModelHandle,
-    pub(crate) agent_name: Option<String>,
-    pub(crate) preamble: Option<String>,
-    pub(crate) static_context: Vec<Document>,
-    pub(crate) temperature: Option<f64>,
-    pub(crate) max_tokens: Option<u64>,
-    pub(crate) additional_params: Option<serde_json::Value>,
-    pub(crate) record_telemetry_content: bool,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
-    pub(crate) tool_choice: Option<ToolChoice>,
-    pub(crate) output_schema: Option<schemars::Schema>,
-    pub(crate) output_mode: OutputMode,
     pub(crate) output_tool_name: Option<String>,
     pub(crate) output_tool_description: Option<String>,
     pub(crate) augment_output_preamble: bool,
     pub(crate) unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy,
     pub(crate) concurrency: usize,
-    pub(crate) memory: Option<Arc<dyn ConversationMemory>>,
-    pub(crate) conversation_id: Option<String>,
-    pub(crate) hooks: HookStack,
     pub(crate) error_usage: Option<Arc<Mutex<Usage>>>,
 }
 
@@ -194,31 +182,17 @@ impl AgentRunner {
     /// stack. Prefer [`Agent::runner`].
     pub fn from_agent(agent: &Agent, prompt: impl Into<Message>) -> Self {
         Self {
+            config: agent.config.clone(),
             prompt: prompt.into(),
             chat_history: None,
-            max_turns: agent.config.default_max_turns.unwrap_or(1),
             max_invalid_tool_call_retries: 0,
-            model: agent.config.model.clone(),
-            agent_name: agent.config.name.clone(),
-            preamble: agent.config.preamble.clone(),
-            static_context: agent.config.static_context.clone(),
-            temperature: agent.config.temperature,
-            max_tokens: agent.config.max_tokens,
-            additional_params: agent.config.additional_params.clone(),
-            record_telemetry_content: agent.config.record_telemetry_content,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
-            tool_choice: agent.config.tool_choice.clone(),
-            output_schema: agent.config.output_schema.clone(),
-            output_mode: agent.config.output_mode.clone(),
             output_tool_name: None,
             output_tool_description: None,
             augment_output_preamble: true,
             unhandled_invalid_tool_call_policy: UnhandledInvalidToolCallPolicy::Fail,
             concurrency: 1,
-            memory: agent.config.memory.clone(),
-            conversation_id: agent.config.default_conversation_id.clone(),
-            hooks: agent.config.hooks.clone(),
             error_usage: None,
         }
     }
@@ -234,7 +208,7 @@ impl AgentRunner {
     where
         H: AgentHook + 'static,
     {
-        self.hooks.push(hook);
+        self.config.hooks.push(hook);
         self
     }
 }
@@ -244,7 +218,7 @@ impl AgentRunner {
     /// retry or continuation. Zero emits no model calls; one permits only the
     /// initial call. Exceeding the budget returns [`PromptError::MaxTurnsError`].
     pub fn max_turns(mut self, max_turns: usize) -> Self {
-        self.max_turns = max_turns;
+        self.config.max_turns = max_turns;
         self
     }
 
@@ -255,7 +229,7 @@ impl AgentRunner {
     /// Append an unconditional selecting hook last when the run must always
     /// use one model.
     pub fn using_model(mut self, model: ModelHandle) -> Self {
-        self.model = model;
+        self.config.model = model;
         self
     }
 
@@ -286,49 +260,49 @@ impl AgentRunner {
 
     /// Override the agent preamble for this run.
     pub fn preamble(mut self, preamble: impl Into<String>) -> Self {
-        self.preamble = Some(preamble.into());
+        self.config.preamble = Some(preamble.into());
         self
     }
 
     /// Remove the agent's configured preamble for this run.
     pub fn without_preamble(mut self) -> Self {
-        self.preamble = None;
+        self.config.preamble = None;
         self
     }
 
     /// Append one static context document for this run.
     pub fn document(mut self, document: Document) -> Self {
-        self.static_context.push(document);
+        self.config.static_context.push(document);
         self
     }
 
     /// Append static context documents for this run.
     pub fn documents(mut self, documents: impl IntoIterator<Item = Document>) -> Self {
-        self.static_context.extend(documents);
+        self.config.static_context.extend(documents);
         self
     }
 
     /// Override the model temperature for this run.
     pub fn temperature(mut self, temperature: f64) -> Self {
-        self.temperature = Some(temperature);
+        self.config.temperature = Some(temperature);
         self
     }
 
     /// Remove the agent's configured temperature for this run.
     pub fn without_temperature(mut self) -> Self {
-        self.temperature = None;
+        self.config.temperature = None;
         self
     }
 
     /// Override the maximum completion token count for this run.
     pub fn max_tokens(mut self, max_tokens: u64) -> Self {
-        self.max_tokens = Some(max_tokens);
+        self.config.max_tokens = Some(max_tokens);
         self
     }
 
     /// Remove the agent's configured maximum token count for this run.
     pub fn without_max_tokens(mut self) -> Self {
-        self.max_tokens = None;
+        self.config.max_tokens = None;
         self
     }
 
@@ -342,7 +316,7 @@ impl AgentRunner {
         params: serde_json::Map<String, serde_json::Value>,
     ) -> Self {
         let params = serde_json::Value::Object(params);
-        self.additional_params = Some(match self.additional_params.take() {
+        self.config.additional_params = Some(match self.config.additional_params.take() {
             Some(baseline) if baseline.is_object() => crate::json_utils::merge(baseline, params),
             _ => params,
         });
@@ -354,26 +328,26 @@ impl AgentRunner {
     /// shallow-merge, while a non-object on either side causes wholesale
     /// replacement by the hook value.
     pub fn replace_additional_params(mut self, params: serde_json::Value) -> Self {
-        self.additional_params = Some(params);
+        self.config.additional_params = Some(params);
         self
     }
 
     /// Remove the agent's configured provider-specific parameters for this run.
     /// A later completion-call hook may still supply its own parameters.
     pub fn without_additional_params(mut self) -> Self {
-        self.additional_params = None;
+        self.config.additional_params = None;
         self
     }
 
     /// Override the tool-choice policy for this run.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
-        self.tool_choice = Some(tool_choice);
+        self.config.tool_choice = Some(tool_choice);
         self
     }
 
     /// Remove the agent's configured tool-choice policy for this run.
     pub fn without_tool_choice(mut self) -> Self {
-        self.tool_choice = None;
+        self.config.tool_choice = None;
         self
     }
 
@@ -412,7 +386,7 @@ impl AgentRunner {
     /// costs. Only enable it when content telemetry is acceptable for this run.
     /// Structural metadata and token usage remain available when disabled.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
-        self.record_telemetry_content = enabled;
+        self.config.record_telemetry_content = enabled;
         self
     }
 
@@ -444,14 +418,14 @@ impl AgentRunner {
 
     /// Set the conversation id used to load and persist memory for this run.
     pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.conversation_id = Some(id.into());
+        self.config.conversation_id = Some(id.into());
         self
     }
 
     /// Disable conversation memory for this run (no load, no save).
     pub fn without_memory(mut self) -> Self {
-        self.memory = None;
-        self.conversation_id = None;
+        self.config.memory = None;
+        self.config.conversation_id = None;
         self
     }
 
@@ -463,7 +437,7 @@ impl AgentRunner {
     }
 
     pub(crate) fn agent_name_or_default(&self) -> &str {
-        self.agent_name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
+        self.config.name.as_deref().unwrap_or(UNKNOWN_AGENT_NAME)
     }
 
     /// Build the sans-IO [`AgentRun`] for this runner's configuration.
@@ -473,11 +447,11 @@ impl AgentRunner {
     pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
         let run = build_agent_run(
             self.prompt.clone(),
-            self.max_turns,
+            self.config.max_turns,
             self.max_invalid_tool_call_retries,
-            self.output_schema.as_ref(),
+            self.config.output_schema.as_ref(),
             history_override.or_else(|| self.chat_history.clone()),
-            self.tool_choice.clone(),
+            self.config.tool_choice.clone(),
         );
         match &self.output_tool_name {
             Some(name) => run.with_output_tool_name(name.clone()),
@@ -643,9 +617,9 @@ pub(crate) async fn run_single_tool(
     internal_call_id: &str,
     error_history: &[Message],
 ) -> Result<ToolCallOutcome, PromptError> {
-    let hooks = &runner.hooks;
+    let hooks = &runner.config.hooks;
     let tool_context = &runner.tool_context;
-    let record_content = runner.record_telemetry_content;
+    let record_content = runner.config.record_telemetry_content;
     let tool_name = &tool_call.function.name;
     // `mut` so a tool-call hook can rewrite the arguments the tool
     // runs with (the model's emitted arguments are otherwise used verbatim).
@@ -893,7 +867,7 @@ impl TurnSource for UnaryTurnSource {
             // terminal site (stop, terminate, accept) rather than hoisted: a
             // retried turn must not record output for the discarded attempt.
             let record_accepted_turn = |run: &AgentRun| {
-                if runner.record_telemetry_content
+                if runner.config.record_telemetry_content
                     && let Some(choice) = run.accepted_turn_choice()
                 {
                     rig_core::telemetry::record_model_output(&chat_span, &choice, true);
@@ -933,7 +907,7 @@ impl TurnSource for UnaryTurnSource {
                 match outcome {
                     ModelTurnOutcome::NeedsResolution(context) => {
                         let action = runner
-                            .hooks
+                            .config.hooks
                             .on_invalid_tool_call(hook_ctx, &context)
                             .await;
                         let resolution = match action {
@@ -971,7 +945,7 @@ impl TurnSource for UnaryTurnSource {
                             let identity = resp.identity();
                             if let Some(reason) = observe_action(
                                 runner
-                                    .hooks
+                                    .config.hooks
                                     .on_completion_response(
                                         hook_ctx,
                                         CompletionResponseEvent {
@@ -989,7 +963,7 @@ impl TurnSource for UnaryTurnSource {
                                 return;
                             }
                             let action = runner
-                                .hooks
+                                .config.hooks
                                 .on_model_turn_finished(
                                     hook_ctx,
                                     ModelTurnFinished {
@@ -1091,11 +1065,11 @@ impl AgentRunner {
     pub(crate) fn open_agent_span(&self) -> (tracing::Span, bool) {
         let (agent_span, created_agent_span) = acquire_agent_span(
             self.agent_name_or_default(),
-            self.preamble.as_deref(),
-            self.record_telemetry_content,
+            self.config.preamble.as_deref(),
+            self.config.record_telemetry_content,
         );
 
-        if self.record_telemetry_content
+        if self.config.record_telemetry_content
             && let Some(text) = self.prompt.rag_text()
         {
             agent_span.record("gen_ai.prompt", text);
@@ -1115,7 +1089,7 @@ impl AgentRunner {
     ) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
         match &self.chat_history {
             Some(_) => Ok((None, None)),
-            None => match (&self.memory, &self.conversation_id) {
+            None => match (&self.config.memory, &self.config.conversation_id) {
                 (Some(memory), Some(id)) => {
                     let loaded = memory.load(id).await?;
                     Ok((Some(loaded), Some((memory.clone(), id.clone()))))
@@ -1138,7 +1112,7 @@ impl AgentRunner {
         // engine yields; the engine is driven under the caller's ambient span
         // (no `instrument`), keeping the agent span detached and the chat/tool
         // spans on the blocking `follows_from` chain.
-        let record_telemetry_content = self.record_telemetry_content;
+        let record_telemetry_content = self.config.record_telemetry_content;
         let driver = drive_agent(
             self,
             UnaryTurnSource::new(record_telemetry_content),
@@ -2780,7 +2754,7 @@ mod migrated_tests {
         let implicit_recorded = implicit_model.clone();
         let implicit_agent = AgentBuilder::new(implicit_model).tool(MockAddTool).build();
         let implicit_runner = super::AgentRunner::from_agent(&implicit_agent, "add 2 and 3");
-        assert_eq!(implicit_runner.max_turns, 1);
+        assert_eq!(implicit_runner.config.max_turns, 1);
 
         let implicit_err = implicit_runner
             .run()
@@ -2796,7 +2770,7 @@ mod migrated_tests {
         let zero_recorded = zero_model.clone();
         let zero_agent = AgentBuilder::new(zero_model).default_max_turns(0).build();
         let zero_runner = super::AgentRunner::from_agent(&zero_agent, "do not call");
-        assert_eq!(zero_runner.max_turns, 0);
+        assert_eq!(zero_runner.config.max_turns, 0);
 
         let zero_err = zero_runner
             .run()
@@ -2807,6 +2781,48 @@ mod migrated_tests {
             PromptError::MaxTurnsError { max_turns: 0, .. }
         ));
         assert_eq!(zero_recorded.request_count(), 0);
+    }
+
+    /// Per-run overrides mutate only the runner's cloned [`AgentConfig`]; the
+    /// source [`Agent`]'s configuration — and runners created from it later —
+    /// are never affected.
+    #[tokio::test]
+    async fn per_run_overrides_do_not_mutate_the_source_agent() {
+        let agent = AgentBuilder::new(MockCompletionModel::text("ok"))
+            .name("original")
+            .preamble("original preamble")
+            .temperature(0.2)
+            .default_max_turns(2)
+            .build();
+
+        let overridden = agent
+            .runner("prompt")
+            .max_turns(7)
+            .preamble("overridden preamble")
+            .temperature(0.9)
+            .max_tokens(123)
+            .tool_choice(rig_core::message::ToolChoice::None)
+            .conversation("per-run-conversation");
+        assert_eq!(overridden.config.max_turns, 7);
+        assert_eq!(
+            overridden.config.preamble.as_deref(),
+            Some("overridden preamble")
+        );
+
+        // The source agent's config is untouched...
+        assert_eq!(agent.config.max_turns, 2);
+        assert_eq!(agent.config.preamble.as_deref(), Some("original preamble"));
+        assert_eq!(agent.config.temperature, Some(0.2));
+        assert_eq!(agent.config.max_tokens, None);
+        assert!(agent.config.tool_choice.is_none());
+        assert!(agent.config.conversation_id.is_none());
+
+        // ...so a fresh runner still sees the agent's baseline.
+        let fresh = agent.runner("another prompt");
+        assert_eq!(fresh.config.max_turns, 2);
+        assert_eq!(fresh.config.preamble.as_deref(), Some("original preamble"));
+        assert_eq!(fresh.config.temperature, Some(0.2));
+        assert!(fresh.config.conversation_id.is_none());
     }
 
     /// The public blocking and streaming prompt surfaces enforce the one-call
