@@ -194,7 +194,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// Set the default total model-call budget, including the initial call and
     /// every retry or continuation. Zero permits no model calls.
     pub fn default_max_turns(mut self, default_max_turns: usize) -> Self {
-        self.config.default_max_turns = Some(default_max_turns);
+        self.config.max_turns = default_max_turns;
         self
     }
 
@@ -275,7 +275,7 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// Most agents are reused across users or threads; prefer setting the id
     /// per-request via [`crate::agent::prompt_request::PromptRequest::conversation`].
     pub fn conversation(mut self, id: impl Into<String>) -> Self {
-        self.config.default_conversation_id = Some(id.into());
+        self.config.conversation_id = Some(id.into());
         self
     }
 
