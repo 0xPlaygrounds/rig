@@ -11,10 +11,9 @@ use rig_core::{
     Embed,
     embeddings::{Embedding, EmbeddingModel},
     vector_store::{
-        InsertDocuments, TopNResults, VectorStoreError, VectorStoreIndex, VectorStoreIndexDyn,
-        request::{Filter, FilterError, SearchFilter, VectorSearchRequest},
+        InsertDocuments, VectorStoreError, VectorStoreIndex,
+        request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
-    wasm_compat::WasmBoxedFuture,
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
@@ -193,6 +192,12 @@ impl TryFrom<Filter<serde_json::Value>> for ScyllaSearchFilter {
 
     fn try_from(value: Filter<serde_json::Value>) -> Result<Self, Self::Error> {
         value.try_interpret(cql_value_from_json)
+    }
+}
+
+impl DynamicSearchFilter for ScyllaSearchFilter {
+    fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
+        Self::try_from(filter)
     }
 }
 
@@ -513,33 +518,6 @@ where
             .into_iter()
             .map(|(score, id, _)| (score, id))
             .collect())
-    }
-}
-
-impl<M> VectorStoreIndexDyn for ScyllaDbVectorStore<M>
-where
-    M: EmbeddingModel + Sync + Send,
-{
-    fn top_n<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, TopNResults> {
-        Box::pin(async move {
-            let req = req.try_map_filter(ScyllaSearchFilter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n::<serde_json::Value>(self, req).await?;
-            Ok(results)
-        })
-    }
-
-    fn top_n_ids<'a>(
-        &'a self,
-        req: VectorSearchRequest<Filter<serde_json::Value>>,
-    ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        Box::pin(async move {
-            let req = req.try_map_filter(ScyllaSearchFilter::try_from)?;
-            let results = <Self as VectorStoreIndex>::top_n_ids(self, req).await?;
-            Ok(results)
-        })
     }
 }
 

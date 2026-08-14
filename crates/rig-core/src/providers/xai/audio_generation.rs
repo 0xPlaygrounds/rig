@@ -1,11 +1,9 @@
-use crate::audio_generation::{
-    self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
-};
-use crate::http_client::HttpClientExt;
+use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
 use crate::json_utils::merge_inplace;
-use crate::providers::internal::audio_generation::send_audio_generation;
-use crate::providers::xai::Client;
-use bytes::Bytes;
+use crate::providers::internal::audio_generation::{
+    GenericAudioGenerationModel, RawAudioGenerationProvider,
+};
+use crate::providers::xai::client::XAiExt;
 use serde_json::json;
 
 // ================================================================
@@ -13,37 +11,16 @@ use serde_json::json;
 // ================================================================
 pub const TTS_1: &str = "tts-1";
 
-#[derive(Clone)]
-pub struct AudioGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
+/// xAI audio generation model.
+pub type AudioGenerationModel<T = reqwest::Client> = GenericAudioGenerationModel<XAiExt, T>;
 
-impl<T> AudioGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
+impl RawAudioGenerationProvider for XAiExt {
+    const AUDIO_GENERATION_PATH: &'static str = "/v1/tts";
 
-impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
-where
-    T: HttpClientExt + Clone + std::fmt::Debug + Default + 'static,
-{
-    type Response = Bytes;
-
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn audio_generation(
-        &self,
+    fn audio_generation_request_body(
+        _model: &str,
         request: AudioGenerationRequest,
-    ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
+    ) -> Result<serde_json::Value, AudioGenerationError> {
         let voice = if request.voice.is_empty() {
             "eve".to_string()
         } else {
@@ -60,7 +37,7 @@ where
             merge_inplace(&mut body, additional_params);
         }
 
-        send_audio_generation(&self.client, self.client.post("/v1/tts")?, body).await
+        Ok(body)
     }
 }
 
@@ -70,6 +47,7 @@ mod tests {
     use crate::audio_generation::AudioGenerationModel as _;
     use crate::client::audio_generation::AudioGenerationClient;
     use crate::test_utils::RecordingHttpClient;
+    use bytes::Bytes;
 
     #[tokio::test]
     async fn shared_driver_keeps_xai_request_and_binary_response() {

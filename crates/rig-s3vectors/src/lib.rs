@@ -20,7 +20,7 @@ use rig_core::{
     embeddings::EmbeddingModel,
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
-        request::{SearchFilter, VectorSearchRequest},
+        request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
 };
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ pub struct CreateRecord {
     embedded_text: String,
 }
 
-// NOTE: Cannot be used in dynamic store due to aws_smithy_types::Document not impl'ing Serialize or Deserialize
+/// S3Vectors filter backed by the AWS SDK's native document type.
 #[derive(Clone, Debug)]
 pub struct S3SearchFilter(aws_smithy_types::Document);
 
@@ -62,6 +62,12 @@ impl SearchFilter for S3SearchFilter {
 
     fn or(self, rhs: Self) -> Self {
         Self(document!({ "$or": [ self.0, rhs.0 ]}))
+    }
+}
+
+impl DynamicSearchFilter for S3SearchFilter {
+    fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
+        Ok(filter.interpret_with(|value| json_value_to_document(&value)))
     }
 }
 
@@ -339,5 +345,34 @@ where
             .into_iter()
             .map(|(distance, x)| (distance, x.key))
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dynamic_filter_compiles_to_native_aws_documents() {
+        let filter = Filter::eq("status", serde_json::json!("ready"))
+            .and(Filter::eq("tags", serde_json::json!(["rust", "ai"])))
+            .and(Filter::gt("score", serde_json::json!(4.5)));
+
+        let compiled = S3SearchFilter::from_dynamic_filter(filter)
+            .expect("JSON values should compile to AWS documents");
+
+        assert_eq!(
+            document_to_json_value(compiled.inner()),
+            serde_json::json!({
+                "$and": [{
+                    "$and": [
+                        { "status": { "$eq": "ready" } },
+                        { "tags": { "$eq": ["rust", "ai"] } }
+                    ]
+                }, {
+                    "score": { "$gt": 4.5 }
+                }]
+            })
+        );
     }
 }

@@ -1,11 +1,8 @@
-use crate::audio_generation::{
-    self, AudioGenerationError, AudioGenerationRequest, AudioGenerationResponse,
+use crate::audio_generation::{AudioGenerationError, AudioGenerationRequest};
+use crate::providers::internal::audio_generation::{
+    GenericAudioGenerationModel, RawAudioGenerationProvider,
 };
-use crate::http_client::HttpClientExt;
-use crate::providers::internal::audio_generation::send_audio_generation;
-use crate::providers::openrouter::Client;
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use bytes::Bytes;
+use crate::providers::openrouter::OpenRouterExt;
 use serde_json::json;
 
 // ================================================================
@@ -23,44 +20,19 @@ pub const KOKORO_82M: &str = "hexgrad/kokoro-82m";
 // Model
 // ================================================================
 
-#[derive(Clone)]
-pub struct AudioGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    pub model: String,
-}
+/// OpenRouter audio generation model.
+pub type AudioGenerationModel<T = reqwest::Client> = GenericAudioGenerationModel<OpenRouterExt, T>;
 
-impl<T> AudioGenerationModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
+impl RawAudioGenerationProvider for OpenRouterExt {
+    const AUDIO_GENERATION_PATH: &'static str = "/audio/speech";
+    const EXPLICIT_JSON_CONTENT_TYPE: bool = true;
 
-impl<T> audio_generation::AudioGenerationModel for AudioGenerationModel<T>
-where
-    T: HttpClientExt
-        + Clone
-        + std::fmt::Debug
-        + Default
-        + WasmCompatSend
-        + WasmCompatSync
-        + 'static,
-{
-    type Response = Bytes;
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn audio_generation(
-        &self,
+    fn audio_generation_request_body(
+        model: &str,
         request: AudioGenerationRequest,
-    ) -> Result<AudioGenerationResponse<Self::Response>, AudioGenerationError> {
+    ) -> Result<serde_json::Value, AudioGenerationError> {
         let mut body_map: serde_json::Map<String, serde_json::Value> = [
-            ("model".to_string(), json!(self.model)),
+            ("model".to_string(), json!(model)),
             ("input".to_string(), json!(request.text)),
             ("voice".to_string(), json!(request.voice)),
             ("response_format".to_string(), json!("mp3")),
@@ -81,11 +53,7 @@ where
             }
         }
 
-        let builder = self
-            .client
-            .post("/audio/speech")?
-            .header("Content-Type", "application/json");
-        send_audio_generation(&self.client, builder, serde_json::Value::Object(body_map)).await
+        Ok(serde_json::Value::Object(body_map))
     }
 }
 
@@ -94,7 +62,9 @@ mod tests {
     use super::*;
     use crate::audio_generation::AudioGenerationModel as _;
     use crate::client::audio_generation::AudioGenerationClient;
+    use crate::providers::openrouter::Client;
     use crate::test_utils::RecordingHttpClient;
+    use bytes::Bytes;
 
     #[tokio::test]
     async fn shared_driver_keeps_openrouter_request_and_binary_response() {

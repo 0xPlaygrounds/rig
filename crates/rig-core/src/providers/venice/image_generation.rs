@@ -6,16 +6,14 @@
 //! `{ id, images: [base64], request, timing }` rather than OpenAI's
 //! `data[].b64_json`.
 
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::client::Client;
-use crate::http_client::HttpClientExt;
 use crate::image_generation::{self, ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
-use crate::providers::openai::client::ApiResponse;
+use crate::providers::internal::image_generation::{
+    GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
+};
 
 // ================================================================
 // Venice Image Generation API
@@ -69,61 +67,32 @@ impl TryFrom<ImageGenerationResponse>
     type Error = ImageGenerationError;
 
     fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        let first = value
-            .images
-            .first()
-            .ok_or_else(|| ImageGenerationError::ResponseError("No image data returned".into()))?;
-
-        let bytes = BASE64_STANDARD.decode(first).map_err(|e| {
-            ImageGenerationError::ResponseError(format!("Base64 decode error: {e}"))
-        })?;
-
-        Ok(image_generation::ImageGenerationResponse {
-            image: bytes,
-            response: value,
-        })
+        decode_base64_image(
+            value,
+            |response| response.images.first().map(String::as_str),
+            "No image data returned",
+            Some("Base64 decode error: "),
+        )
     }
 }
 
 /// Venice image generation model.
-#[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: `venice-sd35`).
-    pub model: String,
-}
+pub type ImageGenerationModel<T = reqwest::Client> =
+    GenericImageGenerationModel<super::client::VeniceExt, T>;
 
-impl<T> ImageGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
+impl JsonImageGenerationProvider for super::client::VeniceExt {
+    const IMAGE_GENERATION_PATH: &'static str = "/image/generate";
     type Response = ImageGenerationResponse;
 
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn image_generation(
-        &self,
+    fn image_generation_request_body(
+        model: &str,
         generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
+    ) -> Result<serde_json::Value, ImageGenerationError> {
         // Venice returns base64 images unless `return_binary` is set; the
         // decode above depends on that, so the flag stays off the request and
         // is not something `additional_params` should turn on.
         let mut request = json!({
-            "model": self.model,
+            "model": model,
             "prompt": generation_request.prompt,
             "width": generation_request.width,
             "height": generation_request.height,
@@ -133,11 +102,7 @@ where
             merge_inplace(&mut request, additional_params);
         }
 
-        crate::providers::internal::image_generation::send_image_generation::<
-            _,
-            ApiResponse<ImageGenerationResponse>,
-        >(&self.client, self.client.post("/image/generate")?, request)
-        .await
+        Ok(request)
     }
 }
 

@@ -19,7 +19,7 @@ use crate::{
     Embed,
     embeddings::{Embedding, EmbeddingError},
     tool::PortableTool,
-    vector_store::request::{Filter, FilterError, SearchFilter},
+    vector_store::request::{DynamicSearchFilter, Filter, FilterError, SearchFilter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -163,29 +163,22 @@ pub trait VectorStoreIndexDyn: WasmCompatSend + WasmCompatSync {
     ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>>;
 }
 
-impl<I: VectorStoreIndex<Filter = F>, F> VectorStoreIndexDyn for I
+impl<I, F> VectorStoreIndexDyn for I
 where
-    F: std::fmt::Debug
-        + Clone
-        + SearchFilter<Value = serde_json::Value>
-        + WasmCompatSend
-        + WasmCompatSync
-        + Serialize
-        + for<'de> Deserialize<'de>
-        + 'static,
+    I: VectorStoreIndex<Filter = F>,
+    F: DynamicSearchFilter + WasmCompatSend + WasmCompatSync + 'static,
 {
     fn top_n<'a>(
         &'a self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
     ) -> WasmBoxedFuture<'a, TopNResults> {
-        let req = req.map_filter(Filter::interpret);
-
         Box::pin(async move {
+            let req = req.try_map_filter(F::from_dynamic_filter)?;
             Ok(self
                 .top_n::<serde_json::Value>(req)
                 .await?
                 .into_iter()
-                .map(|(score, id, doc)| (score, id, prune_document(doc).unwrap_or_default()))
+                .map(|(score, id, doc)| (score, id, F::normalize_dynamic_document(doc)))
                 .collect::<Vec<_>>())
         })
     }
@@ -194,32 +187,10 @@ where
         &'a self,
         req: VectorSearchRequest<Filter<serde_json::Value>>,
     ) -> WasmBoxedFuture<'a, Result<Vec<(f64, String)>, VectorStoreError>> {
-        let req = req.map_filter(Filter::interpret);
-
-        Box::pin(self.top_n_ids(req))
-    }
-}
-
-fn prune_document(document: serde_json::Value) -> Option<serde_json::Value> {
-    match document {
-        Value::Object(mut map) => {
-            let new_map = map
-                .iter_mut()
-                .filter_map(|(key, value)| {
-                    prune_document(value.take()).map(|value| (key.clone(), value))
-                })
-                .collect::<serde_json::Map<_, _>>();
-
-            Some(Value::Object(new_map))
-        }
-        Value::Array(vec) if vec.len() > 400 => None,
-        Value::Array(vec) => Some(Value::Array(
-            vec.into_iter().filter_map(prune_document).collect(),
-        )),
-        Value::Number(num) => Some(Value::Number(num)),
-        Value::String(s) => Some(Value::String(s)),
-        Value::Bool(b) => Some(Value::Bool(b)),
-        Value::Null => Some(Value::Null),
+        Box::pin(async move {
+            let req = req.try_map_filter(F::from_dynamic_filter)?;
+            self.top_n_ids(req).await
+        })
     }
 }
 
@@ -314,6 +285,66 @@ mod tests {
         queries: Arc<Mutex<Vec<String>>>,
     }
 
+    #[derive(Clone)]
+    struct NativeFilter;
+
+    impl SearchFilter for NativeFilter {
+        type Value = String;
+
+        fn eq(_key: impl AsRef<str>, _value: Self::Value) -> Self {
+            Self
+        }
+
+        fn gt(_key: impl AsRef<str>, _value: Self::Value) -> Self {
+            Self
+        }
+
+        fn lt(_key: impl AsRef<str>, _value: Self::Value) -> Self {
+            Self
+        }
+
+        fn and(self, _rhs: Self) -> Self {
+            self
+        }
+
+        fn or(self, _rhs: Self) -> Self {
+            self
+        }
+    }
+
+    impl DynamicSearchFilter for NativeFilter {
+        fn from_dynamic_filter(filter: Filter<serde_json::Value>) -> Result<Self, FilterError> {
+            filter.try_interpret(|value| match value {
+                Value::String(value) => Ok(value),
+                other => Err(FilterError::Expected {
+                    expected: "string".to_owned(),
+                    got: other.to_string(),
+                }),
+            })
+        }
+    }
+
+    struct NativeIndex;
+
+    impl VectorStoreIndex for NativeIndex {
+        type Filter = NativeFilter;
+
+        async fn top_n<T: for<'a> Deserialize<'a> + WasmCompatSend>(
+            &self,
+            _req: VectorSearchRequest<Self::Filter>,
+        ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
+            let document = serde_json::from_value(Value::Array(vec![Value::Null; 401]))?;
+            Ok(vec![(0.9, "doc-1".to_owned(), document)])
+        }
+
+        async fn top_n_ids(
+            &self,
+            _req: VectorSearchRequest<Self::Filter>,
+        ) -> Result<Vec<(f64, String)>, VectorStoreError> {
+            Ok(vec![(0.9, "doc-1".to_owned())])
+        }
+    }
+
     impl VectorStoreIndex for TestIndex {
         type Filter = Filter<serde_json::Value>;
 
@@ -361,6 +392,21 @@ mod tests {
         assert_eq!(result.score, 0.9);
         assert_eq!(result.id, "doc-1");
         assert_eq!(result.document, json!({ "answer": 42 }));
+    }
+
+    #[tokio::test]
+    async fn dynamic_native_filter_preserves_backend_documents() {
+        let request = VectorSearchRequest::builder()
+            .query("answer")
+            .samples(1)
+            .filter(Filter::eq("tag", json!("example")))
+            .build();
+
+        let results = VectorStoreIndexDyn::top_n(&NativeIndex, request)
+            .await
+            .expect("dynamic vector search should succeed");
+
+        assert_eq!(results[0].2.as_array().map(Vec::len), Some(401));
     }
 
     #[test]

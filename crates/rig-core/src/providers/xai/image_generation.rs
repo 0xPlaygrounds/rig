@@ -1,11 +1,9 @@
-use super::client::Client;
-use crate::http_client::HttpClientExt;
 use crate::image_generation;
 use crate::image_generation::{ImageGenerationError, ImageGenerationRequest};
 use crate::json_utils::merge_inplace;
-use crate::providers::openai::client::ApiResponse;
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
+use crate::providers::internal::image_generation::{
+    GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
+};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -31,57 +29,29 @@ impl TryFrom<ImageGenerationResponse>
     type Error = ImageGenerationError;
 
     fn try_from(value: ImageGenerationResponse) -> Result<Self, Self::Error> {
-        let first = value
-            .data
-            .first()
-            .ok_or_else(|| ImageGenerationError::ResponseError("No image data returned".into()))?;
-
-        let bytes = BASE64_STANDARD.decode(&first.b64_json).map_err(|e| {
-            ImageGenerationError::ResponseError(format!("Base64 decode error: {e}"))
-        })?;
-
-        Ok(image_generation::ImageGenerationResponse {
-            image: bytes,
-            response: value,
-        })
+        decode_base64_image(
+            value,
+            |response| response.data.first().map(|image| image.b64_json.as_str()),
+            "No image data returned",
+            Some("Base64 decode error: "),
+        )
     }
 }
 
-#[derive(Clone)]
-pub struct ImageGenerationModel<T = reqwest::Client> {
-    client: Client<T>,
-    /// Name of the model (e.g.: grok-imagine-image)
-    pub model: String,
-}
+/// xAI image generation model.
+pub type ImageGenerationModel<T = reqwest::Client> =
+    GenericImageGenerationModel<super::client::XAiExt, T>;
 
-impl<T> ImageGenerationModel<T> {
-    pub(crate) fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
-where
-    T: HttpClientExt + Clone + Default + std::fmt::Debug + Send + 'static,
-{
+impl JsonImageGenerationProvider for super::client::XAiExt {
+    const IMAGE_GENERATION_PATH: &'static str = "/v1/images/generations";
     type Response = ImageGenerationResponse;
 
-    type Client = Client<T>;
-
-    fn make(client: &Self::Client, model: impl Into<String>) -> Self {
-        Self::new(client.clone(), model)
-    }
-
-    async fn image_generation(
-        &self,
+    fn image_generation_request_body(
+        model: &str,
         generation_request: ImageGenerationRequest,
-    ) -> Result<image_generation::ImageGenerationResponse<Self::Response>, ImageGenerationError>
-    {
+    ) -> Result<serde_json::Value, ImageGenerationError> {
         let mut request = json!({
-            "model": self.model,
+            "model": model,
             "prompt": generation_request.prompt,
             "response_format": "b64_json",
             "aspect_ratio": "1:1",
@@ -91,15 +61,7 @@ where
             merge_inplace(&mut request, additional_params);
         }
 
-        crate::providers::internal::image_generation::send_image_generation::<
-            _,
-            ApiResponse<ImageGenerationResponse>,
-        >(
-            &self.client,
-            self.client.post("/v1/images/generations")?,
-            request,
-        )
-        .await
+        Ok(request)
     }
 }
 

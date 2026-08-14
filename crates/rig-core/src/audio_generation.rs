@@ -23,7 +23,7 @@ pub struct AudioGenerationResponse<T> {
 }
 
 pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync {
-    type Response: Send + Sync;
+    type Response: WasmCompatSend + WasmCompatSync;
 
     type Client;
 
@@ -34,7 +34,7 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
         request: AudioGenerationRequest,
     ) -> impl std::future::Future<
         Output = Result<AudioGenerationResponse<Self::Response>, AudioGenerationError>,
-    > + Send;
+    > + WasmCompatSend;
 
     fn audio_generation_request(&self) -> AudioGenerationRequestBuilder<Self, Missing, Missing> {
         AudioGenerationRequestBuilder::new(self.clone())
