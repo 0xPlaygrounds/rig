@@ -918,7 +918,8 @@ impl TurnSource for UnaryTurnSource {
                 .with_identity(
                     resp.response_id.clone(),
                     resp.provider_request_id.clone(),
-                ),
+                )
+                .with_finish_reason(resp.finish_reason()),
             ) {
                 Ok(outcome) => outcome,
                 Err(err) => {

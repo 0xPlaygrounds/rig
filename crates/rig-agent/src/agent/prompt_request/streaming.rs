@@ -1049,6 +1049,17 @@ impl TurnSource for StreamingTurnSource {
             // the terminal error to surface.
             macro_rules! emit_completion_call {
                 ($usage:expr) => {{
+                    // Same source as identity below: the provider's terminal
+                    // record. A path that never saw one yields `None`, which is
+                    // "the provider reported no reason" — not "the turn stopped
+                    // normally".
+                    let reason = stream
+                        .response
+                        .as_ref()
+                        .and_then(|response| response.finish_reason.clone());
+                    emit_completion_call!($usage, reason)
+                }};
+                ($usage:expr, $finish_reason:expr) => {{
                     let usage = $usage;
                     last_usage = usage;
                     if !completion_call_emitted {
@@ -1068,7 +1079,11 @@ impl TurnSource for StreamingTurnSource {
                                 .as_ref()
                                 .and_then(|response| response.provider_request_id.clone()),
                         };
-                        match run.record_streamed_completion_call(usage, identity) {
+                        match run.record_streamed_completion_call(
+                            usage,
+                            identity,
+                            $finish_reason,
+                        ) {
                             Ok(call) => {
                                 completion_call_emitted = true;
                                 Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
@@ -1205,8 +1220,12 @@ impl TurnSource for StreamingTurnSource {
                                 },
                             ));
                         }
-                        StreamedTurnEvent::Completed { usage, emit_final } => {
-                            match emit_completion_call!(usage) {
+                        StreamedTurnEvent::Completed {
+                            usage,
+                            emit_final,
+                            finish_reason,
+                        } => {
+                            match emit_completion_call!(usage, finish_reason) {
                                 Ok(Some(item)) => yield Ok(item),
                                 Ok(None) => {}
                                 Err(err) => {
@@ -1343,7 +1362,15 @@ impl TurnSource for StreamingTurnSource {
                         .as_ref()
                         .and_then(|response| response.provider_request_id.clone()),
                 };
-                match run.record_streamed_completion_call(crate::completion::Usage::new(), fallback_identity) {
+                let fallback_finish_reason = stream
+                    .response
+                    .as_ref()
+                    .and_then(|response| response.finish_reason.clone());
+                match run.record_streamed_completion_call(
+                    crate::completion::Usage::new(),
+                    fallback_identity,
+                    fallback_finish_reason,
+                ) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
                         yield Err(Box::new(err).into());
@@ -1655,12 +1682,14 @@ mod migrated_tests {
     use crate::agent::hook::{AgentHook, HookContext};
     use crate::agent::prompt_request::{TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, tool_result_output};
     use crate::client::AgentClientExt;
-    use crate::completion::{CompletionRequest, Prompt, PromptError, ToolDefinition, Usage};
+    use crate::completion::{
+        CompletionRequest, FinishReason, Prompt, PromptError, ToolDefinition, Usage,
+    };
     use crate::streaming::{StreamingPrompt, ToolCallDeltaContent};
     use crate::test_utils::{
         AppendFailingMemory, FailingMemory, MockAddTool, MockBarrierTool, MockCompletionModel,
         MockContextProbeTool, MockStreamEvent, MockSubtractTool, MockToolError, MockTurn,
-        SessionId,
+        SessionId, mock_final,
     };
     use crate::tool::{Tool, ToolContext};
     use futures::{StreamExt, TryStreamExt};
@@ -6669,6 +6698,388 @@ mod migrated_tests {
 
         assert!(streamed_text.is_empty());
         assert_eq!(final_response_text.as_deref(), Some(""));
+    }
+
+    /// rig#2322 — a turn that produced **nothing** and was cut short at the
+    /// output-token limit must not finalize as a successful empty answer.
+    ///
+    /// Not a cassette test: a provider cannot be made to emit an exactly-empty
+    /// `MAX_TOKENS` turn on demand, so the wire shape is scripted. The Gemini
+    /// cassette suite pins the *request* side of rig#2322; this pins what the
+    /// agent does with the response.
+    ///
+    /// This is the failure users actually saw. The 4096 cap truncated the turn,
+    /// the assembler dropped `FinishReason::Length`, and the run finished as a
+    /// successful `""` — a blank answer with no error and nothing to inspect.
+    #[tokio::test]
+    async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
+        let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
+            mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+        )]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("write a long essay").await;
+        let mut error = None;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response_text = Some(res.output().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        assert!(
+            final_response_text.is_none(),
+            "a truncated, content-less turn must not finalize as a successful \
+             answer — it did, yielding {final_response_text:?}"
+        );
+        let error = error.expect("the truncated turn should surface an error");
+        let rendered = format!("{error:?}");
+        assert!(
+            rendered.contains("Length"),
+            "the error must name the terminal reason so the cause is diagnosable, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("max_tokens"),
+            "a budget truncation must point at the setting that fixes it: {rendered}"
+        );
+    }
+
+    /// rig#2322 — the guard against over-correcting the test above: a turn that
+    /// streamed **real output** before hitting the limit stays valid.
+    ///
+    /// Truncation after partial output is a normal, useful result — the caller
+    /// gets the prefix the model produced. Only a turn that delivered nothing
+    /// is an error. Scripted for the same reason as above.
+    #[tokio::test]
+    async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::Text("a partial ans".to_string()),
+            MockStreamEvent::FinalResponse(
+                mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            ),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("write a long essay").await;
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response = Some(res);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("a truncated turn that produced text must not error: {err:?}"),
+            }
+        }
+
+        let final_response =
+            final_response.expect("a turn with partial output should still finalize");
+        assert_eq!(final_response.output(), "a partial ans");
+
+        // ...and the reason is preserved, so a caller can tell this answer was
+        // cut short rather than complete.
+        let truncated = final_response
+            .completion_calls
+            .iter()
+            .any(|call| call.finish_reason == Some(FinishReason::Length));
+        assert!(
+            truncated,
+            "the terminal reason must reach the caller on completion_calls; \
+             without it a truncated answer is indistinguishable from a complete \
+             one — calls: {:?}",
+            final_response.completion_calls
+        );
+    }
+
+    /// rig#2322 — a content-filtered turn that delivered nothing gets the same
+    /// treatment as a truncated one: it is not a successful empty answer.
+    ///
+    /// Scripted rather than recorded because a safety filter cannot be
+    /// provoked reliably or ethically on demand.
+    #[tokio::test]
+    async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
+        let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
+            mock_final(Usage::new()).with_finish_reason(FinishReason::ContentFilter),
+        )]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("something the filter rejects").await;
+        let mut errored = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => panic!(
+                    "a content-filtered, content-less turn must not finalize as a \
+                     successful answer, got {:?}",
+                    res.output()
+                ),
+                Ok(_) => {}
+                Err(err) => {
+                    errored = Some(err);
+                    break;
+                }
+            }
+        }
+
+        let rendered = format!("{:?}", errored.expect("the filtered turn should error"));
+        assert!(
+            rendered.contains("ContentFilter"),
+            "the error must name the terminal reason, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("max_tokens"),
+            "a safety block must not advise raising max_tokens — that setting \
+             cannot fix a filtered response: {rendered}"
+        );
+    }
+
+    /// rig#2322 — the narrowing that keeps the rule from failing benign runs:
+    /// a provider-specific `Other` reason is **not** treated as truncation.
+    ///
+    /// `Other` carries a provider's own wire spelling with no normalized
+    /// meaning, so erroring on it would fail runs on stops rig does not model.
+    #[tokio::test]
+    async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
+        let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
+            mock_final(Usage::new())
+                .with_finish_reason(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
+        )]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("say nothing").await;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response_text = Some(res.output().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("an unmodeled finish reason must not error: {err:?}"),
+            }
+        }
+
+        assert_eq!(final_response_text.as_deref(), Some(""));
+    }
+
+    /// rig#2322 — a turn that spent its whole budget **thinking** and was cut
+    /// off before answering must error, not report success with `""`.
+    ///
+    /// This is the common shape of the bug, not a corner of it: Gemini counts
+    /// thinking tokens against `maxOutputTokens` (the committed cassettes show
+    /// `thoughtsTokenCount` of 176–307 on ordinary prompts), so a truncated
+    /// thinking turn *typically* carries reasoning and no text.
+    ///
+    /// The first version of this guard keyed on `is_empty_assistant_turn`,
+    /// which is false for a reasoning-only turn — so the headline scenario
+    /// still finalized as a successful empty answer. The predicate is now
+    /// `turn_delivered_no_answer`.
+    ///
+    /// Synthetic: a provider cannot be made to truncate mid-thought on demand.
+    #[tokio::test]
+    async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("thinking hard and never reaching an answer"),
+            MockStreamEvent::FinalResponse(
+                mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            ),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("solve this carefully").await;
+        let mut error = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => panic!(
+                    "a turn that only produced reasoning before being truncated must \
+                     not finalize as a successful answer, got {:?}",
+                    res.output()
+                ),
+                Ok(_) => {}
+                Err(err) => {
+                    error = Some(err);
+                    break;
+                }
+            }
+        }
+
+        let rendered = format!("{:?}", error.expect("the truncated turn should error"));
+        assert!(
+            rendered.contains("Length"),
+            "the error must name the terminal reason, got: {rendered}"
+        );
+    }
+
+    /// rig#2322 — the same shape under a content filter takes the same path.
+    ///
+    /// Synthetic for the same reason, plus: a safety filter cannot be provoked
+    /// reliably or ethically on demand.
+    #[tokio::test]
+    async fn reasoning_only_turn_content_filtered_is_an_error() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("considering something the filter rejects"),
+            MockStreamEvent::FinalResponse(
+                mock_final(Usage::new()).with_finish_reason(FinishReason::ContentFilter),
+            ),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("something borderline").await;
+        let mut errored = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => panic!(
+                    "a reasoning-only filtered turn must not finalize successfully, \
+                     got {:?}",
+                    res.output()
+                ),
+                Ok(_) => {}
+                Err(err) => {
+                    errored = Some(err);
+                    break;
+                }
+            }
+        }
+
+        let rendered = format!(
+            "{:?}",
+            errored.expect("the filtered reasoning-only turn should error")
+        );
+        assert!(
+            rendered.contains("ContentFilter") && !rendered.contains("max_tokens"),
+            "a filtered turn must name its reason and must not advise raising \
+             max_tokens: {rendered}"
+        );
+    }
+
+    /// rig#2322 — the guard against over-correcting into "reasoning present
+    /// means failure": a turn that thought **and then answered** before being
+    /// truncated is a valid answer.
+    ///
+    /// Synthetic: same reason as above.
+    #[tokio::test]
+    async fn reasoning_then_text_truncated_stays_a_valid_answer() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("weighing the options"),
+            MockStreamEvent::Text("the answer so f".to_string()),
+            MockStreamEvent::FinalResponse(
+                mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            ),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("solve this").await;
+        let mut final_response = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response = Some(res);
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("a truncated turn that produced text must not error: {err:?}"),
+            }
+        }
+
+        let final_response = final_response.expect("a turn with text should finalize");
+        assert_eq!(final_response.output(), "the answer so f");
+        assert!(
+            final_response
+                .completion_calls
+                .iter()
+                .any(|call| call.finish_reason == Some(FinishReason::Length)),
+            "the terminal reason must still reach the caller on a valid truncated turn"
+        );
+    }
+
+    /// rig#2322 — a model that thought and legitimately had nothing to add is
+    /// not an error. Only a *truncating* reason makes a reasoning-only turn a
+    /// failure; a natural stop leaves it exactly as it was.
+    ///
+    /// Synthetic: same reason as above.
+    #[tokio::test]
+    async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("thought about it, nothing to add"),
+            MockStreamEvent::FinalResponse(
+                mock_final(Usage::new()).with_finish_reason(FinishReason::Stop),
+            ),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("say nothing").await;
+        let mut final_response_text = None;
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    final_response_text = Some(res.output().to_owned());
+                    break;
+                }
+                Ok(_) => {}
+                Err(err) => panic!("a naturally-stopped reasoning turn must not error: {err:?}"),
+            }
+        }
+
+        assert_eq!(final_response_text.as_deref(), Some(""));
+    }
+
+    /// rig#2322 — what happens to the partial reasoning when the turn errors.
+    ///
+    /// A caller debugging a truncated thinking turn wants to see how far the
+    /// model got, so the reasoning must not vanish: the history push runs on
+    /// `is_empty_assistant_turn` (false for a reasoning-only turn) *before* the
+    /// truncation guard, so the turn is recorded and then the error is raised.
+    /// This pins that ordering — swapping the two would trade one invisible
+    /// failure for another.
+    #[tokio::test]
+    async fn reasoning_survives_into_history_when_the_truncated_turn_errors() {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::reasoning("partial thinking worth keeping"),
+            MockStreamEvent::FinalResponse(
+                mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            ),
+        ]]);
+        let agent = AgentBuilder::new(model).build();
+
+        let mut stream = agent.stream_prompt("solve this").await;
+        let mut streamed_reasoning = String::new();
+
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::Reasoning { reasoning, .. },
+                )) => {
+                    streamed_reasoning.push_str(&reasoning.display_text());
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(_)) => {
+                    panic!("the truncated reasoning-only turn should error")
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+
+        assert!(
+            streamed_reasoning.contains("partial thinking worth keeping"),
+            "the partial reasoning must reach the consumer before the error, so a \
+             truncated thinking turn is debuggable — got {streamed_reasoning:?}"
+        );
     }
 
     /// Background task that logs periodically to detect span leakage.

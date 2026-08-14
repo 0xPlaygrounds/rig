@@ -1512,6 +1512,60 @@ breaks come with it:
   every accepted turn on both surfaces, so an observer of that one event
   records identity for every completed call.
 
+### The terminal finish reason reaches the caller, and empty truncated turns error (#2322)
+
+The streamed assembler used to discard the provider's finish reason, so a turn
+cut short at the output-token limit was undetectable through the agent surface
+and finalized as a successful empty string. Four source-level breaks:
+
+- **`AgentRun::record_streamed_completion_call` takes the finish reason as a
+  third argument.** Pass `None` when the provider reported none:
+
+  ```rust
+  // Was
+  run.record_streamed_completion_call(usage, identity)?;
+  // Now — from your stream's terminal record
+  run.record_streamed_completion_call(usage, identity, terminal.and_then(|t| t.finish_reason.clone()))?;
+  ```
+
+- **`StreamedTurnEvent::Completed` gains a `finish_reason` field.** Drivers
+  matching it exhaustively must bind or ignore it (`..` keeps working).
+
+- **`ModelTurn` and `StreamedTurn` gain `finish_reason`.** Both are
+  `#[non_exhaustive]`, so `ModelTurn::new(..)` is unchanged; attach the reason
+  with `.with_finish_reason(resp.finish_reason())`. A `StreamedTurn` built as a
+  struct literal needs the new field. It is serde-defaulted, so persisted run
+  JSON still loads.
+
+- **A turn that delivered no answer and reports `Length` or `ContentFilter`
+  now fails** with a `CompletionError::ResponseError` instead of finalizing as
+  `""`. "No answer" means no tool call and no non-empty text — **reasoning
+  does not count**, which is the case most likely to affect you: providers
+  bill thinking tokens against the output limit, so a thinking model that
+  exhausts its budget mid-thought produces reasoning and no text, and that
+  shape used to report success with an empty string. This matches what the
+  blocking Gemini path already did for a content-less candidate.
+
+  Unchanged: partial output followed by truncation is still a valid answer
+  (read the reason from `PromptResponse::completion_calls`), any turn
+  reporting `Stop`/`ToolCalls` still finalizes whatever its shape, and
+  `FinishReason::Other` is not treated as truncation. The turn is still
+  recorded to history before the error, so partial reasoning remains available
+  for debugging. If you were relying on an empty string from a truncated turn,
+  handle the error — or inspect `completion_calls` and raise `max_tokens`.
+
+  **This also narrows `OutputMode::Tool` recovery.** An agent with an output
+  tool that received an answerless turn used to consume an output-retry and
+  re-prompt with corrective feedback. When that turn reports `Length` or
+  `ContentFilter` it now fails immediately instead. The re-prompt could not
+  have helped — the budget or the filter, not the phrasing, is what stopped
+  the turn, so the retry would truncate again and report a less specific
+  failure at the end. Re-prompting is unchanged for answerless turns with any
+  other finish reason.
+
+  `CompletionCall.finish_reason` is serde-defaulted; pre-#2322 run JSON loads
+  with it `None`.
+
 ---
 
 ## 0.40 → 0.41

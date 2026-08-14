@@ -21,6 +21,7 @@ use std::fmt;
 /// - `created_at`: Timestamp when the model was created
 /// - `owned_by`: The organization or entity that owns the model
 /// - `context_length`: The maximum context window size for the model
+/// - `max_output_tokens`: The maximum tokens the model may generate per response
 ///
 /// # Example
 ///
@@ -42,6 +43,7 @@ use std::fmt;
 ///     created_at: Some(1677610600),
 ///     owned_by: Some("openai".to_string()),
 ///     context_length: Some(8192),
+///     max_output_tokens: Some(4096),
 /// };
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -73,6 +75,20 @@ pub struct Model {
     /// The maximum context window size for the model
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_length: Option<u32>,
+
+    /// The maximum number of tokens the model may generate in one response.
+    ///
+    /// Distinct from [`Self::context_length`]: that is the input window, this
+    /// is the output ceiling, and for most models the output ceiling is far
+    /// smaller (Gemini 2.5 Flash: 1,048,576 in, 65,536 out).
+    ///
+    /// `None` means the provider's listing does not report one — never a
+    /// default rig invented. Rig does **not** send this value on requests:
+    /// omitting an output limit lets the provider apply its own per-model
+    /// default, and populating it from here would reintroduce a rig-chosen cap
+    /// by another route (rig#2322). It is for callers and diagnostics.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
 }
 
 impl Model {
@@ -101,6 +117,7 @@ impl Model {
             created_at: None,
             owned_by: None,
             context_length: None,
+            max_output_tokens: None,
         }
     }
 
@@ -128,6 +145,7 @@ impl Model {
             created_at: None,
             owned_by: None,
             context_length: None,
+            max_output_tokens: None,
         }
     }
 
@@ -522,6 +540,7 @@ mod tests {
             created_at: Some(1677610600),
             owned_by: Some("openai".to_string()),
             context_length: Some(8192),
+            max_output_tokens: Some(4096),
         };
 
         let json = serde_json::to_string(&model).unwrap();
