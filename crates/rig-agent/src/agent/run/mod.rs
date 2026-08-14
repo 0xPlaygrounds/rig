@@ -80,6 +80,7 @@ use crate::{
         CompletionCall, PromptResponse, ResponseIdentity, TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER,
         assistant_text_from_choice, build_full_history, build_history_for_request,
         invalid_tool_retry_user_message, is_empty_assistant_turn, tool_result_message,
+        turn_delivered_no_answer,
     },
     completion::{Message, PromptError, Usage},
     json_utils,
@@ -830,20 +831,31 @@ impl AgentRun {
                 // content-less candidate with a `ResponseError` naming the
                 // finish reason; this makes the agent surface agree.
                 //
+                // The predicate is `turn_delivered_no_answer`, **not**
+                // `is_empty_assistant_turn`: they diverge on a reasoning-only
+                // turn, which belongs in history (pushed above) but answered
+                // nothing. That divergence is the common case, not a corner —
+                // Gemini counts thinking tokens against `maxOutputTokens`, so a
+                // truncated thinking turn typically carries reasoning and no
+                // text, and gating on "empty" let exactly that shape finalize
+                // as a successful `""`.
+                //
                 // Deliberately narrow, so it cannot regress the case above:
-                //   - empty **and** truncated → error (nothing was delivered);
-                //   - empty and `Stop`/`ToolCalls`/`Other` → unchanged, still a
-                //     successful empty turn;
-                //   - partial output **then** truncated → unchanged, still
-                //     valid, and the reason is on the `CompletionCall` for a
-                //     caller that wants to act on it.
-                if is_empty_assistant_turn(&items)
+                //   - nothing delivered **and** truncated → error;
+                //   - reasoning only **and** truncated → error (nothing was
+                //     answered; the thinking is not the answer);
+                //   - nothing delivered but `Stop`/`ToolCalls`/`Other` →
+                //     unchanged, still a successful empty turn;
+                //   - any real text, or tool calls, **then** truncated →
+                //     unchanged, still valid, and the reason is on the
+                //     `CompletionCall` for a caller that wants to act on it.
+                if turn_delivered_no_answer(&items)
                     && let Some(reason) = self.truncating_finish_reason()
                 {
                     return Err(CompletionError::ResponseError(format!(
-                        "the model returned no content and stopped with \
+                        "the model produced no answer and stopped with \
                          finish_reason={reason:?}; the turn was cut short before it \
-                         produced an answer (raise max_tokens, or inspect \
+                         produced one (raise max_tokens, or inspect \
                          PromptResponse::completion_calls for the terminal reason)"
                     ))
                     .into());

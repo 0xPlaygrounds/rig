@@ -715,6 +715,33 @@ pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
         )
 }
 
+/// Whether a turn delivered **no answer**: no tool call, and no non-empty text
+/// block.
+///
+/// Deliberately *not* [`is_empty_assistant_turn`], which answers a different
+/// question — "does this turn belong in history". The two diverge on exactly
+/// one shape, and it is the shape that matters here: a turn carrying only
+/// [`AssistantContent::Reasoning`] belongs in history (the reasoning is real
+/// content worth replaying) but has answered nothing.
+///
+/// Reasoning is not an answer. It is the model's scratch work, it is often not
+/// even replayable across turns, and a caller asked a question rather than for
+/// the thinking. Treating it as output is how a thinking model that burned its
+/// whole budget mid-thought used to report success with an empty string
+/// (rig#2322): Gemini counts thinking tokens against `maxOutputTokens`, so a
+/// truncated thinking turn *typically* carries reasoning and no text — the
+/// common case, not a corner one.
+///
+/// Tool calls count as delivered: they are an answer in progress, and a
+/// truncated tool-call turn must still route to execution.
+pub(crate) fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
+    !choice.iter().any(|content| match content {
+        AssistantContent::Text(text) => !text.text.is_empty(),
+        AssistantContent::ToolCall(_) => true,
+        _ => false,
+    })
+}
+
 pub(crate) fn assistant_text_from_choice(choice: &[AssistantContent]) -> String {
     choice
         .iter()

@@ -1537,14 +1537,21 @@ and finalized as a successful empty string. Four source-level breaks:
   struct literal needs the new field. It is serde-defaulted, so persisted run
   JSON still loads.
 
-- **A turn that produced no content and reports `Length` or `ContentFilter`
+- **A turn that delivered no answer and reports `Length` or `ContentFilter`
   now fails** with a `CompletionError::ResponseError` instead of finalizing as
-  `""`. This matches what the blocking Gemini path already did for a
-  content-less candidate. Unchanged: partial output followed by truncation is
-  still a valid answer (read the reason from
-  `PromptResponse::completion_calls`), a textless turn reporting
-  `Stop`/`ToolCalls` still finalizes, and `FinishReason::Other` is not treated
-  as truncation. If you were relying on an empty string from a truncated turn,
+  `""`. "No answer" means no tool call and no non-empty text — **reasoning
+  does not count**, which is the case most likely to affect you: providers
+  bill thinking tokens against the output limit, so a thinking model that
+  exhausts its budget mid-thought produces reasoning and no text, and that
+  shape used to report success with an empty string. This matches what the
+  blocking Gemini path already did for a content-less candidate.
+
+  Unchanged: partial output followed by truncation is still a valid answer
+  (read the reason from `PromptResponse::completion_calls`), any turn
+  reporting `Stop`/`ToolCalls` still finalizes whatever its shape, and
+  `FinishReason::Other` is not treated as truncation. The turn is still
+  recorded to history before the error, so partial reasoning remains available
+  for debugging. If you were relying on an empty string from a truncated turn,
   handle the error — or inspect `completion_calls` and raise `max_tokens`.
 
   `CompletionCall.finish_reason` is serde-defaulted; pre-#2322 run JSON loads
