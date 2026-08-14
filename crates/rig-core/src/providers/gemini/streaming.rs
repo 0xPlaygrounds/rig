@@ -162,6 +162,19 @@ struct GeminiRestAdapter {
     final_finish_message: Option<String>,
     final_model_version: Option<String>,
     final_response_id: Option<String>,
+    /// The provider sent a `finishReason` on some chunk.
+    ///
+    /// Gemini's `streamGenerateContent` sends an *intermediate* `finishReason`
+    /// when a built-in tool runs a round — a recorded code-execution stream
+    /// reads `[executableCode] [codeExecutionResult] [executableCode +
+    /// finishReason:STOP] [codeExecutionResult] [text] [text +
+    /// finishReason:STOP]` — so a `finishReason` chunk is not, on this wire, the
+    /// provider completing the turn. The terminal record is therefore deferred
+    /// to EOF (see [`WireAdapter::finish`], which names exactly this case);
+    /// pushing it on the first such chunk made the driver stop reading there
+    /// and silently drop the model's whole answer while still reporting a
+    /// successful `STOP`.
+    saw_finish_reason: bool,
     /// A tool-protocol finish reason ended the turn; later frames are dead —
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn.
@@ -180,6 +193,7 @@ impl Default for GeminiRestAdapter {
             final_finish_message: None,
             final_model_version: None,
             final_response_id: None,
+            saw_finish_reason: false,
             failed: false,
         }
     }
@@ -222,9 +236,10 @@ impl WireAdapter for GeminiRestAdapter {
             return;
         };
 
-        // Capture before partial moves of choice fields.
-        let is_terminal = choice.finish_reason.is_some();
         if let Some(finish_reason) = &choice.finish_reason {
+            // Last one wins: an intermediate `finishReason` is superseded by
+            // the reason the turn actually ended on.
+            self.saw_finish_reason = true;
             self.final_finish_reason = Some(finish_reason.clone());
         }
         if let Some(message) = &choice.finish_message {
@@ -251,27 +266,30 @@ impl WireAdapter for GeminiRestAdapter {
                 tracing::debug!(finish_reason = ?self.final_finish_reason, "Streaming candidate missing content");
             }
         }
-
-        // Only a chunk carrying Gemini's `finishReason` counts as the
-        // provider completing the turn; the driver stops consuming after the
-        // terminal record.
-        if is_terminal {
-            out.push(Ok(streaming::RawStreamingChoice::FinalResponse(
-                StreamingCompletionResponse {
-                    usage_metadata: self.final_usage.take().unwrap_or_default(),
-                    finish_reason: self.final_finish_reason.take(),
-                    finish_message: self.final_finish_message.take(),
-                    model_version: self.final_model_version.take(),
-                    response_id: self.final_response_id.take(),
-                },
-            )));
-        }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput<Self::Response>) {
+    fn finish(&mut self, out: &mut AdapterOutput<Self::Response>) {
         // EOF without a `finishReason` chunk is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
+        if !self.saw_finish_reason {
+            return;
+        }
+
+        // Deferral, not synthesis: the provider *did* signal the finish, on a
+        // chunk that is not reliably its last (see `saw_finish_reason`).
+        // Holding the record until EOF is what lets the driver read the rest
+        // of the turn, and it means the terminal carries the last reason,
+        // usage, and metadata the stream actually reported.
+        out.push(Ok(streaming::RawStreamingChoice::FinalResponse(
+            StreamingCompletionResponse {
+                usage_metadata: self.final_usage.take().unwrap_or_default(),
+                finish_reason: self.final_finish_reason.take(),
+                finish_message: self.final_finish_message.take(),
+                model_version: self.final_model_version.take(),
+                response_id: self.final_response_id.take(),
+            },
+        )));
     }
 
     fn is_finished(&self) -> bool {

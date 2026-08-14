@@ -35,6 +35,7 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod response_identity;
+    mod stream_terminal_matrix;
     mod streaming;
     mod streaming_grammar;
     mod streaming_multimodal_tool_results;
