@@ -5,19 +5,20 @@ use rig_core::{
     message::{Text, ToolResultContent, UserContent},
 };
 
-use super::{document::RigDocument, image::RigImage, tool::RigToolResultContent};
+use super::{
+    converse_output::ContentBlock, document::RigDocument, image::RigImage,
+    tool::RigToolResultContent,
+};
 
 pub struct RigUserContent(pub UserContent);
 
-impl TryFrom<aws_bedrock::ContentBlock> for RigUserContent {
+impl TryFrom<ContentBlock> for RigUserContent {
     type Error = CompletionError;
 
-    fn try_from(value: aws_bedrock::ContentBlock) -> Result<Self, Self::Error> {
+    fn try_from(value: ContentBlock) -> Result<Self, Self::Error> {
         match value {
-            aws_bedrock::ContentBlock::Text(text) => {
-                Ok(RigUserContent(UserContent::Text(Text::new(text))))
-            }
-            aws_bedrock::ContentBlock::ToolResult(tool_result) => {
+            ContentBlock::Text(text) => Ok(RigUserContent(UserContent::Text(Text::new(text)))),
+            ContentBlock::ToolResult(tool_result) => {
                 let tool_result_contents = tool_result
                     .content
                     .into_iter()
@@ -42,11 +43,11 @@ impl TryFrom<aws_bedrock::ContentBlock> for RigUserContent {
                     tool_results,
                 )))
             }
-            aws_bedrock::ContentBlock::Document(document) => {
+            ContentBlock::Document(document) => {
                 let doc: RigDocument = document.try_into()?;
                 Ok(RigUserContent(UserContent::Document(doc.0)))
             }
-            aws_bedrock::ContentBlock::Image(image) => {
+            ContentBlock::Image(image) => {
                 let image: RigImage = image.try_into()?;
                 Ok(RigUserContent(UserContent::Image(image.0)))
             }
@@ -102,16 +103,22 @@ impl TryFrom<RigUserContent> for Vec<aws_bedrock::ContentBlock> {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::user_content::RigUserContent;
+    use crate::types::{converse_output::ContentBlock, user_content::RigUserContent};
     use aws_sdk_bedrockruntime::types as aws_bedrock;
     use rig_core::{
         completion::CompletionError,
         message::{ToolResultContent, UserContent},
     };
 
+    /// The inbound path reads the mirror, but what Bedrock sends is the SDK
+    /// block, so the tests still start there and mirror it first.
+    fn mirrored(block: aws_bedrock::ContentBlock) -> ContentBlock {
+        block.try_into().expect("the SDK block mirrors")
+    }
+
     #[test]
     fn aws_content_block_to_user_content() {
-        let cb = aws_bedrock::ContentBlock::Text("42".into());
+        let cb = mirrored(aws_bedrock::ContentBlock::Text("42".into()));
         let user_content: Result<RigUserContent, _> = cb.try_into();
         assert!(user_content.is_ok());
         let content = match user_content.unwrap().0 {
@@ -124,13 +131,13 @@ mod tests {
 
     #[test]
     fn aws_content_block_tool_to_user_content() {
-        let cb = aws_bedrock::ContentBlock::ToolResult(
+        let cb = mirrored(aws_bedrock::ContentBlock::ToolResult(
             aws_bedrock::ToolResultBlock::builder()
                 .tool_use_id("123")
                 .content(aws_bedrock::ToolResultContentBlock::Text("content".into()))
                 .build()
                 .unwrap(),
-        );
+        ));
         let user_content: Result<RigUserContent, _> = cb.try_into();
         assert!(user_content.is_ok());
         let content = match user_content.unwrap().0 {
@@ -155,14 +162,14 @@ mod tests {
 
     #[test]
     fn aws_unsupported_content_block_to_user_content() {
-        let cb = aws_bedrock::ContentBlock::GuardContent(
+        let cb = mirrored(aws_bedrock::ContentBlock::GuardContent(
             aws_bedrock::GuardrailConverseContentBlock::Text(
                 aws_bedrock::GuardrailConverseTextBlock::builder()
                     .text("stuff")
                     .build()
                     .unwrap(),
             ),
-        );
+        ));
         let user_content: Result<RigUserContent, _> = cb.try_into();
         assert!(user_content.is_err());
         assert_eq!(

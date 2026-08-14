@@ -329,7 +329,6 @@ impl From<&CompletionResponse> for Usage {
 }
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Message;
     type Usage = Usage;
 
     /// Ollama's chat API carries no response ID.
@@ -339,10 +338,6 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 
     fn get_response_model_name(&self) -> Option<String> {
         Some(self.model.clone())
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        vec![self.message.clone()]
     }
 
     fn get_text_response(&self) -> Option<String> {
@@ -1115,7 +1110,7 @@ pub enum Message {
         images: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+        #[serde(default, deserialize_with = "json_utils::null_or_default")]
         tool_calls: Vec<ToolCall>,
     },
     System {

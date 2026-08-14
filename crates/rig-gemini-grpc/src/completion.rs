@@ -544,7 +544,6 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 
 // Implement ProviderResponseExt for telemetry
 impl ProviderResponseExt for GenerateContentResponse {
-    type OutputMessage = proto::Candidate;
     type Usage = proto::UsageMetadata;
 
     fn get_response_id(&self) -> Option<String> {
@@ -561,10 +560,6 @@ impl ProviderResponseExt for GenerateContentResponse {
         } else {
             Some(self.model_version.clone())
         }
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.candidates.clone()
     }
 
     fn get_text_response(&self) -> Option<String> {

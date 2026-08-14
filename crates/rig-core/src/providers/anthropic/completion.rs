@@ -109,7 +109,6 @@ pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
 }
 
 impl ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Content;
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
@@ -118,10 +117,6 @@ impl ProviderResponseExt for CompletionResponse {
 
     fn get_response_model_name(&self) -> Option<String> {
         Some(self.model.to_owned())
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.content.clone()
     }
 
     fn get_text_response(&self) -> Option<String> {

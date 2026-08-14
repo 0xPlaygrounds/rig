@@ -182,7 +182,7 @@ pub enum Message {
         name: Option<String>,
         #[serde(
             default,
-            deserialize_with = "json_utils::null_or_vec",
+            deserialize_with = "json_utils::null_or_default",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -1205,7 +1205,6 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 }
 
 impl ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Choice;
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
@@ -1214,10 +1213,6 @@ impl ProviderResponseExt for CompletionResponse {
 
     fn get_response_model_name(&self) -> Option<String> {
         Some(self.model.to_owned())
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.choices.clone()
     }
 
     fn get_text_response(&self) -> Option<String> {

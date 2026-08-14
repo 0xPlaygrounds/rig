@@ -21,6 +21,12 @@
 //! debug-mode sequence laws (`sequence_law`) still watch the emitted stream,
 //! so an adapter bypassing this helper fails its own tests.
 //!
+//! `pub` (not `pub(crate)`) for the same reason as [`adapter`](super::adapter)
+//! and [`tool_call_bridge`](super::tool_call_bridge): companion provider
+//! crates implementing [`WireAdapter`](super::adapter::WireAdapter) over a
+//! boundary-less wire (rig-gemini-grpc) must inherit this derivation rather
+//! than hand-roll it; it is not part of rig-core's stable public API.
+//!
 //! Wires that announce their own boundaries (anthropic `content_block_stop`,
 //! OpenAI Responses `output_item.done`) do not use this — their lifecycle is
 //! the wire's, not a derivation. The chat-completions compat family keeps
@@ -36,7 +42,7 @@ use super::adapter::AdapterOutput;
 /// What one wire chunk (or one wire part, for parts-array wires) carried,
 /// declared by the adapter with no lifecycle events of its own.
 #[derive(Default)]
-pub(crate) struct ChunkParts<R> {
+pub struct ChunkParts<R> {
     /// Reasoning content accumulating under the wire's constant minted key.
     pub reasoning: Option<String>,
     /// A wire-carried signature closing the reasoning block (gemini's
@@ -63,14 +69,14 @@ impl<R> ChunkParts<R> {
 /// Owns the open/close bookkeeping the adapters used to hand-roll; an
 /// adapter never touches a `reasoning_open` flag or emits a lifecycle event
 /// directly.
-pub(crate) struct MintedReasoningLifecycle {
+pub struct MintedReasoningLifecycle {
     key: StreamPartId,
     open: bool,
 }
 
 impl MintedReasoningLifecycle {
     /// A lifecycle for the given per-stream constant minted key.
-    pub(crate) fn new(key: StreamPartId) -> Self {
+    pub fn new(key: StreamPartId) -> Self {
         Self { key, open: false }
     }
 
@@ -83,7 +89,7 @@ impl MintedReasoningLifecycle {
     ///    synthesized silent end (`wire_sent: false` — the wire never spelled
     ///    the boundary, so downstream must not observe a fabricated event);
     /// 4. text, then tool events.
-    pub(crate) fn emit_chunk<R>(&mut self, parts: ChunkParts<R>, out: &mut AdapterOutput<R>) {
+    pub fn emit_chunk<R>(&mut self, parts: ChunkParts<R>, out: &mut AdapterOutput<R>) {
         if let Some(reasoning) = parts
             .reasoning
             .as_ref()

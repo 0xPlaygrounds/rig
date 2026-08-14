@@ -5,7 +5,11 @@ use rig_core::{
     message::{AssistantContent, Message, UserContent},
 };
 
-use super::{assistant_content::RigAssistantContent, user_content::RigUserContent};
+use super::{
+    assistant_content::RigAssistantContent,
+    converse_output::{ConversationRole, Message as ConverseMessage},
+    user_content::RigUserContent,
+};
 
 pub struct RigMessage(pub Message);
 
@@ -53,12 +57,12 @@ impl TryFrom<RigMessage> for aws_bedrock::Message {
     }
 }
 
-impl TryFrom<aws_bedrock::Message> for RigMessage {
+impl TryFrom<ConverseMessage> for RigMessage {
     type Error = CompletionError;
 
-    fn try_from(message: aws_bedrock::Message) -> Result<Self, Self::Error> {
+    fn try_from(message: ConverseMessage) -> Result<Self, Self::Error> {
         match message.role {
-            aws_bedrock::ConversationRole::Assistant => {
+            ConversationRole::Assistant => {
                 let assistant_content = message
                     .content
                     .into_iter()
@@ -72,7 +76,7 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
 
                 Ok(RigMessage(Message::Assistant { content, id: None }))
             }
-            aws_bedrock::ConversationRole::User => {
+            ConversationRole::User => {
                 let user_content = message
                     .content
                     .into_iter()
@@ -93,17 +97,6 @@ impl TryFrom<aws_bedrock::Message> for RigMessage {
                 "AWS Bedrock returned unsupported ConversationRole".into(),
             )),
         }
-    }
-}
-
-impl TryFrom<super::converse_output::Message> for RigMessage {
-    type Error = CompletionError;
-
-    fn try_from(message: super::converse_output::Message) -> Result<Self, Self::Error> {
-        let message = aws_bedrock::Message::try_from(message)
-            .map_err(|x| CompletionError::ProviderError(format!("Type conversion error: {x}")))?;
-
-        Self::try_from(message)
     }
 }
 

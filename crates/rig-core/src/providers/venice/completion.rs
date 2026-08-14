@@ -303,7 +303,6 @@ impl NormalizeCompletionResponse for CompletionResponse {
 }
 
 impl ProviderResponseExt for CompletionResponse {
-    type OutputMessage = <openai::CompletionResponse as ProviderResponseExt>::OutputMessage;
     type Usage = <openai::CompletionResponse as ProviderResponseExt>::Usage;
 
     fn get_response_id(&self) -> Option<String> {
@@ -312,10 +311,6 @@ impl ProviderResponseExt for CompletionResponse {
 
     fn get_response_model_name(&self) -> Option<String> {
         self.openai.get_response_model_name()
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.openai.get_output_messages()
     }
 
     fn get_text_response(&self) -> Option<String> {

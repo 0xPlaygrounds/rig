@@ -1005,6 +1005,25 @@ impl StreamingCompletionResponse {
             .map(|response| response.usage)
             .unwrap_or_default()
     }
+
+    /// This stream's identity metadata as one
+    /// [`crate::completion::ResponseIdentity`] carrier.
+    ///
+    /// The message id is read from the stream rather than the terminal record:
+    /// an explicit `MessageId` event outranks the terminal's id, and the
+    /// terminal record backfills the field when the stream never saw one. The
+    /// response-scoped and transport ids exist only on the terminal record, so
+    /// they stay `None` for a stream that ended without one.
+    pub fn identity(&self) -> crate::completion::ResponseIdentity {
+        crate::completion::ResponseIdentity {
+            message_id: self.message_id.clone(),
+            ..self
+                .response
+                .as_ref()
+                .map(StreamFinal::identity)
+                .unwrap_or_default()
+        }
+    }
 }
 
 impl From<StreamingCompletionResponse> for CompletionResponse {
@@ -1405,6 +1424,58 @@ mod tests {
         assert_eq!(texts, vec!["done".to_string()]);
         // The last id recorded wins.
         assert_eq!(stream.message_id.as_deref(), Some("msg_49999"));
+    }
+
+    /// A stream that never saw a `MessageId` event takes all three identity
+    /// axes from the terminal record.
+    #[tokio::test]
+    async fn stream_identity_falls_back_to_the_terminal_records_ids() {
+        let raw = stream! {
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(
+                mock_final_with_total_tokens(1)
+                    .with_message_id("msg_terminal")
+                    .with_response_id("resp_1")
+                    .with_provider_request_id("req_1"),
+            ));
+        };
+        let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(raw));
+        while stream.next().await.is_some() {}
+
+        assert_eq!(
+            stream.identity(),
+            crate::completion::ResponseIdentity {
+                message_id: Some("msg_terminal".to_string()),
+                response_id: Some("resp_1".to_string()),
+                provider_request_id: Some("req_1".to_string()),
+            }
+        );
+    }
+
+    /// An explicit `MessageId` event outranks the terminal record's message id;
+    /// the response-scoped and transport ids still come from the terminal.
+    #[tokio::test]
+    async fn stream_identity_prefers_an_explicit_message_id_event() {
+        let raw = stream! {
+            yield Ok(RawStreamingChoice::MessageId("msg_event".to_string()));
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(
+                mock_final_with_total_tokens(1)
+                    .with_message_id("msg_terminal")
+                    .with_response_id("resp_1"),
+            ));
+        };
+        let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(raw));
+        while stream.next().await.is_some() {}
+
+        assert_eq!(
+            stream.identity(),
+            crate::completion::ResponseIdentity {
+                message_id: Some("msg_event".to_string()),
+                response_id: Some("resp_1".to_string()),
+                provider_request_id: None,
+            }
+        );
     }
 
     fn create_reasoning_stream() -> StreamingCompletionResponse {

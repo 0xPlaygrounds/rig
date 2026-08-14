@@ -749,7 +749,6 @@ pub mod interactions_api_types {
     }
 
     impl ProviderResponseExt for Interaction {
-        type OutputMessage = Content;
         type Usage = InteractionUsage;
 
         fn get_response_id(&self) -> Option<String> {
@@ -762,10 +761,6 @@ pub mod interactions_api_types {
 
         fn get_response_model_name(&self) -> Option<String> {
             self.model.clone()
-        }
-
-        fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-            self.output_contents()
         }
 
         fn get_text_response(&self) -> Option<String> {

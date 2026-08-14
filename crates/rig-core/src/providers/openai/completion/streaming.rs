@@ -80,9 +80,9 @@ struct StreamingDelta {
     // duplicate-field error that drops the whole chunk.
     #[serde(default)]
     reasoning: Option<String>,
-    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     tool_calls: Vec<StreamingToolCall>,
-    #[serde(default, deserialize_with = "json_utils::null_or_vec")]
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     reasoning_details: Vec<serde_json::Value>,
 }
 

@@ -589,7 +589,6 @@ pub mod gemini_api_types {
     }
 
     impl ProviderResponseExt for GenerateContentResponse {
-        type OutputMessage = ContentCandidate;
         type Usage = UsageMetadata;
 
         fn get_response_id(&self) -> Option<String> {
@@ -598,10 +597,6 @@ pub mod gemini_api_types {
 
         fn get_response_model_name(&self) -> Option<String> {
             self.model_version.clone()
-        }
-
-        fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-            self.candidates.clone()
         }
 
         fn get_text_response(&self) -> Option<String> {

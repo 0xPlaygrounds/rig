@@ -48,7 +48,6 @@ impl CompletionResponse {
 }
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Message;
     type Usage = Usage;
 
     fn get_response_id(&self) -> Option<String> {
@@ -57,10 +56,6 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 
     fn get_response_model_name(&self) -> Option<String> {
         None
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        vec![self.message.clone()]
     }
 
     fn get_text_response(&self) -> Option<String> {

@@ -2462,7 +2462,6 @@ pub enum OutputRole {
 }
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
-    type OutputMessage = Output;
     type Usage = ResponsesUsage;
 
     /// The response ID (`resp_...`), which is deliberately *not* the assistant
@@ -2473,10 +2472,6 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 
     fn get_response_model_name(&self) -> Option<String> {
         Some(self.model.clone())
-    }
-
-    fn get_output_messages(&self) -> Vec<Self::OutputMessage> {
-        self.output.clone()
     }
 
     fn get_text_response(&self) -> Option<String> {

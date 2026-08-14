@@ -545,6 +545,26 @@ fn request_has_vision(request: &completion::CompletionRequest) -> bool {
     })
 }
 
+/// Per-request inputs shared by every Copilot route, read off the incoming
+/// request before a route-specific conversion consumes it.
+struct RequestFacts {
+    initiator: &'static str,
+    has_vision: bool,
+    system_instructions: Option<String>,
+    record_telemetry_content: bool,
+}
+
+impl RequestFacts {
+    fn capture(request: &completion::CompletionRequest) -> Self {
+        Self {
+            initiator: request_initiator(request),
+            has_vision: request_has_vision(request),
+            system_instructions: request.preamble.clone(),
+            record_telemetry_content: request.record_telemetry_content,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CompletionRoute {
     ChatCompletions,
@@ -729,6 +749,46 @@ where
         Ok(request)
     }
 
+    /// Authenticates, signs a POST to `path`, and opens the route's completion
+    /// span.
+    ///
+    /// Call this only *after* the route's request conversion: auth happens
+    /// inside, so calling it earlier would report an auth failure ahead of a
+    /// malformed request and invert the routes' error precedence.
+    async fn signed_request(
+        &self,
+        facts: &RequestFacts,
+        path: &str,
+        transport: Transport,
+        model: &str,
+        operation: CompletionOperation,
+        body: Vec<u8>,
+    ) -> Result<(Request<Vec<u8>>, tracing::Span), CompletionError> {
+        let auth = self.auth_context().await?;
+
+        let headers = default_headers(
+            &auth.api_key,
+            facts.initiator,
+            facts.has_vision,
+            self.intent,
+        );
+        let req = apply_headers(
+            post_with_auth_base(&self.client, &auth, path, transport)?,
+            &headers,
+        )
+        .body(body)
+        .map_err(|err| CompletionError::HttpError(err.into()))?;
+
+        let span = CompletionSpanBuilder::new("copilot", model, operation)
+            .system_instructions(
+                facts.system_instructions.as_deref(),
+                facts.record_telemetry_content,
+            )
+            .build();
+
+        Ok((req, span))
+    }
+
     /// The chat wire type has no transport-metadata slot, so the captured
     /// request id rides alongside; `completion()` stamps it onto the
     /// normalized response.
@@ -736,25 +796,18 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<(openai::completion::CompletionResponse, Option<String>), CompletionError> {
-        let initiator = request_initiator(&completion_request);
-        let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let facts = RequestFacts::capture(&completion_request);
         let request = self.chat_request(completion_request)?;
-        let body = serde_json::to_vec(&request)?;
-        let auth = self.auth_context().await?;
-
-        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/chat/completions", Transport::Http)?,
-            &headers,
-        )
-        .body(body)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new("copilot", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
+        let (req, span) = self
+            .signed_request(
+                &facts,
+                "/chat/completions",
+                Transport::Http,
+                &request.model,
+                CompletionOperation::Chat,
+                serde_json::to_vec(&request)?,
+            )
+            .await?;
 
         send_completion::<_, ChatApiResponse<openai::completion::CompletionResponse>, _>(
             &self.client,
@@ -783,24 +836,18 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<responses_api::CompletionResponse, CompletionError> {
-        let initiator = request_initiator(&completion_request);
-        let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let facts = RequestFacts::capture(&completion_request);
         let request = self.responses_request(completion_request)?;
-        let auth = self.auth_context().await?;
-
-        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/responses", Transport::Http)?,
-            &headers,
-        )
-        .body(serde_json::to_vec(&request)?)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new("copilot", &request.model, CompletionOperation::Chat)
-            .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-            .build();
+        let (req, span) = self
+            .signed_request(
+                &facts,
+                "/responses",
+                Transport::Http,
+                &request.model,
+                CompletionOperation::Chat,
+                serde_json::to_vec(&request)?,
+            )
+            .await?;
 
         send_completion::<_, DirectPayload<responses_api::CompletionResponse>, _>(
             &self.client,
@@ -830,13 +877,8 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<crate::streaming::RawStreamingResult<CopilotStreamingResponse>, CompletionError>
     {
-        let initiator = request_initiator(&completion_request);
-        let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let facts = RequestFacts::capture(&completion_request);
         let request = self.chat_request(completion_request)?;
-        let auth = self.auth_context().await?;
-        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
         let mut request_json = serde_json::to_value(&request)?;
         let request_object = request_json.as_object_mut().ok_or_else(|| {
             CompletionError::ResponseError("copilot request body must be a JSON object".into())
@@ -847,20 +889,16 @@ where
             json!({ "include_usage": true }),
         );
 
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/chat/completions", Transport::Sse)?,
-            &headers,
-        )
-        .body(serde_json::to_vec(&request_json)?)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new(
-            "copilot",
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
+        let (req, span) = self
+            .signed_request(
+                &facts,
+                "/chat/completions",
+                Transport::Sse,
+                &request.model,
+                CompletionOperation::ChatStreaming,
+                serde_json::to_vec(&request_json)?,
+            )
+            .await?;
 
         tracing::Instrument::instrument(
             send_copilot_chat_raw_streaming_request(self.client.clone(), req),
@@ -874,29 +912,19 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<crate::streaming::RawStreamingResult<CopilotStreamingResponse>, CompletionError>
     {
-        let initiator = request_initiator(&completion_request);
-        let has_vision = request_has_vision(&completion_request);
-        let system_instructions = completion_request.preamble.clone();
-        let record_telemetry_content = completion_request.record_telemetry_content;
+        let facts = RequestFacts::capture(&completion_request);
         let mut request = self.responses_request(completion_request)?;
         request.stream = Some(true);
-        let auth = self.auth_context().await?;
-
-        let headers = default_headers(&auth.api_key, initiator, has_vision, self.intent);
-        let req = apply_headers(
-            post_with_auth_base(&self.client, &auth, "/responses", Transport::Sse)?,
-            &headers,
-        )
-        .body(serde_json::to_vec(&request)?)
-        .map_err(|err| CompletionError::HttpError(err.into()))?;
-
-        let span = CompletionSpanBuilder::new(
-            "copilot",
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
+        let (req, span) = self
+            .signed_request(
+                &facts,
+                "/responses",
+                Transport::Sse,
+                &request.model,
+                CompletionOperation::ChatStreaming,
+                serde_json::to_vec(&request)?,
+            )
+            .await?;
 
         let client = self.client.clone();
         // The OpenAI-compatible default header, matching the chat route.
