@@ -75,6 +75,10 @@ tokio-tungstenite = { workspace = true, optional = true }
 # would be wrong-by-construction on WASI.
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+# `lopdf` pulls `getrandom` through its PDF encryption support. Browser WASM
+# cannot select a randomness backend from the target triple alone, so opt in to
+# lopdf's Web Crypto backend only for Rig's supported browser target.
+lopdf = { workspace = true, optional = true, features = ["wasm_js"] }
 
 [dev-dependencies]
 anyhow = { workspace = true }
