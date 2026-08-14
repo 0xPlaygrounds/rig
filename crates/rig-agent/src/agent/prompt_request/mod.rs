@@ -733,12 +733,25 @@ pub(crate) fn is_empty_assistant_turn(choice: &[AssistantContent]) -> bool {
 /// common case, not a corner one.
 ///
 /// Tool calls count as delivered: they are an answer in progress, and a
-/// truncated tool-call turn must still route to execution.
+/// truncated tool-call turn must still route to execution. So do images —
+/// ten providers emit assistant images, and an image *is* the answer for an
+/// image-generation turn.
+///
+/// The match is **exhaustive on purpose**: no `_` arm. Every content variant
+/// must be classified explicitly, so adding one to [`AssistantContent`] breaks
+/// this build and forces a decision instead of silently inheriting a default.
+/// The first version of this predicate had a `_ => false` catch-all and so
+/// classified image-only turns as "no answer" — a truncated image-generation
+/// turn would have errored despite delivering an image, which matters because
+/// image tokens count against the same output budget.
 pub(crate) fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
     !choice.iter().any(|content| match content {
+        // Real text is an answer; an empty block delivers nothing.
         AssistantContent::Text(text) => !text.text.is_empty(),
         AssistantContent::ToolCall(_) => true,
-        _ => false,
+        AssistantContent::Image(_) => true,
+        // The one exclusion: scratch work, not an answer.
+        AssistantContent::Reasoning(_) => false,
     })
 }
 
@@ -939,7 +952,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::ResponseIdentity;
-    use super::{CompletionCall, PromptResponse, TypedPromptResponse, is_empty_assistant_turn};
+    use super::{
+        CompletionCall, PromptResponse, TypedPromptResponse, is_empty_assistant_turn,
+        turn_delivered_no_answer,
+    };
     use crate::{
         agent::{
             AgentBuilder,
@@ -969,6 +985,94 @@ mod tests {
         Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     };
+
+    /// rig#2322 follow-up — every `AssistantContent` variant's answer
+    /// classification, pinned one variant at a time.
+    ///
+    /// A unit test rather than a cassette because this is a pure
+    /// classification decision over a rig-owned enum: no provider traffic is
+    /// involved, and the failure it guards against (a new variant silently
+    /// inheriting the wrong bucket) is invisible at the wire level.
+    ///
+    /// The predicate originally used a `_ => false` catch-all, which made
+    /// image-only turns read as "no answer" — so a truncated image-generation
+    /// turn would have errored despite delivering an image. The match is now
+    /// exhaustive; this test pins each arm so a reclassification is deliberate.
+    #[test]
+    fn answer_classification_covers_every_assistant_content_variant() {
+        let image = AssistantContent::image_base64(
+            "iVBORw0KGgo=",
+            Some(rig_core::message::ImageMediaType::PNG),
+            Some(rig_core::message::ImageDetail::default()),
+        );
+        let reasoning = AssistantContent::Reasoning(rig_core::message::Reasoning::new("thinking"));
+        let tool_call = AssistantContent::ToolCall(ToolCall::from_wire(
+            "call_1".to_string(),
+            ToolFunction::new("add".to_string(), json!({})),
+        ));
+
+        // Delivered an answer.
+        assert!(!turn_delivered_no_answer(&[AssistantContent::text("hi")]));
+        assert!(!turn_delivered_no_answer(std::slice::from_ref(&tool_call)));
+        assert!(
+            !turn_delivered_no_answer(std::slice::from_ref(&image)),
+            "an image IS the answer for an image-generation turn; classifying it \
+             as 'no answer' makes a truncated image turn error despite delivering one"
+        );
+
+        // Delivered nothing.
+        assert!(turn_delivered_no_answer(&[]));
+        assert!(turn_delivered_no_answer(&[AssistantContent::text("")]));
+        assert!(
+            turn_delivered_no_answer(std::slice::from_ref(&reasoning)),
+            "reasoning is scratch work, not an answer"
+        );
+
+        // Mixed: one real item is enough.
+        assert!(!turn_delivered_no_answer(&[
+            reasoning.clone(),
+            AssistantContent::text("answer")
+        ]));
+        assert!(
+            !turn_delivered_no_answer(&[reasoning.clone(), image.clone()]),
+            "a thinking image model that produced an image has answered"
+        );
+        assert!(turn_delivered_no_answer(&[
+            reasoning,
+            AssistantContent::text("")
+        ]));
+    }
+
+    /// rig#2322 follow-up — the divergence between the two predicates is
+    /// exactly one shape, and it is intentional.
+    ///
+    /// `is_empty_assistant_turn` governs the history push ("does this belong
+    /// in the transcript"); `turn_delivered_no_answer` governs the truncation
+    /// guard ("did this answer the question"). A reasoning-only turn is the
+    /// only shape where they disagree, and both answers are correct: it is
+    /// worth recording and it answered nothing.
+    #[test]
+    fn the_two_turn_predicates_diverge_only_on_reasoning_only_turns() {
+        let reasoning_only = vec![AssistantContent::Reasoning(
+            rig_core::message::Reasoning::new("t"),
+        )];
+
+        assert!(!is_empty_assistant_turn(&reasoning_only));
+        assert!(turn_delivered_no_answer(&reasoning_only));
+
+        // Everywhere else they agree.
+        for choice in [
+            vec![],
+            vec![AssistantContent::text("")],
+            vec![AssistantContent::text("real")],
+        ] {
+            assert_eq!(
+                is_empty_assistant_turn(&choice),
+                turn_delivered_no_answer(&choice),
+                "unexpected divergence on {choice:?}"
+            );
+        }
+    }
 
     #[derive(Serialize)]
     struct SerializeOnly {
