@@ -137,13 +137,10 @@ where
     Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
-    let req = client.get(path)?.body(http_client::NoBody)?;
-    let response = client
-        .send::<_, Vec<u8>>(req)
-        .await
-        .map_err(|error| map_transport_error(provider_name, path, error))?;
-
-    decode_json_response(response, provider_name, path).await
+    let body = get_bytes(client, provider_name, path).await?;
+    serde_json::from_slice(&body).map_err(|error| {
+        ModelListingError::parse_error_with_context(provider_name, path, &error, &body)
+    })
 }
 
 /// Triage a listing response's status and decode its JSON body, keeping the
@@ -175,6 +172,14 @@ where
     })
 }
 
+/// Ceiling on pages a single listing will fetch.
+///
+/// Generous by orders of magnitude: the largest provider catalog is a few
+/// hundred models and pages hold up to 1000, so a real listing finishes in one
+/// or two requests. This exists only so a cursor that changes without
+/// advancing terminates.
+pub(crate) const MAX_LISTING_PAGES: usize = 1000;
+
 /// One page of a cursor-paginated listing.
 ///
 /// `next_cursor` is already normalized by the provider's page parser: `None`
@@ -202,10 +207,17 @@ pub(crate) struct ListingPage {
 ///   byte-identical to the one just answered, so the page would repeat
 ///   forever.
 ///
-/// Both rules exist because breaking either one is an *unbounded loop* — the
-/// listing never returns and `models` grows without limit — rather than a
+/// - **A page ceiling ends the listing.** The cursor checks above catch a
+///   cursor that stops moving, but not one that keeps changing without making
+///   progress — a gateway alternating `c1, c2, c1, …`, or minting a fresh
+///   cursor per request. Only a hard bound catches that, and a model catalog
+///   that needs more than [`MAX_LISTING_PAGES`] pages does not exist.
+///
+/// All three rules exist because breaking any of them is an *unbounded loop* —
+/// the listing never returns and `models` grows without limit — rather than a
 /// short list. Anthropic and Gemini each hand-rolled this loop and each
-/// shipped the same class of hang (rig#2334); one implementation is the point.
+/// shipped the same class of hang (rig#2334); one implementation is the point,
+/// and one place to add the bound neither of them had.
 pub(crate) async fn paginate_models<Ext, H, P, Q>(
     client: &Client<Ext, H>,
     provider_name: &str,
@@ -221,7 +233,7 @@ where
     let mut all_models = Vec::new();
     let mut cursor: Option<String> = None;
 
-    loop {
+    for _ in 0..MAX_LISTING_PAGES {
         let path = path_for(cursor.as_deref());
         let body = get_bytes(client, provider_name, &path).await?;
         let page = parse_page(&body, &path)?;
@@ -240,15 +252,28 @@ where
             break;
         }
         cursor = Some(next);
+        continue;
+    }
+
+    if cursor.is_some() {
+        tracing::warn!(
+            provider = provider_name,
+            models = all_models.len(),
+            pages = MAX_LISTING_PAGES,
+            "model listing hit its page ceiling with a cursor still advancing; returning \
+             the pages fetched so far"
+        );
     }
 
     Ok(ModelList::new(all_models))
 }
 
-/// Append `name=value` to `path` as a query parameter, percent-encoding the
-/// value. Cursors are provider-supplied strings landing in a URL, so they are
-/// encoded rather than interpolated.
-pub(crate) fn with_query_pair(path: &str, pairs: &[(&str, &str)]) -> String {
+/// Append `pairs` to `path` as a query string, percent-encoding each value in
+/// the order given. Cursors are provider-supplied strings landing in a URL, so
+/// they are encoded rather than interpolated.
+///
+/// Callers pass at least one pair; an empty slice would yield a dangling `?`.
+pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
     let mut serializer = url::form_urlencoded::Serializer::new(String::new());
     for (name, value) in pairs {
         serializer.append_pair(name, value);

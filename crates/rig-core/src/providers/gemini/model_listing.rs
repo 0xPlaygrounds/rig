@@ -94,7 +94,7 @@ fn list_models_path(page_token: Option<&str>) -> String {
     if let Some(page_token) = page_token {
         pairs.push(("pageToken", page_token));
     }
-    internal::model_listing::with_query_pair("/v1beta/models", &pairs)
+    internal::model_listing::with_query_pairs("/v1beta/models", &pairs)
 }
 
 fn parse_models_page(

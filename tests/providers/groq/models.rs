@@ -28,14 +28,25 @@ async fn list_models_smoke() -> Result<()> {
             "every listing entry carries an id; got {:?}",
             models.data,
         );
-        // `owned_by` is the optional field of the shared entry DTO that Groq
-        // does populate. Asserting it pins the DTO as *reading* Groq's wire
-        // rather than merely tolerating it — a listing that decoded into all
-        // `None` optionals would otherwise look identical to a working one.
-        anyhow::ensure!(
-            models.data.iter().any(|model| model.owned_by.is_some()),
-            "Groq populates owned_by on its listing entries",
-        );
+        // Pin every optional field Groq actually reports. A DTO that decoded
+        // into all-`None` optionals would otherwise look identical to a
+        // working one — which is exactly how a provider-reported output
+        // ceiling got dropped on the floor before (rig#2322). `created` is
+        // excluded: the recorder scrubs timestamps to 0.
+        for (field, present) in [
+            ("name", models.data.iter().any(|m| m.name.is_some())),
+            ("owned_by", models.data.iter().any(|m| m.owned_by.is_some())),
+            (
+                "context_length",
+                models.data.iter().any(|m| m.context_length.is_some()),
+            ),
+            (
+                "max_output_tokens",
+                models.data.iter().any(|m| m.max_output_tokens.is_some()),
+            ),
+        ] {
+            anyhow::ensure!(present, "Groq reports {field} on its listing entries");
+        }
 
         Ok::<_, anyhow::Error>(())
     })

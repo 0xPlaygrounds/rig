@@ -93,7 +93,7 @@ crate::providers::internal::model_listing::impl_model_lister!(
     /// [`ModelLister`](crate::client::ModelLister) implementation for the
     /// Venice API (`GET /models`).
     ///
-    /// Venice also accepts a `?type=` filter; `list_all` requests the
+    /// Venice also accepts a `?type=` filter; [`list_all`](crate::client::ModelLister::list_all) requests the
     /// unfiltered listing, which Venice answers with its text models.
     VeniceModelLister,
     Client<H>,

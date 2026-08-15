@@ -50,7 +50,7 @@ where
             "Anthropic",
             |cursor| match cursor {
                 Some(cursor) => {
-                    internal::model_listing::with_query_pair("/v1/models", &[("after_id", cursor)])
+                    internal::model_listing::with_query_pairs("/v1/models", &[("after_id", cursor)])
                 }
                 None => "/v1/models".to_string(),
             },
@@ -109,12 +109,14 @@ fn parse_page(
 /// | 6 | `pagination_stops_midway_and_keeps_earlier_pages` | mixed | mixed | partial |
 /// | 7 | `pagination_stops_on_an_empty_page_claiming_more` | `true` | `None` | stop, empty |
 /// | 8 | `pagination_stops_on_a_cursor_that_does_not_advance` | `true` | repeated | stop |
-/// | 9 | `pagination_percent_encodes_the_cursor` | `true` | `Some("weird id&x=1")` | encoded |
+/// | 9 | `pagination_stops_at_the_page_ceiling_on_an_alternating_cursor` | `true` | alternating | stop at cap |
+/// | 10 | `pagination_percent_encodes_the_cursor` | `true` | `Some("weird id&x=1")` | encoded |
 ///
-/// Rows 1–5 are every combination of the two fields. Rows 6–8 are the ways a
+/// Rows 1–5 are every combination of the two fields. Rows 6–9 are the ways a
 /// cursor can fail to advance that only show up across multiple pages: one
-/// arriving *after* a good page, a page with no models, and a server that
-/// echoes the same cursor forever. Row 9 covers how the cursor is serialized.
+/// arriving *after* a good page, a page with no models, a server that echoes
+/// the same cursor forever, and one that alternates so no repeat is ever
+/// observed. Row 10 covers how the cursor is serialized.
 ///
 /// No cell is recorded. Anthropic pairs `has_more` with `last_id`, so rows 2
 /// and 4–8 describe responses no live request can produce, and row 3 needs a
@@ -317,6 +319,45 @@ mod tests {
             "the repeat is only detectable on the second page, so both are kept",
         );
         assert_eq!(http_client.remaining_responses(), 1);
+    }
+
+    /// A cursor that keeps *changing* without making progress — a gateway
+    /// alternating between two values, or minting a fresh one per request —
+    /// defeats the repeat check, which only remembers the previous cursor.
+    /// Only the page ceiling stops it, and without one the listing never
+    /// returns while `all_models` grows without bound.
+    #[tokio::test]
+    async fn pagination_stops_at_the_page_ceiling_on_an_alternating_cursor() {
+        use crate::providers::internal::model_listing::MAX_LISTING_PAGES;
+
+        // Two cursors that alternate forever: every request differs from the
+        // one before, so no repeat is ever observed.
+        let pages: Vec<_> = (0..MAX_LISTING_PAGES + 10)
+            .map(|i| {
+                page(
+                    &["claude-a"],
+                    true,
+                    Some(if i % 2 == 0 { "ping" } else { "pong" }),
+                )
+            })
+            .collect();
+        let (lister, http_client) = lister(pages);
+
+        let models = lister
+            .list_all()
+            .await
+            .expect("the ceiling ends the listing instead of looping");
+
+        assert_eq!(
+            models.data.len(),
+            MAX_LISTING_PAGES,
+            "exactly the ceiling's worth of pages is fetched",
+        );
+        assert_eq!(
+            http_client.remaining_responses(),
+            10,
+            "the loop stops at the ceiling rather than draining every page",
+        );
     }
 
     /// A cursor carrying URL-significant characters is percent-encoded rather
