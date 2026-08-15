@@ -150,6 +150,24 @@ pub struct Usage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_creation: Option<CacheCreation>,
     pub output_tokens: u64,
+    /// Breakdown of `output_tokens`. Absent when the provider does not report
+    /// it (a turn with extended thinking disabled).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens_details: Option<OutputTokensDetails>,
+}
+
+/// Breakdown of `usage.output_tokens`.
+///
+/// The tokens Claude spent on extended thinking are reported here, *inside*
+/// `output_tokens` rather than beside it — the name says `details`, and every
+/// recorded turn has `thinking_tokens <= output_tokens`. Adding them to a total
+/// would double-count. Unknown buckets a provider may add later are ignored on
+/// deserialization.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct OutputTokensDetails {
+    /// Output tokens spent on extended thinking this turn.
+    #[serde(default)]
+    pub thinking_tokens: u64,
 }
 
 /// Per-TTL breakdown of cache-write tokens (`usage.cache_creation`).
@@ -190,13 +208,18 @@ impl std::fmt::Display for Usage {
 /// Aggregate an Anthropic token report into rig's usage shape.
 ///
 /// Anthropic reports cache reads and cache writes *alongside* `input_tokens`
-/// rather than inside it, so the total is the sum of all four counters. Shared
-/// with the streaming path, whose `PartialUsage` carries the same counters.
+/// rather than inside it, so the total is the sum of all four counters.
+/// `thinking_tokens` is the exception: it is a *breakdown* of `output_tokens`,
+/// already counted there, so it populates `reasoning_tokens` without entering
+/// the total. Shared with the streaming path, whose `PartialUsage` carries the
+/// same counters — the parameter is required rather than defaulted so a new
+/// caller cannot silently drop it.
 pub(super) fn anthropic_usage_totals(
     input_tokens: u64,
     output_tokens: u64,
     cache_read: Option<u64>,
     cache_creation: Option<u64>,
+    output_tokens_details: Option<OutputTokensDetails>,
 ) -> crate::completion::Usage {
     let mut usage = crate::completion::Usage::new();
 
@@ -204,6 +227,9 @@ pub(super) fn anthropic_usage_totals(
     usage.output_tokens = output_tokens;
     usage.cached_input_tokens = cache_read.unwrap_or_default();
     usage.cache_creation_input_tokens = cache_creation.unwrap_or_default();
+    usage.reasoning_tokens = output_tokens_details
+        .map(|details| details.thinking_tokens)
+        .unwrap_or_default();
     usage.total_tokens = usage.input_tokens
         + usage.cached_input_tokens
         + usage.cache_creation_input_tokens
@@ -219,6 +245,7 @@ impl From<&Usage> for crate::completion::Usage {
             value.output_tokens,
             value.cache_read_input_tokens,
             value.cache_creation_input_tokens,
+            value.output_tokens_details,
         )
     }
 }
@@ -5926,6 +5953,7 @@ mod tests {
                 cache_creation_input_tokens: None,
                 cache_creation: None,
                 output_tokens: 2,
+                output_tokens_details: None,
             },
         };
 
@@ -5965,6 +5993,7 @@ mod tests {
                 cache_creation_input_tokens: None,
                 cache_creation: None,
                 output_tokens: 2,
+                output_tokens_details: None,
             },
         }
     }
@@ -6068,6 +6097,7 @@ mod tests {
                 cache_creation_input_tokens: None,
                 cache_creation: None,
                 output_tokens: 2,
+                output_tokens_details: None,
             },
         };
 
@@ -6683,6 +6713,7 @@ mod tests {
                 cache_creation_input_tokens: None,
                 cache_creation: None,
                 output_tokens: 1,
+                output_tokens_details: None,
             },
         };
 

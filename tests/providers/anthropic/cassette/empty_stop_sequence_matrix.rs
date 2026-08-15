@@ -171,6 +171,7 @@ fn empty_response(stop_reason: Option<&str>, content: Vec<Content>) -> Completio
             cache_creation_input_tokens: None,
             cache_creation: None,
             output_tokens: 1,
+            output_tokens_details: None,
         },
         provider_request_id: None,
     }
