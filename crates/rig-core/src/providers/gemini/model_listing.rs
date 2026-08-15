@@ -114,7 +114,15 @@ fn parse_models_page(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok((models, page.next_page_token))
+    // An empty cursor counts as absent, matching how every other
+    // provider-reported identifier in rig is read. Without this the loop in
+    // `list_all_models` treats `Some("")` as "there is a next page", re-sends
+    // the same empty `pageToken`, and gets the same page back forever —
+    // an unbounded loop rather than a truncated listing.
+    Ok((
+        models,
+        page.next_page_token.filter(|token| !token.is_empty()),
+    ))
 }
 
 async fn list_all_models<Ext, H>(
@@ -189,6 +197,34 @@ mod tests {
 
         assert!(models.is_empty());
         assert_eq!(next_page_token, None);
+    }
+
+    /// An empty `nextPageToken` must read as "no more pages", not as a cursor.
+    ///
+    /// Treated as a cursor it re-sends an empty `pageToken`, gets the same
+    /// page back, and loops forever — the listing never returns rather than
+    /// returning a short list, so the only observable symptom is a hang.
+    #[test]
+    fn parse_models_page_treats_an_empty_next_page_token_as_absent() {
+        let (_, next_page_token) = parse_models_page(
+            br#"{"models": [], "nextPageToken": ""}"#,
+            "/v1beta/models?pageSize=1000",
+        )
+        .expect("page should parse");
+
+        assert_eq!(next_page_token, None);
+    }
+
+    /// A real cursor still advances the loop.
+    #[test]
+    fn parse_models_page_keeps_a_non_empty_next_page_token() {
+        let (_, next_page_token) = parse_models_page(
+            br#"{"models": [], "nextPageToken": "abc123"}"#,
+            "/v1beta/models?pageSize=1000",
+        )
+        .expect("page should parse");
+
+        assert_eq!(next_page_token.as_deref(), Some("abc123"));
     }
 
     #[test]

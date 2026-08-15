@@ -49,8 +49,17 @@ where
         let mut after_id: Option<String> = None;
 
         loop {
+            // Percent-encode the cursor rather than interpolating it: it is a
+            // provider-supplied value landing in a query string, and Gemini's
+            // lister already builds its `pageToken` this way. Anthropic's ids
+            // are URL-safe today, so this is about not depending on that.
             let path = match &after_id {
-                Some(cursor) => format!("/v1/models?after_id={cursor}"),
+                Some(cursor) => format!(
+                    "/v1/models?{}",
+                    url::form_urlencoded::Serializer::new(String::new())
+                        .append_pair("after_id", cursor)
+                        .finish()
+                ),
                 None => "/v1/models".to_string(),
             };
 
@@ -102,6 +111,7 @@ where
 /// | 5 | `pagination_stops_on_an_empty_cursor` | `true` | `Some("")` | stop |
 /// | 6 | `pagination_stops_midway_and_keeps_earlier_pages` | mixed | mixed | partial |
 /// | 7 | `pagination_stops_on_an_empty_page_claiming_more` | `true` | `None` | stop, empty |
+/// | 8 | `pagination_percent_encodes_the_cursor` | `true` | `Some("a&b")` | encoded |
 ///
 /// That is every combination, plus the two orderings that only appear across
 /// multiple pages (a cursor-less page arriving *after* a good one, and a page
@@ -284,6 +294,30 @@ mod tests {
             http_client.remaining_responses(),
             1,
             "the loop stops at the cursor-less page",
+        );
+    }
+
+    /// A cursor carrying URL-significant characters is percent-encoded rather
+    /// than interpolated, so it cannot inject query parameters or truncate the
+    /// path. Anthropic's ids are URL-safe today; this pins that the code does
+    /// not depend on that.
+    #[tokio::test]
+    async fn pagination_percent_encodes_the_cursor() {
+        let (lister, http_client) = lister(vec![
+            page(&["a"], true, Some("weird id&x=1")),
+            page(&["b"], false, None),
+        ]);
+
+        lister.list_all().await.expect("listing should succeed");
+
+        let uris: Vec<_> = http_client
+            .requests()
+            .into_iter()
+            .map(|request| request.uri)
+            .collect();
+        assert!(
+            uris[1].ends_with("/v1/models?after_id=weird+id%26x%3D1"),
+            "the cursor must be percent-encoded: {uris:?}",
         );
     }
 
