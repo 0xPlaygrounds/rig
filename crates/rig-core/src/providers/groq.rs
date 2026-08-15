@@ -84,6 +84,54 @@ client::impl_capabilities!(
     GroqExt,
     completion = CompletionModel<H>,
     transcription = TranscriptionModel<H>,
+    model_listing = GroqModelLister<H>,
+);
+
+/// A Groq listing entry.
+///
+/// Groq reports its context window and output ceiling on every entry, and
+/// [`Model`](crate::model::Model) has fields for both — `max_output_tokens`
+/// exists precisely because rig used to drop a provider-reported output
+/// ceiling on the floor (rig#2322). The shared `ListModelEntry` decodes
+/// neither (Groq spells them `context_window` / `max_completion_tokens`, and
+/// the spellings differ across providers), so Groq keeps its own DTO rather
+/// than losing them.
+#[derive(Debug, serde::Deserialize)]
+struct GroqModelEntry {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    created: Option<u64>,
+    #[serde(default)]
+    owned_by: Option<String>,
+    #[serde(default)]
+    context_window: Option<u32>,
+    #[serde(default)]
+    max_completion_tokens: Option<u32>,
+}
+
+impl From<GroqModelEntry> for crate::model::Model {
+    fn from(value: GroqModelEntry) -> Self {
+        let mut model = crate::model::Model::from_id(value.id);
+        model.name = value.name;
+        model.created_at = value.created;
+        model.owned_by = value.owned_by;
+        model.context_length = value.context_window;
+        model.max_output_tokens = value.max_completion_tokens;
+        model
+    }
+}
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the Groq
+    /// API (`GET /models`), the same path [`GroqExt::VERIFY_PATH`] already
+    /// uses.
+    GroqModelLister,
+    Client<H>,
+    GroqModelEntry,
+    "Groq",
+    "/models"
 );
 
 impl DebugExt for GroqExt {}

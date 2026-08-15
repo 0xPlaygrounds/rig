@@ -2,7 +2,7 @@
 
 use rig::client::ModelListingClient;
 
-use super::super::support::with_gemini_cassette;
+use super::super::support::{with_gemini_cassette, with_gemini_cassette_bogus_key};
 
 #[tokio::test]
 async fn list_models_smoke() {
@@ -52,5 +52,56 @@ async fn list_models_smoke() {
              far fewer surviving means the conversion is dropping them"
         );
     })
+    .await;
+}
+
+/// rig#2079 — a failed Gemini listing must carry provider, path, status and a
+/// body preview.
+///
+/// Gemini used to build its own request and let a transport-level send error
+/// convert directly, so a rejected listing surfaced as a bare `RequestError`
+/// whose only content was the stringified status. Its own
+/// `!status.is_success()` branch never ran: the reqwest transport reports a
+/// non-2xx *as an error* before returning a response, the same dead-arm shape
+/// rig#2315 fixed for `verify`. Routing through the shared fetch classifies it
+/// as `ApiError` with the context every other lister already produced.
+///
+/// Recorded with a deliberately invalid key so the 401 is Gemini's own.
+#[tokio::test]
+async fn list_models_rejected_key_reports_api_error_with_context() {
+    use rig::model::ModelListingError;
+
+    with_gemini_cassette_bogus_key(
+        "models/list_models_rejected_key_reports_api_error_with_context",
+        |client| async move {
+            let error = client
+                .list_models()
+                .await
+                .expect_err("a bogus key must not list models");
+
+            let ModelListingError::ApiError {
+                status_code,
+                message,
+            } = &error
+            else {
+                panic!(
+                    "a rejected listing must classify as ApiError, not a bare transport \
+                     error\nDisplay: {error}\nDebug: {error:#?}"
+                );
+            };
+
+            assert_eq!(*status_code, 400, "unexpected status: {error:#?}");
+            for expected in [
+                "provider=Gemini",
+                "path=/v1beta/models?pageSize=1000",
+                "status=400",
+            ] {
+                assert!(
+                    message.contains(expected),
+                    "the error must carry {expected}; got {message}"
+                );
+            }
+        },
+    )
     .await;
 }

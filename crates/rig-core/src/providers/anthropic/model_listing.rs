@@ -45,68 +45,53 @@ where
     }
 
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let mut all_models = Vec::new();
-        let mut after_id: Option<String> = None;
-
-        loop {
-            // Percent-encode the cursor rather than interpolating it: it is a
-            // provider-supplied value landing in a query string, and Gemini's
-            // lister already builds its `pageToken` this way. Anthropic's ids
-            // are URL-safe today, so this is about not depending on that.
-            let path = match &after_id {
-                Some(cursor) => format!(
-                    "/v1/models?{}",
-                    url::form_urlencoded::Serializer::new(String::new())
-                        .append_pair("after_id", cursor)
-                        .finish()
-                ),
+        internal::model_listing::paginate_models(
+            &self.client,
+            "Anthropic",
+            |cursor| match cursor {
+                Some(cursor) => {
+                    internal::model_listing::with_query_pairs("/v1/models", &[("after_id", cursor)])
+                }
                 None => "/v1/models".to_string(),
-            };
-
-            let page: ListModelsResponse =
-                internal::model_listing::get_json(&self.client, "Anthropic", &path).await?;
-
-            all_models.extend(page.data.into_iter().map(Model::from));
-
-            if !page.has_more {
-                break;
-            }
-
-            // Termination follows the *cursor*, not the flag. `has_more` with
-            // no usable `last_id` would otherwise re-request the same page
-            // forever, appending its models on every pass — an unbounded loop,
-            // not a truncated list. Anthropic pairs the two, so this guard is
-            // unreachable against the real API; it exists because a caller can
-            // point this client at an Anthropic-compatible gateway base URL,
-            // and there is no next page to ask for without a cursor anyway.
-            //
-            // An empty cursor counts as absent, matching how every other
-            // provider-reported identifier in rig is read.
-            let Some(cursor) = page.last_id.filter(|cursor| !cursor.is_empty()) else {
-                tracing::warn!(
-                    models = all_models.len(),
-                    "Anthropic model listing reported more pages but no usable `last_id` \
-                     cursor; returning the pages fetched so far"
-                );
-                break;
-            };
-            // A cursor that repeats cannot advance either: the next request is
-            // byte-identical to the one just answered, so the loop would fetch
-            // the same page forever. Absence is not the only way a cursor can
-            // fail to move.
-            if after_id.as_deref() == Some(cursor.as_str()) {
-                tracing::warn!(
-                    models = all_models.len(),
-                    "Anthropic model listing repeated its `last_id` cursor; returning the \
-                     pages fetched so far"
-                );
-                break;
-            }
-            after_id = Some(cursor);
-        }
-
-        Ok(ModelList::new(all_models))
+            },
+            parse_page,
+        )
+        .await
     }
+}
+
+/// Anthropic pages with a `has_more` flag beside the `last_id` cursor, so the
+/// "more pages, no cursor" shape is expressible on this wire and worth
+/// reporting. The shared loop only needs to know whether there is a cursor.
+fn parse_page(
+    body: &[u8],
+    path: &str,
+) -> Result<internal::model_listing::ListingPage, ModelListingError> {
+    let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
+        ModelListingError::parse_error_with_context("Anthropic", path, &error, body)
+    })?;
+
+    // An empty cursor counts as absent, matching how every other
+    // provider-reported identifier in rig is read.
+    let next_cursor = page.last_id.filter(|cursor| !cursor.is_empty());
+    if page.has_more && next_cursor.is_none() {
+        // Anthropic pairs the two, so this is unreachable against the real
+        // API; it is reachable because a caller can point this client at an
+        // Anthropic-compatible gateway base URL. There is no next page to ask
+        // for without a cursor either way.
+        tracing::warn!(
+            "Anthropic model listing reported more pages but no usable `last_id` cursor; \
+             returning the pages fetched so far"
+        );
+    }
+
+    Ok(internal::model_listing::ListingPage {
+        models: page.data.into_iter().map(Model::from).collect(),
+        // `has_more: false` ends the listing even if a cursor is present:
+        // the flag is authoritative for *stopping*, the cursor only for
+        // *continuing*.
+        next_cursor: page.has_more.then_some(next_cursor).flatten(),
+    })
 }
 
 /// Edge matrix for the pagination loop's termination.
@@ -124,12 +109,14 @@ where
 /// | 6 | `pagination_stops_midway_and_keeps_earlier_pages` | mixed | mixed | partial |
 /// | 7 | `pagination_stops_on_an_empty_page_claiming_more` | `true` | `None` | stop, empty |
 /// | 8 | `pagination_stops_on_a_cursor_that_does_not_advance` | `true` | repeated | stop |
-/// | 9 | `pagination_percent_encodes_the_cursor` | `true` | `Some("weird id&x=1")` | encoded |
+/// | 9 | `pagination_stops_at_the_page_ceiling_on_an_alternating_cursor` | `true` | alternating | stop at cap |
+/// | 10 | `pagination_percent_encodes_the_cursor` | `true` | `Some("weird id&x=1")` | encoded |
 ///
-/// Rows 1–5 are every combination of the two fields. Rows 6–8 are the ways a
+/// Rows 1–5 are every combination of the two fields. Rows 6–9 are the ways a
 /// cursor can fail to advance that only show up across multiple pages: one
-/// arriving *after* a good page, a page with no models, and a server that
-/// echoes the same cursor forever. Row 9 covers how the cursor is serialized.
+/// arriving *after* a good page, a page with no models, a server that echoes
+/// the same cursor forever, and one that alternates so no repeat is ever
+/// observed. Row 10 covers how the cursor is serialized.
 ///
 /// No cell is recorded. Anthropic pairs `has_more` with `last_id`, so rows 2
 /// and 4–8 describe responses no live request can produce, and row 3 needs a
@@ -332,6 +319,45 @@ mod tests {
             "the repeat is only detectable on the second page, so both are kept",
         );
         assert_eq!(http_client.remaining_responses(), 1);
+    }
+
+    /// A cursor that keeps *changing* without making progress — a gateway
+    /// alternating between two values, or minting a fresh one per request —
+    /// defeats the repeat check, which only remembers the previous cursor.
+    /// Only the page ceiling stops it, and without one the listing never
+    /// returns while `all_models` grows without bound.
+    #[tokio::test]
+    async fn pagination_stops_at_the_page_ceiling_on_an_alternating_cursor() {
+        use crate::providers::internal::model_listing::MAX_LISTING_PAGES;
+
+        // Two cursors that alternate forever: every request differs from the
+        // one before, so no repeat is ever observed.
+        let pages: Vec<_> = (0..MAX_LISTING_PAGES + 10)
+            .map(|i| {
+                page(
+                    &["claude-a"],
+                    true,
+                    Some(if i % 2 == 0 { "ping" } else { "pong" }),
+                )
+            })
+            .collect();
+        let (lister, http_client) = lister(pages);
+
+        let models = lister
+            .list_all()
+            .await
+            .expect("the ceiling ends the listing instead of looping");
+
+        assert_eq!(
+            models.data.len(),
+            MAX_LISTING_PAGES,
+            "exactly the ceiling's worth of pages is fetched",
+        );
+        assert_eq!(
+            http_client.remaining_responses(),
+            10,
+            "the loop stops at the ceiling rather than draining every page",
+        );
     }
 
     /// A cursor carrying URL-significant characters is percent-encoded rather

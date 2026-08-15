@@ -1,8 +1,11 @@
 use crate::{
     client::{self, ModelLister, Provider},
-    http_client::{self, HttpClientExt},
+    http_client::HttpClientExt,
     model::{Model, ModelList, ModelListingError},
-    providers::gemini::{Client, InteractionsClient},
+    providers::{
+        gemini::{Client, InteractionsClient},
+        internal,
+    },
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
@@ -86,20 +89,18 @@ impl TryFrom<ListModelEntry> for Model {
 }
 
 fn list_models_path(page_token: Option<&str>) -> String {
-    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
-    serializer.append_pair("pageSize", &MAX_PAGE_SIZE.to_string());
-
+    let page_size = MAX_PAGE_SIZE.to_string();
+    let mut pairs = vec![("pageSize", page_size.as_str())];
     if let Some(page_token) = page_token {
-        serializer.append_pair("pageToken", page_token);
+        pairs.push(("pageToken", page_token));
     }
-
-    format!("/v1beta/models?{}", serializer.finish())
+    internal::model_listing::with_query_pairs("/v1beta/models", &pairs)
 }
 
 fn parse_models_page(
     body: &[u8],
     path: &str,
-) -> Result<(Vec<Model>, Option<String>), ModelListingError> {
+) -> Result<internal::model_listing::ListingPage, ModelListingError> {
     let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
         ModelListingError::parse_error_with_context("Gemini", path, &error, body)
     })?;
@@ -115,14 +116,13 @@ fn parse_models_page(
         .collect::<Result<Vec<_>, _>>()?;
 
     // An empty cursor counts as absent, matching how every other
-    // provider-reported identifier in rig is read. Without this the loop in
-    // `list_all_models` treats `Some("")` as "there is a next page", re-sends
-    // the same empty `pageToken`, and gets the same page back forever —
-    // an unbounded loop rather than a truncated listing.
-    Ok((
+    // provider-reported identifier in rig is read. Reporting `Some("")` would
+    // tell the shared loop there is a next page, and re-sending an empty
+    // `pageToken` returns the same page forever.
+    Ok(internal::model_listing::ListingPage {
         models,
-        page.next_page_token.filter(|token| !token.is_empty()),
-    ))
+        next_cursor: page.next_page_token.filter(|token| !token.is_empty()),
+    })
 }
 
 async fn list_all_models<Ext, H>(
@@ -132,48 +132,8 @@ where
     Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
-    let mut all_models = Vec::new();
-    let mut next_page_token: Option<String> = None;
-
-    loop {
-        let path = list_models_path(next_page_token.as_deref());
-        let req = client.get(&path)?.body(http_client::NoBody)?;
-        let response = client.send::<_, Vec<u8>>(req).await?;
-
-        if !response.status().is_success() {
-            let status_code = response.status().as_u16();
-            let body = response.into_body().await?;
-            return Err(ModelListingError::api_error_with_context(
-                "Gemini",
-                &path,
-                status_code,
-                &body,
-            ));
-        }
-
-        let body = response.into_body().await?;
-        let (models, next_page_token_for_page) = parse_models_page(&body, &path)?;
-        all_models.extend(models);
-
-        if next_page_token_for_page.is_none() {
-            break;
-        }
-        // A cursor that repeats cannot advance: the next request would be
-        // byte-identical to the one just answered. Absence is not the only way
-        // a cursor can fail to move.
-        if next_page_token.is_some() && next_page_token == next_page_token_for_page {
-            tracing::warn!(
-                models = all_models.len(),
-                "Gemini model listing repeated its `nextPageToken`; returning the pages \
-                 fetched so far"
-            );
-            break;
-        }
-
-        next_page_token = next_page_token_for_page;
-    }
-
-    Ok(ModelList::new(all_models))
+    internal::model_listing::paginate_models(client, "Gemini", list_models_path, parse_models_page)
+        .await
 }
 
 /// [`ModelLister`] implementation for Gemini GenerateContent clients.
@@ -203,11 +163,29 @@ mod tests {
 
     #[test]
     fn parse_models_page_accepts_omitted_empty_models_list() {
-        let (models, next_page_token) =
+        let page =
             parse_models_page(br#"{}"#, "/v1beta/models?pageSize=1000").expect("page should parse");
+        let (models, next_page_token) = (page.models, page.next_cursor);
 
         assert!(models.is_empty());
         assert_eq!(next_page_token, None);
+    }
+
+    /// The request path is what the recorded cassette matches on, so its exact
+    /// shape is load-bearing. Page 1 is covered by that replay; this pins the
+    /// cursored form, which no fixture exercises because Gemini's catalog fits
+    /// in one page.
+    #[test]
+    fn list_models_path_puts_page_size_first_and_encodes_the_cursor() {
+        assert_eq!(list_models_path(None), "/v1beta/models?pageSize=1000");
+        assert_eq!(
+            list_models_path(Some("abc123")),
+            "/v1beta/models?pageSize=1000&pageToken=abc123",
+        );
+        assert_eq!(
+            list_models_path(Some("weird token&x=1")),
+            "/v1beta/models?pageSize=1000&pageToken=weird+token%26x%3D1",
+        );
     }
 
     /// An empty `nextPageToken` must read as "no more pages", not as a cursor.
@@ -217,11 +195,12 @@ mod tests {
     /// returning a short list, so the only observable symptom is a hang.
     #[test]
     fn parse_models_page_treats_an_empty_next_page_token_as_absent() {
-        let (_, next_page_token) = parse_models_page(
+        let next_page_token = parse_models_page(
             br#"{"models": [], "nextPageToken": ""}"#,
             "/v1beta/models?pageSize=1000",
         )
-        .expect("page should parse");
+        .expect("page should parse")
+        .next_cursor;
 
         assert_eq!(next_page_token, None);
     }
@@ -229,11 +208,12 @@ mod tests {
     /// A real cursor still advances the loop.
     #[test]
     fn parse_models_page_keeps_a_non_empty_next_page_token() {
-        let (_, next_page_token) = parse_models_page(
+        let next_page_token = parse_models_page(
             br#"{"models": [], "nextPageToken": "abc123"}"#,
             "/v1beta/models?pageSize=1000",
         )
-        .expect("page should parse");
+        .expect("page should parse")
+        .next_cursor;
 
         assert_eq!(next_page_token.as_deref(), Some("abc123"));
     }
@@ -297,8 +277,9 @@ mod tests {
             ]
         }"#;
 
-        let (models, next_page_token) =
+        let page =
             parse_models_page(body, "/v1beta/models?pageSize=1000").expect("page should parse");
+        let (models, next_page_token) = (page.models, page.next_cursor);
 
         assert_eq!(next_page_token, None);
         assert_eq!(models.len(), 1);
@@ -323,8 +304,9 @@ mod tests {
             ]
         }"#;
 
-        let (models, _) =
-            parse_models_page(body, "/v1beta/models?pageSize=1000").expect("page should parse");
+        let models = parse_models_page(body, "/v1beta/models?pageSize=1000")
+            .expect("page should parse")
+            .models;
 
         assert_eq!(models.len(), 1);
         assert_eq!(models[0].id, "gemini-2.0-flash");

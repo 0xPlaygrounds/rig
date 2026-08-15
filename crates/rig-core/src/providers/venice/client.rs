@@ -1,9 +1,7 @@
 //! Venice client, provider extension, and capability wiring.
 
-use crate::client::{self, BearerAuth, DebugExt, ModelLister, Provider};
-use crate::http_client::HttpClientExt;
-use crate::model::{Model, ModelList, ModelListingError};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::client::{self, BearerAuth, DebugExt, Provider};
+use crate::model::Model;
 
 // ================================================================
 // Venice Client
@@ -91,34 +89,18 @@ impl From<ListModelEntry> for Model {
     }
 }
 
-/// [`ModelLister`] implementation for the Venice API (`GET /models`).
-///
-/// Venice also accepts a `?type=` filter; [`list_all`](ModelLister::list_all)
-/// requests the unfiltered listing, which Venice answers with its text models.
-#[derive(Clone)]
-pub struct VeniceModelLister<H = reqwest::Client> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for VeniceModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    type Client = Client<H>;
-
-    fn new(client: Self::Client) -> Self {
-        Self { client }
-    }
-
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        crate::providers::internal::model_listing::list_models::<ListModelEntry, _, _>(
-            &self.client,
-            "Venice",
-            "/models",
-        )
-        .await
-    }
-}
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// Venice API (`GET /models`).
+    ///
+    /// Venice also accepts a `?type=` filter; [`list_all`](crate::client::ModelLister::list_all) requests the
+    /// unfiltered listing, which Venice answers with its text models.
+    VeniceModelLister,
+    Client<H>,
+    ListModelEntry,
+    "Venice",
+    "/models"
+);
 
 #[cfg(test)]
 mod tests {

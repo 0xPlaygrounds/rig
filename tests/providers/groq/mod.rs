@@ -7,6 +7,7 @@ mod context;
 mod extractor;
 mod extractor_usage;
 mod loaders;
+mod models;
 mod multi_extract;
 mod permission_control;
 mod request_hook;

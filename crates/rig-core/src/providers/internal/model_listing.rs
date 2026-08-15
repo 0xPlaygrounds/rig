@@ -137,13 +137,10 @@ where
     Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
 {
-    let req = client.get(path)?.body(http_client::NoBody)?;
-    let response = client
-        .send::<_, Vec<u8>>(req)
-        .await
-        .map_err(|error| map_transport_error(provider_name, path, error))?;
-
-    decode_json_response(response, provider_name, path).await
+    let body = get_bytes(client, provider_name, path).await?;
+    serde_json::from_slice(&body).map_err(|error| {
+        ModelListingError::parse_error_with_context(provider_name, path, &error, &body)
+    })
 }
 
 /// Triage a listing response's status and decode its JSON body, keeping the
@@ -173,6 +170,157 @@ where
     serde_json::from_slice(&body).map_err(|error| {
         ModelListingError::parse_error_with_context(provider_name, path, &error, &body)
     })
+}
+
+/// Ceiling on pages a single listing will fetch.
+///
+/// Generous by orders of magnitude: the largest provider catalog is a few
+/// hundred models and pages hold up to 1000, so a real listing finishes in one
+/// or two requests. This exists only so a cursor that changes without
+/// advancing terminates.
+pub(crate) const MAX_LISTING_PAGES: usize = 1000;
+
+/// One page of a cursor-paginated listing.
+///
+/// `next_cursor` is already normalized by the provider's page parser: `None`
+/// means "no next page to ask for", whether the wire said so with a flag, an
+/// absent cursor, or an empty one.
+#[derive(Debug)]
+pub(crate) struct ListingPage {
+    pub(crate) models: Vec<Model>,
+    pub(crate) next_cursor: Option<String>,
+}
+
+/// Drive a cursor-paginated listing to exhaustion.
+///
+/// The providers differ in how they spell a cursor (`after_id`, `pageToken`),
+/// where they put it, and how they signal the end (Anthropic's `has_more`
+/// flag, Gemini's bare `nextPageToken`) — so `path_for` and `parse_page` stay
+/// provider-specific. What must *not* differ is when the loop stops, and that
+/// lives here:
+///
+/// - **No next cursor ends the listing.** Termination follows the cursor, not
+///   any flag beside it. A provider that claims more pages while naming no
+///   cursor has nothing to ask for, so its parser reports `None` and the
+///   listing ends with what it has.
+/// - **A repeated cursor ends the listing.** The next request would be
+///   byte-identical to the one just answered, so the page would repeat
+///   forever.
+///
+/// - **A page ceiling ends the listing.** The cursor checks above catch a
+///   cursor that stops moving, but not one that keeps changing without making
+///   progress — a gateway alternating `c1, c2, c1, …`, or minting a fresh
+///   cursor per request. Only a hard bound catches that, and a model catalog
+///   that needs more than [`MAX_LISTING_PAGES`] pages does not exist.
+///
+/// All three rules exist because breaking any of them is an *unbounded loop* —
+/// the listing never returns and `models` grows without limit — rather than a
+/// short list. Anthropic and Gemini each hand-rolled this loop and each
+/// shipped the same class of hang (rig#2334); one implementation is the point,
+/// and one place to add the bound neither of them had.
+pub(crate) async fn paginate_models<Ext, H, P, Q>(
+    client: &Client<Ext, H>,
+    provider_name: &str,
+    mut path_for: P,
+    mut parse_page: Q,
+) -> Result<ModelList, ModelListingError>
+where
+    Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+    P: FnMut(Option<&str>) -> String,
+    Q: FnMut(&[u8], &str) -> Result<ListingPage, ModelListingError>,
+{
+    let mut all_models = Vec::new();
+    let mut cursor: Option<String> = None;
+    // Only the loop running out of iterations is a ceiling. Every `break`
+    // below is the provider ending the listing, which is the normal path and
+    // must stay silent — inferring the ceiling from `cursor` instead would
+    // report one on any listing that fetched more than a single page, since
+    // the cursor of the *previous* page is still held when the loop breaks.
+    let mut exhausted_page_budget = true;
+
+    for _ in 0..MAX_LISTING_PAGES {
+        let path = path_for(cursor.as_deref());
+        let body = get_bytes(client, provider_name, &path).await?;
+        let page = parse_page(&body, &path)?;
+        all_models.extend(page.models);
+
+        let Some(next) = page.next_cursor else {
+            exhausted_page_budget = false;
+            break;
+        };
+        if cursor.as_deref() == Some(next.as_str()) {
+            tracing::warn!(
+                provider = provider_name,
+                models = all_models.len(),
+                "model listing repeated its pagination cursor; returning the pages fetched \
+                 so far"
+            );
+            exhausted_page_budget = false;
+            break;
+        }
+        cursor = Some(next);
+        continue;
+    }
+
+    if exhausted_page_budget {
+        tracing::warn!(
+            provider = provider_name,
+            models = all_models.len(),
+            pages = MAX_LISTING_PAGES,
+            "model listing hit its page ceiling with a cursor still advancing; returning \
+             the pages fetched so far"
+        );
+    }
+
+    Ok(ModelList::new(all_models))
+}
+
+/// Append `pairs` to `path` as a query string, percent-encoding each value in
+/// the order given. Cursors are provider-supplied strings landing in a URL, so
+/// they are encoded rather than interpolated.
+///
+/// Callers pass at least one pair; an empty slice would yield a dangling `?`.
+pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    for (name, value) in pairs {
+        serializer.append_pair(name, value);
+    }
+    format!("{path}?{}", serializer.finish())
+}
+
+/// GET `path` and return the raw body, with listing-flavored status triage.
+///
+/// The paginated listers need the bytes rather than a decoded value: their
+/// page parsers convert entries fallibly and want the raw body for error
+/// context.
+pub(crate) async fn get_bytes<Ext, H>(
+    client: &Client<Ext, H>,
+    provider_name: &str,
+    path: &str,
+) -> Result<Vec<u8>, ModelListingError>
+where
+    Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+{
+    let req = client.get(path)?.body(http_client::NoBody)?;
+    let response = client
+        .send::<_, Vec<u8>>(req)
+        .await
+        .map_err(|error| map_transport_error(provider_name, path, error))?;
+
+    if !response.status().is_success() {
+        let status_code = response.status().as_u16();
+        let body = response.into_body().await?;
+        return Err(ModelListingError::api_error_with_context(
+            provider_name,
+            path,
+            status_code,
+            &body,
+        ));
+    }
+
+    Ok(response.into_body().await?)
 }
 
 /// List models from an OpenAI-style `{ "data": [Entry, ...] }` endpoint,
