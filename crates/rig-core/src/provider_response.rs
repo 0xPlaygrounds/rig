@@ -24,6 +24,12 @@ pub struct ProviderResponseError {
     /// calls. `None` means the provider did not report one — a documented
     /// outcome, never a secondary error (rig#2314).
     pub provider_request_id: Option<String>,
+    /// The response's headers, verbatim, when the capture path had them in
+    /// hand — the rate-limit metadata (`Retry-After`, `x-ratelimit-*`) a
+    /// caller needs to back off correctly after a 429 (rig#2210). Boxed to
+    /// keep this error small enough for `clippy::result_large_err`. `None`
+    /// means "not captured", never "the response had no headers".
+    pub headers: Option<Box<http::HeaderMap>>,
 }
 
 impl ProviderResponseError {
@@ -33,6 +39,7 @@ impl ProviderResponseError {
             status: Some(status),
             body: body.into(),
             provider_request_id: None,
+            headers: None,
         }
     }
 
@@ -43,12 +50,20 @@ impl ProviderResponseError {
             status: None,
             body: body.into(),
             provider_request_id: None,
+            headers: None,
         }
     }
 
     /// Attach the transport request id the failed response reported.
     pub fn with_provider_request_id(mut self, request_id: Option<String>) -> Self {
         self.provider_request_id = request_id.filter(|id| !id.is_empty());
+        self
+    }
+
+    /// Attach the response's headers, so rate-limit metadata survives onto the
+    /// error (rig#2210).
+    pub fn with_headers(mut self, headers: Option<Box<http::HeaderMap>>) -> Self {
+        self.headers = headers;
         self
     }
 }
@@ -151,6 +166,49 @@ macro_rules! impl_provider_response_helpers {
                 )
             }
 
+            /// Attaches the response's headers to an error just built by one of
+            /// the `from_http_response*` funnels, so rate-limit metadata
+            /// (`Retry-After`, `x-ratelimit-*`) survives onto it (rig#2210).
+            ///
+            /// This is a separate step rather than a funnel parameter because
+            /// the funnels' classification is fixed by the *call path* (does
+            /// this provider have a request-id contract?), while header capture
+            /// depends only on whether the transport handed the response back.
+            /// Both routes can therefore carry headers:
+            /// [`Self::ProviderResponse`] stores them alongside the request id,
+            /// and a non-success [`Self::HttpError`] is upgraded in place to
+            /// [`http_client::Error::InvalidStatusCodeWithDetails`](crate::http_client::Error::InvalidStatusCodeWithDetails),
+            /// which displays identically to the header-less variant.
+            ///
+            /// Passing `None` leaves the error untouched, as does calling this
+            /// on a variant with no response to annotate. An error that already
+            /// captured headers keeps the ones it has: the first capture is the
+            /// one that saw the response, so this never overwrites.
+            pub fn with_response_headers(self, headers: Option<Box<http::HeaderMap>>) -> Self {
+                let Some(headers) = headers else {
+                    return self;
+                };
+                match self {
+                    // The first capture is the one that saw the response; a
+                    // later caller only fills the gap, mirroring how the
+                    // request-id slot is stamped (rig#2314).
+                    Self::ProviderResponse(response) if response.headers.is_none() => {
+                        Self::ProviderResponse(response.with_headers(Some(headers)))
+                    }
+                    Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithMessage(
+                        status,
+                        body,
+                    )) => {
+                        Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithDetails {
+                            status,
+                            body,
+                            headers,
+                        })
+                    }
+                    other => other,
+                }
+            }
+
             /// Preserves a raw provider error body that has **no HTTP status**.
             ///
             /// Use this for non-HTTP transports (gRPC / SDK clients such as AWS
@@ -224,6 +282,39 @@ macro_rules! impl_provider_response_helpers {
             pub fn provider_request_id(&self) -> Option<&str> {
                 match self {
                     Self::ProviderResponse(response) => response.provider_request_id.as_deref(),
+                    _ => None,
+                }
+            }
+
+            /// Returns the response's headers when the capture path preserved
+            /// them (rig#2210) — the rate-limit metadata (`Retry-After`,
+            /// `x-ratelimit-*`) a caller needs to back off correctly:
+            ///
+            /// ```no_run
+            /// # use rig_core::completion::CompletionError;
+            /// # use std::time::Duration;
+            /// fn backoff(error: &CompletionError) -> Option<Duration> {
+            ///     let seconds = error
+            ///         .provider_response_headers()?
+            ///         .get(http::header::RETRY_AFTER)?
+            ///         .to_str()
+            ///         .ok()?
+            ///         .parse()
+            ///         .ok()?;
+            ///     Some(Duration::from_secs(seconds))
+            /// }
+            /// ```
+            ///
+            /// Returns `None` when no headers were captured: non-HTTP
+            /// transports (gRPC / SDK clients), Rig-generated diagnostics,
+            /// errors funnelled from only a status and body (e.g. via
+            /// [`Self::from_http_response`]), and transports that report a
+            /// non-success status without preserving them. `None` therefore
+            /// means "not captured", never "the response had no headers".
+            pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+                match self {
+                    Self::ProviderResponse(response) => response.headers.as_deref(),
+                    Self::HttpError(error) => error.non_success_headers(),
                     _ => None,
                 }
             }
@@ -429,7 +520,75 @@ mod tests {
             let err = <$err>::from_provider_body("");
             assert_eq!(err.provider_response_body(), Some(""));
             assert!(err.provider_response_json().expect("ok").is_none());
+
+            // rig#2210 — headers are only present when a capture path
+            // preserved them. The status+body funnels never have any...
+            for err in [
+                <$err>::from_http_response(StatusCode::TOO_MANY_REQUESTS, body),
+                <$err>::from_http_response(StatusCode::OK, body),
+                <$err>::from_provider_body(body),
+                <$err>::from_http_response_with_request_id(
+                    StatusCode::TOO_MANY_REQUESTS,
+                    body,
+                    Some("req_abc".to_string()),
+                ),
+            ] {
+                assert!(
+                    err.provider_response_headers().is_none(),
+                    concat!(stringify!($err), ": a funnel cannot invent headers"),
+                );
+                // ...and attaching `None` must not disturb the error.
+                let untouched = err.with_response_headers(None);
+                assert!(untouched.provider_response_headers().is_none());
+                assert_eq!(untouched.provider_response_body(), Some(body));
+            }
+
+            // ...but both classifications carry headers once attached, so
+            // `Retry-After` stays readable on a 429 whether the provider has a
+            // request-id contract (ProviderResponse) or not (HttpError).
+            let contract_less = <$err>::from_http_response(StatusCode::TOO_MANY_REQUESTS, body)
+                .with_response_headers(Some(retry_after_headers()));
+            let contract = <$err>::from_http_response_with_request_id(
+                StatusCode::TOO_MANY_REQUESTS,
+                body,
+                Some("req_abc".to_string()),
+            )
+            .with_response_headers(Some(retry_after_headers()));
+
+            for (label, err) in [("contract-less", contract_less), ("contract", contract)] {
+                let err_ty = stringify!($err);
+                assert_eq!(
+                    err.provider_response_headers()
+                        .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                        .and_then(|value| value.to_str().ok()),
+                    Some("20"),
+                    "{err_ty}/{label}: captured Retry-After not surfaced",
+                );
+                // Attaching headers must not disturb the status or body the
+                // funnel already preserved.
+                assert_eq!(
+                    err.provider_response_status(),
+                    Some(StatusCode::TOO_MANY_REQUESTS),
+                    "{err_ty}/{label}: status lost when headers were attached",
+                );
+                assert_eq!(
+                    err.provider_response_body(),
+                    Some(body),
+                    "{err_ty}/{label}: body lost when headers were attached",
+                );
+            }
         }};
+    }
+
+    /// A 429's rate-limit metadata, as a provider would send it.
+    fn retry_after_headers() -> Box<http::HeaderMap> {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::RETRY_AFTER,
+            http::HeaderValue::from_static("20"),
+        );
+        headers.insert("x-ratelimit-remaining", http::HeaderValue::from_static("0"));
+        Box::new(headers)
     }
 
     #[test]
@@ -497,6 +656,102 @@ mod tests {
         assert_eq!(error.provider_request_id(), None);
     }
 
+    /// rig#2210 × rig#2314: the two pieces of transport metadata are captured
+    /// on the same path and must not evict each other.
+    #[test]
+    fn request_id_and_headers_coexist_on_one_error() {
+        let error = crate::completion::CompletionError::from_http_response_with_request_id(
+            StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":"slow down"}"#,
+            Some("req_abc".to_string()),
+        )
+        .with_response_headers(Some(retry_after_headers()));
+
+        assert_eq!(error.provider_request_id(), Some("req_abc"));
+        assert_eq!(
+            error
+                .provider_response_headers()
+                .and_then(|headers| headers.get("x-ratelimit-remaining"))
+                .and_then(|value| value.to_str().ok()),
+            Some("0"),
+        );
+    }
+
+    /// Attaching headers to a contract-less non-success error upgrades the
+    /// transport variant in place, leaving the classification callers match on
+    /// (`HttpError`) and the preserved status/body untouched.
+    #[test]
+    fn attaching_headers_upgrades_the_transport_variant_in_place() {
+        let error = crate::completion::CompletionError::from_http_response(
+            StatusCode::TOO_MANY_REQUESTS,
+            "slow down",
+        )
+        .with_response_headers(Some(retry_after_headers()));
+
+        assert!(matches!(
+            error,
+            crate::completion::CompletionError::HttpError(
+                crate::http_client::Error::InvalidStatusCodeWithDetails { .. }
+            ),
+        ));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some("slow down"));
+        // The contract-less path reports no id whether or not headers rode along.
+        assert_eq!(error.provider_request_id(), None);
+    }
+
+    /// First capture wins on both classifications: the site that saw the
+    /// response is the authority, and a later attach only fills a gap. Without
+    /// this, a wrapper that re-attaches would silently replace the real
+    /// response's headers.
+    #[test]
+    fn attaching_headers_never_overwrites_an_earlier_capture() {
+        let mut later = http::HeaderMap::new();
+        later.insert(http::header::RETRY_AFTER, "999".parse().expect("value"));
+
+        for build in [
+            crate::completion::CompletionError::from_http_response,
+            |status, body| {
+                crate::completion::CompletionError::from_http_response_with_request_id(
+                    status,
+                    body,
+                    Some("req_abc".to_string()),
+                )
+            },
+        ] {
+            let error = build(StatusCode::TOO_MANY_REQUESTS, "slow down")
+                .with_response_headers(Some(retry_after_headers()))
+                .with_response_headers(Some(Box::new(later.clone())));
+
+            assert_eq!(
+                error
+                    .provider_response_headers()
+                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                    .and_then(|value| value.to_str().ok()),
+                Some("20"),
+                "the first capture must win",
+            );
+        }
+    }
+
+    /// Variants with no slot for a response absorb the call unchanged, so a
+    /// capture site can attach unconditionally.
+    #[test]
+    fn attaching_headers_to_a_slotless_variant_is_a_no_op() {
+        let error = crate::completion::CompletionError::ProviderError("rig diagnostic".to_string())
+            .with_response_headers(Some(retry_after_headers()));
+
+        assert!(matches!(
+            error,
+            crate::completion::CompletionError::ProviderError(_)
+        ));
+        assert!(error.provider_response_headers().is_none());
+        assert_eq!(error.to_string(), "ProviderError: rig diagnostic");
+    }
+
     /// Display goldens (rig#2315 error matrix): error strings are what
     /// callers grep and alert on — message churn must be a reviewed diff.
     #[test]
@@ -541,5 +796,24 @@ mod tests {
             "x".to_string(),
         );
         assert_eq!(details.to_string(), message.to_string());
+
+        // rig#2210: capturing headers must never change the text a caller
+        // logs, on either classification.
+        for build in [
+            crate::completion::CompletionError::from_http_response,
+            |status, body| {
+                crate::completion::CompletionError::from_http_response_with_request_id(
+                    status,
+                    body,
+                    Some("req_abc".to_string()),
+                )
+            },
+        ] {
+            let bare = build(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#);
+            let bare_text = bare.to_string();
+            let with_headers = build(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#)
+                .with_response_headers(Some(retry_after_headers()));
+            assert_eq!(with_headers.to_string(), bare_text);
+        }
     }
 }

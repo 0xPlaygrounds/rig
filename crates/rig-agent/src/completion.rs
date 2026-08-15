@@ -95,6 +95,14 @@ macro_rules! forward_provider_response_helpers {
                     _ => None,
                 }
             }
+
+            #[doc = concat!("Returns the response headers exposed by a wrapped ", $inner, " — e.g. `Retry-After` on a 429 (rig#2210).")]
+            pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
+                match self {
+                    Self::$variant(error) => error.provider_response_headers(),
+                    _ => None,
+                }
+            }
         }
     };
 }
@@ -229,6 +237,68 @@ mod provider_response_tests {
                     "message": "bad input"
                 }
             }))
+        );
+    }
+
+    /// rig#2210: the response headers forward through both wrappers, so an
+    /// agent-level caller can back off on `Retry-After` without unwrapping to
+    /// the transport error by hand. Covered on both classifications, since
+    /// the two store the headers in different places.
+    #[test]
+    fn prompt_error_forwards_captured_response_headers() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::RETRY_AFTER,
+            http::HeaderValue::from_static("20"),
+        );
+        let body = r#"{"error":{"message":"rate limited"}}"#;
+
+        for completion_error in [
+            // Contract provider: headers live on the ProviderResponse.
+            CompletionError::from_http_response_with_request_id(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                body,
+                Some("req_abc".to_string()),
+            )
+            .with_response_headers(Some(Box::new(headers.clone()))),
+            // Contract-less provider: headers live on the transport error.
+            CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
+                .with_response_headers(Some(Box::new(headers.clone()))),
+        ] {
+            let prompt_error = PromptError::CompletionError(completion_error);
+            assert_eq!(
+                prompt_error
+                    .provider_response_headers()
+                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                    .and_then(|value| value.to_str().ok()),
+                Some("20"),
+                "PromptError dropped the captured headers",
+            );
+
+            let structured = StructuredOutputError::PromptError(Box::new(prompt_error));
+            assert_eq!(
+                structured
+                    .provider_response_headers()
+                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                    .and_then(|value| value.to_str().ok()),
+                Some("20"),
+                "StructuredOutputError dropped the captured headers",
+            );
+        }
+    }
+
+    /// Variants that wrap no provider response report no headers.
+    #[test]
+    fn prompt_error_reports_no_headers_for_unrelated_variants() {
+        let error = PromptError::PromptCancelled {
+            chat_history: vec![Message::user("hi")],
+            reason: "cancelled".to_string(),
+        };
+        assert!(error.provider_response_headers().is_none());
+        assert!(
+            StructuredOutputError::EmptyResponse
+                .provider_response_headers()
+                .is_none()
         );
     }
 

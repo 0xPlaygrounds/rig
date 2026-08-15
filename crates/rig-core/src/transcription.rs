@@ -266,12 +266,9 @@ mod provider_response_tests {
     #[test]
     fn transcription_error_provider_response_helpers_with_preserved_json_body() {
         let body = r#"{"error":{"message":"rate limited"}}"#;
-        let error =
-            TranscriptionError::ProviderResponse(provider_response::ProviderResponseError {
-                status: None,
-                body: body.to_string(),
-                provider_request_id: None,
-            });
+        let error = TranscriptionError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status(body.to_string()),
+        );
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);
@@ -303,12 +300,9 @@ mod provider_response_tests {
 
     #[test]
     fn transcription_error_provider_response_helpers_with_preserved_plain_text_body() {
-        let error =
-            TranscriptionError::ProviderResponse(provider_response::ProviderResponseError {
-                status: None,
-                body: "not json".to_string(),
-                provider_request_id: None,
-            });
+        let error = TranscriptionError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status("not json".to_string()),
+        );
 
         assert_eq!(error.provider_response_body(), Some("not json"));
         assert!(error.provider_response_json().is_err());

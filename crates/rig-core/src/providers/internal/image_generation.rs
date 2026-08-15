@@ -142,14 +142,20 @@ where
 
     let response = client.send::<_, Bytes>(req).await?;
 
-    let status = response.status();
-    let response_body = response.into_body().into_future().await?;
+    // Taking the response apart hands the headers over already owned, so both
+    // failure paths keep their rate-limit metadata at no cost to the success
+    // path (rig#2210).
+    let (parts, body) = response.into_parts();
+    let status = parts.status;
+    let headers = Box::new(parts.headers);
+    let response_body = body.into_future().await?;
 
     if !status.is_success() {
         return Err(ImageGenerationError::from_http_response(
             status,
             String::from_utf8_lossy(&response_body).into_owned(),
-        ));
+        )
+        .with_response_headers(Some(headers)));
     }
 
     match serde_json::from_slice::<A>(&response_body)?.into_payload() {
@@ -159,7 +165,65 @@ where
             Err(ImageGenerationError::from_http_response(
                 status,
                 String::from_utf8_lossy(&response_body).into_owned(),
-            ))
+            )
+            .with_response_headers(Some(headers)))
         }
+    }
+}
+
+/// rig#2210: a failed image-generation response keeps its headers, so the
+/// capability error's `provider_response_headers()` is not a promise the
+/// driver quietly breaks.
+#[cfg(test)]
+mod header_preservation_tests {
+    use super::*;
+    use crate::providers::internal::envelope::DirectPayload;
+    use crate::test_utils::RecordingHttpClient;
+
+    /// Minimal payload satisfying the driver's `TryInto` bound; the 429 path
+    /// returns before any decoding, so its conversion is never reached.
+    #[derive(serde::Deserialize)]
+    struct Payload;
+
+    impl TryFrom<Payload> for image_generation::ImageGenerationResponse<Payload> {
+        type Error = ImageGenerationError;
+
+        fn try_from(_: Payload) -> Result<Self, Self::Error> {
+            unreachable!("a 429 never reaches payload conversion")
+        }
+    }
+
+    #[tokio::test]
+    async fn non_success_response_preserves_headers() {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(http::header::RETRY_AFTER, "20".parse().expect("value"));
+        let client = RecordingHttpClient::with_error_response_headers(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":"slow down"}"#,
+            headers,
+        );
+
+        let error = send_image_generation::<_, DirectPayload<Payload>>(
+            &client,
+            http_client::Request::builder()
+                .method(http::Method::POST)
+                .uri("https://example.test/v1/images/generations"),
+            serde_json::json!({}),
+        )
+        .await
+        .err()
+        .expect("a 429 should fail");
+
+        assert_eq!(
+            error
+                .provider_response_headers()
+                .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                .and_then(|value| value.to_str().ok()),
+            Some("20"),
+        );
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
     }
 }

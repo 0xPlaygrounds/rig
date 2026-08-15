@@ -757,7 +757,7 @@ where
             .map_err(|e| CompletionError::HttpError(e.into()))?;
 
         // Left unboxed so `provider_response_status`/`_body` can read the
-        // status and body straight off `InvalidStatusCodeWithMessage`.
+        // status and body straight off the transport error.
         send_completion::<_, DirectPayload<CompletionResponse>, _>(
             &self.client,
             req,
