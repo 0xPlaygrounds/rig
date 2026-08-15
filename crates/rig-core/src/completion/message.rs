@@ -141,7 +141,6 @@ pub enum AssistantContent {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", content = "content", rename_all = "snake_case")]
-#[non_exhaustive]
 /// A typed reasoning block used by providers that emit structured thinking data.
 pub enum ReasoningContent {
     /// Plain reasoning text with an optional provider signature.
@@ -159,7 +158,6 @@ pub enum ReasoningContent {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[non_exhaustive]
 /// Assistant reasoning payload with an optional provider-supplied identifier.
 pub struct Reasoning {
     /// Provider reasoning identifier, when supplied by the upstream API.
@@ -1062,7 +1060,6 @@ pub struct Image {
 /// The kind of image source (to be used).
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
-#[non_exhaustive]
 pub enum DocumentSourceKind {
     /// A file URL/URI.
     Url(String),

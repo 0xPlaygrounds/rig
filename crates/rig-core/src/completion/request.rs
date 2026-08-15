@@ -79,7 +79,6 @@ use thiserror::Error;
 /// }
 /// ```
 #[derive(Debug, Error)]
-#[non_exhaustive]
 pub enum CompletionError {
     /// Http error (e.g.: connection error, timeout, etc.)
     #[error("HttpError: {0}")]
@@ -273,7 +272,6 @@ impl FinishReason {
 /// provider's native type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "CompletionResponseRepr")]
-#[non_exhaustive]
 pub struct CompletionResponse {
     /// The completion choice (represented by one or more assistant message content)
     /// returned by the completion model provider
@@ -555,11 +553,11 @@ impl AddAssign for Usage {
 /// per-request state, so a runtime can snapshot this value when it erases a
 /// concrete model instead of retaining a callback into the provider.
 ///
-/// The type is `#[non_exhaustive]`: build from [`ProviderCapabilities::new`] or
-/// [`Default`] and enable flags with the `with_*` methods, which keeps external
-/// implementations compiling when new capabilities are added.
+/// Prefer building from [`ProviderCapabilities::new`] or [`Default`] and
+/// enabling flags with the `with_*` methods: that form keeps external
+/// implementations compiling when new capabilities are added, where a struct
+/// literal does not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[non_exhaustive]
 pub struct ProviderCapabilities {
     /// Whether this provider's native structured output (`output_schema` ->
     /// `format`/`response_format`) composes with tool calls in the same

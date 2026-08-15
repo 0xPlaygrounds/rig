@@ -201,7 +201,6 @@ pub enum StreamFinalKind {
 /// truncation, never as a successful zero-usage completion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(from = "StreamFinalRepr")]
-#[non_exhaustive]
 pub struct StreamFinal {
     /// Discriminating field; always [`StreamFinalKind::Final`].
     pub kind: StreamFinalKind,

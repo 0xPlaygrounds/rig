@@ -327,7 +327,6 @@ impl PromptRequest<Standard> {
 /// Details for one successfully completed completion request made by an agent run.
 // No longer `Copy`: the identity fields carry owned strings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
     pub call_index: usize,
@@ -431,7 +430,6 @@ where
 /// [`StreamingPromptRequest`]: crate::agent::StreamingPromptRequest
 /// [`MultiTurnStreamItem::FinalResponse`]: crate::agent::MultiTurnStreamItem::FinalResponse
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct PromptResponse {
     /// Concatenated assistant text for the final turn.
     pub output: String,
@@ -545,7 +543,6 @@ impl PromptResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct TypedPromptResponse<T> {
     pub output: T,
     pub usage: Usage,

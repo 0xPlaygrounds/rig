@@ -91,7 +91,6 @@ macro_rules! new_completion_span {
 
 /// A supported GenAI completion operation and its canonical span name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum CompletionOperation {
     /// A chat completion.
     Chat,

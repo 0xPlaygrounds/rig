@@ -11,7 +11,6 @@ use thiserror::Error;
 /// the helpers read. The variant is kept for symmetry with the other capability
 /// errors and for future provider paths that preserve a 2xx error envelope.
 #[derive(Debug, Error)]
-#[non_exhaustive]
 pub enum VerifyError {
     #[error("invalid authentication")]
     InvalidAuthentication,

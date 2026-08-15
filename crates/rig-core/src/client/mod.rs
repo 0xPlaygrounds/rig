@@ -44,7 +44,6 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
-#[non_exhaustive]
 pub enum ClientBuilderError {
     /// The underlying HTTP backend failed during builder construction.
     #[error("reqwest error: {0}")]
@@ -64,7 +63,6 @@ pub enum ClientBuilderError {
 /// detected before any model request is sent, such as missing API keys, invalid environment
 /// values, or invalid builder configuration.
 #[derive(Debug, Error)]
-#[non_exhaustive]
 pub enum ProviderClientError {
     /// A required or optional environment variable could not be read as valid Unicode.
     ///

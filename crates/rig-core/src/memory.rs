@@ -55,7 +55,6 @@ pub type MemoryBackendError = Box<dyn std::error::Error + 'static>;
 
 /// Errors produced by a [`ConversationMemory`] backend.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 pub enum MemoryError {
     /// The backing store failed to load, append, or clear messages.
     #[error("Memory backend error: {0}")]

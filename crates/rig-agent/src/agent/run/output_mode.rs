@@ -25,7 +25,6 @@ use serde::{Deserialize, Serialize};
 /// tool calls, and keeps guaranteed `Native` structured output on providers that
 /// compose the two (e.g. OpenAI, Anthropic).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub enum OutputMode {
     /// Resolve at request time: [`OutputMode::Tool`] when the agent has an
     /// `output_schema` **and** at least one function tool (and the tool choice

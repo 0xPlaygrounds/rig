@@ -494,7 +494,6 @@ impl ToolDefinition {
 }
 
 #[derive(Default, Clone, Debug, PartialEq)]
-#[non_exhaustive]
 pub enum ToolChoice {
     #[default]
     Auto,

@@ -36,7 +36,6 @@ use rig_core::message::{ToolChoice, UserContent};
 
 /// Typed failure from a portable model-conformance scenario.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 pub enum ScenarioError {
     /// A buffered agent run failed.
     #[error(transparent)]

@@ -614,7 +614,6 @@ fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &s
             }
             ReasoningContent::Summary(_) => "Summary",
             ReasoningContent::Redacted { .. } => "Redacted",
-            _ => "Unknown",
         };
         stats.reasoning_content_types.push(type_name);
     }
