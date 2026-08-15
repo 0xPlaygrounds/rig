@@ -171,6 +171,23 @@ mod tests {
         assert_eq!(next_page_token, None);
     }
 
+    /// The request path is what the recorded cassette matches on, so its exact
+    /// shape is load-bearing. Page 1 is covered by that replay; this pins the
+    /// cursored form, which no fixture exercises because Gemini's catalog fits
+    /// in one page.
+    #[test]
+    fn list_models_path_puts_page_size_first_and_encodes_the_cursor() {
+        assert_eq!(list_models_path(None), "/v1beta/models?pageSize=1000");
+        assert_eq!(
+            list_models_path(Some("abc123")),
+            "/v1beta/models?pageSize=1000&pageToken=abc123",
+        );
+        assert_eq!(
+            list_models_path(Some("weird token&x=1")),
+            "/v1beta/models?pageSize=1000&pageToken=weird+token%26x%3D1",
+        );
+    }
+
     /// An empty `nextPageToken` must read as "no more pages", not as a cursor.
     ///
     /// Treated as a cursor it re-sends an empty `pageToken`, gets the same
