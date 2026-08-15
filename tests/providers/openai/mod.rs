@@ -46,6 +46,8 @@ mod cassette {
     mod typed_prompt_tools;
     mod url_pdf_document;
     mod vllm;
+    #[cfg(feature = "websocket")]
+    mod websocket_error_identity_matrix;
 }
 
 mod live {

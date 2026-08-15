@@ -169,6 +169,32 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// Per-bug wrapper for the websocket error-identity matrix
+/// (`tests/cassettes/openai/websocket_error_identity_matrix/`).
+///
+/// Uses a deliberately invalid key in **both** modes, like
+/// [`with_openai_cassette_bogus_key`]: the only websocket failure the provider
+/// answers with an HTTP response is the auth rejection, so that is what these
+/// cells record. The upgrade is a plain HTTP GET until the provider accepts
+/// it, which is why a rejected one can be recorded and replayed at all.
+#[cfg(feature = "websocket")]
+pub(super) async fn with_openai_websocket_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
+    let client = openai::Client::builder()
+        .api_key("sk-invalid-websocket-edge-matrix-key")
+        .base_url(cassette.base_url())
+        .build()
+        .expect("client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
 /// Like [`with_openai_cassette`], but authenticating with a deliberately
 /// invalid API key — for recording real 401s with no secret near the fixture.
 pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
