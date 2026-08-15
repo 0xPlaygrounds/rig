@@ -43,6 +43,7 @@ mod cassette {
     mod structured_output;
     mod transcription_usage_matrix;
     mod truncated_turn_matrix;
+    mod turn_termination_matrix;
     mod typed_prompt_tools;
     mod url_pdf_document;
     mod vllm;

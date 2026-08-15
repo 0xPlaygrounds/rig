@@ -32,6 +32,19 @@ pub(crate) struct PreparedCompletionRequest {
     /// When Tool output mode is active, the name of the synthetic output tool
     /// advertised to the model (allowed but not executable). See #1928.
     pub(crate) output_tool_name: Option<String>,
+    /// The output-token cap this exact attempt was prepared with — the agent's
+    /// configured value after the runner/request overrides and after the merged
+    /// completion-call [`RequestPatch`](crate::agent::hook::RequestPatch), i.e.
+    /// the structured cap that reaches the provider. A cap smuggled through
+    /// `additional_params` passthrough is not reflected here, by design: this
+    /// reports the field the request actually set.
+    ///
+    /// Carried here rather than read back off the builder because the builder is
+    /// consumed by `send`/`stream` before a turn's hooks fire, and because
+    /// provenance matters: this is the same binding applied to the request, so
+    /// it cannot drift from what was sent. Both surfaces receive this struct, so
+    /// neither can report a different number for the same attempt.
+    pub(crate) max_tokens: Option<u64>,
 }
 
 /// Base name of the synthetic output tool used by [`OutputMode::Tool`].
@@ -525,6 +538,9 @@ pub(crate) async fn build_prepared_completion_request(
         executable_tool_names,
         allowed_tool_names,
         output_tool_name,
+        // The post-patch binding from above — the one `.max_tokens_opt(..)`
+        // put on the request.
+        max_tokens,
     })
 }
 

@@ -47,6 +47,7 @@ mod cassette {
     mod tool_hooks;
     mod tool_server;
     mod transcription;
+    mod turn_termination_matrix;
 }
 
 mod live {

@@ -115,6 +115,83 @@
 //! }
 //! # let _hook = RetryOnMarker::new(2);
 //! ```
+//!
+//! # Retrying a turn the provider cut short
+//!
+//! [`ModelTurnFinished::finish_reason`] and [`ModelTurnFinished::max_tokens`]
+//! carry a turn's termination metadata in portable form, so the common
+//! "truncated at the cap, so raise it and go again" policy needs no provider
+//! types. `finish_reason` is a normalized [`FinishReason`] — anything outside
+//! the shared vocabulary arrives as `Other` in the provider's own spelling
+//! rather than as a natural stop, and `None` means the provider reported no
+//! reason at all. `max_tokens` is the cap *this* attempt ran under, after the
+//! agent's configuration, the runner override, and any merged [`RequestPatch`],
+//! so the pair below reads its own escalation back on the retried turn:
+//!
+//! ```
+//! use std::sync::atomic::{AtomicU64, Ordering};
+//! use rig_agent::agent::{
+//!     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext,
+//!     ModelTurnAction, ModelTurnFinished, RequestPatch,
+//! };
+//! use rig_core::completion::FinishReason;
+//! use rig_core::message::AssistantContent;
+//!
+//! /// Doubles the output cap each time a turn is truncated, up to a ceiling.
+//! struct GrowCapOnTruncation {
+//!     cap: AtomicU64,
+//!     ceiling: u64,
+//! }
+//!
+//! impl AgentHook for GrowCapOnTruncation {
+//!     /// Every attempt is prepared afresh, so the current cap is applied here
+//!     /// and reported back on that attempt's `ModelTurnFinished`.
+//!     async fn on_completion_call(
+//!         &self,
+//!         _ctx: &HookContext,
+//!         _event: CompletionCallEvent<'_>,
+//!     ) -> CompletionCallAction {
+//!         CompletionCallAction::patch(
+//!             RequestPatch::new().max_tokens(self.cap.load(Ordering::Relaxed)),
+//!         )
+//!     }
+//!
+//!     async fn on_model_turn_finished(
+//!         &self,
+//!         _ctx: &HookContext,
+//!         event: ModelTurnFinished<'_>,
+//!     ) -> ModelTurnAction {
+//!         // `truncated_output` covers every reason that means "cut short",
+//!         // so a provider reporting a filter stop retries here too.
+//!         let truncated = event
+//!             .finish_reason
+//!             .is_some_and(FinishReason::truncated_output);
+//!         // Retrying a turn that carries tool calls is rejected, so a policy
+//!         // that might see one has to check before asking.
+//!         let has_tool_call = event
+//!             .content
+//!             .iter()
+//!             .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+//!         // `max_tokens` is this attempt's own cap: growing past the ceiling
+//!         // would be retrying a limit we already know we cannot raise.
+//!         let room = event.max_tokens.is_none_or(|cap| cap < self.ceiling);
+//!
+//!         if truncated && !has_tool_call && room {
+//!             let grown = event.max_tokens.map_or(self.ceiling, |cap| {
+//!                 cap.saturating_mul(2).min(self.ceiling)
+//!             });
+//!             self.cap.store(grown, Ordering::Relaxed);
+//!             return ModelTurnAction::repeat();
+//!         }
+//!         ModelTurnAction::continue_run()
+//!     }
+//! }
+//! # let _hook = GrowCapOnTruncation { cap: AtomicU64::new(256), ceiling: 4096 };
+//! ```
+//!
+//! `cargo run -p rig-agent --example retry_on_truncation` runs this policy
+//! against a credential-free scripted model whose output genuinely depends on
+//! the cap, on both surfaces.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -122,6 +199,7 @@ use std::{future::Future, sync::Arc};
 
 use crate::tool::extensions::TypeMap;
 use rig_core::{
+    completion::FinishReason,
     message::{AssistantContent, Message, ToolChoice},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
@@ -514,6 +592,39 @@ pub struct ModelTurnFinished<'a> {
     /// for every accepted call. On a retry, this is the retried attempt's own
     /// identity, never a previous attempt's.
     pub identity: &'a ResponseIdentity,
+    /// Why the provider stopped generating this attempt, normalized.
+    ///
+    /// [`FinishReason`] is the portable vocabulary — `Stop`, `Length`,
+    /// `ToolCalls`, `ContentFilter`, and `Other(String)` carrying a provider's
+    /// own spelling verbatim for anything outside it — so a hook can decide
+    /// whether to accept a turn without naming a provider or touching a raw
+    /// response type. [`FinishReason::truncated_output`] is the predicate for
+    /// "the provider cut this turn short", which is the usual retry trigger.
+    ///
+    /// `None` means the provider reported no reason at all, which is a real
+    /// outcome for several OpenAI-compatible gateways; it is deliberately not
+    /// smoothed into `Stop`, because "finished normally" and "did not say" are
+    /// different facts to steer on.
+    ///
+    /// The value is the one recorded for this attempt's completion call, after
+    /// the `Stop`→`ToolCalls` reconciliation that both surfaces apply, so a
+    /// provider that reports a bare `stop` on a turn carrying tool calls still
+    /// reads as `ToolCalls` here. On a retry this is the retried attempt's own
+    /// reason, never a previous attempt's.
+    pub finish_reason: Option<&'a FinishReason>,
+    /// The output-token cap this exact attempt was prepared with.
+    ///
+    /// Resolved after the agent's configured value, the runner/request
+    /// override, and the merged completion-call
+    /// [`RequestPatch`] — so a stateful
+    /// completion-call hook that raises the cap for a retry sees its own new
+    /// value here on the following turn, not the agent's baseline. `None` means
+    /// no cap was sent, so the provider's own default applied.
+    ///
+    /// Paired with [`finish_reason`](Self::finish_reason) this is what makes a
+    /// portable retry-on-truncation decision possible: a hook can tell a turn
+    /// cut short at a cap it chose from one cut short at a cap it did not.
+    pub max_tokens: Option<u64>,
 }
 
 /// How an accepted, tool-free model turn should be retried.

@@ -993,6 +993,12 @@ impl TurnSource for StreamingTurnSource {
         current_prompt: Message,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
+            // Bound before the builder is consumed, exactly as the blocking
+            // surface does: the cap this attempt was prepared with, patches
+            // included. Both surfaces read it from the same carrier, so they
+            // cannot report different numbers for the same attempt.
+            let attempt_max_tokens = prepared.max_tokens;
+
             let mut stream = match prepared
                 .builder
                 .stream()
@@ -1377,6 +1383,11 @@ impl TurnSource for StreamingTurnSource {
             // history; the raw `stream.choice` is kept in `last_final_choice` for
             // the raw/final streaming behavior.
             let canonical_choice = streamed_turn.choice.clone();
+            // Captured for the same reason as the choice above: `streamed_turn`
+            // is moved into run state on the next line, and the per-turn hook
+            // fires after that. `FinishReason::Other` carries a `String`, so
+            // this is a clone rather than a copy.
+            let attempt_finish_reason = streamed_turn.finish_reason.clone();
             if let Err(err) = run.streamed_turn(streamed_turn) {
                 yield Err(Box::new(err).into());
                 return;
@@ -1396,6 +1407,8 @@ impl TurnSource for StreamingTurnSource {
                             content: &canonical_choice,
                             usage: last_usage,
                             identity: &identity,
+                            finish_reason: attempt_finish_reason.as_ref(),
+                            max_tokens: attempt_max_tokens,
                         },
                     )
                     .await;
