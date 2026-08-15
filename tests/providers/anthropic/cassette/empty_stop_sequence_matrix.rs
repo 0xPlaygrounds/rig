@@ -51,9 +51,10 @@
 //! | 22 | `unit_empty_refusal_still_rejected` | guard preserved | error | unit |
 //! | 23 | `unit_empty_pause_turn_still_rejected` | guard preserved | error | unit |
 //! | 24 | `unit_empty_without_stop_reason_still_rejected` | guard preserved | error | unit |
-//! | 25 | `unit_empty_assistant_turn_cannot_be_replayed` | adjacent request boundary | error | unit |
+//! | 25 | `unit_empty_stop_sequence_without_a_sequence_still_rejected` | carve-out stays inside its evidence | error | unit |
+//! | 26 | `unit_empty_assistant_turn_cannot_be_replayed` | adjacent request boundary | error | unit |
 //!
-//! Cells 20–24 are unit tests because Anthropic will not produce those states
+//! Cells 20–25 are unit tests because Anthropic will not produce those states
 //! on demand: `max_tokens` truncation always emits at least one token (probed
 //! live — a `max_tokens: 1` turn came back with a one-character text block), a
 //! `tool_use` terminal by construction carries the tool-use block, `pause_turn`
@@ -579,12 +580,25 @@ async fn identity_survives_empty_stop() {
                 "transport request id must survive — it is what Anthropic support asks for"
             );
             assert!(response.usage.input_tokens > 0, "usage must survive");
-            assert_eq!(response.model.as_deref(), Some("claude-haiku-4-5-20251001"));
+            assert!(
+                response.model.is_some(),
+                "the responding model must survive"
+            );
         },
     )
     .await;
 
-    assert_recorded_empty_stop("empty_stop_sequence_matrix/identity_survives_empty_stop");
+    let scenario = "empty_stop_sequence_matrix/identity_survives_empty_stop";
+    assert_recorded_empty_stop(scenario);
+    // Derived from the fixture rather than hardcoded: a re-record on a newer
+    // dated snapshot must not silently invalidate the cell.
+    assert!(
+        recorded_response_body(scenario)
+            .get("model")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|model| model.starts_with("claude-haiku-4-5")),
+        "the recorded turn should come from the requested model family"
+    );
 }
 
 #[tokio::test]
@@ -730,6 +744,22 @@ fn unit_empty_without_stop_reason_still_rejected() {
             .normalize(ANTHROPIC_PROVIDER)
             .is_err(),
         "an empty response that never said why it ended is the case the guard exists for"
+    );
+}
+
+#[test]
+fn unit_empty_stop_sequence_without_a_sequence_still_rejected() {
+    // The carve-out is keyed on the sequence being *named*, not merely on the
+    // stop reason. Every recorded stop-sequence turn names it, so a turn that
+    // claims the reason and names nothing is outside the evidence and stays
+    // the malformed shape the guard exists for. This matters most for the
+    // Anthropic-compatible gateways sharing this mapping.
+    let mut response = empty_response(Some("stop_sequence"), Vec::new());
+    response.stop_sequence = None;
+
+    assert!(
+        response.normalize(ANTHROPIC_PROVIDER).is_err(),
+        "a stop-sequence terminal that names no sequence must stay rejected"
     );
 }
 

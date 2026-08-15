@@ -222,6 +222,21 @@ fn json_prefix(text: &str, path: &std::path::Path) -> Option<String> {
     }
 }
 
+/// Whether a cassette's recorded *request* body contains `needle`.
+///
+/// Used to assert that a cell's request-side premise (a cache_control marker,
+/// say) is really in the recording rather than only in the test's intent.
+fn recorded_request_contains(scenario: &str, needle: &str) -> bool {
+    let path = crate::cassettes::cassette_path("anthropic", scenario);
+    let contents = std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
+    let request = contents
+        .split_once("\nthen:\n")
+        .map(|(request, _)| request)
+        .unwrap_or(&contents);
+    request.contains(needle)
+}
+
 fn assert_recorded_terminal_stop_sequence(scenario: &str, expected: Option<&str>) {
     assert_eq!(
         recorded_terminal_stop_sequence(scenario).as_deref(),
@@ -591,17 +606,20 @@ async fn raw_with_prompt_caching_sequence_fires() {
             let terminal =
                 raw_terminal(&model, request(&model, LIST_PROMPT, &["charlie"], 64)).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
-            assert!(
-                terminal.usage.cache_creation.is_some(),
-                "the per-TTL cache buckets must still ride the same terminal"
-            );
         },
     )
     .await;
 
-    assert_recorded_terminal_stop_sequence(
-        "stop_sequence_terminal_matrix/raw_with_prompt_caching_sequence_fires",
-        Some("charlie"),
+    let scenario = "stop_sequence_terminal_matrix/raw_with_prompt_caching_sequence_fires";
+    assert_recorded_terminal_stop_sequence(scenario, Some("charlie"));
+    // The cell's other premise: prompt caching was actually engaged. Asserted
+    // on the recorded *request* — `usage.cache_creation` is reported on every
+    // `message_start` whether or not caching is on (the non-caching cells
+    // record the same all-zero buckets), so reading it back would pass with
+    // `with_prompt_caching()` removed and prove nothing.
+    assert!(
+        recorded_request_contains(scenario, "cache_control"),
+        "this cell must record a request carrying a cache_control marker"
     );
 }
 

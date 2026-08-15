@@ -140,6 +140,15 @@ pub(super) fn recorded_response_body(scenario: &str) -> serde_json::Value {
             path.display()
         )
     });
+    // The harness can record a non-UTF-8 body as base64 (`body_encoding`).
+    // No caller of this helper records one, and reading such a body as JSON
+    // would be silently wrong — so refuse rather than guess.
+    assert!(
+        !response.contains("body_encoding: base64"),
+        "cassette {} records a base64 body; this helper reads JSON response \
+         bodies only",
+        path.display()
+    );
     let line = response
         .lines()
         .find_map(|line| line.trim_start().strip_prefix("body: "))
@@ -163,9 +172,12 @@ pub(super) fn recorded_response_body(scenario: &str) -> serde_json::Value {
 
 /// Cassette wrapper for the `stop_sequence`-on-the-streamed-terminal matrix.
 ///
-/// Behaves exactly like [`with_anthropic_cassette`]; it exists as a separate
-/// registered wrapper so that matrix's fixtures stay attributable to the bug
-/// they were recorded for (see `tests/cassettes/anthropic/stop_sequence_terminal_matrix/`).
+/// Delegates to [`with_anthropic_cassette`] — the behavior is identical, and
+/// deliberately shared so the three cannot drift apart when the base wrapper
+/// gains policy. What the separate name buys is a per-bug entry in the
+/// cassette-safety registry, so `tests/cassettes/anthropic/stop_sequence_terminal_matrix/`
+/// is auditable as one bug's evidence. (The fixture *path* comes from the
+/// scenario string, not from the wrapper.)
 pub(super) async fn with_anthropic_stop_sequence_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -173,16 +185,13 @@ pub(super) async fn with_anthropic_stop_sequence_cassette<F, Fut>(
     F: FnOnce(anthropic::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) = anthropic_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
-    cassette.finish_after_test(result).await;
+    with_anthropic_cassette(spec, test_body).await;
 }
 
 /// Cassette wrapper for the empty-content-`stop_sequence` normalization matrix.
 ///
-/// Behaves exactly like [`with_anthropic_cassette`]; separate for the same
-/// per-bug attribution reason as
-/// [`with_anthropic_stop_sequence_cassette`] (see
+/// Delegates to [`with_anthropic_cassette`], separate for the same per-bug
+/// registry reason as [`with_anthropic_stop_sequence_cassette`] (see
 /// `tests/cassettes/anthropic/empty_stop_sequence_matrix/`).
 pub(super) async fn with_anthropic_empty_stop_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
@@ -191,9 +200,7 @@ pub(super) async fn with_anthropic_empty_stop_cassette<F, Fut>(
     F: FnOnce(anthropic::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) = anthropic_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
-    cassette.finish_after_test(result).await;
+    with_anthropic_cassette(spec, test_body).await;
 }
 
 /// Like [`with_anthropic_cassette`], but the client authenticates with a
