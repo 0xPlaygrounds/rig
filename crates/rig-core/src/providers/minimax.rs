@@ -67,6 +67,20 @@ impl_dual_dialect_provider!(
 client::impl_capabilities!(
     MiniMaxExt,
     completion = super::openai::completion::GenericCompletionModel<MiniMaxExt, H>,
+    model_listing = MiniMaxModelLister<H>,
+);
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// MiniMax API (`GET /models`).
+    ///
+    /// MiniMax documents the OpenAI-style `{"object":"list","data":[…]}`
+    /// envelope with `id`, `created` and `owned_by` on each entry.
+    MiniMaxModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "MiniMax",
+    "/models"
 );
 
 impl super::openai::completion::OpenAICompatibleProvider for MiniMaxExt {

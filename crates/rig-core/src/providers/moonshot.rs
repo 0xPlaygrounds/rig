@@ -52,7 +52,25 @@ impl_dual_dialect_provider!(
     anthropic_base_url_env = "MOONSHOT_ANTHROPIC_API_BASE",
 );
 
-client::impl_capabilities!(MoonshotExt, completion = CompletionModel<H>);
+client::impl_capabilities!(
+    MoonshotExt,
+    completion = CompletionModel<H>,
+    model_listing = MoonshotModelLister<H>,
+);
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the
+    /// Moonshot API (`GET /models`).
+    ///
+    /// Moonshot documents the OpenAI-style `{"object":"list","data":[…]}`
+    /// envelope; its entries carry extra fields (`context_length`,
+    /// `supports_image_in`, …) that the shared entry ignores.
+    MoonshotModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "Moonshot",
+    "/models"
+);
 
 impl<H> ClientBuilder<H> {
     pub fn global(self) -> Self {
