@@ -161,6 +161,11 @@ struct StreamingChoice {
     #[serde(default)]
     delta: StreamingDelta,
     finish_reason: Option<FinishReason>,
+    /// Which candidate this delta belongs to when the caller asked for
+    /// `n > 1`. Optional because providers streaming a single candidate may
+    /// omit it; absent is read as candidate 0.
+    #[serde(default)]
+    index: Option<usize>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -414,11 +419,24 @@ where
         // Classification only — the unknown/corrupt policy (warn-skip vs.
         // in-band `Err` item) lives in the shared driver, not here.
         wire::classify_chat_completions_frame::<StreamingCompletionChunk<U>>(data).map(|data| {
+            // `n > 1` streams as interleaved chunks distinguished only by
+            // `choices[].index`. Taking each *chunk's* first choice would
+            // concatenate every candidate into one garbled answer, while the
+            // blocking path answers the same request from candidate 0 alone;
+            // selecting by index keeps the two transports agreeing.
+            let primary = data
+                .choices
+                .iter()
+                .position(|choice| choice.index.is_none_or(|index| index == 0))
+                .and_then(|position| data.choices.get(position))
+                .map(std::slice::from_ref)
+                .unwrap_or_default();
+
             openai_chat_completions_compatible::normalize_first_choice_chunk(
                 data.id,
                 data.model,
                 data.usage,
-                &data.choices,
+                primary,
                 |choice| CompatibleChoiceData {
                     // The shared mapping also folds `function_call` — the
                     // deprecated pre-tools finish reason some compatible

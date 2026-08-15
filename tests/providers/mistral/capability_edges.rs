@@ -13,7 +13,9 @@
 //!   which `Model` has slots for.
 
 use anyhow::Result;
-use rig::client::{EmbeddingsClient, ModelListingClient};
+use futures::StreamExt;
+use rig::client::{CompletionClient, EmbeddingsClient, ModelListingClient};
+use rig::completion::CompletionModel as _;
 use rig::embeddings::EmbeddingModel as _;
 use rig::providers::mistral;
 
@@ -107,4 +109,95 @@ fn assert_listing_carries_mistrals_fields(models: &[rig::model::Model]) {
             .any(|model| model.context_length.is_some_and(|length| length > 0)),
         "Mistral reports `max_context_length`, which is `Model::context_length`"
     );
+}
+
+/// `n > 1` streams as interleaved chunks distinguished only by
+/// `choices[].index`. The blocking path answers such a request from candidate
+/// 0 alone; the streamed twin used to concatenate every candidate's deltas
+/// into one answer that is not any candidate the model produced.
+///
+/// Recorded against `temperature: 1` so the two candidates genuinely differ —
+/// with identical candidates the merge would be invisible.
+#[tokio::test]
+async fn streaming_with_two_candidates_answers_from_the_first() -> Result<()> {
+    with_mistral_capability_cassette(
+        "capability_edges/streaming_with_two_candidates_answers_from_the_first",
+        |client| async move {
+            let model = client.completion_model(mistral::MISTRAL_SMALL);
+            let mut stream: rig::streaming::StreamingCompletionResponse = model
+                .completion_request("Say one random word.")
+                .temperature(1.0)
+                .max_tokens(8)
+                .additional_params(serde_json::json!({"n": 2}))
+                .stream()
+                .await?;
+
+            let mut text = String::new();
+            while let Some(item) = stream.next().await {
+                if let rig::streaming::StreamedAssistantContent::Text(chunk) = item? {
+                    text.push_str(&chunk.text);
+                }
+            }
+            assert_answers_from_candidate_zero(
+                "capability_edges/streaming_with_two_candidates_answers_from_the_first",
+                &text,
+            );
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+/// Assert the streamed text is candidate 0 exactly, derived from the
+/// cassette's own bytes rather than hard-coded — the model picks different
+/// words on every recording.
+///
+/// The cell's premise is checked too: if the recorded turn stopped carrying a
+/// *second*, different candidate, a merge would be invisible and this cell
+/// would pass while covering nothing.
+fn assert_answers_from_candidate_zero(scenario: &str, streamed: &str) {
+    let (first, second) = recorded_candidates(scenario);
+    assert_ne!(
+        first, second,
+        "the recorded turn must carry two different candidates, or a merged stream would look \
+         identical to a correct one"
+    );
+    assert_eq!(
+        streamed.trim(),
+        first,
+        "the stream must deliver candidate 0 whole; interleaving the two yields neither"
+    );
+}
+
+/// Concatenated `delta.content` per candidate index, read back out of the
+/// recorded SSE body.
+fn recorded_candidates(scenario: &str) -> (String, String) {
+    let raw = std::fs::read_to_string(crate::cassettes::cassette_path("mistral", scenario))
+        .expect("cassette should be readable");
+    let mut candidates = [String::new(), String::new()];
+    for line in raw.split("data: ").skip(1) {
+        let payload = line.trim_start();
+        let Some(end) = payload.rfind('}') else {
+            continue;
+        };
+        let Ok(chunk) = serde_json::from_str::<serde_json::Value>(&payload[..=end]) else {
+            continue;
+        };
+        let Some(choices) = chunk.get("choices").and_then(|c| c.as_array()) else {
+            continue;
+        };
+        for choice in choices {
+            let index = choice.get("index").and_then(serde_json::Value::as_u64);
+            let text = choice
+                .get("delta")
+                .and_then(|delta| delta.get("content"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            if let Some(slot) = index.and_then(|i| candidates.get_mut(i as usize)) {
+                slot.push_str(text);
+            }
+        }
+    }
+    let [first, second] = candidates;
+    (first, second)
 }
