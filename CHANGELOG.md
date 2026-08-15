@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- clear the outstanding RustSec / GitHub advisories against the dependency graph. Every one is on a transitive dependency, so Dependabot's version PRs could not reach them and the oldest had been open five months. Ten of the thirteen open GitHub alerts are resolved by lockfile bumps: `openssl` 0.10.78 → 0.10.81, closing the `X509Ref::ocsp_responders` undefined behavior and both AES-KW-PAD memory-safety advisories; `quinn-proto` → 0.11.16; `serde_with` → 3.22.0; `tar` → 0.4.46; `astral-tokio-tar` → 0.6.4; `cmov` → 0.5.4; and `opentelemetry_sdk` 0.31.0, which leaves the graph entirely once the Google Cloud SDK that pinned it moves. The `cargo audit` set adds `ammonia`, `crossbeam-epoch`, `rkyv` 0.8, `anyhow`, `event-listener`, `memmap2` and `spin`. `quick-xml` moves 0.40.1 → 0.41.0, which needs a manifest bump rather than a lockfile one because cargo treats a 0.x minor as a major — rig reaches neither affected code path there (the epub loader uses a plain `Reader`, never `NsReader` or `.attributes()`), so that one is hygiene rather than remediation. Not fixed: the four `rustls-webpki` 0.102.8 advisories, reachable only through rig-agent's optional `discord-bot` feature via `serenity` 0.12.5, which is the newest published release and pins a rustls major with no patched version — rig's default `reqwest`/`rustls` path is on the patched 0.103.x and is unaffected ([#2342](https://github.com/0xPlaygrounds/rig/pull/2342))
+
 ### Added
 
 - *(completion)* `FinishReason::truncated_output()` — whether the provider cut a turn short (`Length`/`ContentFilter`) rather than letting it finish. This is the one home for a rule that decides both whether normalization tolerates a contentless turn and whether rig-agent has a remedy to name for one ([#2332](https://github.com/0xPlaygrounds/rig/pull/2332))
