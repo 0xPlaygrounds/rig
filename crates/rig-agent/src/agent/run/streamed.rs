@@ -158,7 +158,6 @@ pub struct PartialStreamedTurn {
     /// Provider-assigned assistant message ID, when already known.
     #[serde(
         default,
-        skip_serializing_if = "Option::is_none",
         deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
     )]
     pub message_id: Option<rig_core::streaming::WireId>,
@@ -252,7 +251,6 @@ pub struct StreamedTurn {
     /// Provider-assigned assistant message ID, when available.
     #[serde(
         default,
-        skip_serializing_if = "Option::is_none",
         deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
     )]
     pub message_id: Option<rig_core::streaming::WireId>,

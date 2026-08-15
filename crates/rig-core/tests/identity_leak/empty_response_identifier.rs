@@ -21,5 +21,18 @@ fn main() {
     // type error, with no note pointing into the standard library (whose
     // source is not always available to render).
     let empty_sentinel: Option<String> = Some(String::new());
-    response.message_id = empty_sentinel;
+    response.message_id = empty_sentinel.clone();
+    response.response_id = empty_sentinel.clone();
+    response.provider_request_id = empty_sentinel.clone();
+
+    // The same holds for the streamed terminal record and the identity
+    // carrier the two convert through.
+    let mut identity = rig_core::completion::ResponseIdentity::default();
+    identity.message_id = empty_sentinel.clone();
+
+    let mut terminal = rig_core::streaming::StreamFinal::new(
+        "provider",
+        rig_core::completion::Usage::new(),
+    );
+    terminal.message_id = empty_sentinel;
 }

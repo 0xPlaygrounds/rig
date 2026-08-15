@@ -231,6 +231,22 @@ impl std::fmt::Display for WireId {
     }
 }
 
+/// Comparison against a bare string, matching
+/// [`ToolCallId`](crate::message::ToolCallId): `Deref` alone does not give
+/// `id == "msg_1"`, and reading an identifier back out to compare it is the
+/// most common thing callers do with one.
+impl PartialEq<str> for WireId {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for WireId {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
 /// Read-only string access, matching [`ToolCallId`](crate::message::ToolCallId).
 /// Deliberately not `DerefMut`, and there is no `From<&str>`: every route to a
 /// `WireId` stays [`WireId::new`], which rejects the empty string.
@@ -323,6 +339,17 @@ mod tests {
             serde_json::to_value(Option::<WireId>::None).expect("serializes"),
             serde_json::Value::Null
         );
+    }
+
+    /// `Deref` gives `.as_str()`-free reads, but comparison against a bare
+    /// string needs its own impls — the most common thing a caller does.
+    #[test]
+    fn a_handle_compares_against_a_bare_string() {
+        let id = WireId::new("msg_1").expect("non-empty");
+        assert_eq!(id, "msg_1");
+        assert_eq!(id, *"msg_1");
+        assert_ne!(id, "other");
+        assert_eq!(Some(id).as_deref(), Some("msg_1"));
     }
 
     /// The deserialization side normalizes rather than rejecting: a stored
