@@ -186,8 +186,13 @@ where
 
     let response = client.send_multipart::<Bytes>(req).await?;
 
-    let status = response.status();
-    let response_body = response.into_body().into_future().await?;
+    // Taking the response apart hands the headers over already owned, so both
+    // failure paths keep their rate-limit metadata at no cost to the success
+    // path (rig#2210).
+    let (parts, body) = response.into_parts();
+    let status = parts.status;
+    let headers = Box::new(parts.headers);
+    let response_body = body.into_future().await?;
 
     if status.is_success() {
         match serde_json::from_slice::<A>(&response_body)?.into_payload() {
@@ -197,14 +202,16 @@ where
                 Err(TranscriptionError::from_http_response(
                     status,
                     String::from_utf8_lossy(&response_body).into_owned(),
-                ))
+                )
+                .with_response_headers(Some(headers)))
             }
         }
     } else {
         Err(TranscriptionError::from_http_response(
             status,
             String::from_utf8_lossy(&response_body).into_owned(),
-        ))
+        )
+        .with_response_headers(Some(headers)))
     }
 }
 
@@ -235,8 +242,10 @@ where
         .map_err(|e| TranscriptionError::HttpError(e.into()))?;
 
     let response = client.send::<_, Vec<u8>>(req).await?;
-    let status = response.status();
-    let body = response.into_body().await?;
+    let (parts, body) = response.into_parts();
+    let status = parts.status;
+    let headers = Box::new(parts.headers);
+    let body = body.await?;
 
     if status.is_success() {
         decode(status, &body)
@@ -244,7 +253,8 @@ where
         Err(TranscriptionError::from_http_response(
             status,
             String::from_utf8_lossy(&body).into_owned(),
-        ))
+        )
+        .with_response_headers(Some(headers)))
     }
 }
 
@@ -395,5 +405,78 @@ mod tests {
         .expect_err("non-object additional params should be rejected");
 
         assert!(matches!(error, TranscriptionError::RequestError(_)));
+    }
+}
+
+/// rig#2210: a failed transcription response keeps its headers on both shared
+/// drivers, so the capability error's `provider_response_headers()` is not a
+/// promise the driver quietly breaks.
+#[cfg(test)]
+mod header_preservation_tests {
+    use super::*;
+    use crate::test_utils::RecordingHttpClient;
+
+    fn rate_limited() -> RecordingHttpClient {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(http::header::RETRY_AFTER, "20".parse().expect("value"));
+        RecordingHttpClient::with_error_response_headers(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":"slow down"}"#,
+            headers,
+        )
+    }
+
+    fn assert_retry_after(error: &TranscriptionError, driver: &str) {
+        assert_eq!(
+            error
+                .provider_response_headers()
+                .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                .and_then(|value| value.to_str().ok()),
+            Some("20"),
+            "{driver}: Retry-After not recoverable",
+        );
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS),
+            "{driver}: status lost",
+        );
+    }
+
+    #[tokio::test]
+    async fn json_driver_non_success_response_preserves_headers() {
+        let error = send_json_transcription::<_, serde_json::Value>(
+            &rate_limited(),
+            http_client::Request::builder()
+                .method(http::Method::POST)
+                .uri("https://example.test/v1/audio/transcriptions"),
+            b"{}".to_vec(),
+            |_, _| unreachable!("a 429 never reaches the decoder"),
+        )
+        .await
+        .err()
+        .expect("a 429 should fail");
+
+        assert_retry_after(&error, "send_json_transcription");
+    }
+
+    #[tokio::test]
+    async fn multipart_driver_non_success_response_preserves_headers() {
+        let error = send_transcription::<
+            _,
+            crate::providers::openai::client::ApiResponse<
+                crate::providers::openai::TranscriptionResponse,
+            >,
+        >(
+            &rate_limited(),
+            http_client::Request::builder()
+                .method(http::Method::POST)
+                .uri("https://example.test/v1/audio/transcriptions"),
+            MultipartForm::default(),
+        )
+        .await
+        .err()
+        .expect("a 429 should fail");
+
+        assert_retry_after(&error, "send_transcription");
     }
 }

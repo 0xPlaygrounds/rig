@@ -103,22 +103,23 @@ where
         Err(other) => return Err(other.into()),
     };
 
-    let status = response.status();
+    // Take the response apart before awaiting the body: that hands over the
+    // headers already owned, so preserving them onto an error (rig#2210) costs
+    // no clone and every error path below can afford them — including the 2xx
+    // error envelope, which is a failure the caller may need to back off from
+    // even though its status says success.
+    let (parts, body) = response.into_parts();
+    let status = parts.status;
     let provider_request_id = request_id_header.and_then(|header| {
-        response
-            .headers()
+        parts
+            .headers
             .get(header)
             .and_then(|value| value.to_str().ok())
             .filter(|value| !value.is_empty())
             .map(str::to_string)
     });
-    // Only a failed response needs its full header map preserved (rig#2210);
-    // cloning it on every successful completion would be pure allocation.
-    let error_headers = (!status.is_success()).then(|| Box::new(response.headers().clone()));
-    let body = response
-        .into_body()
-        .await
-        .map_err(CompletionError::HttpError)?;
+    let response_headers = Some(Box::new(parts.headers));
+    let body = body.await.map_err(CompletionError::HttpError)?;
 
     if !status.is_success() {
         // A provider with a request-id contract routes through the
@@ -134,7 +135,7 @@ where
             ),
             None => CompletionError::from_http_response(status, String::from_utf8_lossy(&body)),
         }
-        .with_response_headers(error_headers));
+        .with_response_headers(response_headers));
     }
 
     let envelope: A = serde_json::from_slice(&body).map_err(|err| {
@@ -159,7 +160,9 @@ where
         Err(message) => {
             tracing::warn!(message = %message, "provider returned an error response");
             // A 2xx error envelope preserves as ProviderResponse either way;
-            // the metadata-aware funnel just adds the captured id.
+            // the metadata-aware funnel just adds the captured id. Its headers
+            // matter as much as a non-success response's: gateways report rate
+            // limits this way, with `Retry-After` alongside a 200 (rig#2210).
             Err(match request_id_header {
                 Some(_) => CompletionError::from_http_response_with_request_id(
                     status,
@@ -167,7 +170,8 @@ where
                     provider_request_id,
                 ),
                 None => CompletionError::from_http_response(status, String::from_utf8_lossy(&body)),
-            })
+            }
+            .with_response_headers(response_headers))
         }
     }
 }
@@ -358,12 +362,11 @@ mod header_preservation_tests {
         }
     }
 
-    /// A 2xx error envelope is a *successful* response, so the driver does not
-    /// pay to clone its headers on the hot path; the body, status, and id still
-    /// survive. Pinned so this carve-out stays a deliberate, reviewed line
-    /// rather than an oversight — a rate limit is never reported this way.
+    /// A 2xx error envelope is still a failure the caller may need to back off
+    /// from — gateways report rate limits this way, with `Retry-After` beside a
+    /// 200 — so it carries the response's headers like any other error.
     #[tokio::test]
-    async fn success_status_error_envelope_captures_no_headers() {
+    async fn success_status_error_envelope_preserves_headers() {
         let client = RecordingHttpClient::with_error_response_headers(
             http::StatusCode::OK,
             r#"{"error":{"message":"envelope"}}"#,
@@ -372,8 +375,43 @@ mod header_preservation_tests {
         let error = drive_as::<RejectingEnvelope>(client, CONTRACT).await;
 
         assert!(matches!(error, CompletionError::ProviderResponse(_)));
-        assert!(error.provider_response_headers().is_none());
+        assert_eq!(
+            error
+                .provider_response_headers()
+                .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                .and_then(|value| value.to_str().ok()),
+            Some("20"),
+            "a 200-with-error-envelope must expose its Retry-After too",
+        );
         assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
         assert_eq!(error.provider_request_id(), Some("req_abc"));
+    }
+
+    /// The success path must not be taxed for the error paths' benefit: the
+    /// driver takes the response apart rather than cloning its header map, so a
+    /// completed turn allocates nothing extra. Pinned behaviorally — a
+    /// successful call still returns its payload and id.
+    #[tokio::test]
+    async fn successful_response_is_unaffected_by_header_capture() {
+        let client = RecordingHttpClient::with_error_response_headers(
+            http::StatusCode::OK,
+            r#"{"ok":true}"#,
+            rate_limited_headers(),
+        );
+        let request = crate::http_client::Request::builder()
+            .method(http::Method::POST)
+            .uri("https://example.test/v1/chat")
+            .body(Vec::new())
+            .expect("valid request");
+        let (payload, request_id) = send_completion::<
+            _,
+            super::super::envelope::DirectPayload<serde_json::Value>,
+            _,
+        >(&client, request, "test provider", CONTRACT, |_| {})
+        .await
+        .expect("a 2xx payload should decode");
+
+        assert_eq!(payload["ok"], true);
+        assert_eq!(request_id.as_deref(), Some("req_abc"));
     }
 }
