@@ -1029,11 +1029,18 @@ impl AgentRun {
     /// [`FinishReason::Other`] is deliberately excluded — it carries a
     /// provider's own wire spelling with no normalized meaning, so treating it
     /// as truncation would fail runs on benign provider-specific stops.
+    ///
+    /// The set is [`FinishReason::truncated_output`]'s, and deliberately so:
+    /// the reasons a provider may hand back an *answerless* turn are exactly
+    /// the reasons this layer has a remedy for. Sharing the predicate keeps a
+    /// normalizer that tolerates an empty turn and an agent that explains one
+    /// from ever disagreeing about which turns those are.
     fn truncating_finish_reason(&self) -> Option<&FinishReason> {
-        match self.completion_calls.last()?.finish_reason.as_ref()? {
-            reason @ (FinishReason::Length | FinishReason::ContentFilter) => Some(reason),
-            FinishReason::Stop | FinishReason::ToolCalls | FinishReason::Other(_) => None,
-        }
+        self.completion_calls
+            .last()?
+            .finish_reason
+            .as_ref()
+            .filter(|reason| reason.truncated_output())
     }
 
     fn record_completion_call(

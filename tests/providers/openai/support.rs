@@ -99,6 +99,18 @@ pub(super) async fn with_openai_max_tokens_cassette<F, Fut>(
     with_openai_cassette(spec, test_body).await;
 }
 
+/// Per-bug wrapper for the truncated-turn matrix
+/// (`tests/cassettes/openai/truncated_turn_matrix/`).
+pub(super) async fn with_openai_truncation_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
 /// Like [`with_openai_cassette`], but authenticating with a deliberately
 /// invalid API key — for recording real 401s with no secret near the fixture.
 pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(

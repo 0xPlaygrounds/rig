@@ -30,6 +30,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_local_reasoning_content_cassette",
             "with_openai_refusal_cassette",
             "with_openai_max_tokens_cassette",
+            "with_openai_truncation_cassette",
         ],
     },
     ProviderCassetteSuite {

@@ -261,6 +261,30 @@ impl FinishReason {
             self
         }
     }
+
+    /// Whether the provider cut the turn short instead of letting the model
+    /// finish.
+    ///
+    /// A turn that ended this way can legitimately carry *no content at all* —
+    /// an output-token cap consumed entirely by hidden reasoning tokens, or a
+    /// filter that removed everything the model produced — and the reason is
+    /// then the only diagnostic the caller has. Normalization keeps such an
+    /// empty turn rather than rejecting it as a malformed response, so a
+    /// caller can tell "you hit the cap" from "the provider misbehaved".
+    ///
+    /// [`Stop`](Self::Stop) and [`ToolCalls`](Self::ToolCalls) describe turns
+    /// that ran to completion, so an empty one really is a provider defect;
+    /// [`Other`](Self::Other) is unclassified and gets the strict treatment —
+    /// it carries a provider's own wire spelling with no normalized meaning.
+    ///
+    /// This is also the set rig-agent has a remedy for when a turn arrives
+    /// without an answer ("raise `max_tokens`" / "the provider filtered the
+    /// response"), and that is the same question: the reasons a provider may
+    /// hand back an answerless turn are the reasons there is something useful
+    /// to say about it. Both sides read this predicate so they cannot drift.
+    pub fn truncated_output(&self) -> bool {
+        matches!(self, Self::Length | Self::ContentFilter)
+    }
 }
 
 /// General completion response struct: the completion choice plus normalized
