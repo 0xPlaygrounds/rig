@@ -5,6 +5,7 @@ mod cassette {
     mod default_max_turns;
     mod document_file_id;
     mod empty_end_turn;
+    mod empty_stop_sequence_matrix;
     mod error_envelope;
     mod error_identity_edge;
     mod image;

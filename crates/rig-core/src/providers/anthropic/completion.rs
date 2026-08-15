@@ -319,12 +319,24 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Anthropic documents empty `end_turn` responses after tool-result
-        // round trips. That turn genuinely carried nothing, and an empty
-        // list says exactly that — it used to be normalized into a
-        // fabricated empty-text part. Any *other* empty response is the
-        // shared provider defect.
-        let choice = if content.is_empty() && response.stop_reason.as_deref() == Some("end_turn") {
+        // Anthropic has two ways to end a turn that genuinely carried no
+        // content, and an empty list says exactly that:
+        //
+        // - `end_turn` after a tool-result round trip — documented, and it
+        //   used to be normalized into a fabricated empty-text part.
+        // - `stop_sequence` when the matched sequence is the first thing the
+        //   model emits. Anthropic strips the sequence it stopped on, so a
+        //   turn that produced nothing before it arrives with `content: []`
+        //   and a 200. Rejecting that turned a completed provider turn into
+        //   `EMPTY_RESPONSE_ERROR`, and diverged from the streamed twin,
+        //   which finishes the same turn with an empty choice and no error.
+        //
+        // Any *other* empty response is the shared provider defect.
+        let choice = if content.is_empty()
+            && matches!(
+                response.stop_reason.as_deref(),
+                Some("end_turn" | "stop_sequence")
+            ) {
             Vec::new()
         } else {
             crate::message::require_non_empty_response(content)?

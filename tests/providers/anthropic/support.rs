@@ -178,6 +178,24 @@ pub(super) async fn with_anthropic_stop_sequence_cassette<F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
+/// Cassette wrapper for the empty-content-`stop_sequence` normalization matrix.
+///
+/// Behaves exactly like [`with_anthropic_cassette`]; separate for the same
+/// per-bug attribution reason as
+/// [`with_anthropic_stop_sequence_cassette`] (see
+/// `tests/cassettes/anthropic/empty_stop_sequence_matrix/`).
+pub(super) async fn with_anthropic_empty_stop_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = anthropic_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
+}
+
 /// Like [`with_anthropic_cassette`], but the client authenticates with a
 /// deliberately invalid API key — for recording real 401 responses without a
 /// secret anywhere near the fixture (auth headers are neither recorded nor
