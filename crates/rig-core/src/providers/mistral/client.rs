@@ -136,6 +136,11 @@ pub struct PromptTokensDetails {
     /// Number of tokens served from the prompt cache.
     #[serde(default)]
     pub cached_tokens: u64,
+    /// Tokens the audio-input models charge for the prompt's audio. Reported
+    /// *alongside* `prompt_tokens` rather than inside it — the two plus
+    /// `completion_tokens` are what add up to `total_tokens`.
+    #[serde(default)]
+    pub audio_tokens: u64,
 }
 
 /// Token usage returned by Mistral's chat completions and embeddings endpoints.
@@ -177,12 +182,30 @@ impl Usage {
             .or(self.num_cached_tokens)
             .unwrap_or(0)
     }
+
+    /// Tokens charged for audio in the prompt. 0 for every non-audio turn.
+    pub fn audio_tokens(&self) -> u64 {
+        self.prompt_tokens_details
+            .as_ref()
+            .map_or(0, |details| details.audio_tokens)
+    }
+
+    /// Every token charged against the prompt.
+    ///
+    /// Mistral reports audio outside `prompt_tokens`: a Voxtral turn answering
+    /// a 375-audio-token clip reports `prompt_tokens: 6`, `audio_tokens: 375`,
+    /// `completion_tokens: 2` and `total_tokens: 383`. Counting only
+    /// `prompt_tokens` as input leaves `input + output` short of `total` by the
+    /// whole audio payload.
+    pub fn input_tokens(&self) -> u64 {
+        self.prompt_tokens as u64 + self.audio_tokens()
+    }
 }
 
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> Self {
         crate::providers::internal::completion_usage(
-            usage.prompt_tokens as u64,
+            usage.input_tokens(),
             usage.completion_tokens as u64,
             usage.total_tokens as u64,
             usage.cached_tokens(),
