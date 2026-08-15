@@ -1,20 +1,10 @@
 error[E0308]: mismatched types
-  --> tests/identity_leak/empty_response_identifier.rs:20:32
+  --> tests/identity_leak/empty_response_identifier.rs:24:27
    |
-20 |     response.message_id = Some(String::new());
-   |                           ---- ^^^^^^^^^^^^^ expected `WireId`, found `String`
-   |                           |
-   |                           arguments to this enum variant are incorrect
+24 |     response.message_id = empty_sentinel;
+   |     -------------------   ^^^^^^^^^^^^^^ expected `Option<WireId>`, found `Option<String>`
+   |     |
+   |     expected due to the type of this binding
    |
-help: the type constructed contains `std::string::String` due to the type of the argument passed
-  --> tests/identity_leak/empty_response_identifier.rs:20:27
-   |
-20 |     response.message_id = Some(String::new());
-   |                           ^^^^^-------------^
-   |                                |
-   |                                this argument influences the type of `Some`
-note: tuple variant defined here
-  --> $RUST/core/src/option.rs
-   |
-   |     Some(#[stable(feature = "rust1", since = "1.0.0")] T),
-   |     ^^^^
+   = note: expected enum `std::option::Option<WireId>`
+              found enum `std::option::Option<std::string::String>`
