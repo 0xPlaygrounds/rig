@@ -90,6 +90,18 @@ where
                 );
                 break;
             };
+            // A cursor that repeats cannot advance either: the next request is
+            // byte-identical to the one just answered, so the loop would fetch
+            // the same page forever. Absence is not the only way a cursor can
+            // fail to move.
+            if after_id.as_deref() == Some(cursor.as_str()) {
+                tracing::warn!(
+                    models = all_models.len(),
+                    "Anthropic model listing repeated its `last_id` cursor; returning the \
+                     pages fetched so far"
+                );
+                break;
+            }
             after_id = Some(cursor);
         }
 
@@ -111,15 +123,19 @@ where
 /// | 5 | `pagination_stops_on_an_empty_cursor` | `true` | `Some("")` | stop |
 /// | 6 | `pagination_stops_midway_and_keeps_earlier_pages` | mixed | mixed | partial |
 /// | 7 | `pagination_stops_on_an_empty_page_claiming_more` | `true` | `None` | stop, empty |
-/// | 8 | `pagination_percent_encodes_the_cursor` | `true` | `Some("a&b")` | encoded |
+/// | 8 | `pagination_stops_on_a_cursor_that_does_not_advance` | `true` | repeated | stop |
+/// | 9 | `pagination_percent_encodes_the_cursor` | `true` | `Some("weird id&x=1")` | encoded |
 ///
-/// That is every combination, plus the two orderings that only appear across
-/// multiple pages (a cursor-less page arriving *after* a good one, and a page
-/// with no models at all). No cell is recorded: Anthropic pairs `has_more`
-/// with `last_id`, so rows 2 and 4–7 describe responses no live request can
-/// produce, and row 3 needs a catalog larger than one page — Anthropic's fits
-/// in one, which is why the recorded `models` cassette answers `has_more:
-/// false` and the loop body never ran before this suite existed.
+/// Rows 1–5 are every combination of the two fields. Rows 6–8 are the ways a
+/// cursor can fail to advance that only show up across multiple pages: one
+/// arriving *after* a good page, a page with no models, and a server that
+/// echoes the same cursor forever. Row 9 covers how the cursor is serialized.
+///
+/// No cell is recorded. Anthropic pairs `has_more` with `last_id`, so rows 2
+/// and 4–8 describe responses no live request can produce, and row 3 needs a
+/// catalog larger than one page — Anthropic's fits in one, which is why the
+/// recorded `models` cassette answers `has_more: false` and the loop body
+/// never ran before this suite existed.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +311,27 @@ mod tests {
             1,
             "the loop stops at the cursor-less page",
         );
+    }
+
+    /// A server that keeps echoing the same cursor cannot advance the loop
+    /// either — the next request is byte-identical to the one just answered.
+    #[tokio::test]
+    async fn pagination_stops_on_a_cursor_that_does_not_advance() {
+        let (lister, http_client) = lister(vec![
+            page(&["claude-a"], true, Some("stuck")),
+            page(&["claude-b"], true, Some("stuck")),
+            page(&["claude-c"], true, Some("stuck")),
+        ]);
+
+        let models = lister.list_all().await.expect("listing should terminate");
+
+        let ids: Vec<_> = models.data.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["claude-a", "claude-b"],
+            "the repeat is only detectable on the second page, so both are kept",
+        );
+        assert_eq!(http_client.remaining_responses(), 1);
     }
 
     /// A cursor carrying URL-significant characters is percent-encoded rather

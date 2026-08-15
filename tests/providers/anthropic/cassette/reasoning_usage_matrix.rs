@@ -302,9 +302,18 @@ fn recorded_streamed_stop_reason(scenario: &str) -> Option<String> {
     let path = crate::cassettes::cassette_path("anthropic", scenario);
     let contents = std::fs::read_to_string(&path)
         .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-    let frame = contents
+    // Single terminal frame, asserted like its sibling reader above rather
+    // than assumed, so the two do not disagree about their own premise.
+    let mut frames = contents
         .lines()
-        .find(|line| line.contains(r#""type":"message_delta""#))?;
+        .filter(|line| line.contains(r#""type":"message_delta""#));
+    let frame = frames.next()?;
+    assert!(
+        frames.next().is_none(),
+        "cassette {} records more than one message_delta; this reader assumes a \
+         single-turn cell",
+        path.display()
+    );
     let (_, after) = frame.split_once(r#""stop_reason":""#)?;
     after.split('"').next().map(str::to_string)
 }
@@ -877,10 +886,10 @@ async fn streaming_max_tokens_truncation() {
 
     let scenario = "reasoning_usage_matrix/streaming_max_tokens_truncation";
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-    assert!(
-        recorded_streamed_stop_reason(scenario).as_deref() == Some("max_tokens"),
-        "this cell exists to cover a truncated turn, got {:?}",
-        recorded_streamed_stop_reason(scenario),
+    assert_eq!(
+        recorded_streamed_stop_reason(scenario).as_deref(),
+        Some("max_tokens"),
+        "this cell exists to cover a truncated turn",
     );
 }
 

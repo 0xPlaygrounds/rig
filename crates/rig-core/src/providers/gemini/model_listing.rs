@@ -158,6 +158,17 @@ where
         if next_page_token_for_page.is_none() {
             break;
         }
+        // A cursor that repeats cannot advance: the next request would be
+        // byte-identical to the one just answered. Absence is not the only way
+        // a cursor can fail to move.
+        if next_page_token.is_some() && next_page_token == next_page_token_for_page {
+            tracing::warn!(
+                models = all_models.len(),
+                "Gemini model listing repeated its `nextPageToken`; returning the pages \
+                 fetched so far"
+            );
+            break;
+        }
 
         next_page_token = next_page_token_for_page;
     }
@@ -225,6 +236,52 @@ mod tests {
         .expect("page should parse");
 
         assert_eq!(next_page_token.as_deref(), Some("abc123"));
+    }
+
+    /// Loop-level: a server that keeps echoing the same cursor cannot advance
+    /// the listing, so the loop must stop rather than fetch the same page
+    /// forever. The parser-level guard above only covers the *empty* cursor;
+    /// this covers the other way a cursor fails to move.
+    #[tokio::test]
+    async fn list_all_stops_on_a_cursor_that_does_not_advance() {
+        use crate::client::ModelLister as _;
+        use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+        let page = |id: &str, token: &str| {
+            MockHttpResponse::success(
+                serde_json::json!({
+                    "models": [{
+                        "name": format!("models/{id}"),
+                        "displayName": id,
+                        "inputTokenLimit": 1024
+                    }],
+                    "nextPageToken": token
+                })
+                .to_string(),
+            )
+        };
+        let http_client = SequencedHttpClient::new(vec![
+            page("a", "stuck"),
+            page("b", "stuck"),
+            page("c", "stuck"),
+        ]);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("client should build");
+
+        let models = GeminiModelLister::new(client)
+            .list_all()
+            .await
+            .expect("listing should terminate");
+
+        assert_eq!(
+            models.data.len(),
+            2,
+            "the repeat is only detectable on the second page, so both are kept",
+        );
+        assert_eq!(http_client.remaining_responses(), 1);
     }
 
     #[test]
