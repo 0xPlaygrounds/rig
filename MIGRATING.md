@@ -1014,8 +1014,9 @@ of a `String`:
 - `PartId::Minted { kind, index }` is an identity rig fabricated at a stream
   boundary because the wire supplied none. It keys accumulation for the life
   of the stream and structurally cannot reach a request: `PartId` implements
-  no `Serialize`, and the only request-serializable form (`WireId`) is
-  constructible solely from `PartId::Wire`. The reserved string namespaces
+  no `Serialize`, and the only request-serializable form (`WireId`) is built
+  solely through `WireId::new`, which a minted identity never reaches (and
+  which rejects the empty string). The reserved string namespaces
   (`reasoning-{n}`, `block-{n}`, `output-{n}`, `tool-{index}`, `text-{n}`)
   and the `is_boundary_minted_id` provenance gate are gone — provenance
   travels in the type, so there is nothing to parse and no serializer gate
@@ -1728,9 +1729,6 @@ the compiler no longer insists.
 
 ---
 
-## 0.40 → 0.41
-
-
 ### Response identifiers are `Option<WireId>` (#2336)
 
 `message_id`, `response_id` and `provider_request_id` on `StreamFinal`,
@@ -1786,6 +1784,8 @@ those records.
 
 `model` is unchanged (`Option<String>`). It is a label rather than an
 identifier, so its setter remains the only thing normalizing it.
+
+## 0.40 → 0.41
 
 ### 1. The crate split
 

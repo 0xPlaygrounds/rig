@@ -329,11 +329,10 @@ pub struct CompletionResponse {
     /// [`Self::response_id`]. `None` means the provider did not report one —
     /// that is a documented outcome (e.g. Gemini sends no id header), never an
     /// error.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::streaming::deserialize_optional_wire_id"
-    )]
+    // No `deserialize_with` here: this type deserializes through
+    // `CompletionResponseRepr`, which reads `Option<String>` and normalizes
+    // via the setters, so a field-level hook would never run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<crate::streaming::WireId>,
     /// Why the model stopped generating, when the provider reported it.
     ///

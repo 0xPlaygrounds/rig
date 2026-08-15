@@ -1,7 +1,51 @@
 error[E0308]: mismatched types
   --> tests/identity_leak/empty_response_identifier.rs:24:27
    |
-24 |     response.message_id = empty_sentinel;
+24 |     response.message_id = empty_sentinel.clone();
+   |     -------------------   ^^^^^^^^^^^^^^^^^^^^^^ expected `Option<WireId>`, found `Option<String>`
+   |     |
+   |     expected due to the type of this binding
+   |
+   = note: expected enum `std::option::Option<WireId>`
+              found enum `std::option::Option<std::string::String>`
+
+error[E0308]: mismatched types
+  --> tests/identity_leak/empty_response_identifier.rs:25:28
+   |
+25 |     response.response_id = empty_sentinel.clone();
+   |     --------------------   ^^^^^^^^^^^^^^^^^^^^^^ expected `Option<WireId>`, found `Option<String>`
+   |     |
+   |     expected due to the type of this binding
+   |
+   = note: expected enum `std::option::Option<WireId>`
+              found enum `std::option::Option<std::string::String>`
+
+error[E0308]: mismatched types
+  --> tests/identity_leak/empty_response_identifier.rs:26:36
+   |
+26 |     response.provider_request_id = empty_sentinel.clone();
+   |     ----------------------------   ^^^^^^^^^^^^^^^^^^^^^^ expected `Option<WireId>`, found `Option<String>`
+   |     |
+   |     expected due to the type of this binding
+   |
+   = note: expected enum `std::option::Option<WireId>`
+              found enum `std::option::Option<std::string::String>`
+
+error[E0308]: mismatched types
+  --> tests/identity_leak/empty_response_identifier.rs:31:27
+   |
+31 |     identity.message_id = empty_sentinel.clone();
+   |     -------------------   ^^^^^^^^^^^^^^^^^^^^^^ expected `Option<WireId>`, found `Option<String>`
+   |     |
+   |     expected due to the type of this binding
+   |
+   = note: expected enum `std::option::Option<WireId>`
+              found enum `std::option::Option<std::string::String>`
+
+error[E0308]: mismatched types
+  --> tests/identity_leak/empty_response_identifier.rs:37:27
+   |
+37 |     terminal.message_id = empty_sentinel;
    |     -------------------   ^^^^^^^^^^^^^^ expected `Option<WireId>`, found `Option<String>`
    |     |
    |     expected due to the type of this binding
