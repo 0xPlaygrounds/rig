@@ -136,7 +136,6 @@ pub(crate) fn assistant_text_items_from_choice(
 /// One invalid tool call surfaced mid-stream, awaiting a resolution from
 /// [`AgentRun::resolve_streamed_invalid_tool_call`](super::AgentRun::resolve_streamed_invalid_tool_call).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct StreamedInvalidToolCall {
     /// The rejected tool call. For a name delta this is a diagnostic call
     /// assembled from the streamed name and any buffered argument deltas.
@@ -155,7 +154,6 @@ pub struct StreamedInvalidToolCall {
 /// Used by the machine to build diagnostics and rollback messages from
 /// exactly what the model has produced so far.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct PartialStreamedTurn {
     /// Provider-assigned assistant message ID, when already known.
     pub message_id: Option<String>,
@@ -245,7 +243,6 @@ impl PartialStreamedTurn {
 /// The assembled streamed turn, fed to
 /// [`AgentRun::streamed_turn`](super::AgentRun::streamed_turn).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct StreamedTurn {
     /// Provider-assigned assistant message ID, when available.
     pub message_id: Option<String>,

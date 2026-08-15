@@ -519,9 +519,6 @@ mod grammar_guards {
                 ReasoningContent::Text { text, .. } => text.clone(),
                 ReasoningContent::Encrypted(data) => data.clone(),
                 ReasoningContent::Redacted { data } => data.clone(),
-                // `ReasoningContent` is non-exhaustive; no other variant is
-                // reachable from these frames.
-                _ => String::new(),
             })
             .collect();
         assert_eq!(

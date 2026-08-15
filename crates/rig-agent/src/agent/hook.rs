@@ -364,7 +364,6 @@ impl HookContext {
 
 /// Diagnostics for an invalid model-emitted tool call.
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub struct InvalidToolCallContext {
     /// Name emitted by the model.
     pub tool_name: String,
@@ -437,7 +436,6 @@ pub struct CompletionCall<'a> {
 /// default candidate for every retry, not a hard pin: selection hooks may
 /// override it on each retry.
 #[derive(Clone, Copy)]
-#[non_exhaustive]
 pub struct ModelSelection<'a> {
     /// Prompt for the pending model call.
     pub prompt: &'a Message,
@@ -457,9 +455,8 @@ pub struct ModelSelection<'a> {
 impl<'a> ModelSelection<'a> {
     /// Construct a `ModelSelection` event from its parts.
     ///
-    /// The struct is `#[non_exhaustive]`, so external code cannot build it
-    /// with a struct literal; this constructor exists so that custom
-    /// model-selection routers can be unit-tested outside this crate.
+    /// Provided so that custom model-selection routers can be unit-tested
+    /// outside this crate without restating every field.
     pub fn new(
         prompt: &'a Message,
         history: &'a [Message],
@@ -667,7 +664,6 @@ pub struct StreamResponseFinish<'a> {
 
 /// Hook event kind used only as an observation performance hint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum StepEventKind {
     CompletionCall,
     CompletionResponse,
@@ -696,7 +692,6 @@ pub enum StepEventKind {
 /// The merged patch does not mutate the agent's configured baseline and is not
 /// carried into subsequent turns.
 #[derive(Debug, Clone, Default, PartialEq)]
-#[non_exhaustive]
 pub struct RequestPatch {
     /// Preamble to use instead of the agent's configured preamble for this turn.
     pub preamble: Option<String>,
@@ -844,7 +839,6 @@ impl RequestPatch {
 
 /// Action for model-selection hooks.
 #[derive(Debug, Clone)]
-#[non_exhaustive]
 pub enum ModelSelectionAction {
     /// Keep the candidate supplied to this hook.
     Continue,

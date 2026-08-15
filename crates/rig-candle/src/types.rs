@@ -8,7 +8,6 @@ use crate::profile::ModelFamily;
 
 /// Why a local Candle completion failed.
 #[derive(Debug, Error, Clone)]
-#[non_exhaustive]
 pub enum CandleError {
     /// A required artifact buffer was empty.
     #[error("the {artifact} buffer is empty")]

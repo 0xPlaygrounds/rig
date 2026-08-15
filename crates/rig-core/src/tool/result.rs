@@ -9,7 +9,6 @@ use crate::{
 
 /// Normalized classification for a tool execution error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
 pub enum ToolErrorKind {
     /// Arguments could not be decoded or validated.
     InvalidArgs,

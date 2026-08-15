@@ -554,7 +554,6 @@ pub(crate) async fn build_prepared_completion_request(
 /// # }
 /// ```
 #[derive(Clone)]
-#[non_exhaustive]
 pub struct Agent {
     pub(crate) config: AgentConfig,
     pub(crate) tool_server_handle: ToolServerHandle,

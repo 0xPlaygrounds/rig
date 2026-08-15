@@ -149,7 +149,6 @@ pub(crate) fn resolve_model_turn_action(
 /// runtime-composable list; `run()` and `stream()` share the same loop and fire
 /// the same events, so they behave identically apart from the streamed delta
 /// events the medium adds.
-#[non_exhaustive]
 pub struct AgentRunner {
     /// The run's own copy of the agent's configuration, cloned as one unit by
     /// [`from_agent`](Self::from_agent). Per-run overrides mutate this copy and

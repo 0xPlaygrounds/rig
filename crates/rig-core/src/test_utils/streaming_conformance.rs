@@ -34,7 +34,6 @@ use crate::{
 
 /// Typed failure from a wire-conformance scenario.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 pub enum ConformanceError {
     /// Opening the stream failed before any wire frame was consumed.
     #[error(transparent)]

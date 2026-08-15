@@ -8,11 +8,10 @@ use http::StatusCode;
 /// which may carry Rig-generated diagnostics, this type always represents the
 /// payload the provider actually returned.
 ///
-/// `#[non_exhaustive]`: construct via [`Self::new`] / [`Self::without_status`]
-/// and the `with_*` setters, so transport metadata can grow without breaking
-/// matchers.
+/// Prefer [`Self::new`] / [`Self::without_status`] and the `with_*` setters
+/// over a struct literal: a literal has to be revisited every time transport
+/// metadata grows, and the constructors do not.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
 pub struct ProviderResponseError {
     /// HTTP status of the provider response, when it was captured alongside the body.
     pub status: Option<StatusCode>,
@@ -342,7 +341,6 @@ macro_rules! provider_error_enum {
         /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
         $(#[$extra_doc])*
         #[derive(Debug, thiserror::Error)]
-        #[non_exhaustive]
         pub enum $name {
             /// Http error (e.g.: connection error, timeout, etc.)
             #[error("HttpError: {0}")]

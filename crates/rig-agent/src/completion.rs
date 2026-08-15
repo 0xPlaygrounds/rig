@@ -12,7 +12,6 @@ pub use rig_core::completion::*;
 
 /// Errors from classic agent prompting.
 #[derive(Debug, Error)]
-#[non_exhaustive]
 pub enum PromptError {
     /// A provider completion failed.
     #[error("CompletionError: {0}")]
@@ -117,7 +116,6 @@ impl PromptError {
 
 /// Errors returned by typed structured prompting.
 #[derive(Debug, Error)]
-#[non_exhaustive]
 pub enum StructuredOutputError {
     /// The underlying classic run failed.
     #[error("PromptError: {0}")]

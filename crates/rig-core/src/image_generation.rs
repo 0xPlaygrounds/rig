@@ -38,7 +38,6 @@ pub trait ImageGenerationModel: Clone + WasmCompatSend + WasmCompatSync {
     }
 }
 /// An image generation request.
-#[non_exhaustive]
 pub struct ImageGenerationRequest {
     pub prompt: String,
     pub width: u32,
@@ -48,7 +47,6 @@ pub struct ImageGenerationRequest {
 
 /// A builder for `ImageGenerationRequest`.
 /// Can be sent to a model provider.
-#[non_exhaustive]
 pub struct ImageGenerationRequestBuilder<M, P = Missing>
 where
     M: ImageGenerationModel,

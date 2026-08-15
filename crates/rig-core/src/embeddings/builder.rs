@@ -48,7 +48,6 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-#[non_exhaustive]
 pub struct EmbeddingsBuilder<M, T>
 where
     M: EmbeddingModel,

@@ -117,11 +117,12 @@ fn assert_reasoning_metadata(
 
 /// Rebuild the reasoning block the normalized stream would have produced for a
 /// [`RawStreamingChoice::Reasoning`] event: the same id and the single content
-/// block, verbatim. [`Reasoning`] is `#[non_exhaustive]`, so it is round-tripped
-/// through serde rather than constructed field-by-field.
+/// block, verbatim.
 fn reasoning_block(id: Option<String>, content: rig::message::ReasoningContent) -> Reasoning {
-    serde_json::from_value(json!({ "id": id, "content": [content] }))
-        .expect("streamed reasoning block should rebuild")
+    Reasoning {
+        id,
+        content: vec![content],
+    }
 }
 
 fn assert_has_text(response: &CompletionResponse) {

@@ -176,7 +176,6 @@ pub enum AgentRunStep {
 
 /// One tool call awaiting execution by the driver.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct PendingToolCall {
     /// The tool call emitted by the model (with any repaired tool name applied).
     pub tool_call: ToolCall,
@@ -194,7 +193,6 @@ pub struct PendingToolCall {
 
 /// A completed model turn fed back to [`AgentRun::model_response`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct ModelTurn {
     /// Provider-assigned assistant message ID, when available.
     pub message_id: Option<String>,

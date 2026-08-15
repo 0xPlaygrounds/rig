@@ -49,7 +49,6 @@ pub type StreamingResult = Pin<Box<dyn Stream<Item = Result<MultiTurnStreamItem,
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
-#[non_exhaustive]
 pub enum MultiTurnStreamItem {
     /// A streamed assistant content item — the content the **model emitted**:
     /// text/reasoning deltas, tool-call deltas, and, when the model turn is

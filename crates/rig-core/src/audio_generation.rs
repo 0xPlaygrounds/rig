@@ -40,7 +40,6 @@ pub trait AudioGenerationModel: Sized + Clone + WasmCompatSend + WasmCompatSync 
         AudioGenerationRequestBuilder::new(self.clone())
     }
 }
-#[non_exhaustive]
 pub struct AudioGenerationRequest {
     pub text: String,
     pub voice: String,
@@ -48,7 +47,6 @@ pub struct AudioGenerationRequest {
     pub additional_params: Option<Value>,
 }
 
-#[non_exhaustive]
 pub struct AudioGenerationRequestBuilder<M, T = Missing, V = Missing>
 where
     M: AudioGenerationModel,

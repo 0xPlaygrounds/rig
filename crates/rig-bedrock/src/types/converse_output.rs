@@ -204,7 +204,6 @@ pub enum ContentBlock {
     ToolResult(ToolResultBlock),
     ToolUse(ToolUseBlock),
     Video(VideoBlock),
-    #[non_exhaustive]
     Unknown,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -247,7 +246,6 @@ pub enum CitationLocation {
     DocumentChar(DocumentCharLocation),
     DocumentChunk(DocumentChunkLocation),
     DocumentPage(DocumentPageLocation),
-    #[non_exhaustive]
     Unknown,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -296,7 +294,6 @@ pub enum DocumentSource {
     Content(Vec<DocumentContentBlock>),
     S3Location(S3Location),
     Text(String),
-    #[non_exhaustive]
     Unknown,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -338,7 +335,6 @@ pub enum GuardrailConverseImageFormat {
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum GuardrailConverseImageSource {
     Bytes(Blob),
-    #[non_exhaustive]
     Unknown,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -370,7 +366,6 @@ pub enum ImageFormat {
 pub enum ImageSource {
     Bytes(Blob),
     S3Location(S3Location),
-    #[non_exhaustive]
     Unknown,
 }
 
@@ -378,7 +373,6 @@ pub enum ImageSource {
 pub enum ReasoningContentBlock {
     ReasoningText(ReasoningTextBlock),
     RedactedContent(Blob),
-    #[non_exhaustive]
     Unknown,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -401,7 +395,6 @@ pub enum ToolResultContentBlock {
     Json(serde_json::Value),
     Text(String),
     Video(VideoBlock),
-    #[non_exhaustive]
     Unknown,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
@@ -426,7 +419,6 @@ pub enum VideoFormat {
 pub enum VideoSource {
     Bytes(Blob),
     S3Location(S3Location),
-    #[non_exhaustive]
     Unknown,
 }
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
