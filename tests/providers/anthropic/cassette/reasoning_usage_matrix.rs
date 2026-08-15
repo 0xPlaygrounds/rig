@@ -159,10 +159,7 @@ impl Observed {
     }
 
     fn take(&self, scenario: &str) -> Usage {
-        self.0
-            .lock()
-            .expect("observed usage lock")
-            .clone()
+        (*self.0.lock().expect("observed usage lock"))
             .unwrap_or_else(|| panic!("{scenario}: the cell body never recorded a usage"))
     }
 
@@ -271,9 +268,7 @@ fn recorded_streamed_thinking_tokens(scenario: &str) -> Option<u64> {
                 path.display()
             )
         });
-    let Some((_, after)) = frame.split_once(r#""thinking_tokens":"#) else {
-        return None;
-    };
+    let (_, after) = frame.split_once(r#""thinking_tokens":"#)?;
     let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
     Some(digits.parse().unwrap_or_else(|err| {
         panic!(
