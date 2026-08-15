@@ -1894,6 +1894,38 @@ mod tests {
     /// `CompletionResponse` writes is the same bare-string shape as before,
     /// and a stored `""` still loads as absent rather than failing the record
     /// (#2336).
+    /// Pins the *absent*-identifier wire shape of the two core types, which
+    /// the round-trip tests cannot: `null` and a missing key both load as
+    /// `None`, so a change to these `serde` attributes would rewrite the shape
+    /// of every stored record without failing anything.
+    ///
+    /// The shape is asymmetric and predates the identifier newtype:
+    /// `message_id` and `response_id` carry no `skip_serializing_if`, so an
+    /// absent one is written as an explicit `null`, while
+    /// `provider_request_id` carries one and is omitted. This test asserts
+    /// what is, so that retyping the fields (#2336) is provably shape-neutral
+    /// — not what a uniform rule would have produced.
+    #[test]
+    fn the_absent_identifier_wire_shape_is_unchanged() {
+        let json = serde_json::to_value(CompletionResponse::new(
+            vec![AssistantContent::text("hi")],
+            Usage::new(),
+            "test-provider",
+        ))
+        .expect("serializes");
+
+        assert_eq!(
+            json.get("message_id"),
+            Some(&serde_json::Value::Null),
+            "message_id has no skip_serializing_if: absent must stay an explicit null"
+        );
+        assert_eq!(json.get("response_id"), Some(&serde_json::Value::Null));
+        assert!(
+            json.get("provider_request_id").is_none(),
+            "provider_request_id does have skip_serializing_if: absent must stay omitted"
+        );
+    }
+
     #[test]
     fn identifiers_persist_as_bare_strings_and_empty_loads_as_absent() {
         let response = CompletionResponse::new(
