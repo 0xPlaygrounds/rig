@@ -34,19 +34,20 @@ use std::fmt;
 /// // Create a model with ID and name
 /// let model = Model::new("gpt-4", "GPT-4");
 ///
-/// // Create a model with all fields
-/// let model = Model {
-///     id: "gpt-4".to_string(),
-///     name: Some("GPT-4".to_string()),
-///     description: Some("A large language model...".to_string()),
-///     r#type: Some("chat".to_string()),
-///     created_at: Some(1677610600),
-///     owned_by: Some("openai".to_string()),
-///     context_length: Some(8192),
-///     max_output_tokens: Some(4096),
-/// };
+/// // Create a model with all fields. `Model` is `#[non_exhaustive]`, so it
+/// // grows fields without breaking you — start from a constructor and assign
+/// // the rest, since every field stays public and writable.
+/// let mut model = Model::new("gpt-4", "GPT-4");
+/// model.description = Some("A large language model...".to_string());
+/// model.r#type = Some("chat".to_string());
+/// model.created_at = Some(1677610600);
+/// model.owned_by = Some("openai".to_string());
+/// model.context_length = Some(8192);
+/// model.max_output_tokens = Some(4096);
+/// assert_eq!(model.max_output_tokens, Some(4096));
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Model {
     /// The unique identifier for the model (required)
     pub id: String,
@@ -201,6 +202,7 @@ impl fmt::Display for Model {
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ModelList {
     /// The complete list of available models
     pub data: Vec<Model>,
