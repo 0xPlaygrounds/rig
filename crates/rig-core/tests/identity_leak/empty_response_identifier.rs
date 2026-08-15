@@ -16,6 +16,10 @@ fn main() {
         "provider",
     );
 
-    // The sentinel the invariant forbids: not merely discouraged, unrepresentable.
-    response.message_id = Some(String::new());
+    // The sentinel the invariant forbids: not merely discouraged,
+    // unrepresentable. Bound first so the diagnostic is the assignment's own
+    // type error, with no note pointing into the standard library (whose
+    // source is not always available to render).
+    let empty_sentinel: Option<String> = Some(String::new());
+    response.message_id = empty_sentinel;
 }
