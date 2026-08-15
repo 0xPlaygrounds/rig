@@ -119,6 +119,18 @@ fn assert_recorded_content_is_an_array(scenario: &str) {
     );
 }
 
+/// The turn's own arithmetic: input + output must be the total the provider
+/// reported. An audio turn is where that stops holding if audio tokens are
+/// dropped from the input count.
+fn assert_usage_adds_up(usage: &rig::completion::Usage) {
+    assert!(usage.total_tokens > 0, "the turn must report usage");
+    assert_eq!(
+        usage.input_tokens + usage.output_tokens,
+        usage.total_tokens,
+        "input + output must equal the total Mistral reported: {usage:?}"
+    );
+}
+
 fn assert_mentions(response: &str, expected: &str) {
     assert!(
         response.to_lowercase().contains(&expected.to_lowercase()),
@@ -687,6 +699,9 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
             let text = crate::support::assistant_text_response(&response.choice)
                 .expect("the turn should carry text");
             assert_mentions(&text, AUDIO_KEYWORD);
+            // Mistral bills audio outside `prompt_tokens`, so counting only
+            // that field leaves the parts short of the total it reported.
+            assert_usage_adds_up(&response.usage);
             Ok::<_, anyhow::Error>(())
         },
     )

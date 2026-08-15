@@ -67,6 +67,43 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
             *tool_choice = serde_json::Value::String("any".to_string());
         }
 
+        // Mistral accepts a *structured* response format beside tools only
+        // under `tool_choice: auto` (or `none`): anything that forces a call
+        // is a 400, "`json_schema` response type with tools is only compatible
+        // with `tool_choice: auto`". Rig reaches that combination on its own —
+        // a structured-output agent defers `response_format` until a tool
+        // result exists, then emits it beside the caller's standing
+        // `tool_choice`, so the turn after the first tool call dies. Relaxing
+        // the choice keeps both features working; dropping the response format
+        // instead would silently discard the schema the caller asked for.
+        //
+        // Keyed on the format's *type* rather than its presence: the
+        // constraint is specific to `json_schema` and `json_object`, and
+        // `{"type": "text"}` — the API default, which a caller can still pass
+        // explicitly — rides beside a forced choice happily.
+        let forces_a_tool_call = map
+            .get("tool_choice")
+            .is_some_and(|choice| !matches!(choice.as_str(), Some("auto" | "none")));
+        let has_tools = map
+            .get("tools")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|tools| !tools.is_empty());
+        let has_structured_format = map
+            .get("response_format")
+            .and_then(|format| format.get("type"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|kind| matches!(kind, "json_schema" | "json_object"));
+        if forces_a_tool_call && has_tools && has_structured_format {
+            tracing::debug!(
+                "relaxing tool_choice to `auto`: Mistral rejects a forced tool choice \
+                 alongside a response format"
+            );
+            map.insert(
+                "tool_choice".to_string(),
+                serde_json::Value::String("auto".to_string()),
+            );
+        }
+
         if let Some(messages) = map
             .get_mut("messages")
             .and_then(serde_json::Value::as_array_mut)
@@ -136,6 +173,11 @@ pub struct PromptTokensDetails {
     /// Number of tokens served from the prompt cache.
     #[serde(default)]
     pub cached_tokens: u64,
+    /// Tokens the audio-input models charge for the prompt's audio. Reported
+    /// *alongside* `prompt_tokens` rather than inside it — the two plus
+    /// `completion_tokens` are what add up to `total_tokens`.
+    #[serde(default)]
+    pub audio_tokens: u64,
 }
 
 /// Token usage returned by Mistral's chat completions and embeddings endpoints.
@@ -177,12 +219,30 @@ impl Usage {
             .or(self.num_cached_tokens)
             .unwrap_or(0)
     }
+
+    /// Tokens charged for audio in the prompt. 0 for every non-audio turn.
+    pub fn audio_tokens(&self) -> u64 {
+        self.prompt_tokens_details
+            .as_ref()
+            .map_or(0, |details| details.audio_tokens)
+    }
+
+    /// Every token charged against the prompt.
+    ///
+    /// Mistral reports audio outside `prompt_tokens`: a Voxtral turn answering
+    /// a 375-audio-token clip reports `prompt_tokens: 6`, `audio_tokens: 375`,
+    /// `completion_tokens: 2` and `total_tokens: 383`. Counting only
+    /// `prompt_tokens` as input leaves `input + output` short of `total` by the
+    /// whole audio payload.
+    pub fn input_tokens(&self) -> u64 {
+        self.prompt_tokens as u64 + self.audio_tokens()
+    }
 }
 
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> Self {
         crate::providers::internal::completion_usage(
-            usage.prompt_tokens as u64,
+            usage.input_tokens(),
             usage.completion_tokens as u64,
             usage.total_tokens as u64,
             usage.cached_tokens(),

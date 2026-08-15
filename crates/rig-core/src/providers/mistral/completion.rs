@@ -12,8 +12,20 @@ pub const CODESTRAL: &str = "codestral-latest";
 /// The latest version of the `mistral-large` Mistral model
 pub const MISTRAL_LARGE: &str = "mistral-large-latest";
 /// The latest version of the `pixtral-large` Mistral multimodal model
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(
+    note = "Mistral no longer serves this model. Pixtral is retired; use `MISTRAL_SMALL` or `MISTRAL_MEDIUM`, which are vision-capable"
+)]
 pub const PIXTRAL_LARGE: &str = "pixtral-large-latest";
 /// The latest version of the `mistral` Mistral multimodal model, trained on datasets from the Middle East & South Asia
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(
+    note = "Mistral no longer serves this model. retired; no replacement in the live catalog"
+)]
 pub const MISTRAL_SABA: &str = "mistral-saba-latest";
 /// The latest version of the `mistral-3b` Mistral completions model
 pub const MINISTRAL_3B: &str = "ministral-3b-latest";
@@ -23,10 +35,26 @@ pub const MINISTRAL_8B: &str = "ministral-8b-latest";
 /// The latest version of the `mistral-small` Mistral completions model
 pub const MISTRAL_SMALL: &str = "mistral-small-latest";
 /// The `24-09` version of the `pixtral-small` Mistral multimodal model
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(
+    note = "Mistral no longer serves this model. Pixtral is retired; use `MINISTRAL_3B`, which is vision-capable"
+)]
 pub const PIXTRAL_SMALL: &str = "pixtral-12b-2409";
 /// The `open-mistral-nemo` model
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(
+    note = "Mistral no longer serves this model. retired; no replacement in the live catalog"
+)]
 pub const MISTRAL_NEMO: &str = "open-mistral-nemo";
 /// The `open-mistral-mamba` model
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(note = "Mistral no longer serves this model. retired; use `CODESTRAL`")]
 pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 
 /// Mistral completion model, driven by the shared OpenAI Chat Completions path.
@@ -339,8 +367,36 @@ pub struct ToolCall {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
-    #[serde(with = "json_utils::stringified_json")]
+    #[serde(
+        serialize_with = "json_utils::stringified_json::serialize",
+        deserialize_with = "deserialize_truncatable_arguments"
+    )]
     pub arguments: serde_json::Value,
+}
+
+/// Deserialize a tool call's `arguments`, tolerating the truncated JSON a
+/// `max_tokens`-capped turn produces.
+///
+/// Mistral emits the tool call anyway when the budget runs out mid-arguments:
+/// a live turn capped at 32 tokens returns `finish_reason: "length"` with
+/// `arguments` cut off partway through the object. Parsing that strictly fails
+/// the *whole* response — the text, usage, id and finish reason go with it —
+/// where the streaming path keeps the turn and drops the unusable call
+/// ([`UnparseableToolInput::Drop`](crate::streaming::UnparseableToolInput)).
+///
+/// Truncated arguments become `null`, which
+/// [`NormalizeCompletionResponse`] drops the call on, so the two transports
+/// agree: the turn survives and its `Length` finish reason is what tells the
+/// caller the call was cut off.
+fn deserialize_truncatable_arguments<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = String::deserialize(deserializer)?;
+    if raw.trim().is_empty() {
+        return Ok(serde_json::Value::Object(serde_json::Map::new()));
+    }
+    Ok(serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null))
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -426,13 +482,19 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 } => Some(compat::text_then_tool_calls(
                     content,
                     content.is_empty(),
-                    tool_calls.iter().map(|call| {
-                        (
-                            call.id.as_str(),
-                            call.function.name.as_str(),
-                            call.function.arguments.clone(),
-                        )
-                    }),
+                    // A call whose arguments were truncated mid-JSON is
+                    // unusable; the turn's `Length` finish reason is what
+                    // reports it, exactly as on the streaming path.
+                    tool_calls
+                        .iter()
+                        .filter(|call| !call.function.arguments.is_null())
+                        .map(|call| {
+                            (
+                                call.id.as_str(),
+                                call.function.name.as_str(),
+                                call.function.arguments.clone(),
+                            )
+                        }),
                 )),
                 _ => None,
             },
@@ -443,6 +505,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::completion::NormalizeCompletionResponse as _;
     use crate::providers::openai::completion::OpenAICompatibleProvider;
 
     #[test]
@@ -530,6 +593,204 @@ mod tests {
         }))
         .expect("usage should deserialize");
         assert_eq!(aliased.cached_tokens(), 4);
+    }
+
+    /// Mistral reports audio outside `prompt_tokens`, so counting only that
+    /// field leaves `input + output` short of `total` by the audio payload.
+    /// The numbers are a live Voxtral turn's, quoted verbatim.
+    #[test]
+    fn usage_counts_audio_tokens_as_input() {
+        let usage: Usage = serde_json::from_value(serde_json::json!({
+            "prompt_audio_seconds": 0,
+            "prompt_tokens": 6,
+            "completion_tokens": 2,
+            "total_tokens": 383,
+            "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 375}
+        }))
+        .expect("usage should deserialize");
+
+        assert_eq!(usage.audio_tokens(), 375);
+        assert_eq!(usage.input_tokens(), 381);
+
+        let normalized = crate::completion::Usage::from(&usage);
+        assert_eq!(normalized.input_tokens, 381);
+        assert_eq!(normalized.output_tokens, 2);
+        assert_eq!(
+            normalized.input_tokens + normalized.output_tokens,
+            normalized.total_tokens,
+            "the parts must add up to the total Mistral reported"
+        );
+    }
+
+    /// A text turn carries no audio detail, and must be unaffected.
+    #[test]
+    fn usage_without_audio_is_unchanged() {
+        let usage: Usage = serde_json::from_value(serde_json::json!({
+            "prompt_tokens": 19, "completion_tokens": 2, "total_tokens": 21,
+            "prompt_tokens_details": {"cached_tokens": 0}
+        }))
+        .expect("usage should deserialize");
+
+        assert_eq!(usage.audio_tokens(), 0);
+        assert_eq!(crate::completion::Usage::from(&usage).input_tokens, 19);
+    }
+
+    /// Mistral emits the tool call anyway when `max_tokens` runs out mid
+    /// arguments — a live turn capped at 32 tokens returned
+    /// `finish_reason: "length"` with `arguments` cut off partway through the
+    /// object. Parsing strictly took the whole response down with it.
+    #[test]
+    fn truncated_tool_arguments_do_not_destroy_the_response() {
+        let data = r#"{
+            "id": "cmpl-1", "object": "chat.completion", "created": 1,
+            "model": "mistral-small-latest", "system_fingerprint": null,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Recording that now.",
+                    "tool_calls": [{
+                        "id": "call_1", "type": "function",
+                        "function": {"name": "record", "arguments": "{\"note\": \"How to bake sour"}
+                    }]
+                },
+                "logprobs": null,
+                "finish_reason": "length"
+            }],
+            "usage": {"prompt_tokens": 30, "completion_tokens": 32, "total_tokens": 62}
+        }"#;
+
+        let response: CompletionResponse =
+            serde_json::from_str(data).expect("a truncated tool call must not fail the response");
+
+        let normalized = response
+            .normalize("mistral")
+            .expect("the turn must survive with its text and metadata");
+        assert_eq!(
+            normalized.finish_reason(),
+            Some(crate::completion::FinishReason::Length),
+            "the finish reason is what reports the truncation"
+        );
+        assert_eq!(normalized.usage.total_tokens, 62);
+        // The unusable call is dropped, as the streaming path drops it.
+        assert!(
+            normalized.choice.iter().all(|content| !matches!(
+                content,
+                crate::completion::AssistantContent::ToolCall(_)
+            )),
+            "a call with truncated arguments must not be handed to a tool"
+        );
+    }
+
+    /// A complete tool call is unaffected by the tolerant parse.
+    #[test]
+    fn complete_tool_arguments_still_parse() {
+        let data = r#"{
+            "id": "cmpl-1", "object": "chat.completion", "created": 1,
+            "model": "mistral-small-latest", "system_fingerprint": null,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": null, "tool_calls": [{
+                    "id": "call_1", "type": "function",
+                    "function": {"name": "add", "arguments": "{\"x\":1,\"y\":2}"}
+                }]},
+                "logprobs": null, "finish_reason": "tool_calls"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+        }"#;
+
+        let normalized = serde_json::from_str::<CompletionResponse>(data)
+            .expect("response should deserialize")
+            .normalize("mistral")
+            .expect("a complete call should normalize");
+        assert!(
+            normalized
+                .choice
+                .iter()
+                .any(|content| matches!(content, crate::completion::AssistantContent::ToolCall(_))),
+            "a complete call must still reach the caller"
+        );
+    }
+
+    /// Mistral rejects a forced tool choice beside a response format with
+    /// "`json_schema` response type with tools is only compatible with
+    /// `tool_choice: auto`". Rig reaches that combination by itself on the
+    /// turn after a tool result, so finalization relaxes the choice.
+    #[test]
+    fn finalize_relaxes_a_forced_tool_choice_beside_a_response_format() {
+        let mut body = serde_json::json!({
+            "model": MISTRAL_SMALL,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tool_choice": "required",
+            "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "Plan"}}
+        });
+        MistralExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+        assert_eq!(body["tool_choice"], "auto");
+        assert!(
+            body.get("response_format").is_some(),
+            "the caller's schema must survive; relaxing the choice is what gives way"
+        );
+
+        // A specific function is forcing too, and equally rejected.
+        let mut body = serde_json::json!({
+            "model": MISTRAL_SMALL,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tool_choice": {"type": "function", "function": {"name": "add"}},
+            "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
+            "response_format": {"type": "json_object"}
+        });
+        MistralExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+        assert_eq!(body["tool_choice"], "auto");
+    }
+
+    /// The relaxation is narrow: without a response format, or without tools,
+    /// or when the choice is already compatible, nothing moves.
+    /// A `text` response format is not the constrained kind either — Mistral
+    /// takes it beside a forced choice, verified live.
+    #[test]
+    fn finalize_leaves_a_forced_tool_choice_alone_without_a_response_format() {
+        let mut body = serde_json::json!({
+            "model": MISTRAL_SMALL,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tool_choice": "required",
+            "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}]
+        });
+        MistralExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+        assert_eq!(body["tool_choice"], "any", "still just the dialect rename");
+
+        let mut body = serde_json::json!({
+            "model": MISTRAL_SMALL,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tool_choice": "none",
+            "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
+            "response_format": {"type": "json_object"}
+        });
+        MistralExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+        assert_eq!(body["tool_choice"], "none", "`none` is already compatible");
+
+        let mut body = serde_json::json!({
+            "model": MISTRAL_SMALL,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tool_choice": "required",
+            "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
+            "response_format": {"type": "text"}
+        });
+        MistralExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+        assert_eq!(
+            body["tool_choice"], "any",
+            "a `text` response format is unconstrained; only the structured kinds conflict"
+        );
     }
 
     #[test]
