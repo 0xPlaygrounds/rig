@@ -1,0 +1,55 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Call record_colour with the dominant colour of the attached image.","role":"system"},{"content":[{"text":"Record this image''s colour.","type":"text"},{"image_url":{"detail":"auto","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsAtx/ZMZxgi+hcEKLNO+FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywKqxUDxqh7TUQAAAABJRU5ErkJggg=="},"type":"image_url"}],"role":"user"}],"model":"mistral-small-latest","stream":true,"temperature":0.0,"tools":[{"function":{"description":"Record the dominant colour of an image the user attached.","name":"record_colour","parameters":{"properties":{"colour":{"type":"string"}},"required":["colour"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"colour\": \"red\"}","name":"record_colour"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmn","usage":{"completion_tokens":13,"prompt_tokens":115,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":128}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Call record_colour with the dominant colour of the attached image.","role":"system"},{"content":[{"text":"Record this image''s colour.","type":"text"},{"image_url":{"detail":"auto","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsAtx/ZMZxgi+hcEKLNO+FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywKqxUDxqh7TUQAAAABJRU5ErkJggg=="},"type":"image_url"}],"role":"user"},{"content":"","prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"colour\":\"red\"}","name":"record_colour"},"id":"call_REDACTED_1","type":"function"}]},{"content":"recorded red","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"mistral-small-latest","stream":true,"temperature":0.0,"tools":[{"function":{"description":"Record the dominant colour of an image the user attached.","name":"record_colour","parameters":{"properties":{"colour":{"type":"string"}},"required":["colour"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"The"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0"}
+
+    data: {"choices":[{"delta":{"content":" dominant colour of the"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi"}
+
+    data: {"choices":[{"delta":{"content":" attached"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklm"}
+
+    data: {"choices":[{"delta":{"content":" image has"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":" been recorded as"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":" **red**."},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijkl","usage":{"completion_tokens":15,"prompt_tokens":133,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":148}}
+
+    data: [DONE]
+
