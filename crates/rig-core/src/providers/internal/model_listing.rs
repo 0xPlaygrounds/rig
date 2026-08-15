@@ -175,6 +175,121 @@ where
     })
 }
 
+/// One page of a cursor-paginated listing.
+///
+/// `next_cursor` is already normalized by the provider's page parser: `None`
+/// means "no next page to ask for", whether the wire said so with a flag, an
+/// absent cursor, or an empty one.
+#[derive(Debug)]
+pub(crate) struct ListingPage {
+    pub(crate) models: Vec<Model>,
+    pub(crate) next_cursor: Option<String>,
+}
+
+/// Drive a cursor-paginated listing to exhaustion.
+///
+/// The providers differ in how they spell a cursor (`after_id`, `pageToken`),
+/// where they put it, and how they signal the end (Anthropic's `has_more`
+/// flag, Gemini's bare `nextPageToken`) — so `path_for` and `parse_page` stay
+/// provider-specific. What must *not* differ is when the loop stops, and that
+/// lives here:
+///
+/// - **No next cursor ends the listing.** Termination follows the cursor, not
+///   any flag beside it. A provider that claims more pages while naming no
+///   cursor has nothing to ask for, so its parser reports `None` and the
+///   listing ends with what it has.
+/// - **A repeated cursor ends the listing.** The next request would be
+///   byte-identical to the one just answered, so the page would repeat
+///   forever.
+///
+/// Both rules exist because breaking either one is an *unbounded loop* — the
+/// listing never returns and `models` grows without limit — rather than a
+/// short list. Anthropic and Gemini each hand-rolled this loop and each
+/// shipped the same class of hang (rig#2334); one implementation is the point.
+pub(crate) async fn paginate_models<Ext, H, P, Q>(
+    client: &Client<Ext, H>,
+    provider_name: &str,
+    mut path_for: P,
+    mut parse_page: Q,
+) -> Result<ModelList, ModelListingError>
+where
+    Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+    P: FnMut(Option<&str>) -> String,
+    Q: FnMut(&[u8], &str) -> Result<ListingPage, ModelListingError>,
+{
+    let mut all_models = Vec::new();
+    let mut cursor: Option<String> = None;
+
+    loop {
+        let path = path_for(cursor.as_deref());
+        let body = get_bytes(client, provider_name, &path).await?;
+        let page = parse_page(&body, &path)?;
+        all_models.extend(page.models);
+
+        let Some(next) = page.next_cursor else {
+            break;
+        };
+        if cursor.as_deref() == Some(next.as_str()) {
+            tracing::warn!(
+                provider = provider_name,
+                models = all_models.len(),
+                "model listing repeated its pagination cursor; returning the pages fetched \
+                 so far"
+            );
+            break;
+        }
+        cursor = Some(next);
+    }
+
+    Ok(ModelList::new(all_models))
+}
+
+/// Append `name=value` to `path` as a query parameter, percent-encoding the
+/// value. Cursors are provider-supplied strings landing in a URL, so they are
+/// encoded rather than interpolated.
+pub(crate) fn with_query_pair(path: &str, pairs: &[(&str, &str)]) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    for (name, value) in pairs {
+        serializer.append_pair(name, value);
+    }
+    format!("{path}?{}", serializer.finish())
+}
+
+/// GET `path` and return the raw body, with listing-flavored status triage.
+///
+/// The paginated listers need the bytes rather than a decoded value: their
+/// page parsers convert entries fallibly and want the raw body for error
+/// context.
+pub(crate) async fn get_bytes<Ext, H>(
+    client: &Client<Ext, H>,
+    provider_name: &str,
+    path: &str,
+) -> Result<Vec<u8>, ModelListingError>
+where
+    Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+{
+    let req = client.get(path)?.body(http_client::NoBody)?;
+    let response = client
+        .send::<_, Vec<u8>>(req)
+        .await
+        .map_err(|error| map_transport_error(provider_name, path, error))?;
+
+    if !response.status().is_success() {
+        let status_code = response.status().as_u16();
+        let body = response.into_body().await?;
+        return Err(ModelListingError::api_error_with_context(
+            provider_name,
+            path,
+            status_code,
+            &body,
+        ));
+    }
+
+    Ok(response.into_body().await?)
+}
+
 /// List models from an OpenAI-style `{ "data": [Entry, ...] }` endpoint,
 /// converting each entry via `Entry: Into<Model>`.
 pub(crate) async fn list_models<Entry, Ext, H>(
