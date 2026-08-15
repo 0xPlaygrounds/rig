@@ -19,6 +19,7 @@ mod cassette {
     mod multi_turn_streaming;
     mod opus_4_7;
     mod opus_4_8;
+    mod pdf_citations;
     mod plaintext_document;
     mod prompt_caching;
     mod reasoning_roundtrip;
