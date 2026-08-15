@@ -14,23 +14,34 @@
 //! that exists precisely to carry provider-specific fields. A caller had no
 //! way to learn what a transcription cost.
 //!
-//! **How these cells fail on `origin/main`.** They do not fail as mock
-//! misses — the fix changes nothing rig sends. They fail on the assertion:
-//! `TranscriptionResponse` has no `usage` field on `main`, so the cells do not
-//! compile there at all. The recorded fixtures are unchanged bytes either way,
-//! which is the point: the data was always on the wire.
+//! **What `origin/main` does with these fixtures.** Nothing: the fix is
+//! purely additive — it changes nothing rig sends, and the recorded bytes are
+//! the same either way, which is the whole point (the data was always on the
+//! wire). `main` simply has no `usage` field to read, so the cells that read
+//! one do not compile there. That is honest evidence the API is new, not
+//! evidence of a behavior regression, and there is no behavior to regress.
 //!
-//! **Why this matrix is smaller than the others.** The input space is small
-//! and fully enumerated rather than sampled. The endpoint's response has
-//! exactly two documented usage shapes, and rig reaches it through exactly two
-//! client extensions over one shared model type
-//! (`internal::transcription::OpenAiTranscriptionModel`, also used by Groq and
-//! Azure). The cross-product below is therefore complete: {duration-billed,
-//! token-billed} × {Responses client, Chat Completions client}, plus the
-//! request-shaping dimension that decides *which* shape comes back
-//! (`additional_params`), plus the two absence cases. The shapes rig must
-//! tolerate but no live model produces — a third `type`, an explicit `null` —
-//! are unit cells beside the fix, because no recording can produce them.
+//! **What these cells can and cannot see.** The harness cannot match a
+//! multipart request body — a non-UTF-8 upload is exported with no body at
+//! all, and any multipart request then matches (`tests/common/cassettes.rs`).
+//! So these cells pin the *response* mapping and that it survives the whole
+//! client stack; they cannot pin what went out. The outbound multipart shape,
+//! including `additional_params` flattening, is pinned separately by
+//! `providers::internal::transcription`'s own unit tests
+//! (`flattens_additional_params_onto_the_form` and its siblings). The model
+//! and client axes below likewise select a fixture rather than exercising a
+//! branch — `Client` and `CompletionsClient` build the identical request — and
+//! are here because the decode runs through each of them end to end.
+//!
+//! **Why this matrix is smaller than the others.** The *response* space it
+//! covers is small: the endpoint reports usage in exactly two shapes, and both
+//! are recorded, through both client extensions, alongside a richer response
+//! format and a rejected request. The shapes rig must tolerate but no live
+//! model produces — a third `type`, a payload carrying both a duration and
+//! token counts, a partial token payload, an absent `usage`, an explicit
+//! `null` — are unit cells beside the fix, because no recording can produce
+//! them. Groq, Azure OpenAI, Venice and HuggingFace share this response type;
+//! their own usage shapes are outside this matrix.
 //!
 //! | # | cell | model | client | usage shape | status |
 //! |---|------|-------|--------|-------------|--------|
@@ -39,14 +50,16 @@
 //! | 3 | `gpt_4o_mini_transcribe_reports_token_usage` | gpt-4o-mini-transcribe | responses | tokens | recorded |
 //! | 4 | `completions_client_reports_duration_usage` | whisper-1 | completions | duration | recorded |
 //! | 5 | `completions_client_reports_token_usage` | gpt-4o-transcribe | completions | tokens | recorded |
-//! | 6 | `verbose_json_still_reports_usage` | whisper-1 | responses | duration + segments | recorded |
+//! | 6 | `verbose_json_still_reports_duration_usage` | whisper-1 | responses | duration (richer body) | recorded |
 //! | 7 | `transcript_still_reaches_the_normalized_response` | whisper-1 | responses | duration | recorded |
-//! | 8 | `error_turn_reports_no_usage` | whisper-1 | responses | none (400) | recorded |
+//! | 8 | `rejected_request_surfaces_the_provider_body` | whisper-1 | responses | none (400) | recorded |
 //!
 //! Unit cells beside the fix
 //! (`usage_decodes_both_billing_shapes_and_keeps_unknown_ones`): both live
-//! shapes, an unmodeled third shape carried verbatim instead of failing the
-//! transcription, an absent `usage`, and an explicit `null`.
+//! shapes with and without the input-token breakdown, a payload whose `type`
+//! says tokens while also carrying `seconds` (which must not decode as a
+//! duration and drop the counts), a partial token payload, an unmodeled third
+//! shape carried verbatim, an absent `usage`, and an explicit `null`.
 
 use rig::client::transcription::TranscriptionClient;
 use rig::providers::openai::{self, TranscriptionUsage};
@@ -89,7 +102,7 @@ async fn whisper_reports_duration_usage() {
 
             assert_transcribed(&response.text);
             match response.response.usage {
-                Some(TranscriptionUsage::Duration { seconds }) => assert!(seconds > 0.0),
+                Some(TranscriptionUsage::Duration { seconds, .. }) => assert!(seconds > 0.0),
                 other => panic!("whisper-1 bills by duration, got {other:?}"),
             }
         },
@@ -115,11 +128,17 @@ async fn gpt_4o_transcribe_reports_token_usage() {
             match response.response.usage {
                 Some(TranscriptionUsage::Tokens {
                     input_tokens,
+                    input_token_details,
                     output_tokens,
                     total_tokens,
+                    ..
                 }) => {
                     assert!(input_tokens > 0 && output_tokens > 0);
                     assert_eq!(total_tokens, input_tokens + output_tokens);
+                    // Audio and text input tokens bill at different rates, so
+                    // the breakdown is part of what a turn cost.
+                    let details = input_token_details.expect("input token breakdown");
+                    assert_eq!(details.audio_tokens + details.text_tokens, input_tokens);
                 }
                 other => panic!("the gpt-4o-transcribe family bills by token, got {other:?}"),
             }
@@ -204,13 +223,14 @@ async fn completions_client_reports_token_usage() {
     .await;
 }
 
-/// The request-shaping dimension: `verbose_json` changes the payload around
-/// `usage` (adding `segments`, `language`, `duration`) without changing that
-/// the usage is reported.
+/// A richer response format wraps `usage` in a much larger payload (adding
+/// `segments`, `language`, and a top-level `duration`) without changing what
+/// the usage itself is. The request that asks for it is pinned by the shared
+/// multipart unit tests, not here — see the module doc.
 #[tokio::test]
-async fn verbose_json_still_reports_usage() {
+async fn verbose_json_still_reports_duration_usage() {
     with_openai_transcription_cassette(
-        "transcription_usage_matrix/verbose_json_still_reports_usage",
+        "transcription_usage_matrix/verbose_json_still_reports_duration_usage",
         |client| async move {
             let response = client
                 .transcription_model(openai::WHISPER_1)
@@ -223,9 +243,16 @@ async fn verbose_json_still_reports_usage() {
                 .expect("transcription should succeed");
 
             assert_transcribed(&response.text);
+            // The variant, not merely its presence: this response also carries
+            // a top-level `duration` float, so it is the payload where a
+            // variant-selection regression would surface first.
             assert!(
-                response.response.usage.is_some(),
-                "a richer response format must not cost the usage"
+                matches!(
+                    response.response.usage,
+                    Some(TranscriptionUsage::Duration { .. })
+                ),
+                "a richer response format must not cost or reshape the usage: {:?}",
+                response.response.usage
             );
         },
     )
@@ -255,12 +282,14 @@ async fn transcript_still_reaches_the_normalized_response() {
     .await;
 }
 
-/// A rejected request has no usage to report, and must still surface the
-/// provider's own body rather than a decode failure over the missing field.
+/// A rejected request has no usage to report. It must surface the provider's
+/// own body rather than fail somewhere in the decode over the missing field —
+/// the error path does not construct a response at all, and this pins that the
+/// new field did not change that.
 #[tokio::test]
-async fn error_turn_reports_no_usage() {
+async fn rejected_request_surfaces_the_provider_body() {
     with_openai_transcription_cassette(
-        "transcription_usage_matrix/error_turn_reports_no_usage",
+        "transcription_usage_matrix/rejected_request_surfaces_the_provider_body",
         |client| async move {
             let Err(error) = client
                 .transcription_model(openai::WHISPER_1)

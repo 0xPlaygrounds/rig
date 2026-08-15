@@ -55,6 +55,7 @@
 //! | 14 | `chatgpt_image_latest_reaches_its_own_validation` | chatgpt-image-latest | quality | 400 quality | recorded |
 //! | 15 | `retired_model_reaches_model_validation` | dall-e-3 | none | 400 model | recorded |
 //! | 16 | `non_object_additional_params_are_a_no_op` | gpt-image-1-mini | `"not-an-object"` | 400 prompt | recorded |
+//! | 17 | `response_format_is_rejected_before_the_model_is_looked_at` | rig-nonexistent | response_format | 400 response_format | recorded |
 //!
 //! Unit cells for the body shape itself (`build_request_*`, beside the fix)
 //! cover: no `response_format` for any model, allowlisted and unlisted models
@@ -527,6 +528,43 @@ async fn chatgpt_image_latest_reaches_its_own_validation() {
     .await;
 
     assert_recorded_request_lacks_response_format(SCENARIO);
+}
+
+/// The evidence for why the field had to go for *every* model, not just the
+/// ones outside the old allowlist: it is not in the endpoint's request schema
+/// at all, so a request carrying it fails on the field even when the model
+/// named does not exist. That ordering is what made the old allowlist fatal —
+/// an unlisted model never reached its own validation.
+#[tokio::test]
+async fn response_format_is_rejected_before_the_model_is_looked_at() {
+    const SCENARIO: &str =
+        "image_params_matrix/response_format_is_rejected_before_the_model_is_looked_at";
+
+    with_openai_image_params_cassette(
+        "image_params_matrix/response_format_is_rejected_before_the_model_is_looked_at",
+        |client| async move {
+            let model = client.image_generation_model("rig-nonexistent-image-model");
+
+            let error = model
+                .image_generation_request()
+                .prompt(PROMPT)
+                .width(SIDE)
+                .height(SIDE)
+                .additional_params(json!({ "response_format": "b64_json" }))
+                .send()
+                .await
+                .expect_err("both the field and the model are invalid");
+
+            let body = rejection_body(&error);
+            assert!(
+                body.contains("response_format") && !body.contains("rig-nonexistent-image-model"),
+                "the parameter is rejected before the model is even looked at: {body}"
+            );
+        },
+    )
+    .await;
+
+    assert_recorded_request_has(SCENARIO, "response_format", &json!("b64_json"));
 }
 
 /// A non-object `additional_params` payload merges nothing and leaves the

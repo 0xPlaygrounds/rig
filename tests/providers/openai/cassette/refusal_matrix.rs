@@ -22,9 +22,16 @@
 //! Meanwhile `ProviderResponseExt::get_text_response` *did* fall back to the
 //! field, so the raw text view and the normalized response disagreed about
 //! whether the turn had said anything — and the same rig-level request driven
-//! through the Responses API surfaced the refusal fine. The fix routes the
-//! four paths through one rule
-//! (`openai::completion::assistant_refusal_fallback`).
+//! through the Responses API surfaced the refusal fine.
+//!
+//! The fix routes the three **unary** paths through one whole-message rule
+//! (`openai::completion::assistant_refusal_fallback`). The streaming path
+//! cannot share it: a stream decides per delta, before it knows whether text
+//! arrives later, so it applies the same intent per delta (`delta_text`). The
+//! two agree on every shape this wire sends — a refusal turn holds `content`
+//! at `null` for its whole length — and would differ only on a turn mixing
+//! both, which is pinned as a unit cell beside the fix rather than claimed
+//! away.
 //!
 //! Because chat completions only populates `refusal` under a strict
 //! structured-output request, every refusal cell asks for `json_schema` output

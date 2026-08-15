@@ -82,9 +82,14 @@ fn build_request(
     // `background`, `output_format`, `user`, …) and override what is derived
     // above. xAI's and Gemini's image bodies already honor this field;
     // dropping it here made `ImageGenerationRequestBuilder::additional_params`
-    // silently inert for OpenAI. (Azure's body drops it too — same defect,
-    // different provider, left for a change that can be recorded against
-    // Azure.)
+    // silently inert for OpenAI.
+    //
+    // Azure OpenAI's image body (`providers::azure`) has both defects and in a
+    // worse combination: it hardcodes `response_format` *and* drops
+    // `additional_params`, so an Azure caller cannot even work around the
+    // former. Left alone here because a fix that cannot be recorded against
+    // Azure would be a guess, which is what this change set is trying not to
+    // ship.
     if let Some(additional_params) = generation_request.additional_params {
         merge_inplace(&mut request, additional_params);
     }

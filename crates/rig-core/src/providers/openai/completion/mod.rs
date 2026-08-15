@@ -3170,6 +3170,55 @@ mod tests {
         );
     }
 
+    /// `"content": ""` decodes to a *present but empty* text part, so the
+    /// fallback and the parts must be either/or: appending both would put an
+    /// empty text block back on the wire beside the refusal and make this view
+    /// of the message disagree with the one `normalize` builds.
+    #[test]
+    fn refusal_beside_an_empty_content_string_converts_to_the_refusal_alone() {
+        let wire: Message = serde_json::from_value(json!({
+            "role": "assistant",
+            "content": "",
+            "refusal": "I'm sorry, I can't help with that."
+        }))
+        .expect("wire message");
+
+        let converted = message::Message::try_from(wire).expect("history conversion");
+
+        assert_eq!(
+            converted,
+            message::Message::Assistant {
+                id: None,
+                content: vec![message::AssistantContent::text(
+                    "I'm sorry, I can't help with that."
+                )],
+            },
+            "the empty part must not ride along beside the refusal"
+        );
+    }
+
+    /// The other side of that branch: content that carries text keeps every
+    /// part, and the refusal is not appended.
+    #[test]
+    fn refusal_beside_real_content_converts_to_the_content_alone() {
+        let wire: Message = serde_json::from_value(json!({
+            "role": "assistant",
+            "content": "here is the answer",
+            "refusal": "I'm sorry, I can't help with that."
+        }))
+        .expect("wire message");
+
+        let converted = message::Message::try_from(wire).expect("history conversion");
+
+        assert_eq!(
+            converted,
+            message::Message::Assistant {
+                id: None,
+                content: vec![message::AssistantContent::text("here is the answer")],
+            }
+        );
+    }
+
     #[test]
     fn refusal_only_message_with_empty_refusal_still_fails_conversion() {
         let wire: Message = serde_json::from_value(json!({
