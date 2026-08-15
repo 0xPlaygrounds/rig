@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to compute 17 squared. State the number in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"executableCode\":{\"code\":\"print(17**2)\\n\",\"id\":\"call_207268\",\"language\":\"PYTHON\"},\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":21,\"promptTokenCount\":20,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":20}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":69,\"totalTokenCount\":110}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"codeExecutionResult\":{\"id\":\"call_207268\",\"outcome\":\"OUTCOME_OK\",\"output\":\"289\\n\"}}],\"role\":\"model\"}}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":20,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":20}],\"serviceTier\":\"standard\",\"totalTokenCount\":20}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"17 squared is 289.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":9,\"promptTokenCount\":20,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":20}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":22,\"totalTokenCount\":51}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"signature_REDACTED_2\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":30,\"promptTokenCount\":89,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":89}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":91,\"toolUsePromptTokenCount\":112,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":112}],\"totalTokenCount\":322}}\r\n\r\n"

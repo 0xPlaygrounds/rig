@@ -11,6 +11,7 @@ mod cassette {
     mod agent_run_streamed;
     mod agent_tools_e2e;
     mod chat_history;
+    mod code_execution_matrix;
     mod document_ordering;
     mod dynamic_tools;
     mod embeddings;
@@ -34,11 +35,13 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod regression_suite;
     mod response_identity;
+    mod stream_terminal_matrix;
     mod streaming;
     mod streaming_grammar;
     mod streaming_multimodal_tool_results;
     mod streaming_tools;
     mod structured_output;
+    mod thought_text_matrix;
     mod tool_choice;
     mod tool_definitions;
     mod tool_hooks;

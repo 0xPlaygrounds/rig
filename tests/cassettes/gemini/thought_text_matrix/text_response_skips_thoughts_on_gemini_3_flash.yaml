@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Work out how many minutes are in three and a half days, then answer with only the number.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"low"}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**Calculating Minutes in Three and a Half Days**\n\nOkay, so the goal here is to figure out how many minutes are in three and a half days, and the only acceptable output is the raw number. No units, just the quantity. Straightforward enough, let''s break it down:\n\nFirst, I need to remember that there are 24 hours in a day and 60 minutes in an hour. So, let''s start with the days. I have 3.5 days.\n\nNow, to get hours, I''ll multiply the number of days by 24: 3.5 days * 24 hours/day. I can break this into two parts to make it simple: 3 days * 24 hours/day and 0.5 days * 24 hours/day, since adding these gives me 3.5.\n*   3 * 24 is 72.\n*   0.5 * 24 is 12 (half of 24).\n*   Adding them: 72 + 12 = 84 hours.\n\nNow that I have hours, I need to convert to minutes. I''ll multiply the total hours by 60: 84 hours * 60 minutes/hour. And again, let''s break this into two parts.\n*   84 * 6 = 504.\n*   84 * 60 = 5040\n\nAlternatively, I could have simplified the calculation by knowing that 24 hours times 60 minutes is 1440 minutes in a day. Therefore, 3.5 days would be 3.5 * 1440. I could break that down the same way.\n*   3 * 1440 = 4320\n*   0.5 * 1440 = 720\n*   Adding them: 4320 + 720 = 5040\n\nOkay, that checks out. Both methods lead to the same answer. Now, remembering the initial constraint to provide *only* the number, the answer is:\n\n5040\n\n\n","thought":true},{"text":"5040","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":4,"promptTokenCount":21,"promptTokensDetails":[{"modality":"TEXT","tokenCount":21}],"serviceTier":"standard","thoughtsTokenCount":288,"totalTokenCount":313}}'

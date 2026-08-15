@@ -8,6 +8,7 @@ use crate::{
     http_client::HttpClientExt,
     providers::gemini::completion::gemini_api_types::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
+        visible_text_parts,
     },
     providers::internal::transcription::send_json_transcription,
     transcription::{self, TranscriptionError},
@@ -132,32 +133,35 @@ impl TryFrom<GenerateContentResponse>
             TranscriptionError::ResponseError("No response candidates in response".into())
         })?;
 
-        let part = candidate
+        // The transcript is *every* visible text part, concatenated. Reading
+        // only `parts.first()` mistook the two shapes Gemini routinely
+        // returns here: a thinking model answers with its chain-of-thought in
+        // parts[0] (`thought: true`) and the transcript after it, so the
+        // reasoning was returned as the transcript and the transcript was
+        // dropped; and a transcript split across several text parts kept only
+        // the first. `visible_text_parts` is the shared skip-the-thoughts rule
+        // — no separator is invented between parts, because Gemini's split
+        // points are not sentence boundaries.
+        //
+        // "No text" stays a *structural* question — are there visible text
+        // parts at all — rather than "is the joined string empty". A turn
+        // whose text part is genuinely empty still converted before this
+        // change, and still does.
+        let mut parts = candidate
             .content
             .as_ref()
-            .and_then(|content| content.parts.first());
+            .map(visible_text_parts)
+            .into_iter()
+            .flatten()
+            .peekable();
+        if parts.peek().is_none() {
+            return Err(TranscriptionError::ResponseError(
+                "Response content contains no text".to_string(),
+            ));
+        }
+        let text = parts.collect::<String>();
 
-        let text = match part {
-            Some(Part {
-                part: PartKind::Text(text),
-                ..
-            }) => text,
-            None => {
-                return Err(TranscriptionError::ResponseError(
-                    "Response content contains no text".to_string(),
-                ));
-            }
-            _ => {
-                return Err(TranscriptionError::ResponseError(
-                    "Response content was not text".to_string(),
-                ));
-            }
-        };
-
-        Ok(transcription::TranscriptionResponse {
-            text: text.to_string(),
-            response,
-        })
+        Ok(transcription::TranscriptionResponse { text, response })
     }
 }
 

@@ -12,6 +12,7 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use base64::Engine as _;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::providers::gemini::completion::attach_trailing_signature;
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
 };
@@ -520,6 +521,18 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             };
 
             assistant_contents.push(assistant_content);
+
+            // The wire hangs a `thoughtSignature` on a trailing part carrying
+            // no `thought` flag, and this crate's own streaming adapter keeps
+            // it (`streaming.rs`, the non-thought text arm) while this mapper
+            // dropped it — the same blocking/streaming asymmetry the REST wire
+            // had. One shared rule places it on both transports.
+            if !part.thought
+                && matches!(part.data, Some(proto::part::Data::Text(_)))
+                && let Some(signature) = encode_optional_base64(&part.thought_signature)
+            {
+                attach_trailing_signature(&mut assistant_contents, signature);
+            }
         }
 
         let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
@@ -568,6 +581,12 @@ impl ProviderResponseExt for GenerateContentResponse {
                 let text: Vec<String> = content
                     .parts
                     .iter()
+                    // `thought` marks the model's chain-of-thought, which the
+                    // completion mapper above routes to `Reasoning`. A reader
+                    // that wants the response *text* must skip it, or it
+                    // reports reasoning as the answer — the same defect the
+                    // REST wire carried.
+                    .filter(|part| !part.thought)
                     .filter_map(|part| {
                         if let Some(proto::part::Data::Text(text)) = &part.data {
                             Some(text.clone())
@@ -1128,5 +1147,93 @@ mod tests {
         assert_eq!(params.r#type, proto::Type::Object as i32);
         assert_eq!(params.required, vec!["city".to_string()]);
         assert!(params.properties.contains_key("city"));
+    }
+
+    /// The gRPC wire carries the model's chain-of-thought in the same `parts`
+    /// array as the answer, flagged by `thought` — same shape as the REST
+    /// wire, where reading it as output text was a live-confirmed defect.
+    /// There is no cassette harness for this transport (it is protobuf over
+    /// gRPC, not HTTP), so the wire shape is stated directly.
+    #[test]
+    fn get_text_response_skips_thought_parts() {
+        let response = proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![
+                        proto::Part {
+                            data: Some(proto::part::Data::Text(
+                                "Let me work through this...".to_string(),
+                            )),
+                            thought: true,
+                            ..Default::default()
+                        },
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("The answer is 42.".to_string())),
+                            thought: false,
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            response.get_text_response().as_deref(),
+            Some("The answer is 42."),
+            "reasoning must not be reported as the response text"
+        );
+    }
+
+    /// The wire hangs a `thoughtSignature` on a trailing part with no
+    /// `thought` flag. This crate's streaming adapter has always kept it; the
+    /// unary mapper dropped it, the same asymmetry the REST wire carried. The
+    /// signature belongs to the chain-of-thought block that precedes it.
+    #[test]
+    fn a_trailing_thought_signature_signs_the_reasoning_before_it() {
+        let response = proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("the chain".to_string())),
+                            thought: true,
+                            ..Default::default()
+                        },
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("answer".to_string())),
+                            thought: false,
+                            thought_signature: b"sig-bytes".to_vec(),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let normalized: completion::CompletionResponse =
+            response.try_into().expect("payload should normalize");
+        assert_eq!(
+            normalized.choice.len(),
+            2,
+            "no empty sibling; got {:?}",
+            normalized.choice
+        );
+        assert!(
+            matches!(
+                normalized.choice.first(),
+                Some(completion::AssistantContent::Reasoning(reasoning))
+                    if matches!(reasoning.content.first(),
+                        Some(message::ReasoningContent::Text { text, signature })
+                            if text == "the chain" && signature.is_some())
+            ),
+            "the reasoning block must carry the trailing signature, got {:?}",
+            normalized.choice
+        );
     }
 }

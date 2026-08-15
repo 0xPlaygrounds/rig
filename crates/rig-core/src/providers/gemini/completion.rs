@@ -412,6 +412,146 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
+/// Map one response `Part` onto the assistant content it carries.
+///
+/// An empty result means the part is real Gemini output that carries no
+/// rig-modeled assistant content, so it contributes nothing to the choice and
+/// the rest of the turn still converts. Only a part rig cannot account for at
+/// all is an `Err`. One part can yield *two* items: a trailing
+/// `thoughtSignature` rides a text part that carries no `thought` flag, and
+/// the signature belongs to a reasoning block rather than to the text.
+fn map_response_part(part: &Part) -> Result<Vec<completion::AssistantContent>, CompletionError> {
+    let Part {
+        thought,
+        thought_signature,
+        part,
+        ..
+    } = part;
+
+    Ok(vec![match part {
+        PartKind::Text(text) => {
+            if let Some(thought) = thought
+                && *thought
+            {
+                completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
+                    text,
+                    thought_signature.clone(),
+                ))
+            } else if thought_signature.is_some() {
+                // A trailing signature on a part with no `thought` flag: the
+                // caller places it, because where it belongs depends on what
+                // came before. See `attach_trailing_signature`.
+                return Ok(vec![completion::AssistantContent::text(text)]);
+            } else {
+                completion::AssistantContent::text(text)
+            }
+        }
+        PartKind::InlineData(inline_data) => {
+            let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
+
+            match mime_type {
+                Some(message::MediaType::Image(media_type)) => {
+                    message::AssistantContent::image_base64(
+                        &inline_data.data,
+                        Some(media_type),
+                        Some(message::ImageDetail::default()),
+                    )
+                }
+                _ => {
+                    return Err(CompletionError::ResponseError(format!(
+                        "Unsupported media type {mime_type:?}"
+                    )));
+                }
+            }
+        }
+        PartKind::FunctionCall(function_call) => {
+            let tool_call = message::ToolCall::from_wire(
+                function_call.id.clone().unwrap_or_default(),
+                message::ToolFunction::new(function_call.name.clone(), function_call.args.clone()),
+            )
+            .with_signature(thought_signature.clone());
+            completion::AssistantContent::ToolCall(tool_call)
+        }
+        // The `codeExecution` tool's own output. Rig lets callers enable that
+        // tool (`additional_params.tools = [{"codeExecution": {}}]`, lifted
+        // onto the request by `extract_tools_from_additional_params`), and
+        // Gemini then answers with `executableCode`/`codeExecutionResult`
+        // parts alongside the text. Neither has a slot in
+        // `AssistantContent` — the same position OpenAI Responses' hosted-tool
+        // items are in, which decode to `Output::Unknown` and contribute no
+        // content rather than failing the response. Erroring here discarded
+        // the entire turn, final text answer included, while the streaming
+        // adapter skipped the parts and kept it. Their own `thoughtSignature`
+        // goes with them, which is the streaming path's behaviour too — those
+        // part kinds have nowhere to round-trip from, so keeping the
+        // transports in step is the most that can be preserved here.
+        PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_) => return Ok(Vec::new()),
+        other => {
+            return Err(CompletionError::ResponseError(format!(
+                "Gemini response part kind {} carries no assistant content rig can account for",
+                part_kind_name(other)
+            )));
+        }
+    }])
+}
+
+/// Place a trailing `thoughtSignature` — one that rode a part carrying no
+/// `thought` flag — onto the assistant content mapped so far.
+///
+/// Gemini hangs the signature on a trailing part instead of on the thought
+/// it belongs to — recorded on gemini-3-flash-preview and on
+/// gemini-2.5-flash alike — and the signature is replay-required state the provider
+/// validates (`MISSING_THOUGHT_SIGNATURE`). Only `Reasoning` round-trips it
+/// back onto a request, so it has to land on one — and *which* one is the
+/// same question the streaming accumulator answers, so the answer is the
+/// same:
+///
+/// * an earlier unsigned reasoning block takes it, because that block holds
+///   the chain-of-thought the signature signs
+///   (`streaming/parts.rs::a_trailing_signature_signs_the_finished_block`);
+/// * with no such block, it becomes a signature-only reasoning part, which
+///   is what the accumulator records when nothing streamed.
+///
+/// Blocking and streaming therefore normalize the same bytes to the same
+/// choice, which is the point: a turn replayed from either transport sends
+/// the signature back the same way. Public because the gRPC transport's
+/// unary mapper answers the same question about the same wire.
+pub fn attach_trailing_signature(
+    content: &mut Vec<completion::AssistantContent>,
+    signature: String,
+) {
+    let unsigned_reasoning = content.iter_mut().rev().find_map(|item| match item {
+        completion::AssistantContent::Reasoning(reasoning) => match reasoning.content.first_mut() {
+            Some(message::ReasoningContent::Text {
+                signature: slot @ None,
+                ..
+            }) => Some(slot),
+            _ => None,
+        },
+        _ => None,
+    });
+
+    match unsigned_reasoning {
+        Some(slot) => *slot = Some(signature),
+        None => content.push(completion::AssistantContent::Reasoning(
+            Reasoning::new_with_signature("", Some(signature)),
+        )),
+    }
+}
+
+/// The wire name of a part kind, for error messages.
+fn part_kind_name(part: &PartKind) -> &'static str {
+    match part {
+        PartKind::Text(_) => "text",
+        PartKind::InlineData(_) => "inlineData",
+        PartKind::FunctionCall(_) => "functionCall",
+        PartKind::FunctionResponse(_) => "functionResponse",
+        PartKind::FileData(_) => "fileData",
+        PartKind::ExecutableCode(_) => "executableCode",
+        PartKind::CodeExecutionResult(_) => "codeExecutionResult",
+    }
+}
+
 /// Normalize a Gemini `generateContent` response.
 impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
     type Error = CompletionError;
@@ -430,7 +570,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 
         let finish_reason = candidate.finish_reason.as_ref().and_then(map_finish_reason);
 
-        let content = candidate
+        let parts = &candidate
             .content
             .as_ref()
             .ok_or_else(|| {
@@ -447,66 +587,23 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                     "Gemini candidate missing content ({reason}, finish_message={message})"
                 ))
             })?
-            .parts
-            .iter()
-            .map(
-                |Part {
-                     thought,
-                     thought_signature,
-                     part,
-                     ..
-                 }| {
-                    Ok(match part {
-                        PartKind::Text(text) => {
-                            if let Some(thought) = thought
-                                && *thought
-                            {
-                                completion::AssistantContent::Reasoning(
-                                    Reasoning::new_with_signature(text, thought_signature.clone()),
-                                )
-                            } else {
-                                completion::AssistantContent::text(text)
-                            }
-                        }
-                        PartKind::InlineData(inline_data) => {
-                            let mime_type =
-                                message::MediaType::from_mime_type(&inline_data.mime_type);
+            .parts;
 
-                            match mime_type {
-                                Some(message::MediaType::Image(media_type)) => {
-                                    message::AssistantContent::image_base64(
-                                        &inline_data.data,
-                                        Some(media_type),
-                                        Some(message::ImageDetail::default()),
-                                    )
-                                }
-                                _ => {
-                                    return Err(CompletionError::ResponseError(format!(
-                                        "Unsupported media type {mime_type:?}"
-                                    )));
-                                }
-                            }
-                        }
-                        PartKind::FunctionCall(function_call) => {
-                            let tool_call = message::ToolCall::from_wire(
-                                function_call.id.clone().unwrap_or_default(),
-                                message::ToolFunction::new(
-                                    function_call.name.clone(),
-                                    function_call.args.clone(),
-                                ),
-                            )
-                            .with_signature(thought_signature.clone());
-                            completion::AssistantContent::ToolCall(tool_call)
-                        }
-                        _ => {
-                            return Err(CompletionError::ResponseError(
-                                "Response did not contain a message or tool call".into(),
-                            ));
-                        }
-                    })
-                },
-            )
-            .collect::<Result<Vec<_>, _>>()?;
+        // Mapped in wire order, one part at a time — a part may contribute no
+        // content at all (skipped, not failed; see `map_response_part`), and
+        // `?` still surfaces the first error in wire order. A trailing
+        // signature is placed against the content mapped *before* it, so the
+        // fold cannot become a `map`.
+        let mut content: Vec<completion::AssistantContent> = Vec::with_capacity(parts.len());
+        for part in parts {
+            content.extend(map_response_part(part)?);
+            if !part.thought.unwrap_or(false)
+                && matches!(part.part, PartKind::Text(_))
+                && let Some(signature) = part.thought_signature.clone()
+            {
+                attach_trailing_signature(&mut content, signature);
+            }
+        }
 
         let choice = crate::message::require_non_empty_response(content)?;
 
@@ -609,20 +706,7 @@ pub mod gemini_api_types {
                         return None;
                     }
 
-                    let res = content
-                        .parts
-                        .iter()
-                        .filter_map(|part| {
-                            if let PartKind::Text(ref str) = part.part {
-                                Some(str.to_owned())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<String>>()
-                        .join("\n");
-
-                    Some(res)
+                    Some(visible_text_parts(content).collect::<Vec<_>>().join("\n"))
                 })
                 .collect::<Vec<String>>()
                 .join("\n");
@@ -633,6 +717,27 @@ pub mod gemini_api_types {
         fn get_usage(&self) -> Option<Self::Usage> {
             self.usage_metadata.clone()
         }
+    }
+
+    /// The model-visible text of a content's parts, in order.
+    ///
+    /// A `thought: true` part is the model's chain-of-thought, not its answer:
+    /// `thinkingConfig.includeThoughts` puts both in the same `parts` array,
+    /// distinguished only by that flag. Every reader that wants the response
+    /// *text* must skip them — the completion mapper routes them to
+    /// [`crate::message::AssistantContent::Reasoning`] instead, and a reader
+    /// that takes them for output text reports reasoning as the answer.
+    ///
+    /// The *skip* rule lives here; the *join* rule stays with each caller,
+    /// because they differ legitimately: a transcript is one continuous text
+    /// whose part boundaries are not sentence boundaries, so transcription
+    /// concatenates, while `get_text_response` keeps the newline separator it
+    /// has always used between a candidate's blocks.
+    pub(crate) fn visible_text_parts(content: &Content) -> impl Iterator<Item = &str> {
+        content.parts.iter().filter_map(|part| match &part.part {
+            PartKind::Text(text) if !part.thought.unwrap_or(false) => Some(text.as_str()),
+            _ => None,
+        })
     }
 
     /// A response candidate generated from the model.

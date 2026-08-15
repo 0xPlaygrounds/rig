@@ -92,7 +92,10 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_gemini_cassette",
             "with_gemini_cassette_bogus_key",
+            "with_gemini_code_execution_cassette",
             "with_gemini_interactions_cassette",
+            "with_gemini_stream_terminal_cassette",
+            "with_gemini_thought_text_cassette",
         ],
     },
     ProviderCassetteSuite {
