@@ -127,6 +127,13 @@ fn file_part_to_mistral_chunk(
             .and_then(serde_json::Value::as_str)
     };
 
+    // Already a Mistral file chunk (`file_id` at the top level, as this
+    // function emits): pass it through so finalizing an already-finalized body
+    // is a no-op rather than an error about content rig itself built.
+    if let Some(file_id) = part.get("file_id").and_then(serde_json::Value::as_str) {
+        return Ok(serde_json::json!({"type": FILE_CHUNK, "file_id": file_id}));
+    }
+
     if let Some(data) = field("file_data") {
         // `document_name` is Mistral's own optional filename field; it is left
         // out entirely rather than sent as null when the part has no filename.
@@ -170,8 +177,7 @@ fn audio_part_to_mistral_chunk(
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| {
                 unsupported_content_error(
-                    "an audio content part whose `input_audio` payload is neither base64 data \
-                     nor a URL",
+                    "an audio content part whose `input_audio` payload is not base64 data",
                 )
             })?,
     };
@@ -195,14 +201,34 @@ fn into_mistral_chunk(part: serde_json::Value) -> Result<serde_json::Value, Comp
 
     match part.get("type").and_then(serde_json::Value::as_str) {
         Some(TEXT_CHUNK | REFUSAL_TYPE) => text_chunk(&part),
-        // Already wire-compatible as serialized: Mistral's image chunk takes
-        // the `{url, detail}` object rig sends as readily as a bare URL
-        // string, and reads a base64 `data:` URI in either. Its `detail`
-        // accepts exactly `low`, `auto` and `high`, which is the range
-        // [`openai::completion::ImageDetail`] serializes.
-        Some(IMAGE_CHUNK) => Ok(part),
+        // The payload needs no reshaping — Mistral's image chunk takes the
+        // `{url, detail}` object rig sends as readily as a bare URL string, and
+        // reads a base64 `data:` URI in either, with `detail` accepting exactly
+        // the `low`/`auto`/`high` range [`openai::completion::ImageDetail`]
+        // serializes. It is still rebuilt rather than forwarded, because every
+        // Mistral chunk forbids unknown fields: a stray sibling key riding on
+        // the part would 422 the whole request.
+        Some(IMAGE_CHUNK) => {
+            let image = part.get(IMAGE_CHUNK).ok_or_else(|| {
+                unsupported_content_error("an image content part carrying no `image_url` payload")
+            })?;
+            Ok(serde_json::json!({"type": IMAGE_CHUNK, IMAGE_CHUNK: image}))
+        }
         Some(AUDIO_CHUNK) => audio_part_to_mistral_chunk(&part),
         Some(FILE_CHUNK) => file_part_to_mistral_chunk(&part),
+        // Already a Mistral document chunk — see `file_part_to_mistral_chunk`
+        // on why an already-converted part passes through.
+        Some(DOCUMENT_CHUNK) => {
+            let url = part.get(DOCUMENT_CHUNK).ok_or_else(|| {
+                unsupported_content_error("a document content part carrying no `document_url`")
+            })?;
+            Ok(match part.get("document_name") {
+                Some(name) => serde_json::json!({
+                    "type": DOCUMENT_CHUNK, DOCUMENT_CHUNK: url, "document_name": name,
+                }),
+                None => serde_json::json!({"type": DOCUMENT_CHUNK, DOCUMENT_CHUNK: url}),
+            })
+        }
         Some(kind) => Err(unsupported_content_error(&format!(
             "`{kind}` message content"
         ))),
@@ -226,7 +252,11 @@ fn into_mistral_chunk(part: serde_json::Value) -> Result<serde_json::Value, Comp
 /// never sent (#2290).
 ///
 /// Content Mistral has no chunk for — video, and any part type a future
-/// conversion adds — fails here rather than being silently removed.
+/// conversion adds — fails here rather than being silently removed. The one
+/// exception is content whose parts are *all* tagged `text`/`refusal`: that
+/// takes the flattening path, which drops a part carrying no string payload
+/// exactly as it always has, rather than inventing a new failure for a shape
+/// rig's own conversion cannot produce.
 pub(super) fn normalize_request_content(
     content: &mut serde_json::Value,
 ) -> Result<(), CompletionError> {
@@ -647,8 +677,13 @@ mod tests {
         assert!(matches!(error, CompletionError::RequestError(_)));
     }
 
-    /// The document conversions, pinned as exact wire shapes. Live cells prove
-    /// Mistral accepts these; this cell proves rig builds precisely them.
+    /// The document conversions, pinned as exact wire shapes.
+    ///
+    /// The `document_url` half is also proven live, by the recorded cells that
+    /// read `BANANA-7391` back out of an attached PDF. The `file`/`file_id`
+    /// half is pinned by shape only: exercising it end to end would mean
+    /// uploading a file and committing its account-scoped, expiring id to a
+    /// fixture, so this cell is the whole of its coverage.
     #[test]
     fn finalize_maps_openai_file_parts_onto_mistral_chunks() {
         let content = finalized_content(serde_json::json!([
@@ -753,8 +788,12 @@ mod tests {
     /// `text` key. A part that names a chunk kind is that kind even if it also
     /// carries text — deciding on the key alone would flatten the chunk away,
     /// which is the silent drop this path exists to prevent.
+    ///
+    /// The stray key is *dropped*, not forwarded: every Mistral chunk forbids
+    /// unknown fields, so carrying it through would 422 the whole request and
+    /// lose the image just as surely.
     #[test]
-    fn finalize_does_not_flatten_a_chunk_that_also_carries_text() {
+    fn finalize_renders_a_chunk_that_also_carries_text_as_its_own_kind() {
         let content = finalized_content(serde_json::json!([
             {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}, "text": "cat"}
         ]))
@@ -763,9 +802,40 @@ mod tests {
         assert_eq!(
             content,
             serde_json::json!([
-                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}, "text": "cat"}
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}}
             ]),
-            "the image must survive; only its own chunk kind decides how it is rendered"
+            "the image must reach the wire, in a chunk carrying only the fields Mistral names"
         );
+    }
+
+    /// Finalizing an already-finalized body is a no-op. `finalize_request_body`
+    /// is a public trait method, so a caller can reach it twice; the chunks
+    /// this code emits must not read as content Mistral cannot carry.
+    #[test]
+    fn finalize_is_idempotent_over_the_chunks_it_emits() {
+        let parts = serde_json::json!([
+            {"type": "text", "text": "Read these."},
+            {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}},
+            {"type": "input_audio", "input_audio": "SUQzBAA="},
+            {"type": "document_url", "document_url": "data:application/pdf;base64,JVBERi0xLjQK",
+             "document_name": "document.pdf"},
+            {"type": "file", "file_id": "00000000-0000-0000-0000-000000000000"}
+        ]);
+
+        let once = finalized_content(parts).expect("emitted chunks should convert");
+        let twice = finalized_content(once.clone()).expect("a second pass should be a no-op");
+
+        assert_eq!(once, twice);
+    }
+
+    /// An image part with no payload names no image at all.
+    #[test]
+    fn finalize_rejects_an_image_part_with_no_payload() {
+        let error = finalized_content(serde_json::json!([
+            {"type": "text", "text": "hi"},
+            {"type": "image_url"}
+        ]))
+        .expect_err("an image part carrying no payload must not be dropped");
+        assert!(matches!(error, CompletionError::RequestError(_)));
     }
 }

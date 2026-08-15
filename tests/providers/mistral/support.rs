@@ -32,8 +32,13 @@ where
     cassette.finish_after_test_result(result).await
 }
 
-/// Wrapper for the multimodal-content matrix (#2290), kept separate from the
-/// general one so that matrix's fixtures stay auditable as a unit.
+/// Wrapper for the multimodal-content matrix (#2290).
+///
+/// Behaviourally identical to [`with_mistral_cassette_result`] — fixture
+/// layout comes from the scenario prefix, not from the wrapper. It exists as a
+/// named seam for the matrix, so a later change to how those cells build their
+/// client (a second base URL, a different key) lands here instead of on every
+/// Mistral cassette test at once.
 pub(super) async fn with_mistral_multimodal_cassette<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

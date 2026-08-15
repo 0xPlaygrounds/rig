@@ -6,9 +6,13 @@
 //! Mistral prompt was therefore removed from the request before it was sent,
 //! and the caller got an ordinary completion answering a prompt it never made.
 //!
-//! Each cell asserts its own premise against its own recorded *request* bytes:
-//! this bug lives on the outbound side, so a cell that stopped putting its
-//! chunk on the wire must fail rather than keep passing while covering nothing.
+//! What makes a regressed cell fail is the cassette harness itself: it matches
+//! each outbound request against the recorded one, so a request that stopped
+//! carrying its chunk misses the fixture and 404s. The `assert_recorded_*`
+//! helpers below read the committed YAML, which in replay is a constant — they
+//! do not police the code under test. Their job is at *record* time, where they
+//! fail a cell whose freshly recorded request does not carry the shape the cell
+//! is named for, so a cassette can never be committed that covers nothing.
 
 use anyhow::Result;
 use base64::Engine as _;
@@ -50,10 +54,10 @@ const PDF_TOKEN_PREFIX: &str = "BANANA";
 const COLOUR_PROMPT: &str = "What colour fills this image? Answer with one word.";
 const DOCUMENT_PROMPT: &str = "What code word appears in the document? Answer with just the word.";
 const AUDIO_PROMPT: &str = "Transcribe the audio verbatim.";
-/// A distinctive word from the sentence actually spoken in
-/// `tests/data/en-us-natural-speech.mp3` ("The sun was setting slowly, casting
-/// long shadows across the empty field."). Note this is *not* the sentence
-/// `crate::support::AUDIO_TEXT` claims that fixture contains.
+/// A distinctive word from the sentence spoken in
+/// `tests/data/en-us-natural-speech.mp3`: "The sun was setting slowly, casting
+/// long shadows across the empty field." Derived from the recorded
+/// transcription, not assumed.
 const AUDIO_KEYWORD: &str = "shadows";
 
 fn red_png() -> UserContent {
@@ -558,9 +562,14 @@ async fn blocking_agent_reads_an_attached_pdf() -> Result<()> {
     )
     .await?;
 
-    assert_recorded_chunk(
-        "multimodal_content/blocking_agent_reads_an_attached_pdf",
-        "document_url",
+    let scenario = "multimodal_content/blocking_agent_reads_an_attached_pdf";
+    assert_recorded_chunk(scenario, "document_url");
+    // Mistral's document chunk has its own optional `document_name`; the
+    // filename the shared conversion attaches is carried there, not dropped.
+    assert_recorded_contains(
+        scenario,
+        "\"document_name\":\"document.pdf\"",
+        "the document's filename must reach Mistral's own `document_name` field",
     );
     Ok(())
 }
@@ -582,9 +591,10 @@ async fn blocking_document_only_message_carries_no_text_part() -> Result<()> {
     )
     .await?;
 
-    assert_recorded_content_is_an_array(
-        "multimodal_content/blocking_document_only_message_carries_no_text_part",
-    );
+    let scenario = "multimodal_content/blocking_document_only_message_carries_no_text_part";
+    assert_recorded_content_is_an_array(scenario);
+    assert_recorded_chunk(scenario, "document_url");
+    assert_recorded_chunk_count(scenario, "text", 0);
     Ok(())
 }
 
@@ -619,39 +629,6 @@ async fn blocking_document_and_image_in_one_message() -> Result<()> {
     let scenario = "multimodal_content/blocking_document_and_image_in_one_message";
     assert_recorded_chunk(scenario, "document_url");
     assert_recorded_chunk(scenario, "image_url");
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_document_carries_its_filename() -> Result<()> {
-    with_mistral_multimodal_cassette(
-        "multimodal_content/blocking_document_carries_its_filename",
-        |client| async move {
-            let agent = client
-                .agent(VISION_MODEL)
-                .preamble("Answer with just the word.")
-                .temperature(0.0)
-                .build();
-            let response = agent
-                .prompt(user_message(vec![
-                    UserContent::text(DOCUMENT_PROMPT),
-                    pdf_document(),
-                ]))
-                .await?;
-            assert_mentions(&response, PDF_TOKEN);
-            Ok::<_, anyhow::Error>(())
-        },
-    )
-    .await?;
-
-    // Mistral's document chunk has its own optional `document_name`; the
-    // filename the shared conversion attaches is carried there rather than
-    // dropped on the floor.
-    assert_recorded_contains(
-        "multimodal_content/blocking_document_carries_its_filename",
-        "\"document_name\":\"document.pdf\"",
-        "the document's filename must reach Mistral's own `document_name` field",
-    );
     Ok(())
 }
 
@@ -766,39 +743,16 @@ async fn blocking_agent_sends_audio() -> Result<()> {
     )
     .await?;
 
-    assert_recorded_chunk(
-        "multimodal_content/blocking_agent_sends_audio",
-        "input_audio",
-    );
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_audio_payload_is_sent_as_a_bare_string() -> Result<()> {
-    with_mistral_multimodal_cassette(
-        "multimodal_content/blocking_audio_payload_is_sent_as_a_bare_string",
-        |client| async move {
-            let agent = client.agent(AUDIO_MODEL).temperature(0.0).build();
-            let response = agent
-                .prompt(user_message(vec![
-                    UserContent::text(AUDIO_PROMPT),
-                    speech_audio(),
-                ]))
-                .await?;
-            assert_mentions(&response, AUDIO_KEYWORD);
-            Ok::<_, anyhow::Error>(())
-        },
-    )
-    .await?;
-
+    let scenario = "multimodal_content/blocking_agent_sends_audio";
+    assert_recorded_chunk(scenario, "input_audio");
     // Mistral's audio chunk documents a bare base64 string. The OpenAI-shaped
     // `{data, format}` object is accepted today (the server flattens it and
-    // ignores `format`), but the documented form is what rig sends.
+    // ignores `format`), but the documented form is what rig sends — and a
+    // `format` placed beside `input_audio` is rejected outright.
     assert_recorded_lacks(
-        "multimodal_content/blocking_audio_payload_is_sent_as_a_bare_string",
+        scenario,
         "\"format\":\"mp3\"",
-        "the audio chunk must not carry OpenAI's sibling `format`; Mistral flattens the object \
-         and a `format` beside `input_audio` is rejected outright",
+        "the audio chunk must not carry OpenAI's sibling `format`",
     );
     Ok(())
 }
