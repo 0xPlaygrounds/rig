@@ -873,6 +873,12 @@ impl TurnSource for UnaryTurnSource {
                 }
             };
 
+            // Bound before the builder is consumed: this is the cap this exact
+            // attempt was prepared with, patches included, and it is what the
+            // per-turn hook reports. Reading it later off the agent config would
+            // silently drop a completion-call hook's patch.
+            let attempt_max_tokens = prepared.max_tokens;
+
             let resp = match prepared.builder.send().instrument(chat_span.clone()).await {
                 Ok(resp) => resp,
                 Err(err) => {
@@ -880,6 +886,10 @@ impl TurnSource for UnaryTurnSource {
                     return;
                 }
             };
+
+            // Normalized once, then shared by run state and the per-turn hook, so
+            // the two cannot report different reasons for one attempt.
+            let attempt_finish_reason = resp.finish_reason();
 
             let mut outcome = match run.model_response(
                 ModelTurn::new(
@@ -893,7 +903,7 @@ impl TurnSource for UnaryTurnSource {
                     resp.response_id.clone(),
                     resp.provider_request_id.clone(),
                 )
-                .with_finish_reason(resp.finish_reason()),
+                .with_finish_reason(attempt_finish_reason.clone()),
             ) {
                 Ok(outcome) => outcome,
                 Err(err) => {
@@ -970,6 +980,8 @@ impl TurnSource for UnaryTurnSource {
                                         content: &resp.choice,
                                         usage: resp.usage,
                                         identity: &identity,
+                                        finish_reason: attempt_finish_reason.as_ref(),
+                                        max_tokens: attempt_max_tokens,
                                     },
                                 )
                                 .await;
@@ -1602,12 +1614,12 @@ mod migrated_tests {
     use crate::agent::prompt_request::streaming::{MultiTurnStreamItem, StreamingError};
     use crate::agent::run::OutputMode;
     use crate::completion::{
-        CompletionError, CompletionModel, Message, Prompt, PromptError, Usage,
+        CompletionError, CompletionModel, FinishReason, Message, Prompt, PromptError, Usage,
     };
     use crate::streaming::{StreamedAssistantContent, StreamedUserContent, StreamingPrompt};
     use crate::test_utils::{
         MockAddTool, MockBarrierTool, MockCompletionModel, MockOperationArgs, MockStreamEvent,
-        MockSubtractTool, MockToolError, MockTurn,
+        MockSubtractTool, MockToolError, MockTurn, mock_final,
     };
     use crate::tool::{
         Tool, ToolContext, ToolExecutionError, ToolSet,
@@ -9811,6 +9823,400 @@ mod migrated_tests {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // rig#2184: portable model-turn termination metadata.
+    //
+    // A hook must be able to tell *why* a turn stopped and *what cap* that
+    // exact attempt ran under, without naming a provider or touching a raw
+    // response type, and must see the same thing on both surfaces.
+    // ---------------------------------------------------------------------
+
+    /// One turn's termination as a hook sees it: why it stopped, and the cap it
+    /// ran under.
+    type Termination = (Option<FinishReason>, Option<u64>);
+
+    /// What a provider-neutral hook can observe about a turn's termination.
+    #[derive(Clone, Debug, Default)]
+    struct TerminationProbe {
+        observations: Arc<Mutex<Vec<Termination>>>,
+    }
+
+    impl TerminationProbe {
+        fn observations(&self) -> Vec<Termination> {
+            self.observations.lock().expect("observations").clone()
+        }
+    }
+
+    impl AgentHook for TerminationProbe {
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            self.observations
+                .lock()
+                .expect("observations")
+                .push((event.finish_reason.cloned(), event.max_tokens));
+            ModelTurnAction::continue_run()
+        }
+    }
+
+    /// The acceptance criterion, as a hook: retry a turn the provider cut short
+    /// that carries no tool calls, using only portable types. It never names a
+    /// provider and never sees `M::Response`.
+    #[derive(Clone, Debug, Default)]
+    struct RetryOnTruncation {
+        /// Truncated turns seen, not retries issued — the two differ because
+        /// this hook deliberately retries only the first.
+        truncated_turns: Arc<AtomicU32>,
+    }
+
+    impl AgentHook for RetryOnTruncation {
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            let truncated = event
+                .finish_reason
+                .is_some_and(FinishReason::truncated_output);
+            let has_tool_call = event
+                .content
+                .iter()
+                .any(|content| matches!(content, AssistantContent::ToolCall(_)));
+            if truncated && !has_tool_call && self.truncated_turns.fetch_add(1, SeqCst) == 0 {
+                return ModelTurnAction::repeat();
+            }
+            ModelTurnAction::continue_run()
+        }
+    }
+
+    /// Raises the cap for every attempt after the first, the way a real
+    /// retry-on-truncation hook would. Each attempt is prepared afresh, so the
+    /// patch it returns is the cap that attempt actually runs under.
+    #[derive(Clone, Debug, Default)]
+    struct EscalatingCap {
+        calls: Arc<AtomicU32>,
+    }
+
+    impl AgentHook for EscalatingCap {
+        async fn on_completion_call(
+            &self,
+            _ctx: &HookContext,
+            _event: crate::agent::CompletionCallEvent<'_>,
+        ) -> CompletionCallAction {
+            let call = self.calls.fetch_add(1, SeqCst);
+            CompletionCallAction::patch(RequestPatch::new().max_tokens(if call == 0 {
+                16
+            } else {
+                512
+            }))
+        }
+    }
+
+    /// Blocking: the reason the provider reported and the cap the attempt ran
+    /// under both reach the hook.
+    #[tokio::test]
+    async fn model_turn_finished_reports_termination_and_effective_max_tokens_blocking() {
+        let probe = TerminationProbe::default();
+        let model = MockCompletionModel::from_turns([
+            MockTurn::text("a partial ans").with_finish_reason(FinishReason::Length)
+        ]);
+
+        AgentBuilder::new(model.clone())
+            .max_tokens(64)
+            .add_hook(probe.clone())
+            .build()
+            .runner("question")
+            .run()
+            .await
+            .expect("truncated turn is still an answer");
+
+        assert_eq!(
+            probe.observations(),
+            vec![(Some(FinishReason::Length), Some(64))]
+        );
+        // The reported cap is the one that actually reached the provider.
+        assert_eq!(model.requests()[0].max_tokens, Some(64));
+    }
+
+    /// Streaming reports exactly what blocking reports, for the same turn.
+    #[tokio::test]
+    async fn model_turn_finished_reports_termination_and_effective_max_tokens_streaming() {
+        let probe = TerminationProbe::default();
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::Text("a partial ans".to_string()),
+            MockStreamEvent::FinalResponse(
+                mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            ),
+        ]]);
+
+        let mut stream = AgentBuilder::new(model.clone())
+            .max_tokens(64)
+            .add_hook(probe.clone())
+            .build()
+            .runner("question")
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("streaming item");
+        }
+
+        assert_eq!(
+            probe.observations(),
+            vec![(Some(FinishReason::Length), Some(64))],
+            "the streaming surface must report the same termination metadata as blocking"
+        );
+        assert_eq!(model.requests()[0].max_tokens, Some(64));
+    }
+
+    /// A provider that reports no reason is reported as `None`, not smoothed
+    /// into `Stop`: "finished normally" and "did not say" are different facts.
+    /// An agent with no cap configured reports `None` for the same reason.
+    #[tokio::test]
+    async fn model_turn_finished_reports_absent_reason_and_absent_cap_as_none() {
+        let probe = TerminationProbe::default();
+
+        AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+            .add_hook(probe.clone())
+            .build()
+            .runner("question")
+            .run()
+            .await
+            .expect("run");
+
+        assert_eq!(probe.observations(), vec![(None, None)]);
+    }
+
+    /// A tool turn reads as `ToolCalls` even when the provider reported a bare
+    /// `stop`, because both surfaces reconcile the reason against the turn's
+    /// own output before it is recorded. Without that, a retry-on-truncation
+    /// hook would have to special-case providers that mislabel tool turns.
+    #[tokio::test]
+    async fn model_turn_finished_reports_tool_calls_for_a_mislabelled_tool_turn() {
+        let probe = TerminationProbe::default();
+
+        AgentBuilder::new(MockCompletionModel::from_turns([
+            MockTurn::tool_call("call-1", "add", json!({ "x": 1, "y": 2 }))
+                .with_finish_reason(FinishReason::Stop),
+            MockTurn::text("3"),
+        ]))
+        .tool(MockAddTool)
+        .add_hook(probe.clone())
+        .build()
+        .runner("question")
+        .max_turns(2)
+        .run()
+        .await
+        .expect("tool turn");
+
+        assert_eq!(
+            probe
+                .observations()
+                .first()
+                .map(|(reason, _)| reason.clone()),
+            Some(Some(FinishReason::ToolCalls)),
+            "a provider's bare `stop` on a tool turn must not read as a natural stop"
+        );
+    }
+
+    /// Streaming reconciles the same way, through a different code path: the
+    /// blocking surface normalizes at response construction, streaming does it
+    /// in the aggregator as deltas arrive. Both must land on `ToolCalls`, or a
+    /// portable hook would need one branch per surface.
+    #[tokio::test]
+    async fn model_turn_finished_reports_tool_calls_for_a_mislabelled_streamed_tool_turn() {
+        let probe = TerminationProbe::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call("call-1", "add", json!({ "x": 1, "y": 2 })),
+                MockStreamEvent::FinalResponse(
+                    mock_final(Usage::new()).with_finish_reason(FinishReason::Stop),
+                ),
+            ],
+            vec![
+                MockStreamEvent::Text("3".to_string()),
+                MockStreamEvent::FinalResponse(mock_final(Usage::new())),
+            ],
+        ]);
+
+        let mut stream = AgentBuilder::new(model)
+            .tool(MockAddTool)
+            .add_hook(probe.clone())
+            .build()
+            .runner("question")
+            .max_turns(2)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("streaming item");
+        }
+
+        assert_eq!(
+            probe
+                .observations()
+                .first()
+                .map(|(reason, _)| reason.clone()),
+            Some(Some(FinishReason::ToolCalls)),
+            "streaming must reconcile a mislabelled tool turn exactly as blocking does"
+        );
+    }
+
+    /// A reason outside the normalized vocabulary reaches the hook in the
+    /// provider's own spelling. This is what makes the event portable without
+    /// being lossy: a hook can match the shared variants and still see an
+    /// unmapped reason for what it is, rather than as a natural stop.
+    #[tokio::test]
+    async fn model_turn_finished_passes_an_unmapped_reason_through_verbatim() {
+        let probe = TerminationProbe::default();
+
+        AgentBuilder::new(MockCompletionModel::from_turns([
+            MockTurn::text("halted").with_finish_reason(FinishReason::Other("guardrail".into()))
+        ]))
+        .add_hook(probe.clone())
+        .build()
+        .runner("question")
+        .run()
+        .await
+        .expect("run");
+
+        assert_eq!(
+            probe.observations(),
+            vec![(Some(FinishReason::Other("guardrail".into())), None)]
+        );
+        // ...and it is not mistaken for a truncation, so the retry policy in
+        // the module docs leaves it alone.
+        assert!(!FinishReason::Other("guardrail".into()).truncated_output());
+    }
+
+    /// The streaming twin of the cap-escalation retry below. The cap is read
+    /// from the same per-attempt carrier on both surfaces, so this must report
+    /// the same two numbers — otherwise a portable hook would escalate
+    /// correctly when blocking and blindly when streaming.
+    #[tokio::test]
+    async fn streaming_retry_reports_the_second_attempts_own_effective_max_tokens() {
+        let probe = TerminationProbe::default();
+        let escalating = EscalatingCap::default();
+        let model = MockCompletionModel::from_stream_turns([
+            [
+                MockStreamEvent::Text("rejected".to_string()),
+                MockStreamEvent::FinalResponse(
+                    mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+                ),
+            ],
+            [
+                MockStreamEvent::Text("accepted".to_string()),
+                MockStreamEvent::FinalResponse(
+                    mock_final(Usage::new()).with_finish_reason(FinishReason::Stop),
+                ),
+            ],
+        ]);
+
+        let mut stream = AgentBuilder::new(model.clone())
+            .max_tokens(64)
+            .add_hook(escalating.clone())
+            .add_hook(probe.clone())
+            .add_hook(BoundedResponseRetry::new(
+                "rejected",
+                1,
+                TestRetryMode::Repeat,
+            ))
+            .build()
+            .runner("question")
+            .max_turns(2)
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            item.expect("streaming item");
+        }
+
+        assert_eq!(
+            probe.observations(),
+            vec![
+                (Some(FinishReason::Length), Some(16)),
+                (Some(FinishReason::Stop), Some(512)),
+            ],
+            "streaming must report each attempt's own post-patch cap, as blocking does"
+        );
+        let requests = model.requests();
+        assert_eq!(requests[0].max_tokens, Some(16));
+        assert_eq!(requests[1].max_tokens, Some(512));
+    }
+
+    /// The headline acceptance criterion: a provider-neutral hook detects a
+    /// length-truncated, tool-free turn and retries it, using only
+    /// `FinishReason` — no provider name, no raw response type.
+    #[tokio::test]
+    async fn a_portable_hook_can_retry_a_truncated_tool_free_turn() {
+        let model = MockCompletionModel::from_turns([
+            MockTurn::text("cut off mid-").with_finish_reason(FinishReason::Length),
+            MockTurn::text("a complete answer").with_finish_reason(FinishReason::Stop),
+        ]);
+        let hook = RetryOnTruncation::default();
+
+        let response = AgentBuilder::new(model.clone())
+            .add_hook(hook.clone())
+            .build()
+            .runner("question")
+            .max_turns(2)
+            .run()
+            .await
+            .expect("the retried turn should answer");
+
+        assert_eq!(response.output, "a complete answer");
+        assert_eq!(model.request_count(), 2, "the truncated turn was retried");
+        // The counter only advances past the `truncated && !has_tool_call`
+        // guard, so exactly one turn tripped it and the `Stop` turn did not.
+        assert_eq!(hook.truncated_turns.load(SeqCst), 1);
+    }
+
+    /// The second acceptance criterion: the event reports the cap of *this*
+    /// attempt, including one a stateful completion-call hook changed while
+    /// preparing the retry — never the agent's baseline.
+    #[tokio::test]
+    async fn retry_reports_the_second_attempts_own_effective_max_tokens() {
+        let probe = TerminationProbe::default();
+        let escalating = EscalatingCap::default();
+        let model = MockCompletionModel::from_turns([
+            MockTurn::text("rejected").with_finish_reason(FinishReason::Length),
+            MockTurn::text("accepted").with_finish_reason(FinishReason::Stop),
+        ]);
+
+        AgentBuilder::new(model.clone())
+            // The agent's baseline, which neither attempt should report.
+            .max_tokens(64)
+            .add_hook(escalating.clone())
+            // Ahead of the hook that asks for the repeat: a non-continue action
+            // short-circuits the hooks behind it, so a probe registered after
+            // `BoundedResponseRetry` would never see the truncated attempt.
+            .add_hook(probe.clone())
+            .add_hook(BoundedResponseRetry::new(
+                "rejected",
+                1,
+                TestRetryMode::Repeat,
+            ))
+            .build()
+            .runner("question")
+            .max_turns(2)
+            .run()
+            .await
+            .expect("repeat should recover");
+
+        assert_eq!(
+            probe.observations(),
+            vec![
+                (Some(FinishReason::Length), Some(16)),
+                (Some(FinishReason::Stop), Some(512)),
+            ],
+            "each attempt must report its own post-patch cap, not the agent baseline of 64"
+        );
+        // ...and what the hook reported is what the provider was actually sent.
+        let requests = model.requests();
+        assert_eq!(requests[0].max_tokens, Some(16));
+        assert_eq!(requests[1].max_tokens, Some(512));
+        assert_eq!(escalating.calls.load(SeqCst), 2);
+    }
+
     #[tokio::test]
     async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparation() {
         let first_usage = retry_usage(10, 3);
@@ -10439,6 +10845,9 @@ mod migrated_tests {
             content: &content,
             usage: Usage::new(),
             identity: no_identity(),
+            // These cases exercise hook dispatch, not termination metadata.
+            finish_reason: None,
+            max_tokens: None,
         };
         let second_event = first_event;
 
@@ -10468,6 +10877,8 @@ mod migrated_tests {
                     content: &first_content,
                     usage: Usage::new(),
                     identity: no_identity(),
+                    finish_reason: None,
+                    max_tokens: None,
                 },
             )
             .await;
@@ -10479,6 +10890,8 @@ mod migrated_tests {
                     content: &second_content,
                     usage: Usage::new(),
                     identity: no_identity(),
+                    finish_reason: None,
+                    max_tokens: None,
                 },
             )
             .await;
@@ -10511,6 +10924,9 @@ mod migrated_tests {
             content: &content,
             usage: Usage::new(),
             identity: no_identity(),
+            // These cases exercise hook dispatch, not termination metadata.
+            finish_reason: None,
+            max_tokens: None,
         };
         let ctx = HookContext::new(false, None);
 

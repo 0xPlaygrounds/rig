@@ -1585,6 +1585,34 @@ breaks come with it:
   every accepted turn on both surfaces, so an observer of that one event
   records identity for every completed call.
 
+### Model-turn termination metadata reaches hooks (#2184)
+
+`ModelTurnFinished` now reports why the provider stopped and what output-token
+cap the attempt ran under, so a hook can retry a truncated turn without
+inspecting provider-typed responses. One source-level break:
+
+- **`ModelTurnFinished` gains `finish_reason: Option<&FinishReason>` and
+  `max_tokens: Option<u64>`.** Hooks that only *read* the event are
+  unaffected. Code constructing it by hand (test harnesses) must supply both;
+  `None` for each preserves the old behavior:
+
+  ```rust
+  // Was
+  ModelTurnFinished { turn, content, usage, identity }
+  // Now
+  ModelTurnFinished { turn, content, usage, identity, finish_reason: None, max_tokens: None }
+  ```
+
+Both fields describe the attempt the event fires for, not the run: on a retry
+they are the retried attempt's own, and `max_tokens` reflects the merged
+completion-call `RequestPatch`, so a hook that raises the cap for a retry sees
+its new value rather than the agent's configured baseline. `finish_reason` is
+`None` when the provider reported no reason — that is not normalized into
+`FinishReason::Stop`, so match on it explicitly if you treat the two alike.
+
+`cargo run -p rig-agent --example retry_on_truncation` is a working
+retry-on-truncation policy built on the two fields, on both surfaces.
+
 ### The terminal finish reason reaches the caller, and empty truncated turns error (#2322)
 
 The streamed assembler used to discard the provider's finish reason, so a turn
