@@ -105,16 +105,29 @@ where
     ///
     /// Both levels are ordered, and callers may rely on it:
     ///
-    /// - pairs come back in the order the documents were added, and
+    /// - pairs come back in the order the documents were added — positional
+    ///   callers depend on this, for example
+    ///   [`InMemoryVectorStore::add_documents`](crate::vector_store::in_memory_store::InMemoryVectorStore::add_documents),
+    ///   which derives its document ids from this sequence; and
     /// - each document's embeddings come back in the order its [`Embed`] impl
     ///   produced the texts.
     ///
-    /// This holds regardless of how the texts were batched or which batch the
-    /// provider answered first. Positional callers depend on it — for example
-    /// [`InMemoryVectorStore::add_documents`](crate::vector_store::in_memory_store::InMemoryVectorStore::add_documents)
-    /// derives its document ids from this sequence — and both levels have been
-    /// silently violated before (rig#2344, rig#2345), so treat the guarantee as
-    /// load-bearing rather than incidental.
+    /// Neither depends on how the texts were batched or on which batch the
+    /// provider answered first. Both have been silently violated before
+    /// (rig#2344, rig#2345), so treat the guarantee as load-bearing rather than
+    /// incidental.
+    ///
+    /// The second bullet inherits one assumption this type cannot check:
+    /// providers pair a batch's embeddings to its texts positionally, so a
+    /// provider that reordered *within* a single response would still be
+    /// believed. That is the provider's contract, not this builder's.
+    ///
+    /// # Errors
+    ///
+    /// A document that produces **no** text fails the whole build rather than
+    /// coming back with an empty list. This is easy to hit by accident: an
+    /// empty collection in an `#[embed]` field embeds nothing, because
+    /// [`Embed`] is implemented for `Vec<T>` element-wise.
     pub async fn build(self) -> Result<Vec<(T, Vec<Embedding>)>, EmbeddingError> {
         let (result, _usage) = self.build_with_usage().await?;
         Ok(result)
@@ -187,13 +200,12 @@ where
                 ),
                 |(mut slots, mut usage_acc), (chunk_embeddings, chunk_usage)| async move {
                     for (slot, embedding) in chunk_embeddings {
-                        // The slot came from this function's own `enumerate`,
-                        // so it is always in range. `get_mut` keeps that an
-                        // assumption the compiler checks rather than a panic
-                        // waiting on a provider that answers with more
-                        // embeddings than it was sent; a dropped write would
-                        // leave the slot empty and surface below as a located
-                        // error instead.
+                        // Every slot came from this function's own `enumerate`
+                        // and the `zip` above truncates to the shorter side, so
+                        // this index is in range by construction — including
+                        // when a provider answers with more embeddings than it
+                        // was sent. `get_mut` rather than `slots[slot]` only
+                        // because `clippy::indexing_slicing` is denied here.
                         if let Some(place) = slots.get_mut(slot) {
                             *place = Some(embedding);
                         }
@@ -209,7 +221,7 @@ where
         let mut slots = slots.into_iter();
         let mut result = Vec::with_capacity(docs.len());
 
-        for (doc, span) in docs.into_iter().zip(spans) {
+        for (index, (doc, span)) in docs.into_iter().zip(spans).enumerate() {
             // A document that embedded no text has no embeddings to return;
             // this has always been an error rather than an empty list.
             if span.is_empty() {
@@ -228,9 +240,12 @@ where
                 .collect::<Option<Vec<Embedding>>>()
                 .ok_or_else(|| {
                     crate::embeddings::EmbeddingError::ResponseError(format!(
-                        "provider returned fewer embeddings than texts sent; \
-                         document covering texts {}..{} is incomplete",
-                        span.start, span.end
+                        "provider returned fewer embeddings than texts sent: \
+                         document {index} is missing at least one of its {} texts \
+                         (slots {}..{} of {total_texts})",
+                        span.len(),
+                        span.start,
+                        span.end
                     ))
                 })?;
 
@@ -491,6 +506,59 @@ mod tests {
         }
     }
 
+    /// A model whose batches finish in reverse submission order: batch `n`
+    /// sleeps longer the earlier it was submitted.
+    ///
+    /// `SlowFirstBatchModel` only inverts the *first* boundary, so a document
+    /// straddling a later one still comes back correct even unfixed. This
+    /// inverts every boundary.
+    #[derive(Clone)]
+    struct DescendingLatencyModel {
+        batches: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl DescendingLatencyModel {
+        fn new() -> Self {
+            Self {
+                batches: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            }
+        }
+    }
+
+    impl EmbeddingModel for DescendingLatencyModel {
+        const MAX_DOCUMENTS: usize = 5;
+
+        type Client = crate::client::Nothing;
+
+        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
+            Self::new()
+        }
+
+        fn ndims(&self) -> usize {
+            10
+        }
+
+        async fn embed_texts(
+            &self,
+            documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
+        ) -> Result<Vec<Embedding>, EmbeddingError> {
+            let nth = self
+                .batches
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst) as u64;
+            tokio::time::sleep(std::time::Duration::from_millis(
+                120u64.saturating_sub(nth * 40),
+            ))
+            .await;
+            Ok(documents
+                .into_iter()
+                .map(|document| Embedding {
+                    document,
+                    vec: vec![0.0; 10],
+                })
+                .collect())
+        }
+    }
+
     /// A document contributing `n` texts named `t0..t{n-1}`.
     #[derive(Debug)]
     struct NTexts(usize);
@@ -528,16 +596,20 @@ mod tests {
         assert_eq!(order, ["t0", "t1", "t2", "t3", "t4", "t5"]);
     }
 
-    /// The same guarantee across several straddling documents at once: every
-    /// document's texts land in its own list, in order, with none borrowed
+    /// The same guarantee with **more than one** straddle inverted at once:
+    /// every document's texts land in its own list, in order, none borrowed
     /// from a neighbour.
+    ///
+    /// 4 documents x 3 texts = 12 slots over a limit of 5 gives batches
+    /// `[0,5) [5,10) [10,12)`, so doc1 (slots 3..6) and doc3 (slots 9..12) each
+    /// straddle. `DescendingLatencyModel` inverts both boundaries — with a
+    /// model that only delays the first batch, doc3's two batches still arrive
+    /// in submission order and it comes back correct even unfixed.
     #[tokio::test]
     async fn test_build_preserves_text_order_across_many_straddling_documents() {
-        // 4 documents x 3 texts = 12 texts over a limit of 5, so documents 1
-        // and 2 both straddle a boundary.
         let docs: Vec<NTexts> = (0..4).map(|_| NTexts(3)).collect();
 
-        let result = EmbeddingsBuilder::new(SlowFirstBatchModel::new())
+        let result = EmbeddingsBuilder::new(DescendingLatencyModel::new())
             .documents(docs)
             .unwrap()
             .build()
@@ -570,5 +642,93 @@ mod tests {
             error.to_string().contains("missing embedding for document"),
             "unexpected error: {error}"
         );
+    }
+
+    /// A model that batches one text at a time, so *every* multi-text document
+    /// straddles, and answers later texts faster than earlier ones.
+    #[derive(Clone, Default)]
+    struct OneAtATimeReversedLatency;
+
+    impl EmbeddingModel for OneAtATimeReversedLatency {
+        const MAX_DOCUMENTS: usize = 1;
+
+        type Client = crate::client::Nothing;
+
+        fn make(_: &Self::Client, _: impl Into<String>, _: Option<usize>) -> Self {
+            Self
+        }
+
+        fn ndims(&self) -> usize {
+            10
+        }
+
+        async fn embed_texts(
+            &self,
+            documents: impl IntoIterator<Item = String> + crate::wasm_compat::WasmCompatSend,
+        ) -> Result<Vec<Embedding>, EmbeddingError> {
+            let documents: Vec<String> = documents.into_iter().collect();
+            // Earlier texts wait longer, so completion order is close to the
+            // reverse of submission order.
+            let delay = documents
+                .first()
+                .and_then(|text| text.strip_prefix('t'))
+                .and_then(|n| n.parse::<u64>().ok())
+                .map(|n| 60u64.saturating_sub(n * 10))
+                .unwrap_or(0);
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            Ok(documents
+                .into_iter()
+                .map(|document| Embedding {
+                    document,
+                    vec: vec![0.0; 10],
+                })
+                .collect())
+        }
+    }
+
+    /// Worst case for the span arithmetic: `MAX_DOCUMENTS = 1` means every text
+    /// is its own batch, all of them run concurrently, and they finish in
+    /// roughly reverse order. Nothing about the result may depend on that.
+    #[tokio::test]
+    async fn test_build_order_survives_one_text_per_batch_finishing_backwards() {
+        let result = EmbeddingsBuilder::new(OneAtATimeReversedLatency)
+            .document(NTexts(6))
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
+        let order: Vec<&str> = result[0]
+            .1
+            .iter()
+            .map(|embedding| embedding.document.as_str())
+            .collect();
+        assert_eq!(order, ["t0", "t1", "t2", "t3", "t4", "t5"]);
+    }
+
+    /// Documents that tile the batch size exactly, so every document boundary
+    /// is also a batch boundary — the case where an off-by-one in the span
+    /// arithmetic would hand a document its neighbour's run.
+    #[tokio::test]
+    async fn test_build_order_when_documents_tile_the_batch_size_exactly() {
+        // 3 documents x 5 texts, MAX_DOCUMENTS = 5: batches align exactly with
+        // document boundaries.
+        let docs: Vec<NTexts> = (0..3).map(|_| NTexts(5)).collect();
+
+        let result = EmbeddingsBuilder::new(SlowFirstBatchModel::new())
+            .documents(docs)
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 3);
+        for (_, embeddings) in &result {
+            let order: Vec<&str> = embeddings
+                .iter()
+                .map(|embedding| embedding.document.as_str())
+                .collect();
+            assert_eq!(order, ["t0", "t1", "t2", "t3", "t4"]);
+        }
     }
 }
