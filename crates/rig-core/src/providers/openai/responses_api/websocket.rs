@@ -31,6 +31,11 @@ type WebSocketRawChoice = crate::streaming::RawStreamingChoice<
     crate::providers::openai::responses_api::streaming::StreamingCompletionResponse,
 >;
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// The transport request-id header this endpoint reports, shared with the
+/// HTTP twins through [`super::ResponsesProviderExt::REQUEST_ID_HEADER`] — the
+/// websocket upgrade is answered by the same service and reports the same id.
+const REQUEST_ID_HEADER: Option<&'static str> =
+    <crate::providers::openai::OpenAIResponsesExt as super::ResponsesProviderExt>::REQUEST_ID_HEADER;
 
 /// Options for a `response.create` message sent over OpenAI WebSocket mode.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -905,15 +910,64 @@ fn event_timeout_error(timeout: Duration) -> CompletionError {
     ))
 }
 
+/// Map a transport failure onto rig's error model, preserving the provider's
+/// own response when the failure carried one.
+///
+/// A websocket upgrade that the provider *rejects* never becomes a websocket:
+/// it is an ordinary HTTP response, and this endpoint answers it exactly as
+/// the HTTP twin answers a bad request — a status, an `x-request-id`, and a
+/// JSON error body naming the cause. A live handshake with an invalid key
+/// returns `401` with `x-request-id` and
+/// `{"error":{"code":"invalid_api_key",…}}`. `tungstenite` hands all of it back
+/// on [`tungstenite::Error::Http`] (its body is filled in from the read tail),
+/// so flattening it to `error.to_string()` — `"HTTP error: 401 Unauthorized"` —
+/// discarded the status, the body and the request id, leaving
+/// `provider_response_status()`, `provider_response_body()` and
+/// `provider_request_id()` all `None`.
+///
+/// That is the contract the crate's other two completion transports keep
+/// (rig#2314, rig#2315): the blocking path through `send_completion` and the
+/// SSE path through `sse_transport` both classify a connect failure as
+/// [`CompletionError::ProviderResponse`] with the body and id attached. This
+/// makes the websocket the third.
+///
+/// The rejection's **headers** ride along too, by the same rule and for the
+/// same reason (rig#2210): a `429` upgrade carries `Retry-After`, and a caller
+/// that has to back off needs it from whichever transport it was refused on.
+/// This mirrors `sse_transport`, which attaches its handshake's headers to the
+/// error it builds.
+///
+/// Failures that never reached the provider — TLS, DNS, a protocol violation —
+/// have no response to preserve and stay [`CompletionError::ProviderError`].
 fn websocket_provider_error(error: tungstenite::Error) -> CompletionError {
-    CompletionError::ProviderError(error.to_string())
+    let tungstenite::Error::Http(response) = error else {
+        return CompletionError::ProviderError(error.to_string());
+    };
+
+    let (parts, body) = (*response).into_parts();
+    let provider_request_id = REQUEST_ID_HEADER
+        .and_then(|header| parts.headers.get(header))
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    // The body is the provider's own error envelope; an upgrade rejected
+    // without one still carries its status, which is more than the string form
+    // preserved.
+    let body = body
+        .map(|body| String::from_utf8_lossy(&body).into_owned())
+        .unwrap_or_default();
+
+    CompletionError::from_http_response_with_request_id(parts.status, body, provider_request_id)
+        // Read after the id, since this consumes the map.
+        .with_response_headers(Some(Box::new(parts.headers)))
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{CompletionError, tungstenite};
     use super::{
         ResponsesWebSocketCreateOptions, ResponsesWebSocketDoneEvent, ResponsesWebSocketEvent,
-        parse_server_event, terminal_response_result, websocket_url,
+        parse_server_event, terminal_response_result, websocket_provider_error, websocket_url,
     };
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
@@ -923,6 +977,232 @@ mod tests {
     };
     use futures::{SinkExt, StreamExt};
     use serde_json::json;
+
+    /// Build the `tungstenite::Error` a rejected upgrade produces: the status,
+    /// the headers the endpoint set, and the body read off the tail.
+    fn handshake_rejection(
+        status: u16,
+        request_id: Option<&str>,
+        body: Option<&str>,
+    ) -> tungstenite::Error {
+        handshake_rejection_with_headers(status, request_id, body, &[])
+    }
+
+    /// [`handshake_rejection`] plus arbitrary response headers, for the
+    /// rate-limit metadata a `429` upgrade carries.
+    fn handshake_rejection_with_headers(
+        status: u16,
+        request_id: Option<&str>,
+        body: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> tungstenite::Error {
+        let mut response = http::Response::builder().status(status);
+        if let Some(request_id) = request_id {
+            response = response.header("x-request-id", request_id);
+        }
+        for (name, value) in headers {
+            response = response.header(*name, *value);
+        }
+        tungstenite::Error::Http(Box::new(
+            response
+                .body(body.map(|body| body.as_bytes().to_vec()))
+                .expect("response should build"),
+        ))
+    }
+
+    /// The live shape, recorded in
+    /// `websocket_error_identity_matrix/handshake_rejection_carries_status_body_and_request_id`.
+    const REJECTION_BODY: &str = r#"{"error":{"message":"Incorrect API key provided: sk-inval***-key.","type":"invalid_request_error","code":"invalid_api_key","param":null},"status":401}"#;
+
+    #[test]
+    fn websocket_provider_error_preserves_status_body_and_request_id() {
+        let error = websocket_provider_error(handshake_rejection(
+            401,
+            Some("req_websocket_1"),
+            Some(REJECTION_BODY),
+        ));
+
+        assert!(matches!(error, CompletionError::ProviderResponse(_)));
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+        assert_eq!(error.provider_response_body(), Some(REJECTION_BODY));
+        assert_eq!(error.provider_request_id(), Some("req_websocket_1"));
+        assert_eq!(
+            error
+                .provider_response_json()
+                .expect("body should be valid JSON")
+                .expect("parsed JSON should be present")["error"]["code"],
+            "invalid_api_key"
+        );
+    }
+
+    /// The id is optional everywhere else in this crate and is optional here:
+    /// its absence must not cost the status or the body.
+    #[test]
+    fn websocket_provider_error_without_a_request_id_keeps_the_rest() {
+        let error = websocket_provider_error(handshake_rejection(429, None, Some("slow down")));
+
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some("slow down"));
+        assert_eq!(error.provider_request_id(), None);
+    }
+
+    /// An empty `x-request-id` is absence, not an id — the same rule
+    /// `sse_transport` applies.
+    #[test]
+    fn websocket_provider_error_treats_an_empty_request_id_as_absent() {
+        let error = websocket_provider_error(handshake_rejection(401, Some(""), Some("nope")));
+
+        assert_eq!(error.provider_request_id(), None);
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::UNAUTHORIZED)
+        );
+    }
+
+    /// A rejection whose body never arrived still carries more than the string
+    /// form did: the status.
+    #[test]
+    fn websocket_provider_error_without_a_body_keeps_the_status() {
+        let error = websocket_provider_error(handshake_rejection(403, Some("req_2"), None));
+
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::FORBIDDEN)
+        );
+        assert_eq!(error.provider_response_body(), Some(""));
+        assert_eq!(error.provider_request_id(), Some("req_2"));
+    }
+
+    /// Every status an upgrade can be answered with survives — the mapper keys
+    /// on the error carrying a response, never on the status. `tungstenite`
+    /// raises `Error::Http` for *any* non-101 status, and `connect_async` does
+    /// not follow redirects, so a 2xx or a proxy's 3xx reaches this mapper too.
+    #[test]
+    fn websocket_provider_error_preserves_every_rejection_status() {
+        for status in [200u16, 302, 400, 401, 403, 404, 429, 500, 503] {
+            let error = websocket_provider_error(handshake_rejection(status, None, Some("body")));
+            assert_eq!(
+                error.provider_response_status().map(|s| s.as_u16()),
+                Some(status),
+                "status {status} must survive"
+            );
+        }
+    }
+
+    /// The other half of the error space, enumerated rather than sampled:
+    /// **every** non-`Http` variant of [`tungstenite::Error`] must stay a
+    /// [`CompletionError::ProviderError`] carrying its own text, because none
+    /// of them reached the provider and so none has a response to preserve.
+    ///
+    /// `Error::Http` is the only variant that carries one, which is what makes
+    /// the mapper's `let-else` correct for the rest by construction. The list
+    /// below is the crate's full variant set minus `Http`; `Tls` is the one
+    /// exclusion, since its inner `TlsError` is `#[non_exhaustive]`-shaped per
+    /// TLS backend and cannot be constructed portably in a test — it takes the
+    /// same branch as its ten siblings.
+    #[test]
+    fn websocket_provider_error_leaves_every_transport_failure_alone() {
+        let cases: Vec<tungstenite::Error> = vec![
+            tungstenite::Error::ConnectionClosed,
+            tungstenite::Error::AlreadyClosed,
+            tungstenite::Error::Io(std::io::Error::other("connection reset")),
+            tungstenite::Error::Capacity(tungstenite::error::CapacityError::TooManyHeaders),
+            tungstenite::Error::Protocol(tungstenite::error::ProtocolError::HandshakeIncomplete),
+            tungstenite::Error::WriteBufferFull(Box::new(tungstenite::Message::Text(
+                "queued".into(),
+            ))),
+            tungstenite::Error::AttackAttempt,
+            tungstenite::Error::Url(tungstenite::error::UrlError::NoPathOrQuery),
+            tungstenite::Error::HttpFormat(
+                http::header::HeaderName::from_bytes(b"not a header")
+                    .expect_err("an invalid header name should not parse")
+                    .into(),
+            ),
+        ];
+
+        for error in cases {
+            let expected = error.to_string();
+            let mapped = websocket_provider_error(error);
+
+            assert!(
+                matches!(mapped, CompletionError::ProviderError(_)),
+                "a failure with no provider response must stay a ProviderError: {mapped:?}"
+            );
+            assert_eq!(mapped.to_string(), format!("ProviderError: {expected}"));
+            assert_eq!(mapped.provider_response_status(), None);
+            assert_eq!(mapped.provider_response_body(), None);
+            assert_eq!(mapped.provider_request_id(), None);
+        }
+    }
+
+    /// rig#2210's contract, on this transport: a rejected upgrade's headers
+    /// survive onto the error, so a caller refused with `429` can read
+    /// `Retry-After` no matter which transport carried the refusal. The SSE
+    /// path attaches its handshake's headers the same way.
+    #[test]
+    fn websocket_provider_error_preserves_the_rejections_headers() {
+        let error = websocket_provider_error(handshake_rejection_with_headers(
+            429,
+            Some("req_rate_limited"),
+            Some(r#"{"error":{"code":"rate_limit_exceeded"}}"#),
+            &[("retry-after", "20"), ("x-ratelimit-remaining", "0")],
+        ));
+
+        let headers = error
+            .provider_response_headers()
+            .expect("a rejection's headers must survive onto the error");
+        assert_eq!(
+            headers
+                .get(http::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok()),
+            Some("20")
+        );
+        assert_eq!(
+            headers
+                .get("x-ratelimit-remaining")
+                .and_then(|value| value.to_str().ok()),
+            Some("0")
+        );
+        // The rest of the identity is untouched by the header capture.
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_request_id(), Some("req_rate_limited"));
+    }
+
+    /// A failure that never reached the provider has no headers to report,
+    /// just as it has no status or body.
+    #[test]
+    fn websocket_provider_error_reports_no_headers_for_a_transport_failure() {
+        let error = websocket_provider_error(tungstenite::Error::ConnectionClosed);
+
+        assert!(error.provider_response_headers().is_none());
+    }
+
+    /// A canary, not matrix coverage: it pins the exact string the deleted
+    /// mapper produced, so restoring that line fails loudly rather than
+    /// quietly. The behavior it protects is asserted positively above.
+    #[test]
+    fn websocket_provider_error_no_longer_flattens_a_rejection_to_a_string() {
+        let error = websocket_provider_error(handshake_rejection(
+            401,
+            Some("req_websocket_1"),
+            Some(REJECTION_BODY),
+        ));
+
+        assert_ne!(
+            error.to_string(),
+            "ProviderError: HTTP error: 401 Unauthorized",
+            "the pre-fix behavior discarded the status, body and request id"
+        );
+    }
     use std::time::Duration;
     use tokio::net::TcpListener;
     use tokio::time::sleep;
