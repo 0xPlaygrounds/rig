@@ -2458,8 +2458,10 @@ mod migrated_tests {
         max_turns: usize,
         expected_usages: &[Usage],
     ) {
-        // Scoped-subscriber tests must not run concurrently; the warm-up
-        // below explains the callsite-interest hazard this guards against.
+        // Scoped-subscriber tests must not run concurrently; the warm-up below
+        // explains the callsite-interest hazard this guards against. The
+        // guard's own docs carry that recipe plus the rule it cannot enforce:
+        // an absence assertion needs a positive anchor, or it passes vacuously.
         let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
         let spans = CapturedSpans::default();
         let subscriber = Registry::default().with(SpanCaptureLayer {

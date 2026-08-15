@@ -8,23 +8,24 @@
 //! `cursor.is_some()` is true for any listing past its first page. Gemini's
 //! catalog paginates in production, so that fired on every real listing.
 //!
-//! These live in their own test binary on purpose. `tracing` caches callsite
-//! interest **globally**, computed by whichever thread reaches the callsite
-//! first, while `set_default` installs a subscriber only for the current
-//! thread. A sibling test emitting these same warnings without a subscriber
-//! therefore caches `Interest::never` and silences the capture mid-test — which
-//! is exactly what happened when these assertions lived beside the other
-//! listing tests. Alone in a binary, and serialized by
-//! `scoped_tracing_subscriber_guard`, nothing else can reach the callsites.
+//! Two of these cells assert that a warning is **absent**, which is only sound
+//! while the capture is live — a silenced callsite would make them pass while
+//! covering nothing. `common::tracing_capture` proves liveness on every call
+//! rather than leaving it to this binary's isolation; see
+//! `rig_core::test_utils::scoped_tracing_subscriber_guard` for why that is not
+//! something the isolation guard alone can promise.
 
 #![allow(clippy::expect_used)]
 
-use std::io::Write;
-use std::sync::{Arc, Mutex};
+#[path = "common/tracing_capture.rs"]
+mod tracing_capture;
 
 use rig_core::client::ModelListingClient;
 use rig_core::providers::anthropic;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+const CEILING_WARNING: &str = "hit its page ceiling";
+const REPEATED_CURSOR_WARNING: &str = "repeated its pagination cursor";
 
 /// One page of Anthropic's `/v1/models` envelope.
 fn page(models: &[&str], has_more: bool, last_id: Option<&str>) -> MockHttpResponse {
@@ -37,55 +38,54 @@ fn page(models: &[&str], has_more: bool, last_id: Option<&str>) -> MockHttpRespo
     )
 }
 
-#[derive(Clone)]
-struct SharedWriter(Arc<Mutex<Vec<u8>>>);
-
-impl Write for SharedWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("log buffer").extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-/// List `pages` through a mock transport and return everything it logged.
-async fn logs_from_listing(pages: Vec<MockHttpResponse>) -> String {
-    // Scoped-subscriber tests must not run concurrently; see
-    // `test_utils::scoped_tracing_subscriber_guard`.
-    let _isolation = rig_core::test_utils::scoped_tracing_subscriber_guard().await;
-    let captured = Arc::new(Mutex::new(Vec::new()));
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
-        .with_ansi(false)
-        .without_time()
-        .with_writer({
-            let captured = captured.clone();
-            move || SharedWriter(captured.clone())
+/// Pages that exhaust the loop's budget: two cursors that alternate forever, so
+/// every request differs from the one before, no repeat is ever observed, and
+/// only the bound stops it.
+fn budget_exhausting_pages() -> Vec<MockHttpResponse> {
+    (0..1_010)
+        .map(|i| {
+            page(
+                &["claude-a"],
+                true,
+                Some(if i % 2 == 0 { "ping" } else { "pong" }),
+            )
         })
-        .finish();
-
-    {
-        let _guard = tracing::subscriber::set_default(subscriber);
-        // Interest is cached per callsite, globally; rebuild so it is computed
-        // against the subscriber installed just above.
-        tracing::callsite::rebuild_interest_cache();
-
-        let client = anthropic::Client::builder()
-            .api_key("test-key")
-            .http_client(SequencedHttpClient::new(pages))
-            .build()
-            .expect("client should build");
-        client.list_models().await.expect("listing should succeed");
-    }
-
-    let bytes = captured.lock().expect("log buffer").clone();
-    String::from_utf8(bytes).expect("log output is utf-8")
+        .collect()
 }
 
-const CEILING_WARNING: &str = "hit its page ceiling";
+/// Pages that stall on one cursor.
+fn repeated_cursor_pages() -> Vec<MockHttpResponse> {
+    vec![
+        page(&["claude-a"], true, Some("stuck")),
+        page(&["claude-b"], true, Some("stuck")),
+    ]
+}
+
+/// Drive one listing through a mock transport.
+async fn list(pages: Vec<MockHttpResponse>) {
+    let client = anthropic::Client::builder()
+        .api_key("test-key")
+        .http_client(SequencedHttpClient::new(pages))
+        .build()
+        .expect("client should build");
+    client.list_models().await.expect("listing should succeed");
+}
+
+/// Everything `pages` logs at WARN, captured against an anchor that exercises
+/// **both** warning callsites in the listing loop — so a cell asserting either
+/// warning is absent has proof that it would have been captured if emitted.
+async fn logs_from_listing(pages: Vec<MockHttpResponse>) -> String {
+    tracing_capture::captured_logs(
+        tracing::Level::WARN,
+        || async {
+            list(budget_exhausting_pages()).await;
+            list(repeated_cursor_pages()).await;
+        },
+        &[CEILING_WARNING, REPEATED_CURSOR_WARNING],
+        || list(pages.clone()),
+    )
+    .await
+}
 
 /// A listing that ends because the provider said so is not a ceiling, however
 /// many pages it took.
@@ -108,19 +108,7 @@ async fn a_completed_multi_page_listing_reports_no_page_ceiling() {
 /// genuinely runs out of its page budget still reports the ceiling.
 #[tokio::test]
 async fn a_listing_that_exhausts_the_page_budget_still_reports_the_ceiling() {
-    // Two cursors that alternate forever: every request differs from the one
-    // before, so no repeat is ever observed and only the bound stops it.
-    let pages: Vec<_> = (0..1_010)
-        .map(|i| {
-            page(
-                &["claude-a"],
-                true,
-                Some(if i % 2 == 0 { "ping" } else { "pong" }),
-            )
-        })
-        .collect();
-
-    let logs = logs_from_listing(pages).await;
+    let logs = logs_from_listing(budget_exhausting_pages()).await;
 
     assert!(
         logs.contains(CEILING_WARNING),
@@ -132,14 +120,10 @@ async fn a_listing_that_exhausts_the_page_budget_still_reports_the_ceiling() {
 /// that alone — not that *and* a page ceiling for one event.
 #[tokio::test]
 async fn a_repeated_cursor_reports_only_its_own_warning() {
-    let logs = logs_from_listing(vec![
-        page(&["claude-a"], true, Some("stuck")),
-        page(&["claude-b"], true, Some("stuck")),
-    ])
-    .await;
+    let logs = logs_from_listing(repeated_cursor_pages()).await;
 
     assert!(
-        logs.contains("repeated its pagination cursor"),
+        logs.contains(REPEATED_CURSOR_WARNING),
         "the repeated cursor is what ended the listing; logged:\n{logs}"
     );
     assert!(
