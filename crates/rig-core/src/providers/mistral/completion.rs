@@ -12,8 +12,20 @@ pub const CODESTRAL: &str = "codestral-latest";
 /// The latest version of the `mistral-large` Mistral model
 pub const MISTRAL_LARGE: &str = "mistral-large-latest";
 /// The latest version of the `pixtral-large` Mistral multimodal model
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(
+    note = "Mistral no longer serves this model. Pixtral is retired; use `MISTRAL_SMALL` or `MISTRAL_MEDIUM`, which are vision-capable"
+)]
 pub const PIXTRAL_LARGE: &str = "pixtral-large-latest";
 /// The latest version of the `mistral` Mistral multimodal model, trained on datasets from the Middle East & South Asia
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(
+    note = "Mistral no longer serves this model. retired; no replacement in the live catalog"
+)]
 pub const MISTRAL_SABA: &str = "mistral-saba-latest";
 /// The latest version of the `mistral-3b` Mistral completions model
 pub const MINISTRAL_3B: &str = "ministral-3b-latest";
@@ -23,10 +35,26 @@ pub const MINISTRAL_8B: &str = "ministral-8b-latest";
 /// The latest version of the `mistral-small` Mistral completions model
 pub const MISTRAL_SMALL: &str = "mistral-small-latest";
 /// The `24-09` version of the `pixtral-small` Mistral multimodal model
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(
+    note = "Mistral no longer serves this model. Pixtral is retired; use `MINISTRAL_3B`, which is vision-capable"
+)]
 pub const PIXTRAL_SMALL: &str = "pixtral-12b-2409";
 /// The `open-mistral-nemo` model
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(
+    note = "Mistral no longer serves this model. retired; no replacement in the live catalog"
+)]
 pub const MISTRAL_NEMO: &str = "open-mistral-nemo";
 /// The `open-mistral-mamba` model
+///
+/// **Retired.** This identifier is no longer in Mistral's `GET /v1/models`
+/// catalog; requests naming it fail with `400 Invalid model`.
+#[deprecated(note = "Mistral no longer serves this model. retired; use `CODESTRAL`")]
 pub const CODESTRAL_MAMBA: &str = "open-codestral-mamba";
 
 /// Mistral completion model, driven by the shared OpenAI Chat Completions path.

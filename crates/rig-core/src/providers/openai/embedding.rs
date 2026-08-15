@@ -64,6 +64,22 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
     /// Azure routes the deployment through the URL and sends no model field.
     const SENDS_MODEL_FIELD: bool = true;
 
+    /// Most inputs the provider accepts in one embeddings request.
+    ///
+    /// [`EmbeddingsBuilder`](crate::embeddings::EmbeddingsBuilder) chunks by
+    /// this, so a value above the provider's real cap turns a large job into a
+    /// rejected request rather than more round trips. OpenAI's 1024 is the
+    /// default; providers with a smaller cap override it.
+    const MAX_DOCUMENTS: usize = 1024;
+
+    /// Output dimensions for a model the provider knows by name, used when the
+    /// caller did not state them. The default consults OpenAI's own table;
+    /// providers with their own models override it, because a model missing
+    /// from every table reports `ndims() == 0`.
+    fn default_ndims(model: &str) -> Option<usize> {
+        model_dimensions_from_identifier(model)
+    }
+
     /// The request path for embeddings, resolved against the client base URL.
     fn embeddings_path(&self) -> String {
         "/embeddings".to_string()
@@ -155,14 +171,14 @@ where
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: OpenAIEmbeddingsCompatible + Clone + 'static,
 {
-    const MAX_DOCUMENTS: usize = 1024;
+    const MAX_DOCUMENTS: usize = Ext::MAX_DOCUMENTS;
 
     type Client = crate::client::Client<Ext, H>;
 
     fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
         let model = model.into();
         let dims = ndims
-            .or(model_dimensions_from_identifier(&model))
+            .or_else(|| Ext::default_ndims(&model))
             .unwrap_or_default();
 
         Self::new(client.clone(), model, dims)

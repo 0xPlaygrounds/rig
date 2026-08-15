@@ -155,6 +155,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_mistral_cassette_result",
             "with_mistral_multimodal_cassette",
             "with_mistral_cassette_bogus_key_result",
+            "with_mistral_capability_cassette",
         ],
     },
     ProviderCassetteSuite {
