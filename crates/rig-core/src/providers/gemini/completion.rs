@@ -414,11 +414,13 @@ pub(crate) fn function_call_finish_reason_error(
 
 /// Map one response `Part` onto the assistant content it carries.
 ///
-/// `Ok(None)` means the part is real Gemini output that carries no
+/// An empty result means the part is real Gemini output that carries no
 /// rig-modeled assistant content, so it contributes nothing to the choice and
 /// the rest of the turn still converts. Only a part rig cannot account for at
-/// all is an `Err`.
-fn map_response_part(part: &Part) -> Result<Option<completion::AssistantContent>, CompletionError> {
+/// all is an `Err`. One part can yield *two* items: a trailing
+/// `thoughtSignature` rides a text part that carries no `thought` flag, and
+/// the signature belongs to a reasoning block rather than to the text.
+fn map_response_part(part: &Part) -> Result<Vec<completion::AssistantContent>, CompletionError> {
     let Part {
         thought,
         thought_signature,
@@ -426,7 +428,7 @@ fn map_response_part(part: &Part) -> Result<Option<completion::AssistantContent>
         ..
     } = part;
 
-    Ok(Some(match part {
+    Ok(vec![match part {
         PartKind::Text(text) => {
             if let Some(thought) = thought
                 && *thought
@@ -435,6 +437,25 @@ fn map_response_part(part: &Part) -> Result<Option<completion::AssistantContent>
                     text,
                     thought_signature.clone(),
                 ))
+            } else if let Some(signature) = thought_signature {
+                // Gemini 3 attaches `thoughtSignature` to a trailing part with
+                // no `thought` flag at all — recorded traffic reads
+                // `{"text":"17 squared is 289.","thoughtSignature":"…"}`. The
+                // signature is replay-required provider state that Gemini
+                // validates (`MISSING_THOUGHT_SIGNATURE`), and only
+                // `Reasoning` round-trips it back onto a request, so it
+                // becomes a signature-only reasoning block after the text —
+                // byte-for-byte what the streaming adapter already produces
+                // for the same frames (`streaming.rs`, the no-`thought`-flag
+                // arm). Dropping it here made blocking lose state streaming
+                // kept.
+                return Ok(vec![
+                    completion::AssistantContent::text(text),
+                    completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
+                        "",
+                        Some(signature.clone()),
+                    )),
+                ]);
             } else {
                 completion::AssistantContent::text(text)
             }
@@ -474,14 +495,31 @@ fn map_response_part(part: &Part) -> Result<Option<completion::AssistantContent>
         // items are in, which decode to `Output::Unknown` and contribute no
         // content rather than failing the response. Erroring here discarded
         // the entire turn, final text answer included, while the streaming
-        // adapter skipped the parts and kept it.
-        PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_) => return Ok(None),
-        _ => {
-            return Err(CompletionError::ResponseError(
-                "Response did not contain a message or tool call".into(),
-            ));
+        // adapter skipped the parts and kept it. Their own `thoughtSignature`
+        // goes with them, which is the streaming path's behaviour too — those
+        // part kinds have nowhere to round-trip from, so keeping the
+        // transports in step is the most that can be preserved here.
+        PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_) => return Ok(Vec::new()),
+        other => {
+            return Err(CompletionError::ResponseError(format!(
+                "Gemini response part kind {} carries no assistant content rig can account for",
+                part_kind_name(other)
+            )));
         }
-    }))
+    }])
+}
+
+/// The wire name of a part kind, for error messages.
+fn part_kind_name(part: &PartKind) -> &'static str {
+    match part {
+        PartKind::Text(_) => "text",
+        PartKind::InlineData(_) => "inlineData",
+        PartKind::FunctionCall(_) => "functionCall",
+        PartKind::FunctionResponse(_) => "functionResponse",
+        PartKind::FileData(_) => "fileData",
+        PartKind::ExecutableCode(_) => "executableCode",
+        PartKind::CodeExecutionResult(_) => "codeExecutionResult",
+    }
 }
 
 /// Normalize a Gemini `generateContent` response.
@@ -521,11 +559,14 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             })?
             .parts
             .iter()
-            // `transpose` turns the "carries no assistant content" answer into
-            // a skipped part instead of a failed response: see
-            // `map_response_part`.
-            .filter_map(|part| map_response_part(part).transpose())
-            .collect::<Result<Vec<_>, _>>()?;
+            // A part may map to no content at all (skipped, not failed) or to
+            // two items; see `map_response_part`. `collect` still
+            // short-circuits on the first error, in wire order.
+            .map(map_response_part)
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         let choice = crate::message::require_non_empty_response(content)?;
 
@@ -649,6 +690,12 @@ pub mod gemini_api_types {
     /// *text* must skip them — the completion mapper routes them to
     /// [`crate::message::AssistantContent::Reasoning`] instead, and a reader
     /// that takes them for output text reports reasoning as the answer.
+    ///
+    /// The *skip* rule lives here; the *join* rule stays with each caller,
+    /// because they differ legitimately: a transcript is one continuous text
+    /// whose part boundaries are not sentence boundaries, so transcription
+    /// concatenates, while `get_text_response` keeps the newline separator it
+    /// has always used between a candidate's blocks.
     pub(crate) fn visible_text_parts(content: &Content) -> impl Iterator<Item = &str> {
         content.parts.iter().filter_map(|part| match &part.part {
             PartKind::Text(text) if !part.thought.unwrap_or(false) => Some(text.as_str()),

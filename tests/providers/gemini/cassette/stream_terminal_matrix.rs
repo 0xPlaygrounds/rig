@@ -34,7 +34,7 @@
 //! | # | cell | kind | dimension pinned |
 //! |---|------|------|------------------|
 //! | 1 | `two_terminal_stream_keeps_the_text_after_the_first_finish` | recorded | the bug itself |
-//! | 2 | `two_terminal_stream_blocking_twin_has_the_same_answer` | recorded | blocking/streaming parity |
+//! | 2 | `two_terminal_stream_blocking_twin_has_the_same_answer` | recorded | the blocking yardstick cell 1 is measured against |
 //! | 3 | `two_terminal_stream_agent_prompt_keeps_the_answer` | recorded | `Agent::stream_prompt` |
 //! | 4 | `two_terminal_stream_terminal_carries_the_last_usage` | recorded | terminal metadata comes from the last chunk |
 //! | 5 | `two_terminal_stream_with_visible_thoughts` | recorded | reasoning spanning the boundary |
@@ -57,8 +57,9 @@
 //! | 22 | `reasoning_after_the_first_finish_reason_reaches_the_choice` | unit | reasoning past the boundary |
 //! | 23 | `an_unknown_frame_after_the_first_finish_reason_is_passed_through` | unit | passthrough past the boundary |
 //! | 24 | `the_terminal_record_is_the_last_item_yielded` | unit | ordering invariant |
+//! | 25 | `a_transport_error_after_the_real_terminal_also_reports_truncation` | unit | the deliberate trade-off, stated |
 //!
-//! Cells 13–24 drive synthetic SSE frames through the real client rather than
+//! Cells 13–25 drive synthetic SSE frames through the real client rather than
 //! recording, because the provider cannot be asked for these shapes: Gemini
 //! never emits `STOP` followed by `MAX_TOKENS`, never sends a usage-only
 //! trailer *after* an intermediate finish, and cannot be made to fail its
@@ -85,7 +86,8 @@ use rig::streaming::{StreamedAssistantContent, StreamingPrompt};
 use serde_json::{Value, json};
 
 use super::super::support::{
-    assert_recorded_stream_finishes_early, with_gemini_stream_terminal_cassette,
+    assert_recorded_stream_finishes_early, last_frame_total_tokens,
+    with_gemini_stream_terminal_cassette,
 };
 
 /// The prompt that reliably makes Gemini take two code-execution rounds, and
@@ -112,8 +114,25 @@ fn text_of(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
+/// Whether `text` states `value`, ignoring digit grouping. A numeric `value`
+/// must not be a fragment of a longer number — "2880" in "28800" is not the
+/// answer — so digit-adjacency is rejected.
 fn states(text: &str, value: &str) -> bool {
-    text.replace([',', '_'], "").contains(value)
+    let text = text.replace([',', '_'], "");
+    if !value.chars().all(|ch| ch.is_ascii_digit()) {
+        return text.contains(value);
+    }
+    text.match_indices(value).any(|(index, _)| {
+        let before_ok = text[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !ch.is_ascii_digit());
+        let after_ok = text[index + value.len()..]
+            .chars()
+            .next()
+            .is_none_or(|ch| !ch.is_ascii_digit());
+        before_ok && after_ok
+    })
 }
 
 /// Everything a drained normalized stream is asserted about here.
@@ -200,8 +219,10 @@ async fn two_terminal_stream_keeps_the_text_after_the_first_finish() {
 
 #[tokio::test]
 async fn two_terminal_stream_blocking_twin_has_the_same_answer() {
-    // The parity statement: the blocking transport never had this bug, so its
-    // answer is the yardstick the streamed turn is measured against.
+    // The yardstick, not a comparison: the blocking transport never had this
+    // bug, so recording its answer to the same request fixes what cell 1's
+    // stream is required to produce. Both assert the same
+    // `FIRST_ROUND_VALUE`, which is what ties them together.
     with_gemini_stream_terminal_cassette(
         "stream_terminal_matrix/two_terminal_stream_blocking_twin_has_the_same_answer",
         |client| async move {
@@ -288,13 +309,20 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
             .await;
 
             let terminal = drained.terminal.expect("the turn should complete");
-            // Gemini's usage is cumulative per chunk, so a terminal built at the
-            // first finishReason under-reported the turn. The deferred terminal
-            // carries the last chunk's totals.
-            assert!(
-                terminal.usage.total_tokens > 0,
-                "terminal usage should be populated, got {:?}",
-                terminal.usage
+            // Gemini's usage is cumulative per chunk, so a terminal built at
+            // the *first* finishReason under-reported the turn. Asserting the
+            // exact last-frame total is what makes this cell about last-chunk
+            // metadata: the recorded stream carries a smaller total at the
+            // intermediate finish, so `> 0` would have passed before the fix
+            // too. The expectation is read from the fixture, not hardcoded, so
+            // a re-record cannot leave it behind.
+            assert_eq!(
+                terminal.usage.total_tokens,
+                last_frame_total_tokens(
+                    "stream_terminal_matrix/two_terminal_stream_terminal_carries_the_last_usage"
+                ),
+                "the terminal must carry the last frame's cumulative usage, not the \
+                 intermediate finish's"
             );
             assert_eq!(
                 terminal.finish_reason,
@@ -661,7 +689,6 @@ async fn thinking_stream_terminal_is_unchanged() {
 
 // --- 13-24: shapes the provider cannot be asked for ----------------------
 
-#[cfg(test)]
 mod unit {
     use futures::StreamExt;
     use rig::completion::{CompletionModel, FinishReason};
@@ -673,7 +700,9 @@ mod unit {
     /// Frames written from the bytes recorded by cells 1–12.
     const CODE_ROUND: &str = r#"{"candidates":[{"content":{"parts":[{"executableCode":{"language":"PYTHON","code":"print(6*7)"}}],"role":"model"},"index":0}],"responseId":"resp-first","modelVersion":"gemini-2.5-flash"}"#;
     /// The intermediate terminal: a finishReason on a chunk that is not last.
-    const INTERMEDIATE_TERMINAL: &str = r#"{"candidates":[{"content":{"parts":[{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"42\n"}}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15},"responseId":"resp-first","modelVersion":"gemini-2.5-flash"}"#;
+    /// The part kind matches the recorded bytes, where the early finish rides
+    /// the *second* `executableCode` frame (see the module doc).
+    const INTERMEDIATE_TERMINAL: &str = r#"{"candidates":[{"content":{"parts":[{"executableCode":{"language":"PYTHON","code":"print(6*7+100)"}}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15},"responseId":"resp-first","modelVersion":"gemini-2.5-flash"}"#;
     const ANSWER: &str = r#"{"candidates":[{"content":{"parts":[{"text":"The answer is 42."}],"role":"model"},"index":0}]}"#;
     const REAL_TERMINAL: &str = r#"{"candidates":[{"content":{"parts":[{"text":" Done."}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":40,"totalTokenCount":50},"responseId":"resp-last","modelVersion":"gemini-2.5-flash-002"}"#;
 
@@ -843,6 +872,34 @@ mod unit {
         assert!(
             run.terminals.is_empty(),
             "a failed stream must not be dressed up as a completed turn by the deferred terminal"
+        );
+        assert!(run.response.is_none());
+    }
+
+    /// The other half of cell 19, and the regressing direction: the provider
+    /// signalled its *real* finish and the transport then failed before EOF.
+    /// The turn's bytes all arrived, and rig still reports truncation —
+    /// deliberately, because on this wire a `finishReason` is not proof the
+    /// turn finished (that is the whole bug), so "final finish" and
+    /// "intermediate finish" are indistinguishable in-band and reporting a
+    /// completed turn for one that may have been cut in half is the worse
+    /// error. Pinned so the trade-off cannot change unnoticed.
+    #[tokio::test]
+    async fn a_transport_error_after_the_real_terminal_also_reports_truncation() {
+        let run = run_client(SequencedStreamingHttpClient::new(vec![
+            Ok(sse(&[ANSWER, REAL_TERMINAL])),
+            Err(rig::http_client::Error::InvalidStatusCodeWithMessage(
+                reqwest::StatusCode::BAD_GATEWAY,
+                "connection reset".to_string(),
+            )),
+        ]))
+        .await;
+
+        assert_eq!(run.errors, 1, "the transport failure reaches the consumer");
+        assert_eq!(run.text, "The answer is 42. Done.", "content still arrives");
+        assert!(
+            run.terminals.is_empty(),
+            "no terminal record: the stream never reached EOF"
         );
         assert!(run.response.is_none());
     }

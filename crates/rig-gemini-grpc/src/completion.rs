@@ -568,6 +568,12 @@ impl ProviderResponseExt for GenerateContentResponse {
                 let text: Vec<String> = content
                     .parts
                     .iter()
+                    // `thought` marks the model's chain-of-thought, which the
+                    // completion mapper above routes to `Reasoning`. A reader
+                    // that wants the response *text* must skip it, or it
+                    // reports reasoning as the answer — the same defect the
+                    // REST wire carried.
+                    .filter(|part| !part.thought)
                     .filter_map(|part| {
                         if let Some(proto::part::Data::Text(text)) = &part.data {
                             Some(text.clone())
@@ -1128,5 +1134,43 @@ mod tests {
         assert_eq!(params.r#type, proto::Type::Object as i32);
         assert_eq!(params.required, vec!["city".to_string()]);
         assert!(params.properties.contains_key("city"));
+    }
+
+    /// The gRPC wire carries the model's chain-of-thought in the same `parts`
+    /// array as the answer, flagged by `thought` — same shape as the REST
+    /// wire, where reading it as output text was a live-confirmed defect.
+    /// There is no cassette harness for this transport (it is protobuf over
+    /// gRPC, not HTTP), so the wire shape is stated directly.
+    #[test]
+    fn get_text_response_skips_thought_parts() {
+        let response = proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![
+                        proto::Part {
+                            data: Some(proto::part::Data::Text(
+                                "Let me work through this...".to_string(),
+                            )),
+                            thought: true,
+                            ..Default::default()
+                        },
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("The answer is 42.".to_string())),
+                            thought: false,
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            response.get_text_response().as_deref(),
+            Some("The answer is 42."),
+            "reasoning must not be reported as the response text"
+        );
     }
 }

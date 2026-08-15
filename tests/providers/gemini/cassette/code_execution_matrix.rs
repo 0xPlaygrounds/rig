@@ -105,8 +105,26 @@ fn code_execution_params_with_thoughts() -> Value {
 /// add to a number ("1,048,576"). Asserting on the value rather than on one
 /// rendering of it keeps a cell about the mapping under test instead of about
 /// the model's prose style.
+///
+/// A numeric `value` must not be a fragment of a longer number — "2880" in
+/// "28800" is not the answer — so digit-adjacency is rejected. Non-numeric
+/// values keep plain substring semantics.
 fn states(text: &str, value: &str) -> bool {
-    text.replace([',', '_'], "").contains(value)
+    let text = text.replace([',', '_'], "");
+    if !value.chars().all(|ch| ch.is_ascii_digit()) {
+        return text.contains(value);
+    }
+    text.match_indices(value).any(|(index, _)| {
+        let before_ok = text[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !ch.is_ascii_digit());
+        let after_ok = text[index + value.len()..]
+            .chars()
+            .next()
+            .is_none_or(|ch| !ch.is_ascii_digit());
+        before_ok && after_ok
+    })
 }
 
 fn text_of(choice: &[AssistantContent]) -> String {
@@ -926,7 +944,6 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 
 // --- 23-25: states a live turn cannot be made to produce ------------------
 
-#[cfg(test)]
 mod unit {
     use rig::completion::CompletionResponse;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;

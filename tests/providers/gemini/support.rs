@@ -153,6 +153,27 @@ pub(super) fn assert_recorded_response_excludes(scenario: &str, needles: &[&str]
     }
 }
 
+/// The `usageMetadata.totalTokenCount` on the **last** recorded SSE frame of
+/// `scenario` that carries one.
+///
+/// Gemini's streaming usage is cumulative per chunk, so this is the turn's
+/// real total — and the number a terminal built at an *intermediate*
+/// `finishReason` gets wrong. Read from the fixture rather than hardcoded, so
+/// a re-record cannot leave the expectation behind.
+pub(super) fn last_frame_total_tokens(scenario: &str) -> u64 {
+    recorded_response_bodies(scenario)
+        .iter()
+        .flat_map(|body| {
+            body.lines()
+                .filter_map(|line| line.strip_prefix("data: "))
+                .filter_map(|frame| serde_json::from_str::<serde_json::Value>(frame).ok())
+                .filter_map(|frame| frame.get("usageMetadata")?.get("totalTokenCount")?.as_u64())
+                .collect::<Vec<_>>()
+        })
+        .next_back()
+        .unwrap_or_else(|| panic!("{scenario}: no recorded frame carries a totalTokenCount"))
+}
+
 /// Whether any recorded `streamGenerateContent` body in `scenario` carries a
 /// `finishReason` frame that is **not** its last frame.
 ///

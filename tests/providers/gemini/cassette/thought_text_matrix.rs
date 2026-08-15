@@ -54,13 +54,27 @@
 //! | 23 | `text_response_is_none_for_a_thought_only_candidate` (unit) | `get_text_response` | see below |
 //! | 24 | `text_response_still_ignores_non_model_roles` (unit) | `get_text_response` | see below |
 //! | 25 | `transcription_keeps_an_empty_visible_text_part` (unit) | transcription | see below |
+//! | 26 | `blocking_keeps_a_trailing_thought_signature` | blocking choice | Gemini 3's no-`thought`-flag signature |
+//! | 27 | `streaming_twin_agrees_on_a_trailing_thought_signature` | stream | the same bytes, the same choice |
+//! | 28 | `a_trailing_signature_becomes_a_signature_only_reasoning_block` (unit) | blocking | see below |
+//! | 29 | `a_thought_flagged_part_still_signs_its_own_reasoning` (unit) | blocking | see below |
+//! | 30 | `a_text_part_without_a_signature_yields_no_reasoning` (unit) | blocking | see below |
 //!
-//! Cells 19–25 are unit tests because a live turn cannot be made to produce
-//! their states: Gemini does not split a short transcript across several
-//! visible text parts on demand, does not return a transcription candidate
-//! consisting only of thoughts, and never labels a `generateContent`
-//! candidate with a non-model role. Every one states its shape from bytes
-//! recorded elsewhere in this matrix.
+//! Cells 26–30 cover a fourth defect the cold review of this branch turned
+//! up, in the same reader family: Gemini 3 attaches `thoughtSignature` to a
+//! *trailing* part carrying no `thought` flag, and the blocking mapper
+//! dropped it while the streaming adapter kept it as a signature-only
+//! reasoning block. The signature is replay-required state, so blocking now
+//! produces the same block. Cells 26–27 are recorded; 28–30 state orderings
+//! one live turn cannot emit.
+//!
+//! The cells marked `(unit)` are unit tests because a live turn cannot be
+//! made to produce their states: Gemini does not split a short transcript
+//! across several visible text parts on demand, does not return a
+//! transcription candidate consisting only of thoughts, never labels a
+//! `generateContent` candidate with a non-model role, and emits one part
+//! ordering per turn. Every one states its shape from bytes recorded
+//! elsewhere in this matrix.
 //!
 //! No cell was dropped for cost.
 //!
@@ -154,10 +168,14 @@ fn split_parts(
 
     let mut visible = String::new();
     let mut thoughts = Vec::new();
+    // The first candidate only — that is the one the transcription mapper
+    // reads, and a helper that ranged wider would stop describing the rule
+    // under test the moment a fixture had two candidates.
     for part in response
         .candidates
-        .iter()
-        .filter_map(|candidate| candidate.content.as_ref())
+        .first()
+        .and_then(|candidate| candidate.content.as_ref())
+        .into_iter()
         .flat_map(|content| content.parts.iter())
     {
         if let PartKind::Text(text) = &part.part {
@@ -435,11 +453,15 @@ async fn text_response_body(
         .await
         .expect("raw_completion should succeed");
 
-    let recorded_thoughts: Vec<String> = raw
+    let raw_parts: Vec<_> = raw
         .candidates
         .iter()
         .filter_map(|candidate| candidate.content.as_ref())
         .flat_map(|content| content.parts.iter())
+        .cloned()
+        .collect();
+    let recorded_thoughts: Vec<String> = raw_parts
+        .iter()
         .filter(|part| part.thought.unwrap_or(false))
         .filter_map(|part| match &part.part {
             rig::providers::gemini::completion::gemini_api_types::PartKind::Text(text) => {
@@ -478,10 +500,21 @@ async fn text_response_body(
         choice_text(&normalized.choice),
         "{scenario}: the provider-native text reader and the normalized choice disagree"
     );
+    // Reasoning blocks come from two distinct wire facts, and the assertion
+    // has to name both or it mislabels one as the other: a `thought: true`
+    // text part, and a trailing `thoughtSignature` on a part with no
+    // `thought` flag (Gemini 3's shape), which normalizes to a
+    // signature-only reasoning block so the replay-required signature is not
+    // dropped.
+    let signature_recorded = raw_parts
+        .iter()
+        .any(|part| part.thought_signature.is_some());
     assert_eq!(
         has_reasoning(&normalized.choice),
-        thoughts_expected,
-        "{scenario}: thought parts must normalize to reasoning blocks"
+        thoughts_expected || signature_recorded,
+        "{scenario}: reasoning blocks must appear exactly when the turn carried thought text \
+         or a thought signature (thought text: {thoughts_expected}, signature: \
+         {signature_recorded})"
     );
 }
 
@@ -741,6 +774,10 @@ async fn text_response_on_a_tool_call_turn() {
     .await;
 
     assert_recorded_response_contains(SCENARIO, &["functionCall"]);
+    // The cell's premise is a thought part *beside* the call; without this it
+    // silently degrades into a plain tool-call cell if a re-record drops the
+    // thought.
+    assert_thought_parts_recorded(SCENARIO, true);
 }
 
 #[tokio::test]
@@ -982,9 +1019,111 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
     assert_recorded_response_contains(SCENARIO, THOUGHT_MARKER);
 }
 
-// --- 19-24: states a live turn cannot be made to produce ------------------
+// --- 26-27: Gemini 3's trailing thought signature -------------------------
 
-#[cfg(test)]
+/// A Gemini 3 prompt short enough that the turn is one text part — which is
+/// where the wire hangs the trailing `thoughtSignature`.
+const SIGNATURE_PROMPT: &str = "What is 17 squared? Answer with the number only.";
+
+fn signature_of(choice: &[AssistantContent]) -> Option<String> {
+    choice.iter().find_map(|content| match content {
+        AssistantContent::Reasoning(reasoning) => {
+            reasoning.content.iter().find_map(|block| match block {
+                rig::message::ReasoningContent::Text { signature, .. } => signature.clone(),
+                _ => None,
+            })
+        }
+        _ => None,
+    })
+}
+
+#[tokio::test]
+async fn blocking_keeps_a_trailing_thought_signature() {
+    with_gemini_thought_text_cassette(
+        "thought_text_matrix/blocking_keeps_a_trailing_thought_signature",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+            let request = model
+                .completion_request(SIGNATURE_PROMPT)
+                .temperature(0.0)
+                .max_tokens(1000)
+                .build();
+
+            let raw = model
+                .raw_completion(request)
+                .await
+                .expect("raw_completion should succeed");
+
+            // The premise, from the recorded bytes: a text part with a
+            // signature and no `thought` flag at all.
+            let signed_text_part = raw
+                .candidates
+                .first()
+                .and_then(|candidate| candidate.content.as_ref())
+                .map(|content| {
+                    content.parts.iter().any(|part| {
+                        part.thought_signature.is_some() && !part.thought.unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false);
+            assert!(
+                signed_text_part,
+                "this cell's premise is a signed part with no thought flag"
+            );
+
+            let normalized: rig::completion::CompletionResponse =
+                raw.try_into().expect("payload should normalize");
+            assert!(
+                signature_of(&normalized.choice).is_some(),
+                "the trailing signature is replay-required state and must survive as a \
+                 reasoning block; dropping it is the bug"
+            );
+            assert!(
+                choice_text(&normalized.choice).contains("289"),
+                "the answer must still be there, got {:?}",
+                choice_text(&normalized.choice)
+            );
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
+    with_gemini_thought_text_cassette(
+        "thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature",
+        |client| async move {
+            let model = client.completion_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+            let request = model
+                .completion_request(SIGNATURE_PROMPT)
+                .temperature(0.0)
+                .max_tokens(1000)
+                .build();
+
+            let mut stream = CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+            while stream.next().await.is_some() {}
+
+            // The parity statement: the streaming adapter always produced a
+            // signature-only reasoning block for these bytes. The blocking
+            // mapper now agrees.
+            assert!(
+                signature_of(&stream.choice).is_some(),
+                "the streamed choice should carry the trailing signature"
+            );
+            assert!(
+                choice_text(&stream.choice).contains("289"),
+                "the streamed answer must be there, got {:?}",
+                choice_text(&stream.choice)
+            );
+        },
+    )
+    .await;
+}
+
+// --- unit cells: states a live turn cannot be made to produce -------------
+
 mod unit {
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
     use rig::telemetry::ProviderResponseExt;
@@ -1158,6 +1297,69 @@ mod unit {
             None,
             "a candidate with no visible text has no text response"
         );
+    }
+
+    /// Not a recording: one live turn emits one part ordering, and the rule
+    /// is that a signature on a part with no `thought` flag becomes a
+    /// signature-only reasoning block *after* the text — byte-for-byte what
+    /// the streaming adapter produces for the same frames.
+    #[test]
+    fn a_trailing_signature_becomes_a_signature_only_reasoning_block() {
+        let response = response_with(
+            vec![json!({ "text": "17 squared is 289.", "thoughtSignature": "sig-trailing" })],
+            "model",
+        );
+        let normalized: rig::completion::CompletionResponse =
+            response.try_into().expect("payload should normalize");
+        assert_eq!(normalized.choice.len(), 2, "text then signature block");
+        assert!(matches!(
+            normalized.choice.first(),
+            Some(rig::message::AssistantContent::Text(text)) if text.text == "17 squared is 289."
+        ));
+        assert!(matches!(
+            normalized.choice.get(1),
+            Some(rig::message::AssistantContent::Reasoning(reasoning))
+                if matches!(reasoning.content.first(),
+                    Some(rig::message::ReasoningContent::Text { text, signature })
+                        if text.is_empty() && signature.as_deref() == Some("sig-trailing"))
+        ));
+    }
+
+    /// Not a recording: the counterpart ordering. A `thought: true` part signs
+    /// its own reasoning block and must not also grow a sibling.
+    #[test]
+    fn a_thought_flagged_part_still_signs_its_own_reasoning() {
+        let response = response_with(
+            vec![
+                json!({ "text": "thinking", "thought": true, "thoughtSignature": "sig-own" }),
+                json!({ "text": "answer" }),
+            ],
+            "model",
+        );
+        let normalized: rig::completion::CompletionResponse =
+            response.try_into().expect("payload should normalize");
+        assert_eq!(normalized.choice.len(), 2, "one reasoning block, one text");
+        assert!(matches!(
+            normalized.choice.first(),
+            Some(rig::message::AssistantContent::Reasoning(reasoning))
+                if matches!(reasoning.content.first(),
+                    Some(rig::message::ReasoningContent::Text { text, signature })
+                        if text == "thinking" && signature.as_deref() == Some("sig-own"))
+        ));
+    }
+
+    /// Not a recording: the negative case. No signature, no reasoning block —
+    /// the fix must not manufacture one for every text part.
+    #[test]
+    fn a_text_part_without_a_signature_yields_no_reasoning() {
+        let response = response_with(vec![text_part("plain answer")], "model");
+        let normalized: rig::completion::CompletionResponse =
+            response.try_into().expect("payload should normalize");
+        assert_eq!(normalized.choice.len(), 1);
+        assert!(matches!(
+            normalized.choice.first(),
+            Some(rig::message::AssistantContent::Text(_))
+        ));
     }
 
     /// Not a recording: `generateContent` never labels a candidate with the
