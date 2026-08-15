@@ -750,6 +750,8 @@ mod tests {
 
     /// The relaxation is narrow: without a response format, or without tools,
     /// or when the choice is already compatible, nothing moves.
+    /// A `text` response format is not the constrained kind either — Mistral
+    /// takes it beside a forced choice, verified live.
     #[test]
     fn finalize_leaves_a_forced_tool_choice_alone_without_a_response_format() {
         let mut body = serde_json::json!({
@@ -774,6 +776,21 @@ mod tests {
             .finalize_request_body(&mut body)
             .expect("finalize should succeed");
         assert_eq!(body["tool_choice"], "none", "`none` is already compatible");
+
+        let mut body = serde_json::json!({
+            "model": MISTRAL_SMALL,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tool_choice": "required",
+            "tools": [{"type": "function", "function": {"name": "add", "parameters": {}}}],
+            "response_format": {"type": "text"}
+        });
+        MistralExt
+            .finalize_request_body(&mut body)
+            .expect("finalize should succeed");
+        assert_eq!(
+            body["tool_choice"], "any",
+            "a `text` response format is unconstrained; only the structured kinds conflict"
+        );
     }
 
     #[test]

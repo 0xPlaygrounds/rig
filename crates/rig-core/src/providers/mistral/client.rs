@@ -67,15 +67,20 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
             *tool_choice = serde_json::Value::String("any".to_string());
         }
 
-        // Mistral accepts a response format beside tools only under
-        // `tool_choice: auto` (or `none`): anything that *forces* a call is a
-        // 400, "`json_schema` response type with tools is only compatible with
-        // `tool_choice: auto`". Rig reaches that combination on its own — a
-        // structured-output agent defers `response_format` until a tool result
-        // exists, then emits it beside the caller's standing `tool_choice`, so
-        // the turn after the first tool call dies. Relaxing the choice keeps
-        // both features working; dropping the response format instead would
-        // silently discard the schema the caller asked for.
+        // Mistral accepts a *structured* response format beside tools only
+        // under `tool_choice: auto` (or `none`): anything that forces a call
+        // is a 400, "`json_schema` response type with tools is only compatible
+        // with `tool_choice: auto`". Rig reaches that combination on its own —
+        // a structured-output agent defers `response_format` until a tool
+        // result exists, then emits it beside the caller's standing
+        // `tool_choice`, so the turn after the first tool call dies. Relaxing
+        // the choice keeps both features working; dropping the response format
+        // instead would silently discard the schema the caller asked for.
+        //
+        // Keyed on the format's *type* rather than its presence: the
+        // constraint is specific to `json_schema` and `json_object`, and
+        // `{"type": "text"}` — the API default, which a caller can still pass
+        // explicitly — rides beside a forced choice happily.
         let forces_a_tool_call = map
             .get("tool_choice")
             .is_some_and(|choice| !matches!(choice.as_str(), Some("auto" | "none")));
@@ -83,7 +88,12 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
             .get("tools")
             .and_then(serde_json::Value::as_array)
             .is_some_and(|tools| !tools.is_empty());
-        if forces_a_tool_call && has_tools && map.contains_key("response_format") {
+        let has_structured_format = map
+            .get("response_format")
+            .and_then(|format| format.get("type"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|kind| matches!(kind, "json_schema" | "json_object"));
+        if forces_a_tool_call && has_tools && has_structured_format {
             tracing::debug!(
                 "relaxing tool_choice to `auto`: Mistral rejects a forced tool choice \
                  alongside a response format"
