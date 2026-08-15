@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - *(groq)* model listing: Groq serves `GET /models` — the path its own `VERIFY_PATH` already used — but declared no `model_listing` capability, so `Client::list_models()` was unavailable. Recorded against the live API rather than assumed from Groq being OpenAI-compatible ([#2079](https://github.com/0xPlaygrounds/rig/issues/2079))
+- *(moonshot, minimax)* model listing: both serve `GET /models` with the OpenAI-style `{"object":"list","data":[…]}` envelope their own API references document, and neither declared a `model_listing` capability. No credentials were available for either, so each ships the `#[ignore]` live smoke test mistral, xiaomimimo and mira already use for this case rather than a cassette ([#2079](https://github.com/0xPlaygrounds/rig/issues/2079))
 
 - *(completion)* `FinishReason::truncated_output()` — whether the provider cut a turn short (`Length`/`ContentFilter`) rather than letting it finish. This is the one home for a rule that decides both whether normalization tolerates a contentless turn and whether rig-agent has a remedy to name for one ([#2332](https://github.com/0xPlaygrounds/rig/pull/2332))
 - *(openai)* `OpenAICompatibleProvider::requires_modern_output_cap()` — per-model opt-in to the `max_completion_tokens` spelling, defaulted to `false` so no compatible provider has to change ([#2332](https://github.com/0xPlaygrounds/rig/pull/2332))
