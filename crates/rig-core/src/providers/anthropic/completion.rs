@@ -72,6 +72,7 @@ impl AnthropicCompatibleProvider for super::client::AnthropicExt {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[non_exhaustive]
 pub struct CompletionResponse {
     pub content: Vec<Content>,
     pub id: String,
@@ -141,6 +142,7 @@ impl ProviderResponseExt for CompletionResponse {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[non_exhaustive]
 pub struct Usage {
     pub input_tokens: u64,
     pub cache_read_input_tokens: Option<u64>,
@@ -230,6 +232,7 @@ impl From<Usage> for crate::completion::Usage {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[non_exhaustive]
 pub struct ToolDefinition {
     pub name: String,
     pub description: Option<String>,

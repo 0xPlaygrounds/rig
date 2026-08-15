@@ -233,6 +233,7 @@ pub struct MessageDelta {
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize, Default)]
+#[non_exhaustive]
 pub struct PartialUsage {
     pub output_tokens: usize,
     #[serde(default)]
@@ -489,6 +490,7 @@ impl WireAdapter for AnthropicAdapter {
 /// normalized [`StreamFinal`]; callers who want the provider-native shape read
 /// it here instead.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[non_exhaustive]
 pub struct StreamingCompletionResponse {
     /// Token usage carried by the terminal `message_delta` event.
     pub usage: PartialUsage,

@@ -43,6 +43,7 @@ pub struct ApiVersion {
 }
 
 #[derive(Deserialize, Debug)]
+#[non_exhaustive]
 pub struct BilledUnits {
     #[serde(default)]
     pub input_tokens: u32,

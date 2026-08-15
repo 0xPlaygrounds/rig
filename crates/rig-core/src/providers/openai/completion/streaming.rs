@@ -156,6 +156,7 @@ struct StreamingCompletionChunk<U = Usage> {
 /// [`StreamFinal`] exactly once, through
 /// [`normalize_stream`](crate::streaming::normalize_stream).
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StreamingCompletionResponse<U = Usage> {
     /// Usage reported on the stream's terminal event.
     pub usage: U,

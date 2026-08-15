@@ -346,20 +346,19 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::ToolCall(rig::message::ToolCall {
+                    content: vec![AssistantContent::ToolCall(
                         // The cross-provider shape: the other wire's
                         // identifier survives as rig's correlation
                         // handle, with no provider id for Ollama's wire.
-                        id: rig::message::ToolCallId::new("call_abc123")
-                            .expect("the chat-sourced identifier is non-empty"),
-                        provider: None,
-                        function: rig::message::ToolFunction {
-                            name: "add".to_owned(),
-                            arguments: serde_json::json!({"x": 2, "y": 3}),
-                        },
-                        signature: None,
-                        additional_params: None,
-                    })],
+                        rig::message::ToolCall::new(
+                            rig::message::ToolCallId::new("call_abc123")
+                                .expect("the chat-sourced identifier is non-empty"),
+                            rig::message::ToolFunction {
+                                name: "add".to_owned(),
+                                arguments: serde_json::json!({"x": 2, "y": 3}),
+                            },
+                        ),
+                    )],
                 },
                 rig::message::Message::User {
                     content: vec![rig::message::UserContent::ToolResult(

@@ -570,6 +570,7 @@ impl TryFrom<ProviderCallIdWire> for ProviderCallId {
 
 /// Describes a tool call with an id and function to call, generally produced by a provider.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[non_exhaustive]
 pub struct ToolCall {
     /// Rig's correlation handle. Always present; minted when the provider
     /// issued none.

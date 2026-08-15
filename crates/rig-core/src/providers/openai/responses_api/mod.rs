@@ -1650,6 +1650,7 @@ where
 
 /// The standard response format from OpenAI's Responses API.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct CompletionResponse {
     /// The ID of a completion response.
     pub id: String,

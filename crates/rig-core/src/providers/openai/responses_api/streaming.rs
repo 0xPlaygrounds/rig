@@ -46,6 +46,7 @@ pub enum StreamingCompletionChunk {
 /// once, through [`crate::streaming::normalize_stream`], into a
 /// [`streaming::StreamFinal`].
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[non_exhaustive]
 pub struct StreamingCompletionResponse {
     /// Token usage
     pub usage: ResponsesUsage,

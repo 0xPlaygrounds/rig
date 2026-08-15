@@ -621,6 +621,7 @@ enum Level {
 /// Ollama's terminal stream record, kept provider-native for
 /// [`CompletionModel::raw_stream`].
 #[derive(Clone, Serialize, Deserialize, Debug)]
+#[non_exhaustive]
 pub struct StreamingCompletionResponse {
     /// Provider-reported model identifier from the terminating NDJSON line.
     pub model: String,
@@ -1065,6 +1066,7 @@ impl From<crate::completion::ToolDefinition> for ToolDefinition {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[non_exhaustive]
 pub struct ToolCall {
     /// The daemon-issued call id (`"id":"call_..."`), present on modern
     /// Ollama daemons and absent on older ones. Read when present — it is

@@ -76,7 +76,7 @@ use rig::completion::{
 };
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::{CompletionResponse, Content, Usage};
+use rig::providers::anthropic::completion::{CompletionResponse, Content};
 use rig::streaming::StreamingPrompt;
 use serde_json::json;
 
@@ -156,24 +156,27 @@ fn assert_recorded_streamed_empty_stop(scenario: &str) {
 }
 
 fn empty_response(stop_reason: Option<&str>, content: Vec<Content>) -> CompletionResponse {
-    CompletionResponse {
-        content,
-        id: "msg_matrix".to_string(),
-        model: "claude-haiku-4-5".to_string(),
-        role: "assistant".to_string(),
-        stop_reason: stop_reason.map(str::to_string),
-        stop_sequence: stop_reason
+    // `CompletionResponse` and `Usage` are `#[non_exhaustive]` (#2325), so this
+    // fixture is built the way the provider path builds one — by deserializing
+    // a body — rather than by struct literal. Fields rig omits on the wire
+    // (`cache_creation`, `provider_request_id`) are serde-defaulted to `None`.
+    serde_json::from_value(json!({
+        "content": content,
+        "id": "msg_matrix",
+        "model": "claude-haiku-4-5",
+        "role": "assistant",
+        "stop_reason": stop_reason,
+        "stop_sequence": stop_reason
             .filter(|reason| *reason == "stop_sequence")
-            .map(|_| "alpha".to_string()),
-        usage: Usage {
-            input_tokens: 18,
-            cache_read_input_tokens: None,
-            cache_creation_input_tokens: None,
-            cache_creation: None,
-            output_tokens: 1,
+            .map(|_| "alpha"),
+        "usage": {
+            "input_tokens": 18,
+            "cache_read_input_tokens": null,
+            "cache_creation_input_tokens": null,
+            "output_tokens": 1,
         },
-        provider_request_id: None,
-    }
+    }))
+    .expect("the empty-stop-sequence matrix fixture body should deserialize")
 }
 
 // ---------------------------------------------------------------------------

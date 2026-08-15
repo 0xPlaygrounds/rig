@@ -104,6 +104,7 @@ struct MessageEndDelta {
 /// Cohere's terminal stream record, kept provider-native for
 /// [`CompletionModel::raw_stream`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StreamingCompletionResponse {
     pub usage: Option<Usage>,
     /// Cohere's own `finish_reason` from the `message-end` event, when reported.

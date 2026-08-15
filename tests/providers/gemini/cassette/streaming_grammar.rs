@@ -1023,19 +1023,18 @@ async fn chat_sourced_history_replays_the_tool_name_not_the_identifier() {
                 ),
                 rig::message::Message::Assistant {
                     id: None,
-                    content: vec![AssistantContent::ToolCall(ToolCall {
+                    content: vec![AssistantContent::ToolCall(
                         // The cross-provider shape: the other wire's
                         // identifier survives as rig's correlation handle,
                         // with no provider id for Gemini's wire.
-                        id: cross_provider_handle.clone(),
-                        provider: None,
-                        function: rig::message::ToolFunction {
-                            name: "add".to_owned(),
-                            arguments: serde_json::json!({"x": 2, "y": 3}),
-                        },
-                        signature: None,
-                        additional_params: None,
-                    })],
+                        ToolCall::new(
+                            cross_provider_handle.clone(),
+                            rig::message::ToolFunction {
+                                name: "add".to_owned(),
+                                arguments: serde_json::json!({"x": 2, "y": 3}),
+                            },
+                        ),
+                    )],
                 },
                 rig::message::Message::User {
                     content: vec![UserContent::ToolResult(rig::message::ToolResult {

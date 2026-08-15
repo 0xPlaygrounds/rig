@@ -113,6 +113,7 @@ pub(crate) fn map_finish_reason(reason: &FinishReason) -> completion::FinishReas
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
+#[non_exhaustive]
 pub struct Usage {
     #[serde(default)]
     pub billed_units: Option<BilledUnits>,

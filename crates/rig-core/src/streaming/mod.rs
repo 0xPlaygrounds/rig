@@ -662,6 +662,7 @@ impl<R> RawStreamingChoice<R> {
 
 /// Describes a streaming tool call response (in its entirety)
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RawStreamingToolCall {
     /// Accumulation/reconciliation key of the tool call —
     /// `StreamPartId::Wire`-derived when the provider supplied an id,

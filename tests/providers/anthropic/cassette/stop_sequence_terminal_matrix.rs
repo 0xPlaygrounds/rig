@@ -860,11 +860,11 @@ async fn agent_stream_single_sequence() {
 
 #[test]
 fn terminal_record_round_trips_stop_sequence() {
-    let record = StreamingCompletionResponse {
-        stop_reason: Some("stop_sequence".to_string()),
-        stop_sequence: Some("charlie".to_string()),
-        ..Default::default()
-    };
+    // `#[non_exhaustive]` (#2325) blocks cross-crate functional update, so
+    // start from `Default` and assign; the fields stay public and writable.
+    let mut record = StreamingCompletionResponse::default();
+    record.stop_reason = Some("stop_sequence".to_string());
+    record.stop_sequence = Some("charlie".to_string());
 
     let encoded = serde_json::to_value(&record).expect("terminal record should serialize");
     assert_eq!(encoded["stop_sequence"], json!("charlie"));
@@ -876,10 +876,8 @@ fn terminal_record_round_trips_stop_sequence() {
 
 #[test]
 fn terminal_record_omits_absent_stop_sequence() {
-    let record = StreamingCompletionResponse {
-        stop_reason: Some("end_turn".to_string()),
-        ..Default::default()
-    };
+    let mut record = StreamingCompletionResponse::default();
+    record.stop_reason = Some("end_turn".to_string());
 
     let encoded = serde_json::to_value(&record).expect("terminal record should serialize");
     assert!(
