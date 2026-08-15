@@ -1,0 +1,80 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Use web search to check the color of a clear daytime sky. Keep the final answer under five words.","type":"text"}],"role":"user"}],"model":"claude-opus-4-8","stream":true,"tool_choice":{"type":"auto"},"tools":[{"name":"web_search","type":"web_search_20250305"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_1
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-opus-4-8","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":2750,"output_tokens":17,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"id":"srvtoolu_019QQMo3NhRLnrnDAR8hYAW5","input":{},"name":"web_search","type":"server_tool_use"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"query","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"\": \"w","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"hy is th","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"e ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"sky blue\"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"content":[{"encrypted_content":"encrypted_content_REDACTED_1","page_age":null,"title":"Why is the sky blue? | Royal Observatory","type":"web_search_result","url":"https://www.rmg.co.uk/stories/space-astronomy/why-sky-blue"},{"encrypted_content":"encrypted_content_REDACTED_2","page_age":null,"title":"Why is the sky blue?","type":"web_search_result","url":"https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"},{"encrypted_content":"encrypted_content_REDACTED_3","page_age":"May 26, 2022","title":"Why is the sky blue? | National Geographic Kids","type":"web_search_result","url":"https://kids.nationalgeographic.com/books/article/sky"},{"encrypted_content":"encrypted_content_REDACTED_4","page_age":null,"title":"Why Is the Sky Blue? | NESDIS | National Environmental Satellite, Data, and Information Service","type":"web_search_result","url":"https://www.nesdis.noaa.gov/about/k-12-education/atmosphere/why-the-sky-blue"},{"encrypted_content":"encrypted_content_REDACTED_5","page_age":null,"title":"Why Is the Sky Blue? | NASA Space Place – NASA Science for Kids","type":"web_search_result","url":"https://spaceplace.nasa.gov/blue-sky/en/"},{"encrypted_content":"encrypted_content_REDACTED_6","page_age":null,"title":"Why is the Sky Blue? | Montreal Science Centre","type":"web_search_result","url":"https://www.montrealsciencecentre.com/blog/why-the-sky-blue"},{"encrypted_content":"encrypted_content_REDACTED_7","page_age":null,"title":"If outer space is black, why is the sky blue?","type":"web_search_result","url":"https://theburner.substack.com/p/if-outer-space-is-black-why-is-the"},{"encrypted_content":"encrypted_content_REDACTED_8","page_age":null,"title":"Bored Games","type":"web_search_result","url":"https://boredgames.substack.com/p/why-is-the-sky-blue"}],"tool_use_id":"toolu_REDACTED_1","type":"web_search_tool_result"},"index":1,"type":"content_block_start"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"citations":[],"text":"","type":"text"},"index":2,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"citation":{"cited_text":"A clear cloudless day-time sky is blue because molecules in the air scatter blue light from the Sun more than they scatter red light. ","encrypted_index":"id_REDACTED_1","title":"Why is the sky blue?","type":"web_search_result_location","url":"https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"},"type":"citations_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"A cl","type":"text_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ear daytime s","type":"text_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"ky is blue.","type":"text_delta"},"index":2,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":2,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":12229,"output_tokens":86,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":{"web_fetch_requests":0,"web_search_requests":1}}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

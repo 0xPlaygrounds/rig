@@ -246,6 +246,12 @@ pub struct PartialUsage {
     pub cache_creation: Option<super::completion::CacheCreation>,
     #[serde(default)]
     pub cache_read_input_tokens: Option<u64>,
+    /// Breakdown of `output_tokens`. Anthropic reports it on the terminal
+    /// `message_delta` — the frame that also carries the final `output_tokens`
+    /// — not on `message_start`, so unlike `cache_creation` it needs no
+    /// carry-forward.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens_details: Option<super::completion::OutputTokensDetails>,
 }
 
 impl From<&PartialUsage> for crate::completion::Usage {
@@ -255,6 +261,7 @@ impl From<&PartialUsage> for crate::completion::Usage {
             value.output_tokens as u64,
             value.cache_read_input_tokens,
             value.cache_creation_input_tokens,
+            value.output_tokens_details,
         )
     }
 }
@@ -421,6 +428,12 @@ impl WireAdapter for AnthropicAdapter {
                         .clone()
                         .or_else(|| self.cache_creation.clone()),
                     cache_read_input_tokens: usage.cache_read_input_tokens,
+                    // Taken from this frame alone, with no `message_start`
+                    // fallback: unlike `cache_creation`, Anthropic reports the
+                    // output-token breakdown on the terminal `message_delta`,
+                    // the same frame that carries the final `output_tokens` it
+                    // breaks down. `message_start` has none to carry forward.
+                    output_tokens_details: usage.output_tokens_details,
                 };
 
                 let span = tracing::Span::current();
@@ -2496,6 +2509,7 @@ mod tests {
                     cache_creation_input_tokens: None,
                     cache_creation: None,
                     cache_read_input_tokens: Some(2),
+                    output_tokens_details: None,
                 },
                 stop_reason: Some("max_tokens".to_string()),
                 stop_sequence: None,

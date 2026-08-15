@@ -19,15 +19,18 @@ mod cassette {
     mod multi_turn_streaming;
     mod opus_4_7;
     mod opus_4_8;
+    mod pdf_citations;
     mod plaintext_document;
     mod prompt_caching;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod reasoning_usage_matrix;
     mod regression_suite;
     mod request_override;
     mod response_identity;
     mod response_identity_edge;
     mod stop_sequence_terminal_matrix;
+    mod streamed_server_tools;
     mod streaming;
     mod streaming_grammar;
     mod streaming_tools;

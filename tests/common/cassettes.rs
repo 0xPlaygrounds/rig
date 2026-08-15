@@ -1795,6 +1795,17 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 const SENSITIVE_STRING_KEYS: &[&str] = &[
     "encrypted_content",
     "encryptedcontent",
+    // Anthropic's server-tool locators. Named like opaque handles but both
+    // base64-decode to a protobuf carrying the *same* plaintext UUID, stable
+    // across separate calls, so each is preserved verbatim in a committed
+    // fixture unless scrubbed — exactly what their sibling `encrypted_content`
+    // is on this list to prevent. Matching lowercases the key without
+    // stripping underscores, so each needs its squashed twin like the pairs
+    // above.
+    "encrypted_index",
+    "encryptedindex",
+    "encrypted_stdout",
+    "encryptedstdout",
     "obfuscation",
     "prompt_cache_key",
     "safety_identifier",

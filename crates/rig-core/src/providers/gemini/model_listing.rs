@@ -114,7 +114,15 @@ fn parse_models_page(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    Ok((models, page.next_page_token))
+    // An empty cursor counts as absent, matching how every other
+    // provider-reported identifier in rig is read. Without this the loop in
+    // `list_all_models` treats `Some("")` as "there is a next page", re-sends
+    // the same empty `pageToken`, and gets the same page back forever —
+    // an unbounded loop rather than a truncated listing.
+    Ok((
+        models,
+        page.next_page_token.filter(|token| !token.is_empty()),
+    ))
 }
 
 async fn list_all_models<Ext, H>(
@@ -148,6 +156,17 @@ where
         all_models.extend(models);
 
         if next_page_token_for_page.is_none() {
+            break;
+        }
+        // A cursor that repeats cannot advance: the next request would be
+        // byte-identical to the one just answered. Absence is not the only way
+        // a cursor can fail to move.
+        if next_page_token.is_some() && next_page_token == next_page_token_for_page {
+            tracing::warn!(
+                models = all_models.len(),
+                "Gemini model listing repeated its `nextPageToken`; returning the pages \
+                 fetched so far"
+            );
             break;
         }
 
@@ -189,6 +208,80 @@ mod tests {
 
         assert!(models.is_empty());
         assert_eq!(next_page_token, None);
+    }
+
+    /// An empty `nextPageToken` must read as "no more pages", not as a cursor.
+    ///
+    /// Treated as a cursor it re-sends an empty `pageToken`, gets the same
+    /// page back, and loops forever — the listing never returns rather than
+    /// returning a short list, so the only observable symptom is a hang.
+    #[test]
+    fn parse_models_page_treats_an_empty_next_page_token_as_absent() {
+        let (_, next_page_token) = parse_models_page(
+            br#"{"models": [], "nextPageToken": ""}"#,
+            "/v1beta/models?pageSize=1000",
+        )
+        .expect("page should parse");
+
+        assert_eq!(next_page_token, None);
+    }
+
+    /// A real cursor still advances the loop.
+    #[test]
+    fn parse_models_page_keeps_a_non_empty_next_page_token() {
+        let (_, next_page_token) = parse_models_page(
+            br#"{"models": [], "nextPageToken": "abc123"}"#,
+            "/v1beta/models?pageSize=1000",
+        )
+        .expect("page should parse");
+
+        assert_eq!(next_page_token.as_deref(), Some("abc123"));
+    }
+
+    /// Loop-level: a server that keeps echoing the same cursor cannot advance
+    /// the listing, so the loop must stop rather than fetch the same page
+    /// forever. The parser-level guard above only covers the *empty* cursor;
+    /// this covers the other way a cursor fails to move.
+    #[tokio::test]
+    async fn list_all_stops_on_a_cursor_that_does_not_advance() {
+        use crate::client::ModelLister as _;
+        use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
+
+        let page = |id: &str, token: &str| {
+            MockHttpResponse::success(
+                serde_json::json!({
+                    "models": [{
+                        "name": format!("models/{id}"),
+                        "displayName": id,
+                        "inputTokenLimit": 1024
+                    }],
+                    "nextPageToken": token
+                })
+                .to_string(),
+            )
+        };
+        let http_client = SequencedHttpClient::new(vec![
+            page("a", "stuck"),
+            page("b", "stuck"),
+            page("c", "stuck"),
+        ]);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("client should build");
+
+        let models = GeminiModelLister::new(client)
+            .list_all()
+            .await
+            .expect("listing should terminate");
+
+        assert_eq!(
+            models.data.len(),
+            2,
+            "the repeat is only detectable on the second page, so both are kept",
+        );
+        assert_eq!(http_client.remaining_responses(), 1);
     }
 
     #[test]
