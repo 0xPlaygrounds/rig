@@ -22,6 +22,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/openai/cassette",
         wrapper_names: &[
             "with_openai_cassette",
+            "with_openai_turn_metadata_cassette",
             "with_openai_cassette_bogus_key",
             "with_openai_completions_cassette",
             "with_openai_cassette_result",
@@ -60,6 +61,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/anthropic/cassette",
         wrapper_names: &[
             "with_anthropic_cassette",
+            "with_anthropic_turn_metadata_cassette",
             "with_anthropic_cassette_result",
             "with_anthropic_cassette_bogus_key",
             "with_anthropic_files_cassette",
@@ -101,6 +103,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/gemini/cassette",
         wrapper_names: &[
             "with_gemini_cassette",
+            "with_gemini_turn_metadata_cassette",
             "with_gemini_cassette_bogus_key",
             "with_gemini_code_execution_cassette",
             "with_gemini_interactions_cassette",

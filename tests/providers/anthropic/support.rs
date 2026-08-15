@@ -34,6 +34,18 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// Per-bug wrapper for the model-turn termination-metadata matrix
+/// (`tests/cassettes/anthropic/turn_termination_matrix/`), rig#2184.
+pub(super) async fn with_anthropic_turn_metadata_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
+
 /// Drive rig's Anthropic client against an Anthropic-*compatible* gateway
 /// rather than `api.anthropic.com`.
 ///

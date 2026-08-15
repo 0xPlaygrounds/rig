@@ -248,6 +248,18 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// Per-bug wrapper for the model-turn termination-metadata matrix
+/// (`tests/cassettes/gemini/turn_termination_matrix/`), rig#2184.
+pub(super) async fn with_gemini_turn_metadata_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(gemini::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_gemini_cassette(spec, test_body).await;
+}
+
 pub(super) async fn with_gemini_interactions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

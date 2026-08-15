@@ -40,6 +40,18 @@ where
     cassette.finish_after_test(result).await;
 }
 
+/// Per-bug wrapper for the model-turn termination-metadata matrix
+/// (`tests/cassettes/openai/turn_termination_matrix/`), rig#2184.
+pub(super) async fn with_openai_turn_metadata_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
 pub(super) async fn with_openai_completions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

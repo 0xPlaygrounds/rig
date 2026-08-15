@@ -44,6 +44,7 @@ mod cassette {
     mod think_tool_with_other_tools;
     mod tool_call_rewrite_args;
     mod tool_result_rewrite;
+    mod turn_termination_matrix;
     mod url_pdf_document;
 }
 
