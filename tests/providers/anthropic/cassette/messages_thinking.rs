@@ -73,7 +73,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                 .additional_params(thinking_params())
                 .message(Message::user(redacted_thinking_prompt()))
                 .message(Message::Assistant {
-                    id: first_response.message_id.clone(),
+                    id: first_response.message_id.clone().map(String::from),
                     content: first_response.choice.clone(),
                 })
                 .build();

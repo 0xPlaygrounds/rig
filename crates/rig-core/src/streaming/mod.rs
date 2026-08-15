@@ -15,7 +15,10 @@ use crate::message::{
 use crate::wasm_compat::WasmCompatSend;
 use futures::stream::{AbortHandle, Abortable};
 use futures::{Stream, StreamExt};
-pub use identity::{MintKind, StreamPartId, SyntheticIds, WireId};
+pub use identity::{
+    MintKind, StreamPartId, SyntheticIds, WireId,
+    deserialize_optional as deserialize_optional_wire_id,
+};
 use parts::PartsAccumulator;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
@@ -220,11 +223,11 @@ pub struct StreamFinal {
     /// provider would recognize on a replayed assistant message. Response-scoped
     /// identifiers belong in [`StreamFinal::response_id`].
     #[serde(default)]
-    pub message_id: Option<String>,
+    pub message_id: Option<crate::streaming::WireId>,
     /// Provider-assigned response-scoped ID, when available — e.g. an OpenAI
     /// chat `chatcmpl-` ID. Never replayed to a provider as a message ID.
     #[serde(default)]
-    pub response_id: Option<String>,
+    pub response_id: Option<crate::streaming::WireId>,
     /// The provider's transport-level request identifier, taken from the SSE
     /// connection's HTTP response headers (Anthropic `request-id`, OpenAI/xAI
     /// `x-request-id`). When the source reconnected, this is the connection
@@ -232,7 +235,7 @@ pub struct StreamFinal {
     /// id. `None` means the provider did not report one — a documented
     /// outcome, never an error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<crate::streaming::WireId>,
     /// Stable descriptor name of the provider that produced this stream.
     pub provider: String,
     /// Provider-reported model identifier, when available.
@@ -891,7 +894,7 @@ pub struct StreamingCompletionResponse {
     pub response: Option<StreamFinal>,
     pub final_response_yielded: AtomicBool,
     /// Provider-assigned message ID (e.g. OpenAI Responses API `msg_` ID).
-    pub message_id: Option<String>,
+    pub message_id: Option<crate::streaming::WireId>,
 }
 
 impl StreamingCompletionResponse {
@@ -1319,7 +1322,9 @@ impl Stream for StreamingCompletionResponse {
                         }
                     }
                     RawStreamingChoice::MessageId(id) => {
-                        stream.message_id = Some(id);
+                        // A wire that announces an id may still announce an
+                        // empty one; absence stays `None`.
+                        stream.message_id = WireId::new(id);
                         continue;
                     }
                     RawStreamingChoice::Unknown(value) => {
@@ -1444,11 +1449,40 @@ mod tests {
         assert_eq!(
             stream.identity(),
             crate::completion::ResponseIdentity {
-                message_id: Some("msg_terminal".to_string()),
-                response_id: Some("resp_1".to_string()),
-                provider_request_id: Some("req_1".to_string()),
+                message_id: crate::streaming::WireId::new("msg_terminal"),
+                response_id: crate::streaming::WireId::new("resp_1"),
+                provider_request_id: crate::streaming::WireId::new("req_1"),
             }
         );
+    }
+
+    /// The identifier newtype must not change what `StreamFinal` persists,
+    /// and a stored `""` still loads as absent — the terminal record is part
+    /// of agent-run JSON (#2336).
+    #[test]
+    fn stream_final_identifiers_persist_as_bare_strings() {
+        let final_record = mock_final_with_total_tokens(1)
+            .with_message_id("msg_1")
+            .with_response_id("resp_1")
+            .with_provider_request_id("req_1");
+
+        let json = serde_json::to_value(&final_record).expect("serializes");
+        assert_eq!(json["message_id"], serde_json::json!("msg_1"));
+        assert_eq!(json["response_id"], serde_json::json!("resp_1"));
+        assert_eq!(json["provider_request_id"], serde_json::json!("req_1"));
+
+        let round_tripped: StreamFinal = serde_json::from_value(json.clone()).expect("round-trips");
+        assert_eq!(round_tripped, final_record);
+
+        let mut stored_empty = json;
+        for field in ["message_id", "response_id", "provider_request_id"] {
+            stored_empty[field] = serde_json::json!("");
+        }
+        let loaded: StreamFinal =
+            serde_json::from_value(stored_empty).expect("an empty stored id must load");
+        assert_eq!(loaded.message_id, None);
+        assert_eq!(loaded.response_id, None);
+        assert_eq!(loaded.provider_request_id, None);
     }
 
     /// An explicit `MessageId` event outranks the terminal record's message id;
@@ -1470,8 +1504,8 @@ mod tests {
         assert_eq!(
             stream.identity(),
             crate::completion::ResponseIdentity {
-                message_id: Some("msg_event".to_string()),
-                response_id: Some("resp_1".to_string()),
+                message_id: crate::streaming::WireId::new("msg_event"),
+                response_id: crate::streaming::WireId::new("resp_1"),
                 provider_request_id: None,
             }
         );

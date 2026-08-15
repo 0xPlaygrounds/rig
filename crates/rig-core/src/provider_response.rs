@@ -341,9 +341,15 @@ macro_rules! response_metadata_setters {
             ///
             /// An empty string is treated as absent: gateways that echo `""`
             /// for fields they don't populate must not produce a `Some("")`
-            /// that differs between the buffered and streaming paths. All
-            /// identifier and model setters share this rule so the invariant
-            /// lives here rather than at every provider call site.
+            /// that differs between the buffered and streaming paths.
+            ///
+            /// For the identifier fields the rule is now structural rather
+            /// than a convention of these setters — they are
+            /// `Option<`[`WireId`](crate::streaming::WireId)`>`, whose only
+            /// constructor rejects the empty string, so `Some("")` is
+            /// unrepresentable however the value is built. `model` is not an
+            /// identifier and stays `Option<String>`, so its setter is still
+            /// the only thing normalizing it.
             pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
                 self.with_optional_message_id(Some(message_id.into()))
             }
@@ -354,7 +360,9 @@ macro_rules! response_metadata_setters {
                 mut self,
                 message_id: Option<impl Into<String>>,
             ) -> Self {
-                self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
+                self.message_id = message_id
+                    .map(Into::into)
+                    .and_then(crate::streaming::WireId::new);
                 self
             }
 
@@ -369,7 +377,9 @@ macro_rules! response_metadata_setters {
                 mut self,
                 response_id: Option<impl Into<String>>,
             ) -> Self {
-                self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
+                self.response_id = response_id
+                    .map(Into::into)
+                    .and_then(crate::streaming::WireId::new);
                 self
             }
 
@@ -384,7 +394,9 @@ macro_rules! response_metadata_setters {
                 mut self,
                 request_id: Option<impl Into<String>>,
             ) -> Self {
-                self.provider_request_id = request_id.map(Into::into).filter(|id| !id.is_empty());
+                self.provider_request_id = request_id
+                    .map(Into::into)
+                    .and_then(crate::streaming::WireId::new);
                 self
             }
 

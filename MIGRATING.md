@@ -1707,16 +1707,13 @@ change and has to wait for a breaking release. `#[non_exhaustive]` also cannot
 be added back outside a breaking window, so this is not a decision that can be
 revisited cheaply.
 
-**One invariant is widened.** `StreamFinal` and `completion::CompletionResponse`
-normalize an empty identifier string to `None` — the rule lives in the
-`with_*_id` setters ("an empty string is treated as absent … so the invariant
-lives here rather than at every provider call site"), and both types route
-`Deserialize` through those same setters. The attribute was the last thing
-forcing external construction down that path. A hand-written literal can now
-produce `Some("")` where every rig-built value has `None`, and
-`StreamedAssistantContent::final_response` accepts a `StreamFinal` by value. If
-you build either type yourself, prefer `::new(..)` plus the `with_*` setters
-over a literal.
+**One invariant was widened — and has since been closed structurally.**
+`StreamFinal` and `completion::CompletionResponse` normalize an empty
+identifier string to `None`, and removing `#[non_exhaustive]` took away the
+last thing forcing external construction down the `with_*_id` setters that
+enforce it. That gap is closed by #2336, which made the identifier fields
+`Option<WireId>` so `Some("")` is unrepresentable rather than merely
+discouraged; see the section below.
 
 **Superseded guidance.** Earlier sections of this file and the changelog
 describe types as `#[non_exhaustive]` and tell you to construct them through
@@ -1732,6 +1729,63 @@ the compiler no longer insists.
 ---
 
 ## 0.40 → 0.41
+
+
+### Response identifiers are `Option<WireId>` (#2336)
+
+`message_id`, `response_id` and `provider_request_id` on `StreamFinal`,
+`completion::CompletionResponse` and `completion::ResponseIdentity` — and on
+`rig-agent`'s `CompletionCall`, `ModelTurn`, `StreamedTurn` and
+`PartialStreamedTurn`, which round-trip the same ids — are now
+`Option<WireId>` instead of `Option<String>`.
+
+`WireId::new` is the only way to build one and it rejects the empty string, so
+the "an empty identifier means absent" rule these types always documented is
+now enforced by the type rather than by remembering to use the setters.
+
+**Reading usually needs no change.** `WireId` derefs to `str`:
+
+```rust
+response.message_id.as_deref() == Some("msg_1")   // still compiles
+println!("{}", id);                                // still compiles
+if response.message_id.as_deref() == Some(expected) { … }
+```
+
+Only a site that needs an owned `String` changes:
+
+```rust
+// before
+let id: Option<String> = response.message_id.clone();
+// after
+let id: Option<String> = response.message_id.clone().map(String::from);
+```
+
+**Writing goes through the setters, as before**, and they still take anything
+`Into<String>`:
+
+```rust
+let response = CompletionResponse::new(choice, usage, "provider")
+    .with_message_id("msg_1")                    // unchanged
+    .with_optional_response_id(maybe_id);        // unchanged
+```
+
+A struct literal or field assignment now needs `WireId::new`, which is the
+point — the previously-compiling `response.message_id = Some(String::new())`
+is a type error:
+
+```rust
+response.message_id = WireId::new(provider_id);  // None when provider_id is ""
+```
+
+**Serialized data is unaffected.** `WireId` serializes transparently as its
+bare string, so the JSON is byte-identical, and every deserialization path
+still turns a stored `""` into `None` rather than failing the record — agent
+runs written by earlier versions load unchanged. `WireId` deliberately has no
+`Deserialize` of its own for exactly that reason: a fallible one would reject
+those records.
+
+`model` is unchanged (`Option<String>`). It is a label rather than an
+identifier, so its setter remains the only thing normalizing it.
 
 ### 1. The crate split
 

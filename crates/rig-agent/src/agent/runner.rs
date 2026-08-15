@@ -1769,7 +1769,7 @@ mod migrated_tests {
         prompt: Message,
         content: Vec<AssistantContent>,
         usage: Usage,
-        message_id: Option<String>,
+        message_id: Option<rig_core::streaming::WireId>,
     }
 
     #[derive(Clone, Default)]
@@ -1792,7 +1792,7 @@ mod migrated_tests {
                     prompt: event.prompt.clone(),
                     content: event.content.clone(),
                     usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
+                    message_id: event.message_id.and_then(rig_core::streaming::WireId::new),
                 });
             ObservationAction::continue_run()
         }
@@ -1809,7 +1809,7 @@ mod migrated_tests {
                     prompt: event.prompt.clone(),
                     content: event.content.clone(),
                     usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
+                    message_id: event.message_id.and_then(rig_core::streaming::WireId::new),
                 });
             ObservationAction::continue_run()
         }
@@ -1855,7 +1855,7 @@ mod migrated_tests {
                     prompt: event.prompt.clone(),
                     content: event.content.clone(),
                     usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
+                    message_id: event.message_id.and_then(rig_core::streaming::WireId::new),
                 });
             if self.stop.load(SeqCst) {
                 ObservationAction::stop("stop at stream EOF")
@@ -1912,7 +1912,7 @@ mod migrated_tests {
                 prompt,
                 content: vec![AssistantContent::text("canonical response")],
                 usage: canonical_usage(),
-                message_id: Some("msg-canonical".to_string()),
+                message_id: rig_core::streaming::WireId::new("msg-canonical"),
             }]
         );
     }
@@ -1938,8 +1938,8 @@ mod migrated_tests {
             ) -> ObservationAction {
                 self.seen.lock().expect("identity snapshots").push((
                     event.message_id.map(str::to_owned),
-                    event.identity.response_id.clone(),
-                    event.identity.provider_request_id.clone(),
+                    event.identity.response_id.clone().map(String::from),
+                    event.identity.provider_request_id.clone().map(String::from),
                 ));
                 ObservationAction::continue_run()
             }
@@ -2095,7 +2095,7 @@ mod migrated_tests {
         let turns = hook.turns.lock().expect("turn identities").clone();
         let request_ids: Vec<_> = turns
             .iter()
-            .map(|identity| identity.provider_request_id.clone())
+            .map(|identity| identity.provider_request_id.clone().map(String::from))
             .collect();
         assert_eq!(
             request_ids,
@@ -2109,7 +2109,7 @@ mod migrated_tests {
         let call_ids: Vec<_> = response
             .completion_calls
             .iter()
-            .map(|call| call.provider_request_id.clone())
+            .map(|call| call.provider_request_id.clone().map(String::from))
             .collect();
         assert_eq!(request_ids, call_ids);
     }
@@ -2148,7 +2148,7 @@ mod migrated_tests {
         let turns = hook.turns.lock().expect("turn identities").clone();
         let request_ids: Vec<_> = turns
             .iter()
-            .map(|identity| identity.provider_request_id.clone())
+            .map(|identity| identity.provider_request_id.clone().map(String::from))
             .collect();
         assert_eq!(
             request_ids,
@@ -2219,7 +2219,7 @@ mod migrated_tests {
                 event: ModelTurnFinished<'_>,
             ) -> ModelTurnAction {
                 let mut seen = self.seen.lock().expect("retry identities");
-                seen.push(event.identity.provider_request_id.clone());
+                seen.push(event.identity.provider_request_id.clone().map(String::from));
                 if seen.len() == 1 {
                     ModelTurnAction::repeat()
                 } else {

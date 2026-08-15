@@ -159,8 +159,38 @@ impl StreamPartId {
 /// The only constructor rejects the empty string, so an absent handle is
 /// `Option::None` by construction — no serializer ever needs an
 /// empty-string filter.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+///
+/// # Serialization
+///
+/// `Serialize` is transparent: a handle is written as the bare string, so the
+/// JSON of a type holding one is unchanged by the newtype.
+///
+/// There is deliberately **no `Deserialize`**. A transparent one would accept
+/// `""` and put the empty-string sentinel back into the type from the JSON
+/// side, which is exactly what the newtype exists to prevent; a fallible one
+/// would turn a stored `""` — which an older or third-party producer may have
+/// written — into a hard load failure. Instead, every deserialization boundary
+/// reads `Option<String>` and normalizes: through a `Repr` type (as
+/// [`StreamFinal`](crate::streaming::StreamFinal) and
+/// [`CompletionResponse`](crate::completion::CompletionResponse) do), or with
+/// [`deserialize_optional`] on the field.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(transparent)]
 pub struct WireId(String);
+
+/// Deserialize an `Option<WireId>` field, normalizing an empty string to
+/// `None`.
+///
+/// For types that derive `Deserialize` directly rather than routing through a
+/// `Repr`. Reading a stored `""` yields `None` — the same normalization the
+/// `with_*_id` setters apply — rather than failing the load.
+pub fn deserialize_optional<'de, D>(deserializer: D) -> Result<Option<WireId>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize as _;
+    Ok(Option::<String>::deserialize(deserializer)?.and_then(WireId::new))
+}
 
 impl WireId {
     /// A provider-issued identifier. `None` for the empty string: absence
@@ -177,6 +207,37 @@ impl WireId {
 
     /// Borrow the identifier.
     pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// So a handle can be handed back to the `impl Into<String>` setters that
+/// accept either a raw provider string or an already-validated handle.
+impl From<WireId> for String {
+    fn from(id: WireId) -> Self {
+        id.0
+    }
+}
+
+impl AsRef<str> for WireId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for WireId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Read-only string access, matching [`ToolCallId`](crate::message::ToolCallId).
+/// Deliberately not `DerefMut`, and there is no `From<&str>`: every route to a
+/// `WireId` stays [`WireId::new`], which rejects the empty string.
+impl std::ops::Deref for WireId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
@@ -243,6 +304,53 @@ mod tests {
             WireId::new("rs_123").expect("non-empty").into_string(),
             "rs_123"
         );
+    }
+
+    /// The newtype must not change what a holder writes: a handle serializes
+    /// as the bare string it wraps.
+    #[test]
+    fn a_handle_serializes_as_its_bare_string() {
+        let id = WireId::new("msg_123").expect("non-empty");
+        assert_eq!(
+            serde_json::to_value(&id).expect("serializes"),
+            serde_json::json!("msg_123")
+        );
+        assert_eq!(
+            serde_json::to_value(Some(id)).expect("serializes"),
+            serde_json::json!("msg_123")
+        );
+        assert_eq!(
+            serde_json::to_value(Option::<WireId>::None).expect("serializes"),
+            serde_json::Value::Null
+        );
+    }
+
+    /// The deserialization side normalizes rather than rejecting: a stored
+    /// `""` — which an older or third-party producer may have written — loads
+    /// as absent instead of failing the whole record.
+    #[test]
+    fn deserializing_an_empty_handle_is_absence_not_an_error() {
+        #[derive(serde::Deserialize)]
+        struct Holder {
+            #[serde(default, deserialize_with = "deserialize_optional")]
+            id: Option<WireId>,
+        }
+
+        let empty: Holder = serde_json::from_value(serde_json::json!({"id": ""}))
+            .expect("an empty stored id must load, not fail");
+        assert_eq!(empty.id, None);
+
+        let absent: Holder =
+            serde_json::from_value(serde_json::json!({})).expect("an absent id must load");
+        assert_eq!(absent.id, None);
+
+        let null: Holder =
+            serde_json::from_value(serde_json::json!({"id": null})).expect("null must load");
+        assert_eq!(null.id, None);
+
+        let present: Holder =
+            serde_json::from_value(serde_json::json!({"id": "msg_1"})).expect("an id must load");
+        assert_eq!(present.id.as_deref(), Some("msg_1"));
     }
 
     #[test]
