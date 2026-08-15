@@ -230,10 +230,14 @@ fn recorded_request_contains(scenario: &str, needle: &str) -> bool {
     let path = crate::cassettes::cassette_path("anthropic", scenario);
     let contents = std::fs::read_to_string(&path)
         .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-    let request = contents
-        .split_once("\nthen:\n")
-        .map(|(request, _)| request)
-        .unwrap_or(&contents);
+    // Fail closed: without a `then:` split this would search the *response*
+    // half and could assert the opposite of its name.
+    let (request, _) = contents.split_once("\nthen:\n").unwrap_or_else(|| {
+        panic!(
+            "cassette {} should have a `then:` response section",
+            path.display()
+        )
+    });
     request.contains(needle)
 }
 

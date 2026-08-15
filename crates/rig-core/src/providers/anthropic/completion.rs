@@ -339,6 +339,13 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
         // Anthropic-compatible gateways sharing this mapping, which are the
         // likeliest to report a stop reason without its companion field.
         //
+        // Note this narrow shape — empty, `stop_sequence`, no sequence named —
+        // is one the streaming path still finishes cleanly, since it has no
+        // equivalent guard. That asymmetry is deliberate: the parity this
+        // carve-out restores is for *legal* turns, and widening it to keep a
+        // malformed one symmetric would trade a real guard for a cosmetic
+        // match.
+        //
         // Any *other* empty response is the shared provider defect.
         let legal_empty_turn = match response.stop_reason.as_deref() {
             Some("end_turn") => true,
@@ -5973,6 +5980,9 @@ mod tests {
             // Claims to have stopped on a sequence but names none: the
             // malformed shape the guard exists for, not a legal empty turn.
             (Some("stop_sequence"), None),
+            // The inverse: naming a sequence does not make an illegal terminal
+            // legal. The carve-out gates on the reason first, then the field.
+            (Some("max_tokens"), Some("alpha")),
         ] {
             let err = empty_response_with(stop_reason, stop_sequence)
                 .normalize("anthropic")

@@ -56,12 +56,15 @@
 //!
 //! Cells 20–25 are unit tests because Anthropic will not produce those states
 //! on demand: `max_tokens` truncation always emits at least one token (probed
-//! live — a `max_tokens: 1` turn came back with a one-character text block), a
-//! `tool_use` terminal by construction carries the tool-use block, `pause_turn`
-//! requires a server tool to exhaust its iteration budget, and `refusal`
-//! requires tripping a safety classifier. Each is exactly the case the guard
-//! must keep rejecting, so pinning them by hand is the only way to prove the
-//! carve-out did not widen past its evidence.
+//! live — a `max_tokens: 1` turn came back with a one-character text block); a
+//! `tool_use` terminal by construction carries the tool-use block; `pause_turn`
+//! requires a server tool to exhaust its iteration budget; `refusal` requires
+//! tripping a safety classifier; a turn that reports *no* stop reason at all is
+//! by definition not something a well-formed wire emits; and a `stop_sequence`
+//! turn that names no sequence is the malformed shape the carve-out
+//! deliberately stops short of. Each is exactly the case the guard must keep
+//! rejecting, so pinning them by hand is the only way to prove the carve-out
+//! did not widen past its evidence.
 //!
 //! Cell 19's *recorded* counterpart already exists as
 //! `empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice`;
@@ -562,9 +565,12 @@ async fn sonnet_empty_stop_sequence() {
 
 #[tokio::test]
 async fn identity_survives_empty_stop() {
+    let observed_model: std::sync::Arc<std::sync::Mutex<Option<String>>> = Default::default();
+    let sink = observed_model.clone();
+
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/identity_survives_empty_stop",
-        |client| async move {
+        move |client| async move {
             let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
@@ -580,24 +586,32 @@ async fn identity_survives_empty_stop() {
                 "transport request id must survive — it is what Anthropic support asks for"
             );
             assert!(response.usage.input_tokens > 0, "usage must survive");
-            assert!(
-                response.model.is_some(),
-                "the responding model must survive"
-            );
+            *sink.lock().expect("model sink should not be poisoned") = response.model.clone();
         },
     )
     .await;
 
     let scenario = "empty_stop_sequence_matrix/identity_survives_empty_stop";
     assert_recorded_empty_stop(scenario);
-    // Derived from the fixture rather than hardcoded: a re-record on a newer
-    // dated snapshot must not silently invalidate the cell.
-    assert!(
-        recorded_response_body(scenario)
-            .get("model")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|model| model.starts_with("claude-haiku-4-5")),
-        "the recorded turn should come from the requested model family"
+
+    // The responding model must reach the normalized response *verbatim*. Read
+    // from the fixture rather than hardcoded, so a re-record on a newer dated
+    // snapshot stays valid — but compared against what `normalize` produced,
+    // because asserting the two independently would pin neither: the wire's
+    // dated id (`claude-haiku-4-5-20251001`) differs from the requested alias,
+    // and only this comparison catches the response reporting the alias back.
+    let recorded_model = recorded_response_body(scenario)
+        .get("model")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .expect("the recorded turn should name its model");
+    assert_eq!(
+        observed_model
+            .lock()
+            .expect("model sink should not be poisoned")
+            .as_deref(),
+        Some(recorded_model.as_str()),
+        "the model the wire reported must reach the normalized response unchanged"
     );
 }
 
@@ -685,7 +699,7 @@ async fn long_sequence_empty_stop() {
 }
 
 // ---------------------------------------------------------------------------
-// 19–25: states no provider turn will produce on demand
+// 19–26: states no provider turn will produce on demand
 // ---------------------------------------------------------------------------
 
 #[test]
