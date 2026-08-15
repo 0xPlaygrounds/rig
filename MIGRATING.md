@@ -1566,6 +1566,81 @@ and finalized as a successful empty string. Four source-level breaks:
   `CompletionCall.finish_reason` is serde-defaulted; pre-#2322 run JSON loads
   with it `None`.
 
+### Receive-side response types are `#[non_exhaustive]` (#2325)
+
+Eighteen public `rig-core` structs that the library hands *out* — model
+listings, provider-native responses, terminal stream records, and usage/billing
+metadata — now carry `#[non_exhaustive]`, so adding a field to them stops being
+a breaking change. Adding the attribute is itself a breaking change, so it can
+only land inside a breaking window — this one — and every type below
+demonstrably grows fields: each one except `ModelList` gained at least one this
+cycle, which is exactly what broke downstream struct literals of `Model` in
+#2324.
+
+**What changes for you.** Only *construction* from outside `rig-core`. Reading
+is untouched, public fields stay public and writable, and exhaustive
+`match`/destructuring from another crate now needs a trailing `..`. Replace a
+cross-crate struct literal with a constructor call plus field assignment:
+
+```rust
+// Was — breaks whenever rig adds a field
+let model = Model {
+    id: "gpt-4".to_string(),
+    name: Some("GPT-4".to_string()),
+    context_length: Some(8192),
+    // …every other field, including ones added since you wrote this
+};
+
+// Now — survives future field additions
+let mut model = Model::from_id("gpt-4");
+model.name = Some("GPT-4".to_string());
+model.context_length = Some(8192);
+```
+
+`Model::new(id, name)` sets both required-ish fields at once; `ModelList::new(data)`
+is total. Where a type has no constructor but derives `Deserialize`, deriving
+still works from any crate, so `serde_json::from_value::<T>(json!({…}))` remains
+available for test fixtures.
+
+| type | constructor to start from |
+| --- | --- |
+| `model::Model` | `Model::from_id(id)` / `Model::new(id, name)` |
+| `model::ModelList` | `ModelList::new(data)` |
+| `completion::message::ToolCall` | `ToolCall::new(id, function)` / `::from_wire` / `::from_dual_wire`, then `.with_provider` / `.with_signature` / `.with_additional_params` |
+| `streaming::RawStreamingToolCall` | `RawStreamingToolCall::new(id, name, arguments)` / `::empty()`, then `.with_call_id` / `.with_signature` / `.with_additional_params` |
+| `providers::anthropic::completion::{CompletionResponse, Usage, ToolDefinition}` | `Deserialize` |
+| `providers::anthropic::streaming::{StreamingCompletionResponse, PartialUsage}` | `Default` + field assignment |
+| `providers::openai::completion::streaming::StreamingCompletionResponse` | `StreamingCompletionResponse::new(usage)` |
+| `providers::openai::responses_api::CompletionResponse` | `Deserialize` |
+| `providers::openai::responses_api::streaming::StreamingCompletionResponse` | `StreamingCompletionResponse::new(usage)` |
+| `providers::gemini::streaming::StreamingCompletionResponse` | `Deserialize` |
+| `providers::ollama::{ToolCall, StreamingCompletionResponse}` | `Deserialize`; `ToolCall` also has `From<message::ToolCall>` |
+| `providers::cohere::completion::Usage`, `providers::cohere::embeddings::BilledUnits`, `providers::cohere::streaming::StreamingCompletionResponse` | `Deserialize` |
+
+**Two types were deliberately left alone**, because for them the struct literal
+*is* the construction contract and no ergonomic alternative exists yet:
+
+- **`completion::message::ToolResult`** has no constructor at all, and the
+  public `StreamedUserContent::tool_result` takes one by value. Attributing it
+  would leave `serde_json::from_value` as the only way to build one outside
+  `rig-core` — fine for a fixture, not for production code. It needs a
+  `ToolResult::new` first — a separate change.
+- **`providers::anthropic::completion::AnthropicRequestParams`** is request-side
+  input with no `Default`, no `new`, and no builder; the literal is its only
+  construction path.
+
+One knock-on effect worth naming: `providers::cohere::embeddings::Meta` holds
+`billed_units: BilledUnits` by value and is not itself attributed, so a
+cross-crate struct literal of `Meta` (and, through it, `EmbeddingResponse`) now
+needs its `BilledUnits` from `serde_json::from_value` rather than a nested
+literal. This is the only place in `rig-core` where an attributed type sits in a
+public by-value field of an unattributed one, and no in-tree caller does it.
+
+If you implement `ModelLister` for your own provider, note that six of rig's
+seven in-tree provider conversions already build a `Model` through a constructor
+— four via `Model::from_id(..)` plus field assignment, two via `Model::new` — so
+the post-attribute pattern is the house style, not a new burden.
+
 ---
 
 ## 0.40 → 0.41
