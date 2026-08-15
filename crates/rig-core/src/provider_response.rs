@@ -181,13 +181,18 @@ macro_rules! impl_provider_response_helpers {
             /// which displays identically to the header-less variant.
             ///
             /// Passing `None` leaves the error untouched, as does calling this
-            /// on any other variant — there is no slot to fill.
+            /// on a variant with no response to annotate. An error that already
+            /// captured headers keeps the ones it has: the first capture is the
+            /// one that saw the response, so this never overwrites.
             pub fn with_response_headers(self, headers: Option<Box<http::HeaderMap>>) -> Self {
                 let Some(headers) = headers else {
                     return self;
                 };
                 match self {
-                    Self::ProviderResponse(response) => {
+                    // The first capture is the one that saw the response; a
+                    // later caller only fills the gap, mirroring how the
+                    // request-id slot is stamped (rig#2314).
+                    Self::ProviderResponse(response) if response.headers.is_none() => {
                         Self::ProviderResponse(response.with_headers(Some(headers)))
                     }
                     Self::HttpError($crate::http_client::Error::InvalidStatusCodeWithMessage(
@@ -286,7 +291,7 @@ macro_rules! impl_provider_response_helpers {
             /// `x-ratelimit-*`) a caller needs to back off correctly:
             ///
             /// ```no_run
-            /// # use rig::completion::CompletionError;
+            /// # use rig_core::completion::CompletionError;
             /// # use std::time::Duration;
             /// fn backoff(error: &CompletionError) -> Option<Duration> {
             ///     let seconds = error
@@ -696,6 +701,40 @@ mod tests {
         assert_eq!(error.provider_response_body(), Some("slow down"));
         // The contract-less path reports no id whether or not headers rode along.
         assert_eq!(error.provider_request_id(), None);
+    }
+
+    /// First capture wins on both classifications: the site that saw the
+    /// response is the authority, and a later attach only fills a gap. Without
+    /// this, a wrapper that re-attaches would silently replace the real
+    /// response's headers.
+    #[test]
+    fn attaching_headers_never_overwrites_an_earlier_capture() {
+        let mut later = http::HeaderMap::new();
+        later.insert(http::header::RETRY_AFTER, "999".parse().expect("value"));
+
+        for build in [
+            crate::completion::CompletionError::from_http_response,
+            |status, body| {
+                crate::completion::CompletionError::from_http_response_with_request_id(
+                    status,
+                    body,
+                    Some("req_abc".to_string()),
+                )
+            },
+        ] {
+            let error = build(StatusCode::TOO_MANY_REQUESTS, "slow down")
+                .with_response_headers(Some(retry_after_headers()))
+                .with_response_headers(Some(Box::new(later.clone())));
+
+            assert_eq!(
+                error
+                    .provider_response_headers()
+                    .and_then(|headers| headers.get(http::header::RETRY_AFTER))
+                    .and_then(|value| value.to_str().ok()),
+                Some("20"),
+                "the first capture must win",
+            );
+        }
     }
 
     /// Variants with no slot for a response absorb the call unchanged, so a

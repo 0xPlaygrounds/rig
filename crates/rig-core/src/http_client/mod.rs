@@ -77,7 +77,7 @@ impl Error {
     /// a server-supplied backoff, since it is handed this error directly:
     ///
     /// ```
-    /// # use rig::http_client::{Error, retry::RetryPolicy};
+    /// # use rig_core::http_client::{Error, retry::RetryPolicy};
     /// # use std::time::Duration;
     /// fn retry_after(error: &Error) -> Option<Duration> {
     ///     let seconds = error
