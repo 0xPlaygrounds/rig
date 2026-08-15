@@ -64,17 +64,20 @@ where
             }
 
             // Termination follows the *cursor*, not the flag. `has_more` with
-            // no `last_id` would otherwise re-request the uncursored first
-            // page forever, appending the same models on every pass — an
-            // unbounded loop, not a truncated list. Anthropic pairs the two,
-            // but the Anthropic-compatible gateways sharing this client are
-            // exactly the sources that report a flag without its companion
-            // field, and there is no next page to ask for without a cursor.
-            let Some(cursor) = page.last_id else {
+            // no usable `last_id` would otherwise re-request the same page
+            // forever, appending its models on every pass — an unbounded loop,
+            // not a truncated list. Anthropic pairs the two, but the
+            // Anthropic-compatible gateways sharing this client are exactly
+            // the sources that report a flag without its companion field, and
+            // there is no next page to ask for without a cursor.
+            //
+            // An empty cursor counts as absent, matching how every other
+            // provider-reported identifier in rig is read.
+            let Some(cursor) = page.last_id.filter(|cursor| !cursor.is_empty()) else {
                 tracing::warn!(
                     models = all_models.len(),
-                    "Anthropic model listing reported more pages but no `last_id` cursor; \
-                     returning the pages fetched so far"
+                    "Anthropic model listing reported more pages but no usable `last_id` \
+                     cursor; returning the pages fetched so far"
                 );
                 break;
             };
@@ -85,6 +88,28 @@ where
     }
 }
 
+/// Edge matrix for the pagination loop's termination.
+///
+/// The loop's input space is the cross-product of two response fields, and it
+/// is small enough to enumerate completely:
+///
+/// | # | Cell | `has_more` | `last_id` | behavior |
+/// |---|------|-----------|-----------|----------|
+/// | 1 | `single_page_listing_is_unchanged` | `false` | `Some` | stop |
+/// | 2 | `stops_when_the_last_page_names_no_cursor` | `false` | `None` | stop |
+/// | 3 | `pagination_follows_the_cursor_across_pages` | `true` | `Some(id)` | continue |
+/// | 4 | `pagination_stops_when_a_page_claims_more_but_names_no_cursor` | `true` | `None` | stop |
+/// | 5 | `pagination_stops_on_an_empty_cursor` | `true` | `Some("")` | stop |
+/// | 6 | `pagination_stops_midway_and_keeps_earlier_pages` | mixed | mixed | partial |
+/// | 7 | `pagination_stops_on_an_empty_page_claiming_more` | `true` | `None` | stop, empty |
+///
+/// That is every combination, plus the two orderings that only appear across
+/// multiple pages (a cursor-less page arriving *after* a good one, and a page
+/// with no models at all). No cell is recorded: Anthropic pairs `has_more`
+/// with `last_id`, so rows 2 and 4–7 describe responses no live request can
+/// produce, and row 3 needs a catalog larger than one page — Anthropic's fits
+/// in one, which is why the recorded `models` cassette answers `has_more:
+/// false` and the loop body never ran before this suite existed.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,6 +230,60 @@ mod tests {
 
         assert!(models.data.is_empty());
         assert_eq!(http_client.remaining_responses(), 1);
+    }
+
+    /// An empty cursor is as unusable as an absent one, and is read the same
+    /// way every other provider-reported identifier in rig is read.
+    #[tokio::test]
+    async fn pagination_stops_on_an_empty_cursor() {
+        let (lister, http_client) = lister(vec![
+            page(&["claude-a"], true, Some("")),
+            page(&["claude-b"], false, None),
+        ]);
+
+        let models = lister.list_all().await.expect("listing should terminate");
+
+        let ids: Vec<_> = models.data.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(ids, ["claude-a"]);
+        assert_eq!(http_client.remaining_responses(), 1);
+    }
+
+    /// A page that ends the listing while still naming a cursor stops there —
+    /// the flag is authoritative for *stopping*, the cursor only for
+    /// *continuing*.
+    #[tokio::test]
+    async fn stops_when_the_last_page_names_no_cursor() {
+        let (lister, http_client) = lister(vec![page(&["claude-a"], false, None)]);
+
+        let models = lister.list_all().await.expect("listing should succeed");
+
+        assert_eq!(models.data.len(), 1);
+        assert_eq!(http_client.remaining_responses(), 0);
+    }
+
+    /// A cursor-less page arriving mid-pagination keeps the pages already
+    /// fetched rather than discarding them or looping on the last one.
+    #[tokio::test]
+    async fn pagination_stops_midway_and_keeps_earlier_pages() {
+        let (lister, http_client) = lister(vec![
+            page(&["claude-a"], true, Some("claude-a")),
+            page(&["claude-b"], true, None),
+            page(&["claude-c"], false, None),
+        ]);
+
+        let models = lister.list_all().await.expect("listing should terminate");
+
+        let ids: Vec<_> = models.data.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["claude-a", "claude-b"],
+            "both fetched pages are kept, in order",
+        );
+        assert_eq!(
+            http_client.remaining_responses(),
+            1,
+            "the loop stops at the cursor-less page",
+        );
     }
 
     /// The ordinary single-page catalog is unchanged by the guard.
