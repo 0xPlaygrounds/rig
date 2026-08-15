@@ -59,6 +59,7 @@
 //! | 28 | `a_trailing_signature_becomes_a_signature_only_reasoning_block` (unit) | blocking | see below |
 //! | 29 | `a_thought_flagged_part_still_signs_its_own_reasoning` (unit) | blocking | see below |
 //! | 30 | `a_text_part_without_a_signature_yields_no_reasoning` (unit) | blocking | see below |
+//! | 31 | `transcription_rejects_a_candidate_with_no_parts_at_all` (unit) | transcription | see below |
 //!
 //! Cells 26–30 cover a fourth defect the cold review of this branch turned
 //! up, in the same reader family: Gemini 3 attaches `thoughtSignature` to a
@@ -1269,6 +1270,28 @@ mod unit {
             .try_into()
             .expect("an empty visible text part is still a (blank) transcript");
         assert_eq!(transcription.text, "");
+    }
+
+    /// Not a recording as a *transcription* turn, though the shape is real:
+    /// `generateContent` answers `{"content":{"role":"model"}}` — content
+    /// present, `parts` absent entirely — when the output budget runs out
+    /// before any part is produced (confirmed live with
+    /// `maxOutputTokens: 1`). The structural "no visible text part" check has
+    /// to reject that as firmly as it rejects a media-only candidate, rather
+    /// than returning a blank transcript.
+    #[test]
+    fn transcription_rejects_a_candidate_with_no_parts_at_all() {
+        let response: GenerateContentResponse = serde_json::from_value(json!({
+            "candidates": [{ "content": { "role": "model" }, "finishReason": "MAX_TOKENS" }],
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "unit-response",
+            "usageMetadata": { "promptTokenCount": 14, "totalTokenCount": 14 }
+        }))
+        .expect("recorded-shape payload should deserialize");
+        assert_transcription_response_error(
+            TranscriptionResponse::<GenerateContentResponse>::try_from(response),
+            "a candidate with no parts at all has no transcript",
+        );
     }
 
     /// Not a recording: `generateContent` does not answer a transcription
