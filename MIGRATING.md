@@ -520,6 +520,36 @@ non-success response moves from `Instance(..)` to
 
 ## 0.41 → next
 
+### A truncated OpenAI-compatible turn now succeeds with an empty choice
+
+A turn the provider cut short can carry no content at all — the usual case is a
+reasoning model whose `max_tokens` was consumed entirely by hidden reasoning,
+which answers with an empty message and `finish_reason: "length"`. Normalization
+used to reject that as a malformed response; it now returns `Ok` with an empty
+`CompletionResponse::choice` and the finish reason attached, so the caller can
+tell "you hit the cap" from "the provider misbehaved". A turn that ran to
+completion (`stop`, `tool_calls`) with nothing in it is still an error.
+
+This affects OpenAI and every OpenAI-compatible provider. Agent and extractor
+users need to change nothing — the agent already recognizes an answerless turn
+and reports it with the remedy for the reason. Code calling
+`CompletionModel::completion` directly and indexing the choice does need a
+guard:
+
+```rust
+let response = model.completion(request).await?;
+
+// Before: unreachable, because a truncated turn arrived as `Err`.
+// Now: reachable, and indexing would panic.
+if response.choice.is_empty() {
+    // `response.finish_reason()` is `Length` or `ContentFilter` here.
+    return Err(/* … raise max_tokens, or relax the prompt … */);
+}
+```
+
+Matching on `finish_reason()` is the more direct form:
+`FinishReason::truncated_output()` is the predicate normalization itself uses.
+
 ### xAI uses the shared Responses wire response
 
 `providers::xai::completion::CompletionResponse` is now an alias for

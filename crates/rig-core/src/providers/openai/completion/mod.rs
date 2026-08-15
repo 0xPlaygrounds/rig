@@ -966,16 +966,23 @@ impl TryFrom<Message> for message::Message {
                     assistant_content.push(message::AssistantContent::reasoning(reasoning));
                 }
 
+                // Either/or, not both: the fallback fires only when no part
+                // carried text, so every part left is an empty one. Appending
+                // them anyway would put an empty text block on the wire beside
+                // the refusal and make this view of the message disagree with
+                // the one `normalize` builds, which drops empty parts.
                 if let Some(refusal) = assistant_refusal_fallback(&content, refusal.as_deref()) {
                     assistant_content.push(message::AssistantContent::text(refusal));
+                } else {
+                    assistant_content.extend(content.into_iter().map(|content| match content {
+                        AssistantContent::Text { text, .. } => {
+                            message::AssistantContent::text(text)
+                        }
+                        AssistantContent::Refusal { refusal } => {
+                            message::AssistantContent::text(refusal)
+                        }
+                    }));
                 }
-
-                assistant_content.extend(content.into_iter().map(|content| match content {
-                    AssistantContent::Text { text, .. } => message::AssistantContent::text(text),
-                    AssistantContent::Refusal { refusal } => {
-                        message::AssistantContent::text(refusal)
-                    }
-                }));
 
                 assistant_content.extend(
                     tool_calls
@@ -1263,6 +1270,18 @@ impl ProviderResponseExt for CompletionResponse {
 /// whatever each caller built out of them, so a caller that discards empty
 /// parts and one that keeps them cannot disagree about when the fallback
 /// applies.
+///
+/// This is a *whole-message* rule and the three unary paths share it. The
+/// streaming path cannot: it decides per delta, before it knows whether text
+/// arrives later
+/// ([`delta_text`](super::completion::streaming), which prefers a delta's own
+/// content and falls back to its refusal). The two therefore agree on every
+/// shape this wire has been observed to send — a refusal turn holds `content`
+/// at `null` for its whole length — but would differ on a turn mixing both,
+/// where this rule keeps only the text and the streaming rule would deliver
+/// both in arrival order. That shape is pinned in
+/// `delta_text_prefers_content_over_a_simultaneous_refusal` so the difference
+/// is recorded rather than assumed away.
 pub(crate) fn assistant_refusal_fallback<'a>(
     content: &[AssistantContent],
     refusal: Option<&'a str>,
@@ -1495,6 +1514,13 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// it. Everything outside the returned set keeps the bytes it always sent.
     /// The default is `false` — a provider that has not been observed to
     /// reject the legacy field says so by saying nothing.
+    ///
+    /// Azure OpenAI deliberately keeps the default even though it fronts the
+    /// same models: an Azure model handle is a *deployment* name chosen by the
+    /// account owner, so it carries no family information to classify. A
+    /// capped reasoning deployment there still gets the provider's explicit
+    /// `Unsupported parameter` error, which is the honest outcome until Azure
+    /// can be given a signal that does not require guessing.
     fn requires_modern_output_cap(&self, model: &str) -> bool {
         let _ = model;
         false

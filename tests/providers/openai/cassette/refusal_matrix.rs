@@ -14,7 +14,7 @@
 //! path that reads `content` alone dropped the refusal outright:
 //!
 //! * blocking → the turn normalized to **zero** content and failed with the
-//!   opaque `Response did not contain a valid message or tool call`;
+//!   opaque `Response contained no message or tool call (empty)`;
 //! * streaming → the stream yielded **no text at all**, then a clean terminal;
 //! * history round-trip (`TryFrom<Message> for message::Message`) → the
 //!   conversion error `Neither `content` nor `tool_calls` was provided`.
@@ -22,7 +22,7 @@
 //! Meanwhile `ProviderResponseExt::get_text_response` *did* fall back to the
 //! field, so the raw text view and the normalized response disagreed about
 //! whether the turn had said anything — and the same rig-level request driven
-//! through the Responses API surfaced the refusal fine. The fix routes all
+//! through the Responses API surfaced the refusal fine. The fix routes the
 //! four paths through one rule
 //! (`openai::completion::assistant_refusal_fallback`).
 //!
@@ -44,7 +44,7 @@
 //! | 5 | `chat_streaming_raw_model_surfaces_refusal` | chat | streaming | raw model | refusal deltas | recorded |
 //! | 6 | `chat_streaming_agent_surfaces_refusal` | chat | streaming | agent | refusal deltas | recorded |
 //! | 7 | `chat_streaming_terminal_carries_usage` | chat | streaming | raw model | terminal record | recorded |
-//! | 8 | `chat_streaming_and_blocking_agree_on_refusal` | chat | both | raw model | cross-transport parity | recorded |
+//! | 8 | `chat_streaming_and_blocking_each_deliver_their_refusal_in_full` | chat | both | raw model | each transport vs its own bytes | recorded |
 //! | 9 | `chat_refusal_turn_survives_into_history` | chat | blocking | agent + history | replayed refusal turn | recorded |
 //! | 10 | `chat_control_non_refusing_prompt_is_unchanged` | chat | blocking | raw model | no refusal | recorded |
 //! | 11 | `chat_control_non_refusing_stream_is_unchanged` | chat | streaming | raw model | no refusal | recorded |
@@ -341,20 +341,24 @@ async fn chat_streaming_terminal_carries_usage() {
     assert_recorded_chat_refusal_stream(SCENARIO);
 }
 
-/// Streaming must not carry less than blocking: both transports of the same
-/// request are recorded into one cassette and compared.
+/// Streaming must not carry *less* than blocking. The two turns are sampled
+/// independently, so their wording differs and the cell cannot compare texts;
+/// what it asserts is that each transport delivered its own turn's refusal in
+/// full — checked against that turn's recorded bytes — and that both reported
+/// the same terminal reason.
 #[tokio::test]
-async fn chat_streaming_and_blocking_agree_on_refusal() {
-    const SCENARIO: &str = "refusal_matrix/chat_streaming_and_blocking_agree_on_refusal";
+async fn chat_streaming_and_blocking_each_deliver_their_refusal_in_full() {
+    const SCENARIO: &str =
+        "refusal_matrix/chat_streaming_and_blocking_each_deliver_their_refusal_in_full";
 
     // The two turns are independently sampled, so their wording differs; the
-    // parity claim is that each transport delivers *its own* turn's refusal in
-    // full, checked against that turn's recorded bytes below.
+    // claim is that each transport delivers *its own* turn's refusal in full,
+    // checked against that turn's recorded bytes below.
     let delivered = Arc::new(Mutex::new((String::new(), String::new())));
     let recorder = delivered.clone();
 
     with_openai_refusal_cassette(
-        "refusal_matrix/chat_streaming_and_blocking_agree_on_refusal",
+        "refusal_matrix/chat_streaming_and_blocking_each_deliver_their_refusal_in_full",
         |client| async move {
             let model = client.completions_api().completion_model(REFUSING_MODEL);
 

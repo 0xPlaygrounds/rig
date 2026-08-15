@@ -667,7 +667,17 @@ mod tests {
     }
 
     /// A delta carrying both keys is not a shape OpenAI has been observed to
-    /// send; content wins so the visible answer is never displaced.
+    /// send; within a delta, content wins so the visible answer is never
+    /// displaced.
+    ///
+    /// This rule is per-delta, and deliberately so — a stream cannot know
+    /// whether text arrives later without buffering the turn. The unary
+    /// path's `assistant_refusal_fallback` is a *whole-message* rule, so on a
+    /// hypothetical turn that mixed text and a refusal across deltas the two
+    /// would differ: blocking would report only the text, streaming both in
+    /// arrival order. Recorded here rather than claimed away; no observed
+    /// turn mixes them, because a refusal turn holds `content` at `null` for
+    /// its whole length.
     #[test]
     fn delta_text_prefers_content_over_a_simultaneous_refusal() {
         assert_eq!(

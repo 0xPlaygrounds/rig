@@ -53,15 +53,21 @@ pub type CompletionsImageGenerationModel<T = reqwest::Client> =
 
 /// Build the `/v1/images/generations` body.
 ///
-/// `response_format` is deliberately absent: the endpoint no longer accepts
-/// it at all (`400 Unknown parameter: 'response_format'`, for every model),
-/// and it returns `data[].b64_json` by default, which is what
-/// [`decode_base64_image`] reads. Rig used to add it for every model outside a
-/// hardcoded `gpt-image-1`/`1.5`/`2` allowlist, so every other image model —
-/// `gpt-image-1-mini`, `chatgpt-image-latest`, and any dated snapshot of an
-/// allowlisted model such as `gpt-image-2-2026-04-21` — could not generate an
-/// image at all. A caller who needs the field for an OpenAI-compatible
-/// endpoint that still wants it can put it back through `additional_params`.
+/// `response_format` is deliberately absent: it is no longer part of this
+/// endpoint's request schema, which rejects it before it even looks at the
+/// model — a request naming a model that does not exist still fails on
+/// `400 Unknown parameter: 'response_format'` first. Rig used to add it for
+/// every model outside a hardcoded `gpt-image-1`/`1.5`/`2` allowlist, so every
+/// other image model — `gpt-image-1-mini`, `chatgpt-image-latest`, and any
+/// dated snapshot of an allowlisted model such as `gpt-image-2-2026-04-21` —
+/// could not generate an image at all. The models this endpoint currently
+/// serves answer with `data[].b64_json`, which is what
+/// [`decode_base64_image`] reads.
+///
+/// This is a statement about *this* endpoint. An OpenAI-**compatible** images
+/// endpoint reached through the same client may still take the field, and may
+/// need it to answer with base64 rather than a URL; such a caller passes it
+/// explicitly through `additional_params`, which the merge below now honors.
 fn build_request(
     model: &str,
     generation_request: ImageGenerationRequest,
@@ -74,9 +80,11 @@ fn build_request(
 
     // Last, so a caller can reach the endpoint's other parameters (`quality`,
     // `background`, `output_format`, `user`, …) and override what is derived
-    // above. Every other provider's image body honors this field; dropping it
-    // here made `ImageGenerationRequestBuilder::additional_params` silently
-    // inert for OpenAI.
+    // above. xAI's and Gemini's image bodies already honor this field;
+    // dropping it here made `ImageGenerationRequestBuilder::additional_params`
+    // silently inert for OpenAI. (Azure's body drops it too — same defect,
+    // different provider, left for a change that can be recorded against
+    // Azure.)
     if let Some(additional_params) = generation_request.additional_params {
         merge_inplace(&mut request, additional_params);
     }
@@ -136,9 +144,9 @@ mod tests {
         .expect("body should build")
     }
 
-    /// The endpoint answers `400 Unknown parameter: 'response_format'` for
-    /// every model, so no model may be sent it — including the ones the old
-    /// hardcoded allowlist happened to cover.
+    /// The field is not in the endpoint's request schema, so no model may be
+    /// sent it — including the ones the old hardcoded allowlist happened to
+    /// cover, and the retired `dall-e` names rig still exports.
     #[test]
     fn build_request_never_sends_response_format() {
         for model in [
@@ -153,7 +161,7 @@ mod tests {
         ] {
             assert!(
                 body(model, None).get("response_format").is_none(),
-                "{model} must not be sent a field the endpoint rejects"
+                "{model} must not be sent a field outside the endpoint's schema"
             );
         }
     }
