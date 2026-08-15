@@ -84,6 +84,18 @@ client::impl_capabilities!(
     GroqExt,
     completion = CompletionModel<H>,
     transcription = TranscriptionModel<H>,
+    model_listing = GroqModelLister<H>,
+);
+
+crate::providers::internal::model_listing::impl_model_lister!(
+    /// [`ModelLister`](crate::client::ModelLister) implementation for the Groq
+    /// API (`GET /models`), the same path [`GroqExt::VERIFY_PATH`] already
+    /// uses.
+    GroqModelLister,
+    Client<H>,
+    crate::providers::internal::model_listing::ListModelEntry,
+    "Groq",
+    "/models"
 );
 
 impl DebugExt for GroqExt {}
