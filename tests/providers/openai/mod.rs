@@ -15,6 +15,7 @@ mod cassette {
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;
+    mod identity_round_trip;
     #[cfg(feature = "image")]
     mod image_params_matrix;
     mod max_completion_tokens_matrix;

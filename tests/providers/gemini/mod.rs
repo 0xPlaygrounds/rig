@@ -26,6 +26,7 @@ mod cassette {
     mod hook_stress_patch;
     mod hook_stress_streaming;
     mod hook_stress_tools;
+    mod identity_round_trip;
     #[cfg(feature = "image")]
     mod image_generation;
     mod interactions_api;
