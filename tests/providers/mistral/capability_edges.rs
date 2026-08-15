@@ -201,3 +201,93 @@ fn recorded_candidates(scenario: &str) -> (String, String) {
     let [first, second] = candidates;
     (first, second)
 }
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+struct SumReport {
+    total: i64,
+}
+
+/// Mistral accepts a response format beside tools only under
+/// `tool_choice: auto` — anything that *forces* a call is a 400:
+/// "`json_schema` response type with tools is only compatible with
+/// `tool_choice: auto`".
+///
+/// Rig builds exactly that combination by itself: a structured-output agent
+/// defers `response_format` until a tool result exists, then emits it beside
+/// the caller's standing `tool_choice`. So the turn *after* the first tool
+/// call is rejected — after the tool has already run.
+///
+/// The cell drives that turn directly rather than through the agent loop: a
+/// standing `ToolChoice::Required` forces a tool call on every turn by design,
+/// so a loop with it never converges and the max-turns failure would mask the
+/// wire error this is about.
+#[tokio::test]
+async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<()> {
+    with_mistral_capability_cassette(
+        "capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted",
+        |client| async move {
+            let model = client.completion_model(mistral::MISTRAL_SMALL);
+            let response = model
+                .completion(
+                    model
+                        .completion_request("Add 2 and 3, then report the total.")
+                        .preamble("Use the add tool, then report the total.".to_string())
+                        .messages(turn_one_history())
+                        .tools(vec![add_tool_definition()])
+                        .tool_choice(rig::message::ToolChoice::Required)
+                        .output_schema(schemars::schema_for!(SumReport))
+                        .temperature(0.0)
+                        .max_tokens(64)
+                        .build(),
+                )
+                .await?;
+
+            assert_turn_two_was_accepted(&response.choice);
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+/// The history rig itself would have accumulated after turn 1: the model's
+/// tool call and the result of running it.
+fn turn_one_history() -> Vec<rig::completion::Message> {
+    vec![
+        rig::completion::Message::Assistant {
+            id: None,
+            content: vec![rig::message::AssistantContent::tool_call(
+                "call_REDACTED_1",
+                "add",
+                serde_json::json!({"x": 2, "y": 3}),
+            )],
+        },
+        rig::completion::Message::User {
+            content: vec![rig::message::UserContent::tool_result(
+                "call_REDACTED_1",
+                "add",
+                vec![rig::message::ToolResultContent::text("5")],
+            )],
+        },
+    ]
+}
+
+fn add_tool_definition() -> rig::completion::ToolDefinition {
+    rig::completion::ToolDefinition {
+        name: "add".to_string(),
+        description: "Add two integers.".to_string(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            "required": ["x", "y"]
+        }),
+    }
+}
+
+/// The point is that the turn was *accepted*: before the fix it was a hard
+/// 400 and there was no response at all.
+fn assert_turn_two_was_accepted(choice: &[rig::completion::AssistantContent]) {
+    assert!(
+        !choice.is_empty(),
+        "the turn after a tool result must reach Mistral and come back with content"
+    );
+}
