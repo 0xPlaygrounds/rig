@@ -5,6 +5,8 @@ mod regressions;
 mod cassette {
     mod additional_params_tools;
     mod agent;
+    #[cfg(feature = "audio")]
+    mod audio_params_matrix;
     mod chat_history;
     mod completions_api;
     mod document_ordering;

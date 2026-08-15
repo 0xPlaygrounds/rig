@@ -5,6 +5,13 @@ use std::panic::AssertUnwindSafe;
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 use futures::FutureExt;
 
+// The direct-recording client exists for the speech-synthesis scenarios alone,
+// so it is gated on the same feature that compiles them — the PR gate builds
+// this target with the default feature set, where an ungated helper would be
+// dead code under `-D warnings`.
+#[cfg(feature = "audio")]
+use crate::cassettes::DirectRecordingHttpClient;
+
 async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, openai::Client) {
     let cassette = ProviderCassette::start("openai", spec, "https://api.openai.com/v1").await;
     let client = openai::Client::builder()
@@ -134,6 +141,32 @@ pub(super) async fn with_openai_transcription_cassette<F, Fut>(
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
+}
+
+/// Per-bug wrapper for the audio-generation `additional_params` matrix
+/// (`tests/cassettes/openai/audio_params_matrix/`).
+///
+/// Records through the direct recorder rather than the httpmock proxy: this
+/// endpoint answers with raw audio, and the proxy exports bodies as strings,
+/// so a recorded speech response would come back as `body: null` and replay as
+/// zero bytes. The direct path stores non-UTF-8 bodies as base64.
+#[cfg(feature = "audio")]
+pub(super) async fn with_openai_audio_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
+where
+    F: FnOnce(openai::Client<DirectRecordingHttpClient>) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let cassette =
+        ProviderCassette::start_direct_recording("openai", spec, "https://api.openai.com/v1").await;
+    let client = openai::Client::builder()
+        .api_key(cassette.api_key("OPENAI_API_KEY"))
+        .base_url(cassette.base_url())
+        .http_client(DirectRecordingHttpClient::new(cassette.direct_recorder()))
+        .build()
+        .expect("client should build");
+
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
 }
 
 /// Like [`with_openai_cassette`], but authenticating with a deliberately

@@ -15,6 +15,9 @@ use axum::{Router, routing::any};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use futures::{FutureExt, stream};
 use httpmock::MockServer;
+use rig::http_client::{
+    self, HttpClientExt, LazyBody, MultipartForm, Request as HttpRequest, Response as HttpResponse,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::any::Any;
@@ -3571,4 +3574,129 @@ then:
         assert!(!scrubbed.contains("body-token"));
         assert_eq!(scrubbed.matches(REDACTED).count(), 4);
     }
+}
+
+/// Client used by the scenarios whose *response* body is binary.
+///
+/// The shared proxy recorder exports cassettes through httpmock, which stores
+/// bodies as strings and therefore drops a non-UTF-8 payload entirely — a
+/// recorded speech response came back as `body: null` and replayed as zero
+/// bytes. A text-to-speech endpoint answers with raw audio, so those
+/// scenarios take the direct-recording path (the same one Bedrock's
+/// event-stream cassettes use), which stores non-UTF-8 bodies as base64.
+///
+/// Shared by every suite with that shape — OpenAI and Venice today — so the
+/// recording behavior they depend on has one definition. It lives beside
+/// [`DirectRecorder`] rather than in the shared test-support module because
+/// eleven provider targets include that module without this one; an import of
+/// [`crate::cassettes`] from there does not resolve for them.
+///
+/// In replay mode this is a plain reqwest client pointed at the replay
+/// server; only record mode carries a recorder.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct DirectRecordingHttpClient {
+    inner: reqwest::Client,
+    recorder: Option<DirectRecorder>,
+}
+
+impl DirectRecordingHttpClient {
+    /// A client that records through `recorder` when one is present, i.e. in
+    /// record mode; in replay mode it is a plain client pointed at the replay
+    /// server.
+    pub(crate) fn new(recorder: Option<DirectRecorder>) -> Self {
+        Self {
+            inner: reqwest::Client::new(),
+            recorder,
+        }
+    }
+}
+
+impl HttpClientExt for DirectRecordingHttpClient {
+    fn send<T, U>(
+        &self,
+        req: rig::http_client::Request<T>,
+    ) -> impl std::future::Future<
+        Output = rig::http_client::Result<
+            rig::http_client::Response<rig::http_client::LazyBody<U>>,
+        >,
+    > + Send
+    + 'static
+    where
+        T: Into<Bytes> + Send,
+        U: From<Bytes> + Send + 'static,
+    {
+        let inner = self.inner.clone();
+        let recorder = self.recorder.clone();
+        let (parts, body) = req.into_parts();
+        let body: Bytes = body.into();
+        let method = parts.method.to_string();
+        let uri = parts.uri.to_string();
+        let request_headers = owned_headers(&parts.headers);
+        let request = HttpRequest::from_parts(parts, body.clone());
+
+        async move {
+            let response = HttpClientExt::send::<Bytes, Bytes>(&inner, request).await?;
+            let (parts, lazy_body) = response.into_parts();
+            // Buffered, not streamed: the recorder needs the whole payload,
+            // and the caller gets the same bytes back below.
+            let bytes = lazy_body.await?;
+
+            if let Some(recorder) = recorder {
+                let response_headers = owned_headers(&parts.headers);
+                recorder
+                    .record_http_interaction(
+                        DirectHttpRequest {
+                            method: &method,
+                            uri: &uri,
+                            headers: request_headers.iter().map(|(name, value)| (name, value)),
+                            body: &body,
+                        },
+                        DirectHttpResponse {
+                            status: parts.status.as_u16(),
+                            headers: response_headers.iter().map(|(name, value)| (name, value)),
+                            body: &bytes,
+                        },
+                    )
+                    .await;
+            }
+
+            let body: LazyBody<U> = Box::pin(async move { Ok(U::from(bytes)) });
+            Ok(HttpResponse::from_parts(parts, body))
+        }
+    }
+
+    // Only the unary path is recorded: the scenarios on this client are
+    // JSON-in/audio-out. Multipart and streaming pass through so the type
+    // still satisfies the trait.
+    fn send_multipart<U>(
+        &self,
+        req: HttpRequest<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<HttpResponse<LazyBody<U>>>> + Send + 'static
+    where
+        U: From<Bytes> + Send + 'static,
+    {
+        self.inner.send_multipart(req)
+    }
+
+    fn send_streaming<T>(
+        &self,
+        req: HttpRequest<T>,
+    ) -> impl Future<Output = http_client::Result<http_client::StreamingResponse>> + Send
+    where
+        T: Into<Bytes> + Send,
+    {
+        self.inner.send_streaming(req)
+    }
+}
+
+pub(crate) fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_string(), value.to_string()))
+        })
+        .collect()
 }

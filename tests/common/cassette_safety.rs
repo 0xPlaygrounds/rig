@@ -33,6 +33,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_image_params_cassette",
             "with_openai_truncation_cassette",
             "with_openai_transcription_cassette",
+            "with_openai_audio_cassette",
         ],
     },
     ProviderCassetteSuite {
