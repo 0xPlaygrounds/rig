@@ -560,6 +560,46 @@ mod tests {
         assert_eq!(aliased.cached_tokens(), 4);
     }
 
+    /// Mistral reports audio outside `prompt_tokens`, so counting only that
+    /// field leaves `input + output` short of `total` by the audio payload.
+    /// The numbers are a live Voxtral turn's, quoted verbatim.
+    #[test]
+    fn usage_counts_audio_tokens_as_input() {
+        let usage: Usage = serde_json::from_value(serde_json::json!({
+            "prompt_audio_seconds": 0,
+            "prompt_tokens": 6,
+            "completion_tokens": 2,
+            "total_tokens": 383,
+            "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 375}
+        }))
+        .expect("usage should deserialize");
+
+        assert_eq!(usage.audio_tokens(), 375);
+        assert_eq!(usage.input_tokens(), 381);
+
+        let normalized = crate::completion::Usage::from(&usage);
+        assert_eq!(normalized.input_tokens, 381);
+        assert_eq!(normalized.output_tokens, 2);
+        assert_eq!(
+            normalized.input_tokens + normalized.output_tokens,
+            normalized.total_tokens,
+            "the parts must add up to the total Mistral reported"
+        );
+    }
+
+    /// A text turn carries no audio detail, and must be unaffected.
+    #[test]
+    fn usage_without_audio_is_unchanged() {
+        let usage: Usage = serde_json::from_value(serde_json::json!({
+            "prompt_tokens": 19, "completion_tokens": 2, "total_tokens": 21,
+            "prompt_tokens_details": {"cached_tokens": 0}
+        }))
+        .expect("usage should deserialize");
+
+        assert_eq!(usage.audio_tokens(), 0);
+        assert_eq!(crate::completion::Usage::from(&usage).input_tokens, 19);
+    }
+
     #[test]
     fn finalize_rewrites_required_tool_choice_to_any() {
         let mut body = serde_json::json!({
