@@ -23,6 +23,7 @@ mod cassette {
     mod prompt_caching;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod reasoning_usage_matrix;
     mod regression_suite;
     mod request_override;
     mod response_identity;

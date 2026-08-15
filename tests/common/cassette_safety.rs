@@ -65,6 +65,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_anthropic_gateway_cassette",
             "with_anthropic_stop_sequence_cassette",
             "with_anthropic_empty_stop_cassette",
+            "with_anthropic_reasoning_usage_cassette",
         ],
     },
     ProviderCassetteSuite {

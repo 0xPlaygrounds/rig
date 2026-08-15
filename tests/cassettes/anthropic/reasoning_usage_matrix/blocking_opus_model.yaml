@@ -1,0 +1,20 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":4096,"messages":[{"content":[{"text":"A farmer has 17 sheep. All but 9 run away. Then he buys twice as many as he has left, and sells 5. Work through it step by step, then give the final count on its own line.","type":"text"}],"role":"user"}],"model":"claude-opus-4-8","thinking":{"type":"adaptive"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_1
+  body: '{"content":[{"signature":"signature_REDACTED_1","thinking":"","type":"thinking"},{"text":"# Step-by-Step Solution\n\n**Step 1: Start with 17 sheep.**\nThe farmer begins with 17 sheep.\n\n**Step 2: \"All but 9 run away.\"**\nThis is the tricky part. \"All but 9\" means *every sheep except 9* runs away. So 9 sheep remain.\n- **Sheep left: 9**\n\n**Step 3: He buys twice as many as he has left.**\nHe has 9, so he buys 2 × 9 = 18 more.\n- 9 + 18 = **27 sheep**\n\n**Step 4: He sells 5.**\n- 27 − 5 = **22 sheep**\n\n**22**","type":"text"}],"id":"msg_REDACTED_1","model":"claude-opus-4-8","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":64,"output_tokens":304,"output_tokens_details":{"thinking_tokens":95},"service_tier":"standard"}}'

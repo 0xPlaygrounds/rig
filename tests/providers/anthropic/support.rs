@@ -223,3 +223,18 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
+
+/// Cassette wrapper for the extended-thinking usage matrix.
+///
+/// Delegates to [`with_anthropic_cassette`], separate for the same per-bug
+/// registry reason as [`with_anthropic_stop_sequence_cassette`] (see
+/// `tests/cassettes/anthropic/reasoning_usage_matrix/`).
+pub(super) async fn with_anthropic_reasoning_usage_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(anthropic::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_anthropic_cassette(spec, test_body).await;
+}
