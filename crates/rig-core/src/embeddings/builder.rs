@@ -116,13 +116,16 @@ where
     ) -> Result<(Vec<(T, Vec<Embedding>)>, Usage), EmbeddingError> {
         use stream::TryStreamExt;
 
-        // Store the documents and their texts in a HashMap for easy access.
-        let mut docs = HashMap::new();
+        // Store the documents in a Vec indexed by position so the result
+        // preserves the input order. Iterating a HashMap would return the
+        // pairs in arbitrary order, silently shuffling the mapping between
+        // documents and their embeddings for callers that zip positionally.
+        let mut docs: Vec<T> = Vec::new();
         let mut texts = Vec::new();
 
         // Iterate over all documents in the builder and insert their docs and texts into the lookup stores.
         for (i, (doc, doc_texts)) in self.documents.into_iter().enumerate() {
-            docs.insert(i, doc);
+            docs.push(doc);
             texts.push((i, doc_texts));
         }
 
@@ -157,9 +160,10 @@ where
             )
             .await?;
 
-        // Merge the embeddings with their respective documents
+        // Merge the embeddings with their respective documents, input order.
         let result = docs
             .into_iter()
+            .enumerate()
             .map(|(i, doc)| {
                 let embedding = embeddings.remove(&i).ok_or_else(|| {
                     crate::embeddings::EmbeddingError::ResponseError(
@@ -221,16 +225,12 @@ mod tests {
         let fake_definitions = definitions_multiple_text();
 
         let fake_model = MockEmbeddingModel;
-        let mut result = EmbeddingsBuilder::new(fake_model)
+        let result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
             .build()
             .await
             .unwrap();
-
-        result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
-            fake_definition_1.id.cmp(&fake_definition_2.id)
-        });
 
         assert_eq!(result.len(), 2);
 
@@ -258,16 +258,12 @@ mod tests {
         let fake_definitions = definitions_single_text();
 
         let fake_model = MockEmbeddingModel;
-        let mut result = EmbeddingsBuilder::new(fake_model)
+        let result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
             .build()
             .await
             .unwrap();
-
-        result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
-            fake_definition_1.id.cmp(&fake_definition_2.id)
-        });
 
         assert_eq!(result.len(), 2);
 
@@ -296,7 +292,7 @@ mod tests {
         let fake_definitions_single = definitions_multiple_text_2();
 
         let fake_model = MockEmbeddingModel;
-        let mut result = EmbeddingsBuilder::new(fake_model)
+        let result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
             .documents(fake_definitions_single)
@@ -304,10 +300,6 @@ mod tests {
             .build()
             .await
             .unwrap();
-
-        result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
-            fake_definition_1.id.cmp(&fake_definition_2.id)
-        });
 
         assert_eq!(result.len(), 4);
 
@@ -336,16 +328,12 @@ mod tests {
         let fake_definitions = bindings.iter().map(|def| def.texts.clone());
 
         let fake_model = MockEmbeddingModel;
-        let mut result = EmbeddingsBuilder::new(fake_model)
+        let result = EmbeddingsBuilder::new(fake_model)
             .documents(fake_definitions)
             .unwrap()
             .build()
             .await
             .unwrap();
-
-        result.sort_by(|(fake_definition_1, _), (fake_definition_2, _)| {
-            fake_definition_1.cmp(fake_definition_2)
-        });
 
         assert_eq!(result.len(), 2);
 
