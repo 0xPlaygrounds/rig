@@ -12,6 +12,7 @@
 //! against fixtures that now carry the header.
 
 use anyhow::Result;
+use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::mistral;
@@ -28,6 +29,16 @@ fn assert_is_request_id(id: Option<&str>) {
     assert!(
         !id.is_empty(),
         "the captured request id must not be empty; an empty id is indistinguishable from none"
+    );
+}
+
+/// An error must keep both halves of its context: the id *and* the body.
+/// Losing either one is what makes a provider failure unactionable.
+fn assert_error_keeps_id_and_body(error: &rig::completion::CompletionError) {
+    assert_is_request_id(error.provider_request_id());
+    assert!(
+        error.provider_response_body().is_some(),
+        "the error body must survive alongside the id: {error:?}"
     );
 }
 
@@ -81,6 +92,84 @@ async fn verify_succeeds_against_the_versioned_models_route() -> Result<()> {
                 .verify()
                 .await
                 .map_err(|error| anyhow::anyhow!("verification should succeed: {error:?}"))?;
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+/// The contract must hold on failures too, not just on the happy path: an
+/// error that eats the id is exactly as unrecoverable as one that eats the
+/// body. Mistral sends `mistral-correlation-id` on 4xx as well.
+#[tokio::test]
+async fn blocking_error_carries_the_correlation_id() -> Result<()> {
+    with_mistral_cassette_result(
+        "response_identity_edge/blocking_error_carries_the_correlation_id",
+        |client| async move {
+            let error = client
+                .completion_model("definitely-not-a-model")
+                .completion_request("Reply with exactly: identity probe")
+                .send()
+                .await
+                .expect_err("an unroutable model must fail");
+            assert_error_keeps_id_and_body(&error);
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+/// The streaming twin of the cell above.
+///
+/// Derived from the recording rather than assumed: `stream()` returns `Ok` for
+/// an unroutable model — Mistral answers the POST with a 400 that the SSE
+/// layer surfaces on the first polled item, not at the handshake. The
+/// assertion is that the id reaches the caller wherever the failure lands, so
+/// a streamed turn's failures are no less diagnosable than its blocking twin's.
+#[tokio::test]
+async fn streaming_error_carries_the_correlation_id() -> Result<()> {
+    with_mistral_cassette_result(
+        "response_identity_edge/streaming_error_carries_the_correlation_id",
+        |client| async move {
+            let error = match client
+                .completion_model("definitely-not-a-model")
+                .completion_request("Reply with exactly: identity probe")
+                .stream()
+                .await
+            {
+                Err(error) => error,
+                Ok(mut stream) => {
+                    let mut failure = None;
+                    while let Some(item) = stream.next().await {
+                        if let Err(error) = item {
+                            failure = Some(error);
+                            break;
+                        }
+                    }
+                    failure.expect("an unroutable model must fail the stream")
+                }
+            };
+            assert_error_keeps_id_and_body(&error);
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+/// The same on a 401, whose body is a different shape again (`{"detail": …}`
+/// rather than Mistral's `{"object":"error", …}` envelope).
+#[tokio::test]
+async fn blocking_unauthorized_carries_the_correlation_id() -> Result<()> {
+    super::support::with_mistral_cassette_bogus_key_result(
+        "response_identity_edge/blocking_unauthorized_carries_the_correlation_id",
+        |client| async move {
+            let error = client
+                .completion_model(mistral::MISTRAL_SMALL)
+                .completion_request("Reply with exactly: identity probe")
+                .send()
+                .await
+                .expect_err("a bogus key must fail");
+            assert_is_request_id(error.provider_request_id());
             Ok::<_, anyhow::Error>(())
         },
     )

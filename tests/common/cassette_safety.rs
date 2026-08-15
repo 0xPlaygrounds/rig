@@ -147,6 +147,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_mistral_cassette_result",
             "with_mistral_multimodal_cassette",
+            "with_mistral_cassette_bogus_key_result",
         ],
     },
     ProviderCassetteSuite {

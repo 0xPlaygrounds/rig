@@ -18,9 +18,9 @@ then:
   body: |+
     data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
 
-    data: {"choices":[{"delta":{"content":"identity"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy"}
+    data: {"choices":[{"delta":{"content":"identity"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklm"}
 
-    data: {"choices":[{"delta":{"content":" probe"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234","usage":{"completion_tokens":3,"prompt_tokens":21,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":24}}
+    data: {"choices":[{"delta":{"content":" probe"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefg","usage":{"completion_tokens":3,"prompt_tokens":21,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":24}}
 
     data: [DONE]
 

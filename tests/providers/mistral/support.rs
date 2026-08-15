@@ -51,3 +51,24 @@ where
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
+
+/// Bogus-key variant for recording real 401s. Inlined rather than delegating
+/// to another registered wrapper: `cassette_safety`'s source scan covers this
+/// whole directory, and a wrapper call whose scenario is a variable fails it.
+pub(super) async fn with_mistral_cassette_bogus_key_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let cassette = ProviderCassette::start("mistral", spec, MISTRAL_BASE_URL).await;
+    let client = mistral::Client::builder()
+        .api_key("invalid-edge-matrix-key")
+        .base_url(cassette.base_url())
+        .build()
+        .expect("Mistral cassette client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
