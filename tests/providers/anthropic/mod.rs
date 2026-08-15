@@ -5,6 +5,7 @@ mod cassette {
     mod default_max_turns;
     mod document_file_id;
     mod empty_end_turn;
+    mod empty_stop_sequence_matrix;
     mod error_envelope;
     mod error_identity_edge;
     mod image;
@@ -26,6 +27,7 @@ mod cassette {
     mod request_override;
     mod response_identity;
     mod response_identity_edge;
+    mod stop_sequence_terminal_matrix;
     mod streaming;
     mod streaming_grammar;
     mod streaming_tools;

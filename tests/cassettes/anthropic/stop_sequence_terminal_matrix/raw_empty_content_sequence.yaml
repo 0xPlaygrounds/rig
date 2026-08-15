@@ -1,0 +1,29 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":32,"messages":[{"content":[{"text":"Reply with exactly this one word and nothing else: alpha","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5","stop_sequences":["alpha"],"stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_1
+  body: |+
+    event: message_start
+    data: {"message":{"content":[],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":18,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+
+    event: message_delta
+    data: {"delta":{"stop_details":null,"stop_reason":"stop_sequence","stop_sequence":"alpha"},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":18,"output_tokens":1}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

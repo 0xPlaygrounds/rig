@@ -319,12 +319,40 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             .map(|content| content.clone().try_into())
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Anthropic documents empty `end_turn` responses after tool-result
-        // round trips. That turn genuinely carried nothing, and an empty
-        // list says exactly that — it used to be normalized into a
-        // fabricated empty-text part. Any *other* empty response is the
-        // shared provider defect.
-        let choice = if content.is_empty() && response.stop_reason.as_deref() == Some("end_turn") {
+        // Anthropic has two ways to end a turn that genuinely carried no
+        // content, and an empty list says exactly that:
+        //
+        // - `end_turn` after a tool-result round trip — documented, and it
+        //   used to be normalized into a fabricated empty-text part.
+        // - `stop_sequence` when the matched sequence is the first thing the
+        //   model emits. Anthropic strips the sequence it stopped on, so a
+        //   turn that produced nothing before it arrives with `content: []`
+        //   and a 200. Rejecting that turned a completed provider turn into
+        //   `EMPTY_RESPONSE_ERROR`, and diverged from the streamed twin,
+        //   which finishes the same turn with an empty choice and no error.
+        //
+        // The `stop_sequence` arm additionally requires the sequence itself.
+        // Every recorded stop-sequence turn names the sequence that fired, so
+        // that is the full extent of the evidence; a turn claiming to have
+        // stopped on a sequence while naming none is the malformed shape this
+        // guard exists for, not a legal empty turn. This matters most for the
+        // Anthropic-compatible gateways sharing this mapping, which are the
+        // likeliest to report a stop reason without its companion field.
+        //
+        // Note this narrow shape — empty, `stop_sequence`, no sequence named —
+        // is one the streaming path still finishes cleanly, since it has no
+        // equivalent guard. That asymmetry is deliberate: the parity this
+        // carve-out restores is for *legal* turns, and widening it to keep a
+        // malformed one symmetric would trade a real guard for a cosmetic
+        // match.
+        //
+        // Any *other* empty response is the shared provider defect.
+        let legal_empty_turn = match response.stop_reason.as_deref() {
+            Some("end_turn") => true,
+            Some("stop_sequence") => response.stop_sequence.is_some(),
+            _ => false,
+        };
+        let choice = if content.is_empty() && legal_empty_turn {
             Vec::new()
         } else {
             crate::message::require_non_empty_response(content)?
@@ -5917,15 +5945,19 @@ mod tests {
         assert_eq!(parsed.finish_reason(), Some(completion::FinishReason::Stop));
     }
 
-    #[test]
-    fn empty_non_end_turn_response_still_errors() {
-        let response = CompletionResponse {
+    /// Build an empty-content response with the given terminal, for exercising
+    /// the two legal empty cases against everything else.
+    fn empty_response_with(
+        stop_reason: Option<&str>,
+        stop_sequence: Option<&str>,
+    ) -> CompletionResponse {
+        CompletionResponse {
             content: vec![],
             id: "msg_123".to_string(),
             model: CLAUDE_SONNET_4_6.to_string(),
             role: "assistant".to_string(),
-            stop_reason: Some("tool_use".to_string()),
-            stop_sequence: None,
+            stop_reason: stop_reason.map(str::to_string),
+            stop_sequence: stop_sequence.map(str::to_string),
             provider_request_id: None,
             usage: Usage {
                 input_tokens: 7,
@@ -5934,16 +5966,45 @@ mod tests {
                 cache_creation: None,
                 output_tokens: 2,
             },
-        };
+        }
+    }
 
-        let err = response
+    #[test]
+    fn empty_response_outside_the_legal_terminals_still_errors() {
+        for (stop_reason, stop_sequence) in [
+            (Some("tool_use"), None),
+            (Some("max_tokens"), None),
+            (Some("refusal"), None),
+            (Some("pause_turn"), None),
+            (None, None),
+            // Claims to have stopped on a sequence but names none: the
+            // malformed shape the guard exists for, not a legal empty turn.
+            (Some("stop_sequence"), None),
+            // The inverse: naming a sequence does not make an illegal terminal
+            // legal. The carve-out gates on the reason first, then the field.
+            (Some("max_tokens"), Some("alpha")),
+        ] {
+            let err = empty_response_with(stop_reason, stop_sequence)
+                .normalize("anthropic")
+                .expect_err(&format!(
+                    "empty {stop_reason:?} response should remain an error"
+                ));
+
+            assert!(matches!(
+                err,
+                CompletionError::ResponseError(message) if message == EMPTY_RESPONSE_ERROR
+            ));
+        }
+    }
+
+    #[test]
+    fn empty_stop_sequence_response_naming_its_sequence_is_a_completed_turn() {
+        let parsed = empty_response_with(Some("stop_sequence"), Some("alpha"))
             .normalize("anthropic")
-            .expect_err("empty non-end_turn should remain an error");
+            .expect("a completed stop-sequence turn must not normalize into an error");
 
-        assert!(matches!(
-            err,
-            CompletionError::ResponseError(message) if message == EMPTY_RESPONSE_ERROR
-        ));
+        assert!(parsed.choice.is_empty());
+        assert_eq!(parsed.finish_reason(), Some(completion::FinishReason::Stop));
     }
 
     #[test]

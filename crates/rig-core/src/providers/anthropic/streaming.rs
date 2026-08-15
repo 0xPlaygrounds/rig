@@ -429,6 +429,10 @@ impl WireAdapter for AnthropicAdapter {
                     StreamingCompletionResponse {
                         usage,
                         stop_reason: Some(reason.clone()),
+                        // Rides the same `message_delta` as the stop reason,
+                        // and only that frame carries it: `message_start`
+                        // always opens with `null`.
+                        stop_sequence: delta.stop_sequence.clone(),
                         message_id: self.message_id.clone(),
                         model: self.response_model.clone(),
                         // Stamped by the transport layer; the adapter never
@@ -491,6 +495,18 @@ pub struct StreamingCompletionResponse {
     /// Anthropic's `stop_reason`, verbatim, when the stream reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_reason: Option<String>,
+    /// Which of the caller's `stop_sequences` actually fired, verbatim, when
+    /// the terminal `message_delta` reported one.
+    ///
+    /// `stop_reason: "stop_sequence"` says only *that* a sequence matched;
+    /// the sequence itself is the part a caller branches on, and Anthropic
+    /// strips it from the text, so the wire is its only source. The blocking
+    /// twin has carried it on
+    /// [`CompletionResponse::stop_sequence`](super::completion::CompletionResponse::stop_sequence)
+    /// all along — the streamed record dropped it after parsing, so the same
+    /// request answered strictly less when streamed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_sequence: Option<String>,
     /// The `message_start` message ID, when the stream reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
@@ -2482,6 +2498,7 @@ mod tests {
                     cache_read_input_tokens: Some(2),
                 },
                 stop_reason: Some("max_tokens".to_string()),
+                stop_sequence: None,
                 message_id: Some("msg_1".to_string()),
                 model: Some(CLAUDE_OPUS_4_8.to_string()),
                 provider_request_id: None,
