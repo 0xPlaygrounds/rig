@@ -24,12 +24,6 @@ async fn list_models_smoke() {
     .await;
 }
 
-/// rig#2079 — OpenRouter's listing is **public**: a rejected key still lists.
-///
-/// Recorded with a deliberately invalid key. This is not an error cell that
-/// stopped working — it is the provider's real behavior, pinned so nobody
-/// later "fixes" the shared fetch on the assumption that every listing needs
-/// auth.
 /// rig#2079 — the entry's `context_length` must survive decoding.
 ///
 /// A stray `rename_all = "camelCase"` on the DTO made serde look for
@@ -64,6 +58,12 @@ async fn list_models_preserves_context_and_output_limits() -> anyhow::Result<()>
     .await
 }
 
+/// rig#2079 — OpenRouter's listing is **public**: a rejected key still lists.
+///
+/// Recorded with a deliberately invalid key. This is not an error cell that
+/// stopped working — it is the provider's real behavior, pinned so nobody
+/// later "fixes" the shared fetch on the assumption that every listing needs
+/// auth.
 #[tokio::test]
 async fn list_models_is_public_and_ignores_a_rejected_key() -> anyhow::Result<()> {
     super::super::support::with_openrouter_cassette_bogus_key_result(
