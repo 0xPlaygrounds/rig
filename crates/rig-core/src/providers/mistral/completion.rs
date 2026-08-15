@@ -61,6 +61,202 @@ where
         .unwrap_or_default())
 }
 
+/// Mistral's content-chunk tags. The API validates message content as a
+/// tagged union over `text`, `image_url`, `document_url`, `reference`, `bbox`,
+/// `file_url`, `input_audio`, `file`, `thinking`, `resource` and
+/// `resource_link`; the shared OpenAI-compatible message conversion can
+/// produce content for the five named here.
+const TEXT_CHUNK: &str = "text";
+const IMAGE_CHUNK: &str = "image_url";
+const AUDIO_CHUNK: &str = "input_audio";
+const DOCUMENT_CHUNK: &str = "document_url";
+const FILE_CHUNK: &str = "file";
+/// OpenAI's refusal part. Textual content, but under a key Mistral's chunk
+/// schema has no field for, so it is re-tagged rather than forwarded.
+const REFUSAL_TYPE: &str = "refusal";
+
+/// The text a part carries, under either of the two keys the shared
+/// OpenAI-compatible conversion can put it under.
+fn part_text(part: &serde_json::Value) -> Option<&str> {
+    part.get(TEXT_CHUNK)
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| part.get(REFUSAL_TYPE).and_then(serde_json::Value::as_str))
+}
+
+/// Whether a serialized content part is purely textual, and so belongs in the
+/// plain-string form rather than a chunk array.
+///
+/// Decided on the `type` tag first, and only on the keys for a part that
+/// carries no tag. Deciding on the keys alone — as the text-only flattening
+/// this replaces does — would let a part that names a chunk kind *and* happens
+/// to carry a `text` key be flattened away, which is the same silent drop
+/// this whole path exists to prevent.
+fn is_text_part(part: &serde_json::Value) -> bool {
+    match part.get("type").and_then(serde_json::Value::as_str) {
+        Some(TEXT_CHUNK | REFUSAL_TYPE) => true,
+        Some(_) => false,
+        None => part_text(part).is_some(),
+    }
+}
+
+fn unsupported_content_error(what: &str) -> CompletionError {
+    crate::message::MessageError::ConversionError(format!(
+        "Mistral cannot carry {what}. Mistral messages accept text, `{IMAGE_CHUNK}`, \
+         `{AUDIO_CHUNK}`, `{DOCUMENT_CHUNK}` and `{FILE_CHUNK}` content; convert the content \
+         to one of those before sending it."
+    ))
+    .into()
+}
+
+/// Convert OpenAI's `{"type": "file", "file": {…}}` part into the Mistral
+/// chunk carrying the same document.
+///
+/// Inline bytes become `document_url`, which reads the base64 `data:` URI the
+/// shared conversion already built for `file_data`, and carries the filename
+/// in its own optional `document_name` field. An uploaded-file reference
+/// becomes Mistral's `file` chunk, which names the id at the top level rather
+/// than nesting it under `file` as OpenAI does — sending OpenAI's nesting is
+/// rejected twice over, for a missing `file_id` and for a forbidden extra
+/// `file`, since every Mistral chunk forbids unknown fields.
+fn file_part_to_mistral_chunk(
+    part: &serde_json::Value,
+) -> Result<serde_json::Value, CompletionError> {
+    let file = part.get(FILE_CHUNK);
+    let field = |name: &str| {
+        file.and_then(|file| file.get(name))
+            .and_then(serde_json::Value::as_str)
+    };
+
+    if let Some(data) = field("file_data") {
+        // `document_name` is Mistral's own optional filename field; it is left
+        // out entirely rather than sent as null when the part has no filename.
+        Ok(match field("filename") {
+            Some(filename) => serde_json::json!({
+                "type": DOCUMENT_CHUNK,
+                DOCUMENT_CHUNK: data,
+                "document_name": filename,
+            }),
+            None => serde_json::json!({"type": DOCUMENT_CHUNK, DOCUMENT_CHUNK: data}),
+        })
+    } else if let Some(file_id) = field("file_id") {
+        Ok(serde_json::json!({"type": FILE_CHUNK, "file_id": file_id}))
+    } else {
+        Err(unsupported_content_error(
+            "a file content part carrying neither `file_data` nor `file_id`",
+        ))
+    }
+}
+
+/// Rewrite an `input_audio` part into Mistral's canonical audio chunk, whose
+/// payload is the base64 string itself.
+///
+/// Mistral currently also accepts the `{data, format}` object the shared
+/// OpenAI-compatible conversion produces — its schema flattens the object and
+/// discards `format` — but the bare string is the form its published schema
+/// documents, so that is what rig sends. Nothing is lost: a deliberately wrong
+/// `format` changes no result, and a `format` placed as a *sibling* of
+/// `input_audio` is rejected outright.
+fn audio_part_to_mistral_chunk(
+    part: &serde_json::Value,
+) -> Result<serde_json::Value, CompletionError> {
+    let payload = part.get(AUDIO_CHUNK).ok_or_else(|| {
+        unsupported_content_error("an audio content part carrying no `input_audio` payload")
+    })?;
+
+    let data = match payload {
+        serde_json::Value::String(data) => data.as_str(),
+        payload => payload
+            .get("data")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                unsupported_content_error(
+                    "an audio content part whose `input_audio` payload is neither base64 data \
+                     nor a URL",
+                )
+            })?,
+    };
+
+    Ok(serde_json::json!({"type": AUDIO_CHUNK, AUDIO_CHUNK: data}))
+}
+
+/// Render one serialized content part as the Mistral chunk that carries it.
+///
+/// Dispatched on the `type` tag, which the shared OpenAI-compatible conversion
+/// always emits, so a part naming a chunk kind is converted as that kind
+/// regardless of what other keys it carries.
+fn into_mistral_chunk(part: serde_json::Value) -> Result<serde_json::Value, CompletionError> {
+    /// Text and refusal parts are both re-tagged as `text`: Mistral's chunk
+    /// schema has no `refusal` field, and every chunk forbids unknown keys.
+    fn text_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
+        let text = part_text(part)
+            .ok_or_else(|| unsupported_content_error("a text content part carrying no text"))?;
+        Ok(serde_json::json!({"type": TEXT_CHUNK, TEXT_CHUNK: text}))
+    }
+
+    match part.get("type").and_then(serde_json::Value::as_str) {
+        Some(TEXT_CHUNK | REFUSAL_TYPE) => text_chunk(&part),
+        // Already wire-compatible as serialized: Mistral's image chunk takes
+        // the `{url, detail}` object rig sends as readily as a bare URL
+        // string, and reads a base64 `data:` URI in either. Its `detail`
+        // accepts exactly `low`, `auto` and `high`, which is the range
+        // [`openai::completion::ImageDetail`] serializes.
+        Some(IMAGE_CHUNK) => Ok(part),
+        Some(AUDIO_CHUNK) => audio_part_to_mistral_chunk(&part),
+        Some(FILE_CHUNK) => file_part_to_mistral_chunk(&part),
+        Some(kind) => Err(unsupported_content_error(&format!(
+            "`{kind}` message content"
+        ))),
+        // Untagged, but textual: the shared flattening would have taken it, so
+        // it converts rather than failing.
+        None if part_text(&part).is_some() => text_chunk(&part),
+        None => Err(unsupported_content_error("untyped message content")),
+    }
+}
+
+/// Rewrite one serialized message `content` value into Mistral's message
+/// content schema.
+///
+/// Mistral accepts content as either a plain string or an array of typed
+/// chunks. Text-only content keeps the plain-string form it has always taken.
+/// Content carrying anything else keeps the array, with each part rendered the
+/// way Mistral's schema names it, instead of being flattened away: the
+/// text-only flattening this replaces kept only parts with a `text`/`refusal`
+/// key, so an attached image, document or audio clip was dropped from the
+/// request and the caller got an ordinary completion answering a prompt it
+/// never sent (#2290).
+///
+/// Content Mistral has no chunk for — video, and any part type a future
+/// conversion adds — fails here rather than being silently removed.
+pub(super) fn normalize_request_content(
+    content: &mut serde_json::Value,
+) -> Result<(), CompletionError> {
+    let Some(parts) = content.as_array() else {
+        return Ok(());
+    };
+
+    if parts.iter().all(is_text_part) {
+        // Flattened unconditionally rather than under `only_if_all_text`, so
+        // the helper does not re-decide: it judges per key while the guard
+        // above judges on the type tag, and the two disagree for a malformed
+        // part such as `{"type": "text"}` carrying no `text`. Letting the
+        // helper decline would leave that content as an array of chunks
+        // Mistral cannot read; flattening it reproduces what rig sent before.
+        openai::completion::flatten_text_content_parts(content, "", false);
+        return Ok(());
+    }
+
+    // Re-borrowed rather than held across the branch above, which needs
+    // `content` itself. The array-ness was just established, so the `else` is
+    // unreachable — expressed as a no-op instead of an unwrap.
+    if let Some(parts) = content.as_array_mut() {
+        for part in parts {
+            *part = into_mistral_chunk(part.take())?;
+        }
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Choice {
     pub index: usize,
@@ -375,5 +571,201 @@ mod tests {
         );
         assert_eq!(body["messages"][3]["content"], "");
         assert_eq!(body["messages"][3]["prefix"], false);
+    }
+
+    /// Finalize a one-user-message body and return the message's `content`.
+    ///
+    /// These cells are unit tests rather than cassettes because the behaviour
+    /// under test is that **no request is built** — there is no traffic to
+    /// record for content that is rejected before the wire. The cells covering
+    /// content that *is* sent are recorded, in
+    /// `tests/providers/mistral/multimodal_content.rs`.
+    fn finalized_content(parts: serde_json::Value) -> Result<serde_json::Value, CompletionError> {
+        let mut body = serde_json::json!({
+            "model": MISTRAL_SMALL,
+            "messages": [{"role": "user", "content": parts}],
+        });
+        MistralExt.finalize_request_body(&mut body)?;
+        Ok(body["messages"][0]["content"].clone())
+    }
+
+    /// Video has no Mistral chunk — the API's own content discriminator does
+    /// not list one — so it must fail rather than be flattened away.
+    #[test]
+    fn finalize_rejects_video_content() {
+        let error = finalized_content(serde_json::json!([
+            {"type": "text", "text": "Describe this."},
+            {"type": "video_url", "video_url": {"url": "data:video/mp4;base64,AAAA"}}
+        ]))
+        .expect_err("video content must not be dropped from the request");
+
+        assert!(matches!(error, CompletionError::RequestError(_)));
+        let rendered = error.to_string();
+        assert!(rendered.contains("video_url"), "{rendered}");
+    }
+
+    /// An unrecognized part type fails closed, so a content kind added to the
+    /// shared conversion later cannot start disappearing silently.
+    #[test]
+    fn finalize_rejects_unrecognized_and_untyped_parts() {
+        let error = finalized_content(serde_json::json!([
+            {"type": "text", "text": "hi"},
+            {"type": "some_future_part", "some_future_part": {}}
+        ]))
+        .expect_err("an unmodelled part must not be dropped");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+
+        let error = finalized_content(serde_json::json!([
+            {"type": "text", "text": "hi"},
+            {"payload": "no type tag at all"}
+        ]))
+        .expect_err("an untyped part must not be dropped");
+        assert!(error.to_string().contains("untyped"), "{error}");
+    }
+
+    /// OpenAI's file part must carry something convertible; a part with
+    /// neither inline bytes nor an id names no document at all.
+    #[test]
+    fn finalize_rejects_a_file_part_with_no_payload() {
+        let error = finalized_content(serde_json::json!([
+            {"type": "text", "text": "hi"},
+            {"type": "file", "file": {"filename": "empty.pdf"}}
+        ]))
+        .expect_err("a file part naming no document must not be dropped");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+    }
+
+    /// An audio part whose payload is neither a base64 string nor an object
+    /// carrying one cannot be rendered as Mistral's audio chunk.
+    #[test]
+    fn finalize_rejects_an_audio_part_with_no_payload() {
+        let error = finalized_content(serde_json::json!([
+            {"type": "text", "text": "hi"},
+            {"type": "input_audio", "input_audio": {"format": "mp3"}}
+        ]))
+        .expect_err("an audio part carrying no data must not be dropped");
+        assert!(matches!(error, CompletionError::RequestError(_)));
+    }
+
+    /// The document conversions, pinned as exact wire shapes. Live cells prove
+    /// Mistral accepts these; this cell proves rig builds precisely them.
+    #[test]
+    fn finalize_maps_openai_file_parts_onto_mistral_chunks() {
+        let content = finalized_content(serde_json::json!([
+            {"type": "text", "text": "Read these."},
+            {"type": "file", "file": {
+                "file_data": "data:application/pdf;base64,JVBERi0xLjQK",
+                "filename": "document.pdf"
+            }},
+            {"type": "file", "file": {"file_id": "00000000-0000-0000-0000-000000000000"}}
+        ]))
+        .expect("file parts should convert");
+
+        assert_eq!(
+            content,
+            serde_json::json!([
+                {"type": "text", "text": "Read these."},
+                {
+                    "type": "document_url",
+                    "document_url": "data:application/pdf;base64,JVBERi0xLjQK",
+                    "document_name": "document.pdf"
+                },
+                // Mistral's file chunk names the id at the top level; OpenAI's
+                // nesting under `file` is rejected as an extra field.
+                {"type": "file", "file_id": "00000000-0000-0000-0000-000000000000"}
+            ])
+        );
+    }
+
+    /// Audio collapses to Mistral's documented bare-string payload, and the
+    /// image chunk forwards unchanged because Mistral accepts rig's object.
+    #[test]
+    fn finalize_maps_audio_and_image_parts_onto_mistral_chunks() {
+        let content = finalized_content(serde_json::json!([
+            {"type": "input_audio", "input_audio": {"data": "SUQzBAA=", "format": "mp3"}},
+            {"type": "image_url", "image_url": {"url": "https://example.com/cat.png", "detail": "auto"}}
+        ]))
+        .expect("audio and image parts should convert");
+
+        assert_eq!(
+            content,
+            serde_json::json!([
+                {"type": "input_audio", "input_audio": "SUQzBAA="},
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png", "detail": "auto"}}
+            ])
+        );
+    }
+
+    /// A refusal travelling beside a chunk becomes a text chunk: Mistral's
+    /// schema has no `refusal` field, and every chunk forbids unknown keys.
+    #[test]
+    fn finalize_retags_a_refusal_beside_a_chunk_as_text() {
+        let content = finalized_content(serde_json::json!([
+            {"type": "refusal", "refusal": "I cannot help with that."},
+            {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}}
+        ]))
+        .expect("a refusal beside a chunk should convert");
+
+        assert_eq!(
+            content[0],
+            serde_json::json!({"type": "text", "text": "I cannot help with that."})
+        );
+    }
+
+    /// Text-only content keeps the plain-string form every existing Mistral
+    /// fixture pins — including a refusal-only message, which the shared
+    /// flattening has always treated as text.
+    #[test]
+    fn finalize_still_flattens_text_only_content() {
+        assert_eq!(
+            finalized_content(serde_json::json!([
+                {"type": "text", "text": "First."},
+                {"type": "text", "text": "Second."}
+            ]))
+            .expect("text-only content should flatten"),
+            serde_json::json!("First.Second.")
+        );
+
+        assert_eq!(
+            finalized_content(serde_json::json!([
+                {"type": "text", "text": "Partly: "},
+                {"type": "refusal", "refusal": "I cannot help with that."}
+            ]))
+            .expect("refusal content should flatten"),
+            serde_json::json!("Partly: I cannot help with that.")
+        );
+
+        // Content that is already a plain string is left exactly as-is.
+        assert_eq!(
+            finalized_content(serde_json::json!("already a string"))
+                .expect("string content should pass through"),
+            serde_json::json!("already a string")
+        );
+
+        // An empty array still collapses to the empty string it always did.
+        assert_eq!(
+            finalized_content(serde_json::json!([])).expect("empty content should flatten"),
+            serde_json::json!("")
+        );
+    }
+
+    /// Textuality is decided on the `type` tag, not on the presence of a
+    /// `text` key. A part that names a chunk kind is that kind even if it also
+    /// carries text — deciding on the key alone would flatten the chunk away,
+    /// which is the silent drop this path exists to prevent.
+    #[test]
+    fn finalize_does_not_flatten_a_chunk_that_also_carries_text() {
+        let content = finalized_content(serde_json::json!([
+            {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}, "text": "cat"}
+        ]))
+        .expect("a tagged image part should convert");
+
+        assert_eq!(
+            content,
+            serde_json::json!([
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}, "text": "cat"}
+            ]),
+            "the image must survive; only its own chunk kind decides how it is rendered"
+        );
     }
 }
