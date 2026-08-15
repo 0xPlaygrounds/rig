@@ -1795,6 +1795,12 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 const SENSITIVE_STRING_KEYS: &[&str] = &[
     "encrypted_content",
     "encryptedcontent",
+    // Anthropic's web-search citation locator. Named like an opaque handle but
+    // base64-decodes to a protobuf carrying a plaintext UUID that is stable
+    // across separate calls, so it is preserved verbatim in a committed
+    // fixture unless scrubbed — exactly what its sibling `encrypted_content`
+    // is on this list to prevent.
+    "encrypted_index",
     "obfuscation",
     "prompt_cache_key",
     "safety_identifier",

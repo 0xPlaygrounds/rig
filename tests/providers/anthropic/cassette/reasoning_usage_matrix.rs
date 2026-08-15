@@ -40,7 +40,7 @@
 //! | 6 | `blocking_with_preamble` | system prompt present | `> 0` | recorded |
 //! | 7 | `blocking_with_prompt_caching` | cache breakpoint + thinking | `> 0` | recorded |
 //! | 8 | `blocking_redacted_thinking` | `redacted_thinking` block | `> 0` | recorded |
-//! | 9 | `blocking_max_tokens_truncation` | truncated mid-thinking | `> 0` | recorded |
+//! | 9 | `blocking_max_tokens_truncation` | `stop_reason: max_tokens` | `> 0` | recorded |
 //! | 10 | `blocking_opus_model` | opus 4.8, adaptive-only model | `> 0` | recorded |
 //! | 11 | `blocking_long_reasoning` | large breakdown, far above noise | `> 0` | recorded |
 //! | 12 | `blocking_thinking_disabled_control` | control: thinking off, bucket absent | `0` | recorded |
@@ -58,7 +58,7 @@
 //! | 24 | `streaming_long_reasoning` | streamed twin of #11 | `> 0` | recorded |
 //! | 25 | `streaming_thinking_disabled_control` | streamed twin of #12 | `0` | recorded |
 //! | 26 | `normalized_stream_budget_thinking` | adjacent: normalized stream usage | `> 0` | recorded |
-//! | 27 | `agent_blocking_thinking` | adjacent: agent prompt surface | `> 0` | recorded |
+//! | 27 | `agent_blocking_thinking` | adjacent: `Agent` request builder | `> 0` | recorded |
 //! | 28 | `unit_absent_details_reports_zero` | serde: no `output_tokens_details` | `0` | unit |
 //! | 29 | `unit_unknown_detail_bucket_is_ignored` | serde: forward compatibility | `> 0` | unit |
 //! | 30 | `unit_thinking_tokens_stay_out_of_the_total` | totals arithmetic | n/a | unit |
@@ -85,8 +85,10 @@
 //! - **A `message_start` carry-forward cell.** `cache_creation` needs one
 //!   because Anthropic reports it on `message_start`; `output_tokens_details`
 //!   arrives on the terminal `message_delta` instead, so there is nothing to
-//!   carry and no live turn can produce the inverse split. Pinned by unit
-//!   cell 31 against the shared mapping rather than by a recording.
+//!   carry and no live turn can produce the inverse split. The streamed cells
+//!   are what pin it: each reads the breakdown off its own terminal frame, so
+//!   a fallback that started reading `message_start` would have to invent the
+//!   same number to stay green.
 //! - **A gateway cell.** The Anthropic-compatible gateways do not implement
 //!   extended thinking on the Messages endpoint, so a gateway recording would
 //!   assert the absent-breakdown case that cells 12–13 already cover.
@@ -112,6 +114,14 @@ const REDACTED_THINKING_MAGIC_STRING: &str = "ANTHROPIC_MAGIC_STRING_TRIGGER_RED
 
 /// A prompt that costs a few thinking tokens without a long answer.
 const THINKING_PROMPT: &str = "What is 17 * 23? Reply with just the number.";
+
+/// A prompt whose *answer* is long enough to run into a `max_tokens` ceiling
+/// set just above the thinking budget, so the turn is cut off after thinking
+/// rather than before it. Truncating during the thinking block itself is not
+/// usable here: Anthropic requires `max_tokens > thinking.budget_tokens`, and
+/// a turn that never finishes thinking emits no breakdown to assert on.
+const TRUNCATING_PROMPT: &str = "Think briefly, then list the integers from 1 to 2000, one per line, with no \
+     other text.";
 
 /// A prompt whose reasoning is long enough that the breakdown is unmistakably
 /// a real measurement rather than a rounding artifact.
@@ -259,15 +269,24 @@ fn recorded_streamed_thinking_tokens(scenario: &str) -> Option<u64> {
     let contents = std::fs::read_to_string(&path)
         .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
 
-    let frame = contents
+    // Exactly one terminal frame, asserted rather than assumed: a multi-turn
+    // cell would otherwise silently compare turn 1's breakdown against turn
+    // 2's parsed usage.
+    let mut frames = contents
         .lines()
-        .find(|line| line.contains(r#""type":"message_delta""#))
-        .unwrap_or_else(|| {
-            panic!(
-                "cassette {} should record a message_delta frame",
-                path.display()
-            )
-        });
+        .filter(|line| line.contains(r#""type":"message_delta""#));
+    let frame = frames.next().unwrap_or_else(|| {
+        panic!(
+            "cassette {} should record a message_delta frame",
+            path.display()
+        )
+    });
+    assert!(
+        frames.next().is_none(),
+        "cassette {} records more than one message_delta; this reader assumes a \
+         single-turn cell",
+        path.display()
+    );
     let (_, after) = frame.split_once(r#""thinking_tokens":"#)?;
     let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
     Some(digits.parse().unwrap_or_else(|err| {
@@ -276,6 +295,18 @@ fn recorded_streamed_thinking_tokens(scenario: &str) -> Option<u64> {
             path.display()
         )
     }))
+}
+
+/// The `stop_reason` a streamed cassette's terminal `message_delta` reports.
+fn recorded_streamed_stop_reason(scenario: &str) -> Option<String> {
+    let path = crate::cassettes::cassette_path("anthropic", scenario);
+    let contents = std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
+    let frame = contents
+        .lines()
+        .find(|line| line.contains(r#""type":"message_delta""#))?;
+    let (_, after) = frame.split_once(r#""stop_reason":""#)?;
+    after.split('"').next().map(str::to_string)
 }
 
 fn request(
@@ -507,8 +538,10 @@ async fn blocking_redacted_thinking() {
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
-/// A turn cut off by `max_tokens` while still thinking still bills the
-/// thinking it did, so the breakdown must survive a truncated turn.
+/// A turn cut off by `max_tokens` still bills the thinking it did, so the
+/// breakdown must survive a truncated turn. The cell asserts the truncation
+/// itself from the fixture — otherwise a turn that happened to finish early
+/// would leave it covering the same shape as the plain budget cells.
 #[tokio::test]
 async fn blocking_max_tokens_truncation() {
     let observed = Observed::new();
@@ -520,7 +553,7 @@ async fn blocking_max_tokens_truncation() {
             slot.record(
                 blocking_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, budget_thinking(1024), 1030),
+                    request(&model, TRUNCATING_PROMPT, budget_thinking(1024), 1025),
                 )
                 .await,
             );
@@ -530,6 +563,11 @@ async fn blocking_max_tokens_truncation() {
 
     let scenario = "reasoning_usage_matrix/blocking_max_tokens_truncation";
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
+    assert_eq!(
+        recorded_response_body(scenario)["stop_reason"],
+        "max_tokens",
+        "this cell exists to cover a truncated turn",
+    );
 }
 
 #[tokio::test]
@@ -829,7 +867,7 @@ async fn streaming_max_tokens_truncation() {
             slot.record(
                 streamed_usage(
                     &model,
-                    request(&model, LONG_REASONING_PROMPT, budget_thinking(1024), 1030),
+                    request(&model, TRUNCATING_PROMPT, budget_thinking(1024), 1025),
                 )
                 .await,
             );
@@ -839,6 +877,11 @@ async fn streaming_max_tokens_truncation() {
 
     let scenario = "reasoning_usage_matrix/streaming_max_tokens_truncation";
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
+    assert!(
+        recorded_streamed_stop_reason(scenario).as_deref() == Some("max_tokens"),
+        "this cell exists to cover a truncated turn, got {:?}",
+        recorded_streamed_stop_reason(scenario),
+    );
 }
 
 #[tokio::test]
@@ -945,7 +988,13 @@ async fn normalized_stream_budget_thinking() {
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
-/// The agent surface reports the same usage the model does.
+/// The agent surface reaches the same mapping by a different route: usage
+/// arrives through `PromptRequest`'s per-call record
+/// (`completion_calls[].usage`) rather than off a `CompletionResponse`
+/// directly, so a regression in that plumbing would not show up in any raw
+/// model cell above. The preamble differs from `blocking_with_preamble` only
+/// so the two fixtures stay distinguishable — the wire shapes are equivalent
+/// by design, which is part of what this cell asserts.
 #[tokio::test]
 async fn agent_blocking_thinking() {
     let observed = Observed::new();
@@ -953,14 +1002,22 @@ async fn agent_blocking_thinking() {
     with_anthropic_reasoning_usage_cassette(
         "reasoning_usage_matrix/agent_blocking_thinking",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = model
-                .completion_request(THINKING_PROMPT)
-                .preamble("You are a careful arithmetic assistant.".to_string())
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .preamble("You are a meticulous arithmetic assistant.")
                 .max_tokens(2048)
                 .additional_params(budget_thinking(1024))
                 .build();
-            slot.record(blocking_usage(&model, request).await);
+            let response = agent
+                .prompt(THINKING_PROMPT)
+                .extended_details()
+                .await
+                .expect("agent run should succeed");
+            let call = response
+                .completion_calls
+                .first()
+                .expect("the run makes at least one completion call");
+            slot.record(call.usage);
         },
     )
     .await;

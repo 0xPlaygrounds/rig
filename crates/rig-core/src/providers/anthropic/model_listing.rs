@@ -66,10 +66,10 @@ where
             // Termination follows the *cursor*, not the flag. `has_more` with
             // no usable `last_id` would otherwise re-request the same page
             // forever, appending its models on every pass — an unbounded loop,
-            // not a truncated list. Anthropic pairs the two, but the
-            // Anthropic-compatible gateways sharing this client are exactly
-            // the sources that report a flag without its companion field, and
-            // there is no next page to ask for without a cursor.
+            // not a truncated list. Anthropic pairs the two, so this guard is
+            // unreachable against the real API; it exists because a caller can
+            // point this client at an Anthropic-compatible gateway base URL,
+            // and there is no next page to ask for without a cursor anyway.
             //
             // An empty cursor counts as absent, matching how every other
             // provider-reported identifier in rig is read.
@@ -248,9 +248,10 @@ mod tests {
         assert_eq!(http_client.remaining_responses(), 1);
     }
 
-    /// A page that ends the listing while still naming a cursor stops there —
+    /// A final page that names no cursor is the ordinary end of a listing:
     /// the flag is authoritative for *stopping*, the cursor only for
-    /// *continuing*.
+    /// *continuing*, so a missing cursor on a `has_more: false` page is not an
+    /// error.
     #[tokio::test]
     async fn stops_when_the_last_page_names_no_cursor() {
         let (lister, http_client) = lister(vec![page(&["claude-a"], false, None)]);
