@@ -1511,6 +1511,57 @@ mod tests {
         );
     }
 
+    /// The one place the identifier newtype changes *runtime* behavior rather
+    /// than just types: a `MessageId` event carrying `""` used to set
+    /// `Some("")` on the stream, which then travelled into the run's identity
+    /// and out to hooks. It is now absence, and the terminal record's id is
+    /// what remains — the same rule the setters always applied to the
+    /// buffered path, so the two surfaces agree for one and the same wire
+    /// (#2336).
+    #[tokio::test]
+    async fn an_empty_message_id_event_is_absence_not_a_sentinel() {
+        let raw = stream! {
+            yield Ok(RawStreamingChoice::MessageId(String::new()));
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(
+                mock_final_with_total_tokens(1).with_response_id("resp_1"),
+            ));
+        };
+        let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(raw));
+        while stream.next().await.is_some() {}
+
+        assert_eq!(
+            stream.identity(),
+            crate::completion::ResponseIdentity {
+                message_id: None,
+                response_id: crate::streaming::WireId::new("resp_1"),
+                provider_request_id: None,
+            },
+            "an empty MessageId event must not reinstate the sentinel"
+        );
+    }
+
+    /// ...and an empty event does not shadow a real terminal id: absence
+    /// leaves the terminal record's message id in place rather than
+    /// overwriting it with nothing.
+    #[tokio::test]
+    async fn an_empty_message_id_event_does_not_erase_the_terminal_id() {
+        let raw = stream! {
+            yield Ok(RawStreamingChoice::MessageId(String::new()));
+            yield Ok(RawStreamingChoice::Message("done".to_string()));
+            yield Ok(RawStreamingChoice::FinalResponse(
+                mock_final_with_total_tokens(1).with_message_id("msg_terminal"),
+            ));
+        };
+        let mut stream = StreamingCompletionResponse::stream(TEST_PROVIDER, to_stream_result(raw));
+        while stream.next().await.is_some() {}
+
+        assert_eq!(
+            stream.identity().message_id,
+            crate::streaming::WireId::new("msg_terminal")
+        );
+    }
+
     fn create_reasoning_stream() -> StreamingCompletionResponse {
         let stream = stream! {
             yield Ok(RawStreamingChoice::Reasoning {                id: StreamPartId::wire("rs_1"),

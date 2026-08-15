@@ -1735,7 +1735,10 @@ the compiler no longer insists.
 `completion::CompletionResponse` and `completion::ResponseIdentity` — and on
 `rig-agent`'s `CompletionCall`, `ModelTurn`, `StreamedTurn` and
 `PartialStreamedTurn`, which round-trip the same ids — are now
-`Option<WireId>` instead of `Option<String>`.
+`Option<WireId>` instead of `Option<String>`. `ProviderResponseError`'s
+`provider_request_id` is the same transport id on the failure path and follows;
+its `provider_request_id()` accessor still returns `Option<&str>`, so readers
+are unchanged.
 
 `WireId::new` is the only way to build one and it rejects the empty string, so
 the "an empty identifier means absent" rule these types always documented is
@@ -1780,7 +1783,16 @@ bare string, so the JSON is byte-identical, and every deserialization path
 still turns a stored `""` into `None` rather than failing the record — agent
 runs written by earlier versions load unchanged. `WireId` deliberately has no
 `Deserialize` of its own for exactly that reason: a fallible one would reject
-those records.
+those records — a compile-fail test pins that absence, so the derive cannot be
+added back by mistake.
+
+If *your* type holds an `Option<WireId>` and derives `Deserialize`, point the
+field at the same normalizer rig uses rather than reaching for a derive:
+
+```rust
+#[serde(default, deserialize_with = "rig_core::streaming::deserialize_optional_wire_id")]
+pub message_id: Option<WireId>,
+```
 
 `model` is unchanged (`Option<String>`). It is a label rather than an
 identifier, so its setter remains the only thing normalizing it.
