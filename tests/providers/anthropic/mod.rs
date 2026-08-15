@@ -26,6 +26,7 @@ mod cassette {
     mod request_override;
     mod response_identity;
     mod response_identity_edge;
+    mod stop_sequence_terminal_matrix;
     mod streaming;
     mod streaming_grammar;
     mod streaming_tools;

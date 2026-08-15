@@ -57,6 +57,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_anthropic_cassette_bogus_key",
             "with_anthropic_files_cassette",
             "with_anthropic_gateway_cassette",
+            "with_anthropic_stop_sequence_cassette",
         ],
     },
     ProviderCassetteSuite {
