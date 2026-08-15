@@ -437,25 +437,11 @@ fn map_response_part(part: &Part) -> Result<Vec<completion::AssistantContent>, C
                     text,
                     thought_signature.clone(),
                 ))
-            } else if let Some(signature) = thought_signature {
-                // Gemini 3 attaches `thoughtSignature` to a trailing part with
-                // no `thought` flag at all — recorded traffic reads
-                // `{"text":"17 squared is 289.","thoughtSignature":"…"}`. The
-                // signature is replay-required provider state that Gemini
-                // validates (`MISSING_THOUGHT_SIGNATURE`), and only
-                // `Reasoning` round-trips it back onto a request, so it
-                // becomes a signature-only reasoning block after the text —
-                // byte-for-byte what the streaming adapter already produces
-                // for the same frames (`streaming.rs`, the no-`thought`-flag
-                // arm). Dropping it here made blocking lose state streaming
-                // kept.
-                return Ok(vec![
-                    completion::AssistantContent::text(text),
-                    completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
-                        "",
-                        Some(signature.clone()),
-                    )),
-                ]);
+            } else if thought_signature.is_some() {
+                // A trailing signature on a part with no `thought` flag: the
+                // caller places it, because where it belongs depends on what
+                // came before. See `attach_trailing_signature`.
+                return Ok(vec![completion::AssistantContent::text(text)]);
             } else {
                 completion::AssistantContent::text(text)
             }
@@ -509,6 +495,50 @@ fn map_response_part(part: &Part) -> Result<Vec<completion::AssistantContent>, C
     }])
 }
 
+/// Place a trailing `thoughtSignature` — one that rode a part carrying no
+/// `thought` flag — onto the assistant content mapped so far.
+///
+/// Gemini hangs the signature on a trailing part instead of on the thought
+/// it belongs to — recorded on gemini-3-flash-preview and on
+/// gemini-2.5-flash alike — and the signature is replay-required state the provider
+/// validates (`MISSING_THOUGHT_SIGNATURE`). Only `Reasoning` round-trips it
+/// back onto a request, so it has to land on one — and *which* one is the
+/// same question the streaming accumulator answers, so the answer is the
+/// same:
+///
+/// * an earlier unsigned reasoning block takes it, because that block holds
+///   the chain-of-thought the signature signs
+///   (`streaming/parts.rs::a_trailing_signature_signs_the_finished_block`);
+/// * with no such block, it becomes a signature-only reasoning part, which
+///   is what the accumulator records when nothing streamed.
+///
+/// Blocking and streaming therefore normalize the same bytes to the same
+/// choice, which is the point: a turn replayed from either transport sends
+/// the signature back the same way. Public because the gRPC transport's
+/// unary mapper answers the same question about the same wire.
+pub fn attach_trailing_signature(
+    content: &mut Vec<completion::AssistantContent>,
+    signature: String,
+) {
+    let unsigned_reasoning = content.iter_mut().rev().find_map(|item| match item {
+        completion::AssistantContent::Reasoning(reasoning) => match reasoning.content.first_mut() {
+            Some(message::ReasoningContent::Text {
+                signature: slot @ None,
+                ..
+            }) => Some(slot),
+            _ => None,
+        },
+        _ => None,
+    });
+
+    match unsigned_reasoning {
+        Some(slot) => *slot = Some(signature),
+        None => content.push(completion::AssistantContent::Reasoning(
+            Reasoning::new_with_signature("", Some(signature)),
+        )),
+    }
+}
+
 /// The wire name of a part kind, for error messages.
 fn part_kind_name(part: &PartKind) -> &'static str {
     match part {
@@ -540,7 +570,7 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 
         let finish_reason = candidate.finish_reason.as_ref().and_then(map_finish_reason);
 
-        let content = candidate
+        let parts = &candidate
             .content
             .as_ref()
             .ok_or_else(|| {
@@ -557,16 +587,23 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
                     "Gemini candidate missing content ({reason}, finish_message={message})"
                 ))
             })?
-            .parts
-            .iter()
-            // A part may map to no content at all (skipped, not failed) or to
-            // two items; see `map_response_part`. `collect` still
-            // short-circuits on the first error, in wire order.
-            .map(map_response_part)
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+            .parts;
+
+        // Mapped in wire order, one part at a time — a part may contribute no
+        // content at all (skipped, not failed; see `map_response_part`), and
+        // `?` still surfaces the first error in wire order. A trailing
+        // signature is placed against the content mapped *before* it, so the
+        // fold cannot become a `map`.
+        let mut content: Vec<completion::AssistantContent> = Vec::with_capacity(parts.len());
+        for part in parts {
+            content.extend(map_response_part(part)?);
+            if !part.thought.unwrap_or(false)
+                && matches!(part.part, PartKind::Text(_))
+                && let Some(signature) = part.thought_signature.clone()
+            {
+                attach_trailing_signature(&mut content, signature);
+            }
+        }
 
         let choice = crate::message::require_non_empty_response(content)?;
 

@@ -101,17 +101,32 @@ fn code_execution_params_with_thoughts() -> Value {
     })
 }
 
-/// Whether `text` states `value`, ignoring the digit grouping the model may
-/// add to a number ("1,048,576"). Asserting on the value rather than on one
-/// rendering of it keeps a cell about the mapping under test instead of about
-/// the model's prose style.
+/// Whether `text` states `value`.
 ///
-/// A numeric `value` must not be a fragment of a longer number — "2880" in
-/// "28800" is not the answer — so digit-adjacency is rejected. Non-numeric
-/// values keep plain substring semantics.
+/// Digit grouping the model may add is ignored ("1,048,576" states
+/// "1048576"), but only separators *between* digits are removed, so
+/// `"items 12, 345"` does not silently become the number `12345`. A numeric
+/// `value` must not be a fragment of a longer number — "2880" in "28800" is
+/// not the answer — so digit-adjacency is rejected. An empty or non-numeric
+/// `value` keeps plain substring semantics.
 fn states(text: &str, value: &str) -> bool {
-    let text = text.replace([',', '_'], "");
-    if !value.chars().all(|ch| ch.is_ascii_digit()) {
+    let text: String = text
+        .char_indices()
+        .filter(|(index, ch)| {
+            !(matches!(ch, ',' | '_')
+                && text[..*index]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|previous| previous.is_ascii_digit())
+                && text[index + ch.len_utf8()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|next| next.is_ascii_digit()))
+        })
+        .map(|(_, ch)| ch)
+        .collect();
+
+    if value.is_empty() || !value.chars().all(|ch| ch.is_ascii_digit()) {
         return text.contains(value);
     }
     text.match_indices(value).any(|(index, _)| {

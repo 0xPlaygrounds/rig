@@ -12,6 +12,7 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use base64::Engine as _;
 use rig_core::completion::{self, CompletionError, CompletionRequest};
 use rig_core::message::{self, MimeType, Reasoning};
+use rig_core::providers::gemini::completion::attach_trailing_signature;
 use rig_core::providers::gemini::completion::gemini_api_types::{
     Schema as GeminiSchema, map_google_finish_reason, tool_parameters_to_schema,
 };
@@ -520,6 +521,18 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
             };
 
             assistant_contents.push(assistant_content);
+
+            // The wire hangs a `thoughtSignature` on a trailing part carrying
+            // no `thought` flag, and this crate's own streaming adapter keeps
+            // it (`streaming.rs`, the non-thought text arm) while this mapper
+            // dropped it — the same blocking/streaming asymmetry the REST wire
+            // had. One shared rule places it on both transports.
+            if !part.thought
+                && matches!(part.data, Some(proto::part::Data::Text(_)))
+                && let Some(signature) = encode_optional_base64(&part.thought_signature)
+            {
+                attach_trailing_signature(&mut assistant_contents, signature);
+            }
         }
 
         let choice = rig_core::message::require_non_empty_response(assistant_contents)?;
@@ -1171,6 +1184,56 @@ mod tests {
             response.get_text_response().as_deref(),
             Some("The answer is 42."),
             "reasoning must not be reported as the response text"
+        );
+    }
+
+    /// The wire hangs a `thoughtSignature` on a trailing part with no
+    /// `thought` flag. This crate's streaming adapter has always kept it; the
+    /// unary mapper dropped it, the same asymmetry the REST wire carried. The
+    /// signature belongs to the chain-of-thought block that precedes it.
+    #[test]
+    fn a_trailing_thought_signature_signs_the_reasoning_before_it() {
+        let response = proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("the chain".to_string())),
+                            thought: true,
+                            ..Default::default()
+                        },
+                        proto::Part {
+                            data: Some(proto::part::Data::Text("answer".to_string())),
+                            thought: false,
+                            thought_signature: b"sig-bytes".to_vec(),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let normalized: completion::CompletionResponse =
+            response.try_into().expect("payload should normalize");
+        assert_eq!(
+            normalized.choice.len(),
+            2,
+            "no empty sibling; got {:?}",
+            normalized.choice
+        );
+        assert!(
+            matches!(
+                normalized.choice.first(),
+                Some(completion::AssistantContent::Reasoning(reasoning))
+                    if matches!(reasoning.content.first(),
+                        Some(message::ReasoningContent::Text { text, signature })
+                            if text == "the chain" && signature.is_some())
+            ),
+            "the reasoning block must carry the trailing signature, got {:?}",
+            normalized.choice
         );
     }
 }

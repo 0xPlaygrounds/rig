@@ -60,6 +60,7 @@
 //! | 29 | `a_thought_flagged_part_still_signs_its_own_reasoning` (unit) | blocking | see below |
 //! | 30 | `a_text_part_without_a_signature_yields_no_reasoning` (unit) | blocking | see below |
 //! | 31 | `transcription_rejects_a_candidate_with_no_parts_at_all` (unit) | transcription | see below |
+//! | 32 | `a_trailing_signature_signs_the_chain_of_thought_before_it` (unit) | blocking | see below |
 //!
 //! Cells 26–30 cover a fourth defect the cold review of this branch turned
 //! up, in the same reader family: Gemini 3 attaches `thoughtSignature` to a
@@ -454,10 +455,12 @@ async fn text_response_body(
         .await
         .expect("raw_completion should succeed");
 
+    // The first candidate only — the one the mapper reads.
     let raw_parts: Vec<_> = raw
         .candidates
-        .iter()
-        .filter_map(|candidate| candidate.content.as_ref())
+        .first()
+        .and_then(|candidate| candidate.content.as_ref())
+        .into_iter()
         .flat_map(|content| content.parts.iter())
         .cloned()
         .collect();
@@ -1322,10 +1325,48 @@ mod unit {
         );
     }
 
-    /// Not a recording: one live turn emits one part ordering, and the rule
-    /// is that a signature on a part with no `thought` flag becomes a
-    /// signature-only reasoning block *after* the text — byte-for-byte what
-    /// the streaming adapter produces for the same frames.
+    /// Not a recording: one live turn emits one part ordering. When a
+    /// visible thought part precedes the signed text, the signature belongs
+    /// to *that* block — it is what the signature signs — rather than to a
+    /// new empty sibling. This mirrors the streaming accumulator exactly
+    /// (`streaming/parts.rs::a_trailing_signature_signs_the_finished_block`),
+    /// which is the whole point: the same bytes normalize to the same choice
+    /// on both transports, so a turn replayed from either sends the
+    /// signature back the same way.
+    #[test]
+    fn a_trailing_signature_signs_the_chain_of_thought_before_it() {
+        let response = response_with(
+            vec![
+                json!({ "text": "the chain", "thought": true }),
+                json!({ "text": "answer", "thoughtSignature": "sig-trailing" }),
+            ],
+            "model",
+        );
+        let normalized: rig::completion::CompletionResponse =
+            response.try_into().expect("payload should normalize");
+        assert_eq!(
+            normalized.choice.len(),
+            2,
+            "no empty sibling: the existing reasoning block takes the signature, got {:?}",
+            normalized.choice
+        );
+        assert!(
+            matches!(
+                normalized.choice.first(),
+                Some(rig::message::AssistantContent::Reasoning(reasoning))
+                    if matches!(reasoning.content.first(),
+                        Some(rig::message::ReasoningContent::Text { text, signature })
+                            if text == "the chain" && signature.as_deref() == Some("sig-trailing"))
+            ),
+            "the chain-of-thought block must carry the signature, got {:?}",
+            normalized.choice
+        );
+    }
+
+    /// Not a recording: one live turn emits one part ordering, and with no
+    /// reasoning block to sign, the signature becomes a signature-only
+    /// reasoning part — what the streaming accumulator records when nothing
+    /// streamed as reasoning.
     #[test]
     fn a_trailing_signature_becomes_a_signature_only_reasoning_block() {
         let response = response_with(

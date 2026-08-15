@@ -114,12 +114,32 @@ fn text_of(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
-/// Whether `text` states `value`, ignoring digit grouping. A numeric `value`
-/// must not be a fragment of a longer number — "2880" in "28800" is not the
-/// answer — so digit-adjacency is rejected.
+/// Whether `text` states `value`.
+///
+/// Digit grouping the model may add is ignored ("1,048,576" states
+/// "1048576"), but only separators *between* digits are removed, so
+/// `"items 12, 345"` does not silently become the number `12345`. A numeric
+/// `value` must not be a fragment of a longer number — "2880" in "28800" is
+/// not the answer — so digit-adjacency is rejected. An empty or non-numeric
+/// `value` keeps plain substring semantics.
 fn states(text: &str, value: &str) -> bool {
-    let text = text.replace([',', '_'], "");
-    if !value.chars().all(|ch| ch.is_ascii_digit()) {
+    let text: String = text
+        .char_indices()
+        .filter(|(index, ch)| {
+            !(matches!(ch, ',' | '_')
+                && text[..*index]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|previous| previous.is_ascii_digit())
+                && text[index + ch.len_utf8()..]
+                    .chars()
+                    .next()
+                    .is_some_and(|next| next.is_ascii_digit()))
+        })
+        .map(|(_, ch)| ch)
+        .collect();
+
+    if value.is_empty() || !value.chars().all(|ch| ch.is_ascii_digit()) {
         return text.contains(value);
     }
     text.match_indices(value).any(|(index, _)| {
@@ -687,7 +707,7 @@ async fn thinking_stream_terminal_is_unchanged() {
     .await;
 }
 
-// --- 13-24: shapes the provider cannot be asked for ----------------------
+// --- 13-25: shapes the provider cannot be asked for ----------------------
 
 mod unit {
     use futures::StreamExt;
