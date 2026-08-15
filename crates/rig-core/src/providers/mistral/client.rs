@@ -20,11 +20,21 @@ pub type ClientBuilder<H = crate::markers::Missing> =
 
 impl Provider for MistralExt {
     type Builder = MistralBuilder;
-    const VERIFY_PATH: &'static str = "/models";
+    // The client base URL is the bare host, so every Mistral path carries its
+    // own `/v1` — as `completion_path` and `MistralModelLister` already do.
+    // `/models` is a gateway 404 ("no Route matched with those values"), which
+    // made `verify()` fail for every key, valid or not.
+    const VERIFY_PATH: &'static str = "/v1/models";
 }
 
 impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralExt {
     const PROVIDER_NAME: &'static str = "mistral";
+
+    /// Mistral labels its transport request id `mistral-correlation-id`, and
+    /// sends it on every response — success and error alike. It also mirrors
+    /// the same value under the gateway's `x-kong-request-id`; the
+    /// provider-branded spelling is the one rig reads.
+    const REQUEST_ID_HEADER: Option<&'static str> = Some("mistral-correlation-id");
 
     type StreamingUsage = Usage;
 
