@@ -1,0 +1,110 @@
+//! Cassette-backed coverage for Mistral's listing and embedding capabilities.
+//!
+//! Three defects live here, all found by comparing what the live API returns
+//! and accepts against what rig models:
+//!
+//! - `EmbeddingsBuilder` chunked by the shared OpenAI cap of 1024 inputs;
+//!   Mistral rejects anything over 256. The cap itself is pinned live here;
+//!   that rig now chunks *below* it is a unit assertion, because recording a
+//!   256-input success would commit ~5 MB of returned vectors to a fixture.
+//! - Every Mistral embedding model reported `ndims() == 0`, because the
+//!   default-dimension table consulted is OpenAI's and has no Mistral entry.
+//! - Model listing dropped `description` and `max_context_length`, both of
+//!   which `Model` has slots for.
+
+use anyhow::Result;
+use rig::client::{EmbeddingsClient, ModelListingClient};
+use rig::embeddings::EmbeddingModel as _;
+use rig::providers::mistral;
+
+use super::support::with_mistral_capability_cassette;
+
+/// One more than Mistral's real per-request cap, so a single un-chunked
+/// request would be rejected and only correct chunking can succeed.
+const OVER_ONE_BATCH: usize = 257;
+
+#[tokio::test]
+async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
+    with_mistral_capability_cassette(
+        "capability_edges/one_request_over_mistrals_batch_cap_is_rejected",
+        |client| async move {
+            let model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
+            // Straight through the model, bypassing the builder's chunking, so
+            // the cell pins Mistral's own cap rather than rig's arithmetic.
+            let error = model
+                .embed_texts((0..OVER_ONE_BATCH).map(|i| format!("document {i}")))
+                .await
+                // `Vec<Embedding>` is not `Debug`; map the Ok side away.
+                .map(|_| ())
+                .expect_err("Mistral must reject a batch over its cap");
+            assert_batch_cap_rejection(&error);
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+#[tokio::test]
+async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
+    with_mistral_capability_cassette(
+        "capability_edges/mistral_embed_reports_its_real_dimensions",
+        |client| async move {
+            let model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
+            // The claim under test is the *declared* dimension; the live call
+            // is what proves the declaration matches the vectors Mistral
+            // actually returns.
+            let declared = model.ndims();
+            let embedding = model.embed_text("dimension probe").await?;
+            assert_declared_matches_returned(declared, embedding.vec.len());
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+#[tokio::test]
+async fn list_models_keeps_description_and_context_length() -> Result<()> {
+    with_mistral_capability_cassette(
+        "capability_edges/list_models_keeps_description_and_context_length",
+        |client| async move {
+            let models = client.list_models().await?;
+            assert_listing_carries_mistrals_fields(&models.data);
+            Ok::<_, anyhow::Error>(())
+        },
+    )
+    .await
+}
+
+fn assert_batch_cap_rejection(error: &rig::embeddings::EmbeddingError) {
+    let rendered = error.to_string();
+    assert!(
+        rendered.contains("Too many inputs"),
+        "the rejection must be Mistral's batch-cap error, not some other failure: {rendered}"
+    );
+}
+
+fn assert_declared_matches_returned(declared: usize, returned: usize) {
+    assert_ne!(
+        declared, 0,
+        "a model that declares 0 dimensions cannot size a vector store; \
+         Mistral's models are absent from OpenAI's dimension table"
+    );
+    assert_eq!(
+        declared, returned,
+        "the declared dimension must match the vector Mistral actually returns"
+    );
+}
+
+fn assert_listing_carries_mistrals_fields(models: &[rig::model::Model]) {
+    assert!(!models.is_empty(), "the listing must not be empty");
+    assert!(
+        models.iter().any(|model| model.description.is_some()),
+        "Mistral's listing carries a `description` and `Model` has a slot for it"
+    );
+    assert!(
+        models
+            .iter()
+            .any(|model| model.context_length.is_some_and(|length| length > 0)),
+        "Mistral reports `max_context_length`, which is `Model::context_length`"
+    );
+}
