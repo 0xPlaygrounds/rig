@@ -1,0 +1,18 @@
+when:
+  path: /v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=0731ad3e5e01bd57-96676fe37e0f79bc-d23d9d715b22d1f9-2682e1df3a7785a5
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"text":"The sun was setting slowly, casting long shadows across the empty field.","usage":{"input_token_details":{"audio_tokens":54,"text_tokens":0},"input_tokens":54,"output_tokens":16,"total_tokens":70,"type":"tokens"}}'

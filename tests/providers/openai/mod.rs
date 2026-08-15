@@ -39,6 +39,7 @@ mod cassette {
     mod streaming_grammar_chat;
     mod streaming_tools;
     mod structured_output;
+    mod transcription_usage_matrix;
     mod truncated_turn_matrix;
     mod typed_prompt_tools;
     mod url_pdf_document;

@@ -124,6 +124,18 @@ pub(super) async fn with_openai_image_params_cassette<F, Fut>(
     with_openai_cassette(spec, test_body).await;
 }
 
+/// Per-bug wrapper for the transcription-usage matrix
+/// (`tests/cassettes/openai/transcription_usage_matrix/`).
+pub(super) async fn with_openai_transcription_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
 /// Like [`with_openai_cassette`], but authenticating with a deliberately
 /// invalid API key — for recording real 401s with no secret near the fixture.
 pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
