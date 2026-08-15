@@ -156,7 +156,12 @@ pub struct StreamedInvalidToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialStreamedTurn {
     /// Provider-assigned assistant message ID, when already known.
-    pub message_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub message_id: Option<rig_core::streaming::WireId>,
     /// Aggregated assistant text, when any text was streamed this turn.
     pub text: Option<String>,
     /// Accumulated reasoning, with any pending unsigned delta text assembled
@@ -191,7 +196,7 @@ impl PartialStreamedTurn {
             tool_items,
         )?;
         Some(Message::Assistant {
-            id: self.message_id.clone(),
+            id: self.message_id.clone().map(String::from),
             content,
         })
     }
@@ -245,7 +250,12 @@ impl PartialStreamedTurn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamedTurn {
     /// Provider-assigned assistant message ID, when available.
-    pub message_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub message_id: Option<rig_core::streaming::WireId>,
     /// The assistant content to record in history: canonical
     /// (reasoning → text → tool calls) when the turn produced reasoning or
     /// tool calls, otherwise the provider's aggregated choice as-is.
@@ -830,7 +840,10 @@ impl StreamedTurnAssembler {
     }
 
     /// Snapshot of the turn so far, for diagnostics and rollback messages.
-    pub fn partial_turn(&self, message_id: Option<String>) -> PartialStreamedTurn {
+    pub fn partial_turn(
+        &self,
+        message_id: Option<rig_core::streaming::WireId>,
+    ) -> PartialStreamedTurn {
         let reasoning = self.assembled_reasoning();
 
         PartialStreamedTurn {
@@ -850,7 +863,7 @@ impl StreamedTurnAssembler {
     /// ([`crate::streaming::StreamingCompletionResponse::choice`]).
     pub fn finish(
         mut self,
-        message_id: Option<String>,
+        message_id: Option<rig_core::streaming::WireId>,
         final_choice: &[AssistantContent],
     ) -> StreamedTurn {
         let reasoning = self.drain_reasoning();
@@ -1273,7 +1286,7 @@ mod tests {
             AssistantContent::ToolCall(tool_call("tc_1", "add")),
         ];
 
-        let turn = asm.finish(Some("msg_1".to_string()), &final_choice);
+        let turn = asm.finish(rig_core::streaming::WireId::new("msg_1"), &final_choice);
         let kinds: Vec<&'static str> = turn
             .choice
             .iter()
@@ -1646,7 +1659,7 @@ mod tests {
         )
         .expect("record should succeed");
         let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
-        run.streamed_turn(asm.finish(Some("msg_1".to_string()), &final_choice))
+        run.streamed_turn(asm.finish(rig_core::streaming::WireId::new("msg_1"), &final_choice))
             .expect("streamed_turn should succeed");
 
         let AgentRunStep::CallTools { calls } = run.next_step().expect("next_step") else {
@@ -1707,7 +1720,7 @@ mod tests {
             asm.ingest(&tool_call_item("tc_1", "default_api"))
                 .expect("ingest should succeed"),
         );
-        let partial = asm.partial_turn(Some("msg_1".to_string()));
+        let partial = asm.partial_turn(rig_core::streaming::WireId::new("msg_1"));
         assert_eq!(partial.text.as_deref(), Some("thinking "));
 
         let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
@@ -1756,7 +1769,7 @@ mod tests {
             asm.ingest(&tool_call_item("tc_1", "default_api"))
                 .expect("ingest should succeed"),
         );
-        let partial = asm.partial_turn(Some("msg_1".to_string()));
+        let partial = asm.partial_turn(rig_core::streaming::WireId::new("msg_1"));
 
         let err = run
             .resolve_streamed_invalid_tool_call(
@@ -1792,7 +1805,7 @@ mod tests {
             asm.ingest(&tool_call_item("tc_1", "default_api"))
                 .expect("ingest should succeed"),
         );
-        let partial = asm.partial_turn(Some("msg_1".to_string()));
+        let partial = asm.partial_turn(rig_core::streaming::WireId::new("msg_1"));
         let resolution = run
             .resolve_streamed_invalid_tool_call(
                 &partial,

@@ -285,7 +285,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 stored_turns.push(StoredResponseTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: response.message_id,
+                        id: response.message_id.map(String::from),
                         content: response.choice,
                     },
                     raw_response,

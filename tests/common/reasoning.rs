@@ -327,7 +327,7 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
     assistant_content.push(AssistantContent::text(&streamed_text));
 
     let turn1_assistant = Message::Assistant {
-        id: stream.message_id.clone(),
+        id: stream.message_id.clone().map(String::from),
         content: assistant_content,
     };
 
@@ -424,7 +424,7 @@ where
     );
 
     let turn1_assistant = Message::Assistant {
-        id: response.message_id,
+        id: response.message_id.map(String::from),
         content: response.choice,
     };
 

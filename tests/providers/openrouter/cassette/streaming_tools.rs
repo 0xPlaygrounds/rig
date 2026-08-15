@@ -239,7 +239,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             // The whole choice — reasoning block included — is what a caller
             // replays as history.
             let assistant_message = Message::Assistant {
-                id: stream.message_id.clone(),
+                id: stream.message_id.clone().map(String::from),
                 content: stream.choice.clone(),
             };
             let tool_result_message = Message::User {

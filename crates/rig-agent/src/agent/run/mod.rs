@@ -195,11 +195,26 @@ pub struct PendingToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelTurn {
     /// Provider-assigned assistant message ID, when available.
-    pub message_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub message_id: Option<rig_core::streaming::WireId>,
     /// Provider-assigned response-scoped ID, when available.
-    pub response_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub response_id: Option<rig_core::streaming::WireId>,
     /// The provider's transport request id for this attempt, when reported.
-    pub provider_request_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub provider_request_id: Option<rig_core::streaming::WireId>,
     /// The assistant content returned by the model.
     pub choice: Vec<AssistantContent>,
     /// Token usage reported by the provider for this completion request.
@@ -219,7 +234,7 @@ impl ModelTurn {
     /// Create a model turn from response parts and the tool names advertised
     /// for the turn.
     pub fn new(
-        message_id: Option<String>,
+        message_id: Option<rig_core::streaming::WireId>,
         choice: Vec<AssistantContent>,
         usage: Usage,
         executable_tool_names: BTreeSet<String>,
@@ -240,8 +255,8 @@ impl ModelTurn {
     /// Attach the remaining response identity metadata this attempt reported.
     pub fn with_identity(
         mut self,
-        response_id: Option<String>,
-        provider_request_id: Option<String>,
+        response_id: Option<rig_core::streaming::WireId>,
+        provider_request_id: Option<rig_core::streaming::WireId>,
     ) -> Self {
         self.response_id = response_id;
         self.provider_request_id = provider_request_id;
@@ -286,7 +301,12 @@ pub enum ModelTurnOutcome {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResolvingState {
-    message_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    message_id: Option<rig_core::streaming::WireId>,
     /// The unmodified model output, used for diagnostic histories and retry
     /// messages (repairs are never reflected in those).
     original_choice: Vec<AssistantContent>,
@@ -330,7 +350,12 @@ fn has_tool_calls(items: &[AssistantContent]) -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TurnState {
-    message_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    message_id: Option<rig_core::streaming::WireId>,
     items: Vec<AssistantContent>,
     has_tool_calls: bool,
     /// Keyed by position in `items` (see `ResolvingState::skipped`).
@@ -632,7 +657,7 @@ impl AgentRun {
                 let content = turn.items;
                 if !is_empty_assistant_turn(&content) {
                     self.new_messages.push(Message::Assistant {
-                        id: turn.message_id,
+                        id: turn.message_id.map(String::from),
                         content,
                     });
                 }
@@ -774,7 +799,7 @@ impl AgentRun {
                     let missing = self.missing_required_output_fields(&args);
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages.push(Message::Assistant {
-                            id: message_id,
+                            id: message_id.map(String::from),
                             content: items.clone(),
                         });
                         let feedback = format!(
@@ -802,7 +827,7 @@ impl AgentRun {
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
                     self.new_messages.push(Message::Assistant {
-                        id: message_id,
+                        id: message_id.map(String::from),
                         content: final_items.clone(),
                     });
 
@@ -817,7 +842,7 @@ impl AgentRun {
                 // thing: keep the turn out of history and carry on.
                 if !is_empty_assistant_turn(&items) {
                     self.new_messages.push(Message::Assistant {
-                        id: message_id,
+                        id: message_id.map(String::from),
                         content: items.clone(),
                     });
                 }
@@ -1080,7 +1105,7 @@ impl AgentRun {
     /// the streamed `internal_call_ids`.
     fn finalize_turn(
         &mut self,
-        message_id: Option<String>,
+        message_id: Option<rig_core::streaming::WireId>,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
@@ -1180,7 +1205,7 @@ impl AgentRun {
         match action {
             ValidatedInvalidToolCallAction::Retry { feedback } => {
                 self.new_messages.push(Message::Assistant {
-                    id: resolving.message_id.clone(),
+                    id: resolving.message_id.clone().map(String::from),
                     content: resolving.original_choice.clone(),
                 });
                 let Some(user_message) = invalid_tool_retry_user_message(
@@ -1582,7 +1607,7 @@ impl AgentRun {
                 let mut diagnostic_messages = self.new_messages.clone();
                 if !is_empty_assistant_turn(&turn.choice) {
                     diagnostic_messages.push(Message::Assistant {
-                        id: turn.message_id.clone(),
+                        id: turn.message_id.clone().map(String::from),
                         content: turn.choice.clone(),
                     });
                 }
@@ -1627,7 +1652,7 @@ impl AgentRun {
     fn diagnostic_history(&self, resolving: &ResolvingState) -> Vec<Message> {
         let mut diagnostic_messages = self.new_messages.clone();
         diagnostic_messages.push(Message::Assistant {
-            id: resolving.message_id.clone(),
+            id: resolving.message_id.clone().map(String::from),
             content: resolving.original_choice.clone(),
         });
         build_full_history(self.chat_history.as_deref(), diagnostic_messages)

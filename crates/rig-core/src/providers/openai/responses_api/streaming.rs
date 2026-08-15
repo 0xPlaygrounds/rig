@@ -991,7 +991,7 @@ pub(crate) async fn completion_response_from_raw_choices(
     let message_id = stream
         .message_id
         .clone()
-        .or_else(|| message_id_from_response(raw_response));
+        .or_else(|| message_id_from_response(raw_response).and_then(crate::streaming::WireId::new));
     let finish_reason = terminal
         .as_ref()
         .and_then(|terminal| terminal.finish_reason.clone())
@@ -1010,7 +1010,8 @@ pub(crate) async fn completion_response_from_raw_choices(
         .response
         .as_ref()
         .and_then(|terminal| terminal.response_id.clone())
-        .or_else(|| Some(raw_response.id.clone()).filter(|id| !id.is_empty()));
+        // `WireId::new` is the empty-string filter this used to spell by hand.
+        .or_else(|| crate::streaming::WireId::new(raw_response.id.clone()));
 
     Ok(Some(
         completion::CompletionResponse::new(choice, usage, provider)

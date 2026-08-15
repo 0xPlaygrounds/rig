@@ -913,7 +913,7 @@ pub(crate) struct StreamingTurnSource {
     /// The raw provider choice of the most recent turn; the final response
     /// surfaces it as-is, even when canonical reordering was recorded in history.
     last_final_choice: Vec<AssistantContent>,
-    last_message_id: Option<String>,
+    last_message_id: Option<rig_core::streaming::WireId>,
     /// Resolved agent name, kept only for the empty-turn diagnostic warning.
     agent_name: String,
     /// Whether we created the agent span (vs. adopting a caller's ambient span);
