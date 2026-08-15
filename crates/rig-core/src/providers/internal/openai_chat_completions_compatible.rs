@@ -106,7 +106,17 @@ pub(crate) fn normalize_openai_response<C>(
         )
     })?;
 
-    let choice = crate::message::require_non_empty_response(content)?;
+    // A turn the provider cut short can legitimately be contentless — a cap
+    // spent entirely on reasoning tokens is the common case — and the finish
+    // reason is then the whole diagnostic, so the empty choice survives to
+    // carry it. A turn that ran to completion with nothing in it is still a
+    // provider defect. This mirrors the Responses API's `status: incomplete`
+    // rule and the streaming path, which already yields a terminal record with
+    // the reason regardless of what the stream produced.
+    let choice = match &finish_reason {
+        Some(reason) if reason.truncated_output() => content,
+        _ => crate::message::require_non_empty_response(content)?,
+    };
 
     Ok(
         crate::completion::CompletionResponse::new(choice, usage, provider)
@@ -831,6 +841,86 @@ mod tests {
             "test-compatible",
             crate::streaming::normalize_stream(raw, Ok),
         ))
+    }
+
+    /// Normalize a turn that produced `content` under `finish_reason`.
+    fn normalize_one(
+        finish_reason: &'static str,
+        content: Vec<crate::completion::AssistantContent>,
+    ) -> Result<crate::completion::CompletionResponse, CompletionError> {
+        super::normalize_openai_response(
+            "test-compatible",
+            &[()],
+            Some("chatcmpl-1"),
+            Some("test-model"),
+            crate::completion::Usage {
+                input_tokens: 16,
+                output_tokens: 16,
+                total_tokens: 32,
+                reasoning_tokens: 16,
+                ..Default::default()
+            },
+            |(): &()| finish_reason,
+            |()| Some(content),
+        )
+    }
+
+    /// A cap spent entirely on hidden reasoning: the turn is empty and the
+    /// reason is the whole diagnostic, so it must reach the caller.
+    #[test]
+    fn empty_choice_survives_a_truncated_turn() {
+        for (wire, expected) in [
+            ("length", crate::completion::FinishReason::Length),
+            (
+                "content_filter",
+                crate::completion::FinishReason::ContentFilter,
+            ),
+        ] {
+            let response = normalize_one(wire, Vec::new())
+                .unwrap_or_else(|error| panic!("{wire} should normalize: {error}"));
+
+            assert_eq!(response.finish_reason(), Some(expected));
+            assert!(response.choice.is_empty());
+            assert_eq!(response.usage.reasoning_tokens, 16);
+        }
+    }
+
+    /// A turn that ran to completion with nothing in it is still a provider
+    /// defect, and so is one whose reason rig could not classify.
+    #[test]
+    fn empty_choice_still_fails_a_completed_turn() {
+        for wire in ["stop", "tool_calls", "GUARDRAIL_INTERVENED", ""] {
+            assert!(
+                normalize_one(wire, Vec::new()).is_err(),
+                "an empty {wire:?} turn must stay an error"
+            );
+        }
+    }
+
+    #[test]
+    fn non_empty_truncated_turn_is_unchanged() {
+        let response = normalize_one(
+            "length",
+            vec![crate::completion::AssistantContent::text("hi")],
+        )
+        .expect("partial text should normalize");
+
+        assert_eq!(
+            response.finish_reason(),
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert_eq!(response.choice.len(), 1);
+    }
+
+    #[test]
+    fn truncated_output_covers_only_the_cut_short_reasons() {
+        use crate::completion::FinishReason;
+
+        assert!(FinishReason::Length.truncated_output());
+        assert!(FinishReason::ContentFilter.truncated_output());
+        assert!(!FinishReason::Stop.truncated_output());
+        assert!(!FinishReason::ToolCalls.truncated_output());
+        assert!(!FinishReason::Other("whatever".to_owned()).truncated_output());
     }
 
     #[test]

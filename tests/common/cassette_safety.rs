@@ -28,6 +28,12 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_completions_cassette_result",
             "with_openai_vllm_cassette",
             "with_local_reasoning_content_cassette",
+            "with_openai_refusal_cassette",
+            "with_openai_max_tokens_cassette",
+            "with_openai_image_params_cassette",
+            "with_openai_truncation_cassette",
+            "with_openai_transcription_cassette",
+            "with_openai_audio_cassette",
         ],
     },
     ProviderCassetteSuite {

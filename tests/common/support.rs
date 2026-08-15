@@ -659,6 +659,28 @@ pub(crate) async fn collect_stream_observation(stream: &mut StreamingResult) -> 
     observation
 }
 
+/// Drive a raw provider stream to exhaustion, keeping both the visible text
+/// and the terminal record.
+///
+/// The observation helpers above drop the terminal record; matrices that are
+/// about what the terminal *carries* (a finish reason, usage) need it.
+pub(crate) async fn collect_text_and_terminal(
+    mut stream: StreamingCompletionResponse,
+) -> (String, Option<rig::streaming::StreamFinal>) {
+    let mut text = String::new();
+    let mut terminal = None;
+
+    while let Some(item) = stream.next().await {
+        match item.expect("stream item should not be an error") {
+            StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
+            StreamedAssistantContent::Final(final_record) => terminal = Some(final_record),
+            _ => {}
+        }
+    }
+
+    (text, terminal)
+}
+
 pub(crate) async fn collect_raw_stream_observation(
     mut stream: StreamingCompletionResponse,
 ) -> RawStreamObservation

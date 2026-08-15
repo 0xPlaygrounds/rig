@@ -5,6 +5,8 @@ mod regressions;
 mod cassette {
     mod additional_params_tools;
     mod agent;
+    #[cfg(feature = "audio")]
+    mod audio_params_matrix;
     mod chat_history;
     mod completions_api;
     mod document_ordering;
@@ -13,12 +15,16 @@ mod cassette {
     mod extractor;
     mod extractor_usage;
     mod gpt_5_6_reasoning;
+    #[cfg(feature = "image")]
+    mod image_params_matrix;
+    mod max_completion_tokens_matrix;
     mod models;
     mod multi_extract;
     mod openai_compatible_reasoning_content;
     mod permission_control;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod refusal_matrix;
     mod regression_suite;
     mod request_hook;
     mod response_identity;
@@ -35,6 +41,8 @@ mod cassette {
     mod streaming_grammar_chat;
     mod streaming_tools;
     mod structured_output;
+    mod transcription_usage_matrix;
+    mod truncated_turn_matrix;
     mod typed_prompt_tools;
     mod url_pdf_document;
     mod vllm;
