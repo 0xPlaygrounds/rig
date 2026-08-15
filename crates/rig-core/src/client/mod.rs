@@ -698,19 +698,29 @@ where
             StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
                 Err(VerifyError::InvalidAuthentication)
             }
+            // The failed response's headers are preserved on every branch, so
+            // a caller can read rate-limit metadata such as `Retry-After` off
+            // a rejected verification (rig#2210).
             StatusCode::INTERNAL_SERVER_ERROR => {
-                let text = http_client::text(response).await?;
+                let headers = Box::new(response.headers().clone());
+                let body = http_client::text(response).await?;
                 Err(VerifyError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        text,
-                    ),
+                    http_client::Error::InvalidStatusCodeWithDetails {
+                        status: StatusCode::INTERNAL_SERVER_ERROR,
+                        body,
+                        headers,
+                    },
                 ))
             }
             status if status.as_u16() == 529 => {
-                let text = http_client::text(response).await?;
+                let headers = Box::new(response.headers().clone());
+                let body = http_client::text(response).await?;
                 Err(VerifyError::HttpError(
-                    http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                    http_client::Error::InvalidStatusCodeWithDetails {
+                        status,
+                        body,
+                        headers,
+                    },
                 ))
             }
             _ => {
@@ -719,9 +729,14 @@ where
                 if status.is_success() {
                     Ok(())
                 } else {
-                    let text: String = String::from_utf8_lossy(&response.into_body().await?).into();
+                    let headers = Box::new(response.headers().clone());
+                    let body: String = String::from_utf8_lossy(&response.into_body().await?).into();
                     Err(VerifyError::HttpError(
-                        http_client::Error::InvalidStatusCodeWithMessage(status, text),
+                        http_client::Error::InvalidStatusCodeWithDetails {
+                            status,
+                            body,
+                            headers,
+                        },
                     ))
                 }
             }

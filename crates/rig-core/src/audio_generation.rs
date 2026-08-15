@@ -141,12 +141,9 @@ mod provider_response_tests {
     #[test]
     fn audio_generation_error_provider_response_helpers_with_preserved_json_body() {
         let body = r#"{"error":{"message":"invalid voice"}}"#;
-        let error =
-            AudioGenerationError::ProviderResponse(provider_response::ProviderResponseError {
-                status: None,
-                body: body.to_string(),
-                provider_request_id: None,
-            });
+        let error = AudioGenerationError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status(body.to_string()),
+        );
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);

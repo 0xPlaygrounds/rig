@@ -67,6 +67,39 @@ impl Error {
             _ => None,
         }
     }
+
+    /// Returns the failed response's headers, when this error preserved them.
+    ///
+    /// Rig's bundled HTTP clients capture the full [`HeaderMap`] whenever a
+    /// non-success status error is built from a live response, so rate-limit
+    /// metadata such as `Retry-After` or `x-ratelimit-*` stays readable
+    /// (rig#2210). This is the accessor a [`retry::RetryPolicy`] uses to honor
+    /// a server-supplied backoff, since it is handed this error directly:
+    ///
+    /// ```
+    /// # use rig::http_client::{Error, retry::RetryPolicy};
+    /// # use std::time::Duration;
+    /// fn retry_after(error: &Error) -> Option<Duration> {
+    ///     let seconds = error
+    ///         .non_success_headers()?
+    ///         .get(http::header::RETRY_AFTER)?
+    ///         .to_str()
+    ///         .ok()?
+    ///         .parse()
+    ///         .ok()?;
+    ///     Some(Duration::from_secs(seconds))
+    /// }
+    /// ```
+    ///
+    /// Returns `None` when the error carries no captured headers: transports
+    /// that report a non-success status without them, and errors built from
+    /// only a status and body.
+    pub fn non_success_headers(&self) -> Option<&HeaderMap> {
+        match self {
+            Self::InvalidStatusCodeWithDetails { headers, .. } => Some(headers),
+            _ => None,
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -298,3 +331,68 @@ impl_http_client_ext!(
     #[cfg_attr(docsrs, doc(cfg(feature = "reqwest-middleware")))]
     reqwest_middleware::ClientWithMiddleware
 );
+
+#[cfg(test)]
+mod non_success_header_tests {
+    use super::*;
+
+    /// rig#2210: the bundled transport's own error constructor is where the
+    /// headers are captured, so drive it with a real `reqwest::Response`.
+    #[tokio::test]
+    async fn non_success_status_error_preserves_response_headers() {
+        let response = http::Response::builder()
+            .status(StatusCode::TOO_MANY_REQUESTS)
+            .header("retry-after", "20")
+            .header("x-ratelimit-remaining", "0")
+            .body(r#"{"error":{"message":"rate limited"}}"#)
+            .expect("valid response");
+
+        let error = non_success_status_error(reqwest::Response::from(response)).await;
+
+        assert_eq!(
+            error.non_success_status(),
+            Some(StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(
+            error.non_success_body(),
+            Some(r#"{"error":{"message":"rate limited"}}"#)
+        );
+        let headers = error
+            .non_success_headers()
+            .expect("headers captured at error construction");
+        assert_eq!(
+            headers.get("retry-after").and_then(|v| v.to_str().ok()),
+            Some("20")
+        );
+        assert_eq!(
+            headers
+                .get("x-ratelimit-remaining")
+                .and_then(|v| v.to_str().ok()),
+            Some("0")
+        );
+    }
+
+    /// `None` means "not captured" and must not be confused with an empty map:
+    /// every other shape of this error reports it.
+    #[test]
+    fn non_success_headers_absent_when_not_captured() {
+        for error in [
+            Error::InvalidStatusCodeWithMessage(
+                StatusCode::TOO_MANY_REQUESTS,
+                "rate limited".to_string(),
+            ),
+            Error::InvalidStatusCode(StatusCode::TOO_MANY_REQUESTS),
+            Error::StreamEnded,
+        ] {
+            assert!(error.non_success_headers().is_none());
+        }
+
+        // A captured-but-empty map is `Some`, not `None`.
+        let error = Error::InvalidStatusCodeWithDetails {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            body: "rate limited".to_string(),
+            headers: Box::new(HeaderMap::new()),
+        };
+        assert!(error.non_success_headers().is_some_and(HeaderMap::is_empty));
+    }
+}

@@ -1977,11 +1977,9 @@ mod tests {
     #[test]
     fn completion_error_provider_response_helpers_with_preserved_json_body() {
         let body = r#"{"error":{"code":"rate_limit","message":"slow down"}}"#;
-        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
-            status: None,
-            body: body.to_string(),
-            provider_request_id: None,
-        });
+        let error = CompletionError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status(body.to_string()),
+        );
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(error.provider_response_status(), None);
@@ -2001,11 +1999,11 @@ mod tests {
     #[test]
     fn completion_error_provider_response_helpers_with_preserved_status() {
         let body = r#"{"error":{"message":"too many requests"}}"#;
-        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
-            status: Some(http::StatusCode::TOO_MANY_REQUESTS),
-            body: body.to_string(),
-            provider_request_id: None,
-        });
+        let error =
+            CompletionError::ProviderResponse(provider_response::ProviderResponseError::new(
+                http::StatusCode::TOO_MANY_REQUESTS,
+                body.to_string(),
+            ));
 
         assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(
@@ -2016,11 +2014,11 @@ mod tests {
 
     #[test]
     fn completion_error_provider_response_helpers_with_preserved_plain_text_body() {
-        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
-            status: None,
-            body: "provider exploded".to_string(),
-            provider_request_id: None,
-        });
+        let error = CompletionError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status(
+                "provider exploded".to_string(),
+            ),
+        );
 
         assert_eq!(error.provider_response_body(), Some("provider exploded"));
         assert_eq!(error.provider_response_status(), None);
@@ -2083,11 +2081,9 @@ mod tests {
 
     #[test]
     fn provider_response_json_returns_none_for_empty_preserved_body() {
-        let error = CompletionError::ProviderResponse(provider_response::ProviderResponseError {
-            status: None,
-            body: String::new(),
-            provider_request_id: None,
-        });
+        let error = CompletionError::ProviderResponse(
+            provider_response::ProviderResponseError::without_status(String::new()),
+        );
 
         assert_eq!(error.provider_response_body(), Some(""));
         assert_eq!(
