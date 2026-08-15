@@ -955,6 +955,7 @@ impl TryFrom<Message> for message::Message {
                 content,
                 tool_calls,
                 reasoning,
+                refusal,
                 ..
             } => {
                 let mut assistant_content = Vec::new();
@@ -963,6 +964,10 @@ impl TryFrom<Message> for message::Message {
                     && !reasoning.is_empty()
                 {
                     assistant_content.push(message::AssistantContent::reasoning(reasoning));
+                }
+
+                if let Some(refusal) = assistant_refusal_fallback(&content, refusal.as_deref()) {
+                    assistant_content.push(message::AssistantContent::text(refusal));
                 }
 
                 assistant_content.extend(content.into_iter().map(|content| match content {
@@ -1162,12 +1167,13 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             |choice| choice.finish_reason.as_str(),
             |choice| match &choice.message {
                 Message::Assistant {
-                    content,
+                    content: wire_content,
                     tool_calls,
                     reasoning,
+                    refusal,
                     ..
                 } => {
-                    let mut content = content
+                    let mut content = wire_content
                         .iter()
                         .filter_map(|c| {
                             let s = match c {
@@ -1181,6 +1187,12 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                             }
                         })
                         .collect::<Vec<_>>();
+
+                    if let Some(refusal) =
+                        assistant_refusal_fallback(wire_content, refusal.as_deref())
+                    {
+                        content.push(completion::AssistantContent::text(refusal));
+                    }
 
                     if let Some(reasoning) = reasoning {
                         // llama.cpp exposes hidden reasoning on a separate non-standard field.
@@ -1235,6 +1247,37 @@ impl ProviderResponseExt for CompletionResponse {
     }
 }
 
+/// The assistant message's top-level `refusal`, when it is the turn's only
+/// visible text.
+///
+/// This wire spells a refusal as a *sibling* of `content`
+/// (`{"content": null, "refusal": "I'm sorry, …"}`); the `refusal` **content
+/// part** modeled by [`AssistantContent::Refusal`] is the Responses API's
+/// shape, which chat completions never sends. Every path that reads `content`
+/// alone therefore drops a real refusal entirely, so all of them route the
+/// fallback through here — one home for the rule, and no way for the raw text
+/// view and the normalized response to disagree about whether a refusal is
+/// content.
+///
+/// The verdict is taken from the wire parts themselves rather than from
+/// whatever each caller built out of them, so a caller that discards empty
+/// parts and one that keeps them cannot disagree about when the fallback
+/// applies.
+pub(crate) fn assistant_refusal_fallback<'a>(
+    content: &[AssistantContent],
+    refusal: Option<&'a str>,
+) -> Option<&'a str> {
+    let has_text = content.iter().any(|part| {
+        !match part {
+            AssistantContent::Text { text } => text,
+            AssistantContent::Refusal { refusal } => refusal,
+        }
+        .is_empty()
+    });
+
+    refusal.filter(|refusal| !has_text && !refusal.is_empty())
+}
+
 pub(crate) fn assistant_message_text_response(message: &Message) -> Option<String> {
     let Message::Assistant {
         content, refusal, ..
@@ -1251,10 +1294,8 @@ pub(crate) fn assistant_message_text_response(message: &Message) -> Option<Strin
         })
         .collect::<Vec<_>>();
 
-    if segments.is_empty()
-        && let Some(refusal) = refusal.as_ref().filter(|refusal| !refusal.is_empty())
-    {
-        segments.push(refusal.clone());
+    if let Some(refusal) = assistant_refusal_fallback(content, refusal.as_deref()) {
+        segments.push(refusal.to_owned());
     }
 
     if segments.is_empty() {
@@ -1439,6 +1480,26 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// this to false.
     const STREAM_INCLUDE_USAGE: bool = true;
 
+    /// Whether `model`'s endpoint rejects the legacy `max_tokens` field and
+    /// requires `max_completion_tokens` instead.
+    ///
+    /// OpenAI's reasoning-class models answer a capped request with
+    /// `"Unsupported parameter: 'max_tokens' is not supported with this model.
+    /// Use 'max_completion_tokens' instead."`, so such a request cannot
+    /// succeed at all until the field is respelled.
+    ///
+    /// Scoped to the model rather than applied to every request on purpose:
+    /// this same extension is how rig reaches OpenAI-*compatible* servers
+    /// (mistral.rs, vLLM, llama.cpp, gateways), whose endpoints mostly know
+    /// only the legacy field, and OpenAI's own non-reasoning models still take
+    /// it. Everything outside the returned set keeps the bytes it always sent.
+    /// The default is `false` — a provider that has not been observed to
+    /// reject the legacy field says so by saying nothing.
+    fn requires_modern_output_cap(&self, model: &str) -> bool {
+        let _ = model;
+        false
+    }
+
     /// The usage payload parsed from streaming chunks and carried on the
     /// final streaming response. OpenAI's [`Usage`] for most providers;
     /// providers with richer usage accounting (e.g. Mistral's cached-token
@@ -1568,6 +1629,78 @@ impl OpenAICompatibleProvider for super::OpenAICompletionsExt {
 
     type StreamingUsage = Usage;
     type Response = CompletionResponse;
+
+    fn requires_modern_output_cap(&self, model: &str) -> bool {
+        is_openai_reasoning_model(model)
+    }
+}
+
+/// Whether `model` names one of OpenAI's reasoning families, which take the
+/// output cap only as `max_completion_tokens`.
+///
+/// Matched by family prefix rather than by an exhaustive list of releases: the
+/// families are `gpt-5` and up, and the `o`-series (`o1`, `o3-mini`,
+/// `o4-mini`, …), and each gains dated snapshots and size variants that an
+/// enumerated list could not keep up with. A future family this misses keeps
+/// today's behavior — the legacy field, and the provider's own explicit
+/// `Unsupported parameter` error — rather than silently sending a field some
+/// other backend does not know.
+pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
+    /// `gpt-5` … `gpt-9`, in any spelling the family uses (`gpt-5`,
+    /// `gpt-5.1`, `gpt-5-nano`, `gpt-5-2025-08-07`).
+    ///
+    /// The major version is a single digit on purpose. Every released
+    /// generation is spelled `gpt-<digit>` or `gpt-<digit>.<minor>`, so a
+    /// multi-digit run (`gpt-45`, or a compatible server's own model name) is
+    /// not a generation number and must not be read as one. A hypothetical
+    /// `gpt-10` would fall through to the legacy field — today's behavior, and
+    /// a visible provider error — rather than a field its backend may not know.
+    fn is_numbered_gpt_family(model: &str, lowest: u32) -> bool {
+        model
+            .strip_prefix("gpt-")
+            .and_then(|rest| rest.split(['.', '-']).next())
+            .filter(|major| major.len() == 1)
+            .and_then(|major| major.parse::<u32>().ok())
+            .is_some_and(|major| major >= lowest)
+    }
+
+    /// `o1`, `o3`, `o4`, … — but not `openai-…` or any other `o` word.
+    fn is_o_series(model: &str) -> bool {
+        let mut chars = model.chars();
+        chars.next() == Some('o')
+            && chars.next().is_some_and(|digit| digit.is_ascii_digit())
+            && chars
+                .next()
+                .is_none_or(|next| next == '-' || next.is_ascii_digit())
+    }
+
+    is_numbered_gpt_family(model, 5) || is_o_series(model)
+}
+
+/// Serialize a chat-completions request into the body the target endpoint
+/// expects, applying the spellings that depend on the endpoint rather than on
+/// the request.
+///
+/// Both the unary and the streaming path build their body through here so the
+/// two cannot disagree about what rig sends.
+pub(crate) fn request_body(
+    request: &CompletionRequest,
+    modern_output_cap: bool,
+) -> Result<serde_json::Value, CompletionError> {
+    let mut body = serde_json::to_value(request)?;
+
+    if modern_output_cap
+        && let Some(object) = body.as_object_mut()
+        && let Some(max_tokens) = object.remove("max_tokens")
+    {
+        // A caller who spelled the modern field themselves (through
+        // `additional_params`) keeps their own value; the legacy key still has
+        // to go, since reasoning models reject its mere presence — and behind
+        // this endpoint there is no backend that wants it.
+        object.entry("max_completion_tokens").or_insert(max_tokens);
+    }
+
+    Ok(body)
 }
 
 /// A chat-completions model over any [`OpenAICompatibleProvider`] extension.
@@ -1982,6 +2115,22 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
 
 impl<Ext, H> GenericCompletionModel<Ext, H>
 where
+    Ext: OpenAICompatibleProvider,
+{
+    /// Whether outgoing requests for `model` spell the output-token cap
+    /// `max_completion_tokens`; see
+    /// [`OpenAICompatibleProvider::requires_modern_output_cap`].
+    ///
+    /// `model` is the request's resolved model, not the handle's: a per-request
+    /// override changes which endpoint answers, so it has to decide the
+    /// spelling too.
+    pub(crate) fn sends_modern_output_cap(&self, model: &str) -> bool {
+        self.client.ext().requires_modern_output_cap(model)
+    }
+}
+
+impl<Ext, H> GenericCompletionModel<Ext, H>
+where
     crate::client::Client<Ext, H>:
         HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
     Ext: crate::client::Provider
@@ -2039,7 +2188,8 @@ where
         .system_instructions(system_instructions.as_deref(), record_telemetry_content)
         .build();
 
-        let mut request_body = serde_json::to_value(&request)?;
+        let modern_output_cap = self.sends_modern_output_cap(&request.model);
+        let mut request_body = request_body(&request, modern_output_cap)?;
         self.client
             .ext()
             .finalize_request_body_with_options(&mut request_body, options)?;
@@ -2238,6 +2388,7 @@ mod tests {
     use crate::completion::CompletionRequestBuilder;
     use crate::telemetry::ProviderResponseExt;
     use crate::test_utils::MockCompletionModel;
+    use serde_json::{Value, json};
     use std::collections::HashMap;
 
     fn test_document(id: &str, text: &str) -> crate::completion::Document {
@@ -2835,6 +2986,176 @@ mod tests {
         assert_eq!(response.get_text_response(), Some("blocked".to_owned()));
     }
 
+    /// One chat-completions turn, built from the wire shape a structured-output
+    /// refusal actually has (`content: null` beside a top-level `refusal`).
+    fn refusal_response(body: Value) -> CompletionResponse {
+        serde_json::from_value(json!({
+            "id": "chatcmpl-refusal",
+            "object": "chat.completion",
+            "created": 0,
+            "model": GPT_4O,
+            "choices": [{ "index": 0, "message": body, "finish_reason": "stop" }],
+        }))
+        .expect("the refusal wire shape must deserialize")
+    }
+
+    fn normalized_text(response: CompletionResponse) -> Vec<completion::AssistantContent> {
+        use crate::completion::NormalizeCompletionResponse;
+
+        response
+            .normalize("openai")
+            .expect("a refusal turn must normalize")
+            .choice
+    }
+
+    #[test]
+    fn refusal_sibling_of_null_content_becomes_assistant_text() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm sorry, I can't help with that."
+        }));
+
+        assert_eq!(
+            normalized_text(response),
+            vec![completion::AssistantContent::text(
+                "I'm sorry, I can't help with that."
+            )]
+        );
+    }
+
+    /// The raw text view and the normalized response must not disagree about
+    /// whether the turn said anything — the disagreement was the bug.
+    #[test]
+    fn refusal_raw_and_normalized_views_agree() {
+        let message = json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm sorry, I can't help with that."
+        });
+        let raw_text = refusal_response(message.clone())
+            .get_text_response()
+            .expect("raw text view");
+
+        assert_eq!(
+            normalized_text(refusal_response(message)),
+            vec![completion::AssistantContent::text(raw_text)]
+        );
+    }
+
+    /// Content wins: the fallback only fires when the parts carry nothing, so a
+    /// turn with both never duplicates its text.
+    #[test]
+    fn refusal_beside_non_empty_content_does_not_duplicate() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": "here is the answer",
+            "refusal": "I'm sorry, I can't help with that."
+        }));
+
+        assert_eq!(
+            normalized_text(response),
+            vec![completion::AssistantContent::text("here is the answer")]
+        );
+    }
+
+    /// An empty `refusal` is not content: the turn stays an empty-response
+    /// error rather than gaining a fabricated empty text block.
+    #[test]
+    fn empty_refusal_is_not_content() {
+        use crate::completion::NormalizeCompletionResponse;
+
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": ""
+        }));
+
+        assert!(response.normalize("openai").is_err());
+    }
+
+    /// A refusal beside tool calls keeps both — the fallback is about the
+    /// message's *text*, and tool calls are appended as before.
+    #[test]
+    fn refusal_beside_tool_calls_keeps_both() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm sorry, I can't help with that.",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "lookup", "arguments": "{}" }
+            }]
+        }));
+
+        let content = normalized_text(response);
+        assert_eq!(content.len(), 2);
+        assert_eq!(
+            content.first(),
+            Some(&completion::AssistantContent::text(
+                "I'm sorry, I can't help with that."
+            ))
+        );
+        assert!(matches!(
+            content.get(1),
+            Some(completion::AssistantContent::ToolCall(_))
+        ));
+    }
+
+    /// The Responses-shaped `refusal` **content part** is not what chat
+    /// completions sends, but the model still accepts it — and it must not
+    /// also trigger the sibling fallback.
+    #[test]
+    fn refusal_content_part_still_maps_to_text_without_the_fallback() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": [{ "type": "refusal", "refusal": "part refusal" }],
+            "refusal": "sibling refusal"
+        }));
+
+        assert_eq!(
+            normalized_text(response),
+            vec![completion::AssistantContent::text("part refusal")]
+        );
+    }
+
+    /// The history round trip: a stored refusal-only assistant message used to
+    /// fail conversion outright.
+    #[test]
+    fn refusal_only_message_converts_into_rig_history() {
+        let wire: Message = serde_json::from_value(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm sorry, I can't help with that."
+        }))
+        .expect("wire message");
+
+        let converted = message::Message::try_from(wire).expect("history conversion");
+
+        assert_eq!(
+            converted,
+            message::Message::Assistant {
+                id: None,
+                content: vec![message::AssistantContent::text(
+                    "I'm sorry, I can't help with that."
+                )],
+            }
+        );
+    }
+
+    #[test]
+    fn refusal_only_message_with_empty_refusal_still_fails_conversion() {
+        let wire: Message = serde_json::from_value(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": ""
+        }))
+        .expect("wire message");
+
+        assert!(message::Message::try_from(wire).is_err());
+    }
+
     #[test]
     fn test_max_tokens_is_forwarded_to_request() {
         let request = crate::completion::CompletionRequest {
@@ -2864,6 +3185,166 @@ mod tests {
             serde_json::to_value(openai_request).expect("serialization should succeed");
 
         assert_eq!(serialized["max_tokens"], 4096);
+    }
+
+    /// A chat-completions request whose only interesting property is the cap.
+    fn capped_request(
+        max_tokens: Option<u64>,
+        additional_params: Option<Value>,
+    ) -> CompletionRequest {
+        CompletionRequest::try_from(OpenAIRequestParams {
+            model: "gpt-4o-mini".to_string(),
+            request: crate::completion::CompletionRequest {
+                model: None,
+                preamble: None,
+                chat_history: vec!["Hello".into()],
+                documents: vec![],
+                tools: vec![],
+                temperature: None,
+                max_tokens,
+                tool_choice: None,
+                additional_params,
+                output_schema: None,
+                record_telemetry_content: false,
+            },
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: true,
+            supports_tools: true,
+        })
+        .expect("request conversion should succeed")
+    }
+
+    #[test]
+    fn request_body_keeps_the_legacy_cap_when_the_endpoint_wants_it() {
+        let body =
+            request_body(&capped_request(Some(4096), None), false).expect("body should serialize");
+
+        assert_eq!(body["max_tokens"], 4096);
+        assert!(body.get("max_completion_tokens").is_none());
+    }
+
+    #[test]
+    fn request_body_renames_the_cap_for_the_modern_endpoint() {
+        let body =
+            request_body(&capped_request(Some(4096), None), true).expect("body should serialize");
+
+        assert_eq!(body["max_completion_tokens"], 4096);
+        assert!(
+            body.get("max_tokens").is_none(),
+            "the legacy key must leave the body: reasoning models reject its presence"
+        );
+    }
+
+    #[test]
+    fn request_body_without_a_cap_carries_neither_spelling() {
+        let body = request_body(&capped_request(None, None), true).expect("body should serialize");
+
+        assert!(body.get("max_tokens").is_none());
+        assert!(body.get("max_completion_tokens").is_none());
+    }
+
+    #[test]
+    fn request_body_keeps_a_caller_supplied_modern_cap() {
+        let body = request_body(
+            &capped_request(Some(4096), Some(json!({ "max_completion_tokens": 48 }))),
+            true,
+        )
+        .expect("body should serialize");
+
+        assert_eq!(body["max_completion_tokens"], 48);
+        assert!(body.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn request_body_upgrades_a_caller_supplied_legacy_cap() {
+        let body = request_body(
+            &capped_request(None, Some(json!({ "max_tokens": 48 }))),
+            true,
+        )
+        .expect("body should serialize");
+
+        assert_eq!(body["max_completion_tokens"], 48);
+        assert!(body.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn request_body_moves_nothing_but_the_cap() {
+        let request = capped_request(Some(4096), Some(json!({ "top_p": 0.5 })));
+        let plain = serde_json::to_value(&request).expect("serialization should succeed");
+        let mut renamed = request_body(&request, true).expect("body");
+
+        let cap = renamed
+            .as_object_mut()
+            .expect("object body")
+            .remove("max_completion_tokens")
+            .expect("renamed cap");
+        renamed["max_tokens"] = cap;
+
+        assert_eq!(renamed, plain);
+    }
+
+    /// The gate itself, over every family whose behavior was measured against
+    /// the live endpoint: the reasoning models reject the legacy field, and
+    /// everything else — including OpenAI's own older models and any
+    /// compatible server's model names — still gets the bytes it always got.
+    #[test]
+    fn modern_output_cap_covers_exactly_the_reasoning_families() {
+        for model in [
+            "gpt-5",
+            "gpt-5.1",
+            "gpt-5.2",
+            "gpt-5-nano",
+            "gpt-5-2025-08-07",
+            "gpt-6",
+            "o1",
+            "o1-mini",
+            "o3",
+            "o3-mini",
+            "o4-mini",
+            "o4-mini-2025-04-16",
+        ] {
+            assert!(
+                is_openai_reasoning_model(model),
+                "{model} rejects `max_tokens` and must get the modern spelling"
+            );
+        }
+
+        for model in [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4.1",
+            "gpt-4.1-nano",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo",
+            "chatgpt-4o-latest",
+            // Compatible-server model names reached through this extension.
+            "Qwen/Qwen3-4B",
+            "openai/gpt-oss-20b",
+            "gpt-oss-120b",
+            "llama-3.1-8b-instruct",
+            // Near misses that must not be read as a family or a series.
+            "gpt-45",
+            "gpt-",
+            "o",
+            "opus",
+            "o5x",
+            "",
+        ] {
+            assert!(
+                !is_openai_reasoning_model(model),
+                "{model:?} still takes `max_tokens`; changing its request would be a regression"
+            );
+        }
+    }
+
+    /// The predicate is what the provider extension actually consults.
+    #[test]
+    fn openai_extension_asks_for_the_modern_cap_only_on_reasoning_models() {
+        let ext = super::super::OpenAICompletionsExt::default();
+
+        assert!(ext.requires_modern_output_cap("gpt-5-nano"));
+        assert!(!ext.requires_modern_output_cap(GPT_4O_MINI));
     }
 
     #[test]

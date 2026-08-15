@@ -71,6 +71,34 @@ where
     cassette.finish_after_test_result(result).await
 }
 
+/// Per-bug wrapper for the Chat Completions refusal matrix
+/// (`tests/cassettes/openai/refusal_matrix/`).
+///
+/// Yields the Responses client; cells that drive Chat Completions call
+/// [`openai::Client::completions_api`] on it, so one wrapper covers both
+/// surfaces of a bug whose logic lives in the shared chat-completions types.
+pub(super) async fn with_openai_refusal_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
+/// Per-bug wrapper for the output-token-cap spelling matrix
+/// (`tests/cassettes/openai/max_completion_tokens_matrix/`).
+pub(super) async fn with_openai_max_tokens_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openai_cassette(spec, test_body).await;
+}
+
 /// Like [`with_openai_cassette`], but authenticating with a deliberately
 /// invalid API key — for recording real 401s with no secret near the fixture.
 pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
