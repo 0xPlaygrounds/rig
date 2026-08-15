@@ -6,6 +6,7 @@ mod extractor;
 mod extractor_usage;
 mod models;
 mod multi_extract;
+mod multimodal_content;
 mod permission_control;
 mod request_hook;
 mod response_identity_edge;

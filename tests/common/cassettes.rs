@@ -1777,6 +1777,8 @@ const RESPONSE_HEADER_ALLOWLIST: &[&str] = &[
     // Provider transport request ids (rig#2265): Anthropic / OpenAI-and-xAI.
     "request-id",
     "x-request-id",
+    // Mistral's own spelling for the same thing.
+    "mistral-correlation-id",
 ];
 
 const VOLATILE_JSON_KEYS: &[&str] = &[
@@ -1798,7 +1800,12 @@ const SENSITIVE_STRING_KEYS: &[&str] = &[
 ];
 
 /// Allowlisted response headers whose value is a generated per-call id.
-const GENERATED_ID_HEADERS: &[&str] = &["x-amzn-requestid", "request-id", "x-request-id"];
+const GENERATED_ID_HEADERS: &[&str] = &[
+    "x-amzn-requestid",
+    "request-id",
+    "x-request-id",
+    "mistral-correlation-id",
+];
 
 const GENERATED_ID_KEYS: &[&str] = &[
     "call_id",

@@ -13,4 +13,6 @@ then:
   header:
   - name: content-type
     value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
   body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"identity probe","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":3,"prompt_tokens":21,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":24}}'

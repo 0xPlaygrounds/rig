@@ -144,7 +144,11 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
     ProviderCassetteSuite {
         provider: "mistral",
         source_dir: "tests/providers/mistral",
-        wrapper_names: &["with_mistral_cassette_result"],
+        wrapper_names: &[
+            "with_mistral_cassette_result",
+            "with_mistral_multimodal_cassette",
+            "with_mistral_cassette_bogus_key_result",
+        ],
     },
     ProviderCassetteSuite {
         provider: "perplexity",
