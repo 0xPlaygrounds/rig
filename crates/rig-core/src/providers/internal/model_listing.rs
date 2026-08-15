@@ -232,6 +232,12 @@ where
 {
     let mut all_models = Vec::new();
     let mut cursor: Option<String> = None;
+    // Only the loop running out of iterations is a ceiling. Every `break`
+    // below is the provider ending the listing, which is the normal path and
+    // must stay silent — inferring the ceiling from `cursor` instead would
+    // report one on any listing that fetched more than a single page, since
+    // the cursor of the *previous* page is still held when the loop breaks.
+    let mut exhausted_page_budget = true;
 
     for _ in 0..MAX_LISTING_PAGES {
         let path = path_for(cursor.as_deref());
@@ -240,6 +246,7 @@ where
         all_models.extend(page.models);
 
         let Some(next) = page.next_cursor else {
+            exhausted_page_budget = false;
             break;
         };
         if cursor.as_deref() == Some(next.as_str()) {
@@ -249,13 +256,14 @@ where
                 "model listing repeated its pagination cursor; returning the pages fetched \
                  so far"
             );
+            exhausted_page_budget = false;
             break;
         }
         cursor = Some(next);
         continue;
     }
 
-    if cursor.is_some() {
+    if exhausted_page_budget {
         tracing::warn!(
             provider = provider_name,
             models = all_models.len(),
