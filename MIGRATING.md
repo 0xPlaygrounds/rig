@@ -520,6 +520,49 @@ non-success response moves from `Instance(..)` to
 
 ## 0.41 → next
 
+### `ProviderResponseError` gains a `headers` field
+
+A failed provider response now carries its headers onto the error, so
+rate-limit metadata (`Retry-After`, `x-ratelimit-*`) is recoverable — read it
+with `provider_response_headers()` on any capability error, or
+`http_client::Error::non_success_headers()` when you hold the transport error
+directly (a custom `RetryPolicy` does).
+
+The only breaking part is the new public field. Construction through
+`ProviderResponseError::new` / `::without_status` plus the `with_*` setters —
+which the type's docs already steer you toward — is unaffected. Only a full
+struct literal has to change:
+
+```rust
+// Before
+let error = ProviderResponseError {
+    status: Some(StatusCode::TOO_MANY_REQUESTS),
+    body: body.to_string(),
+    provider_request_id: None,
+};
+
+// After: add the field...
+let error = ProviderResponseError {
+    status: Some(StatusCode::TOO_MANY_REQUESTS),
+    body: body.to_string(),
+    provider_request_id: None,
+    headers: None,
+};
+
+// ...or switch to the constructors, which do not need revisiting when
+// transport metadata grows again.
+let error = ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, body);
+```
+
+One behavior change with no compile error to warn you: contract-less
+providers' non-success completions and all three `VerifyClient::verify`
+failure branches now surface
+`http_client::Error::InvalidStatusCodeWithDetails` where they previously
+surfaced `InvalidStatusCodeWithMessage`. Both are `HttpError`, both `Display`
+identically, and every `provider_response_*` helper reads both — but a `match`
+arm naming the old variant silently stops firing. Match on the accessors
+rather than the variant.
+
 ### A truncated OpenAI-compatible turn now succeeds with an empty choice
 
 A turn the provider cut short can carry no content at all — the usual case is a
