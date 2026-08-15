@@ -353,4 +353,27 @@ mod tests {
             )
         )
     }
+
+    #[tokio::test]
+    async fn test_build_preserves_input_order_across_batches() {
+        // More documents than MockEmbeddingModel::MAX_DOCUMENTS (5) to exercise
+        // the chunked, buffered batch path, and assert that the returned
+        // sequence matches the input order exactly.
+        let texts: Vec<String> = (0..12).map(|i| format!("text-{i:02}")).collect();
+
+        let fake_model = MockEmbeddingModel;
+        let result = EmbeddingsBuilder::new(fake_model)
+            .documents(texts.clone())
+            .unwrap()
+            .build()
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), texts.len());
+        for (i, (doc, embeddings)) in result.into_iter().enumerate() {
+            assert_eq!(doc, texts[i]);
+            assert_eq!(embeddings.len(), 1);
+            assert_eq!(embeddings[0].document, texts[i]);
+        }
+    }
 }
