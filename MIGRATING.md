@@ -1566,6 +1566,69 @@ and finalized as a successful empty string. Four source-level breaks:
   `CompletionCall.finish_reason` is serde-defaulted; pre-#2322 run JSON loads
   with it `None`.
 
+### `#[non_exhaustive]` is gone from the whole workspace (#2335)
+
+All 53 `#[non_exhaustive]` attributes were removed from `rig-core`, `rig-agent`,
+`rig-bedrock` and `rig-candle`. Every public struct in these crates can now be
+built with a struct literal or functional update from any crate, and every
+public enum can be matched exhaustively without a wildcard.
+
+**Nothing breaks.** This is a permissive change — `cargo semver-checks` reports
+"no semver update required". You do not have to change any code.
+
+**But you may get a new warning.** A `match` arm that existed only to satisfy a
+previously non-exhaustive enum can now be unreachable:
+
+```rust
+// Was required; now warns `unreachable_patterns`
+match content {
+    ReasoningContent::Summary(t) => …,
+    ReasoningContent::Text { .. } => …,
+    ReasoningContent::Encrypted(d) => …,
+    ReasoningContent::Redacted { .. } => …,
+    _ => …,   // <- delete this
+}
+```
+
+Delete the wildcard once you cover every variant. If you build with
+`-D warnings` this is a hard failure rather than a warning; two in-tree matches
+over `ReasoningContent` needed exactly this fix.
+
+**Keep the wildcard if you target both native and wasm.** `CandleError` has
+three `#[cfg(not(target_family = "wasm"))]` variants, so a single exhaustive
+`match` can no longer compile for both targets: the arms are missing variants on
+wasm, and adding them plus a wildcard trips `unreachable_patterns` on wasm. A
+wildcard-only match remains the portable form.
+
+**What this costs going forward.** The bargain is now reversed: adding a field
+to any of these structs, or a variant to any of these enums, is a breaking
+change and has to wait for a breaking release. `#[non_exhaustive]` also cannot
+be added back outside a breaking window, so this is not a decision that can be
+revisited cheaply.
+
+**One invariant is widened.** `StreamFinal` and `completion::CompletionResponse`
+normalize an empty identifier string to `None` — the rule lives in the
+`with_*_id` setters ("an empty string is treated as absent … so the invariant
+lives here rather than at every provider call site"), and both types route
+`Deserialize` through those same setters. The attribute was the last thing
+forcing external construction down that path. A hand-written literal can now
+produce `Some("")` where every rig-built value has `None`, and
+`StreamedAssistantContent::final_response` accepts a `StreamFinal` by value. If
+you build either type yourself, prefer `::new(..)` plus the `with_*` setters
+over a literal. Making that rule structural rather than advisory is tracked in
+[#2336](https://github.com/0xPlaygrounds/rig/issues/2336).
+
+**Superseded guidance.** Earlier sections of this file and the changelog
+describe types as `#[non_exhaustive]` and tell you to construct them through
+constructors for that reason. Those passages remain accurate as history for the
+releases they document, but the attribute claim no longer holds on `next`:
+"Core errors are `#[non_exhaustive]`" (0.39→0.40), `ProviderResponseError`
+(#2314), `CompletionResponse`, `ProviderCapabilities`, `ModelTurn`/`StreamedTurn`
+(#2322), `MultiTurnStreamItem`, `DocumentSourceKind`, `RerankError`,
+`MemoryError`, and openai's `ToolChoice`. The constructors those passages point
+at all still exist and are still the recommended way to build these types — only
+the compiler no longer insists.
+
 ---
 
 ## 0.40 → 0.41
