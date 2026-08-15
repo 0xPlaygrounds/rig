@@ -1,0 +1,18 @@
+when:
+  path: /v1/models
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: null
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"API key is invalid.","type":"authentication_error"},"request_id":null,"type":"error"}'

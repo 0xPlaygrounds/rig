@@ -12,7 +12,7 @@
 use anyhow::Result;
 use rig::client::ModelListingClient;
 
-use super::support::with_groq_cassette_result;
+use super::support::{with_groq_cassette_bogus_key_result, with_groq_cassette_result};
 
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
@@ -50,5 +50,46 @@ async fn list_models_smoke() -> Result<()> {
 
         Ok::<_, anyhow::Error>(())
     })
+    .await
+}
+
+/// rig#2079 — the shared fetch path classifies a rejected listing as
+/// `ApiError` carrying provider, path, status and a body preview.
+///
+/// Pins that the newly added Groq lister routes its failures through the same
+/// triage as every other provider, not just its successes.
+#[tokio::test]
+async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()> {
+    use rig::model::ModelListingError;
+
+    with_groq_cassette_bogus_key_result(
+        "models/list_models_rejected_key_reports_api_error_with_context",
+        |client| async move {
+            let error = client
+                .list_models()
+                .await
+                .expect_err("a bogus key must not list models");
+
+            let ModelListingError::ApiError {
+                status_code,
+                message,
+            } = &error
+            else {
+                anyhow::bail!(
+                    "a rejected listing must classify as ApiError\nDisplay: {error}\n\
+                     Debug: {error:#?}"
+                );
+            };
+
+            anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
+            for expected in ["provider=Groq", "path=/models", "status=401"] {
+                anyhow::ensure!(
+                    message.contains(expected),
+                    "the error must carry {expected}; got {message}"
+                );
+            }
+            Ok::<_, anyhow::Error>(())
+        },
+    )
     .await
 }

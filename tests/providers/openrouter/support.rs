@@ -67,3 +67,24 @@ pub(super) async fn with_openrouter_openai_cassette<F, Fut>(
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
+
+/// Bogus-key variant for recording real 401s: the shared model-listing fetch
+/// must classify a rejected listing with provider, path and status context
+/// (rig#2079), and only a real rejection proves it.
+pub(super) async fn with_openrouter_cassette_bogus_key_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let cassette = ProviderCassette::start("openrouter", spec, OPENROUTER_BASE_URL).await;
+    let client = openrouter::Client::builder()
+        .api_key("sk-invalid-edge-matrix-key")
+        .base_url(cassette.base_url())
+        .build()
+        .expect("OpenRouter client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}

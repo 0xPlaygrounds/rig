@@ -136,13 +136,18 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_openrouter_cassette",
             "with_openrouter_cassette_result",
+            "with_openrouter_cassette_bogus_key_result",
             "with_openrouter_openai_cassette",
         ],
     },
     ProviderCassetteSuite {
         provider: "deepseek",
         source_dir: "tests/providers/deepseek",
-        wrapper_names: &["with_deepseek_cassette", "with_deepseek_cassette_result"],
+        wrapper_names: &[
+            "with_deepseek_cassette",
+            "with_deepseek_cassette_result",
+            "with_deepseek_cassette_bogus_key_result",
+        ],
     },
     ProviderCassetteSuite {
         provider: "groq",
