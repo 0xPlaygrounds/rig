@@ -7,11 +7,8 @@
 //! `rig-sqlite` sizes its table from it), so a width rig reports but never
 //! receives is a broken index, not a cosmetic mismatch.
 //!
-//! Three cells sit deliberately outside that invariant, and say so where they
-//! stand: `a_zero_width_is_treated_as_no_width`, because 0 is the shared
-//! path's "the caller said nothing" sentinel and `ndims()` keeps reporting it
-//! against a 4096-wide vector, and the two provider-refusal cells
-//! (`empty_input_at_a_requested_width`,
+//! Two cells sit deliberately outside that invariant, and say so where they
+//! stand: the provider-refusal cells (`empty_input_at_a_requested_width`,
 //! `an_unknown_model_still_puts_the_requested_width_on_the_wire`), which
 //! return no vectors to measure.
 //!
@@ -454,28 +451,6 @@ async fn builder_documents_at_the_default_width() {
     )
     .await;
     assert_recorded(&calls, &[None], NATIVE_WIDTH, &[2]);
-}
-
-#[tokio::test]
-async fn a_zero_width_is_treated_as_no_width() {
-    // The shared path reads 0 as "the caller said nothing", so the hook never
-    // sees it. Recorded rather than assumed: the request must go out bare and
-    // the model must answer at its native width, even though `ndims()` still
-    // reports the 0 the caller asked for.
-    let calls = with_doubleword_embedding_cassette(
-        "embedding_dimensions/a_zero_width_is_treated_as_no_width",
-        |client| async move {
-            let model = client.embedding_model_with_ndims(MODEL, 0);
-            assert_eq!(model.ndims(), 0);
-            let embeddings = model
-                .embed_texts([PROBE.to_string()])
-                .await
-                .expect("embedding request should succeed");
-            assert_eq!(embeddings[0].vec.len(), NATIVE_WIDTH);
-        },
-    )
-    .await;
-    assert_recorded(&calls, &[None], NATIVE_WIDTH, &[1]);
 }
 
 // ================================================================

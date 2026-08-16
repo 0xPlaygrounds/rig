@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":8,"messages":[{"content":"Reply with error-probe.","role":"user"}],"model":"rig/definitely-not-a-doubleword-model","stream":true,"stream_options":{"include_usage":true}}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":"model_not_found","message":"The model `rig/definitely-not-a-doubleword-model` does not exist or you do not have access to it.","param":null,"type":"invalid_request_error"}}'

@@ -81,6 +81,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/doubleword/cassette",
         wrapper_names: &[
             "with_doubleword_cassette",
+            "with_doubleword_bogus_key_cassette",
             "with_doubleword_cassette_result",
             "with_doubleword_embedding_cassette",
         ],

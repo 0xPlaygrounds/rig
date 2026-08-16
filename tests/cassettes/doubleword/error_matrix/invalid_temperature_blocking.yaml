@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":8,"messages":[{"content":"Reply with error-probe.","role":"user"}],"model":"Qwen/Qwen3.5-9B","temperature":100}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"code":400,"message":"Validation: Temperature must be between 0 and 2, got 100","type":"Bad Request"}'

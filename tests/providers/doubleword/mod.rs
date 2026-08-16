@@ -8,8 +8,13 @@ mod cassette {
     mod conformance;
     mod embedding_dimensions;
     mod embeddings;
+    mod error_matrix;
     mod extractor;
+    mod finish_reason_matrix;
+    mod model_family_matrix;
+    mod reasoning_matrix;
     mod request_hook;
+    mod request_parameter_matrix;
     mod response_identity_edge;
     mod streaming;
     mod streaming_tools;

@@ -66,6 +66,14 @@ impl OpenAIEmbeddingsCompatible for DoublewordExt {
             return Ok(None);
         };
 
+        if dimensions == 0 {
+            return Err(EmbeddingError::InvalidParameterValue {
+                provider: Self::PROVIDER_NAME,
+                parameter: "dimensions",
+                requirement: "to be greater than zero",
+            });
+        }
+
         let Some(documented) = documented_dimensions(model) else {
             // An embedding model this build does not know: the caller's width
             // is the only width there is, so send it and let the API rule.
@@ -207,10 +215,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_zero_width_is_neither_sent_nor_rejected() {
-        // The shared path treats 0 as "the caller said nothing", so the hook
-        // never sees it; the request goes out bare and `ndims()` stays 0.
-        assert_eq!(sent_dimensions(QWEN3_EMBEDDING_8B, Some(0)).await, None);
+    async fn a_zero_width_is_rejected_before_sending() {
+        assert!(matches!(
+            rejected_dimensions(QWEN3_EMBEDDING_8B, 0).await,
+            EmbeddingError::InvalidParameterValue {
+                provider: "doubleword",
+                parameter: "dimensions",
+                requirement: "to be greater than zero"
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_openai_named_model_cannot_bypass_zero_width_validation() {
+        assert!(matches!(
+            rejected_dimensions(crate::providers::openai::TEXT_EMBEDDING_ADA_002, 0).await,
+            EmbeddingError::InvalidParameterValue {
+                provider: "doubleword",
+                parameter: "dimensions",
+                requirement: "to be greater than zero"
+            }
+        ));
     }
 
     #[tokio::test]
@@ -238,6 +263,18 @@ mod tests {
             sent_dimensions("Qwen/Qwen4-Embedding-Unreleased", Some(8_192)).await,
             Some(serde_json::json!(8_192))
         );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_embedding_model_still_rejects_zero_width() {
+        assert!(matches!(
+            rejected_dimensions("Qwen/Qwen4-Embedding-Unreleased", 0).await,
+            EmbeddingError::InvalidParameterValue {
+                provider: "doubleword",
+                parameter: "dimensions",
+                requirement: "to be greater than zero"
+            }
+        ));
     }
 
     #[tokio::test]
