@@ -37,6 +37,18 @@ async fn blocking_identity_survives_a_json_round_trip() {
                 "Gemini reports no request-id header; None is the documented outcome"
             );
 
+            // The module doc claims Gemini reports a response-scoped id; that
+            // half was never asserted, so a regression that dropped it left
+            // every round-trip assertion below holding vacuously.
+            assert!(
+                response
+                    .response_id
+                    .as_deref()
+                    .is_some_and(|id| !id.is_empty()),
+                "Gemini reports `responseId`, got {:?}",
+                response.response_id
+            );
+
             let json = serde_json::to_value(&response).expect("response should serialize");
             let reloaded: CompletionResponse =
                 serde_json::from_value(json).expect("response should round-trip");
@@ -82,6 +94,15 @@ async fn streaming_identity_survives_a_json_round_trip() {
                 "Gemini's streamed terminal reports no transport id either"
             );
 
+            assert!(
+                terminal
+                    .response_id
+                    .as_deref()
+                    .is_some_and(|id| !id.is_empty()),
+                "the streamed terminal must carry the `responseId` Gemini reports, got {:?}",
+                terminal.response_id
+            );
+
             let json = serde_json::to_value(&terminal).expect("terminal should serialize");
             let reloaded: StreamFinal =
                 serde_json::from_value(json).expect("terminal should round-trip");
@@ -123,6 +144,12 @@ async fn agent_run_identity_survives_a_json_round_trip() {
             );
 
             for (index, call) in response.completion_calls.iter().enumerate() {
+                assert!(
+                    call.response_id.as_deref().is_some_and(|id| !id.is_empty()),
+                    "call {index}: Gemini reports `responseId`, got {:?}",
+                    call.response_id
+                );
+
                 let json = serde_json::to_value(call).expect("call should serialize");
                 let reloaded: rig::agent::CompletionCall =
                     serde_json::from_value(json).expect("call should round-trip");

@@ -1176,7 +1176,7 @@ impl Stream for StreamingCompletionResponse {
                         // accumulation key is opaque and cannot reach the
                         // replayable message.
                         let restatement = Reasoning {
-                            id: provider_id.map(WireId::into_string),
+                            id: provider_id,
                             content: vec![content],
                         };
                         let completed = stream.parts.reasoning_end(&id, Some(restatement), None);

@@ -61,6 +61,27 @@ async fn responses_identity_survives_a_json_round_trip() {
                 response.provider_request_id.as_deref(),
                 "responses blocking",
             );
+            // The axis this cell exists for, and the one no cassette pinned:
+            // the Responses API is the only surface that reports a
+            // message-scoped `msg_…`, and `response_identity.rs` covers only
+            // `response_id` + request id while `streaming_grammar.rs` covers
+            // streaming.
+            assert!(
+                response
+                    .message_id
+                    .as_deref()
+                    .is_some_and(|id| id.starts_with("msg")),
+                "responses blocking: the Responses API reports a message id, got {:?}",
+                response.message_id
+            );
+            assert!(
+                response
+                    .response_id
+                    .as_deref()
+                    .is_some_and(|id| id.starts_with("resp")),
+                "responses blocking: the Responses API reports a response id, got {:?}",
+                response.response_id
+            );
             assert_round_trips(&response, "responses blocking");
         },
     )
@@ -160,6 +181,20 @@ async fn agent_run_identity_survives_a_json_round_trip() {
             );
 
             for (index, call) in response.completion_calls.iter().enumerate() {
+                // Anchor before the round-trip: `reloaded.x == call.x` holds
+                // trivially when both are `None`, so without this the cell
+                // proves persistence only if identity was recorded, and
+                // nothing checked that it was.
+                assert_request_id(
+                    call.provider_request_id.as_deref(),
+                    &format!("agent run call {index}"),
+                );
+                assert!(
+                    call.response_id.as_deref().is_some_and(|id| !id.is_empty()),
+                    "call {index}: OpenAI reports a response-scoped id, got {:?}",
+                    call.response_id
+                );
+
                 let json = serde_json::to_value(call).expect("call should serialize");
                 let reloaded: rig::agent::CompletionCall =
                     serde_json::from_value(json).expect("call should round-trip");

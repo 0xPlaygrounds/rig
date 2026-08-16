@@ -172,7 +172,7 @@ pub(crate) fn reasoning_end_from_done_item(
     Some(RawStreamingChoice::ReasoningEnd {
         id: id.clone(),
         reasoning: Some(crate::message::Reasoning {
-            id: provider_id.map(|provider_id| provider_id.as_str().to_owned()),
+            id: provider_id.cloned(),
             content: blocks,
         }),
         signature: None,

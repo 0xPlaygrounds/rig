@@ -410,7 +410,7 @@ impl PartsAccumulator {
         content: Vec<ReasoningContent>,
     ) {
         let index = self.push_reasoning_part(Reasoning {
-            id: provider_id.map(|id| id.as_str().to_owned()),
+            id: provider_id.cloned(),
             content,
         });
         self.open_reasoning.insert(id.clone(), index);
@@ -892,7 +892,7 @@ mod tests {
 
     fn full(id: &str, content: ReasoningContent) -> Reasoning {
         Reasoning {
-            id: wid(id).map(|id| id.into_string()),
+            id: wid(id),
             content: vec![content],
         }
     }

@@ -1735,7 +1735,9 @@ the compiler no longer insists.
 `completion::CompletionResponse` and `completion::ResponseIdentity` — and on
 `rig-agent`'s `CompletionCall`, `ModelTurn`, `StreamedTurn` and
 `PartialStreamedTurn`, which round-trip the same ids — are now
-`Option<WireId>` instead of `Option<String>`. `ProviderResponseError`'s
+`Option<WireId>` instead of `Option<String>`. `streaming::StreamingCompletionResponse`'s `message_id` — public since
+v0.41.0 — is retyped with them, as is `message::Reasoning`'s `id`.
+`ProviderResponseError`'s
 `provider_request_id` is the same transport id on the failure path and follows;
 its `provider_request_id()` accessor still returns `Option<&str>`, so readers
 are unchanged. `completion::Message::Assistant`'s `id` follows as well — it
@@ -1755,6 +1757,20 @@ Constructing one from a raw string uses `WireId::new`, which yields `None` for
 ```rust
 Message::Assistant { id: WireId::new(provider_id), content }
 ```
+
+If the id you hold is already an `Option<String>` — read back from your own
+store, say — `and_then` is the combinator you want. `WireId::new(opt)` does not
+compile, and `opt.map(WireId::new)` gives you `Option<Option<WireId>>`:
+
+```rust
+let id: Option<WireId> = stored_id.and_then(WireId::new);
+```
+
+`message::Reasoning`'s `id` follows the same rule, and `Reasoning::with_id`
+widens from `String` to `impl Into<String>` — existing calls compile unchanged,
+and an empty argument is now absence rather than an empty id. `WireId` also
+derives `PartialOrd`/`Ord`, so sorting or `BTreeMap`-keying these ids keeps
+working.
 
 `WireId::new` is the only way to build one and it rejects the empty string, so
 the "an empty identifier means absent" rule these types always documented is

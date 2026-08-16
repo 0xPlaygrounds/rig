@@ -733,7 +733,8 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                         blocks.sort_by_key(|(index, position, _)| (*index, *position));
                         content.push(completion::AssistantContent::Reasoning(
                             message::Reasoning {
-                                id: reasoning_id,
+                                // Straight off the wire: `""` is absence.
+                                id: reasoning_id.and_then(crate::streaming::WireId::new),
                                 content: blocks
                                     .into_iter()
                                     .map(|(_, _, content)| content)
@@ -1172,10 +1173,12 @@ fn assistant_contents_to_messages(
                         reasoning = Some(display);
                     }
                 } else {
-                    // A block the stream aggregated without a wire id carries
-                    // the accumulator's shared "" identity; send it back as a
-                    // null id, the shape the non-streaming path produces.
-                    let reasoning_id = r.id.clone().filter(|id| !id.is_empty());
+                    // A block the stream aggregated without a wire id has no
+                    // durable handle at all: `Reasoning::id` is an
+                    // `Option<WireId>`, so the accumulator's shared `""`
+                    // identity can no longer be represented and the filter this
+                    // line used to carry is unreachable (#2336).
+                    let reasoning_id = r.id.clone().map(String::from);
                     for reasoning_block in &r.content {
                         let index = Some(reasoning_details.len());
                         match reasoning_block {
@@ -3210,7 +3213,7 @@ mod tests {
 
         let messages = assistant_contents_to_messages(vec![message::AssistantContent::Reasoning(
             message::Reasoning {
-                id: provider_id.map(|id| id.into_string()),
+                id: provider_id,
                 content: vec![content],
             },
         )])
@@ -3230,7 +3233,7 @@ mod tests {
     #[test]
     fn test_assistant_reasoning_emits_openrouter_reasoning_details() {
         let reasoning = message::Reasoning {
-            id: Some("rs_2".to_string()),
+            id: crate::streaming::WireId::new("rs_2"),
             content: vec![
                 message::ReasoningContent::Text {
                     text: "step".to_string(),
@@ -3337,7 +3340,7 @@ mod tests {
     #[test]
     fn test_assistant_redacted_reasoning_emits_encrypted_detail_not_text() {
         let reasoning = message::Reasoning {
-            id: Some("rs_redacted".to_string()),
+            id: crate::streaming::WireId::new("rs_redacted"),
             content: vec![message::ReasoningContent::Redacted {
                 data: "opaque-redacted-data".to_string(),
             }],

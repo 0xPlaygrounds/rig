@@ -416,10 +416,7 @@ async fn tool_call_then_followup_text_across_turns() {
                 .expect("aggregated first turn should contain the lookup_harbor_label call");
 
             let assistant_message = Message::Assistant {
-                id: first
-                    .message_id
-                    .clone()
-                    .and_then(rig::streaming::WireId::new),
+                id: first.message_id.clone(),
                 content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result = Message::from(UserContent::tool_result_for(
@@ -538,7 +535,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // recorded rs_* ids included — goes back through the provenance
             // gate together with the tool result.
             let first_assistant = Message::Assistant {
-                id: first.message_id.clone().and_then(rig::streaming::WireId::new),
+                id: first.message_id.clone(),
                 content: first.choice.clone(),
             };
             let tool_result = Message::from(UserContent::tool_result_for(
@@ -576,7 +573,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
 
             // Turn 3: both prior assistant turns' rs_* items replay together.
             let second_assistant = Message::Assistant {
-                id: second.message_id.clone().and_then(rig::streaming::WireId::new),
+                id: second.message_id.clone(),
                 content: second.choice.clone(),
             };
             let third_request = model

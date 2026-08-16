@@ -11,11 +11,18 @@
 //!   observe it, an adapter may freely mint it ([`SyntheticIds`]) without
 //!   any global-uniqueness obligation.
 //! - [`WireId`] — the **durable provider handle**, present only when the
-//!   provider actually issued one. It is the only value that may populate
-//!   the replayable message types ([`crate::message::Reasoning::id`],
-//!   [`crate::message::ToolCall::id`]) and travel upstream. Its only
-//!   constructor rejects the empty string, so "absent" is `Option::None` —
-//!   never a fabricated `""` a serializer must remember to filter.
+//!   provider actually issued one. Its only constructor rejects the empty
+//!   string, so "absent" is `Option::None` — never a fabricated `""` a
+//!   serializer must remember to filter.
+//!
+//! The rule between them is one of *provenance*, not of a single type: only a
+//! durable handle, never an accumulation key, may populate the replayable
+//! message identifiers and travel upstream. Those identifiers are
+//! [`crate::message::Reasoning::id`], which is an `Option<WireId>`, and
+//! [`crate::message::ToolCall::id`], which is a
+//! [`ToolCallId`](crate::message::ToolCallId) — a sibling newtype with the
+//! same empty-is-absent rule, distinct because a tool call must always name
+//! one, so rig mints an id when the wire issues none.
 //!
 //! Consumer-facing correlation uses neither: public stream items carry
 //! rig-generated correlators (`internal_call_id` for tool calls, the
@@ -174,7 +181,7 @@ impl StreamPartId {
 /// [`StreamFinal`](crate::streaming::StreamFinal) and
 /// [`CompletionResponse`](crate::completion::CompletionResponse) do), or with
 /// [`deserialize_optional`] on the field.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 #[serde(transparent)]
 pub struct WireId(String);
 

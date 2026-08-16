@@ -299,12 +299,14 @@ impl TryFrom<RigMessage> for Vec<Message> {
             reasoning: crate::message::Reasoning,
         ) -> Result<Option<Message>, CompletionError> {
             let crate::message::Reasoning { id, content } = reasoning;
-            // Only wire-genuine ids exist in durable histories (the streaming
-            // layer populates `Reasoning::id` exclusively from
-            // `StreamPartId::Wire`). An id-less reasoning item — a cross-provider
-            // replay from a wire that issues no reasoning ids — drops from
-            // request input, mirroring the OpenAI Responses handling, rather
-            // than failing the whole request locally.
+            // Only wire-genuine ids exist in durable histories, and the type
+            // now enforces it rather than the streaming layer's provenance
+            // arguing for it: `Reasoning::id` is an `Option<WireId>`, whose
+            // only constructor rejects the empty string. An id-less reasoning
+            // item — a cross-provider replay from a wire that issues no
+            // reasoning ids — drops from request input, mirroring the OpenAI
+            // Responses handling, rather than failing the whole request
+            // locally.
             let Some(id) = id else {
                 tracing::warn!(
                     "xAI: dropping id-less reasoning item from request input \
@@ -333,7 +335,11 @@ impl TryFrom<RigMessage> for Vec<Message> {
                 }
             }
 
-            Ok(Some(Message::reasoning(id, summary, encrypted_content)))
+            Ok(Some(Message::reasoning(
+                String::from(id),
+                summary,
+                encrypted_content,
+            )))
         }
 
         match msg {
@@ -725,7 +731,7 @@ mod tests {
     #[test]
     fn assistant_redacted_reasoning_is_serialized_as_encrypted_content() {
         let reasoning = Reasoning {
-            id: Some("rs_1".to_string()),
+            id: crate::streaming::WireId::new("rs_1"),
             content: vec![ReasoningContent::Redacted {
                 data: "opaque-redacted".to_string(),
             }],
@@ -750,7 +756,7 @@ mod tests {
     #[test]
     fn assistant_redacted_reasoning_does_not_leak_into_summary_text() {
         let reasoning = Reasoning {
-            id: Some("rs_2".to_string()),
+            id: crate::streaming::WireId::new("rs_2"),
             content: vec![
                 ReasoningContent::Text {
                     text: "explain".to_string(),
@@ -788,7 +794,7 @@ mod tests {
     #[test]
     fn assistant_empty_reasoning_content_roundtrips_without_error() {
         let reasoning = Reasoning {
-            id: Some("rs_empty".to_string()),
+            id: crate::streaming::WireId::new("rs_empty"),
             content: vec![],
         };
         let message = RigMessage::Assistant {
@@ -806,6 +812,37 @@ mod tests {
                 encrypted_content,
             }) if id == "rs_empty" && summary.is_empty() && encrypted_content.is_none()
         ));
+    }
+
+    #[test]
+    fn assistant_reasoning_from_a_wire_empty_id_is_dropped_from_request_input() {
+        // The twin of the OpenAI Responses regression: this converter also
+        // gates on `Some(id)` and sends the value straight into the request
+        // body. A gateway echoing `"id": ""` used to walk through that gate;
+        // `Reasoning::id` being an `Option<WireId>` means the wire `""` is
+        // already absence by the time it arrives, so the item drops instead of
+        // serializing an empty id (#2336).
+        let reasoning = Reasoning {
+            id: crate::streaming::WireId::new(String::new()),
+            content: vec![ReasoningContent::Text {
+                text: "thinking".to_string(),
+                signature: None,
+            }],
+        };
+        assert_eq!(reasoning.id, None, "a wire empty id is absence");
+
+        let message = RigMessage::Assistant {
+            id: crate::streaming::WireId::new("assistant_1"),
+            content: vec![AssistantContent::Reasoning(reasoning)],
+        };
+
+        let items = Vec::<Message>::try_from(message).expect("convert assistant message");
+        assert!(
+            !items
+                .iter()
+                .any(|item| matches!(item, Message::Reasoning { .. })),
+            "an empty wire id must drop the reasoning item, never send `id: \"\"`: {items:?}"
+        );
     }
 
     #[test]

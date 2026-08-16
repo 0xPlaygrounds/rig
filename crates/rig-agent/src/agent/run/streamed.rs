@@ -357,7 +357,9 @@ struct ToolCallDeltaState {
 /// arrives; a completed block matching no open part occupies its own slot.
 struct ReasoningPart {
     correlator: Option<String>,
-    provider_id: Option<String>,
+    /// The part's durable provider handle — the same type `Reasoning::id`
+    /// holds, so the two compare and assign without conversion.
+    provider_id: Option<rig_core::streaming::WireId>,
     state: ReasoningPartState,
 }
 
@@ -374,7 +376,7 @@ enum ReasoningPartState {
 /// delta buffer as its own block carrying only the part's provider-issued id.
 fn reasoning_from_part(
     state: ReasoningPartState,
-    provider_id: Option<String>,
+    provider_id: Option<rig_core::streaming::WireId>,
 ) -> Option<Reasoning> {
     match state {
         ReasoningPartState::Completed(reasoning) => Some(reasoning),
@@ -668,7 +670,15 @@ impl StreamedTurnAssembler {
                         text.push_str(reasoning);
                     }
                     if part.provider_id.is_none() {
-                        part.provider_id = provider_id.clone();
+                        // The delta event still carries its provider id as a
+                        // raw `String` (`StreamedAssistantContent` is a public
+                        // enum with a wider blast radius than #2336's scope),
+                        // so this is the one place the handle is rebuilt. The
+                        // rule is the same one `WireId::new` applies
+                        // everywhere: `""` is absence.
+                        part.provider_id = provider_id
+                            .clone()
+                            .and_then(rig_core::streaming::WireId::new);
                     }
                 }
                 Ok(vec![StreamedTurnEvent::EmitIngested])

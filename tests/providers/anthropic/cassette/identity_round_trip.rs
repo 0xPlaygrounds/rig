@@ -147,6 +147,17 @@ async fn agent_run_identity_survives_a_json_round_trip() {
             );
 
             for (index, call) in response.completion_calls.iter().enumerate() {
+                // Anchor before the round-trip: `reloaded.x == call.x` holds
+                // trivially when both are `None`, so without this the cell
+                // proves persistence only if identity was recorded, and
+                // nothing checked that it was.
+                assert_anthropic_axes(
+                    call.message_id.as_deref(),
+                    call.response_id.as_deref(),
+                    call.provider_request_id.as_deref(),
+                    &format!("agent run call {index}"),
+                );
+
                 let json = serde_json::to_value(call).expect("call should serialize");
                 let reloaded: rig::agent::CompletionCall =
                     serde_json::from_value(json).expect("call should round-trip");

@@ -176,7 +176,25 @@ pub enum ReasoningContent {
 /// Assistant reasoning payload with an optional provider-supplied identifier.
 pub struct Reasoning {
     /// Provider reasoning identifier, when supplied by the upstream API.
-    pub id: Option<String>,
+    ///
+    /// A [`WireId`](crate::streaming::WireId): this is a *durable* handle that
+    /// travels back upstream in a replayed request, so the empty string is
+    /// absence rather than an id. Providers really do echo `""` here — the
+    /// streaming accumulator's shared identity for a block that arrived with
+    /// no wire id — and two provider paths gate on `Some` before sending the
+    /// value, so a `Some("")` would put `{"type":"reasoning","id":""}` on the
+    /// wire. `WireId::new` is the only way in, so it cannot (#2336).
+    ///
+    /// No `skip_serializing_if`: an absent id has always been written as an
+    /// explicit `null` here, and staying that way keeps stored reasoning
+    /// blocks byte-identical. `default` is paired with `deserialize_with`
+    /// because the latter removes serde's implicit missing-field tolerance
+    /// for `Option`.
+    #[serde(
+        default,
+        deserialize_with = "crate::streaming::deserialize_optional_wire_id"
+    )]
+    pub id: Option<crate::streaming::WireId>,
     /// Ordered reasoning content blocks.
     pub content: Vec<ReasoningContent>,
 }
@@ -199,8 +217,14 @@ impl Reasoning {
     }
 
     /// Set a provider reasoning ID.
-    pub fn with_id(mut self, id: String) -> Self {
-        self.id = Some(id);
+    /// Attach the provider's reasoning identifier.
+    ///
+    /// An empty argument is absence, not an id — including when one was
+    /// already set, which this then clears. That matches every other
+    /// `with_*_id` setter in the crate and is the point of the newtype: there
+    /// is one rule for what an identifier is, applied wherever one is built.
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = crate::streaming::WireId::new(id);
         self
     }
 
@@ -1838,6 +1862,56 @@ impl From<MessageError> for CompletionError {
 
 #[cfg(test)]
 mod tests {
+
+    /// `Reasoning::id` is a durable handle, so the `default` +
+    /// `deserialize_with` trichotomy has to hold for it too: a stored `""`,
+    /// an explicit `null` and a missing key all load as absence rather than
+    /// any of them failing the record (#2336).
+    #[test]
+    fn a_stored_reasoning_id_normalizes_across_all_three_absent_shapes() {
+        for stored in [
+            serde_json::json!({ "id": "", "content": [] }),
+            serde_json::json!({ "id": null, "content": [] }),
+            serde_json::json!({ "content": [] }),
+        ] {
+            let loaded: Reasoning = serde_json::from_value(stored.clone())
+                .unwrap_or_else(|error| panic!("{stored} must load: {error}"));
+            assert_eq!(loaded.id, None, "{stored} must load as absence");
+        }
+    }
+
+    /// A real id survives verbatim, as its bare string.
+    #[test]
+    fn a_stored_reasoning_id_round_trips() {
+        let reasoning = Reasoning::new("thinking").with_id("rs_1");
+        let json = serde_json::to_value(&reasoning).expect("serializes");
+        assert_eq!(json["id"], serde_json::json!("rs_1"));
+
+        let loaded: Reasoning = serde_json::from_value(json).expect("round-trips");
+        assert_eq!(loaded.id.as_deref(), Some("rs_1"));
+    }
+
+    /// An absent reasoning id is written as an explicit `null`, which is what
+    /// the field did before the retype — it carries no `skip_serializing_if`,
+    /// and adding one would have quietly omitted the key from every stored
+    /// reasoning block.
+    #[test]
+    fn an_absent_reasoning_id_still_serializes_as_null() {
+        let json = serde_json::to_value(Reasoning::new("thinking")).expect("serializes");
+        assert_eq!(json.get("id"), Some(&serde_json::Value::Null));
+    }
+
+    /// The setter applies the same rule as the constructor, including when it
+    /// overwrites: an empty argument is absence, not an id.
+    #[test]
+    fn the_reasoning_setter_treats_an_empty_id_as_absence() {
+        assert_eq!(Reasoning::new("thinking").with_id("").id, None);
+        assert_eq!(
+            Reasoning::new("thinking").with_id("rs_1").with_id("").id,
+            None,
+            "an empty argument clears a previously-set id rather than keeping it"
+        );
+    }
 
     /// The persisted assistant id follows the same empty-is-absent rule as the
     /// response metadata it is copied from (#2336). This is the type that

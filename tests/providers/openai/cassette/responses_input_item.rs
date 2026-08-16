@@ -77,7 +77,7 @@ fn assistant_reasoning_encrypted_only_serializes_encrypted_content() {
 #[test]
 fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
     let mut reasoning =
-        Reasoning::new_with_signature("step-1", Some("sig-1".to_string())).with_id("rs_2".into());
+        Reasoning::new_with_signature("step-1", Some("sig-1".to_string())).with_id("rs_2");
     reasoning
         .content
         .push(ReasoningContent::Summary("summary-2".to_string()));
