@@ -88,3 +88,16 @@ where
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
+
+/// Refusal edge matrix (`refusal_matrix/*`): a structured-output refusal
+/// arrives as a sibling of `content`, and OpenRouter's own normalize dropped
+/// it. Its own wrapper keeps the matrix auditable as one unit.
+pub(super) async fn with_openrouter_refusal_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openrouter_cassette(spec, test_body).await;
+}
