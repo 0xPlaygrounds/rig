@@ -9,6 +9,16 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # Examples now live in their own packages under `examples/*`; don't auto-discover
 # them as examples of this crate.
 autoexamples = false
+# This package's own `src/` is ~12 KiB of re-exports, but the manifest sits at the
+# repo root, so every sibling path is swept into the published tarball, including
+# the 1,100+ provider cassettes. They grew the crate from 6.66 MiB at 0.39.0 to
+# 9.51 MiB today, against a crates.io upload limit of 10 MiB: the next release was
+# on track to be rejected outright. That limit is enforced server-side, so no
+# amount of `cargo publish --dry-run` surfaces it. Excluding the cassettes drops
+# the tarball to 3.33 MiB. They are replay fixtures the test binaries read at
+# runtime from `CARGO_MANIFEST_DIR`, never embedded with `include_*!`, so nothing
+# in the package needs them to compile.
+exclude = ["tests/cassettes/**"]
 
 [package.metadata.docs.rs]
 all-features = true
