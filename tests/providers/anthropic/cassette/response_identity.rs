@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::agent::{AgentHook, HookContext, ObservationAction, StreamResponseFinish};
-use rig::completion::{CompletionModel, Message};
+use rig::completion::{CompletionModel, Message, ResponseIdentity};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::StreamedAssistantContent;
@@ -92,12 +92,10 @@ async fn streaming_terminal_carries_identity() {
     .await;
 }
 
-type IdentityPair = (Option<String>, Option<String>);
-
 #[derive(Clone, Default)]
 struct IdentityCapture {
-    blocking: Arc<Mutex<Vec<IdentityPair>>>,
-    streaming: Arc<Mutex<Vec<IdentityPair>>>,
+    blocking: Arc<Mutex<Vec<ResponseIdentity>>>,
+    streaming: Arc<Mutex<Vec<ResponseIdentity>>>,
 }
 
 impl AgentHook for IdentityCapture {
@@ -106,14 +104,10 @@ impl AgentHook for IdentityCapture {
         _ctx: &HookContext,
         event: rig::agent::CompletionResponseEvent<'_>,
     ) -> ObservationAction {
-        self.blocking.lock().expect("snapshots").push((
-            event.message_id.map(str::to_owned),
-            event
-                .identity
-                .provider_request_id
-                .as_deref()
-                .map(str::to_owned),
-        ));
+        self.blocking
+            .lock()
+            .expect("snapshots")
+            .push(event.identity.clone());
         ObservationAction::continue_run()
     }
 
@@ -122,14 +116,10 @@ impl AgentHook for IdentityCapture {
         _ctx: &HookContext,
         event: StreamResponseFinish<'_>,
     ) -> ObservationAction {
-        self.streaming.lock().expect("snapshots").push((
-            event.message_id.map(str::to_owned),
-            event
-                .identity
-                .provider_request_id
-                .as_deref()
-                .map(str::to_owned),
-        ));
+        self.streaming
+            .lock()
+            .expect("snapshots")
+            .push(event.identity.clone());
         ObservationAction::continue_run()
     }
 }
@@ -182,15 +172,13 @@ async fn agent_run_records_per_attempt_identity() {
 
             let seen = hook.blocking.lock().expect("snapshots").clone();
             assert_eq!(seen.len(), calls.len(), "one observation per model call");
-            for (index, (message_id, request_id)) in seen.iter().enumerate() {
+            for (index, identity) in seen.iter().enumerate() {
                 assert_eq!(
-                    message_id.as_deref(),
-                    calls[index].message_id.as_deref(),
+                    identity.message_id, calls[index].message_id,
                     "hook and completion_calls agree on message_id"
                 );
                 assert_eq!(
-                    request_id.as_deref(),
-                    calls[index].provider_request_id.as_deref(),
+                    identity.provider_request_id, calls[index].provider_request_id,
                     "hook and completion_calls agree on request id"
                 );
             }
@@ -225,14 +213,19 @@ async fn streamed_agent_run_hook_observes_identity() {
 
             let seen = hook.streaming.lock().expect("snapshots").clone();
             assert_eq!(seen.len(), 1, "one stream response-finish observation");
-            let (message_id, request_id) = &seen[0];
+            let identity = &seen[0];
             assert!(
-                message_id
+                identity
+                    .message_id
                     .as_deref()
                     .is_some_and(|id| id.starts_with("msg")),
-                "streamed hook sees message_id, got {message_id:?}"
+                "streamed hook sees message_id, got {:?}",
+                identity.message_id
             );
-            assert_request_id(request_id.as_deref(), "stream response-finish hook");
+            assert_request_id(
+                identity.provider_request_id.as_deref(),
+                "stream response-finish hook",
+            );
         },
     )
     .await;
