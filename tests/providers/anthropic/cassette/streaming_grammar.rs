@@ -29,7 +29,7 @@ struct StreamRun {
     finals: Vec<StreamFinal>,
     choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
-    message_id: Option<String>,
+    message_id: Option<rig::streaming::WireId>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {
@@ -67,7 +67,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = stream.response.clone();
-    run.message_id = stream.message_id.as_deref().map(str::to_owned);
+    run.message_id = stream.message_id.clone();
     run
 }
 

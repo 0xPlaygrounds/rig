@@ -1923,17 +1923,9 @@ mod migrated_tests {
     /// cassette-tested per provider).
     #[tokio::test]
     async fn completion_response_hook_and_calls_carry_identity_metadata() {
-        /// What the event carries, unconverted: the message handle plus the
-        /// response-scoped and transport ids.
-        type IdentityTriple = (
-            Option<rig_core::streaming::WireId>,
-            Option<rig_core::streaming::WireId>,
-            Option<rig_core::streaming::WireId>,
-        );
-
         #[derive(Clone, Default)]
         struct IdentityHook {
-            seen: Arc<Mutex<Vec<IdentityTriple>>>,
+            seen: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
         }
 
         impl AgentHook for IdentityHook {
@@ -1942,11 +1934,17 @@ mod migrated_tests {
                 _ctx: &HookContext,
                 event: crate::agent::hook::CompletionResponse<'_>,
             ) -> ObservationAction {
-                self.seen.lock().expect("identity snapshots").push((
-                    event.message_id.and_then(rig_core::streaming::WireId::new),
-                    event.identity.response_id.clone(),
-                    event.identity.provider_request_id.clone(),
-                ));
+                // `message_id` is documented to mirror the carrier's, so pin
+                // that here rather than re-encoding the carrier field by field.
+                assert_eq!(
+                    event.message_id,
+                    event.identity.message_id.as_deref(),
+                    "`message_id` must mirror `identity.message_id`"
+                );
+                self.seen
+                    .lock()
+                    .expect("identity snapshots")
+                    .push(event.identity.clone());
                 ObservationAction::continue_run()
             }
         }
@@ -1965,11 +1963,11 @@ mod migrated_tests {
 
         assert_eq!(
             *hook.seen.lock().expect("identity snapshots"),
-            [(
-                rig_core::streaming::WireId::new("msg_1"),
-                rig_core::streaming::WireId::new("resp_1"),
-                rig_core::streaming::WireId::new("req_1"),
-            )]
+            [rig_core::completion::ResponseIdentity {
+                message_id: rig_core::streaming::WireId::new("msg_1"),
+                response_id: rig_core::streaming::WireId::new("resp_1"),
+                provider_request_id: rig_core::streaming::WireId::new("req_1"),
+            }]
         );
         let call = &response.completion_calls[0];
         assert_eq!(call.message_id.as_deref(), Some("msg_1"));
