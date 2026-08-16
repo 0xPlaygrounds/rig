@@ -1,11 +1,19 @@
 //! Recorded matrix for the Doubleword embedding-width contract.
 //!
-//! One invariant runs through every cell: **the vectors Doubleword returns are
-//! exactly `EmbeddingModel::ndims()` wide**. That is the number a vector store
-//! sizes its index from (`rig-neo4j` validates an existing index against it
-//! and creates a new one with it; `rig-sqlite` sizes its table from it), so a
-//! width rig reports but never receives is a broken index, not a cosmetic
-//! mismatch.
+//! One invariant runs through every cell that names a width rig can promise:
+//! **the vectors Doubleword returns are exactly `EmbeddingModel::ndims()`
+//! wide**. That is the number a vector store sizes its index from (`rig-neo4j`
+//! validates an existing index against it and creates a new one with it;
+//! `rig-sqlite` sizes its table from it), so a width rig reports but never
+//! receives is a broken index, not a cosmetic mismatch.
+//!
+//! Three cells sit deliberately outside that invariant, and say so where they
+//! stand: `a_zero_width_is_treated_as_no_width`, because 0 is the shared
+//! path's "the caller said nothing" sentinel and `ndims()` keeps reporting it
+//! against a 4096-wide vector, and the two provider-refusal cells
+//! (`empty_input_at_a_requested_width`,
+//! `an_unknown_model_still_puts_the_requested_width_on_the_wire`), which
+//! return no vectors to measure.
 //!
 //! Two defects broke the invariant in opposite directions, and the matrix
 //! separates them:
@@ -51,10 +59,11 @@ const BATCH: [&str; 3] = ["alpha probe", "bravo probe", "charlie probe"];
 /// Asserts the matrix invariant against one cell's recorded bytes.
 ///
 /// `expected_on_the_wire` is what the request should have carried: `None` for
-/// "no `dimensions` field at all". Taking it as a parameter rather than
-/// deriving it from `width` is the point — the native-width cells are the ones
-/// that must *not* send the field, and a derived expectation would agree with
-/// whatever the code did.
+/// "no `dimensions` field at all". It is a parameter rather than something
+/// derived from the recorded call, so a cell states the wire shape it expects
+/// instead of reading back whatever the code happened to send. Every cell that
+/// expects `None` — the ones where suppression is the thing under test — spells
+/// it out at the call site.
 fn assert_recorded(
     calls: &[RecordedEmbeddingCall],
     expected_on_the_wire: &[Option<usize>],
@@ -67,6 +76,7 @@ fn assert_recorded(
         "cell should have recorded {} round trip(s)",
         expected_on_the_wire.len()
     );
+    assert_eq!(expected_on_the_wire.len(), expected_vectors.len());
 
     for (index, call) in calls.iter().enumerate() {
         assert_eq!(
@@ -75,31 +85,40 @@ fn assert_recorded(
         );
     }
 
-    let widths: Vec<usize> = calls
-        .iter()
-        .flat_map(|call| call.returned_widths.iter().copied())
-        .collect();
-    assert_eq!(
-        widths.len(),
-        expected_vectors.iter().sum::<usize>(),
-        "cell should have recorded {expected_vectors:?} vectors"
-    );
-    for width in &widths {
+    // Per round trip rather than summed: a two-turn cell that recorded 2 then
+    // 1 vector must not pass because a cell expecting 1 then 2 adds up the
+    // same.
+    for (index, call) in calls.iter().enumerate() {
         assert_eq!(
-            *width, expected_width,
-            "recorded vector width should be {expected_width}"
+            call.returned_widths.len(),
+            expected_vectors[index],
+            "round trip {index}: recorded the wrong number of vectors"
         );
+        for width in &call.returned_widths {
+            assert_eq!(
+                *width, expected_width,
+                "round trip {index}: recorded vector width should be {expected_width}"
+            );
+        }
     }
 }
 
-/// One input at one width: the spine of the matrix.
+/// One input at one *truncating* width: the spine of the matrix.
+///
+/// Only for widths that must reach the wire, so the expectation here is always
+/// `Some(width)`. The cells where the field must be absent do not come through
+/// this helper — they call [`assert_recorded`] with an explicit `None`, so
+/// suppression is never something a shared helper inferred on their behalf.
 ///
 /// Written as a helper because the cassette wrapper's scenario literal has to
 /// stay at each `#[tokio::test]` call site for the safety scan to see it — so
 /// the bodies are shared and the literals are not.
-async fn assert_single_input_width(calls: Vec<RecordedEmbeddingCall>, width: usize) {
-    let on_the_wire = (width != NATIVE_WIDTH).then_some(width);
-    assert_recorded(&calls, &[on_the_wire], width, &[1]);
+fn assert_single_input_width(calls: Vec<RecordedEmbeddingCall>, width: usize) {
+    assert_ne!(
+        width, NATIVE_WIDTH,
+        "the native width is never sent; use assert_recorded with an explicit None"
+    );
+    assert_recorded(&calls, &[Some(width)], width, &[1]);
 }
 
 fn embedding_model(
@@ -190,7 +209,7 @@ async fn width_default_single() {
         |client| async move { embed_one(&client, None, PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, NATIVE_WIDTH).await;
+    assert_recorded(&calls, &[None], NATIVE_WIDTH, &[1]);
 }
 
 #[tokio::test]
@@ -200,7 +219,7 @@ async fn width_32_single() {
         |client| async move { embed_one(&client, Some(32), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, 32).await;
+    assert_single_input_width(calls, 32);
 }
 
 #[tokio::test]
@@ -210,7 +229,7 @@ async fn width_64_single() {
         |client| async move { embed_one(&client, Some(64), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, 64).await;
+    assert_single_input_width(calls, 64);
 }
 
 #[tokio::test]
@@ -220,7 +239,7 @@ async fn width_128_single() {
         |client| async move { embed_one(&client, Some(128), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, 128).await;
+    assert_single_input_width(calls, 128);
 }
 
 #[tokio::test]
@@ -230,7 +249,7 @@ async fn width_256_single() {
         |client| async move { embed_one(&client, Some(256), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, 256).await;
+    assert_single_input_width(calls, 256);
 }
 
 #[tokio::test]
@@ -240,7 +259,7 @@ async fn width_512_single() {
         |client| async move { embed_one(&client, Some(512), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, 512).await;
+    assert_single_input_width(calls, 512);
 }
 
 #[tokio::test]
@@ -250,7 +269,7 @@ async fn width_1024_single() {
         |client| async move { embed_one(&client, Some(1_024), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, 1_024).await;
+    assert_single_input_width(calls, 1_024);
 }
 
 #[tokio::test]
@@ -260,7 +279,7 @@ async fn width_2048_single() {
         |client| async move { embed_one(&client, Some(2_048), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, 2_048).await;
+    assert_single_input_width(calls, 2_048);
 }
 
 #[tokio::test]
@@ -273,7 +292,7 @@ async fn width_4095_single() {
         |client| async move { embed_one(&client, Some(4_095), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, 4_095).await;
+    assert_single_input_width(calls, 4_095);
 }
 
 #[tokio::test]
@@ -286,7 +305,7 @@ async fn width_4096_single_is_not_sent() {
         |client| async move { embed_one(&client, Some(NATIVE_WIDTH), PROBE).await },
     )
     .await;
-    assert_single_input_width(calls, NATIVE_WIDTH).await;
+    assert_recorded(&calls, &[None], NATIVE_WIDTH, &[1]);
 }
 
 // ================================================================
@@ -472,7 +491,7 @@ async fn unicode_input_at_a_requested_width() {
         },
     )
     .await;
-    assert_single_input_width(calls, 512).await;
+    assert_single_input_width(calls, 512);
 }
 
 #[tokio::test]
@@ -507,7 +526,7 @@ async fn long_input_at_a_requested_width() {
         },
     )
     .await;
-    assert_single_input_width(calls, 512).await;
+    assert_single_input_width(calls, 512);
 }
 
 #[tokio::test]

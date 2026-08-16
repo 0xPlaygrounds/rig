@@ -87,6 +87,22 @@ fn recorded_embedding_calls(scenario: &str) -> Vec<RecordedEmbeddingCall> {
             let interaction = serde_yaml::Value::deserialize(document).unwrap_or_else(|error| {
                 panic!("cassette {} should deserialize: {error}", path.display())
             });
+            // Asserted rather than assumed: this reader treats every
+            // interaction as a JSON embeddings turn, so a cassette that ever
+            // mixed in a completion turn — or a base64-encoded body — would
+            // otherwise be read as an embeddings call that returned nothing.
+            assert_eq!(
+                interaction["when"]["path"].as_str(),
+                Some("/v1/embeddings"),
+                "cassette {} should record only embeddings turns",
+                path.display()
+            );
+            assert!(
+                interaction["then"]["body_encoding"].is_null()
+                    && interaction["when"]["body_encoding"].is_null(),
+                "cassette {} records an encoded body this reader cannot decode",
+                path.display()
+            );
             let body = |side: &str| -> serde_json::Value {
                 let raw = interaction[side]["body"].as_str().unwrap_or_else(|| {
                     panic!("cassette {} {side} should carry a body", path.display())

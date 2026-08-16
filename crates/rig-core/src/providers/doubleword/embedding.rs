@@ -19,9 +19,12 @@ use super::client::DoublewordExt;
 // ================================================================
 pub const QWEN3_EMBEDDING_8B: &str = "Qwen/Qwen3-Embedding-8B";
 
-/// Output widths Doubleword documents for [`QWEN3_EMBEDDING_8B`]: "supports
-/// user-defined output dimensions ranging from 32 to 4096". The top of the
-/// range is also the width the model returns when the request names none.
+/// Output widths Doubleword documents for [`QWEN3_EMBEDDING_8B`] on its model
+/// page (<https://docs.doubleword.ai/inference-api/models/qwen-qwen3-embedding-8b>):
+/// "Output Dimensions: 32-4096 Configurable". The top of the range is also the
+/// width the model returns when the request names none, which is why one
+/// constant can serve as both — a second model whose maximum and default
+/// differ would need them apart.
 const QWEN3_EMBEDDING_8B_DIMENSIONS: RangeInclusive<usize> = 32..=4_096;
 
 /// The documented output-dimension range of a Doubleword embedding model, or
@@ -31,7 +34,9 @@ const QWEN3_EMBEDDING_8B_DIMENSIONS: RangeInclusive<usize> = 32..=4_096;
 /// [`OpenAIEmbeddingsCompatible::default_ndims`] reports and the values
 /// [`OpenAIEmbeddingsCompatible::embedding_dimensions`] will put on the wire —
 /// so the two cannot drift apart into a model that reports a width it would
-/// refuse to request.
+/// refuse to request. The rejection *message* is a `&'static str` the error
+/// type cannot format from a range, so it repeats the bounds by hand; adding a
+/// second model here means revisiting it.
 fn documented_dimensions(model: &str) -> Option<RangeInclusive<usize>> {
     (model == QWEN3_EMBEDDING_8B).then_some(QWEN3_EMBEDDING_8B_DIMENSIONS)
 }
@@ -251,6 +256,7 @@ mod tests {
                 parameter: "user"
             }
         ));
+        assert!(http_client.requests().is_empty());
 
         let http_client = RecordingHttpClient::new(RESPONSE_BODY);
         let error = client(http_client.clone())
