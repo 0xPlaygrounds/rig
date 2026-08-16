@@ -3,9 +3,11 @@
 //! [Doubleword](https://docs.doubleword.ai) is an OpenAI-compatible inference
 //! provider. This integration covers the **realtime** tier: synchronous chat
 //! completions and streaming via [`CompletionModel`], plus embeddings
-//! ([`EmbeddingModel`]) on the same endpoint. Doubleword's cheaper **async**
-//! and **batch** tiers run through the OpenAI-compatible Batch API
-//! (`/v1/batches`); Rig support for them is not yet included.
+//! ([`EmbeddingModel`]) on the same endpoint. Doubleword's two cheaper tiers
+//! are separate mechanisms and Rig models neither: the **async** tier is the
+//! same endpoints with `service_tier: "flex"` (plus `background: true` to
+//! poll), while only the **batch** tier uses the OpenAI-compatible Batch API
+//! (`/v1/batches`) with a JSONL upload.
 //!
 //! Set `DOUBLEWORD_API_KEY` (and optionally `DOUBLEWORD_BASE_URL`) to use
 //! [`ProviderClient::from_env`](crate::client::ProviderClient::from_env).

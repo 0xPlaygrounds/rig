@@ -1,7 +1,10 @@
-//! Contract-vs-reality (rig#2265 / PR #2313 follow-up): Doubleword is an
-//! Anthropic-compatible gateway, so it *inherits* the
-//! `AnthropicCompatibleProvider::REQUEST_ID_HEADER` default of `request-id`.
-//! These recordings document what the gateway actually sends.
+//! Contract-vs-reality (rig#2265 / PR #2313 follow-up): Doubleword is bound to
+//! `OpenAICompatibleProvider` (`doubleword/client.rs`), whose
+//! `REQUEST_ID_HEADER` default is `None` — it does *not* inherit Anthropic's
+//! `Some("request-id")`, and it opts into nothing else. These recordings
+//! document the other half: Doubleword sends neither `request-id` nor
+//! `x-request-id`, both of which the recorder would have kept, so `None` is
+//! the honest answer rather than a contract rig declined to honour.
 
 use rig::completion::CompletionModel;
 use rig::prelude::*;
