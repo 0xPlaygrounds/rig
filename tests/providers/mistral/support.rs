@@ -88,3 +88,19 @@ where
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
+
+/// Wrapper for the embedding-dimension matrix, kept apart from
+/// [`with_mistral_capability_cassette`] so the Codestral width cells are
+/// auditable on their own.
+pub(super) async fn with_mistral_embedding_cassette<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
