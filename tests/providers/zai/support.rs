@@ -24,15 +24,42 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 /// A deliberately invalid key, sent in *both* record and replay modes.
 ///
-/// The `zai` policy requires the dialect's auth header to be present on the
-/// replayed request, so a bogus-key wrapper cannot fall back to an empty key;
-/// this mirrors `with_anthropic_cassette_bogus_key`.
+/// `ProviderCassette::bogus_api_key` would also satisfy the `zai` policy's
+/// required-header check (it returns `[REDACTED]` in replay, never an empty
+/// value), so this is not a correctness requirement — it is the
+/// `with_anthropic_cassette_bogus_key` shape: one literal, identical on both
+/// sides, so the header a rejection cell sends is legible in the source rather
+/// than mode-dependent.
 const BOGUS_API_KEY: &str = "invalid-edge-matrix-key";
+
+/// The scenario prefix is not cosmetic: `CassettePolicy::for_scenario` reads it
+/// to decide which auth header the replayed request must carry (`x-api-key` for
+/// `anthropic/…`, `authorization` otherwise). A cell filed under the wrong
+/// prefix would demand a header its client never sends, and every replay would
+/// fail as an opaque mock miss — so each wrapper refuses the mismatch up front.
+fn assert_anthropic_dialect_scenario(spec: &CassetteSpec) {
+    assert!(
+        spec.scenario().starts_with("anthropic/"),
+        "Anthropic-dialect scenarios must be prefixed `anthropic/`, got {:?}",
+        spec.scenario()
+    );
+}
+
+fn assert_openai_dialect_scenario(spec: &CassetteSpec) {
+    assert!(
+        !spec.scenario().starts_with("anthropic/"),
+        "the `anthropic/` prefix selects the x-api-key policy; an OpenAI-dialect \
+         cell must use `general/` or `coding/`, got {:?}",
+        spec.scenario()
+    );
+}
 
 async fn zai_openai_cassette(
     spec: impl Into<CassetteSpec>,
     real_base_url: &str,
 ) -> (ProviderCassette, zai::Client) {
+    let spec = spec.into();
+    assert_openai_dialect_scenario(&spec);
     let cassette = ProviderCassette::start("zai", spec, real_base_url).await;
     let client = zai::Client::builder()
         .api_key(cassette.api_key("ZAI_API_KEY"))
@@ -74,6 +101,8 @@ where
     F: FnOnce(zai::AnthropicClient) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
+    assert_anthropic_dialect_scenario(&spec);
     let cassette = ProviderCassette::start("zai", spec, zai::ANTHROPIC_API_BASE_URL).await;
     let client = zai::AnthropicClient::builder()
         .api_key(cassette.api_key("ZAI_API_KEY"))
@@ -94,6 +123,8 @@ pub(super) async fn with_zai_general_cassette_bogus_key<F, Fut>(
     F: FnOnce(zai::Client) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
+    assert_openai_dialect_scenario(&spec);
     let cassette = ProviderCassette::start("zai", spec, zai::GENERAL_API_BASE_URL).await;
     let client = zai::Client::builder()
         .api_key(BOGUS_API_KEY)
@@ -113,6 +144,8 @@ pub(super) async fn with_zai_anthropic_cassette_bogus_key<F, Fut>(
     F: FnOnce(zai::AnthropicClient) -> Fut,
     Fut: Future<Output = ()>,
 {
+    let spec = spec.into();
+    assert_anthropic_dialect_scenario(&spec);
     let cassette = ProviderCassette::start("zai", spec, zai::ANTHROPIC_API_BASE_URL).await;
     let client = zai::AnthropicClient::builder()
         .api_key(BOGUS_API_KEY)
@@ -122,6 +155,23 @@ pub(super) async fn with_zai_anthropic_cassette_bogus_key<F, Fut>(
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
+}
+
+/// The path of a scenario's **first** recorded request.
+///
+/// This is the only record of how the base URL composed with the endpoint
+/// suffix — a doubled `/v4` or a dropped `/api` is invisible from the response
+/// — so the smoke cell of each dialect asserts it.
+pub(super) fn recorded_request_path(scenario: &str) -> String {
+    let path = crate::cassettes::cassette_path("zai", scenario);
+    let contents = std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
+
+    contents
+        .lines()
+        .find_map(|line| line.trim_start().strip_prefix("path: "))
+        .unwrap_or_else(|| panic!("cassette {} should record a request path", path.display()))
+        .to_string()
 }
 
 /// The request body of a scenario's **first** recorded interaction, as JSON.
@@ -199,12 +249,23 @@ pub(super) fn recorded_response_text(scenario: &str) -> String {
         )
     });
 
-    response.to_string()
+    // Stop at the next document separator: a multi-turn cassette continues with
+    // turn 2's *request*, whose body would otherwise be searched as if it were
+    // response text.
+    match response.split_once("\n---\n") {
+        Some((first, _)) => first.to_string(),
+        None => response.to_string(),
+    }
 }
 
 /// The harness writes a body as a single-line YAML single-quoted scalar, in
 /// which a literal quote is doubled.
 fn parse_yaml_scalar_json(line: &str, cassette: &str) -> serde_json::Value {
+    assert_ne!(
+        line, "null",
+        "cassette {cassette} recorded no body here; this reader is for cells whose \
+         turn carries a JSON document"
+    );
     let json = line
         .strip_prefix('\'')
         .and_then(|rest| rest.strip_suffix('\''))

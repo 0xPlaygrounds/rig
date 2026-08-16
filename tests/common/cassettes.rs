@@ -89,6 +89,14 @@ impl CassetteSpec {
         self.replay_matching = ReplayMatching::Unordered;
         self
     }
+
+    /// The scenario this spec names. Provider wrappers read it to enforce their
+    /// own prefix conventions before handing the spec to the cassette — see the
+    /// `zai` arm of [`CassettePolicy::for_scenario`], whose required-header set
+    /// is chosen by prefix.
+    pub(crate) const fn scenario(&self) -> &'static str {
+        self.scenario
+    }
 }
 
 impl From<&'static str> for CassetteSpec {
@@ -2950,6 +2958,54 @@ mod tests {
                 matching_interaction_index(policy, &interactions, &request_with_auth),
                 Some(0)
             );
+        }
+    }
+
+    #[test]
+    fn zai_policy_requires_each_dialects_own_auth_header() {
+        // Z.AI carries one key under two header names, so the required set is
+        // chosen by scenario prefix. Neither header is recorded (both are
+        // scrubbed as sensitive), which makes this check the only way a zai
+        // fixture can testify to the header its client sent.
+        let anthropic_policy = CassettePolicy::for_scenario(
+            "zai",
+            "anthropic/completion_blocking_smoke",
+            ReplayMatching::Ordered,
+        );
+        let mut request = incoming_request("/api/anthropic/v1/messages", Bytes::new());
+        assert_eq!(
+            missing_required_headers(anthropic_policy, &request.headers),
+            vec!["x-api-key"]
+        );
+        request
+            .headers
+            .insert("x-api-key", HeaderValue::from_static("[REDACTED]"));
+        assert!(required_headers_present(anthropic_policy, &request.headers));
+
+        for scenario in [
+            "general/completion_blocking_smoke",
+            "coding/completion_blocking_smoke",
+        ] {
+            let policy = CassettePolicy::for_scenario("zai", scenario, ReplayMatching::Ordered);
+            let mut request = incoming_request("/api/paas/v4/chat/completions", Bytes::new());
+            assert_eq!(
+                missing_required_headers(policy, &request.headers),
+                vec!["authorization"],
+                "{scenario} rides the OpenAI dialect's bearer header"
+            );
+            // The x-api-key the other dialect sends does not satisfy it.
+            request
+                .headers
+                .insert("x-api-key", HeaderValue::from_static("[REDACTED]"));
+            assert_eq!(
+                missing_required_headers(policy, &request.headers),
+                vec!["authorization"]
+            );
+            request.headers.insert(
+                axum::http::header::AUTHORIZATION,
+                HeaderValue::from_static("Bearer [REDACTED]"),
+            );
+            assert!(required_headers_present(policy, &request.headers));
         }
     }
 

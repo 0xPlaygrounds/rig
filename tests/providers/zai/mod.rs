@@ -26,6 +26,12 @@ pub(crate) const CHEAP_GENERAL_MODEL: &str = "glm-4.5-flash";
 /// `glm-4.5-air` is the cheapest member documented for it.
 pub(crate) const CODING_MODEL: &str = zai::GLM_4_5_AIR;
 
+/// The Anthropic-compatible endpoint is documented as the Coding Plan URL, so
+/// it is named separately from [`CODING_MODEL`] even though both resolve to
+/// `glm-4.5-air` today: they are two different endpoints' model sets, and one
+/// can move without the other.
+pub(crate) const ANTHROPIC_MODEL: &str = zai::GLM_4_5_AIR;
+
 /// GLM's thinking output is what the reasoning cells are about, so they name a
 /// model documented to produce it rather than the free flash tier.
 pub(crate) const THINKING_MODEL: &str = zai::GLM_4_5_AIR;

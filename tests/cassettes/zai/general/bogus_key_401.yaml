@@ -1,0 +1,16 @@
+when:
+  path: /api/paas/v4/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Say hi.","role":"user"}],"model":"glm-4.5-flash"}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":"401","message":"token expired or incorrect"}}'

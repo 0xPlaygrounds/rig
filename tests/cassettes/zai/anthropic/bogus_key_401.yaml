@@ -1,0 +1,18 @@
+when:
+  path: /api/anthropic/v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"Say hi.","type":"text"}],"role":"user"}],"model":"glm-4.5-air"}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"token expired or incorrect","type":"401"}}'
