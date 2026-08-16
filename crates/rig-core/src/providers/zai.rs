@@ -37,8 +37,24 @@ pub const ANTHROPIC_API_BASE_URL: &str = "https://api.z.ai/api/anthropic";
 /// `glm-4.6`
 pub const GLM_4_6: &str = "glm-4.6";
 /// `glm-4.6-air`
+///
+/// **Not in Z.AI's catalog.** The 4.6 generation shipped only as `glm-4.6`;
+/// the `-air`/`-x`/`-airx` variants belong to 4.5 and 4.7. This identifier
+/// appears neither in the `model` enum of Z.AI's chat-completion reference nor
+/// in the pricing table, so naming it can only fail.
+#[deprecated(
+    note = "Z.AI does not serve this model. `glm-4.6-air` is not in Z.AI's documented model list; \
+    use `GLM_4_6`, or `GLM_4_5_AIR` for an Air-class model"
+)]
 pub const GLM_4_6_AIR: &str = "glm-4.6-air";
 /// `glm-4.6-x`
+///
+/// **Not in Z.AI's catalog.** See [`GLM_4_6_AIR`]: the 4.6 generation shipped
+/// only as `glm-4.6`.
+#[deprecated(
+    note = "Z.AI does not serve this model. `glm-4.6-x` is not in Z.AI's documented model list; \
+    use `GLM_4_6`, or `GLM_4_5_AIRX` for an X-class model"
+)]
 pub const GLM_4_6_X: &str = "glm-4.6-x";
 /// `glm-4.5`
 pub const GLM_4_5: &str = "glm-4.5";
@@ -110,7 +126,75 @@ impl<H> AnthropicClientBuilder<H> {
 mod tests {
     use super::{
         ANTHROPIC_API_BASE_URL, ANTHROPIC_BASE_URLS, CODING_API_BASE_URL, GENERAL_API_BASE_URL,
+        GLM_4_5, GLM_4_5_AIR, GLM_4_5_AIRX, GLM_4_5V, GLM_4_6,
     };
+
+    /// Z.AI's documented `model` enum, transcribed from the chat-completion
+    /// API reference and cross-checked against the pricing table (both read
+    /// 2026-08-16):
+    ///
+    /// * <https://docs.z.ai/api-reference/llm/chat-completion>
+    /// * <https://docs.z.ai/guides/overview/pricing>
+    const DOCUMENTED_MODELS: &[&str] = &[
+        "glm-5.2",
+        "glm-5.1",
+        "glm-5-turbo",
+        "glm-5",
+        "glm-4.7",
+        "glm-4.7-flash",
+        "glm-4.7-flashx",
+        "glm-4.6",
+        "glm-4.5",
+        "glm-4.5-air",
+        "glm-4.5-x",
+        "glm-4.5-airx",
+        "glm-4.5-flash",
+        "glm-4-32b-0414-128k",
+        "glm-5v-turbo",
+        "glm-4.6v",
+        "glm-4.6v-flash",
+        "glm-4.6v-flashx",
+        "glm-4.5v",
+    ];
+
+    /// Every model constant this module exports must either name a model Z.AI
+    /// documents or be marked deprecated, and the deprecated ones must stay
+    /// absent from the catalog.
+    ///
+    /// A model handle that the API cannot resolve fails every call that names
+    /// it, so a public constant is a promise the provider has to keep; this
+    /// pins both halves of that promise against a transcription of Z.AI's own
+    /// enum, which is the only place the set is defined.
+    ///
+    /// **Unit test rather than a cassette because no `ZAI_API_KEY` was
+    /// available in the environment where this was written**, so the 400 that
+    /// `glm-4.6-air` produces could not be recorded (`tests/README.md` asks a
+    /// unit test of provider-facing behavior to say why it is not a cassette
+    /// test). The wire half is already written and `#[ignore]`d as
+    /// `general/unknown_model_constant_400` and its `_x` sibling in
+    /// `tests/providers/zai/cassette/models.rs`; recording those turns this
+    /// documentation-based claim into an observed one.
+    #[test]
+    // The retired constants are the subject of the second assertion.
+    #[allow(deprecated)]
+    fn model_constants_match_zais_documented_catalog() {
+        for model in [GLM_4_6, GLM_4_5, GLM_4_5_AIR, GLM_4_5V, GLM_4_5_AIRX] {
+            assert!(
+                DOCUMENTED_MODELS.contains(&model),
+                "{model} is exported as a usable Z.AI model handle but is not in Z.AI's \
+                 documented model enum; correct the constant or deprecate it"
+            );
+        }
+
+        for model in [super::GLM_4_6_AIR, super::GLM_4_6_X] {
+            assert!(
+                !DOCUMENTED_MODELS.contains(&model),
+                "{model} is back in Z.AI's documented model enum; drop its #[deprecated] \
+                 attribute rather than leaving a usable model marked retired"
+            );
+        }
+    }
+
 
     #[test]
     fn test_client_initialization() {
