@@ -1845,6 +1845,35 @@ pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
         .join("")
 }
 
+/// Joins the reasoning carried by `type == "thinking"` content parts, in order.
+///
+/// Mistral's reasoning (magistral-class) models answer with assistant
+/// `content` as a chunk array rather than a string, putting the trace in a
+/// `thinking` chunk ahead of the answer's `text` chunk:
+///
+/// ```json
+/// [{"type": "thinking", "thinking": [{"type": "text", "text": "…"}], "closed": true},
+///  {"type": "text", "text": "42"}]
+/// ```
+///
+/// The chunk's own payload is a nested content-part list, so the trace is
+/// joined with [`joined_text_parts`]; a bare string is accepted too, since a
+/// replayed chunk may carry one. Everything [`joined_text_parts`] keeps this
+/// drops and vice versa, so the two together read one chunk array without
+/// either half claiming the other's parts.
+pub(crate) fn joined_thinking_parts(parts: &[serde_json::Value]) -> String {
+    parts
+        .iter()
+        .filter(|part| part.get("type").and_then(serde_json::Value::as_str) == Some("thinking"))
+        .filter_map(|part| match part.get("thinking") {
+            Some(serde_json::Value::String(text)) => Some(text.clone()),
+            Some(serde_json::Value::Array(parts)) => Some(joined_text_parts(parts)),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 /// Shared helper for provider `finalize_request_body` hooks whose APIs only
 /// accept plain `{role, content}` chat messages: removes tool-exchange
 /// remnants left in shared histories (role `tool` messages, assistant

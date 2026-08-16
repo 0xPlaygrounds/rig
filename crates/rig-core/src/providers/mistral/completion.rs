@@ -72,21 +72,130 @@ pub type MistralStreamingCompletionResponse =
 // Rig Implementation Types
 // =================================================================
 
-fn mistral_content_value_to_text(value: serde_json::Value) -> String {
-    match value {
-        serde_json::Value::String(text) => text,
-        serde_json::Value::Array(parts) => openai::completion::joined_text_parts(&parts),
-        _ => String::new(),
+/// The content of an assistant message, in the two forms Mistral sends it.
+///
+/// An ordinary turn answers with a plain string. A reasoning
+/// (magistral-class) turn answers with the chunk array Mistral's reasoning
+/// docs describe — a `thinking` chunk carrying the trace, then the answer's
+/// `text` chunk:
+///
+/// ```json
+/// [{"type": "thinking", "thinking": [{"type": "text", "text": "…"}], "closed": true},
+///  {"type": "text", "text": "42"}]
+/// ```
+///
+/// Modelling that as a bare `String` kept only the answer and dropped the
+/// trace — and dropped the *whole* turn when a `max_tokens` cap was spent
+/// inside the trace, since the response then carries nothing else. Both
+/// halves are kept here, and both are written back: a
+/// [`Display`](std::fmt::Display)/[`Deref`](std::ops::Deref) to `str` keeps
+/// the text reachable exactly as before.
+#[derive(Debug, Default, PartialEq, Clone)]
+pub struct AssistantMessageContent {
+    /// The turn's visible answer text — every `text` chunk, joined in order.
+    pub text: String,
+    /// The turn's reasoning trace: one entry per `thinking` chunk, in order.
+    /// Empty for every non-reasoning turn.
+    pub reasoning: Vec<String>,
+}
+
+impl std::ops::Deref for AssistantMessageContent {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.text
     }
 }
 
-fn deserialize_mistral_content_string<'de, D>(deserializer: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Ok(Option::<serde_json::Value>::deserialize(deserializer)?
-        .map(mistral_content_value_to_text)
-        .unwrap_or_default())
+impl std::fmt::Display for AssistantMessageContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.text)
+    }
+}
+
+impl From<String> for AssistantMessageContent {
+    fn from(text: String) -> Self {
+        Self {
+            text,
+            reasoning: Vec::new(),
+        }
+    }
+}
+
+impl From<&str> for AssistantMessageContent {
+    fn from(text: &str) -> Self {
+        Self::from(text.to_owned())
+    }
+}
+
+impl From<serde_json::Value> for AssistantMessageContent {
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::String(text) => Self::from(text),
+            serde_json::Value::Array(parts) => Self {
+                text: openai::completion::joined_text_parts(&parts),
+                reasoning: parts
+                    .iter()
+                    .map(std::slice::from_ref)
+                    .map(openai::completion::joined_thinking_parts)
+                    .filter(|thinking| !thinking.is_empty())
+                    .collect(),
+            },
+            _ => Self::default(),
+        }
+    }
+}
+
+impl Serialize for AssistantMessageContent {
+    /// Written back in the form Mistral sent it: a plain string for an
+    /// ordinary turn, and the chunk array for a turn carrying a trace, so the
+    /// type round-trips its own wire shape.
+    ///
+    /// This is not the request path — Mistral's requests are built from
+    /// [`openai::completion::Message`], and the outbound trace is produced by
+    /// [`splice_reasoning_into_content`]. This impl exists so a caller holding
+    /// a decoded response can re-serialize it without losing half of it.
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if self.reasoning.is_empty() {
+            return self.text.serialize(serializer);
+        }
+
+        let mut parts: Vec<serde_json::Value> = self
+            .reasoning
+            .iter()
+            .map(|thinking| thinking_chunk(thinking.as_str()))
+            .collect();
+        if !self.text.is_empty() {
+            parts.push(serde_json::json!({"type": TEXT_CHUNK, TEXT_CHUNK: self.text}));
+        }
+        parts.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AssistantMessageContent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Option::<serde_json::Value>::deserialize(deserializer)?
+            .map(Self::from)
+            .unwrap_or_default())
+    }
+}
+
+/// Mistral's `ThinkChunk`, carrying one complete reasoning trace.
+///
+/// `closed` marks a finished trace, which is what a replayed one always is —
+/// Mistral streams `closed: false` only while the trace is still open.
+fn thinking_chunk(trace: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": THINKING_CHUNK,
+        THINKING_CHUNK: [{"type": TEXT_CHUNK, TEXT_CHUNK: trace}],
+        "closed": true,
+    })
 }
 
 /// Mistral's content-chunk tags. The API validates message content as a
@@ -99,6 +208,10 @@ const IMAGE_CHUNK: &str = "image_url";
 const AUDIO_CHUNK: &str = "input_audio";
 const DOCUMENT_CHUNK: &str = "document_url";
 const FILE_CHUNK: &str = "file";
+/// Mistral's `ThinkChunk`. Its payload is a nested content-part list rather
+/// than a string, and Mistral's reasoning docs require the whole chunk be
+/// replayed into the next request for the model to stay coherent.
+const THINKING_CHUNK: &str = "thinking";
 /// OpenAI's refusal part. Textual content, but under a key Mistral's chunk
 /// schema has no field for, so it is re-tagged rather than forwarded.
 const REFUSAL_TYPE: &str = "refusal";
@@ -130,8 +243,8 @@ fn is_text_part(part: &serde_json::Value) -> bool {
 fn unsupported_content_error(what: &str) -> CompletionError {
     crate::message::MessageError::ConversionError(format!(
         "Mistral cannot carry {what}. Mistral messages accept text, `{IMAGE_CHUNK}`, \
-         `{AUDIO_CHUNK}`, `{DOCUMENT_CHUNK}` and `{FILE_CHUNK}` content; convert the content \
-         to one of those before sending it."
+         `{AUDIO_CHUNK}`, `{DOCUMENT_CHUNK}`, `{FILE_CHUNK}` and `{THINKING_CHUNK}` content; \
+         convert the content to one of those before sending it."
     ))
     .into()
 }
@@ -257,6 +370,29 @@ fn into_mistral_chunk(part: serde_json::Value) -> Result<serde_json::Value, Comp
                 None => serde_json::json!({"type": DOCUMENT_CHUNK, DOCUMENT_CHUNK: url}),
             })
         }
+        // A reasoning trace replayed into the next request, as Mistral's
+        // reasoning docs require. Rebuilt from the trace text so the chunk
+        // rig emits is the one Mistral's schema names, whether it came from
+        // `reasoning_content` or from an already-finalized body.
+        Some(THINKING_CHUNK) => {
+            let trace = match part.get(THINKING_CHUNK) {
+                Some(serde_json::Value::String(text)) => text.clone(),
+                Some(serde_json::Value::Array(parts)) => {
+                    openai::completion::joined_text_parts(parts)
+                }
+                _ => String::new(),
+            };
+            // An empty trace is not a trace: `{"thinking": []}` is the closing
+            // frame the streaming wire sends, and replaying it as a chunk with
+            // an empty text part is the same "empty trace replayed as a trace"
+            // that `splice_reasoning_into_content` refuses. The two paths agree.
+            if trace.is_empty() {
+                return Err(unsupported_content_error(
+                    "a thinking content part carrying no reasoning trace",
+                ));
+            }
+            Ok(thinking_chunk(&trace))
+        }
         Some(kind) => Err(unsupported_content_error(&format!(
             "`{kind}` message content"
         ))),
@@ -315,6 +451,60 @@ pub(super) fn normalize_request_content(
     Ok(())
 }
 
+/// Move an assistant message's `reasoning_content` into its `content` as
+/// Mistral's `thinking` chunk.
+///
+/// The shared OpenAI-compatible conversion renders a
+/// [`Reasoning`](crate::completion::AssistantContent::Reasoning) block as a
+/// `reasoning_content` *string* beside the content — the DeepSeek/llama.cpp
+/// dialect. Mistral has no such field (it rejects unknown assistant keys) and
+/// instead takes the trace as a content chunk, which its reasoning docs
+/// require be replayed into the following request. Stripping the field, as
+/// this used to, sent the turn back without its trace — and left rig unable to
+/// round-trip a reasoning block it had itself produced.
+///
+/// The chunk leads the content, matching where Mistral puts it in the
+/// response it came from. Empty or non-string reasoning is dropped rather than
+/// replayed as an empty trace.
+///
+/// Note that Mistral answers a reasoning input sent to a model without the
+/// capability with `400 Reasoning input is not enabled for this model` — a
+/// loud, provider-authored rejection, where the alternative is the silent
+/// incoherence a dropped trace causes on the models that do support it.
+pub(super) fn splice_reasoning_into_content(
+    message: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    let Some(reasoning) = message.remove("reasoning_content") else {
+        return;
+    };
+    let Some(reasoning) = reasoning.as_str().filter(|trace| !trace.is_empty()) else {
+        return;
+    };
+    let chunk = thinking_chunk(reasoning);
+
+    match message.get_mut("content") {
+        Some(serde_json::Value::Array(parts)) => {
+            parts.insert(0, chunk);
+            return;
+        }
+        Some(content @ serde_json::Value::String(_)) => {
+            let text = std::mem::take(content);
+            *content = match text.as_str() {
+                Some("") | None => serde_json::json!([chunk]),
+                Some(text) => {
+                    serde_json::json!([chunk, {"type": TEXT_CHUNK, TEXT_CHUNK: text}])
+                }
+            };
+            return;
+        }
+        // Absent or null — a turn that was pure tool-call scaffolding, whose
+        // trace is now the only content it has.
+        _ => {}
+    }
+
+    message.insert("content".to_string(), serde_json::json!([chunk]));
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Choice {
     pub index: usize,
@@ -331,8 +521,11 @@ pub enum Message {
         content: String,
     },
     Assistant {
-        #[serde(default, deserialize_with = "deserialize_mistral_content_string")]
-        content: String,
+        /// The turn's content. Not a plain string: a reasoning turn answers
+        /// with a chunk array carrying the trace beside the answer, which
+        /// [`AssistantMessageContent`] keeps both halves of.
+        #[serde(default)]
+        content: AssistantMessageContent,
         #[serde(
             default,
             deserialize_with = "json_utils::null_or_default",
@@ -433,11 +626,13 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
             .choices
             .iter()
             .filter_map(|choice| match choice.message {
+                // The turn's *visible* text: telemetry records the answer,
+                // never the hidden trace beside it.
                 Message::Assistant { ref content, .. } => {
-                    if content.is_empty() {
+                    if content.text.is_empty() {
                         None
                     } else {
-                        Some(content.to_string())
+                        Some(content.text.clone())
                     }
                 }
                 _ => None,
@@ -479,23 +674,32 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                     content,
                     tool_calls,
                     ..
-                } => Some(compat::text_then_tool_calls(
-                    content,
-                    content.is_empty(),
-                    // A call whose arguments were truncated mid-JSON is
-                    // unusable; the turn's `Length` finish reason is what
-                    // reports it, exactly as on the streaming path.
-                    tool_calls
-                        .iter()
-                        .filter(|call| !call.function.arguments.is_null())
-                        .map(|call| {
-                            (
-                                call.id.as_str(),
-                                call.function.name.as_str(),
-                                call.function.arguments.clone(),
-                            )
-                        }),
-                )),
+                } => {
+                    let mut blocks = compat::text_then_tool_calls(
+                        &content.text,
+                        content.text.is_empty(),
+                        // A call whose arguments were truncated mid-JSON is
+                        // unusable; the turn's `Length` finish reason is what
+                        // reports it, exactly as on the streaming path.
+                        tool_calls
+                            .iter()
+                            .filter(|call| !call.function.arguments.is_null())
+                            .map(|call| {
+                                (
+                                    call.id.as_str(),
+                                    call.function.name.as_str(),
+                                    call.function.arguments.clone(),
+                                )
+                            }),
+                    );
+                    // The trace leads, as it does on the wire and as the
+                    // streamed twin emits it: Mistral puts its `thinking`
+                    // chunk ahead of the answer's `text` chunk.
+                    for (index, trace) in content.reasoning.iter().enumerate() {
+                        blocks.insert(index, completion::AssistantContent::reasoning(trace));
+                    }
+                    Some(blocks)
+                }
                 _ => None,
             },
         )
@@ -547,7 +751,10 @@ mod tests {
         let response: CompletionResponse =
             serde_json::from_str(data).expect("response should deserialize");
         match &response.choices[0].message {
-            Message::Assistant { content, .. } => assert_eq!(content, "Hello world"),
+            Message::Assistant { content, .. } => {
+                assert_eq!(content.text, "Hello world");
+                assert!(content.reasoning.is_empty());
+            }
             _ => panic!("expected assistant message"),
         }
         match &response.choices[1].message {
@@ -556,7 +763,7 @@ mod tests {
                 tool_calls,
                 ..
             } => {
-                assert_eq!(content, "");
+                assert_eq!(content.text, "");
                 assert_eq!(tool_calls[0].function.name, "add");
             }
             _ => panic!("expected assistant message"),
@@ -845,7 +1052,8 @@ mod tests {
                         "type": "function",
                         "function": {"name": "add", "arguments": "{}"}
                     }]
-                }
+                },
+                {"role": "assistant", "content": [{"type": "text", "text": "Traceless."}]}
             ]
         });
 
@@ -854,14 +1062,30 @@ mod tests {
             .expect("finalize should succeed");
 
         assert_eq!(body["messages"][0]["content"], "Be brief.");
-        assert_eq!(body["messages"][2]["content"], "Hello.");
+        // The trace does not vanish: `reasoning_content` is the DeepSeek
+        // dialect the shared conversion emits, and Mistral's own spelling for
+        // it is a `thinking` chunk inside the content — which its reasoning
+        // docs require be replayed. See `reasoning_tests` for the whole rule.
+        assert_eq!(
+            body["messages"][2]["content"],
+            serde_json::json!([
+                {"type": "thinking",
+                 "thinking": [{"type": "text", "text": "hidden thoughts"}],
+                 "closed": true},
+                {"type": "text", "text": "Hello."}
+            ])
+        );
         assert_eq!(body["messages"][2]["prefix"], false);
         assert!(
             body["messages"][2].get("reasoning_content").is_none(),
-            "Mistral rejects unknown assistant fields; reasoning must be stripped"
+            "Mistral rejects unknown assistant fields; the trace rides in `content`"
         );
         assert_eq!(body["messages"][3]["content"], "");
         assert_eq!(body["messages"][3]["prefix"], false);
+        assert_eq!(
+            body["messages"][4]["content"], "Traceless.",
+            "an assistant turn with no trace still flattens to Mistral's plain string"
+        );
     }
 
     /// Finalize a one-user-message body and return the message's `content`.
@@ -1098,5 +1322,406 @@ mod tests {
         ]))
         .expect_err("an image part carrying no payload must not be dropped");
         assert!(matches!(error, CompletionError::RequestError(_)));
+    }
+}
+
+/// Unit cells for the reasoning (magistral-class) content path.
+///
+/// Recorded coverage lives in `tests/providers/mistral/reasoning_content.rs`;
+/// these pin the pieces a recording cannot isolate — the wire shapes Mistral's
+/// schema allows but its models have not been observed to send, and the
+/// request-side splice, whose output the recorded cells assert only in
+/// aggregate.
+#[cfg(test)]
+mod reasoning_tests {
+    use super::*;
+    use crate::completion::{AssistantContent, NormalizeCompletionResponse as _};
+    use crate::providers::openai::completion::OpenAICompatibleProvider;
+
+    /// The exact assistant content a live `reasoning_effort: "high"` turn
+    /// returns, quoted from a recorded response.
+    fn reasoning_content() -> serde_json::Value {
+        serde_json::json!([
+            {"type": "thinking",
+             "thinking": [{"type": "text", "text": "6 multiplied by 7 equals 42."}],
+             "closed": true},
+            {"type": "text", "text": "42"}
+        ])
+    }
+
+    fn assistant_content(value: serde_json::Value) -> AssistantMessageContent {
+        serde_json::from_value(value).expect("assistant content should deserialize")
+    }
+
+    /// The trace and the answer come out of the same `content` field, and both
+    /// survive. Joining only the text parts — what the plain-`String` model
+    /// did — kept the answer and dropped the trace.
+    #[test]
+    fn reasoning_content_keeps_the_trace_beside_the_answer() {
+        let content = assistant_content(reasoning_content());
+        assert_eq!(content.text, "42");
+        assert_eq!(content.reasoning, vec!["6 multiplied by 7 equals 42."]);
+    }
+
+    /// An ordinary turn's plain string is unchanged, and declares no trace.
+    #[test]
+    fn plain_string_content_is_unchanged() {
+        let content = assistant_content(serde_json::json!("42"));
+        assert_eq!(content.text, "42");
+        assert!(content.reasoning.is_empty());
+    }
+
+    /// A cap spent entirely inside the trace returns a content array with the
+    /// thinking chunk and nothing else. Under the plain-`String` model the
+    /// whole turn came back empty; the trace is the only thing it produced.
+    #[test]
+    fn a_thinking_only_turn_is_not_empty() {
+        let content = assistant_content(serde_json::json!([
+            {"type": "thinking", "thinking": [{"type": "text", "text": "Let me work it out"}]}
+        ]));
+        assert_eq!(content.text, "");
+        assert_eq!(
+            content.reasoning,
+            vec!["Let me work it out"],
+            "the trace is the only thing this turn produced"
+        );
+    }
+
+    /// Absent, null and non-string/array content all read as nothing, exactly
+    /// as they did before.
+    #[test]
+    fn absent_and_unusable_content_reads_as_empty() {
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!(7),
+            serde_json::json!([]),
+        ] {
+            let content = assistant_content(value.clone());
+            assert_eq!(content, AssistantMessageContent::default(), "{value}");
+        }
+    }
+
+    /// Several traces in one turn stay separate blocks, in wire order, and a
+    /// chunk whose payload is a bare string is read too — Mistral's schema
+    /// permits it and a replayed chunk can carry one.
+    #[test]
+    fn multiple_traces_stay_separate_and_ordered() {
+        let content = assistant_content(serde_json::json!([
+            {"type": "thinking", "thinking": [{"type": "text", "text": "first"}]},
+            {"type": "text", "text": "answer "},
+            {"type": "thinking", "thinking": "second"},
+            {"type": "text", "text": "here"}
+        ]));
+        assert_eq!(content.text, "answer here");
+        assert_eq!(content.reasoning, vec!["first", "second"]);
+    }
+
+    /// A thinking chunk with no payload contributes no trace rather than an
+    /// empty one — an empty reasoning block is noise, not data.
+    #[test]
+    fn a_payload_less_thinking_chunk_contributes_nothing() {
+        let content = assistant_content(serde_json::json!([
+            {"type": "thinking", "closed": true},
+            {"type": "thinking", "thinking": []},
+            {"type": "text", "text": "42"}
+        ]));
+        assert_eq!(content.text, "42");
+        assert!(content.reasoning.is_empty());
+    }
+
+    /// Serialization writes back the shape Mistral reads: a plain string when
+    /// there is no trace, and the chunk array — trace first — when there is.
+    #[test]
+    fn content_serializes_back_into_mistrals_own_shape() {
+        let plain = AssistantMessageContent::from("42");
+        assert_eq!(
+            serde_json::to_value(&plain).unwrap(),
+            serde_json::json!("42")
+        );
+
+        let reasoned = assistant_content(reasoning_content());
+        assert_eq!(
+            serde_json::to_value(&reasoned).unwrap(),
+            serde_json::json!([
+                {"type": "thinking",
+                 "thinking": [{"type": "text", "text": "6 multiplied by 7 equals 42."}],
+                 "closed": true},
+                {"type": "text", "text": "42"}
+            ])
+        );
+
+        let trace_only = assistant_content(serde_json::json!([
+            {"type": "thinking", "thinking": [{"type": "text", "text": "still working"}]}
+        ]));
+        assert_eq!(
+            serde_json::to_value(&trace_only).unwrap(),
+            serde_json::json!([
+                {"type": "thinking",
+                 "thinking": [{"type": "text", "text": "still working"}],
+                 "closed": true}
+            ]),
+            "a turn with no answer must not gain an empty text chunk"
+        );
+    }
+
+    fn normalized(message: serde_json::Value, finish_reason: &str) -> Vec<AssistantContent> {
+        let response: CompletionResponse = serde_json::from_value(serde_json::json!({
+            "id": "cmpl-1",
+            "object": "chat.completion",
+            "created": 1,
+            "model": MISTRAL_SMALL,
+            "system_fingerprint": null,
+            "choices": [{
+                "index": 0,
+                "message": message,
+                "logprobs": null,
+                "finish_reason": finish_reason
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+        }))
+        .expect("response should deserialize");
+        response
+            .normalize("mistral")
+            .expect("response should normalize")
+            .choice
+    }
+
+    /// The trace reaches the caller as a reasoning block, ahead of the answer
+    /// — the order Mistral sends it in, and the order the streamed twin emits.
+    #[test]
+    fn normalize_emits_the_trace_before_the_answer() {
+        let choice = normalized(
+            serde_json::json!({"role": "assistant", "content": reasoning_content()}),
+            "stop",
+        );
+        assert!(
+            matches!(&choice[0], AssistantContent::Reasoning(_)),
+            "the trace leads: {choice:?}"
+        );
+        assert!(matches!(&choice[1], AssistantContent::Text(text) if text.text == "42"));
+        assert_eq!(choice.len(), 2);
+    }
+
+    /// A reasoning turn that ends in a tool call carries the trace beside the
+    /// call, which is the shape a reasoning agent sees on every turn.
+    #[test]
+    fn normalize_keeps_the_trace_beside_a_tool_call() {
+        let choice = normalized(
+            serde_json::json!({
+                "role": "assistant",
+                "content": [{"type": "thinking",
+                             "thinking": [{"type": "text", "text": "I need the add tool."}],
+                             "closed": true}],
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "add", "arguments": "{\"a\":2,\"b\":3}"}
+                }]
+            }),
+            "tool_calls",
+        );
+        assert!(matches!(&choice[0], AssistantContent::Reasoning(_)));
+        assert!(
+            matches!(&choice[1], AssistantContent::ToolCall(call) if call.function.name == "add")
+        );
+        assert_eq!(choice.len(), 2);
+    }
+
+    /// A cap spent inside the trace used to normalize to a turn with **no**
+    /// content at all — the `Length` finish reason was the only thing left.
+    /// The trace it produced is now what the turn carries.
+    #[test]
+    fn normalize_keeps_a_truncated_turns_trace() {
+        let choice = normalized(
+            serde_json::json!({
+                "role": "assistant",
+                "content": [{"type": "thinking",
+                             "thinking": [{"type": "text", "text": "Okay, 17 times 23 is"}]}]
+            }),
+            "length",
+        );
+        assert_eq!(choice.len(), 1);
+        assert!(matches!(&choice[0], AssistantContent::Reasoning(_)));
+    }
+
+    /// A non-reasoning turn normalizes exactly as it always has.
+    #[test]
+    fn normalize_leaves_an_ordinary_turn_alone() {
+        let choice = normalized(
+            serde_json::json!({"role": "assistant", "content": "42"}),
+            "stop",
+        );
+        assert_eq!(choice.len(), 1);
+        assert!(matches!(&choice[0], AssistantContent::Text(text) if text.text == "42"));
+    }
+
+    /// The request-side splice: `reasoning_content` — the spelling the shared
+    /// OpenAI-compatible conversion emits for a replayed reasoning block — is
+    /// moved into `content` as Mistral's thinking chunk, ahead of the text.
+    fn finalized_message(message: serde_json::Value) -> serde_json::Value {
+        let mut body = serde_json::json!({"model": MISTRAL_SMALL, "messages": [message]});
+        MistralExt
+            .finalize_request_body(&mut body)
+            .expect("body should finalize");
+        body["messages"][0].clone()
+    }
+
+    #[test]
+    fn finalize_replays_reasoning_as_a_thinking_chunk() {
+        let message = finalized_message(serde_json::json!({
+            "role": "assistant",
+            "content": "42",
+            "reasoning_content": "6 times 7 is 42."
+        }));
+
+        assert_eq!(
+            message["content"],
+            serde_json::json!([
+                {"type": "thinking",
+                 "thinking": [{"type": "text", "text": "6 times 7 is 42."}],
+                 "closed": true},
+                {"type": "text", "text": "42"}
+            ])
+        );
+        assert!(
+            message.get("reasoning_content").is_none(),
+            "Mistral rejects unknown assistant fields; the trace rides in `content`"
+        );
+    }
+
+    /// A reasoning turn that only called a tool has no text to carry the trace
+    /// beside — the chunk becomes the message's whole content, which is what
+    /// Mistral returned in the first place.
+    #[test]
+    fn finalize_replays_reasoning_beside_a_tool_call() {
+        let message = finalized_message(serde_json::json!({
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "I need the add tool.",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "add", "arguments": "{\"a\":2,\"b\":3}"}
+            }]
+        }));
+
+        assert_eq!(
+            message["content"],
+            serde_json::json!([
+                {"type": "thinking",
+                 "thinking": [{"type": "text", "text": "I need the add tool."}],
+                 "closed": true}
+            ])
+        );
+        assert_eq!(message["tool_calls"][0]["function"]["name"], "add");
+    }
+
+    /// The trace leads content that is already a chunk array, so a reasoning
+    /// turn replayed beside an image keeps both.
+    #[test]
+    fn finalize_replays_reasoning_ahead_of_a_chunk_array() {
+        let message = finalized_message(serde_json::json!({
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Look:"},
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}}
+            ],
+            "reasoning_content": "The user asked for a picture."
+        }));
+
+        assert_eq!(message["content"][0]["type"], "thinking");
+        assert_eq!(message["content"][1]["type"], "text");
+        assert_eq!(message["content"][2]["type"], "image_url");
+    }
+
+    /// An assistant turn with no content at all is still a place to put a
+    /// trace; the message's own `content` default must not overwrite it.
+    #[test]
+    fn finalize_replays_reasoning_onto_a_contentless_turn() {
+        let message = finalized_message(serde_json::json!({
+            "role": "assistant",
+            "reasoning_content": "Thinking about it."
+        }));
+
+        assert_eq!(message["content"][0]["type"], "thinking");
+        assert_eq!(
+            message["content"][0]["thinking"][0]["text"],
+            "Thinking about it."
+        );
+    }
+
+    /// Empty, null and non-string reasoning replay nothing — an empty trace is
+    /// not a trace, and it must not become an empty thinking chunk.
+    #[test]
+    fn finalize_drops_reasoning_that_carries_no_trace() {
+        for reasoning in [
+            serde_json::json!(""),
+            serde_json::Value::Null,
+            serde_json::json!({"text": "nope"}),
+        ] {
+            let message = finalized_message(serde_json::json!({
+                "role": "assistant",
+                "content": "42",
+                "reasoning_content": reasoning
+            }));
+            assert_eq!(message["content"], serde_json::json!("42"));
+            assert!(message.get("reasoning_content").is_none());
+        }
+    }
+
+    /// A user message is not an assistant turn: its `reasoning_content` — a
+    /// field the conversion never emits there — is left where it is rather
+    /// than becoming content the user did not send.
+    #[test]
+    fn finalize_only_replays_an_assistants_reasoning() {
+        let message = finalized_message(serde_json::json!({
+            "role": "user",
+            "content": "hi",
+            "reasoning_content": "not mine"
+        }));
+        assert_eq!(message["content"], serde_json::json!("hi"));
+        assert_eq!(message["reasoning_content"], "not mine");
+    }
+
+    /// `finalize_request_body` is a public trait method, so its own output
+    /// must survive a second pass: the thinking chunk it emits reads as a
+    /// thinking chunk, not as unsupported content.
+    #[test]
+    fn finalize_is_idempotent_over_a_replayed_trace() {
+        let once = finalized_message(serde_json::json!({
+            "role": "assistant",
+            "content": "42",
+            "reasoning_content": "6 times 7 is 42."
+        }));
+        let twice = finalized_message(once.clone());
+        assert_eq!(once, twice);
+    }
+
+    /// A thinking chunk with no trace is content Mistral cannot read, so it
+    /// fails closed like every other payload-less chunk rather than being
+    /// dropped from the request — or, worse, replayed as an empty trace, which
+    /// is exactly what [`splice_reasoning_into_content`] refuses on the other
+    /// side. `{"thinking": []}` is included because that is the closing frame
+    /// the streaming wire sends.
+    #[test]
+    fn finalize_rejects_a_thinking_part_with_no_trace() {
+        for part in [
+            serde_json::json!({"type": "thinking"}),
+            serde_json::json!({"type": "thinking", "thinking": []}),
+            serde_json::json!({"type": "thinking", "thinking": ""}),
+            serde_json::json!({"type": "thinking", "thinking": {"text": "nope"}}),
+        ] {
+            let mut body = serde_json::json!({
+                "model": MISTRAL_SMALL,
+                "messages": [{"role": "assistant", "content": [
+                    part.clone(),
+                    {"type": "text", "text": "42"}
+                ]}]
+            });
+            let error = MistralExt
+                .finalize_request_body(&mut body)
+                .expect_err(&format!("{part} carries no trace and must not be sent"));
+            assert!(matches!(error, CompletionError::RequestError(_)));
+        }
     }
 }
