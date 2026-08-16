@@ -101,3 +101,16 @@ pub(super) async fn with_openrouter_refusal_cassette<F, Fut>(
 {
     with_openrouter_cassette(spec, test_body).await;
 }
+
+/// Reasoning-usage edge matrix (`reasoning_usage_matrix/*`): OpenRouter's
+/// `usage.completion_tokens_details.reasoning_tokens` had no landing slot and
+/// the normalized `Usage.reasoning_tokens` was a hardcoded zero.
+pub(super) async fn with_openrouter_usage_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    with_openrouter_cassette(spec, test_body).await;
+}

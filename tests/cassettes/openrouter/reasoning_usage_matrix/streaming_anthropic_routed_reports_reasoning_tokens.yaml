@@ -1,0 +1,70 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2000,"messages":[{"content":"A farmer has 17 sheep; all but 9 run away. He then buys 3 times as many as remain, sells 5, and splits the rest evenly among 4 pens. How many sheep per pen? Answer with the number only.","role":"user"}],"model":"anthropic/claude-haiku-4.5","provider":{"allow_fallbacks":false,"order":["Anthropic"]},"reasoning":{"max_tokens":1024},"stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    : OPENROUTER PROCESSING
+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"Let me work through this step by step","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"Let me work through this step by step","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":".\n\n1. The farmer has 17 sheep; all but 9 run away.\n   - \"All but 9 run away\" means 9 sheep remain\n   - Remaining sheep: 9","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":".\n\n1. The farmer has 17 sheep; all but 9 run away.\n   - \"All but 9 run away\" means 9 sheep remain\n   - Remaining sheep: 9","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"\n\n2. He then buys 3 times as many as remain.\n   - He buys 3 × 9 = 27 sheep\n   - Total sheep: 9 + 27 = 36\n\n3. He sells 5.\n   - Remaining","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"\n\n2. He then buys 3 times as many as remain.\n   - He buys 3 × 9 = 27 sheep\n   - Total sheep: 9 + 27 = 36\n\n3. He sells 5.\n   - Remaining","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" sheep: 36 - 5 = 31\n\n4. He splits the rest evenly among 4 pens.\n   - Sheep per pen: 31 ÷ 4 = 7.75\n\nWait, that gives a decimal","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" sheep: 36 - 5 = 31\n\n4. He splits the rest evenly among 4 pens.\n   - Sheep per pen: 31 ÷ 4 = 7.75\n\nWait, that gives a decimal","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":". Let me reconsider the problem to make sure I'm understanding it correctly.\n\nActually, re-reading: \"He then buys 3 times as many as remain\" - this means he buys sheep equal","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":". Let me reconsider the problem to make sure I'm understanding it correctly.\n\nActually, re-reading: \"He then buys 3 times as many as remain\" - this means he buys sheep equal","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" to 3 times the number that remained after the runaway.\n\nSo:\n- Start: 17 sheep\n- After ","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" to 3 times the number that remained after the runaway.\n\nSo:\n- Start: 17 sheep\n- After ","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"9 remain (all but 9 run away): 9 sheep\n- He buys 3 times as many as remain: 3 × 9 = 27 sheep\n- Total: 9 + 27 = 36 sheep","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"9 remain (all but 9 run away): 9 sheep\n- He buys 3 times as many as remain: 3 × 9 = 27 sheep\n- Total: 9 + 27 = 36 sheep","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"\n- Sells 5: 36 - 5 = 31 sheep\n- Divides among 4 pens: 31 ÷ 4 = 7.75 sheep per pen\n\nHmm, this doesn't give a whole number. But","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"\n- Sells 5: 36 - 5 = 31 sheep\n- Divides among 4 pens: 31 ÷ 4 = 7.75 sheep per pen\n\nHmm, this doesn't give a whole number. But","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" the question asks for \"the number only\", so maybe they expect 7.75? Or maybe I'm misinterpreting something?\n\nLet me check if there's another interpretation...","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" the question asks for \"the number only\", so maybe they expect 7.75? Or maybe I'm misinterpreting something?\n\nLet me check if there's another interpretation...","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" No, I think my interpretation is correct. The answer would be 7.75, but if they want just a number, maybe they want 7 ","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" No, I think my interpretation is correct. The answer would be 7.75, but if they want just a number, maybe they want 7 ","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"(rounding down) or 8 (rounding to nearest)?\n","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"(rounding down) or 8 (rounding to nearest)?\n","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"The","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"The","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" math","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" math","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" checks","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" checks","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" out—31 sheep divided across 4 pens yields 7.75 per pen. Since the problem asks for a number, I should","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" out—31 sheep divided across 4 pens yields 7.75 per pen. Since the problem asks for a number, I should","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":" probably give 7.75 as the answer, though depending on how they want it formatted, rounding to 7 or 8 might be expected","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":" probably give 7.75 as the answer, though depending on how they want it formatted, rounding to 7 or 8 might be expected","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":".","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":".","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"signature":"signature_REDACTED_1","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"7.75","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":null,"role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic","service_tier":"default","usage":{"completion_tokens":506,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":497},"cost":0.002624,"cost_details":{"upstream_inference_completions_cost":0.00253,"upstream_inference_cost":0.002624,"upstream_inference_prompt_cost":0.000094},"is_byok":false,"prompt_tokens":94,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":600}}
+
+    data: [DONE]
+
