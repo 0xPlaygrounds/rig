@@ -913,7 +913,7 @@ pub(crate) struct StreamingTurnSource {
     /// The raw provider choice of the most recent turn; the final response
     /// surfaces it as-is, even when canonical reordering was recorded in history.
     last_final_choice: Vec<AssistantContent>,
-    last_message_id: Option<String>,
+    last_message_id: Option<rig_core::streaming::WireId>,
     /// Resolved agent name, kept only for the empty-turn diagnostic warning.
     agent_name: String,
     /// Whether we created the agent span (vs. adopting a caller's ambient span);
@@ -1501,7 +1501,10 @@ impl TurnSource for StreamingTurnSource {
                 if is_empty_assistant_turn(&self.last_final_choice) {
                     tracing::warn!(
                         agent_name = self.agent_name.as_str(),
-                        message_id = ?self.last_message_id,
+                        // `as_deref()` so the Debug capture renders
+                        // `Some("msg_1")` as it did before the newtype, not
+                        // `Some(WireId("msg_1"))`.
+                        message_id = ?self.last_message_id.as_deref(),
                         "Streaming turn completed without assistant text; final response will be empty"
                     );
                 }

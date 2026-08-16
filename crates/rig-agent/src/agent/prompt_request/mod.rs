@@ -338,16 +338,28 @@ pub struct CompletionCall {
     #[serde(default, deserialize_with = "usage_null_as_default")]
     pub usage: Usage,
     /// Provider-assigned assistant message ID for this call, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub message_id: Option<rig_core::streaming::WireId>,
     /// Provider-assigned response-scoped ID for this call, when reported.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub response_id: Option<rig_core::streaming::WireId>,
     /// The provider's transport request id for this call (HTTP response
     /// header, e.g. Anthropic `request-id`) — the id provider support asks
     /// for. `None` means the provider did not report one, never an error.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub provider_request_id: Option<rig_core::streaming::WireId>,
     /// Why the model stopped generating on this call, when the provider
     /// reported it. `None` means the provider reported no reason.
     ///
@@ -3292,9 +3304,9 @@ mod tests {
     fn completion_call_identity_round_trips() {
         let call = CompletionCall::new(0, crate::completion::Usage::new()).with_identity(
             ResponseIdentity {
-                message_id: Some("msg_1".into()),
-                response_id: Some("resp_1".into()),
-                provider_request_id: Some("req_1".into()),
+                message_id: rig_core::streaming::WireId::new("msg_1"),
+                response_id: rig_core::streaming::WireId::new("resp_1"),
+                provider_request_id: rig_core::streaming::WireId::new("req_1"),
             },
         );
         let json = serde_json::to_string(&call).expect("serialize");

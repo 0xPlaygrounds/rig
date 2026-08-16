@@ -313,14 +313,14 @@ pub struct CompletionResponse {
     /// output items across turns, and it is what agent history promotes into
     /// [`Message::Assistant`]'s `id`.
     #[serde(default)]
-    pub message_id: Option<String>,
+    pub message_id: Option<crate::streaming::WireId>,
     /// The identifier the provider assigned to the response as a whole, when it
     /// reported one — an OpenAI chat `chatcmpl-` ID, a Gemini `responseId`, a
     /// Cohere generation ID. Response-scoped: useful for logging, telemetry
     /// (`gen_ai.response.id`), and support requests, but never replayed to a
     /// provider as a message ID.
     #[serde(default)]
-    pub response_id: Option<String>,
+    pub response_id: Option<crate::streaming::WireId>,
     /// The provider's transport-level request identifier, taken from the HTTP
     /// response headers (Anthropic `request-id`, OpenAI/xAI `x-request-id`) or
     /// the provider SDK's response metadata (Bedrock) — the id provider
@@ -329,8 +329,11 @@ pub struct CompletionResponse {
     /// [`Self::response_id`]. `None` means the provider did not report one —
     /// that is a documented outcome (e.g. Gemini sends no id header), never an
     /// error.
+    // No `deserialize_with` here: this type deserializes through
+    // `CompletionResponseRepr`, which reads `Option<String>` and normalizes
+    // via the setters, so a field-level hook would never run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    pub provider_request_id: Option<crate::streaming::WireId>,
     /// Why the model stopped generating, when the provider reported it.
     ///
     /// Private so that every write flows through
@@ -362,18 +365,30 @@ pub struct ResponseIdentity {
     /// Provider-assigned *assistant message* ID (e.g. an Anthropic or OpenAI
     /// Responses `msg_…`) — an ID the provider would recognize on a replayed
     /// assistant message.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::streaming::deserialize_optional_wire_id"
+    )]
+    pub message_id: Option<crate::streaming::WireId>,
     /// Provider-assigned *response-scoped* ID (e.g. an OpenAI `chatcmpl-` or
     /// `resp_…` ID) — names the whole response, never replayed as a message
     /// ID.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::streaming::deserialize_optional_wire_id"
+    )]
+    pub response_id: Option<crate::streaming::WireId>,
     /// The provider's *transport* request id (HTTP response header such as
     /// Anthropic `request-id`, or provider SDK response metadata) — the id
     /// provider support asks for. Never the body's message/response id.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::streaming::deserialize_optional_wire_id"
+    )]
+    pub provider_request_id: Option<crate::streaming::WireId>,
 }
 
 impl CompletionResponse {
@@ -1875,6 +1890,93 @@ mod tests {
         assert!(matches!(history[2], Message::User { .. }));
     }
 
+    /// The identifier newtype must not change what is persisted: the JSON a
+    /// `CompletionResponse` writes is the same bare-string shape as before,
+    /// and a stored `""` still loads as absent rather than failing the record
+    /// (#2336).
+    /// Pins the *absent*-identifier wire shape of the two core types, which
+    /// the round-trip tests cannot: `null` and a missing key both load as
+    /// `None`, so a change to these `serde` attributes would rewrite the shape
+    /// of every stored record without failing anything.
+    ///
+    /// The shape is asymmetric and predates the identifier newtype:
+    /// `message_id` and `response_id` carry no `skip_serializing_if`, so an
+    /// absent one is written as an explicit `null`, while
+    /// `provider_request_id` carries one and is omitted. This test asserts
+    /// what is, so that retyping the fields (#2336) is provably shape-neutral
+    /// — not what a uniform rule would have produced.
+    #[test]
+    fn the_absent_identifier_wire_shape_is_unchanged() {
+        let json = serde_json::to_value(CompletionResponse::new(
+            vec![AssistantContent::text("hi")],
+            Usage::new(),
+            "test-provider",
+        ))
+        .expect("serializes");
+
+        assert_eq!(
+            json.get("message_id"),
+            Some(&serde_json::Value::Null),
+            "message_id has no skip_serializing_if: absent must stay an explicit null"
+        );
+        assert_eq!(json.get("response_id"), Some(&serde_json::Value::Null));
+        assert!(
+            json.get("provider_request_id").is_none(),
+            "provider_request_id does have skip_serializing_if: absent must stay omitted"
+        );
+    }
+
+    #[test]
+    fn identifiers_persist_as_bare_strings_and_empty_loads_as_absent() {
+        let response = CompletionResponse::new(
+            vec![AssistantContent::text("hi")],
+            Usage::new(),
+            "test-provider",
+        )
+        .with_message_id("msg_1")
+        .with_response_id("resp_1")
+        .with_provider_request_id("req_1");
+
+        let json = serde_json::to_value(&response).expect("serializes");
+        assert_eq!(json["message_id"], serde_json::json!("msg_1"));
+        assert_eq!(json["response_id"], serde_json::json!("resp_1"));
+        assert_eq!(json["provider_request_id"], serde_json::json!("req_1"));
+
+        let round_tripped: CompletionResponse = serde_json::from_value(json).expect("round-trips");
+        assert_eq!(round_tripped.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(round_tripped.response_id.as_deref(), Some("resp_1"));
+        assert_eq!(round_tripped.provider_request_id.as_deref(), Some("req_1"));
+
+        // The compatibility case: a record written by something that did put
+        // the empty-string sentinel on the wire still loads, as absence.
+        // Built from a real serialized response so only the ids differ.
+        let mut stored_empty = serde_json::to_value(&response).expect("serializes");
+        for field in ["message_id", "response_id", "provider_request_id"] {
+            stored_empty[field] = serde_json::json!("");
+        }
+        let loaded: CompletionResponse =
+            serde_json::from_value(stored_empty).expect("an empty stored id must load");
+        assert_eq!(loaded.message_id, None);
+        assert_eq!(loaded.response_id, None);
+        assert_eq!(loaded.provider_request_id, None);
+    }
+
+    /// `ResponseIdentity` derives `Deserialize` directly rather than through a
+    /// `Repr`, so it carries the normalization on the field.
+    #[test]
+    fn response_identity_normalizes_a_stored_empty_identifier() {
+        let loaded: ResponseIdentity = serde_json::from_value(serde_json::json!({
+            "message_id": "",
+            "response_id": "resp_1",
+            "provider_request_id": ""
+        }))
+        .expect("an empty stored id must load");
+
+        assert_eq!(loaded.message_id, None);
+        assert_eq!(loaded.response_id.as_deref(), Some("resp_1"));
+        assert_eq!(loaded.provider_request_id, None);
+    }
+
     #[test]
     fn chat_history_with_documents_places_documents_after_leading_system_messages() {
         let request = CompletionRequest {
@@ -2129,9 +2231,9 @@ mod response_identity_tests {
         assert_eq!(
             response.identity(),
             ResponseIdentity {
-                message_id: Some("msg_1".into()),
-                response_id: Some("resp_1".into()),
-                provider_request_id: Some("req_1".into()),
+                message_id: crate::streaming::WireId::new("msg_1"),
+                response_id: crate::streaming::WireId::new("resp_1"),
+                provider_request_id: crate::streaming::WireId::new("req_1"),
             }
         );
     }

@@ -195,11 +195,23 @@ pub struct PendingToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelTurn {
     /// Provider-assigned assistant message ID, when available.
-    pub message_id: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub message_id: Option<rig_core::streaming::WireId>,
     /// Provider-assigned response-scoped ID, when available.
-    pub response_id: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub response_id: Option<rig_core::streaming::WireId>,
     /// The provider's transport request id for this attempt, when reported.
-    pub provider_request_id: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    pub provider_request_id: Option<rig_core::streaming::WireId>,
     /// The assistant content returned by the model.
     pub choice: Vec<AssistantContent>,
     /// Token usage reported by the provider for this completion request.
@@ -219,7 +231,7 @@ impl ModelTurn {
     /// Create a model turn from response parts and the tool names advertised
     /// for the turn.
     pub fn new(
-        message_id: Option<String>,
+        message_id: Option<rig_core::streaming::WireId>,
         choice: Vec<AssistantContent>,
         usage: Usage,
         executable_tool_names: BTreeSet<String>,
@@ -240,8 +252,8 @@ impl ModelTurn {
     /// Attach the remaining response identity metadata this attempt reported.
     pub fn with_identity(
         mut self,
-        response_id: Option<String>,
-        provider_request_id: Option<String>,
+        response_id: Option<rig_core::streaming::WireId>,
+        provider_request_id: Option<rig_core::streaming::WireId>,
     ) -> Self {
         self.response_id = response_id;
         self.provider_request_id = provider_request_id;
@@ -286,7 +298,11 @@ pub enum ModelTurnOutcome {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResolvingState {
-    message_id: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    message_id: Option<rig_core::streaming::WireId>,
     /// The unmodified model output, used for diagnostic histories and retry
     /// messages (repairs are never reflected in those).
     original_choice: Vec<AssistantContent>,
@@ -330,7 +346,11 @@ fn has_tool_calls(items: &[AssistantContent]) -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TurnState {
-    message_id: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "rig_core::streaming::deserialize_optional_wire_id"
+    )]
+    message_id: Option<rig_core::streaming::WireId>,
     items: Vec<AssistantContent>,
     has_tool_calls: bool,
     /// Keyed by position in `items` (see `ResolvingState::skipped`).
@@ -1080,7 +1100,7 @@ impl AgentRun {
     /// the streamed `internal_call_ids`.
     fn finalize_turn(
         &mut self,
-        message_id: Option<String>,
+        message_id: Option<rig_core::streaming::WireId>,
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
@@ -1643,6 +1663,50 @@ impl AgentRun {
 
 #[cfg(test)]
 mod tests {
+
+    /// The identifier newtype must not move a byte of persisted agent-run
+    /// state. `ModelTurn`'s ids carry no `skip_serializing_if`, so an absent
+    /// id serializes as `null` — adding one while retyping the field would
+    /// have silently changed the shape of every stored run (#2336).
+    #[test]
+    fn an_absent_identifier_still_serializes_as_null() {
+        let turn = ModelTurn::new(
+            None,
+            Vec::new(),
+            Usage::new(),
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
+
+        let json = serde_json::to_value(&turn).expect("serializes");
+        for field in ["message_id", "response_id", "provider_request_id"] {
+            assert_eq!(
+                json.get(field),
+                Some(&serde_json::Value::Null),
+                "{field} must still be written as null, not omitted"
+            );
+        }
+
+        // And a record written without the key at all still loads.
+        let mut without = json.clone();
+        for field in ["message_id", "response_id", "provider_request_id"] {
+            without.as_object_mut().expect("object").remove(field);
+        }
+        let loaded: ModelTurn =
+            serde_json::from_value(without).expect("a missing id must load as absent");
+        assert_eq!(loaded.message_id, None);
+
+        // A stored empty string normalizes to absent rather than failing.
+        let mut empty = json;
+        for field in ["message_id", "response_id", "provider_request_id"] {
+            empty[field] = serde_json::json!("");
+        }
+        let loaded: ModelTurn =
+            serde_json::from_value(empty).expect("an empty stored id must load");
+        assert_eq!(loaded.message_id, None);
+        assert_eq!(loaded.response_id, None);
+        assert_eq!(loaded.provider_request_id, None);
+    }
     use super::*;
     use rig_core::message::{ToolFunction, ToolResultContent};
     use serde_json::json;

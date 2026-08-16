@@ -686,14 +686,16 @@ pub(crate) fn reasoning_content_blocks(
 fn openai_reasoning_from_core(
     reasoning: &crate::message::Reasoning,
 ) -> Result<Option<OpenAIReasoning>, MessageError> {
-    // Only wire-genuine ids exist in durable histories: the streaming layer
-    // populates `Reasoning::id` exclusively from `StreamPartId::Wire`, so an
-    // id-less (rig-keyed) reasoning item arrives here as `None` and drops
-    // from request input, mirroring main's handling. No provenance gate is
-    // needed — a fabricated id structurally cannot reach this function.
+    // Only wire-genuine ids reach here, and that is now enforced by the type
+    // rather than argued from provenance: `Reasoning::id` is an
+    // `Option<WireId>`, whose only constructor rejects the empty string, so
+    // neither a fabricated id nor the accumulator's `""` identity is
+    // representable. An id-less item arrives as `None` and drops from request
+    // input, mirroring main's handling.
     let Some(id) = reasoning.id.clone() else {
         return Ok(None);
     };
+    let id = String::from(id);
 
     let mut summary = Vec::new();
     let mut reasoning_content = Vec::new();
@@ -2339,7 +2341,9 @@ impl From<Output> for Vec<completion::AssistantContent> {
                 ..
             } => vec![completion::AssistantContent::Reasoning(
                 message::Reasoning {
-                    id: Some(id),
+                    // Straight off the wire: a gateway echoing `"id": ""` used
+                    // to become `Some("")` here and travel back upstream.
+                    id: crate::streaming::WireId::new(id),
                     content: reasoning_content_blocks(summary, content, encrypted_content),
                 },
             )],
@@ -2859,7 +2863,7 @@ impl OutputText {
 /// skipped, and own-wire extras stranded on an id-less block warn as they
 /// drop.
 fn assistant_text_replay_message(
-    id: Option<String>,
+    id: Option<crate::streaming::WireId>,
     text: String,
     additional_params: Option<crate::message::AdditionalParams>,
 ) -> Option<Message> {
@@ -2890,7 +2894,9 @@ fn assistant_text_replay_message(
             content: vec![AssistantContentType::Text(AssistantContent::OutputText(
                 OutputText::from_message_text(text, additional_params),
             ))],
-            id,
+            // The provider-native message keeps a raw `String` id: this is
+            // the wire boundary, which is where the handle is unwrapped.
+            id: id.into(),
             name: None,
             status: ToolStatus::Completed,
         }),
@@ -3106,18 +3112,19 @@ mod tests {
             "foreign-annotated empty block must produce no Responses item: {items:?}"
         );
 
-        let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
-            id,
-            content: vec![completion::AssistantContent::Text(message::Text {
-                text: String::new(),
-                additional_params: message::AdditionalParams::try_from_value(json!({
-                    OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
-                }))
-                .expect("object params"),
-            })],
-        };
+        let own_annotated_empty =
+            |id: Option<crate::streaming::WireId>| message::Message::Assistant {
+                id,
+                content: vec![completion::AssistantContent::Text(message::Text {
+                    text: String::new(),
+                    additional_params: message::AdditionalParams::try_from_value(json!({
+                        OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
+                    }))
+                    .expect("object params"),
+                })],
+            };
         // With a message id, the Assistant form carries the extras.
-        let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
+        let items: Vec<InputItem> = own_annotated_empty(crate::streaming::WireId::new("msg_1"))
             .try_into()
             .expect("convert");
         assert_eq!(
@@ -3284,7 +3291,7 @@ mod tests {
         let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
             id: None,
             content: vec![message::AssistantContent::Reasoning(message::Reasoning {
-                id: Some("rs_0123".to_string()),
+                id: crate::streaming::WireId::new("rs_0123"),
                 content: vec![message::ReasoningContent::Text {
                     text: "real item".to_string(),
                     signature: None,
@@ -3295,6 +3302,41 @@ mod tests {
         let reasoning = reasoning_input_items(&items);
         assert_eq!(reasoning.len(), 1);
         assert_eq!(reasoning[0]["id"], "rs_0123");
+    }
+
+    /// A gateway that echoes `"id": ""` on a reasoning item cannot put that
+    /// sentinel into the next request body.
+    ///
+    /// This function gates on `Some(id)` and sends the value straight through,
+    /// with a comment that used to *argue* no empty id could arrive. Now the
+    /// type enforces it: `Reasoning::id` is an `Option<WireId>`, so a wire
+    /// `""` normalizes to `None` at the conversion boundary and the item drops
+    /// from request input exactly as an id-less one does — instead of
+    /// serializing `{"type":"reasoning","id":""}` (#2336).
+    #[test]
+    fn a_wire_empty_reasoning_id_cannot_reach_the_request_body() {
+        // What the provider sent, normalized the way the response converter
+        // normalizes it.
+        let from_wire = message::Reasoning {
+            id: crate::streaming::WireId::new(String::new()),
+            content: vec![message::ReasoningContent::Text {
+                text: "thinking".to_string(),
+                signature: None,
+            }],
+        };
+        assert_eq!(from_wire.id, None, "a wire `\"\"` is absence, not an id");
+
+        let items = Vec::<InputItem>::try_from(crate::completion::Message::Assistant {
+            id: None,
+            content: vec![message::AssistantContent::Reasoning(from_wire)],
+        })
+        .expect("history should convert");
+
+        let reasoning = reasoning_input_items(&items);
+        assert!(
+            reasoning.is_empty(),
+            "an empty wire id must drop the item, never serialize as an empty id: {reasoning:?}"
+        );
     }
 
     /// F7 leak route (b), closed structurally: a same-provider delta-only
@@ -4939,7 +4981,7 @@ mod tests {
     #[test]
     fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
         let assistant = completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
+            id: crate::streaming::WireId::new("msg_123"),
             content: vec![
                 message::AssistantContent::Reasoning(message::Reasoning::new("provider reasoning")),
                 message::AssistantContent::Text(Text::new("final answer")),
@@ -4963,7 +5005,7 @@ mod tests {
     #[test]
     fn assistant_text_without_idless_reasoning_replays_as_output_text() {
         let assistant = completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
+            id: crate::streaming::WireId::new("msg_123"),
             content: vec![message::AssistantContent::Text(Text::new("final answer"))],
         };
 
@@ -5010,9 +5052,9 @@ mod tests {
     #[test]
     fn structured_reasoning_with_id_still_converts_to_input_item() {
         let assistant = completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
+            id: crate::streaming::WireId::new("msg_123"),
             content: vec![message::AssistantContent::Reasoning(message::Reasoning {
-                id: Some("rs_123".to_string()),
+                id: crate::streaming::WireId::new("rs_123"),
                 content: vec![message::ReasoningContent::Summary(
                     "structured summary".to_string(),
                 )],
@@ -5033,10 +5075,10 @@ mod tests {
     #[test]
     fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
         let assistant = completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
+            id: crate::streaming::WireId::new("msg_123"),
             content: vec![
                 message::AssistantContent::Reasoning(message::Reasoning {
-                    id: Some("rs_123".to_string()),
+                    id: crate::streaming::WireId::new("rs_123"),
                     content: vec![message::ReasoningContent::Summary(
                         "structured summary".to_string(),
                     )],
@@ -5097,7 +5139,7 @@ mod tests {
                     ))],
                 },
                 completion::Message::Assistant {
-                    id: Some("msg_123".to_string()),
+                    id: crate::streaming::WireId::new("msg_123"),
                     content: vec![
                         message::AssistantContent::Reasoning(message::Reasoning::new(
                             "provider reasoning",

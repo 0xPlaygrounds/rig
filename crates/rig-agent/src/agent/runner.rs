@@ -1769,7 +1769,7 @@ mod migrated_tests {
         prompt: Message,
         content: Vec<AssistantContent>,
         usage: Usage,
-        message_id: Option<String>,
+        message_id: Option<rig_core::streaming::WireId>,
     }
 
     #[derive(Clone, Default)]
@@ -1792,7 +1792,7 @@ mod migrated_tests {
                     prompt: event.prompt.clone(),
                     content: event.content.clone(),
                     usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
+                    message_id: event.message_id.and_then(rig_core::streaming::WireId::new),
                 });
             ObservationAction::continue_run()
         }
@@ -1809,7 +1809,7 @@ mod migrated_tests {
                     prompt: event.prompt.clone(),
                     content: event.content.clone(),
                     usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
+                    message_id: event.message_id.and_then(rig_core::streaming::WireId::new),
                 });
             ObservationAction::continue_run()
         }
@@ -1855,7 +1855,7 @@ mod migrated_tests {
                     prompt: event.prompt.clone(),
                     content: event.content.clone(),
                     usage: event.usage,
-                    message_id: event.message_id.map(str::to_owned),
+                    message_id: event.message_id.and_then(rig_core::streaming::WireId::new),
                 });
             if self.stop.load(SeqCst) {
                 ObservationAction::stop("stop at stream EOF")
@@ -1912,7 +1912,7 @@ mod migrated_tests {
                 prompt,
                 content: vec![AssistantContent::text("canonical response")],
                 usage: canonical_usage(),
-                message_id: Some("msg-canonical".to_string()),
+                message_id: rig_core::streaming::WireId::new("msg-canonical"),
             }]
         );
     }
@@ -1923,11 +1923,9 @@ mod migrated_tests {
     /// cassette-tested per provider).
     #[tokio::test]
     async fn completion_response_hook_and_calls_carry_identity_metadata() {
-        type IdentityTriple = (Option<String>, Option<String>, Option<String>);
-
         #[derive(Clone, Default)]
         struct IdentityHook {
-            seen: Arc<Mutex<Vec<IdentityTriple>>>,
+            seen: Arc<Mutex<Vec<rig_core::completion::ResponseIdentity>>>,
         }
 
         impl AgentHook for IdentityHook {
@@ -1936,11 +1934,17 @@ mod migrated_tests {
                 _ctx: &HookContext,
                 event: crate::agent::hook::CompletionResponse<'_>,
             ) -> ObservationAction {
-                self.seen.lock().expect("identity snapshots").push((
-                    event.message_id.map(str::to_owned),
-                    event.identity.response_id.clone(),
-                    event.identity.provider_request_id.clone(),
-                ));
+                // `message_id` is documented to mirror the carrier's, so pin
+                // that here rather than re-encoding the carrier field by field.
+                assert_eq!(
+                    event.message_id,
+                    event.identity.message_id.as_deref(),
+                    "`message_id` must mirror `identity.message_id`"
+                );
+                self.seen
+                    .lock()
+                    .expect("identity snapshots")
+                    .push(event.identity.clone());
                 ObservationAction::continue_run()
             }
         }
@@ -1959,11 +1963,11 @@ mod migrated_tests {
 
         assert_eq!(
             *hook.seen.lock().expect("identity snapshots"),
-            [(
-                Some("msg_1".to_string()),
-                Some("resp_1".to_string()),
-                Some("req_1".to_string()),
-            )]
+            [rig_core::completion::ResponseIdentity {
+                message_id: rig_core::streaming::WireId::new("msg_1"),
+                response_id: rig_core::streaming::WireId::new("resp_1"),
+                provider_request_id: rig_core::streaming::WireId::new("req_1"),
+            }]
         );
         let call = &response.completion_calls[0];
         assert_eq!(call.message_id.as_deref(), Some("msg_1"));
@@ -2095,21 +2099,18 @@ mod migrated_tests {
         let turns = hook.turns.lock().expect("turn identities").clone();
         let request_ids: Vec<_> = turns
             .iter()
-            .map(|identity| identity.provider_request_id.clone())
+            .map(|identity| identity.provider_request_id.as_deref())
             .collect();
         assert_eq!(
             request_ids,
-            [
-                Some("req-turn-1".to_string()),
-                Some("req-turn-2".to_string())
-            ],
+            [Some("req-turn-1"), Some("req-turn-2")],
             "each attempt reports its own transport id, in order"
         );
         // The run's completion_calls agree with the hook observations.
         let call_ids: Vec<_> = response
             .completion_calls
             .iter()
-            .map(|call| call.provider_request_id.clone())
+            .map(|call| call.provider_request_id.as_deref())
             .collect();
         assert_eq!(request_ids, call_ids);
     }
@@ -2148,14 +2149,11 @@ mod migrated_tests {
         let turns = hook.turns.lock().expect("turn identities").clone();
         let request_ids: Vec<_> = turns
             .iter()
-            .map(|identity| identity.provider_request_id.clone())
+            .map(|identity| identity.provider_request_id.as_deref())
             .collect();
         assert_eq!(
             request_ids,
-            [
-                Some("req-stream-1".to_string()),
-                Some("req-stream-2".to_string())
-            ],
+            [Some("req-stream-1"), Some("req-stream-2")],
             "streamed tool-only and text turns each carry their own identity"
         );
         let finishes = hook.stream_finishes.lock().expect("finishes").clone();
@@ -2209,7 +2207,7 @@ mod migrated_tests {
     async fn retried_turn_reports_the_retried_attempts_own_identity() {
         #[derive(Clone, Default)]
         struct RetryOnceCapturingIdentity {
-            seen: Arc<Mutex<Vec<Option<String>>>>,
+            seen: Arc<Mutex<Vec<Option<rig_core::streaming::WireId>>>>,
         }
 
         impl AgentHook for RetryOnceCapturingIdentity {
@@ -2244,8 +2242,8 @@ mod migrated_tests {
         assert_eq!(
             *hook.seen.lock().expect("retry identities"),
             [
-                Some("req-attempt-1".to_string()),
-                Some("req-attempt-2".to_string())
+                rig_core::streaming::WireId::new("req-attempt-1"),
+                rig_core::streaming::WireId::new("req-attempt-2")
             ],
             "each attempt's event carries that attempt's id — no stale leak"
         );
@@ -2290,11 +2288,11 @@ mod migrated_tests {
         let assistant_ids: Vec<_> = messages
             .iter()
             .filter_map(|message| match message {
-                Message::Assistant { id, .. } => Some(id.clone()),
+                Message::Assistant { id, .. } => Some(id.as_deref()),
                 _ => None,
             })
             .collect();
-        assert_eq!(assistant_ids, [Some("msg_abc".to_string())]);
+        assert_eq!(assistant_ids, [Some("msg_abc")]);
     }
 
     #[tokio::test]

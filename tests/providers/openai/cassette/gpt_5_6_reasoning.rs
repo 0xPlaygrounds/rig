@@ -118,7 +118,10 @@ fn assert_reasoning_metadata(
 /// Rebuild the reasoning block the normalized stream would have produced for a
 /// [`RawStreamingChoice::Reasoning`] event: the same id and the single content
 /// block, verbatim.
-fn reasoning_block(id: Option<String>, content: rig::message::ReasoningContent) -> Reasoning {
+fn reasoning_block(
+    id: Option<rig::streaming::WireId>,
+    content: rig::message::ReasoningContent,
+) -> Reasoning {
     Reasoning {
         id,
         content: vec![content],
@@ -374,7 +377,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                             ..
                         } => {
                             reasoning_blocks.push(AssistantContent::Reasoning(reasoning_block(
-                                provider_id.map(|id| id.into_string()),
+                                provider_id,
                                 content,
                             )));
                         }
@@ -434,7 +437,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 stored_turns.push(StoredStreamingTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: message_id,
+                        id: message_id.and_then(rig::streaming::WireId::new),
                         content: reasoning_blocks,
                     },
                     final_response,

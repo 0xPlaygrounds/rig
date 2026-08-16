@@ -23,7 +23,13 @@ pub struct ProviderResponseError {
     /// investigating a request, which matters most on exactly these failed
     /// calls. `None` means the provider did not report one — a documented
     /// outcome, never a secondary error (rig#2314).
-    pub provider_request_id: Option<String>,
+    ///
+    /// A [`WireId`](crate::streaming::WireId) for the same reason the success
+    /// path's identifiers are: this is the same transport id, and a `Some("")`
+    /// reachable only on the error path would render as
+    /// `(request id: )` in [`Display`](std::fmt::Display) and diverge from the
+    /// buffered and streaming paths that can no longer produce one (#2336).
+    pub provider_request_id: Option<crate::streaming::WireId>,
     /// The response's headers, verbatim, when the capture path had them in
     /// hand — the rate-limit metadata (`Retry-After`, `x-ratelimit-*`) a
     /// caller needs to back off correctly after a 429 (rig#2210). Boxed to
@@ -55,8 +61,12 @@ impl ProviderResponseError {
     }
 
     /// Attach the transport request id the failed response reported.
+    ///
+    /// Takes `Option<String>` so every existing caller — each of which reads a
+    /// header straight off the response — is unchanged; the empty string
+    /// normalizes to absence by construction rather than by a filter here.
     pub fn with_provider_request_id(mut self, request_id: Option<String>) -> Self {
-        self.provider_request_id = request_id.filter(|id| !id.is_empty());
+        self.provider_request_id = request_id.and_then(crate::streaming::WireId::new);
         self
     }
 
@@ -326,13 +336,18 @@ pub(crate) use impl_provider_response_helpers;
 
 /// Implements the shared response-metadata setters (`with_message_id`,
 /// `with_response_id`, `with_model` and their `_optional` forms) on a response
-/// type with `message_id`, `response_id`, and `model` fields of type
+/// type whose `message_id` and `response_id` are
+/// `Option<`[`WireId`](crate::streaming::WireId)`>` and whose `model` is
 /// `Option<String>`.
 ///
 /// An empty string is treated as absent: gateways that echo `""` for fields
 /// they don't populate must not produce a `Some("")` that differs between the
-/// buffered and streaming paths. The invariant lives in these generated
-/// setters so no provider call site can diverge. `finish_reason` handling is
+/// buffered and streaming paths. For the two identifiers that rule is
+/// structural — `WireId`'s only constructor rejects the empty string, so these
+/// setters normalize by construction rather than by convention, and no
+/// provider call site can diverge however the value is built. `model` is not
+/// an identifier and stays `Option<String>`, so for that field the invariant
+/// really does live in the generated setter. `finish_reason` handling is
 /// intentionally left to each type, since reconciliation rules differ.
 macro_rules! response_metadata_setters {
     ($ty:ty) => {
@@ -341,9 +356,15 @@ macro_rules! response_metadata_setters {
             ///
             /// An empty string is treated as absent: gateways that echo `""`
             /// for fields they don't populate must not produce a `Some("")`
-            /// that differs between the buffered and streaming paths. All
-            /// identifier and model setters share this rule so the invariant
-            /// lives here rather than at every provider call site.
+            /// that differs between the buffered and streaming paths.
+            ///
+            /// For the identifier fields the rule is now structural rather
+            /// than a convention of these setters — they are
+            /// `Option<`[`WireId`](crate::streaming::WireId)`>`, whose only
+            /// constructor rejects the empty string, so `Some("")` is
+            /// unrepresentable however the value is built. `model` is not an
+            /// identifier and stays `Option<String>`, so its setter is still
+            /// the only thing normalizing it.
             pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
                 self.with_optional_message_id(Some(message_id.into()))
             }
@@ -354,7 +375,9 @@ macro_rules! response_metadata_setters {
                 mut self,
                 message_id: Option<impl Into<String>>,
             ) -> Self {
-                self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
+                self.message_id = message_id
+                    .map(Into::into)
+                    .and_then(crate::streaming::WireId::new);
                 self
             }
 
@@ -369,7 +392,9 @@ macro_rules! response_metadata_setters {
                 mut self,
                 response_id: Option<impl Into<String>>,
             ) -> Self {
-                self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
+                self.response_id = response_id
+                    .map(Into::into)
+                    .and_then(crate::streaming::WireId::new);
                 self
             }
 
@@ -384,7 +409,9 @@ macro_rules! response_metadata_setters {
                 mut self,
                 request_id: Option<impl Into<String>>,
             ) -> Self {
-                self.provider_request_id = request_id.map(Into::into).filter(|id| !id.is_empty());
+                self.provider_request_id = request_id
+                    .map(Into::into)
+                    .and_then(crate::streaming::WireId::new);
                 self
             }
 

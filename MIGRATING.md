@@ -1014,8 +1014,9 @@ of a `String`:
 - `PartId::Minted { kind, index }` is an identity rig fabricated at a stream
   boundary because the wire supplied none. It keys accumulation for the life
   of the stream and structurally cannot reach a request: `PartId` implements
-  no `Serialize`, and the only request-serializable form (`WireId`) is
-  constructible solely from `PartId::Wire`. The reserved string namespaces
+  no `Serialize`, and the only request-serializable form (`WireId`) is built
+  solely through `WireId::new`, which a minted identity never reaches (and
+  which rejects the empty string). The reserved string namespaces
   (`reasoning-{n}`, `block-{n}`, `output-{n}`, `tool-{index}`, `text-{n}`)
   and the `is_boundary_minted_id` provenance gate are gone — provenance
   travels in the type, so there is nothing to parse and no serializer gate
@@ -1707,16 +1708,13 @@ change and has to wait for a breaking release. `#[non_exhaustive]` also cannot
 be added back outside a breaking window, so this is not a decision that can be
 revisited cheaply.
 
-**One invariant is widened.** `StreamFinal` and `completion::CompletionResponse`
-normalize an empty identifier string to `None` — the rule lives in the
-`with_*_id` setters ("an empty string is treated as absent … so the invariant
-lives here rather than at every provider call site"), and both types route
-`Deserialize` through those same setters. The attribute was the last thing
-forcing external construction down that path. A hand-written literal can now
-produce `Some("")` where every rig-built value has `None`, and
-`StreamedAssistantContent::final_response` accepts a `StreamFinal` by value. If
-you build either type yourself, prefer `::new(..)` plus the `with_*` setters
-over a literal.
+**One invariant was widened — and has since been closed structurally.**
+`StreamFinal` and `completion::CompletionResponse` normalize an empty
+identifier string to `None`, and removing `#[non_exhaustive]` took away the
+last thing forcing external construction down the `with_*_id` setters that
+enforce it. That gap is closed by #2336, which made the identifier fields
+`Option<WireId>` so `Some("")` is unrepresentable rather than merely
+discouraged; see the section below.
 
 **Superseded guidance.** Earlier sections of this file and the changelog
 describe types as `#[non_exhaustive]` and tell you to construct them through
@@ -1730,6 +1728,106 @@ at all still exist and are still the recommended way to build these types — on
 the compiler no longer insists.
 
 ---
+
+### Response identifiers are `Option<WireId>` (#2336)
+
+`message_id`, `response_id` and `provider_request_id` on `StreamFinal`,
+`completion::CompletionResponse` and `completion::ResponseIdentity` — and on
+`rig-agent`'s `CompletionCall`, `ModelTurn`, `StreamedTurn` and
+`PartialStreamedTurn`, which round-trip the same ids — are now
+`Option<WireId>` instead of `Option<String>`. `streaming::StreamingCompletionResponse`'s `message_id` — public since
+v0.41.0 — is retyped with them, as is `message::Reasoning`'s `id`.
+`ProviderResponseError`'s
+`provider_request_id` is the same transport id on the failure path and follows;
+its `provider_request_id()` accessor still returns `Option<&str>`, so readers
+are unchanged. `completion::Message::Assistant`'s `id` follows as well — it
+holds the same provider handle, copied straight from a response, so the two
+now share a type and no conversion is needed between them:
+
+```rust
+// before
+Message::Assistant { id: turn.message_id.map(String::from), content }
+// after
+Message::Assistant { id: turn.message_id, content }
+```
+
+Constructing one from a raw string uses `WireId::new`, which yields `None` for
+`""`:
+
+```rust
+Message::Assistant { id: WireId::new(provider_id), content }
+```
+
+If the id you hold is already an `Option<String>` — read back from your own
+store, say — `and_then` is the combinator you want. `WireId::new(opt)` does not
+compile, and `opt.map(WireId::new)` gives you `Option<Option<WireId>>`:
+
+```rust
+let id: Option<WireId> = stored_id.and_then(WireId::new);
+```
+
+`message::Reasoning`'s `id` follows the same rule, and `Reasoning::with_id`
+widens from `String` to `impl Into<String>` — existing calls compile unchanged,
+and an empty argument is now absence rather than an empty id. `WireId` also
+derives `PartialOrd`/`Ord`, so sorting or `BTreeMap`-keying these ids keeps
+working.
+
+`WireId::new` is the only way to build one and it rejects the empty string, so
+the "an empty identifier means absent" rule these types always documented is
+now enforced by the type rather than by remembering to use the setters.
+
+**Reading usually needs no change.** `WireId` derefs to `str`:
+
+```rust
+response.message_id.as_deref() == Some("msg_1")   // still compiles
+println!("{}", id);                                // still compiles
+if response.message_id.as_deref() == Some(expected) { … }
+```
+
+Only a site that needs an owned `String` changes:
+
+```rust
+// before
+let id: Option<String> = response.message_id.clone();
+// after
+let id: Option<String> = response.message_id.clone().map(String::from);
+```
+
+**Writing goes through the setters, as before**, and they still take anything
+`Into<String>`:
+
+```rust
+let response = CompletionResponse::new(choice, usage, "provider")
+    .with_message_id("msg_1")                    // unchanged
+    .with_optional_response_id(maybe_id);        // unchanged
+```
+
+A struct literal or field assignment now needs `WireId::new`, which is the
+point — the previously-compiling `response.message_id = Some(String::new())`
+is a type error:
+
+```rust
+response.message_id = WireId::new(provider_id);  // None when provider_id is ""
+```
+
+**Serialized data is unaffected.** `WireId` serializes transparently as its
+bare string, so the JSON is byte-identical, and every deserialization path
+still turns a stored `""` into `None` rather than failing the record — agent
+runs written by earlier versions load unchanged. `WireId` deliberately has no
+`Deserialize` of its own for exactly that reason: a fallible one would reject
+those records — a compile-fail test pins that absence, so the derive cannot be
+added back by mistake.
+
+If *your* type holds an `Option<WireId>` and derives `Deserialize`, point the
+field at the same normalizer rig uses rather than reaching for a derive:
+
+```rust
+#[serde(default, deserialize_with = "rig_core::streaming::deserialize_optional_wire_id")]
+pub message_id: Option<WireId>,
+```
+
+`model` is unchanged (`Option<String>`). It is a label rather than an
+identifier, so its setter remains the only thing normalizing it.
 
 ## 0.40 → 0.41
 

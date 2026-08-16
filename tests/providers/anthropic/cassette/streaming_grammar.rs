@@ -29,7 +29,7 @@ struct StreamRun {
     finals: Vec<StreamFinal>,
     choice: Vec<AssistantContent>,
     response: Option<StreamFinal>,
-    message_id: Option<String>,
+    message_id: Option<rig::streaming::WireId>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {

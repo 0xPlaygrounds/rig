@@ -46,7 +46,7 @@ struct StreamRun {
     /// The normalized terminal record retained on the stream.
     response: Option<StreamFinal>,
     /// Provider-assigned assistant message ID retained on the stream.
-    message_id: Option<String>,
+    message_id: Option<rig::streaming::WireId>,
 }
 
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamRun {

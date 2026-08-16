@@ -56,7 +56,7 @@ const ENCRYPTED_REASONING_MODEL: &str = "openai/o4-mini";
 /// delivered, the tool calls, and any stream errors.
 struct EncryptedReasoningObservation {
     errors: Vec<String>,
-    streamed_encrypted: Vec<(Option<String>, String)>,
+    streamed_encrypted: Vec<(Option<rig::streaming::WireId>, String)>,
     tool_calls: Vec<rig::message::ToolCall>,
     text: String,
 }
@@ -93,7 +93,9 @@ async fn observe_stream(
     observation
 }
 
-fn encrypted_blocks_of(reasoning: &rig::message::Reasoning) -> Vec<(Option<String>, String)> {
+fn encrypted_blocks_of(
+    reasoning: &rig::message::Reasoning,
+) -> Vec<(Option<rig::streaming::WireId>, String)> {
     reasoning
         .content
         .iter()
@@ -106,7 +108,9 @@ fn encrypted_blocks_of(reasoning: &rig::message::Reasoning) -> Vec<(Option<Strin
         .collect()
 }
 
-fn encrypted_blocks_in_choice(choice: &[AssistantContent]) -> Vec<(Option<String>, String)> {
+fn encrypted_blocks_in_choice(
+    choice: &[AssistantContent],
+) -> Vec<(Option<rig::streaming::WireId>, String)> {
     choice
         .iter()
         .filter_map(|content| match content {

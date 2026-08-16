@@ -8,6 +8,7 @@ mod cassette {
     mod empty_stop_sequence_matrix;
     mod error_envelope;
     mod error_identity_edge;
+    mod identity_round_trip;
     mod image;
     mod messages_behaviors;
     mod messages_sessions;
