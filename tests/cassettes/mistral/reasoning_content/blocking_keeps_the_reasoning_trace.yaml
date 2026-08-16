@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":400,"messages":[{"content":"What is 6*7? Answer with just the number.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":[{"closed":true,"thinking":[{"text":"The user is asking for the product of 6 and 7. I know that 6 multiplied by 7 equals 42.","type":"text"}],"type":"thinking"},{"text":"42","type":"text"}],"role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":33,"prompt_tokens":28,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":61}}'

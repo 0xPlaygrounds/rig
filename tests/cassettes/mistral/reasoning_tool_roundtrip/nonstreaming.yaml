@@ -1,0 +1,37 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":[{"closed":true,"thinking":[{"text":"The user is asking for the current weather in Tokyo, Japan, and wants to know whether to pack an umbrella or sunscreen based on the conditions. I need to use the get_weather tool to fetch the current weather data for Tokyo before I can provide an answer.","type":"text"}],"type":"thinking"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\": \"Tokyo, Japan\"}","name":"get_weather"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":71,"prompt_tokens":188,"prompt_tokens_details":{"cached_tokens":160},"service_tier":"standard","total_tokens":259}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"},{"content":[{"closed":true,"thinking":[{"text":"The user is asking for the current weather in Tokyo, Japan, and wants to know whether to pack an umbrella or sunscreen based on the conditions. I need to use the get_weather tool to fetch the current weather data for Tokyo before I can provide an answer.","type":"text"}],"type":"thinking"}],"prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"Tokyo, Japan\"}","name":"get_weather"},"id":"call_REDACTED_1","type":"function"}]},{"content":"Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"mistral-small-latest","reasoning_effort":"high","tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_2
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":[{"closed":true,"thinking":[{"text":"The user wants to know the current weather in Tokyo, Japan, and whether to pack an umbrella or sunscreen based on the weather conditions. I need to fetch the current weather data for Tokyo using the get_weather tool.\n\nAfter receiving the tool result, I will provide a concise summary of the weather and answer the user''s question about packing an umbrella or sunscreen.","type":"text"}],"type":"thinking"},{"text":"The current weather in Tokyo, Japan is **72°F (22°C)**, with sunny conditions, light clouds, 45% humidity, and an 8 mph northwest wind.\n\n**Recommendation:** Since it''s sunny with light clouds, you should pack **sunscreen** rather than an umbrella. Enjoy your trip!","type":"text"}],"role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":147,"prompt_tokens":291,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":438}}'

@@ -1,0 +1,67 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":400,"messages":[{"content":"What is 6*7? Answer with just the number.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","stream":true,"temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghij"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":"The","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" user is asking for","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"a"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" the","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" product of 6","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" and 7.","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"a"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" I know that ","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234567"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"6 multiplied","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" by 7 equals","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" 42.","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklm"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqr"}
+
+    data: {"choices":[{"delta":{"content":"4"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnop"}
+
+    data: {"choices":[{"delta":{"content":"2"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"ab","usage":{"completion_tokens":33,"prompt_tokens":28,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":61}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":400,"messages":[{"content":"What is 6*7? Answer with just the number.","role":"user"},{"content":[{"closed":true,"thinking":[{"text":"The user is asking for the product of 6 and 7. I know that 6 multiplied by 7 equals 42.","type":"text"}],"type":"thinking"},{"text":"42","type":"text"}],"prefix":false,"role":"assistant"},{"content":"Now multiply that by 2. Answer with just the number.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_2
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":[{"closed":true,"thinking":[{"text":"The user wants me to multiply the previous result (42) by 2. So, 42 * 2 = 84.","type":"text"}],"type":"thinking"},{"text":"84","type":"text"}],"role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":35,"prompt_tokens":76,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":111}}'

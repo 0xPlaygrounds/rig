@@ -89,6 +89,46 @@ where
     cassette.finish_after_test_result(result).await
 }
 
+/// Wrapper for the reasoning-content matrix.
+///
+/// Its own named seam so the magistral-class fixtures — the only Mistral cells
+/// whose requests carry `reasoning_effort` — stay separable from the
+/// completion suites that share the same models.
+pub(super) async fn with_mistral_reasoning_cassette<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
+
+/// Bogus-key variant for the reasoning matrix's 401 cell. Inlined for the same
+/// reason as [`with_mistral_cassette_bogus_key_result`]: the safety scan reads
+/// the scenario literal out of each `#[tokio::test]`, so a wrapper that
+/// delegates to another registered wrapper registers nothing.
+pub(super) async fn with_mistral_reasoning_cassette_bogus_key<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let cassette = ProviderCassette::start("mistral", spec, MISTRAL_BASE_URL).await;
+    let client = mistral::Client::builder()
+        .api_key("invalid-reasoning-matrix-key")
+        .base_url(cassette.base_url())
+        .build()
+        .expect("Mistral cassette client should build");
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
+
 /// Wrapper for the embedding-dimension matrix, kept apart from
 /// [`with_mistral_capability_cassette`] so the Codestral width cells are
 /// auditable on their own.
@@ -103,4 +143,16 @@ where
     let (cassette, client) = mistral_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
+}
+
+/// Plain unit-returning wrapper, for the shared cross-provider suites
+/// (`crate::reasoning`) whose bodies assert rather than return a `Result`.
+pub(super) async fn with_mistral_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test(result).await;
 }

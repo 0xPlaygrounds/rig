@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"What is 17*23? Think it through carefully.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":[{"closed":true,"thinking":[{"text":"Okay, I need to calculate 17 multiplied by 23. Let me break this down systematically.\n\nFirst, I recall that multiplication can be broken down using the distributive property of multiplication over addition. That is, I can express one of the numbers as a sum of simpler numbers and then multiply each part","type":"text"}],"type":"thinking"}],"role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":64,"prompt_tokens":29,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":93}}'

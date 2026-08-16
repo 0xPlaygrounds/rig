@@ -1,0 +1,62 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":400,"messages":[{"content":"Answer with the number alone.","role":"system"},{"content":"What is 6*7? Answer with just the number.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","stream":true,"temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":"The","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" user is","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghij"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" asking for the product","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abc"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" of 6 and","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" 7. I","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" know that 6","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" multiplied","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" by 7 equals","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqr"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" 42.","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" Since","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefg"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" the user","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" wants","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvw"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" the answer to be","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" just the number,","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" I will","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345678"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" provide ","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvw"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"42.","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456"}
+
+    data: {"choices":[{"delta":{"content":"4"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv"}
+
+    data: {"choices":[{"delta":{"content":"2"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklm","usage":{"completion_tokens":52,"prompt_tokens":36,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":88}}
+
+    data: [DONE]
+
