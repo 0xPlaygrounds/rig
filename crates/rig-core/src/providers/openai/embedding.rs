@@ -95,10 +95,15 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
     /// Validate and select the provider's dimension field.
     fn embedding_dimensions(
         &self,
-        _model: &str,
+        model: &str,
         dimensions: Option<usize>,
     ) -> Result<Option<EmbeddingDimensions>, EmbeddingError> {
-        Ok(dimensions.map(EmbeddingDimensions::Dimensions))
+        // OpenAI's legacy Ada model does not accept `dimensions`. Keep that
+        // OpenAI-specific exception in the provider hook so another
+        // OpenAI-compatible provider can validate an identically named model.
+        Ok((model != TEXT_EMBEDDING_ADA_002)
+            .then_some(dimensions.map(EmbeddingDimensions::Dimensions))
+            .flatten())
     }
 }
 
@@ -147,6 +152,7 @@ pub struct GenericEmbeddingModel<Ext = super::OpenAIResponsesExt, H = reqwest::C
     pub encoding_format: Option<EncodingFormat>,
     pub user: Option<String>,
     ndims: usize,
+    dimensions_were_explicitly_set: bool,
 }
 
 /// The embedding model struct for OpenAI's Embeddings API.
@@ -177,11 +183,12 @@ where
 
     fn make(client: &Self::Client, model: impl Into<String>, ndims: Option<usize>) -> Self {
         let model = model.into();
+        let dimensions_were_explicitly_set = ndims.is_some();
         let dims = ndims
             .or_else(|| Ext::default_ndims(&model))
             .unwrap_or_default();
 
-        Self::new(client.clone(), model, dims)
+        Self::from_parts(client.clone(), model, dims, dimensions_were_explicitly_set)
     }
 
     fn ndims(&self) -> usize {
@@ -225,7 +232,7 @@ where
         }
 
         let requested_dimensions =
-            (self.ndims > 0 && self.model != TEXT_EMBEDDING_ADA_002).then_some(self.ndims);
+            (self.dimensions_were_explicitly_set || self.ndims > 0).then_some(self.ndims);
         let dimensions = self
             .client
             .ext()
@@ -333,11 +340,21 @@ where
         model: impl Into<String>,
         ndims: usize,
     ) -> Self {
+        Self::from_parts(client, model, ndims, true)
+    }
+
+    fn from_parts(
+        client: crate::client::Client<Ext, H>,
+        model: impl Into<String>,
+        ndims: usize,
+        dimensions_were_explicitly_set: bool,
+    ) -> Self {
         Self {
             client,
             model: model.into(),
             encoding_format: None,
             ndims,
+            dimensions_were_explicitly_set,
             user: None,
         }
     }
@@ -460,6 +477,27 @@ mod tests {
         assert_eq!(body["dimensions"], serde_json::json!(1_536));
         assert_eq!(body["encoding_format"], serde_json::json!("float"));
         assert_eq!(body["user"], serde_json::json!("user-123"));
+    }
+
+    #[tokio::test]
+    async fn openai_ada_dimensions_remain_absent_from_the_wire() {
+        let http_client = RecordingHttpClient::new(RESPONSE_BODY);
+        let client = CompletionsClient::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        client
+            .embedding_model_with_ndims(TEXT_EMBEDDING_ADA_002, 512)
+            .embed_texts(["hello".to_string()])
+            .await
+            .expect("embedding should succeed");
+
+        let requests = http_client.requests();
+        let body: serde_json::Value =
+            serde_json::from_slice(&requests[0].body).expect("request body should be JSON");
+        assert!(body.get("dimensions").is_none());
     }
 
     #[tokio::test]

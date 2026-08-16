@@ -1,7 +1,26 @@
-//! Contract-vs-reality (rig#2265 / PR #2313 follow-up): Doubleword is an
-//! Anthropic-compatible gateway, so it *inherits* the
-//! `AnthropicCompatibleProvider::REQUEST_ID_HEADER` default of `request-id`.
-//! These recordings document what the gateway actually sends.
+//! Contract-vs-reality (rig#2265 / PR #2313 follow-up): Doubleword is bound to
+//! `OpenAICompatibleProvider` (`doubleword/client.rs`), whose
+//! `REQUEST_ID_HEADER` default is `None` — it does *not* inherit Anthropic's
+//! `Some("request-id")` (`anthropic/completion.rs`), and it declares no
+//! contract of its own. `provider_request_id` is therefore `None` on every
+//! Doubleword turn, which is what these two cells pin.
+//!
+//! Keeping `None` is a decision, not an oversight, and the reason is worth
+//! writing down because the obvious counter-evidence is real: Doubleword *does*
+//! stamp `x-request-id` on some responses — but only on some. Measured live,
+//! three live requests per model: `openai/gpt-oss-20b`, `gemma-4-31B-it` and
+//! `DeepSeek-V4-Flash` sent it on 3 of 3; `gpt-oss-120b`, `Qwen3.5-9B`,
+//! `Qwen3.5-397B-A17B-FP8` and `GLM-5.2-FP8` sent it on 0 of 3. The embeddings
+//! endpoint sent it on 0 of 10 (though a few recorded embedding fixtures in
+//! `embedding_dimensions/` did capture one, so it is intermittent there too).
+//!
+//! The header is a property of whichever backend serves the request, not of
+//! the provider, so declaring the contract would make `provider_request_id`
+//! Some-or-None depending on the model — and would reclassify every non-success
+//! status from `HttpError` to `ProviderResponse` provider-wide for a header
+//! that is absent more often than present. `DEFAULT_MODEL` here is
+//! `Qwen/Qwen3.5-9B`, one of the backends that sends none, which is why both
+//! fixtures below carry only `content-type`.
 
 use rig::completion::CompletionModel;
 use rig::prelude::*;
@@ -20,10 +39,10 @@ async fn blocking_identity_contract_vs_reality() {
                 .send()
                 .await
                 .expect("completion should succeed");
-            // Assertion derived from the recording (see the fixture's response
-            // headers): the gateway does not echo Anthropic's `request-id`
-            // header, so the inherited contract captures `None` — harmless by
-            // design, documented here.
+            // Derived from this recording's own response headers, which carry
+            // only `content-type`: no contract is declared, and the backend
+            // serving `DEFAULT_MODEL` stamps no id either, so `None` is what
+            // both halves agree on.
             assert_eq!(response.provider_request_id, None);
         },
     )
