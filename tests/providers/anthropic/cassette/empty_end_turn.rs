@@ -173,7 +173,7 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
                 .preamble(TERMINAL_NOTIFY_PREAMBLE.to_string())
                 .max_tokens(1024)
                 .message(Message::Assistant {
-                    id: first_turn.message_id.clone().map(String::from),
+                    id: first_turn.message_id.clone(),
                     content: first_turn.choice.clone(),
                 })
                 .send()

@@ -285,7 +285,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 stored_turns.push(StoredResponseTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: response.message_id.map(String::from),
+                        id: response.message_id,
                         content: response.choice,
                     },
                     raw_response,
@@ -434,7 +434,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                 stored_turns.push(StoredStreamingTurn {
                     user: user_message,
                     assistant: Message::Assistant {
-                        id: message_id,
+                        id: message_id.and_then(rig::streaming::WireId::new),
                         content: reasoning_blocks,
                     },
                     final_response,

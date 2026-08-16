@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
 
         history.push(current_prompt.clone());
         history.push(Message::Assistant {
-            id: response.message_id.clone().map(String::from),
+            id: response.message_id.clone(),
             content: response.choice.clone(),
         });
 

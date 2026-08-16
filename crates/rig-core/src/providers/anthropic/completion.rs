@@ -6399,7 +6399,7 @@ mod tests {
         ));
 
         let round_trip: Message = message::Message::Assistant {
-            id: converted.message_id.clone().map(String::from),
+            id: converted.message_id.clone(),
             content: converted.choice,
         }
         .try_into()
@@ -6462,7 +6462,7 @@ mod tests {
         );
 
         let round_trip: Message = message::Message::Assistant {
-            id: converted.message_id.map(String::from),
+            id: converted.message_id,
             content: converted.choice,
         }
         .try_into()
@@ -6563,7 +6563,7 @@ mod tests {
         );
 
         let round_trip: Message = message::Message::Assistant {
-            id: converted.message_id.map(String::from),
+            id: converted.message_id,
             content: converted.choice,
         }
         .try_into()

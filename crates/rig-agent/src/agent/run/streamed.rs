@@ -195,7 +195,7 @@ impl PartialStreamedTurn {
             tool_items,
         )?;
         Some(Message::Assistant {
-            id: self.message_id.clone().map(String::from),
+            id: self.message_id.clone(),
             content,
         })
     }

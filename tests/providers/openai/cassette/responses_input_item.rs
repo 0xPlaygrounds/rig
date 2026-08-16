@@ -26,7 +26,7 @@ fn test_input_item_serialization_avoids_duplicate_role() {
 #[test]
 fn assistant_reasoning_without_id_is_omitted() {
     let message = CompletionMessage::Assistant {
-        id: Some("assistant_message_id".to_string()),
+        id: rig_core::streaming::WireId::new("assistant_message_id"),
         content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
     };
 
@@ -40,7 +40,7 @@ fn assistant_reasoning_without_id_is_omitted() {
 fn assistant_reasoning_encrypted_only_serializes_encrypted_content() {
     let reasoning = Reasoning::encrypted("encrypted_blob").with_id("rs_1".to_string());
     let message = CompletionMessage::Assistant {
-        id: Some("assistant_message_id".to_string()),
+        id: rig_core::streaming::WireId::new("assistant_message_id"),
         content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
@@ -89,7 +89,7 @@ fn assistant_reasoning_mixed_content_serializes_text_content_and_summaries() {
     });
 
     let message = CompletionMessage::Assistant {
-        id: Some("assistant_message_id".to_string()),
+        id: rig_core::streaming::WireId::new("assistant_message_id"),
         content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
@@ -244,7 +244,7 @@ fn openai_empty_reasoning_content_roundtrips_to_request_item() {
     };
 
     let message = CompletionMessage::Assistant {
-        id: Some("assistant_message_id".to_string()),
+        id: rig_core::streaming::WireId::new("assistant_message_id"),
         content: vec![AssistantContent::Reasoning(reasoning)],
     };
     let items: Vec<InputItem> = message
@@ -275,7 +275,7 @@ fn openai_empty_reasoning_content_roundtrips_to_request_item() {
 fn assistant_reasoning_redacted_only_serializes_as_encrypted_content() {
     let reasoning = Reasoning::redacted("opaque-redacted").with_id("rs_redacted".to_string());
     let message = CompletionMessage::Assistant {
-        id: Some("assistant_message_id".to_string()),
+        id: rig_core::streaming::WireId::new("assistant_message_id"),
         content: vec![AssistantContent::Reasoning(reasoning)],
     };
 
@@ -306,7 +306,7 @@ fn openai_responses_request_reasoning_without_id_is_omitted_without_panicking() 
         let request = rig::completion::CompletionRequest {
             preamble: None,
             chat_history: vec![CompletionMessage::Assistant {
-                id: Some("assistant_message_id".to_string()),
+                id: rig_core::streaming::WireId::new("assistant_message_id"),
                 content: vec![AssistantContent::Reasoning(Reasoning::new("thought"))],
             }],
             documents: vec![],
@@ -415,7 +415,7 @@ fn assistant_tool_call_without_provider_id_serializes_the_minted_call_id() {
     // handle; the Responses wire requires a `call_id`, so the minted id is
     // sent instead of the old "`call_id` is required" request error.
     let message = CompletionMessage::Assistant {
-        id: Some("assistant_message_id".to_string()),
+        id: rig_core::streaming::WireId::new("assistant_message_id"),
         content: vec![AssistantContent::tool_call(
             "",
             "my_tool",

@@ -108,7 +108,11 @@ impl AgentHook for IdentityCapture {
     ) -> ObservationAction {
         self.blocking.lock().expect("snapshots").push((
             event.message_id.map(str::to_owned),
-            event.identity.provider_request_id.clone().map(String::from),
+            event
+                .identity
+                .provider_request_id
+                .as_deref()
+                .map(str::to_owned),
         ));
         ObservationAction::continue_run()
     }
@@ -120,7 +124,11 @@ impl AgentHook for IdentityCapture {
     ) -> ObservationAction {
         self.streaming.lock().expect("snapshots").push((
             event.message_id.map(str::to_owned),
-            event.identity.provider_request_id.clone().map(String::from),
+            event
+                .identity
+                .provider_request_id
+                .as_deref()
+                .map(str::to_owned),
         ));
         ObservationAction::continue_run()
     }

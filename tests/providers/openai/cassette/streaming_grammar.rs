@@ -86,7 +86,7 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     // suite drains (#2258 C1).
     rig_core::test_utils::streaming_conformance::assert_valid_event_stream(&raw_items, &run.choice);
     run.response = stream.response.clone();
-    run.message_id = stream.message_id.clone().map(String::from);
+    run.message_id = stream.message_id.as_deref().map(str::to_owned);
     run
 }
 
@@ -416,7 +416,10 @@ async fn tool_call_then_followup_text_across_turns() {
                 .expect("aggregated first turn should contain the lookup_harbor_label call");
 
             let assistant_message = Message::Assistant {
-                id: first.message_id.clone(),
+                id: first
+                    .message_id
+                    .clone()
+                    .and_then(rig::streaming::WireId::new),
                 content: vec![AssistantContent::ToolCall(tool_call.clone())],
             };
             let tool_result = Message::from(UserContent::tool_result_for(
@@ -535,7 +538,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // recorded rs_* ids included — goes back through the provenance
             // gate together with the tool result.
             let first_assistant = Message::Assistant {
-                id: first.message_id.clone(),
+                id: first.message_id.clone().and_then(rig::streaming::WireId::new),
                 content: first.choice.clone(),
             };
             let tool_result = Message::from(UserContent::tool_result_for(
@@ -573,7 +576,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
 
             // Turn 3: both prior assistant turns' rs_* items replay together.
             let second_assistant = Message::Assistant {
-                id: second.message_id.clone(),
+                id: second.message_id.clone().and_then(rig::streaming::WireId::new),
                 content: second.choice.clone(),
             };
             let third_request = model

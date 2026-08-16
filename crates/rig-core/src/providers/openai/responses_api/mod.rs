@@ -2859,7 +2859,7 @@ impl OutputText {
 /// skipped, and own-wire extras stranded on an id-less block warn as they
 /// drop.
 fn assistant_text_replay_message(
-    id: Option<String>,
+    id: Option<crate::streaming::WireId>,
     text: String,
     additional_params: Option<crate::message::AdditionalParams>,
 ) -> Option<Message> {
@@ -2890,7 +2890,9 @@ fn assistant_text_replay_message(
             content: vec![AssistantContentType::Text(AssistantContent::OutputText(
                 OutputText::from_message_text(text, additional_params),
             ))],
-            id,
+            // The provider-native message keeps a raw `String` id: this is
+            // the wire boundary, which is where the handle is unwrapped.
+            id: id.into(),
             name: None,
             status: ToolStatus::Completed,
         }),
@@ -3106,18 +3108,19 @@ mod tests {
             "foreign-annotated empty block must produce no Responses item: {items:?}"
         );
 
-        let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
-            id,
-            content: vec![completion::AssistantContent::Text(message::Text {
-                text: String::new(),
-                additional_params: message::AdditionalParams::try_from_value(json!({
-                    OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
-                }))
-                .expect("object params"),
-            })],
-        };
+        let own_annotated_empty =
+            |id: Option<crate::streaming::WireId>| message::Message::Assistant {
+                id,
+                content: vec![completion::AssistantContent::Text(message::Text {
+                    text: String::new(),
+                    additional_params: message::AdditionalParams::try_from_value(json!({
+                        OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
+                    }))
+                    .expect("object params"),
+                })],
+            };
         // With a message id, the Assistant form carries the extras.
-        let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
+        let items: Vec<InputItem> = own_annotated_empty(crate::streaming::WireId::new("msg_1"))
             .try_into()
             .expect("convert");
         assert_eq!(
@@ -4939,7 +4942,7 @@ mod tests {
     #[test]
     fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
         let assistant = completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
+            id: crate::streaming::WireId::new("msg_123"),
             content: vec![
                 message::AssistantContent::Reasoning(message::Reasoning::new("provider reasoning")),
                 message::AssistantContent::Text(Text::new("final answer")),
@@ -4963,7 +4966,7 @@ mod tests {
     #[test]
     fn assistant_text_without_idless_reasoning_replays_as_output_text() {
         let assistant = completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
+            id: crate::streaming::WireId::new("msg_123"),
             content: vec![message::AssistantContent::Text(Text::new("final answer"))],
         };
 
@@ -5010,7 +5013,7 @@ mod tests {
     #[test]
     fn structured_reasoning_with_id_still_converts_to_input_item() {
         let assistant = completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
+            id: crate::streaming::WireId::new("msg_123"),
             content: vec![message::AssistantContent::Reasoning(message::Reasoning {
                 id: Some("rs_123".to_string()),
                 content: vec![message::ReasoningContent::Summary(
@@ -5033,7 +5036,7 @@ mod tests {
     #[test]
     fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
         let assistant = completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
+            id: crate::streaming::WireId::new("msg_123"),
             content: vec![
                 message::AssistantContent::Reasoning(message::Reasoning {
                     id: Some("rs_123".to_string()),
@@ -5097,7 +5100,7 @@ mod tests {
                     ))],
                 },
                 completion::Message::Assistant {
-                    id: Some("msg_123".to_string()),
+                    id: crate::streaming::WireId::new("msg_123"),
                     content: vec![
                         message::AssistantContent::Reasoning(message::Reasoning::new(
                             "provider reasoning",

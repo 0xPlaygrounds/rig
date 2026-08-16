@@ -652,7 +652,7 @@ impl AgentRun {
                 let content = turn.items;
                 if !is_empty_assistant_turn(&content) {
                     self.new_messages.push(Message::Assistant {
-                        id: turn.message_id.map(String::from),
+                        id: turn.message_id,
                         content,
                     });
                 }
@@ -794,7 +794,7 @@ impl AgentRun {
                     let missing = self.missing_required_output_fields(&args);
                     if !missing.is_empty() && self.can_reprompt_for_output() {
                         self.new_messages.push(Message::Assistant {
-                            id: message_id.map(String::from),
+                            id: message_id,
                             content: items.clone(),
                         });
                         let feedback = format!(
@@ -822,7 +822,7 @@ impl AgentRun {
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
                     self.new_messages.push(Message::Assistant {
-                        id: message_id.map(String::from),
+                        id: message_id,
                         content: final_items.clone(),
                     });
 
@@ -837,7 +837,7 @@ impl AgentRun {
                 // thing: keep the turn out of history and carry on.
                 if !is_empty_assistant_turn(&items) {
                     self.new_messages.push(Message::Assistant {
-                        id: message_id.map(String::from),
+                        id: message_id,
                         content: items.clone(),
                     });
                 }
@@ -1200,7 +1200,7 @@ impl AgentRun {
         match action {
             ValidatedInvalidToolCallAction::Retry { feedback } => {
                 self.new_messages.push(Message::Assistant {
-                    id: resolving.message_id.clone().map(String::from),
+                    id: resolving.message_id.clone(),
                     content: resolving.original_choice.clone(),
                 });
                 let Some(user_message) = invalid_tool_retry_user_message(
@@ -1602,7 +1602,7 @@ impl AgentRun {
                 let mut diagnostic_messages = self.new_messages.clone();
                 if !is_empty_assistant_turn(&turn.choice) {
                     diagnostic_messages.push(Message::Assistant {
-                        id: turn.message_id.clone().map(String::from),
+                        id: turn.message_id.clone(),
                         content: turn.choice.clone(),
                     });
                 }
@@ -1647,7 +1647,7 @@ impl AgentRun {
     fn diagnostic_history(&self, resolving: &ResolvingState) -> Vec<Message> {
         let mut diagnostic_messages = self.new_messages.clone();
         diagnostic_messages.push(Message::Assistant {
-            id: resolving.message_id.clone().map(String::from),
+            id: resolving.message_id.clone(),
             content: resolving.original_choice.clone(),
         });
         build_full_history(self.chat_history.as_deref(), diagnostic_messages)
