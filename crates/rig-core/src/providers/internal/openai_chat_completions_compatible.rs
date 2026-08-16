@@ -190,6 +190,9 @@ pub(crate) struct CompatibleTerminal<U> {
     pub(crate) response_id: Option<String>,
     /// Provider-reported model identifier, when emitted.
     pub(crate) model: Option<String>,
+    /// Per-chunk primary-choice log probabilities, deep-merged in arrival
+    /// order so token arrays retain the exact streamed sequence.
+    pub(crate) logprobs: Option<crate::message::AdditionalParams>,
 }
 
 #[derive(Debug, Clone)]
@@ -232,6 +235,7 @@ pub(crate) struct CompatibleChoice<D> {
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<CompatibleToolCallChunk>,
     pub(crate) details: Vec<D>,
+    pub(crate) logprobs: Option<crate::message::AdditionalParams>,
 }
 
 #[derive(Debug, Clone)]
@@ -241,6 +245,7 @@ pub(crate) struct CompatibleChoiceData<T, D> {
     pub(crate) reasoning: Option<String>,
     pub(crate) tool_calls: Vec<T>,
     pub(crate) details: Vec<D>,
+    pub(crate) logprobs: Option<crate::message::AdditionalParams>,
 }
 
 #[derive(Debug, Clone)]
@@ -262,6 +267,7 @@ where
             reasoning: value.reasoning,
             tool_calls: value.tool_calls.into_iter().map(Into::into).collect(),
             details: value.details,
+            logprobs: value.logprobs,
         }
     }
 }
@@ -394,7 +400,7 @@ pub(crate) fn should_evict_distinct_named_tool_call(
 /// One classified event of the chat-completions stream: a decoded chunk, or
 /// the wire's `[DONE]` terminal sentinel.
 pub(crate) enum CompatEvent<U, D> {
-    Chunk(CompatibleChunk<U, D>),
+    Chunk(Box<CompatibleChunk<U, D>>),
     Done,
 }
 
@@ -416,6 +422,9 @@ struct CompatAdapter<P: CompatibleStreamProfile> {
     final_finish_reason: Option<FinishReason>,
     response_id: Option<String>,
     response_model: Option<String>,
+    /// Accumulated primary-choice token metadata. `AdditionalParams::merge`
+    /// concatenates nested arrays, which is the wire's token order.
+    logprobs: Option<crate::message::AdditionalParams>,
     /// Whether `[DONE]` or a chunk carrying a finish reason arrived — the only
     /// signals that count as the provider completing the turn.
     saw_terminal: bool,
@@ -435,6 +444,7 @@ impl<P: CompatibleStreamProfile> CompatAdapter<P> {
             final_finish_reason: None,
             response_id: None,
             response_model: None,
+            logprobs: None,
             saw_terminal: false,
             saw_any_valid_frame: false,
         }
@@ -456,7 +466,9 @@ where
         if data == "[DONE]" {
             return WireEvent::Known(CompatEvent::Done);
         }
-        self.profile.classify_chunk(&data).map(CompatEvent::Chunk)
+        self.profile
+            .classify_chunk(&data)
+            .map(|chunk| CompatEvent::Chunk(Box::new(chunk)))
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput<Self::Response>) {
@@ -465,7 +477,7 @@ where
                 self.saw_terminal = true;
                 return;
             }
-            CompatEvent::Chunk(chunk) => chunk,
+            CompatEvent::Chunk(chunk) => *chunk,
         };
         self.saw_any_valid_frame = true;
 
@@ -495,6 +507,13 @@ where
         if let Some(reason) = choice.finish_reason.reported() {
             self.final_finish_reason = Some(reason);
             self.saw_terminal = true;
+        }
+
+        if let Some(logprobs) = choice.logprobs.clone() {
+            match self.logprobs.as_mut() {
+                Some(accumulated) => accumulated.merge(logprobs),
+                None => self.logprobs = Some(logprobs),
+            }
         }
 
         // Reasoning details are the turn's own output, so they are emitted
@@ -629,6 +648,7 @@ where
                 finish_reason: self.final_finish_reason.take(),
                 response_id: self.response_id.take(),
                 model: self.response_model.take(),
+                logprobs: self.logprobs.take(),
             }),
         )));
     }

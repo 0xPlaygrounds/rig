@@ -796,6 +796,29 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Raw OpenAI-compatible streaming terminals gain `logprobs`
+
+`openai::completion::StreamingCompletionResponse<U>` — the provider-native
+terminal record returned by `raw_stream` for OpenAI Chat Completions and its
+compatible providers — gains one public field:
+
+```rust
+pub logprobs: Option<serde_json::Value>
+```
+
+It contains the primary choice's per-chunk log-probability objects, deep-merged
+in arrival order. In particular, token arrays under `content` and
+`reasoning_content` are concatenated rather than overwritten. The normalized
+`CompletionModel::stream` surface is unchanged; use `raw_stream` when you need
+this provider-native metadata.
+
+Code that only reads the terminal record needs no change. A full struct literal
+must add `logprobs: None` to reproduce the old value, and an exhaustive
+destructure must name the field or add `..`. The field is serde-defaulted and
+omitted when absent, so terminal records persisted before this change still
+deserialize and serialization is unchanged when log probabilities were not
+requested.
+
 ### `ProviderResponseError` gains a `headers` field
 
 A failed provider response now carries its headers onto the error, so

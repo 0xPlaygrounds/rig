@@ -166,6 +166,12 @@ struct StreamingChoice {
     /// omit it; absent is read as candidate 0.
     #[serde(default)]
     index: Option<usize>,
+    /// Per-token probabilities for this chunk. Kept as provider metadata:
+    /// OpenAI-compatible services extend the object independently, while the
+    /// raw terminal response must retain every chunk rather than choosing a
+    /// provider-specific token schema here.
+    #[serde(default)]
+    logprobs: Option<crate::message::AdditionalParams>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -209,6 +215,14 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// transport. `None` when the provider did not report one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
+    /// Token log probabilities accumulated from all primary-choice chunks.
+    ///
+    /// This stays provider-native on [`GenericCompletionModel::raw_stream`]:
+    /// normalized completions do not currently model log probabilities, just
+    /// as the blocking normalized path omits `Choice::logprobs` while its raw
+    /// response retains them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<serde_json::Value>,
 }
 
 impl<U> StreamingCompletionResponse<U> {
@@ -221,6 +235,7 @@ impl<U> StreamingCompletionResponse<U> {
             response_id: None,
             model: None,
             provider_request_id: None,
+            logprobs: None,
         }
     }
 
@@ -235,6 +250,7 @@ impl<U> StreamingCompletionResponse<U> {
             // Stamped by the transport layer; the shared chunk accumulator
             // never sees connection headers.
             provider_request_id: None,
+            logprobs: terminal.logprobs.map(Into::into),
         }
     }
 }
@@ -452,6 +468,7 @@ where
                         &choice.delta.tool_calls,
                     ),
                     details: choice.delta.reasoning_details.clone(),
+                    logprobs: choice.logprobs.clone(),
                 },
             )
         })
@@ -639,6 +656,63 @@ mod tests {
         }
 
         (text, terminal)
+    }
+
+    /// Replay Chat Completions chunks without normalizing the terminal, so
+    /// provider-native metadata can be asserted directly.
+    async fn collect_openai_raw_terminal(chunks: &[&str]) -> Option<StreamingCompletionResponse> {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(
+                chunks.iter().copied().chain(std::iter::once("[DONE]")),
+            ),
+        };
+        let mut stream = send_compatible_raw_streaming_request(client, streaming_request())
+            .await
+            .expect("raw stream should open");
+
+        let mut terminal = None;
+        while let Some(chunk) = stream.next().await {
+            if let streaming::RawStreamingChoice::FinalResponse(response) =
+                chunk.expect("stream item")
+            {
+                terminal = Some(response);
+            }
+        }
+        terminal
+    }
+
+    /// Log probabilities are distributed across token chunks. The raw
+    /// terminal must reconstruct both documented arrays in arrival order,
+    /// including nested top-token arrays, instead of retaining only the last
+    /// chunk or dropping the field entirely.
+    #[tokio::test]
+    async fn raw_terminal_accumulates_streamed_logprobs() {
+        let chunks = [
+            r#"{"choices":[{"index":0,"delta":{"reasoning_content":"why"},"finish_reason":null,"logprobs":{"reasoning_content":[{"token":"why","top_logprobs":[{"token":"why"}]}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{"content":"co"},"finish_reason":null,"logprobs":{"content":[{"token":"co","top_logprobs":[{"token":"co"}]}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{"content":"balt"},"finish_reason":null,"logprobs":{"content":[{"token":"balt","top_logprobs":[{"token":"balt"}]}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{},"finish_reason":"stop","logprobs":null}]}"#,
+        ];
+
+        let terminal = collect_openai_raw_terminal(&chunks)
+            .await
+            .expect("stream should terminate");
+        assert_eq!(
+            terminal.logprobs,
+            Some(json!({
+                "reasoning_content": [{
+                    "token": "why",
+                    "top_logprobs": [{"token": "why"}]
+                }],
+                "content": [
+                    {"token": "co", "top_logprobs": [{"token": "co"}]},
+                    {"token": "balt", "top_logprobs": [{"token": "balt"}]}
+                ]
+            }))
+        );
     }
 
     /// The refusal shape the wire actually sends: `content` held at `null` for

@@ -117,6 +117,33 @@ where
     run_deepseek_cassette_result(spec, test_body).await
 }
 
+/// Follow-up hunt census: request/response fields that the first sweep did
+/// not exercise (log probabilities, stop sequences, reasoning effort and
+/// content filtering). This remains separate from per-bug matrix wrappers:
+/// a confirmed defect graduates into its own fixture directory and wrapper.
+pub(super) async fn with_deepseek_followup_hunt_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(deepseek::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    run_deepseek_cassette_result(spec, test_body).await
+}
+
+/// Per-bug matrix for streamed Chat Completions log-probability loss.
+pub(super) async fn with_deepseek_stream_logprobs_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(deepseek::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    run_deepseek_cassette_result(spec, test_body).await
+}
+
 /// Every interaction recorded under `scenario`, as `(request, response)` body
 /// strings in cassette order.
 ///
