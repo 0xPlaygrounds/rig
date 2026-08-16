@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"What is 6*7? Answer with just the number.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high"}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"detail":"Invalid API Key"}'

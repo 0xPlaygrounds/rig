@@ -1,0 +1,62 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"What is 17*23? Think it through carefully.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","stream":true,"temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrst"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"Okay, I","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345678"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" need to calculate ","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijkl"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"17 multiplied","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" by 23","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abc"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":". Let me break","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" this","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"a"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" down systematically","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":".\n\nFirst, I","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456789"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" recall that multiplication can","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" be broken down using","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" the distributive property","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" of multiplication over addition","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnop"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":". That","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" is, I can","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwx"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" express one","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" of the numbers as","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" a sum of simpler","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" numbers and then multiply","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" the other","type":"text"}],"type":"thinking"}]},"finish_reason":"length","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu","usage":{"completion_tokens":64,"prompt_tokens":29,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":93}}
+
+    data: [DONE]
+

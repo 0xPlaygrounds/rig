@@ -1,0 +1,18 @@
+when:
+  path: /v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=3154d50c2a06617d-7636c68675525005-ed94eadf933078d4-376846d7327f3432
+  body: null
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"detail":"Invalid API Key"}'

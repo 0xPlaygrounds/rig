@@ -1,9 +1,11 @@
 //! Implements Mistral (basic) transcription API
-use bytes::Bytes;
 use serde::Deserialize;
 
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::transcription::{TranscriptionFields, transcription_form};
+use crate::providers::internal::envelope::DirectPayload;
+use crate::providers::internal::transcription::{
+    TranscriptionFields, send_transcription, transcription_form,
+};
 use crate::providers::mistral::Client;
 use crate::transcription::{self, TranscriptionError};
 use crate::wasm_compat::WasmCompatSend;
@@ -12,9 +14,19 @@ use crate::wasm_compat::WasmCompatSend;
 // Mistral Transcription API
 // ================================================================
 
-/// Voxtral Mini model (latest version)
+/// Voxtral Mini model (latest version) — Mistral's transcription model.
+///
+/// The live catalog reports `capabilities.audio_transcription: true` for this
+/// id and no other Voxtral variant.
 pub const VOXTRAL_MINI: &str = "voxtral-mini-latest";
-/// Voxtral Small model (latest version)
+/// Voxtral Small model (latest version).
+///
+/// **Not a transcription model**, despite living beside one: the live catalog
+/// reports `audio_transcription: false` for it (and `audio: true`,
+/// `completion_chat: true`), and `POST /v1/audio/transcriptions` answers
+/// `400 Invalid model: voxtral-small-latest`. It is the audio-*chat* model —
+/// pass it to `completion_model` with `input_audio` content. Use
+/// [`VOXTRAL_MINI`] to transcribe.
 pub const VOXTRAL_SMALL: &str = "voxtral-small-latest";
 
 /// Request usage statistics
@@ -83,6 +95,8 @@ impl TryFrom<MistralTranscriptionResponse>
     type Error = TranscriptionError;
 
     fn try_from(value: MistralTranscriptionResponse) -> Result<Self, Self::Error> {
+        tracing::info!(target: "rig", "Mistral transcription token usage: {}", &value.usage);
+
         Ok(transcription::TranscriptionResponse {
             text: value.text.clone(),
             response: value,
@@ -122,36 +136,17 @@ where
             },
         )?;
 
-        let req = self
-            .client
-            .post("/v1/audio/transcriptions")?
-            .body(body)
-            .map_err(|e| TranscriptionError::RequestError(e.into()))?;
-
-        let response = self
-            .client
-            .send_multipart::<Bytes>(req)
-            .await
-            .map_err(TranscriptionError::HttpError)?;
-
-        let status = response.status();
-        let response_bytes = response.into_body().await?;
-
-        if status.is_success() {
-            let response_body: MistralTranscriptionResponse =
-                serde_json::from_slice(&response_bytes)?;
-
-            tracing::info!(target: "rig", "Mistral transcription token usage: {}", &response_body.usage);
-
-            Ok(transcription::TranscriptionResponse::try_from(
-                response_body,
-            )?)
-        } else {
-            Err(TranscriptionError::from_http_response(
-                status,
-                String::from_utf8_lossy(&response_bytes),
-            ))
-        }
+        // Through the shared driver rather than a hand-rolled status split:
+        // it takes the response apart with `into_parts`, so a failed call
+        // keeps its headers and the caller can read `Retry-After` off the
+        // error (rig#2210). Mistral was the only provider whose transcription
+        // built that tail itself, and the tail it built dropped them.
+        send_transcription::<_, DirectPayload<MistralTranscriptionResponse>>(
+            &self.client,
+            self.client.post("/v1/audio/transcriptions")?,
+            body,
+        )
+        .await
     }
 }
 
@@ -279,5 +274,131 @@ mod test {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    /// The outbound multipart form, which no cassette can pin: a multipart
+    /// request is exported with *no* body (the proxy stores bodies as strings),
+    /// so the recorded fixture matches on multipart-ness alone.
+    ///
+    /// The shared builder's field shape is covered in
+    /// `providers/internal/transcription.rs`; what is Mistral's own is the
+    /// endpoint, the `model` field, and that `prompt` — a field Mistral's
+    /// transcription endpoint does not have — never reaches the wire.
+    #[tokio::test]
+    async fn transcription_form_carries_the_documented_fields() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let body = r#"{"model":"voxtral-mini-latest","text":"hi","language":null,
+            "segments":[],"usage":{"prompt_audio_seconds":1,"prompt_tokens":1,
+            "total_tokens":2,"completion_tokens":1,"prompt_tokens_details":null}}"#;
+        let http_client = RecordingHttpClient::new(body);
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client.clone())
+            .build()
+            .expect("build client");
+
+        client
+            .transcription_model(VOXTRAL_MINI)
+            .transcription_request()
+            .data(vec![0u8; 8])
+            .language("en".to_string())
+            .prompt("this is not a Mistral field".to_string())
+            .send()
+            .await
+            .expect("transcription should succeed");
+
+        let request = http_client
+            .requests()
+            .pop()
+            .expect("one request should be recorded");
+        assert!(
+            request.uri.ends_with("/v1/audio/transcriptions"),
+            "Mistral's client base URL is the bare host, so the path carries its own v1: {}",
+            request.uri
+        );
+        let form = String::from_utf8_lossy(&request.body).into_owned();
+        for field in ["name=\"model\"", "name=\"file\"", "name=\"language\""] {
+            assert!(form.contains(field), "{field} must ride the form: {form}");
+        }
+        assert!(
+            form.contains(VOXTRAL_MINI),
+            "the model must name the value it was built with: {form}"
+        );
+        assert!(
+            !form.contains("name=\"prompt\""),
+            "Mistral's transcription endpoint has no `prompt` field: {form}"
+        );
+    }
+
+    /// A failed transcription keeps the response's headers, so a caller can
+    /// read `Retry-After` and back off (rig#2210).
+    ///
+    /// The bundled reqwest client raises a non-2xx as a transport error that
+    /// already carries its headers, so this is only reachable through a custom
+    /// [`HttpClientExt`] that hands the response back — which is exactly the
+    /// transport shape the shared drivers' own rig#2210 tests use
+    /// (`providers/internal/transcription.rs`, `header_preservation_tests`).
+    /// Mistral was the one provider whose transcription hand-rolled the
+    /// status split instead of going through those drivers, and the hand-rolled
+    /// tail dropped the headers on the floor.
+    #[tokio::test]
+    async fn transcription_non_success_preserves_response_headers() {
+        use crate::client::transcription::TranscriptionClient;
+        use crate::test_utils::RecordingHttpClient;
+        use crate::transcription::TranscriptionModel as _;
+
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::RETRY_AFTER,
+            http::HeaderValue::from_static("42"),
+        );
+        headers.insert(
+            "mistral-correlation-id",
+            http::HeaderValue::from_static("cid-1"),
+        );
+
+        let body = r#"{"message":"rate limited"}"#;
+        let http_client = RecordingHttpClient::with_error_response_headers(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            body,
+            headers,
+        );
+        let client = Client::builder()
+            .api_key("test-key")
+            .http_client(http_client)
+            .build()
+            .expect("build client");
+        let model = client.transcription_model(VOXTRAL_MINI);
+
+        let error = model
+            .transcription_request()
+            .data(vec![0u8; 16])
+            .send()
+            .await
+            .err()
+            .expect("transcription should fail with non-success status");
+
+        assert_eq!(
+            error.provider_response_status(),
+            Some(http::StatusCode::TOO_MANY_REQUESTS)
+        );
+        assert_eq!(error.provider_response_body(), Some(body));
+        let preserved = error
+            .provider_response_headers()
+            .expect("a failed capability call preserves its response headers (rig#2210)");
+        assert_eq!(
+            preserved
+                .get(http::header::RETRY_AFTER)
+                .map(|value| value.as_bytes()),
+            Some("42".as_bytes()),
+            "`Retry-After` is the header the contract exists for"
+        );
+        assert!(
+            preserved.contains_key("mistral-correlation-id"),
+            "Mistral's transport id rides the same headers"
+        );
     }
 }

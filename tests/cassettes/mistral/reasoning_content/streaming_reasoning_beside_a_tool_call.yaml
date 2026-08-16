@@ -1,0 +1,56 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":400,"messages":[{"content":"Add 2 and 3 using the tool.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","stream":true,"temperature":0.0,"tool_choice":"auto","tools":[{"function":{"description":"Add two integers","name":"add","parameters":{"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwx"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":"The","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" user wants me to","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" add 2 and","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" 3 using the","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" tool. I have","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"ab"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" access","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrs"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" to a","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345678"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" function called \"","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"add\" that takes","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefg"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" two integers as parameters","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":". I should","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrst"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" call this function with","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" a","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklm"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"=2 and b","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"=3.","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghij"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"a\": 2, \"b\": 3}","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi","usage":{"completion_tokens":64,"prompt_tokens":93,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":157}}
+
+    data: [DONE]
+

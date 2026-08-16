@@ -1,0 +1,18 @@
+when:
+  path: /v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=1bf72f24778c3f98-316b293f07988274-cff820f084e16c75-0deb3bf490c9c65f
+  body: null
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"code":"1500","message":"Invalid model: voxtral-does-not-exist","object":"error","param":null,"raw_status_code":400,"type":"invalid_model"}'

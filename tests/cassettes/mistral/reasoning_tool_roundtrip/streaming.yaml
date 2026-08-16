@@ -1,0 +1,243 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"high","stream":true,"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":"The","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" user is","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" asking for","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqr"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" the current weather in","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" Tokyo,","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" Japan, and wants","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijkl"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" recommendations","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456789"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" on whether to pack","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijk"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" an umbrella or s","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"unscreen based","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" on the","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"ab"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" weather conditions. I","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwx"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" need to use the","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" get_weather tool","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" to fetch the current","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" weather data for Tokyo","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqr"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" before","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" I","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" can provide an","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" accurate answer","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmn"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":".","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdef"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"city\": \"Tokyo\"}","name":"get_weather"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh","usage":{"completion_tokens":71,"prompt_tokens":188,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":259}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2048,"messages":[{"content":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"},{"content":[{"closed":true,"thinking":[{"text":"The user is asking for the current weather in Tokyo, Japan, and wants recommendations on whether to pack an umbrella or sunscreen based on the weather conditions. I need to use the get_weather tool to fetch the current weather data for Tokyo before I can provide an accurate answer.","type":"text"}],"type":"thinking"}],"prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"Tokyo\"}","name":"get_weather"},"id":"call_REDACTED_1","type":"function"}]},{"content":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"mistral-small-latest","reasoning_effort":"high","stream":true,"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_2
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdef"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":"The","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" user wants","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" to","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"ab"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" know the current weather in Tokyo, Japan, and whether to pack an umbrella","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" or sunscreen","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" based on the weather","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijk"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" conditions. I need","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" to use the get","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"_weather tool to","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" fetch the current weather","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345678"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" data for Tokyo.\n\n","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":"After","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" receiving","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvw"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" the tool","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" result, I","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwx"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" will provide a concise","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" summary of the weather","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" and answer","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijk"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" the user","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"'s question about","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" packing an umbrella or","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmn"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" sunscreen.\n\n","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrs"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"The tool","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmno"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" result","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefg"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" shows:\n","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"- Temperature","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijkl"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":": 72","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwx"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"°F (2","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"2°C)\n-","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrst"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" Conditions: sunny","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmno"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" with light clouds\n","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwx"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"- Humidity:","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" 45%\n","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abc"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"- Wind: ","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"8 mph NW\n\n","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"ab"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":"Based","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmn"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" on these","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" conditions, it","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" is sunny with light","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefg"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" clouds, which suggests","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" that s","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"unscreen would","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrs"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" be more appropriate than","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[{"text":" an","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefg"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" umbrella. The humidity","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvw"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" is moderate","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456789"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":", and there","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklm"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" is no indication of","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" rain.","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" Therefore, I will","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":" recommend packing s","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":[{"closed":true,"thinking":[{"text":"unscreen.","type":"text"}],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":[{"thinking":[],"type":"thinking"}]},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnop"}
+
+    data: {"choices":[{"delta":{"content":"**"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdef"}
+
+    data: {"choices":[{"delta":{"content":"Current Weather in Tokyo"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01"}
+
+    data: {"choices":[{"delta":{"content":":**\n"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijkl"}
+
+    data: {"choices":[{"delta":{"content":"7"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwx"}
+
+    data: {"choices":[{"delta":{"content":"2°F ("},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012"}
+
+    data: {"choices":[{"delta":{"content":"22°C),"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqr"}
+
+    data: {"choices":[{"delta":{"content":" sunny with light clouds"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnop"}
+
+    data: {"choices":[{"delta":{"content":", "},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":"45% humidity"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrs"}
+
+    data: {"choices":[{"delta":{"content":", "},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":"8 mph NW"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"a"}
+
+    data: {"choices":[{"delta":{"content":" wind.\n\n**Pack"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmn"}
+
+    data: {"choices":[{"delta":{"content":"ing Recommendation:**\n"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmno"}
+
+    data: {"choices":[{"delta":{"content":"Since"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":" it"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":"'s sunny with light"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqr"}
+
+    data: {"choices":[{"delta":{"content":" clouds, **"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklm"}
+
+    data: {"choices":[{"delta":{"content":"pack"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0"}
+
+    data: {"choices":[{"delta":{"content":" sunscreen**"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrs"}
+
+    data: {"choices":[{"delta":{"content":" rather than an umbrella"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijk"}
+
+    data: {"choices":[{"delta":{"content":". Enjoy"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghi"}
+
+    data: {"choices":[{"delta":{"content":" your trip!"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"ab","usage":{"completion_tokens":232,"prompt_tokens":289,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":521}}
+
+    data: [DONE]
+

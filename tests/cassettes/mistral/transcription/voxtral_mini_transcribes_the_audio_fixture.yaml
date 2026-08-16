@@ -1,0 +1,18 @@
+when:
+  path: /v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=2f6c22655a7c97a7-ad69c484dec0c022-2abfd9dce87e4e85-d1b0b6eaffceb50a
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"finish_reason":null,"language":null,"model":"voxtral-mini-latest","segments":[],"text":"The sun was setting slowly, casting long shadows across the empty field.","usage":{"completion_tokens":15,"prompt_audio_seconds":5,"prompt_tokens":3,"prompt_tokens_details":{"audio_tokens":375,"cached_tokens":0},"service_tier":"standard","total_tokens":393}}'

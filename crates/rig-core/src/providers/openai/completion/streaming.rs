@@ -51,27 +51,58 @@ impl From<&StreamingToolCall> for CompatibleToolCallChunk {
     }
 }
 
-fn deserialize_delta_content<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    // Some compatible providers (e.g. Mistral's reasoning models) stream
-    // delta content as an array of content parts rather than a string.
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(value.and_then(|value| match value {
-        serde_json::Value::String(text) => Some(text),
-        serde_json::Value::Array(parts) => {
-            let text = crate::providers::openai::completion::joined_text_parts(&parts);
-            (!text.is_empty()).then_some(text)
-        }
-        _ => None,
-    }))
+/// What a delta's `content` carries, once the content-part dialects are read.
+///
+/// Both halves come out of the same wire field: a plain string is the answer
+/// text, and a content-part array can hold *either* kind of part. Splitting
+/// them here rather than at the use site keeps a `thinking` part from being
+/// mistaken for the visible answer — and from being dropped, which is what
+/// joining only the text parts used to do.
+#[derive(Debug, Default)]
+struct DeltaContent {
+    /// The turn's visible text.
+    text: Option<String>,
+    /// The reasoning trace, for providers that stream it *inside* `content`
+    /// as a `thinking` chunk instead of beside it on `reasoning_content`.
+    /// Mistral's magistral-class models are the in-tree case.
+    reasoning: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for DeltaContent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Some compatible providers (e.g. Mistral's reasoning models) stream
+        // delta content as an array of content parts rather than a string.
+        let Some(value) = Option::<serde_json::Value>::deserialize(deserializer)? else {
+            return Ok(Self::default());
+        };
+        Ok(match value {
+            serde_json::Value::String(text) => Self {
+                text: Some(text),
+                reasoning: None,
+            },
+            serde_json::Value::Array(parts) => {
+                use crate::providers::openai::completion::{
+                    joined_text_parts, joined_thinking_parts,
+                };
+                let text = joined_text_parts(&parts);
+                let reasoning = joined_thinking_parts(&parts);
+                Self {
+                    text: (!text.is_empty()).then_some(text),
+                    reasoning: (!reasoning.is_empty()).then_some(reasoning),
+                }
+            }
+            _ => Self::default(),
+        })
+    }
 }
 
 #[derive(Deserialize, Debug, Default)]
 struct StreamingDelta {
-    #[serde(default, deserialize_with = "deserialize_delta_content")]
-    content: Option<String>,
+    #[serde(default)]
+    content: DeltaContent,
     /// A structured-output refusal streams here, on its own key, with
     /// `content` held at `null` for the whole turn — the same sibling-of-
     /// `content` spelling the unary path sees. Its deltas are the turn's
@@ -90,6 +121,19 @@ struct StreamingDelta {
     tool_calls: Vec<StreamingToolCall>,
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
     reasoning_details: Vec<serde_json::Value>,
+}
+
+/// The reasoning a delta carries, across the three spellings compatible
+/// providers use: the `reasoning_content` sibling (DeepSeek/llama.cpp), the
+/// bare `reasoning` sibling (Groq), and a `thinking` chunk carried *inside*
+/// `content` (Mistral). A provider sends one of them, so the order is a
+/// preference rather than a merge.
+fn delta_reasoning(delta: &StreamingDelta) -> Option<String> {
+    delta
+        .reasoning_content
+        .clone()
+        .or_else(|| delta.reasoning.clone())
+        .or_else(|| delta.content.reasoning.clone())
 }
 
 #[derive(Deserialize, Debug, PartialEq)]
@@ -141,8 +185,8 @@ pub(crate) fn map_finish_reason(reason: Option<&FinishReason>) -> CompatibleFini
 /// instead of vanishing. An empty `content` string with no refusal to fall
 /// back on stays exactly as it was.
 fn delta_text(delta: &StreamingDelta) -> Option<String> {
-    match delta.content.as_deref() {
-        Some(content) if !content.is_empty() => delta.content.clone(),
+    match delta.content.text.as_deref() {
+        Some(content) if !content.is_empty() => delta.content.text.clone(),
         content => delta
             .refusal
             .clone()
@@ -443,11 +487,7 @@ where
                     // providers still emit — onto `ToolCalls`.
                     finish_reason: map_finish_reason(choice.finish_reason.as_ref()),
                     text: delta_text(&choice.delta),
-                    reasoning: choice
-                        .delta
-                        .reasoning_content
-                        .clone()
-                        .or_else(|| choice.delta.reasoning.clone()),
+                    reasoning: delta_reasoning(&choice.delta),
                     tool_calls: openai_chat_completions_compatible::tool_call_chunks(
                         &choice.delta.tool_calls,
                     ),
@@ -639,6 +679,122 @@ mod tests {
         }
 
         (text, terminal)
+    }
+
+    /// A `thinking` chunk streamed *inside* `content` is the reasoning trace,
+    /// not visible text. Joining only the text parts — what this used to do —
+    /// left the delta with neither, so a magistral-class turn streamed its
+    /// whole trace into nothing.
+    #[test]
+    fn delta_content_splits_a_thinking_chunk_from_the_answer() {
+        let thinking = delta(json!({
+            "content": [{"type": "thinking", "thinking": [{"type": "text", "text": " 42."}]}]
+        }));
+        assert_eq!(thinking.content.text, None);
+        assert_eq!(thinking.content.reasoning.as_deref(), Some(" 42."));
+        assert_eq!(delta_text(&thinking), None);
+
+        // The same turn's answer deltas arrive as plain strings.
+        let answer = delta(json!({"content": "4"}));
+        assert_eq!(answer.content.text.as_deref(), Some("4"));
+        assert_eq!(answer.content.reasoning, None);
+    }
+
+    /// Text and thinking parts in one array are read apart, and an array with
+    /// neither contributes nothing — the shape the wire sends when a trace
+    /// closes (`"thinking": []`).
+    #[test]
+    fn delta_content_reads_both_kinds_of_part() {
+        let both = delta(json!({
+            "content": [
+                {"type": "thinking", "thinking": [{"type": "text", "text": "because"}]},
+                {"type": "text", "text": "42"}
+            ]
+        }));
+        assert_eq!(both.content.text.as_deref(), Some("42"));
+        assert_eq!(both.content.reasoning.as_deref(), Some("because"));
+
+        let closing = delta(json!({"content": [{"type": "thinking", "thinking": []}]}));
+        assert_eq!(closing.content.text, None);
+        assert_eq!(closing.content.reasoning, None);
+    }
+
+    /// A `reasoning_content` sibling still wins over a content-carried trace:
+    /// a provider sends one spelling or the other, never both, so the order is
+    /// a preference rather than a merge. Asserted on the value that reaches
+    /// the reasoning slot, so reordering the preference fails this cell.
+    #[test]
+    fn a_reasoning_sibling_is_preferred_over_a_thinking_chunk() {
+        let both = delta(json!({
+            "reasoning_content": "sibling",
+            "content": [{"type": "thinking", "thinking": [{"type": "text", "text": "chunk"}]}]
+        }));
+        assert_eq!(delta_reasoning(&both).as_deref(), Some("sibling"));
+
+        // With no sibling, the chunk is what reaches the slot.
+        let chunk_only = delta(json!({
+            "content": [{"type": "thinking", "thinking": [{"type": "text", "text": "chunk"}]}]
+        }));
+        assert_eq!(delta_reasoning(&chunk_only).as_deref(), Some("chunk"));
+
+        // Groq's bare `reasoning` still outranks a chunk, and a delta with
+        // none of the three reports none.
+        let groq = delta(json!({"reasoning": "bare"}));
+        assert_eq!(delta_reasoning(&groq).as_deref(), Some("bare"));
+        assert_eq!(delta_reasoning(&delta(json!({"content": "hi"}))), None);
+    }
+
+    /// The whole reasoning turn, assembled: the trace streams as reasoning and
+    /// the answer as text, and the two never mix.
+    #[tokio::test]
+    async fn a_thinking_stream_delivers_the_trace_and_the_answer_apart() {
+        let chunks = [
+            r#"{"id":"chatcmpl-1","model":"mistral-small-latest","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}"#,
+            r#"{"id":"chatcmpl-1","model":"mistral-small-latest","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"6 times"}]}]},"finish_reason":null}]}"#,
+            r#"{"id":"chatcmpl-1","model":"mistral-small-latest","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":" 7 is 42."}],"closed":true}]},"finish_reason":null}]}"#,
+            r#"{"id":"chatcmpl-1","model":"mistral-small-latest","choices":[{"index":0,"delta":{"content":"4"},"finish_reason":null}]}"#,
+            r#"{"id":"chatcmpl-1","model":"mistral-small-latest","choices":[{"index":0,"delta":{"content":"2"},"finish_reason":"stop"}]}"#,
+        ];
+
+        let (text, reasoning, terminal) = collect_openai_stream_with_reasoning(&chunks).await;
+
+        assert_eq!(text, "42", "the trace must not leak into the answer");
+        assert_eq!(reasoning, "6 times 7 is 42.");
+        assert!(terminal.is_some());
+    }
+
+    /// Replay `chunks` and split what the stream produced into visible text
+    /// and reasoning.
+    async fn collect_openai_stream_with_reasoning(
+        chunks: &[&str],
+    ) -> (String, String, Option<crate::streaming::StreamFinal>) {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(
+                chunks.iter().copied().chain(std::iter::once("[DONE]")),
+            ),
+        };
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "mistral")
+            .await
+            .expect("stream should open");
+
+        let (mut text, mut reasoning, mut terminal) = (String::new(), String::new(), None);
+        while let Some(chunk) = stream.next().await {
+            match chunk.expect("stream item") {
+                streaming::StreamedAssistantContent::Text(chunk) => text.push_str(&chunk.text),
+                streaming::StreamedAssistantContent::ReasoningDelta {
+                    reasoning: delta, ..
+                } => reasoning.push_str(&delta),
+                streaming::StreamedAssistantContent::Final(final_record) => {
+                    terminal = Some(final_record);
+                }
+                _ => {}
+            }
+        }
+
+        (text, reasoning, terminal)
     }
 
     /// The refusal shape the wire actually sends: `content` held at `null` for
@@ -841,7 +997,7 @@ mod tests {
             }]
         }"#;
         let delta: StreamingDelta = serde_json::from_str(json).unwrap();
-        assert!(delta.content.is_none());
+        assert!(delta.content.text.is_none());
         assert_eq!(delta.tool_calls.len(), 1);
         assert_eq!(delta.tool_calls[0].id, Some("call_xyz".to_string()));
     }
@@ -853,7 +1009,7 @@ mod tests {
             "tool_calls": null
         }"#;
         let delta: StreamingDelta = serde_json::from_str(json).unwrap();
-        assert_eq!(delta.content, Some("Hello".to_string()));
+        assert_eq!(delta.content.text, Some("Hello".to_string()));
         assert!(delta.tool_calls.is_empty());
     }
 
@@ -874,7 +1030,10 @@ mod tests {
         }"#;
         let chunk: StreamingCompletionChunk = serde_json::from_str(json).unwrap();
         assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(chunk.choices[0].delta.content, Some("Hello".to_string()));
+        assert_eq!(
+            chunk.choices[0].delta.content.text,
+            Some("Hello".to_string())
+        );
         assert!(chunk.usage.is_some());
     }
 

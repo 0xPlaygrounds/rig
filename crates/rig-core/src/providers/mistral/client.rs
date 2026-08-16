@@ -115,6 +115,18 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
                 let is_assistant =
                     message.get("role").and_then(serde_json::Value::as_str) == Some("assistant");
 
+                // Mistral has no `reasoning_content` field: it carries the
+                // trace as a `thinking` chunk *inside* the assistant message's
+                // content, and its reasoning docs require the whole chunk be
+                // replayed so the model stays coherent across turns. Stripping
+                // it also left rig unable to round-trip a block it had just
+                // produced. Spliced before the content is normalized, so the
+                // trace is rendered by the same chunk renderer as every other
+                // part.
+                if is_assistant {
+                    super::completion::splice_reasoning_into_content(message);
+                }
+
                 // Mistral takes text-only message `content` as a plain string
                 // and carries images, audio and documents as its own chunk
                 // array. Content it has no chunk for fails here rather than
@@ -134,9 +146,6 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for MistralE
                     message
                         .entry("prefix")
                         .or_insert(serde_json::Value::Bool(false));
-                    // Mistral rejects unknown assistant fields; hidden
-                    // reasoning cannot be echoed back.
-                    message.remove("reasoning_content");
                 }
             }
         }

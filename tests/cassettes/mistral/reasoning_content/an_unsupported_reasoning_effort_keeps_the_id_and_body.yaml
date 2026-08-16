@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"What is 6*7? Answer with just the number.","role":"user"}],"model":"mistral-small-latest","reasoning_effort":"low"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"code":"3051","message":"reasoning_effort=''low'' is not supported for this model. Must be one of (<ReasoningEffort.none: ''none''>, <ReasoningEffort.high: ''high''>)","object":"error","param":null,"raw_status_code":400,"type":"invalid_request_invalid_args"}'

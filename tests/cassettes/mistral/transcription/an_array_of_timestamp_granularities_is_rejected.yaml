@@ -1,0 +1,18 @@
+when:
+  path: /v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=8fd698afc8cf53e9-0a780635d78fae81-f48bdd92bc348759-5b914fdeed0abd40
+  body: null
+then:
+  status: 422
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"code":null,"message":{"detail":[{"ctx":{"expected":"''segment'' or ''word''"},"input":"[\"segment\"]","loc":["timestamp_granularities",0],"msg":"Input should be ''segment'' or ''word''","type":"enum","url":"https://errors.pydantic.dev/2.11/v/enum"}]},"object":"error","param":null,"raw_status_code":422,"type":"invalid_request_error"}'
