@@ -89,6 +89,17 @@ impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
 
     type StreamingUsage = super::openai::Usage;
 
+    // Z.AI documents `response_format` as an object whose `type` is
+    // `text | json_object`; there is no `json_schema` member and no
+    // `json_schema` sibling object, and every structured-output example sends
+    // the schema as prose in a system message. Sending OpenAI's `json_schema`
+    // block is therefore either rejected or ignored — and the second outcome
+    // is worse, because the flag also tells rig-agent the schema is natively
+    // guaranteed, suppressing the tool-mode fallback that exists for
+    // providers which cannot constrain. Drop the schema with a warning, as
+    // every other provider documenting only `json_object` does.
+    const SUPPORTS_RESPONSE_FORMAT: bool = false;
+
     type Response = super::openai::CompletionResponse;
 }
 
@@ -126,7 +137,10 @@ impl<H> AnthropicClientBuilder<H> {
 mod tests {
     use super::{
         ANTHROPIC_API_BASE_URL, ANTHROPIC_BASE_URLS, CODING_API_BASE_URL, GENERAL_API_BASE_URL,
-        GLM_4_5, GLM_4_5_AIR, GLM_4_5_AIRX, GLM_4_5V, GLM_4_6,
+        GLM_4_5, GLM_4_5_AIR, GLM_4_5_AIRX, GLM_4_5V, GLM_4_6, ZAiExt,
+    };
+    use crate::providers::openai::completion::{
+        CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
 
     /// Z.AI's documented `model` enum, transcribed from the chat-completion
@@ -195,6 +209,76 @@ mod tests {
         }
     }
 
+    /// An `output_schema` must not reach Z.AI as OpenAI's `json_schema`
+    /// `response_format`.
+    ///
+    /// Z.AI documents `response_format` as an object whose `type` is
+    /// `text | json_object` (<https://docs.z.ai/api-reference/llm/chat-completion>),
+    /// and its structured-output guide
+    /// (<https://docs.z.ai/guides/capabilities/struct-output>) shows only
+    /// `{"type": "json_object"}`, never a `json_schema` member, a `strict`
+    /// flag or a `schema` field. The shared OpenAI path emits that block
+    /// whenever `SUPPORTS_RESPONSE_FORMAT` is true and the turn carries no
+    /// unanswered tools, so this asserts the request boundary directly.
+    ///
+    /// **Unit test rather than a cassette because no `ZAI_API_KEY` was
+    /// available in the environment where this was written**, so what Z.AI
+    /// does with the block could not be recorded; the claim pinned here is the
+    /// one that needs no recording — what rig *sends*. `tests/README.md` asks
+    /// a unit test of provider-facing behavior to say why it is not a cassette
+    /// test. The recorded half is written and `#[ignore]`d as
+    /// `general/structured_output_native_blocking` in
+    /// `tests/providers/zai/cassette/structured_output.rs`.
+    #[test]
+    fn output_schema_does_not_become_a_json_schema_response_format() {
+        let request = crate::completion::CompletionRequestBuilder::new(
+            crate::test_utils::MockCompletionModel::default(),
+            "hello",
+        )
+        .output_schema(schemars::schema_for!(serde_json::Value))
+        .build();
+
+        let request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
+            model: GLM_4_6.to_string(),
+            request,
+            strict_tools: false,
+            tool_result_array_content: false,
+            supports_response_format: ZAiExt::SUPPORTS_RESPONSE_FORMAT,
+            supports_tools: ZAiExt::SUPPORTS_TOOLS,
+        })
+        .expect("request should convert");
+
+        let body = serde_json::to_value(request).expect("request should serialize");
+        assert!(
+            body.get("response_format").is_none(),
+            "Z.AI accepts only text/json_object response formats; request body was {body}"
+        );
+    }
+
+    /// The same flag also governs what rig promises the agent runtime, so pin
+    /// that consequence separately: with the schema dropped, Z.AI must not
+    /// claim it composes native structured output with tool calls, or
+    /// `OutputMode::Auto` stays in the mode documented as the only guaranteed
+    /// one while nothing constrains the model at all.
+    ///
+    /// **Unit test rather than a cassette because no `ZAI_API_KEY` was
+    /// available in the environment where this was written** — and this half
+    /// is not observable on the wire in any case: a capability is a statement
+    /// rig makes to itself, so a recording could not witness it.
+    #[test]
+    fn zai_does_not_claim_native_output_composes_with_tools() {
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel;
+
+        let client = crate::providers::zai::Client::new("dummy-key").expect("Client::new()");
+        let model = client.completion_model(GLM_4_6);
+
+        assert!(
+            !model.capabilities().composes_native_output_with_tools,
+            "Z.AI cannot constrain output natively, so it must not suppress rig-agent's \
+             tool-mode fallback"
+        );
+    }
 
     #[test]
     fn test_client_initialization() {
