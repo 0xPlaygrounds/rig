@@ -102,7 +102,10 @@ async fn assert_single_input_width(calls: Vec<RecordedEmbeddingCall>, width: usi
     assert_recorded(&calls, &[on_the_wire], width, &[1]);
 }
 
-fn embedding_model(client: &doubleword::Client, width: Option<usize>) -> doubleword::EmbeddingModel {
+fn embedding_model(
+    client: &doubleword::Client,
+    width: Option<usize>,
+) -> doubleword::EmbeddingModel {
     match width {
         Some(width) => client.embedding_model_with_ndims(MODEL, width),
         None => client.embedding_model(MODEL),
