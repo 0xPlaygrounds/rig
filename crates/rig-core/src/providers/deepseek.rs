@@ -69,7 +69,13 @@ impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
 
                 if let Some(content) = message.get_mut("content") {
                     let separator = if is_assistant { "" } else { "\n" };
-                    openai::completion::flatten_text_content_parts(content, separator, false);
+                    // Text-only arrays flatten; an array carrying an image,
+                    // audio, video or file part is left alone so DeepSeek's
+                    // own rejection reaches the caller ("unknown variant
+                    // `image_url`, expected `text`", verified live). Dropping
+                    // those parts here answered the question from the text
+                    // alone and never told anyone the attachment was gone.
+                    openai::completion::flatten_text_content_parts(content, separator, true);
                 } else if is_assistant && !message.contains_key("content") {
                     // Tool-call-only assistant turns must still carry an
                     // (empty) string content field.
