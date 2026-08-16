@@ -124,10 +124,18 @@ where
     ///
     /// # Errors
     ///
-    /// A document that produces **no** text fails the whole build rather than
-    /// coming back with an empty list. This is easy to hit by accident: an
-    /// empty collection in an `#[embed]` field embeds nothing, because
-    /// [`Embed`] is implemented for `Vec<T>` element-wise.
+    /// Alongside whatever the provider and the transport return, two cases
+    /// originate here:
+    ///
+    /// - **A document that produces no text** fails the whole build rather than
+    ///   coming back with an empty list. This is easy to hit by accident: an
+    ///   empty collection in an `#[embed]` field embeds nothing, because
+    ///   [`Embed`] is implemented for `Vec<T>` element-wise.
+    /// - **A provider returning fewer embeddings than the texts it was sent**
+    ///   fails rather than handing back a short list, since a short list cannot
+    ///   be told apart from a document that legitimately has fewer texts.
+    ///
+    /// Both name the offending document.
     pub async fn build(self) -> Result<Vec<(T, Vec<Embedding>)>, EmbeddingError> {
         let (result, _usage) = self.build_with_usage().await?;
         Ok(result)
@@ -139,7 +147,8 @@ where
     /// batches. A document may produce one or many embeddings depending on how its
     /// [`Embed`] implementation uses [`TextEmbedder`].
     ///
-    /// Ordering is guaranteed at both levels; see [`Self::build`].
+    /// Ordering is guaranteed at both levels, and the same two errors originate
+    /// here; both are described on [`Self::build`].
     pub async fn build_with_usage(
         self,
     ) -> Result<(Vec<(T, Vec<Embedding>)>, Usage), EmbeddingError> {
@@ -225,9 +234,11 @@ where
             // A document that embedded no text has no embeddings to return;
             // this has always been an error rather than an empty list.
             if span.is_empty() {
-                return Err(crate::embeddings::EmbeddingError::ResponseError(
-                    "missing embedding for document after batch merge".to_string(),
-                ));
+                return Err(crate::embeddings::EmbeddingError::ResponseError(format!(
+                    "document {index} produced no text to embed, so it has no \
+                     embeddings to return; an empty collection in an `#[embed]` \
+                     field embeds nothing"
+                )));
             }
 
             // An empty slot means the provider returned fewer embeddings than
@@ -559,46 +570,74 @@ mod tests {
         }
     }
 
-    /// A document contributing `n` texts named `t0..t{n-1}`.
+    /// A document contributing `n` texts, each naming **both** its owner and
+    /// its position: `d{doc}t0 .. d{doc}t{n-1}`.
+    ///
+    /// The owner half is load-bearing. Documents of the same length would
+    /// otherwise produce byte-identical text lists, and a test asserting
+    /// `["t0", "t1", "t2"]` per document could not tell a document's own run
+    /// from a neighbour's — it would pass even if every document were handed
+    /// the next one's embeddings wholesale.
     #[derive(Debug)]
-    struct NTexts(usize);
+    struct NTexts {
+        doc: usize,
+        n: usize,
+    }
+
+    impl NTexts {
+        fn new(doc: usize, n: usize) -> Self {
+            Self { doc, n }
+        }
+
+        /// The texts this document is expected to get back, in order.
+        fn expected(&self) -> Vec<String> {
+            (0..self.n).map(|i| format!("d{}t{i}", self.doc)).collect()
+        }
+    }
 
     impl Embed for NTexts {
         fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-            for i in 0..self.0 {
-                embedder.embed(format!("t{i}"));
+            for i in 0..self.n {
+                embedder.embed(format!("d{}t{i}", self.doc));
             }
             Ok(())
         }
     }
 
+    /// The texts a document actually got back, in order.
+    fn returned(embeddings: &[Embedding]) -> Vec<String> {
+        embeddings
+            .iter()
+            .map(|embedding| embedding.document.clone())
+            .collect()
+    }
+
     /// rig#2345 — a document whose texts straddle a `MAX_DOCUMENTS` boundary
     /// must get its embeddings back in text order.
     ///
-    /// Six texts against a limit of 5 splits into `[t0..t4]` and `[t5]`; the
-    /// delayed first batch makes the trailing one finish first. Before the slot
-    /// index this returned `["t5", "t0", "t1", "t2", "t3", "t4"]`.
+    /// Six texts against a limit of 5 splits into `[d0t0..d0t4]` and `[d0t5]`;
+    /// the delayed first batch makes the trailing one finish first. Before the
+    /// slot index this returned the sixth text's embedding at index 0.
     #[tokio::test]
     async fn test_build_preserves_text_order_within_a_straddling_document() {
+        let doc = NTexts::new(0, 6);
+        let expected = doc.expected();
+
         let result = EmbeddingsBuilder::new(SlowFirstBatchModel::new())
-            .document(NTexts(6))
+            .document(doc)
             .unwrap()
             .build()
             .await
             .unwrap();
 
         assert_eq!(result.len(), 1);
-        let order: Vec<&str> = result[0]
-            .1
-            .iter()
-            .map(|embedding| embedding.document.as_str())
-            .collect();
-        assert_eq!(order, ["t0", "t1", "t2", "t3", "t4", "t5"]);
+        assert_eq!(returned(&result[0].1), expected);
     }
 
     /// The same guarantee with **more than one** straddle inverted at once:
     /// every document's texts land in its own list, in order, none borrowed
-    /// from a neighbour.
+    /// from a neighbour. Texts carry their owner, so "borrowed from a
+    /// neighbour" is something this can actually observe.
     ///
     /// 4 documents x 3 texts = 12 slots over a limit of 5 gives batches
     /// `[0,5) [5,10) [10,12)`, so doc1 (slots 3..6) and doc3 (slots 9..12) each
@@ -607,7 +646,8 @@ mod tests {
     /// in submission order and it comes back correct even unfixed.
     #[tokio::test]
     async fn test_build_preserves_text_order_across_many_straddling_documents() {
-        let docs: Vec<NTexts> = (0..4).map(|_| NTexts(3)).collect();
+        let docs: Vec<NTexts> = (0..4).map(|doc| NTexts::new(doc, 3)).collect();
+        let expected: Vec<Vec<String>> = docs.iter().map(NTexts::expected).collect();
 
         let result = EmbeddingsBuilder::new(DescendingLatencyModel::new())
             .documents(docs)
@@ -617,30 +657,61 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.len(), 4);
-        for (_, embeddings) in &result {
-            let order: Vec<&str> = embeddings
-                .iter()
-                .map(|embedding| embedding.document.as_str())
-                .collect();
-            assert_eq!(order, ["t0", "t1", "t2"]);
+        for (index, (_, embeddings)) in result.iter().enumerate() {
+            assert_eq!(
+                returned(embeddings),
+                expected[index],
+                "document {index} did not get its own texts, in order"
+            );
         }
     }
 
     /// A document that embeds no text has no embeddings to return. This has
-    /// always been an error rather than an empty list; the slot rewrite keeps
-    /// it that way.
+    /// always been an error rather than an empty list, and the slot rewrite
+    /// keeps it that way — that behavior is what this pins, and it holds on
+    /// both sides of the fix.
+    ///
+    /// The wording changed: the message now names the document and says what
+    /// caused it, where before it was the unlocated `"missing embedding for
+    /// document after batch merge"`. Only the second assertion below is new
+    /// behavior.
     #[tokio::test]
     async fn test_build_rejects_a_document_that_embeds_no_text() {
         let error = EmbeddingsBuilder::new(MockEmbeddingModel)
-            .document(NTexts(0))
+            .document(NTexts::new(0, 0))
             .unwrap()
             .build()
             .await
             .expect_err("a document with no texts has no embeddings");
 
         assert!(
-            error.to_string().contains("missing embedding for document"),
-            "unexpected error: {error}"
+            matches!(error, EmbeddingError::ResponseError(_)),
+            "unexpected error variant: {error:?}"
+        );
+        assert!(
+            error.to_string().contains("document 0 produced no text"),
+            "error should name the offending document: {error}"
+        );
+    }
+
+    /// The same, for a document that is not the first — the index in the
+    /// message has to be the document's own, not a constant.
+    #[tokio::test]
+    async fn test_build_names_the_document_that_embeds_no_text() {
+        let error = EmbeddingsBuilder::new(MockEmbeddingModel)
+            .documents(vec![
+                NTexts::new(0, 2),
+                NTexts::new(1, 2),
+                NTexts::new(2, 0),
+            ])
+            .unwrap()
+            .build()
+            .await
+            .expect_err("a document with no texts has no embeddings");
+
+        assert!(
+            error.to_string().contains("document 2 produced no text"),
+            "error should name document 2: {error}"
         );
     }
 
@@ -668,13 +739,21 @@ mod tests {
         ) -> Result<Vec<Embedding>, EmbeddingError> {
             let documents: Vec<String> = documents.into_iter().collect();
             // Earlier texts wait longer, so completion order is close to the
-            // reverse of submission order.
-            let delay = documents
+            // reverse of submission order. Texts are named `d{doc}t{i}`, so the
+            // position is what follows the last `t`; if that ever stops
+            // parsing every batch waits 0ms, the completion order stops being
+            // inverted, and this test quietly stops proving anything — hence
+            // the assert rather than `unwrap_or(0)`.
+            let position = documents
                 .first()
-                .and_then(|text| text.strip_prefix('t'))
-                .and_then(|n| n.parse::<u64>().ok())
-                .map(|n| 60u64.saturating_sub(n * 10))
-                .unwrap_or(0);
+                .and_then(|text| text.rsplit_once('t'))
+                .and_then(|(_, n)| n.parse::<u64>().ok());
+            assert!(
+                position.is_some(),
+                "could not read a text position out of {documents:?}; \
+                 this mock cannot invert completion order without it"
+            );
+            let delay = position.map_or(0, |n| 60u64.saturating_sub(n * 10));
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
             Ok(documents
                 .into_iter()
@@ -691,19 +770,18 @@ mod tests {
     /// roughly reverse order. Nothing about the result may depend on that.
     #[tokio::test]
     async fn test_build_order_survives_one_text_per_batch_finishing_backwards() {
+        let doc = NTexts::new(0, 6);
+        let expected = doc.expected();
+
         let result = EmbeddingsBuilder::new(OneAtATimeReversedLatency)
-            .document(NTexts(6))
+            .document(doc)
             .unwrap()
             .build()
             .await
             .unwrap();
 
-        let order: Vec<&str> = result[0]
-            .1
-            .iter()
-            .map(|embedding| embedding.document.as_str())
-            .collect();
-        assert_eq!(order, ["t0", "t1", "t2", "t3", "t4", "t5"]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(returned(&result[0].1), expected);
     }
 
     /// Documents that tile the batch size exactly, so every document boundary
@@ -713,7 +791,8 @@ mod tests {
     async fn test_build_order_when_documents_tile_the_batch_size_exactly() {
         // 3 documents x 5 texts, MAX_DOCUMENTS = 5: batches align exactly with
         // document boundaries.
-        let docs: Vec<NTexts> = (0..3).map(|_| NTexts(5)).collect();
+        let docs: Vec<NTexts> = (0..3).map(|doc| NTexts::new(doc, 5)).collect();
+        let expected: Vec<Vec<String>> = docs.iter().map(NTexts::expected).collect();
 
         let result = EmbeddingsBuilder::new(SlowFirstBatchModel::new())
             .documents(docs)
@@ -723,12 +802,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.len(), 3);
-        for (_, embeddings) in &result {
-            let order: Vec<&str> = embeddings
-                .iter()
-                .map(|embedding| embedding.document.as_str())
-                .collect();
-            assert_eq!(order, ["t0", "t1", "t2", "t3", "t4"]);
+        for (index, (_, embeddings)) in result.iter().enumerate() {
+            assert_eq!(
+                returned(embeddings),
+                expected[index],
+                "document {index} did not get its own run"
+            );
         }
     }
 }
