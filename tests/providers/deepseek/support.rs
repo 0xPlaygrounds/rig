@@ -118,9 +118,10 @@ where
 }
 
 /// Follow-up hunt census: request/response fields that the first sweep did
-/// not exercise (log probabilities, stop sequences, reasoning effort and
-/// content filtering). This remains separate from per-bug matrix wrappers:
-/// a confirmed defect graduates into its own fixture directory and wrapper.
+/// not exercise (stop sequences, reasoning effort and content filtering).
+/// This remains separate from per-bug matrix wrappers: a confirmed defect,
+/// such as streamed log-probability loss, graduates into its own fixture
+/// directory and wrapper.
 pub(super) async fn with_deepseek_followup_hunt_cassette_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

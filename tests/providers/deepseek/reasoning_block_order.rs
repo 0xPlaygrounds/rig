@@ -9,8 +9,9 @@
 //! and before the tool call (`reasoning_tool_roundtrip/streaming.yaml`:
 //! 27 reasoning chunks, then 12 tool-call chunks, then `finish_reason`), and
 //! the shared canonical chunk lifecycle fixes that same order — reasoning,
-//! then text, then tool events. DeepSeek was the only wire type in the tree
-//! putting reasoning last.
+//! then text, then tool events. This matrix is deliberately scoped to
+//! DeepSeek's blocking/streaming parity; gateway-specific normalizers such as
+//! OpenRouter own separate ordering policies.
 //!
 //! No data was lost, only reordered; these cells pin that both transports now
 //! agree. The blocking enumeration over every (reasoning × text × 0/1/2 tool

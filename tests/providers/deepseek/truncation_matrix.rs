@@ -24,10 +24,13 @@
 //! | 64 | `…had to drain three` | `length` | **truncated** |
 //! | 96 | complete object | `tool_calls` | control: untouched |
 //!
-//! Every budget is recorded on both transports, plus the shapes that share the
-//! same decode: parallel calls where only the second is cut, a turn that spoke
-//! before it was cut, a reasoner turn cut mid-arguments, and the agent loop.
-//! See the module doc table in the PR body for per-cell status.
+//! Every budget is recorded on both transports except streaming budget 20:
+//! the live sweep returned the same empty argument string and `length` reason
+//! as streaming budget 16, exercising no additional adapter state, so that
+//! duplicate cell is explicitly pruned. The matrix also records the shapes
+//! that share the same decode: parallel calls where only the second is cut, a
+//! turn that spoke before it was cut, a reasoner turn cut mid-arguments, and
+//! the agent loop. See the module doc table in the PR body for per-cell status.
 
 use anyhow::Result;
 use rig::completion::{CompletionModel, NormalizeCompletionResponse, ToolDefinition};

@@ -14,6 +14,26 @@
 //! expected `text``. All-text arrays still flatten to a plain string, byte for
 //! byte as before — which is why no existing fixture moved.
 //!
+//! The fix-relevant live matrix is the complete input partition seen by the
+//! changed `flatten_text_content_parts(..., only_if_all_text)` branch:
+//!
+//! | partition | recorded cells | why this exhausts the branch |
+//! |---|---:|---|
+//! | mixed text + non-text user content | 5 | every emitted non-text chat-completions tag: base64 image, URL image, PDF/file, audio and video |
+//! | non-text-only user content | 1 | pins the empty-text boundary that previously collapsed the whole message to `""` |
+//! | streaming transport | 1 | image rejection control; blocking and streaming call the same request conversion and provider finalizer before transport selection |
+//! | unchanged flattening controls | 3 | all-text user parts, normalized text documents, and assistant/tool-result history |
+//!
+//! That is 10 fix-relevant recorded cells. The input space is smaller than 24
+//! because the changed helper has only one decision — every part has text, or
+//! at least one does not — and the five non-text variants above are the full
+//! wire enum, not samples from an open-ended set. Agent calls add no request
+//! mapping branch: both agent surfaces delegate to the same completion model,
+//! and DeepSeek rejects these request bytes before an agent loop can observe a
+//! turn. Recording agent duplicates or all five tags again on streaming would
+//! therefore repeat identical finalized request bodies rather than exercise
+//! another path.
+//!
 //! **The census** (confirmed non-bugs, recorded so they stay confirmed):
 //! DeepSeek really does reject a forced `tool_choice` while thinking is on, so
 //! `finalize_request_body`'s suppression is justified; the completion path
