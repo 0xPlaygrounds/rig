@@ -53,7 +53,7 @@ pub const GLM_4_6_AIR: &str = "glm-4.6-air";
 /// only as `glm-4.6`.
 #[deprecated(
     note = "Z.AI does not serve this model. `glm-4.6-x` is not in Z.AI's documented model list; \
-    use `GLM_4_6`, or `GLM_4_5_AIRX` for an X-class model"
+    use `GLM_4_6`, or `GLM_4_5_AIRX` for the fastest 4.5 tier that has a constant"
 )]
 pub const GLM_4_6_X: &str = "glm-4.6-x";
 /// `glm-4.5`
@@ -92,12 +92,26 @@ impl super::openai::completion::OpenAICompatibleProvider for ZAiExt {
     // Z.AI documents `response_format` as an object whose `type` is
     // `text | json_object`; there is no `json_schema` member and no
     // `json_schema` sibling object, and every structured-output example sends
-    // the schema as prose in a system message. Sending OpenAI's `json_schema`
-    // block is therefore either rejected or ignored — and the second outcome
-    // is worse, because the flag also tells rig-agent the schema is natively
-    // guaranteed, suppressing the tool-mode fallback that exists for
-    // providers which cannot constrain. Drop the schema with a warning, as
-    // every other provider documenting only `json_object` does.
+    // the schema as prose in a system message instead. What Z.AI's API *does*
+    // with an undocumented `json_schema` block is unrecorded — no key was
+    // available to find out — so the claim here is only that rig was sending a
+    // shape the provider does not document.
+    //
+    // The flag's second consumer is why the undocumented shape is not merely
+    // untidy: it also becomes `composes_native_output_with_tools`, which tells
+    // rig-agent the schema is natively guaranteed. Seven other providers answer
+    // that the same way, for reasons ranging from an observed rejection
+    // (moonshot, deepseek) to unverified or per-model support (hyperbolic,
+    // together, huggingface, perplexity, mira) — the conservative answer either
+    // way.
+    //
+    // Consequence to be clear about: `false` means the schema is dropped with a
+    // warning, not re-enforced somewhere else. `OutputMode::Auto` then resolves
+    // to `Tool` only when the run also has executable tools
+    // (`rig-agent/src/agent/completion.rs:106-117`); `prompt_typed` pins
+    // `Native` unconditionally, so a typed prompt on Z.AI is now unconstrained,
+    // exactly as on every other provider with this flag `false`. Callers who
+    // need enforcement should ask for `OutputMode::Prompted` or `Tool`.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
 
     type Response = super::openai::CompletionResponse;
@@ -171,9 +185,15 @@ mod tests {
         "glm-4.5v",
     ];
 
-    /// Every model constant this module exports must either name a model Z.AI
-    /// documents or be marked deprecated, and the deprecated ones must stay
-    /// absent from the catalog.
+    /// Every model constant this module treats as live must name a model Z.AI
+    /// documents, and the two it marks deprecated must stay absent from the
+    /// catalog.
+    ///
+    /// Both lists are enumerated by hand because Rust cannot reflect over a
+    /// module's constants or read a `#[deprecated]` attribute from a test: this
+    /// pins the *catalog membership* that justifies each constant's status, not
+    /// the attribute itself. Adding a constant without adding it here is the
+    /// gap that leaves.
     ///
     /// A model handle that the API cannot resolve fails every call that names
     /// it, so a public constant is a promise the provider has to keep; this
@@ -185,9 +205,9 @@ mod tests {
     /// `glm-4.6-air` produces could not be recorded (`tests/README.md` asks a
     /// unit test of provider-facing behavior to say why it is not a cassette
     /// test). The wire half is already written and `#[ignore]`d as
-    /// `general/unknown_model_constant_400` and its `_x` sibling in
-    /// `tests/providers/zai/cassette/models.rs`; recording those turns this
-    /// documentation-based claim into an observed one.
+    /// `general/unknown_model_constant_glm_4_6_air` and its `_glm_4_6_x`
+    /// sibling in `tests/providers/zai/cassette/models.rs`; recording those
+    /// turns this documentation-based claim into an observed one.
     #[test]
     // The retired constants are the subject of the second assertion.
     #[allow(deprecated)]
