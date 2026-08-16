@@ -170,7 +170,10 @@ struct StreamingChoice {
     /// OpenAI-compatible services extend the object independently, while the
     /// raw terminal response must retain every chunk rather than choosing a
     /// provider-specific token schema here.
-    #[serde(default)]
+    #[serde(
+        default,
+        deserialize_with = "crate::message::optional_additional_params"
+    )]
     logprobs: Option<crate::message::AdditionalParams>,
 }
 
@@ -713,6 +716,53 @@ mod tests {
                 ]
             }))
         );
+    }
+
+    /// Empty and null probability objects are both documented absence shapes
+    /// for optional provider metadata. This is a synthetic wire test because
+    /// a live model cannot be instructed to choose the empty-object spelling.
+    #[test]
+    fn empty_and_null_streamed_logprobs_canonicalize_to_absence() {
+        for logprobs in [serde_json::Value::Null, json!({})] {
+            let chunk = json!({
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": "hi"},
+                    "finish_reason": null,
+                    "logprobs": logprobs
+                }]
+            });
+            let decoded = serde_json::from_value::<StreamingCompletionChunk<Usage>>(chunk)
+                .expect("an empty optional metadata shape should decode");
+            assert!(
+                decoded
+                    .choices
+                    .first()
+                    .expect("the fixture has one choice")
+                    .logprobs
+                    .is_none()
+            );
+        }
+    }
+
+    /// The compatibility allowance is limited to object-or-null metadata;
+    /// accepting other JSON kinds would hide a malformed provider response.
+    #[test]
+    fn non_object_streamed_logprobs_remain_loud() {
+        for logprobs in [json!([]), json!("invalid"), json!(42)] {
+            let chunk = json!({
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": "hi"},
+                    "finish_reason": null,
+                    "logprobs": logprobs
+                }]
+            });
+            assert!(
+                serde_json::from_value::<StreamingCompletionChunk<Usage>>(chunk).is_err(),
+                "non-object logprobs must not be silently discarded"
+            );
+        }
     }
 
     /// The refusal shape the wire actually sends: `content` held at `null` for
