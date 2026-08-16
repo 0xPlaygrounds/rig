@@ -6,6 +6,7 @@ const TOOL_MODEL: &str = rig::providers::doubleword::QWEN3_5_397B_A17B;
 mod cassette {
     mod agent;
     mod conformance;
+    mod embedding_dimensions;
     mod embeddings;
     mod extractor;
     mod request_hook;

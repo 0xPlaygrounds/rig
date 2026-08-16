@@ -1,0 +1,16 @@
+when:
+  path: /v1/embeddings
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"dimensions":32,"input":["width probe"],"model":"Qwen/Qwen3-Embedding-8B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"data":[{"embedding":[0.01387199,-0.09256288,0.0030014508,-0.08758637,-0.047027912,-0.18512575,-0.084102824,-0.0039034411,-0.02326513,-0.10002762,-0.3742327,0.12839366,0.46978146,-0.23986724,0.18811165,-0.11246887,0.034089014,0.20204584,0.21498474,0.25280613,-0.005847386,0.02774398,0.15626206,-0.105004124,0.11097592,0.3881669,-0.15924795,-0.23688133,-0.023762781,0.014618465,-0.11097592,-0.026873093],"index":0,"object":"embedding"}],"model":"Qwen/Qwen3-Embedding-8B","object":"list","usage":{"prompt_tokens":3,"total_tokens":3}}'

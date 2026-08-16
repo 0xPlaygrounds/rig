@@ -82,6 +82,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_doubleword_cassette",
             "with_doubleword_cassette_result",
+            "with_doubleword_embedding_cassette",
         ],
     },
     ProviderCassetteSuite {
