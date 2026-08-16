@@ -376,10 +376,14 @@ is gone. What changes for you:
 - The agent loop neutralizes empty turns in **both** spellings: a model turn
   that is a zero-part list or a single empty, unannotated text block is kept
   out of history. That is the loop curating its own turns, not a filter on
-  yours — history **you** supply is never rewritten, so an empty text block
-  you replay goes to the wire exactly as this release's predecessor sent it
-  (and some providers reject it there). If you carry pre-`Vec` histories with
-  the fabricated empty-text part, drop those turns yourself before replaying.
+  yours — the loop never rewrites history **you** supply. The serializers do,
+  where their wire cannot take the block: Anthropic and OpenAI Responses both
+  drop an empty assistant text block that carries no extras for that wire
+  before the request is built, so it never reaches the API, and on Anthropic
+  a turn left with no blocks at all then fails locally with `Assistant
+  message did not contain Anthropic-compatible content` rather than as a wire
+  400. If you carry pre-`Vec` histories with the fabricated empty-text part,
+  drop those turns yourself before replaying.
 - Three internal guards no longer fire: two that cancelled a run on "lost
   assistant content" and one in `rig-candle`. All three were unreachable while
   the padding existed, and reachable they would have failed runs that previously
@@ -516,6 +520,278 @@ non-success response moves from `Instance(..)` to
 `InvalidStatusCodeWithMessage(status, body)`. Code that only used the
 `provider_response_*` helpers starts getting answers instead of `None`.
 
+#### Cohere rejects `ToolChoice::Specific` before the request is built
+
+The 0.41 conversion passed every non-`Auto` choice straight through, so
+`ToolChoice::Specific { function_names }` was serialized externally-tagged as
+`{"specific":{"function_names":[…]}}` and sent to `/v2/chat`, which accepts only
+the bare strings `"REQUIRED"` and `"NONE"`. It now fails locally:
+
+```text
+the Cohere API cannot be forced to call specific tools by name;
+use ToolChoice::Required and restrict the tools you pass instead
+```
+
+The remedy is in the message. Pass only the tools you want the model to be able
+to call and set `ToolChoice::Required`; the request never leaves the process
+otherwise, so the failure arrives as `CompletionError::RequestError` instead of
+a provider response.
+
+#### Gemini now honors `temperature` and `max_tokens`
+
+`create_request_body` applied both fields through `generation_config.map(..)`,
+and `Option::map` is a no-op on `None` — so unless the request already carried a
+`generationConfig` (supplied through `additional_params`, or built by an
+`output_schema` turn), both values were dropped and the body went out with
+`"generationConfig": null`. The blocking and streaming surfaces share that
+builder, so neither ever sent them. The config is now created whenever either
+field is set: `.temperature(..)` reaches `generationConfig.temperature` and
+`.max_tokens(n)` reaches `generationConfig.maxOutputTokens`.
+
+Nothing to change — but if you set either value on a Gemini agent at any point
+and moved on when it appeared to do nothing, **it starts applying now**.
+Generations that had been running to Gemini's own output limit truncate at the
+budget you configured and report `FinishReason::Length`, and sampling you set
+long ago takes effect. Only the field you set is sent: `GenerationConfig`'s
+`Default` is all-`None` and every field is `skip_serializing_if`, so setting one
+does not silently acquire the other.
+
+#### Gemini stops injecting `maxOutputTokens: 4096` and `temperature: 1.0`
+
+`gemini::completion::GenerationConfig`'s hand-written `Default` set
+`temperature: Some(1.0)` and `max_output_tokens: Some(4096)`. It is derived now,
+so a default config is all-`None` and every field is
+`skip_serializing_if = "Option::is_none"` — a default config puts nothing on the
+wire and Gemini applies each model's own documented limit (65,536 output tokens
+for `gemini-2.5-flash`, ~16x the old cap).
+
+Two request paths seeded themselves from that `Default` and therefore change
+shape with no compile error:
+
+- **native structured output** — the `output_schema` arm of
+  `create_request_body`, i.e. every `output_schema` turn;
+- **image generation** — `gemini::image_generation`'s `..Default::default()`
+  request literal.
+
+Both used to ship a 4096-token cap and a pinned temperature no caller asked for,
+so a 16k-token structured-output request was truncated at 4096 — and because a
+`MAX_TOKENS` turn with no content finalized as a successful empty string on the
+streaming agent surface, the truncation surfaced there as an unexplained empty
+response. The blocking path failed instead — `CompletionError::ResponseError`
+carrying "Gemini candidate missing content (finish_reason=MaxTokens, …)" — so
+the cap was at least named there. Only callers who relied on the model default
+were affected: an explicit `max_tokens` was applied afterwards and overwrote the
+injected value. To keep the 0.41 wire values, set them yourself with
+`.temperature(1.0).max_tokens(4096)` on the agent builder. One further
+consequence: passing `GenerationConfig::default()` through `additional_params`
+now serializes to `{}` instead of those two fields.
+
+#### A Gemini stream that fails after a `finishReason` no longer reports a completed turn
+
+`streamGenerateContent` sends an *intermediate* `finishReason` when a built-in
+tool (code execution) runs a round and then keeps streaming, and the REST
+adapter treated the first one as the provider completing the turn — the shared
+driver stops reading as soon as a terminal record appears, so the model's whole
+answer after that chunk was dropped while the stream still reported a clean
+`STOP`. The terminal record is held until EOF now.
+
+What changes for you: a stream whose *transport* fails after a `finishReason`
+has been seen surfaces that error and yields **no** terminal record, where it
+previously finished cleanly with one. On this wire a `finishReason` is not proof
+the turn ended, so a record can no longer be treated as guaranteed once a finish
+reason has gone by — handle the error case in code that reads the raw stream.
+Also changed: EOF with no `finishReason` at all is treated as truncation and
+yields no terminal record either, where 0.41 closed such a stream with a clean
+record carrying `finish_reason: None` and whatever usage had gone by — this is
+the workspace-wide [terminal-record
+rule](#ordinary-streaming-types-no-longer-carry-a-response-parameter) reaching
+Gemini. Unchanged: an in-band tool-protocol failure still short-circuits the
+stream without a terminal record. The record you do get now carries the *last*
+reason, usage and metadata the stream reported rather than the first.
+
+#### Gemini listing failures are `ApiError`, not `RequestError`
+
+`gemini::model_listing`'s lister built its own request and let the transport
+failure convert straight through `From<http_client::Error>` into
+`ModelListingError::RequestError`. Because the reqwest transport reports a
+non-2xx *as* an error before handing back a response, that was the path every
+real listing failure took, and Gemini's own status-check branch never ran. The
+listing now goes through the shared paginated fetch, which classifies a
+non-success response as `ModelListingError::ApiError { status_code, message }`,
+with the provider label, request path, status and a body preview in `message`.
+
+A `match` arm on `ModelListingError::RequestError` still compiles and simply
+stops firing for Gemini. Move that handling to `ApiError`, which now carries the
+status you were reconstructing from the message text. `RequestError` still means
+what it always did — the request never got an HTTP response at all.
+
+#### OpenRouter now honors `max_tokens`
+
+OpenRouter's request builder hardcoded `max_tokens: None`, so the caller's
+value was dropped before the body was built and never reached the API, which
+accepts the field exactly as OpenAI's Chat Completions does. It is now sent.
+
+Nothing to change — but if you set `max_tokens` on an OpenRouter agent at any
+point and moved on when it appeared to do nothing, **it starts applying now**,
+and generations that previously ran to the model's own output limit will be cut
+off at your value.
+
+#### `additional_params.tools` merges with the builder's tools on Chat Completions
+
+`additional_params` is flattened into the Chat Completions request *after* the
+typed `tools` field, and the body is built with `serde_json::to_value` — so a
+raw `tools` array left in the params used to overwrite every tool the agent
+builder had registered. A turn with `tool_choice: "required"` and a builder tool
+went out carrying only the params tool.
+
+Entries shaped as function tools (`{"type": "function", …}`) now merge onto the
+typed list, builder tools first; anything else stays in `additional_params` for
+the provider's `prepare_request` hook (Groq folds its native tools into
+`compound_custom` from there).
+
+If you used `additional_params.tools` as an *override*, the builder's tools now
+go out **too**, and a forced `tool_choice` may select one of them — drop the
+tools from the builder instead of shadowing them. A malformed payload (`tools`
+that is not an array, or a `"function"` entry that is not a valid tool
+definition) is now a local `CompletionError::RequestError` naming the key rather
+than something the provider rejects. Only Chat Completions changes: the
+Responses, Anthropic and Gemini paths already merged, and OpenRouter builds its
+own request.
+
+#### OpenAI image generation honors `additional_params` and no longer sends `response_format`
+
+Two changes to the `/v1/images/generations` body, neither of which produces a
+compile error.
+
+`ImageGenerationRequestBuilder::additional_params` was silently dropped for
+OpenAI (xAI and Gemini already merged it). It is now merged last, so it can also
+override `model`, `prompt` and `size`. Nothing to change — but parameters you
+set once and moved on from when they appeared to do nothing **start applying
+now**, and a value the endpoint rejects now fails the request instead of being
+ignored. Check what you are passing.
+
+Rig also stopped adding `"response_format": "b64_json"` for models outside a
+hardcoded `gpt-image-1`/`1.5`/`2` allowlist: the endpoint now rejects that field
+for every model (`400 Unknown parameter: 'response_format'`), which is why
+`gpt-image-1-mini`, `chatgpt-image-latest` and dated snapshots could not generate
+an image at all. If you point the OpenAI client at an OpenAI-*compatible* images
+endpoint that only returns base64 when asked, rig no longer asks — and the
+response type requires it (`ImageGenerationData { pub b64_json: String }`), so a
+URL response fails to deserialize. Pass `response_format` yourself through
+`additional_params`, which now reaches the body. Azure OpenAI's image body is
+untouched: it still hardcodes `response_format` and still drops
+`additional_params`.
+
+#### The shared text-to-speech body honors `additional_params`
+
+The default text-to-speech request body never merged
+`AudioGenerationRequest::additional_params`, so the field was inert for every
+provider that inherited it — OpenAI included. Providers that override the body
+(xAI, OpenRouter, Venice) already merged it and are unchanged; Azure OpenAI
+overrides it and still drops the field.
+
+Nothing to change — but the parameters demonstrably change the response, so if
+you set them on an OpenAI TTS request and moved on, **they start applying now**:
+`response_format: "wav"` returns a RIFF payload where the default returned MP3,
+and `instructions` steers delivery on the `gpt-4o-mini-tts` family. Downstream
+code that assumed the returned bytes were MP3 should be checked.
+
+#### Mistral requests carry their attachments, and content Mistral cannot carry now fails
+
+Mistral's request finalizer used to flatten every message's `content` with the
+text-only helper, which keeps only parts carrying a `text`/`refusal` key — so an
+attached image, audio clip or document was removed from the request and the
+model answered a prompt it never saw. Mistral's own content chunks are emitted
+for real now: images and audio as `image_url` and `input_audio`, documents as
+`document_url` (inline base64, filename in `document_name`) or Mistral's `file`
+chunk. Two consequences, neither of which fails to compile:
+
+- **A prompt with an attachment can now be rejected.** The attachment reaches
+  the API, so a model without the matching capability surfaces Mistral's own
+  error where it previously returned a plausible completion built from the text
+  alone. Send such a request to a model that accepts the modality — the
+  deprecation notes on the retired Pixtral constants name `MISTRAL_SMALL` and
+  `MINISTRAL_3B` as the vision-capable replacements (`PIXTRAL_LARGE`'s note
+  also names a `MISTRAL_MEDIUM`, which the crate does not define — there is no
+  such constant to reach for) — or drop the attachment.
+- **Content Mistral has no chunk for fails before the request is built.** A rig
+  `Video` part (it serializes as OpenAI's `video_url`), and any part type a
+  future conversion adds, now returns `CompletionError::RequestError` wrapping
+  `message::MessageError::ConversionError` — "Mistral cannot carry …" — where
+  the part used to be dropped silently and the rest of the turn sent. Convert
+  such content to text, an image, audio or a document first.
+
+Text-only content is unaffected: it still flattens to Mistral's plain string,
+and a malformed text part carrying no string payload is still dropped exactly
+as it always was.
+
+#### An empty Anthropic `stop_sequence` turn succeeds instead of erroring
+
+When the matched stop sequence is the first thing the model emits, Anthropic
+strips it and answers `200` with `content: []`. The empty-content carve-out in
+Anthropic's `normalize` covered only `end_turn`, so that turn became
+`CompletionError::ResponseError("Response contained no message or tool call
+(empty)")` and its usage, message id, transport request id and finish reason
+went with it — while the streamed twin of the same request already finished
+cleanly with an empty choice.
+
+`stop_sequence` now joins `end_turn` as a legal empty terminal, so such a call
+returns `Ok` with `choice == []` where 0.41 returned `Err`. Code that treated
+that error as "the provider misbehaved" should check `choice.is_empty()` and
+read `stop_sequence` off the response instead. The carve-out is narrow: it
+applies only when the response also *names* the sequence that fired
+(`response.stop_sequence.is_some()`). A response claiming `stop_sequence` while
+naming none — the shape an Anthropic-compatible gateway is likeliest to send —
+is still an error, and every other empty response is still guarded.
+
+#### A missing or null `finish_reason` decodes instead of erroring
+
+`openai::completion::Choice` declared `index: usize` and `finish_reason: String`
+with no serde attributes, so an OpenAI-compatible response that omitted either
+field — or sent an explicit `null` — failed to deserialize and the entire turn
+came back as an error. Both now read through `json_utils::null_or_default`, as
+do `CompletionResponse::object` and `::created` (previously `#[serde(default)]`,
+which tolerated a missing key but not a `null`).
+
+A response that used to be a decode error now succeeds. `index` falls back to
+`0`, and the empty `finish_reason` normalizes to absent, so
+`CompletionResponse::finish_reason()` is `None` where a turn that decoded at all
+previously always had a reason. This reaches every OpenAI-compatible provider
+that decodes through the shared `openai::completion` types — Copilot's
+multi-vendor chat route is the wire that sends these shapes. Providers that keep
+their own copies of the response types are untouched and still reject a missing
+or null field: `mistral::completion::Choice` and `deepseek::Choice` both declare
+a bare `index: usize` / `finish_reason: String`, and
+`mistral::completion::CompletionResponse` a bare `object` / `created` pair with
+no `default`. If you branch on the finish reason, read `None` as "the provider
+did not say" rather than as a normal stop.
+
+#### `EmbeddingsBuilder` results are ordered, and two of its errors changed
+
+`build` / `build_with_usage` return their `(document, embeddings)` pairs in the
+order the documents were added, and each document's embeddings in the order its
+`Embed` impl produced the texts. Neither held before. Documents were merged out
+of a `HashMap<usize, T>`, so the pair sequence came back in arbitrary hash
+order; and concurrent batches appended to a per-document list as they finished,
+so a document whose texts straddled a `MAX_DOCUMENTS` batch boundary got its own
+embeddings shuffled — with a batch cap of 5, a six-text document could come back
+as `[t5, t0, t1, t2, t3, t4]`.
+
+Nothing to change, and the workarounds can go: a `sort_by` over the result, or
+an id lookup used because positional zipping was unreliable.
+`InMemoryVectorStore::add_documents`, which mints `doc{n}` ids from this
+sequence's position, now gives the same document the same id on every run — a
+store whose ids were assigned by 0.41 or earlier is not reproducible from the
+same inputs, so re-index rather than assume the ids still line up.
+
+Two errors on this path changed with it. A document that embedded no text still
+fails the whole build, but its `EmbeddingError::ResponseError` message moves
+from `missing embedding for document after batch merge` to `document {index}
+produced no text to embed, …`; match the variant, not the string. And a provider
+that answers a batch with fewer embeddings than the texts it was sent is now
+that same error, naming the document and its slot range, where it previously
+handed back a silently short list.
+
 ---
 
 ## 0.41 → next
@@ -563,6 +839,191 @@ identically, and every `provider_response_*` helper reads both — but a `match`
 arm naming the old variant silently stops firing. Match on the accessors
 rather than the variant.
 
+### Anthropic's streamed terminal record grows five fields
+
+`anthropic::streaming::StreamingCompletionResponse` — the provider-native
+terminal record `GenericCompletionModel::raw_stream` yields — carried nothing
+but `usage` on 0.41. It now carries the metadata the blocking twin already had,
+plus the transport request id #2313 added to both:
+
+```rust
+pub struct StreamingCompletionResponse {
+    pub usage: PartialUsage,
+    pub stop_reason: Option<String>,          // #2257
+    pub stop_sequence: Option<String>,        // #2329
+    pub message_id: Option<String>,           // #2257
+    pub model: Option<String>,                // #2257
+    pub provider_request_id: Option<String>,  // #2265, via #2313
+}
+```
+
+`stop_sequence` is the one that changes what a caller can learn: Anthropic's
+terminal `message_delta` names *which* of the caller's `stop_sequences`
+matched, the adapter parsed that field and then dropped it, and Anthropic
+strips the matched sequence from the text — so the frame is its only source.
+A streamed turn could report only that *a* sequence fired while the blocking
+`CompletionResponse::stop_sequence` named it.
+
+The type is not `#[non_exhaustive]`, so reading the record is unchanged and
+only a full struct literal has to move. It derives `Default`, so
+`..Default::default()` covers this growth and the next one. All five new fields
+are `#[serde(default, skip_serializing_if = "Option::is_none")]`, so terminal
+records persisted by 0.41 still load. Reach the record through `raw_stream`:
+`CompletionModel::stream` normalizes into `StreamFinal`, which carries the
+finish reason but not the sequence itself. Every Anthropic-compatible gateway
+sharing this adapter — minimax, moonshot, xiaomimimo, zai — gets the fields
+too.
+
+### Anthropic `Usage` and `PartialUsage` gain two usage-breakdown fields (#2312, #2334)
+
+Anthropic reports a per-TTL breakdown of its cache writes and the tokens Claude
+spent thinking, and neither wire type modeled either, so serde dropped both.
+`anthropic::completion::Usage` and `anthropic::streaming::PartialUsage` each
+gain `cache_creation: Option<CacheCreation>` (#2312) and
+`output_tokens_details: Option<OutputTokensDetails>` (#2334), where
+`anthropic::completion::CacheCreation { pub ephemeral_5m_input_tokens: u64,
+pub ephemeral_1h_input_tokens: u64 }` and
+`anthropic::completion::OutputTokensDetails { pub thinking_tokens: u64 }` are
+new public types.
+
+Neither usage type is `#[non_exhaustive]` — neither ever was — so a full struct
+literal that compiled on 0.41 no longer does:
+
+```rust
+// Before
+let usage = anthropic::completion::Usage {
+    input_tokens: 12,
+    cache_read_input_tokens: None,
+    cache_creation_input_tokens: None,
+    output_tokens: 34,
+};
+
+// After: `None` on both reproduces the old value exactly.
+let usage = anthropic::completion::Usage {
+    input_tokens: 12,
+    cache_read_input_tokens: None,
+    cache_creation_input_tokens: None,
+    cache_creation: None,
+    output_tokens: 34,
+    output_tokens_details: None,
+};
+```
+
+`PartialUsage` derives `Default`, so `..Default::default()` absorbs both there;
+`Usage` does not derive it. Code that only reads these types is unaffected, and
+both fields are `#[serde(default, skip_serializing_if = "Option::is_none")]`,
+so usage JSON persisted by 0.41 still deserializes and an absent breakdown is
+not serialized.
+
+One behavior change with no compile error to warn you:
+`completion::Usage::reasoning_tokens` was hard-`0` for every Anthropic turn and
+now reports the real thinking-token count, on both the blocking and streaming
+transports. It is a breakdown of `output_tokens`, already counted there, so it
+does not enter `total_tokens` — cost accounting that adds `reasoning_tokens` on
+top of the total will double-count.
+
+### `anthropic::completion::ToolDefinition` gains a `strict` field (#2296)
+
+`with_strict_tools()` on the Anthropic completion model marks every
+Rig-generated tool `strict: true`, so the wire type had to grow the flag:
+
+```rust
+// Before
+let tool = anthropic::completion::ToolDefinition {
+    name: "get_weather".to_string(),
+    description: Some("Look up the weather".to_string()),
+    input_schema: schema,
+    cache_control: None,
+};
+
+// After
+let tool = anthropic::completion::ToolDefinition {
+    name: "get_weather".to_string(),
+    description: Some("Look up the weather".to_string()),
+    input_schema: schema,
+    strict: false,
+    cache_control: None,
+};
+```
+
+`strict` is `#[serde(default, skip_serializing_if = "is_false")]`, so the
+serialized shape is unchanged while the flag is off and tool definitions
+persisted by 0.41 still deserialize. Adding `strict: false` to full struct
+literals is the whole migration — the type has all-public fields, no `Default`
+derive, and since #2335 removed `#[non_exhaustive]` workspace-wide there is no
+constructor the compiler was steering you toward.
+
+### `cohere::completion::Usage` gains a `cached_tokens` field (#2263)
+
+The move from `billed_units` to `tokens` (see "Cohere token counts come from
+`tokens`, not `billed_units`" under Silent behavior changes) also gave the
+public wire type the counter that `completion::Usage::cached_input_tokens` is
+now read from:
+
+```rust
+// Before
+let usage = cohere::completion::Usage { billed_units: None, tokens: Some(tokens) };
+
+// After
+let usage = cohere::completion::Usage {
+    billed_units: None,
+    tokens: Some(tokens),
+    cached_tokens: None,
+};
+```
+
+The field is `#[serde(default)]`, so Cohere usage persisted by 0.41 still
+deserializes and no stored record needs rewriting. The only breakage is the
+struct literal: the type has all-public fields, no `Default` derive, and no
+`#[non_exhaustive]` pointing you at a constructor.
+
+### `openai::TranscriptionResponse` gains a `usage` field (#2332)
+
+The transcription endpoint reports what a transcription cost — `whisper-1` by
+audio duration, the `gpt-4o-transcribe` family by token — and the response type
+modeled only `{ text }`, so the accounting was dropped even from the raw
+provider response. It is now:
+
+```rust
+pub struct TranscriptionResponse {
+    pub text: String,
+    pub usage: Option<TranscriptionUsage>,
+}
+```
+
+`openai::TranscriptionUsage` (with `DurationTag`, `TokensTag` and
+`TranscriptionInputTokenDetails`) is the new public type behind it. The
+response type has no constructor and is not `#[non_exhaustive]`, so a full
+struct literal — a test double, a hand-made response — must add `usage: None`.
+Decoding is unaffected: the field is `#[serde(default)]`, so a payload that
+omits `usage` still deserializes. The same type is the transcription response
+for Groq, Azure OpenAI and Venice (they share the OpenAI transcription model)
+and HuggingFace re-exports it, so one edit covers all five providers.
+
+### `model::Model` gains `max_output_tokens` (#2324)
+
+`rig_core::model::Model` (re-exported as `rig::model::Model`) gains
+`max_output_tokens: Option<u32>` — the provider-reported output ceiling,
+distinct from `context_length`, which is the input window. It is `None` when a
+listing does not report one, never a rig-invented default, and rig deliberately
+does not send it on requests.
+
+`Model` is not `#[non_exhaustive]`, and its own rustdoc example builds one with
+a struct literal, so a full literal needs the new field:
+
+```rust
+// Was
+Model { id, name, description, r#type, created_at, owned_by, context_length }
+// Now
+Model { id, name, description, r#type, created_at, owned_by, context_length,
+        max_output_tokens: None }
+```
+
+`Model::from_id` and `Model::new` are unchanged and set the field to `None`, so
+construction through them needs no edit. The field is
+`skip_serializing_if = "Option::is_none"`, so serialized listings that predate
+it still deserialize and gain nothing on the wire.
+
 ### A truncated OpenAI-compatible turn now succeeds with an empty choice
 
 A turn the provider cut short can carry no content at all — the usual case is a
@@ -603,7 +1064,8 @@ the duplicated response and streaming implementation is gone.
 
 Code inspecting `raw_completion()` results should use the shared field names
 and types: `created_at` replaces `created`, `status` is a `ResponseStatus`
-instead of `Option<String>`, and the complete Responses metadata surface is
+instead of `Option<String>`, `object` is a `ResponseObject` instead of a
+`String`, and the complete Responses metadata surface is
 available. To normalize a raw value explicitly, import
 `completion::NormalizeCompletionResponse` and call `raw.normalize("xai")`;
 the xAI-specific `TryFrom` implementation no longer exists.
@@ -644,6 +1106,12 @@ The migration at your call sites:
 | `.rest()` → `Vec<T>` | `.iter().skip(1)` or `.get(1..)` |
 | `.is_empty()` → always `false` | `.is_empty()` → the real answer |
 | `one_or_many::string_or_one_or_many` | `json_utils::string_or_vec` |
+| `one_or_many::string_or_option_one_or_many` | none — deserialize the field as a `Vec<T>` with `json_utils::string_or_vec` and apply `message::non_empty` where the `Option` carried the "absent" case |
+
+`json_utils` is `#[doc(hidden)]` and documented in-tree as "Not part of
+rig-core's stable public API" — it was already so at 0.41, and it is where both
+replacements live, so treat those two rows as the shortest path off the deleted
+helpers rather than as a supported destination.
 
 `.len()`, `.iter()`, `.iter_mut()`, `.into_iter()`, `.push()` and `.insert()`
 carry over unchanged.
@@ -695,7 +1163,13 @@ cause A; vercel's stream-part triples and pydantic-ai's
 `_stop_tracking_vendor_id` are the reference designs):
 
 - `RawStreamingChoice` gains `ReasoningStart { id, provider_id }`,
-  `ReasoningEnd { id, reasoning, signature }` and `TextEnd { id }`. The
+  `ReasoningEnd { id, reasoning, signature, wire_sent }` and
+  `TextEnd { id }`. `wire_sent` records whether the wire itself sent the end
+  frame or an adapter synthesized it at a boundary the wire never announces —
+  the flag the consumer bullet below turns on. `RawStreamingChoice` is not
+  `#[non_exhaustive]` and the variant's fields are all public, so an
+  out-of-tree adapter that builds or exhaustively matches `ReasoningEnd` must
+  account for the fourth field. The
   whole-block `Reasoning` event remains as shorthand for
   open + authoritative restatement + close. `ReasoningSignature` (added
   earlier in this PR's lineage) is **deleted** — a trailing signature is
@@ -758,6 +1232,12 @@ Public stream items change accordingly (breaking):
   `internal_call_id` is the correlator, and provider ids arrive on the
   completed `ToolCall`. The agent hook payload `ToolCallDelta` loses
   `tool_call_id` for the same reason.
+- `rig_agent::agent::run::StreamedTurnEvent::EmitToolCallDelta` loses its `id`
+  field with them — it carried the provider-supplied tool-call id and now
+  holds only `internal_call_id` and `content`. A hand-written `AgentRun`
+  driver destructuring `EmitToolCallDelta { id, internal_call_id, content }`
+  stops compiling; drop the `id` binding and correlate on
+  `internal_call_id`, which is what the completed `ToolCall` restates.
 - Consumers reconstructing durable ids from delta ids must use
   `provider_id`: the assembled `Reasoning::id` carries only provider-issued
   values (this closes a latent leak where a minted rendering could enter
@@ -827,10 +1307,18 @@ What this changes for you:
   never as a provider-issued id — a bare string cannot prove provider
   provenance, so echoing a minted handle no longer sends it upstream on
   optional-id wires. When you hold provider identifiers, use
-  `tool_result_from_wire(wire_id, name, content)` (single-identifier
-  wire echo), `tool_result_with_call_id` (dual-identifier), or
-  `tool_result_for(call, provider, name, content)` — the agent-driver
-  form; `tool_result_named` is gone.
+  `UserContent::tool_result_from_wire(wire_id, name, content)`
+  (single-identifier wire echo),
+  `UserContent::tool_result_with_call_id(item_id, call_id, name, content)`
+  (dual-identifier), or
+  `UserContent::tool_result_for(call, provider, name, content)` — the
+  agent-driver form; `tool_result_named` is gone. All four are `UserContent`
+  constructors taking `Vec<ToolResultContent>`. The whole-message shortcuts
+  moved with them: `Message::tool_result` grew a third parameter and is now
+  `(call, name, content)` where 0.41 took `(id, content)`, and
+  `Message::tool_result_with_call_id(id, Some(call_id), content)` is deleted
+  outright — build the content with `UserContent::tool_result_with_call_id`
+  and wrap it with `Message::from(..)`.
 - **Serialization to providers**: wires that require a call id (OpenAI
   chat/Responses, Anthropic, Bedrock, Gemini Interactions, xAI) receive
   `provider.call_id` when the provider issued one, else rig's minted id —
@@ -919,6 +1407,21 @@ inspect the preserved event JSON instead.
 
 ### Streaming reasoning events carry mandatory identity
 
+> **Superseded in this release**: the identity type shipped as the opaque
+> `StreamPartId`, not `PartId` — read every `PartId` below as `StreamPartId`,
+> whose representation is private (there are no `Wire`/`Minted` variants to
+> match on) and which is constructed with `StreamPartId::wire` /
+> `StreamPartId::minted`. The public `StreamedAssistantContent::ReasoningDelta`
+> id is not a rendering of that key either: it is a rig-generated correlator,
+> with the provider's item id alongside it on `provider_id: Option<String>`.
+> The reserved spelling below goes with it: the Responses `item_id`-less
+> fallback is an opaque `MintKind::Output` key, minted from the adapter's
+> per-stream counter and then held for that `output_index` slot — not an
+> `output-{output_index}` string. A minted key has no string form at all,
+> and its index is the counter's, not the wire's `output_index`.
+> See "Stream keys are opaque; durable ids and correlators are separate
+> values" above for the contract that actually ships.
+
 `RawStreamingChoice::Reasoning` and `RawStreamingChoice::ReasoningDelta` now
 carry `id: PartId` instead of `id: Option<String>`, and the public
 `StreamedAssistantContent::ReasoningDelta` carries a rendered `id: String`.
@@ -978,6 +1481,15 @@ streaming and unary gRPC paths.
 
 ### Streaming text blocks carry mandatory identity
 
+> **Superseded in this release**: `TextStart` carries `id: StreamPartId`, not
+> `id: PartId`, and a wire that never announces text boundaries opens its
+> block under a key minted from `MintKind::Text` rather than a `text-{n}`
+> string — see "Stream keys are opaque; durable ids and correlators are
+> separate values" above. The other reserved spelling below is superseded the
+> same way: Anthropic's content-block index reaches the adapter as
+> `MintKind::Block.for_wire_index(index)`, not as a `block-{index}` string —
+> a minted key has no string form at all.
+
 `RawStreamingChoice::TextStart` now carries `id: PartId` alongside its
 optional `additional_params`. The contract mirrors [reasoning
 identity](#streaming-reasoning-events-carry-mandatory-identity): distinct wire
@@ -1001,48 +1513,30 @@ Minted text ids are internal bookkeeping only: aggregated
 consumers — except that multi-item streams now produce the correct number of
 text parts.
 
-### Streaming part identity carries provenance (`PartId`)
+### Streaming part identity carries provenance (`StreamPartId`)
 
-Every identity-bearing raw streaming event — `TextStart`, `ToolCallDelta`,
-`Reasoning`, `ReasoningDelta`, `ToolInputEnd::id`, and
-`RawStreamingToolCall::id` — now uses `rig_core::streaming::PartId` instead
-of a `String`:
+> **Superseded in this release**: this section described `PartId` — an enum
+> with public `Wire(String)` / `Minted { kind, index }` variants, a
+> `render()`, and reserved string namespaces — which never reached a release.
+> The shipped type is the opaque `rig_core::streaming::StreamPartId`:
+> `Eq + Hash + Clone + Debug` and nothing else, private representation, no
+> rendering, no `Serialize`. Read "Stream keys are opaque; durable ids and
+> correlators are separate values" above for the contract. Only the
+> id-less-wire behavior change below still applies.
 
-- `PartId::Wire(String)` is an identifier the provider put on the wire. It is
-  the only identity that becomes a durable provider handle
-  (`Reasoning::id`, `ToolCall::id`) and round-trips upstream.
-- `PartId::Minted { kind, index }` is an identity rig fabricated at a stream
-  boundary because the wire supplied none. It keys accumulation for the life
-  of the stream and structurally cannot reach a request: `PartId` implements
-  no `Serialize`, and the only request-serializable form (`WireId`) is
-  constructible solely from `PartId::Wire`. The reserved string namespaces
-  (`reasoning-{n}`, `block-{n}`, `output-{n}`, `tool-{index}`, `text-{n}`)
-  and the `is_boundary_minted_id` provenance gate are gone — provenance
-  travels in the type, so there is nothing to parse and no serializer gate
-  to keep in sync.
-
-Provider authors: wrap wire identities with `PartId::wire(...)` (a plain
-`String`/`&str` also converts via `From`, always to `Wire`); mint via
-`SyntheticIds` (now `rig_core::streaming::SyntheticIds`, minting `PartId`
-values; the old string-based helper in `providers::internal::adapter` is
-re-exported from its new home) or `MintKind::for_wire_index`.
-
-Public stream consumers: `StreamedAssistantContent::ReasoningDelta` /
-`ToolCallDelta` ids are the rendered form. A wire id renders verbatim; a
-minted id renders namespaced (`rig:reasoning:0`) and is **unique within one
-stream only** — it restarts on every turn of a multi-turn run, so never key
-across streams by it (correlate across a run with `internal_call_id`
-instead). Aggregated `Reasoning` parts from minted-identity streams now carry
-`id: None` (previously the minted string leaked into history and, on some
-providers, upstream).
-
-Behavior change on id-less wires (gemini REST/interactions, ollama,
-chat-compat gateways): rig no longer fabricates a durable tool-call id — not
-from an index, and not from the tool name (two calls to the same tool in one
-turn no longer collide). The durable `ToolCall::id` is the absent (empty)
-value and serializers omit it; Gemini's `functionResponse.name` is resolved
-by pairing each result with its assistant-turn call in the history (by
-`call_id` when the wire supplied one, else in wire order).
+Behavior change on wires that issue no tool-call id (gemini REST/interactions,
+ollama, chat-compat gateways): rig no longer fabricates a *provider* tool-call
+id — not from an index, and not from the tool name (two calls to the same tool
+in one turn no longer collide). Such a call still has a durable correlation
+handle: `ToolCall::id` is a `ToolCallId`, always present and non-empty, minted
+when the wire issued none, with `provider: None`. Whether that handle reaches
+the wire is per-wire — gemini REST and ollama omit the id entirely, while
+wires whose `tool_call_id` slot is required replay the minted handle
+self-consistently. Gemini's `functionResponse.name` is written from
+`ToolResult::name`, which is required data; only an *empty* name is filled in,
+by `providers::internal::resolve_empty_tool_result_names`, which matches a
+result to its call by `ToolCallId` first and then by `provider.call_id` /
+`provider.item_id` — nothing pairs by position or by name.
 
 ### The streaming wire-adapter surface is public and contractual
 
@@ -1092,15 +1586,20 @@ implementation must uphold:
   `Unknown` as an ignorable passthrough unless you deliberately consume raw
   frames.
 - **Identity is mandatory**: every `Reasoning`/`ReasoningDelta`,
-  `ToolCallDelta`, and `TextStart` event carries a non-empty id — the wire's
-  own identity when it exists, else an id minted via `SyntheticIds` in the
-  reserved namespaces (`reasoning-{n}`, `block-{n}`, `output-{n}`,
-  `tool-{index}`, `text-{n}`). Wire ids must never use these shapes.
-  Aggregation treats minted ids as per-stream constants (other output closes
-  the open block). Upstream, the rule is per-wire: providers that validate
-  identity server-side gate minted ids out of requests (the Responses
-  reasoning path drops boundary-minted items); wires where identity is
-  structurally required — the chat `tool_call_id` pair — replay minted ids
+  `ToolCallDelta`, and `TextStart` event carries a `StreamPartId` — the
+  wire's own identifier via `StreamPartId::wire` when it exists, else a key
+  minted via `SyntheticIds` / `MintKind::for_wire_index`. There are no
+  reserved string shapes to steer clear of: a minted key is a `MintKind` plus
+  an index, with no rendering and no `Serialize`, so a wire id cannot collide
+  with a minted one by spelling (the `identity_leak` compile-fail suite pins
+  that boundary). Aggregation treats minted keys as per-stream constants
+  (other output closes the open block). Upstream, provenance is structural
+  rather than gated: the durable handle travels separately as `WireId`
+  (`provider_id` on reasoning events, `tool_id` on tool calls), so a part
+  keyed by a minted `StreamPartId` aggregates with no durable id and the
+  Responses serializer simply skips it — there is nothing to parse and no
+  gate to keep in sync. Wires where identity is structurally required — the
+  chat `tool_call_id` pair — replay rig's minted `ToolCallId`
   self-consistently, which id-omitting gateways accept since they had no
   server-side id to check against.
 - **Finish/flush obligations**: `finish` runs only on EOF without a terminal
@@ -1155,7 +1654,9 @@ pub struct CompletionResponse {
     pub usage: Usage,
     pub message_id: Option<String>,
     pub response_id: Option<String>,
-    pub finish_reason: Option<FinishReason>,
+    pub provider_request_id: Option<String>,
+    // private — read with `response.finish_reason()`, write with the `with_*` setters
+    finish_reason: Option<FinishReason>,
     pub provider: String,
     pub model: Option<String>,
 }
@@ -1164,7 +1665,7 @@ pub struct CompletionResponse {
 | Before | After |
 | --- | --- |
 | `response.raw_response.model` | `response.model` |
-| provider stop/finish reason off `raw_response` | `response.finish_reason` |
+| provider stop/finish reason off `raw_response` | `response.finish_reason()` |
 | provider/message identity off `raw_response` | `response.provider`, `response.message_id` |
 | response-scoped ID (`chatcmpl-*`, `responseId`, …) off `raw_response` | `response.response_id` |
 | a genuinely provider-specific field | `model.raw_completion(request).await?` |
@@ -1185,7 +1686,16 @@ never echoed back to a provider. Code that previously read a chat provider's
 `message_id` should read `response_id` instead; for those providers
 `message_id` is now `None`.
 
-`CompletionResponse` is `#[non_exhaustive]`; build it with
+`provider_request_id` is the third, transport-level axis, added later in this
+cycle by the response-identity work (#2265): the id the provider's HTTP
+response headers carried (Anthropic `request-id`, OpenAI/xAI/Groq
+`x-request-id`, Bedrock's SDK response metadata) — the one provider support
+asks for when investigating a request. It is never a body id, and `None` means
+the provider reported no such header: a documented outcome, never an error.
+
+`CompletionResponse::finish_reason` is private, so an external struct literal
+was never possible and still is not — #2335's workspace-wide
+`#[non_exhaustive]` removal does not change that. Build it with
 `CompletionResponse::new(choice, usage, provider)` plus the `with_*` helpers.
 Use `with_finish_reason` / `with_optional_finish_reason` rather than assigning
 the field: the setters apply `FinishReason::reconcile_with_output`, which
@@ -1282,8 +1792,17 @@ Ok(StreamingCompletionResponse::stream(PROVIDER_NAME, normalized))
 `normalize_stream` applies the same `Stop` → `ToolCalls` reconciliation as the
 unary path, using the tool calls it actually saw on the stream.
 
-`StreamingPrompt<M, R>` and `StreamingChat<M, R>` lost their `R` parameter:
-`StreamingPrompt<M>`, `StreamingChat<M>`.
+`StreamingPrompt<M, R>` and `StreamingChat<M, R>` lost **both** parameters,
+not just `R`: the model type went with the rest of the agent surface (see
+"Agents erase the model type at construction" below), so the traits are now
+the bare `StreamingPrompt` and `StreamingChat`, their bounds
+(`M: CompletionModel + 'static`, `M::StreamingResponse: WasmCompatSend`,
+`R: Clone + Unpin + GetTokenUsage`) are gone, and both methods return a bare
+`StreamingPromptRequest` rather than `StreamingPromptRequest<M>`. Delete the
+angle brackets from your impls and type annotations — an
+`impl StreamingPrompt<M> for MyAgent` now fails with "trait takes 0 generic
+arguments but 1 generic argument was supplied". Call sites of `stream_prompt` /
+`stream_chat` are unchanged.
 
 ### `CompletionModel` no longer owns response or construction types
 
@@ -1443,7 +1962,10 @@ round-trip recipe at the end of this section.
 `Option<message::AdditionalParams>` — a newtype that is a non-empty JSON
 object *by construction* (build one with `AdditionalParams::from_entries`,
 `::new`, or `::try_from_value`; read with `::get`; `Some` always carries
-data). The wire shape is unchanged:
+data). `AdditionalParams` is `#[serde(transparent)]`, so the newtype adds no
+nesting of its own — the JSON under the key is exactly what a plain `Value`
+would have written. What moved is the *placement*: 0.41's flatten wrote these
+keys as siblings of `text`, and they now sit under the named key:
 
 ```json
 {"type": "text", "text": "", "additional_params": {"citations": [...]}}
@@ -1526,7 +2048,7 @@ carried:
   runs (add `"content": [{"type": "text", "text": <output>}]` to the embedded
   response) before upgrading. Assistant content is tagged with `"type"` in
   this release, exactly like user content — see "Assistant content is tagged
-  and provider extras are a named field" below.
+  and provider extras are a named field" above.
 - Pre-provider-split `ToolCall` JSON is no longer migrated on load — see the
   "Persisted histories" bullet in the tool-call identity section above for
   what a legacy `call_id` key now means and how to migrate the JSON by hand.
@@ -1538,7 +2060,7 @@ Failed calls now preserve the provider's transport request id. Two breaks:
 - **`http_client::Error` gains the `InvalidStatusCodeWithDetails { status, body, headers }` variant** (the reqwest transport now reports non-success through it, preserving the failed response's headers). Exhaustive matches on `http_client::Error` need a new arm; its Display is identical to `InvalidStatusCodeWithMessage`, and `provider_response_status()`/`provider_response_body()` read both.
 - **`ProviderResponseError` is `#[non_exhaustive]`** with a new `provider_request_id` field. Construct via `ProviderResponseError::new(status, body)` / `::without_status(body)` instead of a struct literal; read the id via the `provider_request_id()` accessor on the error enums (also forwarded through `PromptError`).
 
-Behavior: providers with a request-id contract (anthropic, openai, xai, groq, copilot) classify non-success HTTP responses as `CompletionError::ProviderResponse` instead of `HttpError`. Matchers on `CompletionError::HttpError(_)` for those providers' 4xx/5xx need updating; the `provider_response_*` accessors are shape-independent and keep working. Contract-less providers are unchanged.
+Behavior: providers with a request-id contract classify non-success HTTP responses as `CompletionError::ProviderResponse` instead of `HttpError`. The contract is a defaulted trait constant, so the affected set is wider than the providers that spell it out: anthropic and every Anthropic-dialect gateway client (`minimax::AnthropicClient`, `moonshot::AnthropicClient`, `xiaomimimo::AnthropicClient`, `zai::AnthropicClient`), which inherit `AnthropicCompatibleProvider`'s `request-id` default; openai on both APIs, plus xai and chatgpt, which inherit `ResponsesProviderExt`'s `x-request-id` default; groq and copilot; and mistral, which joined the set in #2331 with `mistral-correlation-id`. Matchers on `CompletionError::HttpError(_)` for those providers' 4xx/5xx need updating; the `provider_response_*` accessors are shape-independent and keep working. Providers that leave the constant `None` (gemini, cohere, ollama, the OpenAI-compatible default) are unchanged.
 
 ### Response identity metadata reaches agent observers (#2265)
 
@@ -1632,20 +2154,23 @@ and finalized as a successful empty string. Four source-level breaks:
 - **`StreamedTurnEvent::Completed` gains a `finish_reason` field.** Drivers
   matching it exhaustively must bind or ignore it (`..` keeps working).
 
-- **`ModelTurn` and `StreamedTurn` gain `finish_reason`.** Both are
-  `#[non_exhaustive]`, so `ModelTurn::new(..)` is unchanged; attach the reason
-  with `.with_finish_reason(resp.finish_reason())`. A `StreamedTurn` built as a
-  struct literal needs the new field. It is serde-defaulted, so persisted run
-  JSON still loads.
+- **`ModelTurn` and `StreamedTurn` gain `finish_reason`.** `ModelTurn::new(..)`
+  is unchanged; attach the reason with
+  `.with_finish_reason(resp.finish_reason())`. Neither type is
+  `#[non_exhaustive]` any more — #2335 removed the attribute workspace-wide —
+  and every field on both is public, so a struct literal of *either* type needs
+  the new field. It is serde-defaulted, so persisted run JSON still loads.
 
 - **A turn that delivered no answer and reports `Length` or `ContentFilter`
   now fails** with a `CompletionError::ResponseError` instead of finalizing as
-  `""`. "No answer" means no tool call and no non-empty text — **reasoning
-  does not count**, which is the case most likely to affect you: providers
-  bill thinking tokens against the output limit, so a thinking model that
-  exhausts its budget mid-thought produces reasoning and no text, and that
-  shape used to report success with an empty string. This matches what the
-  blocking Gemini path already did for a content-less candidate.
+  `""`. "No answer" means no tool call, no image, and no non-empty text —
+  **reasoning does not count**, which is the case most likely to affect you:
+  providers bill thinking tokens against the output limit, so a thinking
+  model that exhausts its budget mid-thought produces reasoning and no text,
+  and that shape used to report success with an empty string. An image *is*
+  an answer: a truncated image-generation turn that delivered its image still
+  succeeds. This matches what the blocking Gemini path already did for a
+  content-less candidate.
 
   Unchanged: partial output followed by truncation is still a valid answer
   (read the reason from `PromptResponse::completion_calls`), any turn
@@ -1667,12 +2192,348 @@ and finalized as a successful empty string. Four source-level breaks:
   `CompletionCall.finish_reason` is serde-defaulted; pre-#2322 run JSON loads
   with it `None`.
 
+### `ToolSetBuilder` is gone, and public API goes with the consolidation pass (#2320)
+
+**Tool sets are populated in place.** `ToolSet::builder()` and the whole
+`ToolSetBuilder` type (`static_tool`, `dynamic_tool`, `portable_dynamic_tool`,
+`retrieved_tool`, `build`) are removed, and the `rig` facade no longer
+re-exports `ToolSetBuilder` from `rig::tool`. Register on the set itself:
+
+```rust
+// Was
+let toolset = ToolSet::builder()
+    .static_tool(Adder)
+    .retrieved_tool(Subtract)
+    .build();
+// Now
+let mut toolset = ToolSet::default();
+toolset.add_tool(Adder);
+toolset.add_retrieved_tool(Subtract);
+```
+
+`add_retrieved_tool` is new in this pass and is the builder's `retrieved_tool`;
+`add_tool`, `add_dynamic_tool`, `add_portable_dynamic_tool`, `from_tools` and
+`from_dynamic_tools` were already there.
+
+**Superseded guidance.** The 0.40 → 0.41 registration table below, and its row
+in the appendix, name `ToolSetBuilder::retrieved_tool` and
+`ToolSetBuilder::dynamic_tool(DynamicTool)` as the destination of the 0.41
+renames. Those rows stay accurate as history for 0.41; on `next` the
+destination is the matching `ToolSet::add_*` method.
+
+**`ProviderResponseExt` loses two items.** `type OutputMessage` and
+`get_output_messages` are gone — nothing read them
+(`SpanCombinator::record_response_metadata` records only the response id and
+model name). An out-of-tree implementation that still defines them fails with
+E0437/E0407; delete both. `get_text_response` is unchanged.
+
+**Four smaller removals.** `json_utils::null_or_vec` folds into
+`null_or_default` — switch `deserialize_with = "null_or_vec"` to
+`deserialize_with = "null_or_default"`, which behaves the same for a `Vec<T>`
+field. `anthropic::completion::apply_cache_control` is deleted with no public
+successor (`apply_prompt_cache_control` is `pub(super)`); the provider applies
+the breakpoints on the way out. `rig-s3vectors`' exported `document!` macro is
+deleted; build `aws_smithy_types::Document` values directly. And
+`TryFrom<message::AssistantContent> for anthropic::completion::Content` is
+deleted with no public successor: one rig content block no longer maps to one
+Anthropic block (an empty text block with nothing this wire can carry now
+produces none, a multi-block `Reasoning` produces several), so the conversion
+became a private one-to-many function. Convert a whole message with the
+surviving `TryFrom<message::Message> for anthropic::completion::Message`
+instead. The inbound direction, `TryFrom<Content> for message::AssistantContent`,
+is unchanged.
+
+**Anthropic citations carry a payload struct.** Every locator variant of
+`anthropic::completion::Citation` is now a newtype wrapping a same-named
+struct — `CharLocationCitation`, `PageLocationCitation`,
+`ContentBlockLocationCitation`, `SearchResultLocationCitation` and
+`WebSearchResultLocationCitation`, all newly public with public fields — so
+each variant's fields move one level down:
+
+```rust
+// Before
+match citation {
+    Citation::CharLocation { cited_text, document_index, .. } => { /* ... */ }
+    Citation::WebSearchResultLocation { url, encrypted_index, .. } => { /* ... */ }
+    Citation::Unknown(raw) => { /* ... */ }
+    _ => {}
+}
+
+// Now
+match citation {
+    Citation::CharLocation(
+        CharLocationCitation { cited_text, document_index, .. },
+    ) => { /* ... */ }
+    Citation::WebSearchResultLocation(
+        WebSearchResultLocationCitation { url, encrypted_index, .. },
+    ) => { /* ... */ }
+    Citation::Unknown(raw) => { /* ... */ }
+    _ => {}
+}
+```
+
+Construction moves the same way — wrap the braces in the payload type. Field
+names and types are unchanged, `Citation::Unknown(serde_json::Value)` is
+untouched, and the hand-written `Serialize`/`Deserialize` still reads and
+writes the same `type`-tagged shapes (`char_location`, `page_location`,
+`content_block_location`, `search_result_location`,
+`web_search_result_location`), so persisted citations still load and the
+serialized JSON is unchanged. This is a `match`-and-literal break only. You
+reach these values through the provider-native surfaces — `Content::Text`'s
+`citations` on `raw_completion`, `streaming::ContentDelta::CitationsDelta` on
+`raw_stream` — or off a normalized text part with the unchanged
+`anthropic::completion::anthropic_citations` helper.
+
+**Gemini Interactions deltas reuse the content types.**
+`interactions_api_types::ContentDelta`'s variants now carry `ImageContent`,
+`AudioContent`, `DocumentContent`, `VideoContent`, `FunctionCallContent`,
+`FunctionResultContent`, `CodeExecutionCallContent`,
+`CodeExecutionResultContent`, `UrlContextCallContent`,
+`UrlContextResultContent`, `GoogleSearchCallContent`,
+`GoogleSearchResultContent`, `McpServerToolCallContent`,
+`McpServerToolResultContent` and `FileSearchResultContent`, and the fifteen
+identically-shaped `*Delta` structs they replace are deleted. `TextDelta`,
+`ThoughtSummaryDelta` and `ThoughtSignatureDelta` stay, joined by the
+`ArgumentsDelta` that #2262 added earlier in this cycle — these are the deltas
+whose payload really differs from its content counterpart. The JSON is
+unchanged; only names in a `match` or a type annotation are.
+
+**rig-bedrock converts from the mirror, not the SDK.** `RigAssistantContent`
+and `RigUserContent` convert from `types::converse_output::ContentBlock`,
+`RigMessage` from `converse_output::Message`, `RigImage` from `ImageBlock`,
+`RigDocument` from `DocumentBlock`, and `RigToolResultContent` from
+`ToolResultContentBlock` — each took the `aws_bedrock::` type before. All 38
+mirror→SDK `TryFrom` impls are deleted outright — the 17 written out by hand
+and the 21 the `mirror_enum!` / `mirror_union!` / `mirror_location!` macros
+generated — so there is no supported way back from a mirror value to its
+`aws_sdk_bedrockruntime` counterpart.
+
+### Dead public API removed (#2301)
+
+A sweep over public items with no in-tree caller. Nothing here changes
+behavior; if you called one, either drop the call or use the replacement.
+
+| Removed | Replacement |
+| --- | --- |
+| `ModelListingError::{RateLimitError, ServiceUnavailable, UnknownError}` | `ApiError` — the shared listing driver classified every real failure as `ApiError`, `RequestError` or `ParseError` |
+| `ModelListingError::{auth_error, rate_limit_error, service_unavailable, unknown_error}` | build the remaining variants directly; `api_error`, `request_error` and `parse_error` stay |
+| `message::Reasoning::optional_id` | assign the public `id` field, or `with_id` for the `Some` case |
+| `message::Image::try_into_url` | none |
+| `message::DocumentSourceKind::{raw, unknown}` | `DocumentSourceKind::Raw(..)` / `DocumentSourceKind::Unknown` — the variants stay, only the constructors went |
+| `message::Message::assistant_with_id` | none |
+| `CompletionRequest::{with_provider_tool, with_provider_tools}` | none |
+| `streaming::RawStreamingToolCall::with_internal_call_id` | none |
+| `vector_store::in_memory_store::InMemoryVectorStore::get_document` | `iter()` |
+| `azure::{EmbeddingResponse, EmbeddingData, Usage}` | `openai::embedding::{EmbeddingResponse, EmbeddingData}` plus `openai::completion::Usage` — `openai::embedding` publishes no `Usage` path of its own. Azure's embeddings run through the shared path now, which reads `EmbeddingData` directly and wraps it in an internal response type rather than the public `EmbeddingResponse` |
+| `ollama::{UserContent, ImageUrl}`, and ollama's `SystemContent`/`SystemContentType` re-export | the identically-named `openai::completion` types |
+| `ollama::AssistantContent` | none |
+| `deepseek::Message::{System, User, ToolResult}` | none — `Message` is the response-side shape and only `Assistant` ever appeared there |
+| `doubleword::client::doubleword_api_types` (`ApiErrorResponse`, `ApiError`, `ApiResponse<T>`) | none |
+| `openai::responses_api::OutputReasoning` | none |
+| `TryFrom<message::Message> for Vec<responses_api::Message>` | the live `TryFrom<completion::Message> for Vec<InputItem>` converter |
+| `rig-agent`'s `MultiTurnStreamItem::final_response_with_history` | `final_response` |
+
+One of these reaches persisted data. `ModelListingError` derives `Serialize`
+and `Deserialize`, so a stored value tagged `RateLimitError`,
+`ServiceUnavailable` or `UnknownError` no longer loads; re-encode such records
+as `ApiError` or `RequestError` before upgrading.
+
+### Four public items removed, and `azure::EmbeddingModel` takes `ndims: usize` (#2305)
+
+- **`http_client::with_bearer_auth(req, auth)` is gone.** It only wrapped
+  `bearer_auth_header`, which remains: take the builder's header map and call
+  `http_client::bearer_auth_header(req.headers_mut().ok_or(Error::NoHeaders)?, auth)?`.
+- **`InMemoryVectorStoreBuilder::documents_with_id_f` is gone.** Either
+  precompute the ids and use `documents_with_ids`, or build the store directly
+  with `InMemoryVectorStore::from_documents_with_id_f` /
+  `add_documents_with_id_f`, which are different methods on the store and were
+  not removed. Their element type follows the workspace-wide
+  `OneOrMany<Embedding>` → `Vec<Embedding>` change, and
+  `add_documents_with_id_f` now takes `impl IntoIterator` where it took a
+  `Vec`.
+- **`mira::MiraError` and mira's inherent `Client::list_models` are gone.** Mira
+  now uses the shared lister every other provider uses. Bring
+  `ModelListingClient` into scope and call `list_models()` there: it returns
+  `Result<ModelList, ModelListingError>` rather than
+  `Result<Vec<String>, MiraError>`, so a `match` on
+  `MiraError::{InvalidApiKey, ApiError, RequestError, Utf8Error, JsonError}`
+  becomes a match on `ModelListingError`, and the model ids come off the entries
+  rather than being the items themselves.
+- **`azure::EmbeddingModel` is a type alias.** It is now
+  `openai::embedding::GenericEmbeddingModel<AzureExt, T>`, so the inherent
+  `new(client, model, ndims: Option<usize>)` and
+  `with_model(client, model, ndims: Option<usize>)` are replaced by the generic
+  ones taking `ndims: usize`:
+
+  ```rust
+  // Before
+  let model = azure::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, Some(1536));
+  let inferred = azure::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, None);
+
+  // Now
+  let model = azure::EmbeddingModel::new(client, TEXT_EMBEDDING_3_SMALL, 1536);
+  // `None` meant "infer from the model identifier" — that lives on the trait:
+  use rig::embeddings::EmbeddingModel as _;
+  let inferred = azure::EmbeddingModel::make(&client, TEXT_EMBEDDING_3_SMALL, None);
+  ```
+
+  The client helpers `embedding_model` / `embedding_model_with_ndims` are
+  unchanged and remain the shortest path.
+
+### Copilot's chat response is the shared OpenAI type (#2308)
+
+`providers::copilot::CopilotCompletionResponse::Chat` held a
+`Box<copilot::ChatCompletionResponse>`; it now holds a
+`Box<openai::completion::CompletionResponse>`, and both
+`copilot::ChatCompletionResponse` and `copilot::ChatChoice` are gone — they were
+a field-for-field copy of the shared OpenAI chat wire types.
+
+`CompletionModel::raw_completion` returns `CopilotCompletionResponse`, so this is
+the surface anyone inspecting Copilot's provider-native response sees:
+
+```rust
+// Before — 0.41 had no `raw_completion`; the native value arrived on
+// `CompletionResponse::raw_response`.
+use rig::providers::copilot::CopilotCompletionResponse;
+let response = model.completion(req).await?;
+if let CopilotCompletionResponse::Chat(chat) = response.raw_response {
+    let reason: Option<String> = chat.choices[0].finish_reason.clone();
+}
+
+// Now
+use rig::providers::copilot::CopilotCompletionResponse;
+if let CopilotCompletionResponse::Chat(chat) = model.raw_completion(req).await? {
+    let reason: String = chat.choices[0].finish_reason.clone(); // "" means absent
+}
+```
+
+The optionality moves with the type: `object`, `created` and the choice's
+`finish_reason` are `String`, `u64` and `String` instead of `Option`, with
+"absent" spelled as the empty string or `0`. Persisted `CopilotCompletionResponse`
+JSON still loads — the shared type accepts a missing key or an explicit `null`
+for all three, as described under Silent behavior changes — but re-serializing
+writes `""` and `0` where it used to write `null`.
+
+### Doubleword embeddings ride the shared OpenAI-compatible path (#2286)
+
+`doubleword::EmbeddingModel` is a type alias for
+`openai::embedding::GenericEmbeddingModel<DoublewordExt, T>` instead of its own
+struct, and the three response types the hand-rolled path decoded —
+`doubleword::{EmbeddingResponse, EmbeddingData, Usage}`, re-exported from
+`providers::doubleword` by `pub use embedding::*` — are deleted.
+
+`EmbeddingModel::new(client, model, ndims)` keeps its signature and the
+`EmbeddingModel` trait impl is unchanged, so building and using the model needs
+no edits. Only code that *named* those response types has to move: decode the
+data entries with `openai::embedding::EmbeddingData`, but wrap them in a
+response type of your own whose `usage` key is optional.
+`openai::embedding::EmbeddingResponse` is not a drop-in — it declares a
+required `usage`, which the deleted `doubleword::EmbeddingResponse` did not
+have at all and which Doubleword does not always send. That is also why rig's
+own shared path decodes through an internal `usage`-optional type and marks
+Doubleword `REQUIRES_USAGE = false`.
+
+The behavioral half: `embed_texts_with_usage` no longer falls through to the
+zero-usage default, so Doubleword embeddings now report the `usage` the API
+already returned. The request bytes are unchanged — Doubleword still never
+receives a `dimensions` field.
+
+### rig-candle drops seven public items (#2310)
+
+Each was an alias over an API that is still there, so every call site has a
+one-line replacement:
+
+| Removed | Use instead |
+| --- | --- |
+| `LlamaModelBuilder<'a>` (also re-exported from the crate root) | `CandleModelBuilder<'a>` |
+| `CandleModel::from_artifacts(artifacts)` | `CandleModel::builder_from_artifacts(artifacts).build()` |
+| `CandleModel::from_artifacts_async(artifacts)` | `CandleModel::builder_from_artifacts(artifacts).build_async().await` |
+| `CandleModel::from_gguf_async(data)` | `CandleModel::builder_from_artifacts(ModelArtifacts::Gguf(data)).build_async().await` |
+| `CandleModel::from_gguf_bytes_async(data)` | `CandleModel::builder_from_gguf_bytes(data).build_async().await` |
+| `CandleModel::model_family()` | `CandleModel::conversation_protocol()` |
+| `CandleModelBuilder::model_family(family)` | `CandleModelBuilder::conversation_protocol(protocol)` |
+
+Nothing loses a capability. `ModelFamily` itself is untouched — it is still
+exported from the crate root as an alias for `ConversationProtocol`, so only the
+two method names change and the argument and return types are the same. The
+synchronous `CandleModel::from_gguf` and `from_gguf_bytes` also stay; only their
+`_async` twins are gone, and `build_async` is available on
+`CandleModelBuilder<'static>`, which is what `builder_from_artifacts` and a
+`'static` buffer passed to `builder_from_gguf_bytes` both give you.
+
+### Bedrock model identifiers (#2309)
+
+`rig-bedrock` shipped 72 `pub const` model ids in `crate::completion`; 40
+remain.
+
+**38 constants are gone and will not compile.** Every `ANTHROPIC_CLAUDE*`
+constant the crate had — `ANTHROPIC_CLAUDE`, `_2`, `_2_1`, `_INSTANT`,
+`_INSTANT_V1_2`, `_3_HAIKU`, `_3_OPUS`, `_3_SONNET`, `_3_5_HAIKU`,
+`_3_5_SONNET`, `_3_5_SONNET_V2`, `_3_7_SONNET`, `_OPUS_4`, `_SONNET_4` — plus
+`AMAZON_TITAN_TEXT_EXPRESS_V1`, `AMAZON_TITAN_TEXT_LITE_V1`,
+`AMAZON_TITAN_TEXT_PREMIER_V1_0`, `AMAZON_TITAN_IMAGE_GENERATOR_G1`,
+`AMAZON_TITAN_IMAGE_GENERATOR_G1_V2`, `AMAZON_NOVA_PREMIER`,
+`AI21_JAMBA_INSTRUCT`, `AI21_JAMBA_1_5_LARGE`, `AI21_JAMBA_1_5_MINI`,
+`COHERE_COMMAND`, `COHERE_COMMAND_LIGHT_TEXT`, `COHERE_COMMAND_R`,
+`COHERE_COMMAND_R_PLUS`, `LLAMA_3_1_405B_INSTRUCT`, `LLAMA_3_2_1B_INSTRUCT`,
+`LLAMA_3_2_3B_INSTRUCT`, `LLAMA_3_2_11B_INSTRUCT`, `LLAMA_3_2_90B_INSTRUCT`,
+`MISTRAL_LARGE_24_07`, `STABILITY_SD3_LARGE_1_0`, `STABILITY_SDXL_1_0`,
+`STABILITY_STABLE_IMAGE_CORE_1_0_V1_0`,
+`STABILITY_STABLE_IMAGE_ULTRA_1_0_V1_0` and `TWELVELABS_MARENGO_EMBED_V2_7`.
+`crate::image` additionally drops its aliases
+`AMAZON_TITAN_IMAGE_GENERATOR_V1` and `AMAZON_TITAN_IMAGE_GENERATOR_V2_0`, and
+now re-exports `STABILITY_SD3_5_LARGE`, `STABILITY_STABLE_IMAGE_CORE_1_0` and
+`STABILITY_STABLE_IMAGE_ULTRA_1_0` beside `AMAZON_NOVA_CANVAS`.
+
+None of them could be invoked. Checked against `ListFoundationModels` in
+us-east-1, us-west-2, eu-central-1 and ap-northeast-1, each is either absent
+from every region — Bedrock answers `ResourceNotFoundException` ("This model
+version has reached the end of its life") — or servable only through a
+cross-region inference profile that is itself retired. For Claude, move to one
+of the six replacements: `ANTHROPIC_CLAUDE_HAIKU_4_5`,
+`ANTHROPIC_CLAUDE_SONNET_4_5`, `ANTHROPIC_CLAUDE_OPUS_4_5`,
+`ANTHROPIC_CLAUDE_SONNET_4_6`, `ANTHROPIC_CLAUDE_SONNET_5`,
+`ANTHROPIC_CLAUDE_OPUS_5`. For anything else, pass the identifier your account
+can actually reach as a plain string — `CompletionModel::new(client, model)`
+takes any `impl Into<String>`, so the constants are a convenience, not a gate.
+
+**Seven surviving constants silently changed value.** These still compile, and
+now name a US cross-region inference profile:
+
+| Constant | 0.41 | next |
+| --- | --- | --- |
+| `DEEPSEEK_R1` | `deepseek.r1-v1:0` | `us.deepseek.r1-v1:0` |
+| `META_LLAMA_3_3_70B_INSTRUCT` | `meta.llama3-3-70b-instruct-v1:0` | `us.meta.llama3-3-70b-instruct-v1:0` |
+| `META_LLAMA_4_MAVERICK_17B_INSTRUCT` | `meta.llama4-maverick-17b-instruct-v1:0` | `us.meta.llama4-maverick-17b-instruct-v1:0` |
+| `META_LLAMA_4_SCOUT_17B_INSTRUCT` | `meta.llama4-scout-17b-instruct-v1:0` | `us.meta.llama4-scout-17b-instruct-v1:0` |
+| `MISTRAL_PIXTRAL_LARGE_2502` | `mistral.pixtral-large-2502-v1:0` | `us.mistral.pixtral-large-2502-v1:0` |
+| `WRITER_PALMYRA_X4` | `writer.palmyra-x4-v1:0` | `us.writer.palmyra-x4-v1:0` |
+| `WRITER_PALMYRA_X5` | `writer.palmyra-x5-v1:0` | `us.writer.palmyra-x5-v1:0` |
+
+The bare identifiers they replaced answer `ValidationException` ("Invocation of
+model ID … with on-demand throughput isn't supported"), so the new values are
+the working ones — but a `us.` prefix names a *region family*, and the six
+`ANTHROPIC_CLAUDE_*` replacements above carry it too. If your client runs in
+Europe or Asia-Pacific, substitute `eu.` or `apac.` (some Anthropic models also
+offer `global.`) instead of using the constant verbatim; otherwise code that
+compiled and ran before will now name a profile your region cannot invoke.
+
 ### `#[non_exhaustive]` is gone from the whole workspace (#2335)
 
 All 53 `#[non_exhaustive]` attributes were removed from `rig-core`, `rig-agent`,
-`rig-bedrock` and `rig-candle`. Every public struct in these crates can now be
-built with a struct literal or functional update from any crate, and every
-public enum can be matched exhaustively without a wildcard.
+`rig-bedrock` and `rig-candle`. Every public enum in these crates can now be
+matched exhaustively without a wildcard, and every public struct whose fields
+are all `pub` can be built with a struct literal or functional update from any
+crate.
+
+The attribute was not always the only thing in the way. Types that keep private
+or `pub(crate)` fields stay constructor-only — `Agent` and `AgentRunner` (every
+field `pub(crate)`), `EmbeddingsBuilder` (private `model` and `documents`),
+`AudioGenerationRequestBuilder` / `ImageGenerationRequestBuilder` (private
+builder state), and `completion::CompletionResponse` (private `finish_reason`).
+Keep reaching those through `AgentBuilder`, `AgentRunner::from_agent`,
+`EmbeddingsBuilder::new`, the request builders and `CompletionResponse::new`;
+nothing about their construction changed.
 
 **Nothing breaks.** This is a permissive change — `cargo semver-checks` reports
 "no semver update required". You do not have to change any code.
@@ -1722,7 +2583,7 @@ over a literal.
 describe types as `#[non_exhaustive]` and tell you to construct them through
 constructors for that reason. Those passages remain accurate as history for the
 releases they document, but the attribute claim no longer holds on `next`:
-"Core errors are `#[non_exhaustive]`" (0.39→0.40), `ProviderResponseError`
+"Core errors are `#[non_exhaustive]`" (0.40→0.41), `ProviderResponseError`
 (#2314), `CompletionResponse`, `ProviderCapabilities`, `ModelTurn`/`StreamedTurn`
 (#2322), `MultiTurnStreamItem`, `DocumentSourceKind`, `RerankError`,
 `MemoryError`, and openai's `ToolChoice`. The constructors those passages point
@@ -2790,6 +3651,36 @@ Renamed or relocated items, for searching.
 | --- | --- | --- |
 | `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → next" | next |
 | `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | next |
+| `one_or_many::string_or_option_one_or_many` | none — `json_utils::string_or_vec` into a `Vec<T>`, then `message::non_empty` where the `Option` carried "absent" | next |
+| `ToolSet::builder()` / `ToolSetBuilder` (whole type) | `ToolSet::default()` plus `add_tool` / `add_dynamic_tool` / `add_portable_dynamic_tool` / `add_retrieved_tool` | next |
+| `ModelListingError::{RateLimitError, ServiceUnavailable, UnknownError}` and the `auth_error` / `rate_limit_error` / `service_unavailable` / `unknown_error` constructors | `ApiError` (build the surviving variants directly) | next |
+| `telemetry::ProviderResponseExt::{OutputMessage, get_output_messages}` | none — `get_text_response` is kept | next |
+| `json_utils::null_or_vec` | `json_utils::null_or_default` | next |
+| `http_client::with_bearer_auth` | `http_client::bearer_auth_header` on the builder's header map | next |
+| `InMemoryVectorStoreBuilder::documents_with_id_f` | `documents_with_ids`, or the store's own `from_documents_with_id_f` / `add_documents_with_id_f` | next |
+| `InMemoryVectorStore::get_document` | `iter()` | next |
+| `message::Reasoning::optional_id` | the public `id` field, or `with_id` | next |
+| `message::DocumentSourceKind::{raw, unknown}` | `DocumentSourceKind::Raw(..)` / `::Unknown` (the variants stay) | next |
+| `message::Message::tool_result_with_call_id` | `UserContent::tool_result_with_call_id(item_id, call_id, name, content)` wrapped with `Message::from(..)`; `Message::tool_result` itself now takes `(call, name, content)` | next |
+| `message::Image::try_into_url`, `message::Message::assistant_with_id`, `CompletionRequest::{with_provider_tool, with_provider_tools}`, `streaming::RawStreamingToolCall::with_internal_call_id` | none | next |
+| `StreamedTurnEvent::EmitToolCallDelta::id` | none — `internal_call_id` is the correlator, and the provider's id arrives on the completed `ToolCall` | next |
+| `MultiTurnStreamItem::final_response_with_history` | `final_response` | next |
+| `anthropic::completion::apply_cache_control` | none — `apply_prompt_cache_control` is `pub(super)` | next |
+| `TryFrom<message::AssistantContent> for anthropic::completion::Content` | none — convert the whole message with the surviving `TryFrom<message::Message> for anthropic::completion::Message` | next |
+| `anthropic::completion::Citation`'s struct variants (`CharLocation { .. }` … `WebSearchResultLocation { .. }`) | the same five variants as newtypes over `CharLocationCitation`, `PageLocationCitation`, `ContentBlockLocationCitation`, `SearchResultLocationCitation`, `WebSearchResultLocationCitation` — field names and the wire shape unchanged | next |
+| `azure::EmbeddingModel::{new, with_model}(.., Option<usize>)` | the `GenericEmbeddingModel` pair taking `ndims: usize`; `EmbeddingModel::make(.., None)` still infers | next |
+| `azure::{EmbeddingResponse, EmbeddingData, Usage}`, `doubleword::{EmbeddingResponse, EmbeddingData, Usage}` | `openai::embedding::{EmbeddingResponse, EmbeddingData}` plus `openai::completion::Usage` (`openai::embedding` exposes no `Usage` path); for Doubleword, keep a `usage`-optional response type of your own | next |
+| `doubleword::client::doubleword_api_types`, `openai::responses_api::OutputReasoning`, `deepseek::Message::{System, User, ToolResult}`, `ollama::AssistantContent` | none | next |
+| `ollama::{UserContent, ImageUrl, SystemContent, SystemContentType}` | the `openai::completion` types of the same names | next |
+| `copilot::ChatCompletionResponse` / `copilot::ChatChoice` | `openai::completion::CompletionResponse` / `openai::completion::Choice` | next |
+| `mira::MiraError`, mira's inherent `Client::list_models` | `ModelListingClient::list_models` → `Result<ModelList, ModelListingError>` | next |
+| gemini `interactions_api_types::{ImageDelta, AudioDelta, DocumentDelta, VideoDelta, FunctionCallDelta, FunctionResultDelta, CodeExecutionCallDelta, CodeExecutionResultDelta, UrlContextCallDelta, UrlContextResultDelta, GoogleSearchCallDelta, GoogleSearchResultDelta, McpServerToolCallDelta, McpServerToolResultDelta, FileSearchResultDelta}` | the matching `*Content` types, carried directly by `ContentDelta` | next |
+| `rig_bedrock::streaming::BedrockUsage` | `rig_bedrock::types::converse_output::TokenUsage` | next |
+| rig-bedrock's mirror→AWS-SDK `TryFrom` impls (`types::converse_output`) | none — the conversion is one-way now | next |
+| `rig_candle::LlamaModelBuilder<'a>` | `rig_candle::CandleModelBuilder<'a>` | next |
+| `CandleModel::{from_artifacts, from_artifacts_async, from_gguf_async, from_gguf_bytes_async}` | `builder_from_artifacts` / `builder_from_gguf_bytes` plus `build()` / `build_async()` | next |
+| `CandleModel::model_family()` / `CandleModelBuilder::model_family(..)` | `conversation_protocol()` / `conversation_protocol(..)` | next |
+| `rig_s3vectors::document!` | none — build `aws_smithy_types::Document` values directly | next |
 | `rig_core::tool::Tool` (portable) | `rig_core::tool::PortableTool` | 0.41 |
 | `rig_agent::<item>` (portable re-export) | `rig_agent::core::<item>` | 0.41 |
 | `client.agent(...)` inherent method | `AgentClientExt::agent` (via `rig::prelude::*`) | 0.41 |
@@ -2804,7 +3695,7 @@ Renamed or relocated items, for searching.
 | `AgentBuilder::dynamic_context` | unchanged call, now hook-backed (removed in #2174, restored in #2219) | 0.41 |
 | `DynamicContextStore` | none — the side retrieval pipeline is gone for good | 0.41 |
 | `dynamic_tools(sample, index, toolset)` | `retrieved_tools` | 0.41 |
-| `ToolSetBuilder::dynamic_tool(ToolEmbedding)` | `retrieved_tool` | 0.41 |
+| `ToolSetBuilder::dynamic_tool(ToolEmbedding)` | `retrieved_tool` (0.41), then `ToolSet::add_retrieved_tool` (next) | 0.41 |
 | `features = ["wasm"]` | nothing — target is the opt-in | 0.41 |
 | `Tool::definition(prompt)` | `description()` + `parameters()` | 0.40 |
 | `FinalResponse` | `PromptResponse` | 0.40 |

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(neo4j)* [**breaking**] `vector_index::SearchParams` is removed. It was public and constructible — `SearchParams::new(Option<String>)`, `SearchParams::filter(String)` and a `Default` impl — but nothing in the crate ever consumed it: `Neo4jVectorIndex::new` takes `(Graph, M, IndexConfig)`, and the post-vector-search `WHERE` clause is built from the `VectorSearchRequest`'s own `threshold()` and `filter()`. Downstream code naming the type stops compiling; express the same post-filter through the search request's filter instead
+
 - *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged
 
 ## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-neo4j-v0.39.0...rig-neo4j-v0.40.0) - 2026-07-10

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(milvus)* `top_n` no longer requires `embeddedText` in the search response. The row type declared `embedded_text: String` with no serde default, so a collection whose rows do not carry the field — one written outside rig, or under a schema that never stored it — failed the entire search while decoding, even though rig never read the value. The field is still listed in the request's `output_fields`; it is simply no longer decoded
+
+- *(milvus)* send the bearer token as `Authorization`, not `Authentication` — Milvus reads `Authorization: Bearer …`, so a store configured through `MilvusVectorStore::auth(username, password)` sent its credentials under a header the server ignores and every request against an auth-enabled instance was unauthenticated. Token auth had never worked. Only the header name changed; the value is still `Bearer {username}:{password}`
+
 ### Changed
 
 - *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(model)* [**breaking**] seven dead public items are removed: the `LlamaModelBuilder<'a>` alias and its crate-root re-export, `CandleModel::from_artifacts`, `CandleModel::from_artifacts_async`, `CandleModel::from_gguf_async`, `CandleModel::from_gguf_bytes_async`, `CandleModel::model_family()` and `CandleModelBuilder::model_family()`. Each was an alias over an API that stays — `CandleModelBuilder`, `builder_from_artifacts(..).build()`/`.build_async()`, `builder_from_gguf_bytes(..).build_async()`, and `conversation_protocol` on both types — and the `ModelFamily` alias for `ConversationProtocol` is untouched, so every call site has a one-line replacement
+
 - *(protocol)* [**behavior**] a generation that produces no assistant content stays empty instead of being padded with a fabricated empty-text part, and the emptiness check that padding made unreachable is removed rather than made live — a model that emits EOS immediately, or only whitespace the parser trims, keeps succeeding with genuinely empty content instead of failing with `CandleError::Inference`
 
 - *(streaming)* generation events route through the shared `WireAdapter` driver (this family never produces `Unknown`); `stream_from_events` is the events-first conformance seam driving typed events through the full pipeline with no model load
