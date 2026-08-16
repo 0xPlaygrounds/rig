@@ -333,14 +333,33 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             |choice| choice.finish_reason.as_str(),
             |choice| {
                 let Message::Assistant {
-                    content,
+                    content: text,
                     tool_calls,
                     reasoning_content,
                     ..
                 } = &choice.message;
-                let mut content = compat::text_then_tool_calls(
-                    content,
-                    content.trim().is_empty(),
+                // Reasoning leads the turn, as it does on the streaming
+                // path: DeepSeek's stream emits every `reasoning_content`
+                // delta before the first `content` delta and before the tool
+                // call, and the shared canonical chunk order is the same
+                // (reasoning, then text, then tool events). Appending it last
+                // made the two transports disagree about identical bytes.
+                //
+                // OpenRouter's normalizer still appends reasoning after its
+                // tool calls (`openrouter/completion.rs`), so this is not the
+                // last blocking normalizer in the tree that disagrees with its
+                // own stream — only the one this hunt recorded the parity
+                // fixtures for.
+                let mut content = match reasoning_content {
+                    Some(reasoning_content) => {
+                        vec![completion::AssistantContent::reasoning(reasoning_content)]
+                    }
+                    None => Vec::new(),
+                };
+
+                content.extend(compat::text_then_tool_calls(
+                    text,
+                    text.trim().is_empty(),
                     tool_calls.iter().map(|call| {
                         (
                             call.id.as_str(),
@@ -348,11 +367,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                             call.function.arguments.clone(),
                         )
                     }),
-                );
-
-                if let Some(reasoning_content) = reasoning_content {
-                    content.push(completion::AssistantContent::reasoning(reasoning_content));
-                }
+                ));
 
                 Some(content)
             },
@@ -819,6 +834,55 @@ mod tests {
             panic!("expected a parameterless tool call");
         };
         assert_eq!(call.function.arguments, serde_json::json!({}));
+    }
+
+    /// The full blocking block-order enumeration: reasoning present/absent x
+    /// text present/absent x zero/one/two tool calls. Reasoning leads the
+    /// choice on every shape, which is the order DeepSeek's own stream emits
+    /// (`reasoning_content` deltas before the first `content` delta and before
+    /// the tool call) and the order the shared canonical chunk lifecycle
+    /// imposes. Appending it last made the two transports disagree about
+    /// identical wire bytes.
+    #[test]
+    fn deepseek_reasoning_leads_the_choice_on_every_turn_shape() {
+        for reasoning in [None, Some("thinking")] {
+            for text in ["", "spoken"] {
+                for calls in [
+                    &[][..],
+                    &[r#"{"x":1}"#][..],
+                    &[r#"{"x":1}"#, r#"{"y":2}"#][..],
+                ] {
+                    let finish_reason = if calls.is_empty() {
+                        "stop"
+                    } else {
+                        "tool_calls"
+                    };
+                    let raw = assistant_turn(finish_reason, text, reasoning, calls);
+                    // A turn with nothing in it at all is a provider defect the
+                    // shared skeleton rejects; it is not an ordering shape.
+                    if reasoning.is_none() && text.is_empty() && calls.is_empty() {
+                        continue;
+                    }
+                    let kinds = block_kinds(&normalized(raw).choice);
+
+                    let mut expected = Vec::new();
+                    if reasoning.is_some() {
+                        expected.push("reasoning");
+                    }
+                    if !text.is_empty() {
+                        expected.push("text");
+                    }
+                    expected.extend(std::iter::repeat_n("tool_call", calls.len()));
+
+                    assert_eq!(
+                        kinds,
+                        expected,
+                        "reasoning={reasoning:?} text={text:?} calls={}",
+                        calls.len()
+                    );
+                }
+            }
+        }
     }
 
     #[test]
