@@ -151,6 +151,9 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_deepseek_cassette",
             "with_deepseek_cassette_result",
             "with_deepseek_cassette_bogus_key_result",
+            "with_deepseek_truncation_cassette_result",
+            "with_deepseek_block_order_cassette_result",
+            "with_deepseek_wire_shape_cassette_result",
         ],
     },
     ProviderCassetteSuite {

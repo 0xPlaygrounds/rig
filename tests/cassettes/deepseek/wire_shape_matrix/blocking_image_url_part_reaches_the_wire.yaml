@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"What colour is the attachment?","type":"text"},{"image_url":{"detail":"auto","url":"https://example.invalid/red.png"},"type":"image_url"}],"role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":"invalid_request_error","message":"Failed to deserialize the JSON body into the target type: messages[0]: unknown variant `image_url`, expected `text` at line 1 column 216","param":null,"type":"invalid_request_error"}}'
