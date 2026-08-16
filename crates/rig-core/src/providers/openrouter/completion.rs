@@ -648,8 +648,21 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 reasoning,
                 reasoning_details,
                 images,
+                refusal,
                 ..
             } => {
+                // A structured-output refusal arrives as a *sibling* of
+                // `content` (`{"content": null, "refusal": "…"}`), not as the
+                // `refusal` content part below — that spelling belongs to the
+                // Responses API, which this wire never sends. Reading only
+                // `content` dropped the refusal outright and normalized the
+                // turn to nothing, while `get_text_response` already fell back
+                // to the field and the streaming path already delivered it.
+                // The rule is shared with the OpenAI chat path so no two
+                // readers of this wire can disagree about it (#2332).
+                let refusal_fallback =
+                    openai::completion::assistant_refusal_fallback(content, refusal.as_deref());
+
                 let mut content = content
                     .iter()
                     .map(|c| match c {
@@ -661,6 +674,10 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                         }
                     })
                     .collect::<Vec<_>>();
+
+                if let Some(refusal) = refusal_fallback {
+                    content.push(completion::AssistantContent::text(refusal));
+                }
 
                 content.extend(tool_calls.iter().map(|call| {
                     completion::AssistantContent::tool_call(
@@ -4255,5 +4272,229 @@ mod tests {
             serialized.get("images").is_none(),
             "images field must not appear in serialized assistant message"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Refusal fallback — wire shapes the live gateway will not produce on
+    // demand. The recorded cells live in
+    // `tests/providers/openrouter/cassette/refusal_matrix.rs`.
+    // -----------------------------------------------------------------------
+
+    fn refusal_response(message: serde_json::Value) -> CompletionResponse {
+        serde_json::from_value(json!({
+            "id": "gen-refusal",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "openai/gpt-4o",
+            "choices": [{ "index": 0, "message": message, "finish_reason": "stop" }],
+        }))
+        .unwrap()
+    }
+
+    fn text_parts(response: &completion::CompletionResponse) -> Vec<String> {
+        response
+            .choice
+            .iter()
+            .filter_map(|part| match part {
+                completion::AssistantContent::Text(text) => Some(text.text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The recorded shape: `content` held at `null` with the refusal beside
+    /// it. Before the fix this normalized to nothing and errored.
+    #[test]
+    fn refusal_fallback_surfaces_a_null_content_refusal() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm very sorry, but I can't assist with that request.",
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(
+            text_parts(&converted),
+            vec!["I'm very sorry, but I can't assist with that request."]
+        );
+    }
+
+    /// An absent `content` key reads the same as an explicit `null`.
+    #[test]
+    fn refusal_fallback_surfaces_a_missing_content_refusal() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "refusal": "No.",
+        }));
+
+        assert_eq!(
+            text_parts(&response.normalize(PROVIDER_NAME).unwrap()),
+            vec!["No."]
+        );
+    }
+
+    /// An empty-string `content` decodes as one empty text part, which carries
+    /// no text — so the refusal is still the turn's only *visible* content.
+    ///
+    /// This path keeps the empty part alongside it: unlike the shared OpenAI
+    /// normalizer, OpenRouter's does not filter empty content parts. That is
+    /// pre-existing behavior for any `"content": ""` turn and the fallback
+    /// neither causes nor changes it; the assertion records both halves rather
+    /// than claiming a filter this code does not have.
+    #[test]
+    fn refusal_fallback_surfaces_a_refusal_beside_empty_content() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": "",
+            "refusal": "No.",
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(
+            text_parts(&converted),
+            vec!["".to_owned(), "No.".to_owned()]
+        );
+    }
+
+    /// The whole-message rule: real content wins, and the fallback stays out
+    /// of the way. This is the shape the streaming path would deliver *both*
+    /// halves of, so pinning it records the difference rather than assuming it
+    /// away (see `assistant_refusal_fallback`).
+    #[test]
+    fn refusal_fallback_defers_to_non_empty_content() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": "Here is the answer.",
+            "refusal": "I'm sorry.",
+        }));
+
+        assert_eq!(
+            text_parts(&response.normalize(PROVIDER_NAME).unwrap()),
+            vec!["Here is the answer."]
+        );
+    }
+
+    /// An empty refusal string is not a refusal.
+    #[test]
+    fn refusal_fallback_ignores_an_empty_refusal() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "ping", "arguments": "{}" }
+            }],
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert!(text_parts(&converted).is_empty(), "{:?}", converted.choice);
+        assert_eq!(converted.choice.len(), 1);
+    }
+
+    /// A tool-calls-only turn holds `content` at `null` with no refusal: the
+    /// shape the fallback must leave exactly as it was.
+    #[test]
+    fn refusal_fallback_leaves_a_tool_call_turn_alone() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "ping", "arguments": "{}" }
+            }],
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(converted.choice.len(), 1);
+        assert!(matches!(
+            converted.choice.first(),
+            Some(completion::AssistantContent::ToolCall(_))
+        ));
+    }
+
+    /// A refusal can arrive on a turn that also carries tool calls; the
+    /// refusal is the turn's text and the calls survive beside it.
+    #[test]
+    fn refusal_fallback_coexists_with_tool_calls() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I can't help with that.",
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": { "name": "ping", "arguments": "{}" }
+            }],
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(text_parts(&converted), vec!["I can't help with that."]);
+        assert!(
+            converted
+                .choice
+                .iter()
+                .any(|part| matches!(part, completion::AssistantContent::ToolCall(_)))
+        );
+    }
+
+    /// Reasoning blocks are not text, so a reasoning-carrying refusal turn
+    /// still needs the fallback for its visible content.
+    #[test]
+    fn refusal_fallback_applies_beside_reasoning_details() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I can't help with that.",
+            "reasoning_details": [
+                { "type": "reasoning.summary", "id": "rs_1", "format": "openai-responses-v1",
+                  "index": 0, "summary": "considered" }
+            ],
+        }));
+
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+        assert_eq!(text_parts(&converted), vec!["I can't help with that."]);
+        assert!(
+            converted
+                .choice
+                .iter()
+                .any(|part| matches!(part, completion::AssistantContent::Reasoning(_)))
+        );
+    }
+
+    /// The Responses-API spelling — a `refusal` *content part* — still works;
+    /// the fix adds the sibling-field rule without displacing it, and the two
+    /// must not both fire.
+    #[test]
+    fn refusal_fallback_does_not_double_up_with_a_refusal_content_part() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": [{ "type": "refusal", "refusal": "I can't help with that." }],
+            "refusal": "I can't help with that.",
+        }));
+
+        assert_eq!(
+            text_parts(&response.normalize(PROVIDER_NAME).unwrap()),
+            vec!["I can't help with that."]
+        );
+    }
+
+    /// The raw text view and the normalized response must never disagree
+    /// about whether a refused turn said anything — the internal
+    /// inconsistency that made this bug visible.
+    #[test]
+    fn refusal_fallback_keeps_raw_and_normalized_text_in_step() {
+        let response = refusal_response(json!({
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm sorry, but I can't help with that.",
+        }));
+
+        let raw_text = response.get_text_response().unwrap();
+        let normalized = response.normalize(PROVIDER_NAME).unwrap();
+
+        assert_eq!(text_parts(&normalized), vec![raw_text]);
     }
 }

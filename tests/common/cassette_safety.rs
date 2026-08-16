@@ -138,6 +138,8 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openrouter_cassette_result",
             "with_openrouter_cassette_bogus_key_result",
             "with_openrouter_openai_cassette",
+            "with_openrouter_refusal_cassette",
+            "with_openrouter_usage_cassette",
         ],
     },
     ProviderCassetteSuite {

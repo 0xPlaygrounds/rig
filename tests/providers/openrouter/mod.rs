@@ -15,6 +15,8 @@ mod cassette {
     mod provider_selection;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod reasoning_usage_matrix;
+    mod refusal_matrix;
     mod request_hook;
     mod response_identity_edge;
     mod streaming;
