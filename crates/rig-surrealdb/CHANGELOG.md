@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(surrealdb)* `top_n_ids` binds the query vector as `Vec<f64>`. It narrowed every component to `f32` before binding while `top_n`, running the same similarity query, bound `Vec<f64>` — so the id-only search scored a lower-precision copy of the query vector against the stored `embedding: Vec<f64>` and could rank or threshold differently from the full search for an identical request. Both paths now share one query runner
+
 ### Changed
 
 - *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged

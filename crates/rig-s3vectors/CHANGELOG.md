@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- *(filter)* [**breaking**] the exported `document!` macro. It was `#[macro_export]`ed from the crate root to spell `aws_smithy_types::Document` filter literals; `S3SearchFilter`'s constructors now build those values through the private `document_object`/`document_comparison` helpers, and there is no public replacement
+
 ### Changed
 
 - *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged

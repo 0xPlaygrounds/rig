@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- *(vector-store)* every parameterised `PgSearchFilter` constructor emits the `$` placeholder token. `gte`, `lte` and `member` emitted `?` instead, and `search_query`'s renumbering pass never touched it — that pass walks the rendered `WHERE` clause and numbers each `$` from `$3` onward (`$1`/`$2` are the query vector and the sample count) — so a filter built with any of the three reached Postgres with a literal `?` in the SQL (`id is in (?,?)`) while its values were still bound positionally, and the server rejected the statement as malformed rather than returning wrong rows. All of `PgSearchFilter`'s constructors now render through the shared `vector_store::request::SqlCondition`, so the placeholder token is chosen in one place, and `every_parameterised_operator_uses_dollar_placeholders` asserts the whole rendered clause instead of the two operators it used to cover
+
 ### Changed
+
+- *(vector-store)* [**breaking**] `PgSearchFilter` is a newtype over `rig_core::vector_store::request::SqlCondition<serde_json::Value>` rather than its own `{ condition, values }` struct. The fields were private and the constructors are unchanged, but the derived `Serialize`/`Deserialize` follow the inner type: a serialized filter now names its bind list `params` where it named it `values`
 
 - *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged
 
