@@ -15,9 +15,17 @@ pub const CODESTRAL_EMBED: &str = "codestral-embed";
 /// `"Too many inputs in request, split into more batches."`.
 pub const MAX_DOCUMENTS: usize = 256;
 
-/// Output dimensions of `mistral-embed`. `codestral-embed` is configurable and
-/// is left to the caller's `dimensions`.
+/// Output dimensions of `mistral-embed`, which has no other width.
 const MISTRAL_EMBED_NDIMS: usize = 1024;
+
+/// Output dimensions `codestral-embed` returns when the request names none.
+///
+/// Configurable up to 3072 through `output_dimension`, but a caller who asks
+/// for nothing still gets vectors of this width — verified live, a
+/// dimension-less request returns 1536 floats. Reporting the *configurable*
+/// half as "unknown" left `ndims()` at 0, which is not a width a vector store
+/// can size itself from.
+const CODESTRAL_EMBED_NDIMS: usize = 1536;
 
 impl OpenAIEmbeddingsCompatible for MistralExt {
     const PROVIDER_NAME: &'static str = "mistral";
@@ -26,8 +34,15 @@ impl OpenAIEmbeddingsCompatible for MistralExt {
 
     fn default_ndims(model: &str) -> Option<usize> {
         // Mistral's models are absent from OpenAI's table, so without this
-        // every Mistral embedding model reported `ndims() == 0`.
-        matches!(model, MISTRAL_EMBED | "mistral-embed-2312").then_some(MISTRAL_EMBED_NDIMS)
+        // every Mistral embedding model reported `ndims() == 0`. Codestral's
+        // width is configurable, but a model whose default is documented and
+        // observable still has a default: leaving it unreported declared 0
+        // dimensions for vectors 1536 wide.
+        match model {
+            MISTRAL_EMBED | "mistral-embed-2312" => Some(MISTRAL_EMBED_NDIMS),
+            CODESTRAL_EMBED | "codestral-embed-2505" => Some(CODESTRAL_EMBED_NDIMS),
+            _ => None,
+        }
     }
 
     fn embeddings_path(&self) -> String {
@@ -43,16 +58,19 @@ impl OpenAIEmbeddingsCompatible for MistralExt {
             return Ok(None);
         };
 
-        if !matches!(model, "codestral-embed" | "codestral-embed-2505") {
-            // A fixed-width model naming its own width is not a request for
-            // the unsupported parameter — it is the shared path echoing back
-            // the dimension `default_ndims` reported. Send nothing and let the
-            // model emit its native width. Any *other* value is still a real
-            // request for a parameter Mistral does not accept here.
-            if Self::default_ndims(model) == Some(dimensions) {
-                return Ok(None);
-            }
+        // A model naming its own default width is not a request at all — it is
+        // the shared path echoing back the dimension `default_ndims` reported,
+        // and sending it would change the bytes of every request that names no
+        // width. Send nothing and let the model emit its native width. This
+        // applies to Codestral too, whose width *is* configurable: declaring a
+        // default must not silently start populating the request.
+        if Self::default_ndims(model) == Some(dimensions) {
+            return Ok(None);
+        }
 
+        if !matches!(model, "codestral-embed" | "codestral-embed-2505") {
+            // Any other value is a real request for a parameter Mistral does
+            // not accept for a fixed-width model.
             return Err(EmbeddingError::UnsupportedParameter {
                 provider: Self::PROVIDER_NAME,
                 parameter: "dimensions",
@@ -234,7 +252,7 @@ mod batch_tests {
     #[test]
     fn mistral_embed_declares_its_width_without_requesting_it() {
         assert_eq!(MistralExt::default_ndims(MISTRAL_EMBED), Some(1024));
-        assert_eq!(MistralExt::default_ndims(CODESTRAL_EMBED), None);
+        assert_eq!(MistralExt::default_ndims("mistral-embed-2312"), Some(1024));
 
         // The declared width must not become a `dimensions` request field:
         // Mistral rejects that parameter for every model but Codestral.
@@ -247,6 +265,44 @@ mod batch_tests {
             MistralExt
                 .embedding_dimensions(MISTRAL_EMBED, Some(512))
                 .is_err()
+        );
+    }
+
+    /// Codestral's width is *configurable*, not unknown: a request naming no
+    /// dimension still returns 1536-wide vectors, so that is the width
+    /// `ndims()` must declare. Reporting `None` here left it at 0.
+    #[test]
+    fn codestral_embed_declares_its_default_width() {
+        assert_eq!(MistralExt::default_ndims(CODESTRAL_EMBED), Some(1536));
+        assert_eq!(
+            MistralExt::default_ndims("codestral-embed-2505"),
+            Some(1536)
+        );
+        assert_eq!(MistralExt::default_ndims("mistral-ocr-latest"), None);
+    }
+
+    /// Codestral is the one Mistral model that takes a width on the request,
+    /// under Mistral's own `output_dimension` spelling — including the
+    /// default the declaration above now echoes back.
+    #[test]
+    fn codestral_embed_sends_its_width_as_output_dimension() {
+        // Declaring the default must not start populating the request: a model
+        // asked for its own native width sends no width at all, so a plain
+        // `embedding_model("codestral-embed")` puts the same bytes on the wire
+        // it always did.
+        assert!(matches!(
+            MistralExt.embedding_dimensions(CODESTRAL_EMBED, Some(1536)),
+            Ok(None)
+        ));
+        assert!(matches!(
+            MistralExt.embedding_dimensions(CODESTRAL_EMBED, Some(512)),
+            Ok(Some(EmbeddingDimensions::OutputDimension(512)))
+        ));
+        assert!(
+            MistralExt
+                .embedding_dimensions(CODESTRAL_EMBED, Some(3_073))
+                .is_err(),
+            "3072 is Codestral's ceiling"
         );
     }
 }
