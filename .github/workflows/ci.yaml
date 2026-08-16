@@ -54,6 +54,17 @@ jobs:
       - name: Check workflow toolchain pins match rust-toolchain.toml
         run: bash .github/scripts/check-toolchain-pin.sh
 
+      # The root manifest is both the workspace root and the `rig` facade
+      # package, so the facade's package directory is the whole repository and
+      # cargo ships everything not gitignored. 0.41.0 packaged 9.51 MiB against
+      # crates.io's 10 MiB hard cap — 95% of it recorded test cassettes — and
+      # included an untracked scratch file from a maintainer's working tree.
+      # [package].include now states what ships; this fails the build if
+      # anything else creeps back in, or if any publishable crate drifts toward
+      # the cap. Compiles nothing (`--no-verify`), so it belongs in this job.
+      - name: Check published package contents and size
+        run: bash .github/scripts/check-published-packages.sh
+
       # Guard against CWD-relative test fixture paths. `cargo test` runs from the
       # crate root while `cargo nextest` (CI's runner) runs from the workspace
       # root, so a bare `tests/data/...` path passes under one and fails under the

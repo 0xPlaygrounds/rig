@@ -10,6 +10,50 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # them as examples of this crate.
 autoexamples = false
 
+# What gets published. This manifest is both the workspace root and the `rig`
+# facade package, so this package's directory is the entire repository and
+# cargo's default is to ship everything not gitignored: 0.41.0 packaged 1705
+# files, 9.51 MiB compressed against crates.io's 10 MiB hard cap, of which
+# tests/ was 27.3 MiB uncompressed (1,115 recorded HTTP cassettes). The
+# facade's own source is one file of re-exports.
+#
+# An allowlist, not an `exclude` denylist, and the difference is not stylistic.
+# A denylist cannot name a file that does not exist yet, so it neither survives
+# the next top-level directory nor stops cargo publishing an untracked file
+# that happens to be sitting in a maintainer's working tree — both of which
+# were live: 0.41.0's package set included a local scratch .md file, plus
+# flake.nix, AGENTS.md, release-plz.toml and rust-toolchain.toml. Here, not
+# being listed is the safe default.
+#
+# Three things that bite when editing this list:
+#   * This is [package].include and must stay ABOVE the [workspace] header.
+#     Below it, it parses as `workspace.include` — an unknown key cargo ignores
+#     with only a warning, so the manifest would look fixed and change nothing.
+#     The `exclude` under [workspace] is member discovery, a different key.
+#   * Patterns are gitignore-style and match at any depth, so they are anchored
+#     with a leading `/`. Unanchored, "README.md" also matches
+#     examples/README.md and tests/README.md.
+#   * LICENSE must be listed. `license = "MIT"` is an SPDX expression, not
+#     `license-file`, so cargo does not add the file on its own — it shipped
+#     before only as a side effect of the whole-repo sweep.
+#
+# Cargo.toml, Cargo.lock and .cargo_vcs_info.json are added by cargo regardless.
+# .github/scripts/check-published-packages.sh fails CI if anything else creeps
+# back in.
+include = [
+    "/src/**",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/MIGRATING.md",
+    # Rendered by README.md on crates.io. The other five img/ files are
+    # unreferenced and stay out.
+    "/img/rig-rebranded-logo-white.svg",
+    "/img/rig-rebranded-logo-black.svg",
+    "/img/built-by-playgrounds.svg",
+    "/img/ryzome-bg.png",
+]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
