@@ -181,6 +181,17 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_mistralrs_raw_cassette",
         ],
     },
+    ProviderCassetteSuite {
+        provider: "zai",
+        source_dir: "tests/providers/zai/cassette",
+        wrapper_names: &[
+            "with_zai_general_cassette",
+            "with_zai_coding_cassette",
+            "with_zai_anthropic_cassette",
+            "with_zai_general_cassette_bogus_key",
+            "with_zai_anthropic_cassette_bogus_key",
+        ],
+    },
 ];
 
 #[test]

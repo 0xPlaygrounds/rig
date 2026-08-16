@@ -118,6 +118,19 @@ impl CassettePolicy {
             "gemini" if scenario.starts_with("interactions_api/") => {
                 GEMINI_INTERACTIONS_REQUIRED_REQUEST_HEADERS
             }
+            // Z.AI's two dialects carry the same key under different header
+            // names: its OpenAI-compatible clients send `Authorization: Bearer`
+            // (`client_input = client::BearerAuth`) and its Anthropic-
+            // compatible client sends `x-api-key` (`anthropic::client::
+            // AnthropicKey`). Neither name is in `RECORDED_REQUEST_HEADERS` and
+            // both are scrubbed as sensitive, so a zai fixture cannot show which
+            // header rig used — requiring it at replay is the only way one can
+            // testify to it. The set is therefore scenario-prefixed, because the
+            // right answer differs per dialect, and the bogus-key wrappers in
+            // `tests/providers/zai/support.rs` send a literal invalid key in both
+            // modes so an auth-failure cell still satisfies the requirement.
+            "zai" if scenario.starts_with("anthropic/") => ANTHROPIC_REQUIRED_REQUEST_HEADERS,
+            "zai" => OPENAI_REQUIRED_REQUEST_HEADERS,
             _ => NO_REQUIRED_REQUEST_HEADERS,
         };
 
