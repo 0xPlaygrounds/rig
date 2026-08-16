@@ -333,9 +333,15 @@ pub enum Message {
     Assistant {
         #[serde(default, deserialize_with = "deserialize_mistral_content_string")]
         content: String,
+        /// Mistral emits the tool call anyway when `max_tokens` runs out
+        /// mid-arguments (a live turn capped at 32 tokens returns
+        /// `finish_reason: "length"` with `arguments` cut off partway through
+        /// the object), so such a call is dropped rather than failing the whole
+        /// response; see
+        /// [`drop_truncated_tool_calls`](json_utils::drop_truncated_tool_calls).
         #[serde(
             default,
-            deserialize_with = "json_utils::null_or_default",
+            deserialize_with = "json_utils::drop_truncated_tool_calls",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -367,36 +373,8 @@ pub struct ToolCall {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
-    #[serde(
-        serialize_with = "json_utils::stringified_json::serialize",
-        deserialize_with = "deserialize_truncatable_arguments"
-    )]
+    #[serde(with = "json_utils::stringified_json")]
     pub arguments: serde_json::Value,
-}
-
-/// Deserialize a tool call's `arguments`, tolerating the truncated JSON a
-/// `max_tokens`-capped turn produces.
-///
-/// Mistral emits the tool call anyway when the budget runs out mid-arguments:
-/// a live turn capped at 32 tokens returns `finish_reason: "length"` with
-/// `arguments` cut off partway through the object. Parsing that strictly fails
-/// the *whole* response — the text, usage, id and finish reason go with it —
-/// where the streaming path keeps the turn and drops the unusable call
-/// ([`UnparseableToolInput::Drop`](crate::streaming::UnparseableToolInput)).
-///
-/// Truncated arguments become `null`, which
-/// [`NormalizeCompletionResponse`] drops the call on, so the two transports
-/// agree: the turn survives and its `Length` finish reason is what tells the
-/// caller the call was cut off.
-fn deserialize_truncatable_arguments<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let raw = String::deserialize(deserializer)?;
-    if raw.trim().is_empty() {
-        return Ok(serde_json::Value::Object(serde_json::Map::new()));
-    }
-    Ok(serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null))
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -482,19 +460,13 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 } => Some(compat::text_then_tool_calls(
                     content,
                     content.is_empty(),
-                    // A call whose arguments were truncated mid-JSON is
-                    // unusable; the turn's `Length` finish reason is what
-                    // reports it, exactly as on the streaming path.
-                    tool_calls
-                        .iter()
-                        .filter(|call| !call.function.arguments.is_null())
-                        .map(|call| {
-                            (
-                                call.id.as_str(),
-                                call.function.name.as_str(),
-                                call.function.arguments.clone(),
-                            )
-                        }),
+                    tool_calls.iter().map(|call| {
+                        (
+                            call.id.as_str(),
+                            call.function.name.as_str(),
+                            call.function.arguments.clone(),
+                        )
+                    }),
                 )),
                 _ => None,
             },

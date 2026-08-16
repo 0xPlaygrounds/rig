@@ -272,9 +272,15 @@ pub enum Message {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        /// DeepSeek emits the tool call anyway when `max_tokens` runs out
+        /// mid-arguments — live turns capped at 24/32/48/64 tokens come back
+        /// with `finish_reason: "length"` and `arguments` cut off partway
+        /// through the object — so a strict parse took the whole response down
+        /// with it. Such a call is dropped here instead; see
+        /// [`drop_truncated_tool_calls`](json_utils::drop_truncated_tool_calls).
         #[serde(
             default,
-            deserialize_with = "json_utils::null_or_default",
+            deserialize_with = "json_utils::drop_truncated_tool_calls",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -676,6 +682,143 @@ mod tests {
 
             assert_eq!(converted.finish_reason(), Some(expected), "wire: {wire}");
         }
+    }
+
+    /// Build a one-choice DeepSeek turn out of its three assistant slots.
+    fn assistant_turn(
+        finish_reason: &str,
+        content: &str,
+        reasoning_content: Option<&str>,
+        tool_arguments: &[&str],
+    ) -> CompletionResponse {
+        let mut message = serde_json::json!({
+            "role": "assistant",
+            "content": content,
+        });
+        if let Some(reasoning_content) = reasoning_content {
+            message["reasoning_content"] = serde_json::Value::String(reasoning_content.to_owned());
+        }
+        if !tool_arguments.is_empty() {
+            message["tool_calls"] = tool_arguments
+                .iter()
+                .enumerate()
+                .map(|(index, arguments)| {
+                    serde_json::json!({
+                        "id": format!("call_{index}"),
+                        "index": index,
+                        "type": "function",
+                        "function": {"name": format!("tool_{index}"), "arguments": arguments},
+                    })
+                })
+                .collect();
+        }
+
+        serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_truncated",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": finish_reason,
+                "index": 0,
+                "logprobs": null,
+                "message": message,
+            }],
+            "usage": {
+                "completion_tokens": 24,
+                "prompt_tokens": 372,
+                "prompt_cache_hit_tokens": 256,
+                "prompt_cache_miss_tokens": 116,
+                "total_tokens": 396
+            }
+        }))
+        .expect("fixture should deserialize")
+    }
+
+    fn block_kinds(choice: &[crate::completion::AssistantContent]) -> Vec<&'static str> {
+        choice
+            .iter()
+            .map(|content| match content {
+                crate::completion::AssistantContent::Text(_) => "text",
+                crate::completion::AssistantContent::ToolCall(_) => "tool_call",
+                crate::completion::AssistantContent::Reasoning(_) => "reasoning",
+                crate::completion::AssistantContent::Image(_) => "image",
+            })
+            .collect()
+    }
+
+    /// DeepSeek emits the tool call anyway when `max_tokens` runs out mid
+    /// arguments -- live turns capped at 24/32/48/64 tokens returned
+    /// `finish_reason: "length"` with `arguments` cut off partway through the
+    /// object. Parsing strictly took the whole response down with it: text,
+    /// usage, id, model and finish reason all went with the unusable call.
+    #[test]
+    fn deepseek_truncated_tool_arguments_do_not_destroy_the_response() {
+        // The 24-token budget's recorded `arguments`, verbatim; the text is
+        // added on top so the assertions below can show it survives too (the
+        // recorded 24-token turn itself came back with `content: ""`).
+        let raw = assistant_turn("length", "Acknowledged.", None, &[r#"{"summary": "#]);
+
+        assert!(
+            match &raw.choices[0].message {
+                Message::Assistant { tool_calls, .. } => tool_calls.is_empty(),
+            },
+            "the unusable call is dropped at decode, not surfaced as a sentinel"
+        );
+
+        let converted = normalized(raw);
+
+        assert_eq!(converted.finish_reason(), Some(FinishReason::Length));
+        assert_eq!(converted.response_id.as_deref(), Some("chatcmpl_truncated"));
+        assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(converted.usage.total_tokens, 396);
+        assert_eq!(converted.usage.cached_input_tokens, 256);
+        assert_eq!(block_kinds(&converted.choice), vec!["text"]);
+    }
+
+    /// The unusable call is dropped, exactly as the streaming path drops it,
+    /// while a complete sibling in the same turn survives.
+    #[test]
+    fn deepseek_parallel_calls_drop_only_the_truncated_one() {
+        let converted = normalized(assistant_turn(
+            "length",
+            "",
+            None,
+            &[r#"{"team": "platform"}"#, r#"{"summary": "Log this"#],
+        ));
+
+        assert_eq!(block_kinds(&converted.choice), vec!["tool_call"]);
+        let crate::completion::AssistantContent::ToolCall(call) = &converted.choice[0] else {
+            panic!("expected the complete call to survive");
+        };
+        assert_eq!(call.function.name, "tool_0");
+        assert_eq!(
+            call.function.arguments,
+            serde_json::json!({"team": "platform"})
+        );
+    }
+
+    /// The tolerant parse must not weaken a complete payload, and must keep
+    /// reading an empty one as a parameterless invocation.
+    #[test]
+    fn deepseek_complete_and_empty_tool_arguments_are_unaffected() {
+        let complete = normalized(assistant_turn(
+            "tool_calls",
+            "",
+            None,
+            &[r#"{"summary": "done"}"#],
+        ));
+        let crate::completion::AssistantContent::ToolCall(call) = &complete.choice[0] else {
+            panic!("expected a tool call");
+        };
+        assert_eq!(
+            call.function.arguments,
+            serde_json::json!({"summary": "done"})
+        );
+
+        let empty = normalized(assistant_turn("tool_calls", "", None, &[""]));
+        let crate::completion::AssistantContent::ToolCall(call) = &empty.choice[0] else {
+            panic!("expected a parameterless tool call");
+        };
+        assert_eq!(call.function.arguments, serde_json::json!({}));
     }
 
     #[test]

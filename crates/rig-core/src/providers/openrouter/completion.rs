@@ -2139,6 +2139,68 @@ mod tests {
         );
     }
 
+    /// The shared `openai::Function` now tolerates the truncated JSON a
+    /// `max_tokens`-capped turn emits, and every normalizer built on it drops
+    /// the unusable call rather than losing the turn. Reproduced live on
+    /// DeepSeek (rig#2354) at 24/32/48/64-token budgets; the same wire type
+    /// backs OpenRouter, so the same turn shape is pinned here.
+    #[test]
+    fn openrouter_truncated_tool_arguments_do_not_destroy_the_response() {
+        let json = json!({
+            "id": "gen-truncated",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "deepseek/deepseek-chat",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "length",
+                "message": {
+                    "role": "assistant",
+                    "content": "Acknowledged.",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "page", "arguments": "{\"team\":\"platform\"}"}
+                        },
+                        {
+                            "id": "call_2",
+                            "type": "function",
+                            "function": {"name": "file_report", "arguments": "{\"summary\": "}
+                        }
+                    ]
+                }
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 24, "total_tokens": 34}
+        });
+
+        let response: CompletionResponse = serde_json::from_value(json).unwrap();
+        let converted = response.normalize(PROVIDER_NAME).unwrap();
+
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::Length)
+        );
+        let names = converted
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                completion::AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["page"], "only the truncated call is dropped");
+        assert!(
+            converted.choice.iter().any(|content| matches!(
+                content,
+                completion::AssistantContent::Text(text) if text.text == "Acknowledged."
+            )),
+            "the turn's text survives: {:?}",
+            converted.choice
+        );
+        assert_eq!(converted.usage.total_tokens, 34);
+    }
+
     #[test]
     fn test_message_assistant_without_reasoning_details() {
         // Verify that missing reasoning_details field doesn't cause deserialization failure

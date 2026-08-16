@@ -180,9 +180,12 @@ pub enum Message {
         audio: Option<AudioAssistant>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        /// A call whose `arguments` were truncated mid-JSON is dropped rather
+        /// than failing the whole response; see
+        /// [`drop_truncated_tool_calls`](json_utils::drop_truncated_tool_calls).
         #[serde(
             default,
-            deserialize_with = "json_utils::null_or_default",
+            deserialize_with = "json_utils::drop_truncated_tool_calls",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -3748,6 +3751,149 @@ mod tests {
         assert_eq!(
             tool_calls[0].function.arguments,
             serde_json::json!({"city": "Paris"})
+        );
+    }
+
+    /// A `max_tokens`-capped turn still emits the tool call, with `arguments`
+    /// cut off partway through the JSON object. Parsing strictly failed the
+    /// *whole* response -- the text, usage, id and finish reason went with it
+    /// -- where the streaming path keeps the turn and drops the unusable call.
+    /// Reproduced live against DeepSeek (rig#2354) at 24/32/48/64-token
+    /// budgets; this wire type backs every other OpenAI-compatible provider in
+    /// the tree, so the same shape is pinned here.
+    #[test]
+    fn truncated_tool_arguments_do_not_destroy_the_response() {
+        let request = r#"{
+            "choices": [{
+                "finish_reason": "length",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "Acknowledged.",
+                    "tool_calls": [
+                        { "type": "function", "id": "call_1", "function": { "name": "page", "arguments": "{\"team\":\"platform\"}" } },
+                        { "type": "function", "id": "call_2", "function": { "name": "file_report", "arguments": "{\"summary\": " } }
+                    ]
+                }
+            }],
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 24, "prompt_tokens": 372, "total_tokens": 396 },
+            "id": "chatcmpl-truncated"
+        }
+        "#;
+
+        let ApiResponse::Ok(response) =
+            serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap()
+        else {
+            panic!("expected successful completion response");
+        };
+
+        let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(
+            tool_calls.len(),
+            1,
+            "the unusable call is dropped at decode; the complete one survives"
+        );
+
+        let converted = response.normalize("openai").unwrap();
+
+        assert_eq!(
+            converted.finish_reason(),
+            Some(crate::completion::FinishReason::Length)
+        );
+        assert_eq!(converted.usage.total_tokens, 396);
+        assert_eq!(converted.response_id.as_deref(), Some("chatcmpl-truncated"));
+        let names = converted
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                completion::AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["page"], "only the truncated call is dropped");
+        assert!(
+            converted.choice.iter().any(|content| matches!(
+                content,
+                completion::AssistantContent::Text(text) if text.text == "Acknowledged."
+            )),
+            "the turn's text survives: {:?}",
+            converted.choice
+        );
+    }
+
+    /// The tolerant parse must not weaken a complete payload: an empty string
+    /// and Groq's literal `"null"` are both parameterless invocations, and an
+    /// object-valued `arguments` (llama.cpp, Hugging Face) still passes through
+    /// untouched.
+    ///
+    /// The `"null"` spelling is not hypothetical: every zero-argument call in
+    /// `tests/cassettes/groq/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml`
+    /// carries it, so folding it to `{}` is what keeps the truncation sentinel
+    /// from swallowing a real call.
+    #[test]
+    fn tolerant_tool_arguments_leave_complete_payloads_alone() {
+        let request = r#"{
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        { "type": "function", "id": "a", "function": { "name": "ping", "arguments": "" } },
+                        { "type": "function", "id": "b", "function": { "name": "hello", "arguments": { "city": "Paris" } } },
+                        { "type": "function", "id": "c", "function": { "name": "pong", "arguments": "null" } },
+                        { "type": "function", "id": "d", "function": { "name": "pang", "arguments": null } }
+                    ]
+                }
+            }],
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "object": "chat.completion",
+            "usage": { "completion_tokens": 1, "prompt_tokens": 1, "total_tokens": 2 },
+            "id": "chatcmpl-complete"
+        }
+        "#;
+
+        let ApiResponse::Ok(response) =
+            serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap()
+        else {
+            panic!("expected successful completion response");
+        };
+        let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(tool_calls[0].function.arguments, serde_json::json!({}));
+        assert_eq!(
+            tool_calls[1].function.arguments,
+            serde_json::json!({"city": "Paris"})
+        );
+        assert_eq!(
+            tool_calls[2].function.arguments,
+            serde_json::Value::Null,
+            "Groq's `\"null\"` spelling parses, so the call survives untouched — \
+             which is exactly why `null` cannot be a truncation sentinel"
+        );
+        assert_eq!(
+            tool_calls[3].function.arguments,
+            serde_json::Value::Null,
+            "and the same for a bare JSON null in the non-string branch"
+        );
+
+        let converted = response.normalize("openai").unwrap();
+        assert_eq!(
+            converted
+                .choice
+                .iter()
+                .filter(|content| matches!(content, completion::AssistantContent::ToolCall(_)))
+                .count(),
+            4,
+            "every parameterless call survives; only an unparseable one is dropped"
         );
     }
 
