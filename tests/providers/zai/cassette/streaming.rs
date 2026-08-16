@@ -21,8 +21,16 @@ use crate::support::{
     collect_stream_final_response_and_provider_final,
 };
 
-/// A prompt whose answer is CJK plus an emoji, so multi-byte characters have
-/// to survive whatever frame boundaries Z.AI happens to choose.
+/// A prompt whose answer is CJK plus an emoji, so the merge that assembles the
+/// streamed text has to carry multi-byte characters through.
+///
+/// Scope note: this cell cannot pin the *byte-split* hazard. The replay server
+/// fragments an SSE body only at `char` boundaries
+/// (`fragmented_sse_body_chunks` in `tests/common/cassettes.rs`), and the
+/// fixture stores the body as one string rather than the frames Z.AI actually
+/// emitted, so a cassette cannot reproduce a character split across chunks in
+/// either mode. What it does pin is that non-ASCII content survives the
+/// provider mapping and the multi-chunk merge intact.
 const CJK_PROMPT: &str = "用一句中文回答:什么是内存安全?最后加一个 🦀 表情。";
 
 #[tokio::test]
@@ -84,8 +92,8 @@ async fn general_thinking_streaming_and_cjk() {
             .expect("Z.AI CJK streaming completion should succeed");
 
         assert_nonempty_response(&response);
-        // A multi-byte character reassembled wrongly across frame boundaries
-        // surfaces as replacement characters, never as an error.
+        // A mishandled multi-byte character surfaces as a replacement
+        // character, never as an error.
         assert!(
             !response.contains('\u{fffd}'),
             "multi-byte characters must survive the frame boundaries: {response:?}"
@@ -99,12 +107,11 @@ async fn general_thinking_streaming_and_cjk() {
     })
     .await;
 
-    // Assert the cell's own premise from the fixture: a recording that stopped
-    // splitting multi-byte characters covers nothing, and a single-frame
-    // answer would pass the assertions above for the wrong reason.
+    // Assert the cell's own premise from the fixture: a single-frame answer
+    // would pass the assertions above without exercising the merge at all.
     let frames = recorded_response_text("general/thinking_streaming_and_cjk");
     assert!(
         frames.matches("data:").count() > 2,
-        "the CJK cell needs a genuinely chunked stream to be about anything"
+        "the CJK cell needs a genuinely multi-frame stream to be about anything"
     );
 }

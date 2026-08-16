@@ -11,10 +11,10 @@ use rig::completion::Prompt;
 use rig::prelude::*;
 
 use super::super::support::{
-    recorded_request_body, with_zai_anthropic_cassette, with_zai_coding_cassette,
-    with_zai_general_cassette,
+    recorded_request_body, recorded_request_path, with_zai_anthropic_cassette,
+    with_zai_coding_cassette, with_zai_general_cassette,
 };
-use super::super::{CHEAP_GENERAL_MODEL, CODING_MODEL};
+use super::super::{ANTHROPIC_MODEL, CHEAP_GENERAL_MODEL, CODING_MODEL};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
@@ -38,6 +38,11 @@ async fn general_completion_blocking_smoke() {
     // Read back after the wrapper returns: in record mode the fixture is
     // written on the way out, so an in-body read would assert against the
     // previous recording.
+    assert_eq!(
+        recorded_request_path("general/completion_blocking_smoke"),
+        "/api/paas/v4/chat/completions",
+        "the general base URL must compose with the endpoint suffix exactly once"
+    );
     let request = recorded_request_body("general/completion_blocking_smoke");
     assert_eq!(
         request["model"], CHEAP_GENERAL_MODEL,
@@ -63,6 +68,11 @@ async fn coding_completion_blocking_smoke() {
     })
     .await;
 
+    assert_eq!(
+        recorded_request_path("coding/completion_blocking_smoke"),
+        "/api/coding/paas/v4/chat/completions",
+        "the coding base URL must compose with the endpoint suffix exactly once"
+    );
     let request = recorded_request_body("coding/completion_blocking_smoke");
     assert_eq!(
         request["model"], CODING_MODEL,
@@ -85,13 +95,27 @@ async fn anthropic_completion_blocking_smoke() {
     })
     .await;
 
-    // The Anthropic dialect speaks a different request shape entirely, so the
-    // premise worth pinning is that rig sent Messages-API bytes and not Chat
-    // Completions bytes to `/api/anthropic`.
+    assert_eq!(
+        recorded_request_path("anthropic/completion_blocking_smoke"),
+        "/api/anthropic/v1/messages",
+        "the Anthropic base URL must compose with the Messages suffix exactly once"
+    );
+
+    // The premise worth pinning is that rig sent Messages-API bytes and not
+    // Chat Completions bytes. `max_tokens` cannot show that — both dialects
+    // have the field, and this client injects a default for it — but two
+    // things can: Anthropic hoists the preamble out of `messages` into a
+    // top-level `system`, and its user content is an array of typed blocks
+    // rather than a bare string.
     let request = recorded_request_body("anthropic/completion_blocking_smoke");
-    assert_eq!(request["model"], CODING_MODEL);
+    assert_eq!(request["model"], ANTHROPIC_MODEL);
+    assert_eq!(
+        request["system"][0]["text"], BASIC_PREAMBLE,
+        "the Messages API hoists the preamble into a top-level `system` block array; \
+         request was {request}"
+    );
     assert!(
-        request["max_tokens"].is_number(),
-        "the Anthropic dialect requires max_tokens; request was {request}"
+        request["messages"][0]["content"].is_array(),
+        "the Messages API carries user content as typed blocks; request was {request}"
     );
 }

@@ -18,9 +18,19 @@ use super::super::CHEAP_GENERAL_MODEL;
 use super::super::support::{recorded_request_body, with_zai_general_cassette};
 use crate::support::assert_nonempty_response;
 
+/// The prompt and cap every cell here sends. Sharing them is what makes the
+/// control meaningful: the rejected cells and the control differ in the model
+/// name and nothing else, so a 400 is attributable to the handle.
+///
+/// (Shared as consts rather than by reading a sibling cell's fixture — a cell
+/// must read only its own cassette, since in record mode the others may not be
+/// written yet.)
+const PROBE_PROMPT: &str = "Say hi.";
+const PROBE_MAX_TOKENS: u64 = 16;
+
 /// Asserts that Z.AI rejected a model handle, and that the rejection carries
 /// the provider's own error envelope rather than a bare status.
-async fn assert_model_rejected(error: rig::completion::CompletionError, scenario: &str) {
+fn assert_model_rejected(error: rig::completion::CompletionError, scenario: &str) {
     let status = error
         .provider_response_status()
         .unwrap_or_else(|| panic!("{scenario}: the rejection should preserve its HTTP status"));
@@ -39,6 +49,12 @@ async fn assert_model_rejected(error: rig::completion::CompletionError, scenario
     );
 }
 
+/// The request body every cell in this file sends, model name aside.
+fn assert_probe_shape(request: &serde_json::Value) {
+    assert_eq!(request["messages"][0]["content"], PROBE_PROMPT);
+    assert_eq!(request["max_tokens"], PROBE_MAX_TOKENS);
+}
+
 #[tokio::test]
 #[ignore = "unrecorded: requires ZAI_API_KEY to record the cassette"]
 // The dead constant is exactly what this cell is about.
@@ -48,14 +64,17 @@ async fn general_unknown_model_constant_glm_4_6_air() {
         "general/unknown_model_constant_glm_4_6_air",
         |client| async move {
             let model = client.completion_model(rig::providers::zai::GLM_4_6_AIR);
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let request = model
+                .completion_request(PROBE_PROMPT)
+                .max_tokens(PROBE_MAX_TOKENS)
+                .build();
 
             let error = model
                 .completion(request)
                 .await
                 .expect_err("Z.AI should reject a model it does not serve");
 
-            assert_model_rejected(error, "general/unknown_model_constant_glm_4_6_air").await;
+            assert_model_rejected(error, "general/unknown_model_constant_glm_4_6_air");
         },
     )
     .await;
@@ -65,6 +84,7 @@ async fn general_unknown_model_constant_glm_4_6_air() {
         request["model"], "glm-4.6-air",
         "the cell must have asked for the dead constant itself"
     );
+    assert_probe_shape(&request);
 }
 
 #[tokio::test]
@@ -76,14 +96,17 @@ async fn general_unknown_model_constant_glm_4_6_x() {
         "general/unknown_model_constant_glm_4_6_x",
         |client| async move {
             let model = client.completion_model(rig::providers::zai::GLM_4_6_X);
-            let request = model.completion_request("Say hi.").max_tokens(16).build();
+            let request = model
+                .completion_request(PROBE_PROMPT)
+                .max_tokens(PROBE_MAX_TOKENS)
+                .build();
 
             let error = model
                 .completion(request)
                 .await
                 .expect_err("Z.AI should reject a model it does not serve");
 
-            assert_model_rejected(error, "general/unknown_model_constant_glm_4_6_x").await;
+            assert_model_rejected(error, "general/unknown_model_constant_glm_4_6_x");
         },
     )
     .await;
@@ -93,6 +116,7 @@ async fn general_unknown_model_constant_glm_4_6_x() {
         request["model"], "glm-4.6-x",
         "the cell must have asked for the dead constant itself"
     );
+    assert_probe_shape(&request);
 }
 
 #[tokio::test]
@@ -100,7 +124,10 @@ async fn general_unknown_model_constant_glm_4_6_x() {
 async fn general_known_model_control() {
     with_zai_general_cassette("general/known_model_control", |client| async move {
         let model = client.completion_model(CHEAP_GENERAL_MODEL);
-        let request = model.completion_request("Say hi.").max_tokens(16).build();
+        let request = model
+            .completion_request(PROBE_PROMPT)
+            .max_tokens(PROBE_MAX_TOKENS)
+            .build();
 
         let response = model
             .completion(request)
@@ -114,12 +141,7 @@ async fn general_known_model_control() {
     .await;
 
     // Same body, same endpoint, only the name differs — that is what makes the
-    // two rejections above attributable to the model handle.
-    let control = recorded_request_body("general/known_model_control");
-    let rejected = recorded_request_body("general/unknown_model_constant_glm_4_6_air");
-    assert_eq!(
-        control["messages"], rejected["messages"],
-        "the control must send the same conversation as the rejected cells"
-    );
-    assert_eq!(control["max_tokens"], rejected["max_tokens"]);
+    // two rejections above attributable to the model handle. Each cell checks
+    // the shared shape against its own fixture rather than against a sibling's.
+    assert_probe_shape(&recorded_request_body("general/known_model_control"));
 }

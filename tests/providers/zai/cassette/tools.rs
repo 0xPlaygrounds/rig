@@ -70,9 +70,11 @@ async fn general_tool_call_roundtrip_streaming() {
     .await;
 
     // The cell's premise: it only covers tool-call *streaming* if Z.AI actually
-    // streamed a tool call. Assert that from the recorded frames rather than
-    // inferring it from the answer, which a model could reach without calling
-    // anything.
+    // streamed a tool call. Assert that from turn 1's recorded frames rather
+    // than inferring it from the answer, which a model could reach without
+    // calling anything. (`recorded_response_text` stops at the document
+    // separator, so turn 2's request body — which also carries `tool_calls` —
+    // is outside the window.)
     let frames = recorded_response_text("general/tool_call_roundtrip_streaming");
     assert!(
         frames.contains("tool_calls"),

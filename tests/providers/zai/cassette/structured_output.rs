@@ -1,12 +1,18 @@
 //! Structured-output coverage for Z.AI's general endpoint.
 //!
 //! Z.AI documents `response_format` as an object whose `type` is
-//! `text | json_object`; there is no `json_schema` member. rig therefore does
-//! not map `output_schema` onto `response_format` for Z.AI (`ZAiExt`'s
-//! `SUPPORTS_RESPONSE_FORMAT = false`) and lets the agent runtime enforce the
-//! schema through its tool-mode fallback instead. These cells hold both ends
-//! of that: the request must stay free of the unsupported block, and the
-//! schema must still be honored.
+//! `text | json_object`; there is no `json_schema` member, so rig does not map
+//! `output_schema` onto `response_format` for Z.AI (`ZAiExt`'s
+//! `SUPPORTS_RESPONSE_FORMAT = false`) — it drops the schema with a warning.
+//!
+//! Be precise about what that leaves. `prompt_typed` pins `OutputMode::Native`
+//! unconditionally (`rig-agent/src/agent/prompt_request/mod.rs`), and Native is
+//! the mode that would have carried the schema to the provider — so a typed
+//! prompt on Z.AI is now *unconstrained*, exactly as on every other provider
+//! with this flag false, and whether GLM returns conforming JSON anyway is a
+//! model behavior these cells observe rather than a guarantee rig enforces.
+//! Tool-mode enforcement covers only the untyped `output_schema`-plus-tools
+//! path. The load-bearing assertion here is therefore the request boundary.
 
 use rig::completion::TypedPrompt;
 use rig::prelude::*;
@@ -32,6 +38,10 @@ async fn general_structured_output_native_blocking() {
                 .await
                 .expect("Z.AI structured output prompt should succeed");
 
+            // An observation, not a guarantee: nothing constrained this turn
+            // (see the module doc). If a recording ever shows GLM answering
+            // with prose here, that is the finding, and the remedy is
+            // `OutputMode::Prompted`, not re-enabling `response_format`.
             assert_smoke_structured_output(&response);
         },
     )
