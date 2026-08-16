@@ -255,8 +255,16 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
                     Some("{\"x\":"),
                 )],
             )),
+            "empty_start" => Some(tool_call_choice(
+                CompatibleFinishReason::Absent,
+                vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
+            )),
             "finish" => Some(tool_call_choice(
                 CompatibleFinishReason::Reported(crate::completion::FinishReason::ToolCalls),
+                Vec::new(),
+            )),
+            "length_finish" => Some(tool_call_choice(
+                CompatibleFinishReason::Reported(crate::completion::FinishReason::Length),
                 Vec::new(),
             )),
             _ => None,

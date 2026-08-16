@@ -48,6 +48,11 @@ pub struct ToolCallSlot {
     /// fragment preceded it — the buffer already holds streamed bytes, and
     /// re-emitting the restatement doubled them.
     pub saw_arguments_delta: bool,
+    /// Whether any argument fragment carried a non-whitespace byte. An empty
+    /// argument slot under an output-length finish reason is an incomplete
+    /// call, not evidence that the model deliberately invoked a zero-argument
+    /// tool.
+    saw_non_whitespace_arguments_delta: bool,
     /// The payload the wire announced when it opened the call (Gemini
     /// Interactions `step.start` usually carries `"arguments": {}`, and
     /// sometimes the whole payload). Replace-if-no-deltas, never
@@ -61,6 +66,19 @@ impl ToolCallSlot {
     /// The assembly id this call's fragments are emitted under.
     pub fn key(&self) -> &StreamPartId {
         &self.key
+    }
+
+    /// Record a raw argument fragment before it is forwarded to the shared
+    /// accumulator.
+    pub fn observe_arguments_delta(&mut self, arguments: &str) {
+        self.saw_arguments_delta = true;
+        self.saw_non_whitespace_arguments_delta |= !arguments.trim().is_empty();
+    }
+
+    /// Whether the wire supplied enough argument bytes to distinguish this
+    /// slot from a call cut off before its first argument token.
+    pub fn has_substantive_arguments(&self) -> bool {
+        self.saw_non_whitespace_arguments_delta || self.announce_arguments.is_some()
     }
 
     /// Build the end event that closes this call's assembly in the shared
@@ -151,6 +169,7 @@ where
             signature: None,
             additional_params: None,
             saw_arguments_delta: false,
+            saw_non_whitespace_arguments_delta: false,
             announce_arguments: None,
         });
 

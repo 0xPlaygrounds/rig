@@ -7,6 +7,7 @@
 //! small profile hooks.
 
 use http::Request;
+use serde::{Deserialize, Deserializer};
 
 use super::adapter::{AdapterOutput, WireAdapter, WireFrame};
 use super::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
@@ -72,6 +73,99 @@ pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
         "content_filter" => FinishReason::ContentFilter,
         other => FinishReason::Other(other.to_owned()),
     }
+}
+
+/// Deserialize OpenAI-compatible choices while tolerating only tool calls
+/// that the provider cut off under an output-length finish reason.
+///
+/// The outer choice owns the evidence that the turn was truncated. Keeping
+/// the policy here prevents an ordinary `tool_calls` turn with malformed JSON
+/// arguments from being silently rewritten as though the provider had never
+/// returned the call. Before dropping a candidate, a copy with only its
+/// arguments repaired to `{}` must deserialize successfully; compound defects
+/// such as a missing id or unknown tool type therefore remain loud.
+pub(crate) fn deserialize_choices_dropping_incomplete_tool_calls<'de, D, T>(
+    deserializer: D,
+) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    fn incomplete_arguments(call: &serde_json::Value) -> bool {
+        call.get("function")
+            .and_then(|function| function.get("arguments"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|raw| {
+                raw.trim().is_empty() || crate::json_utils::parse_tool_arguments(raw).is_err()
+            })
+    }
+
+    fn repair_incomplete_arguments(choice: &mut serde_json::Value) -> bool {
+        let Some(tool_calls) = choice
+            .get_mut("message")
+            .and_then(|message| message.get_mut("tool_calls"))
+            .and_then(serde_json::Value::as_array_mut)
+        else {
+            return false;
+        };
+
+        let mut repaired = false;
+        for call in tool_calls {
+            if !incomplete_arguments(call) {
+                continue;
+            }
+            let Some(arguments) = call
+                .get_mut("function")
+                .and_then(|function| function.get_mut("arguments"))
+            else {
+                continue;
+            };
+            *arguments = serde_json::Value::String("{}".to_owned());
+            repaired = true;
+        }
+        repaired
+    }
+
+    fn drop_incomplete_arguments(choice: &mut serde_json::Value) -> usize {
+        let Some(tool_calls) = choice
+            .get_mut("message")
+            .and_then(|message| message.get_mut("tool_calls"))
+            .and_then(serde_json::Value::as_array_mut)
+        else {
+            return 0;
+        };
+
+        let before = tool_calls.len();
+        tool_calls.retain(|call| !incomplete_arguments(call));
+        before - tool_calls.len()
+    }
+
+    Vec::<serde_json::Value>::deserialize(deserializer)?
+        .into_iter()
+        .map(|mut choice| {
+            let is_length = choice
+                .get("finish_reason")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|reason| {
+                    matches!(map_openai_finish_reason(reason), FinishReason::Length)
+                });
+
+            if is_length {
+                let mut repaired = choice.clone();
+                if repair_incomplete_arguments(&mut repaired)
+                    && serde_json::from_value::<T>(repaired).is_ok()
+                {
+                    let dropped = drop_incomplete_arguments(&mut choice);
+                    tracing::debug!(
+                        dropped,
+                        "dropping tool calls incomplete under an output-length finish reason"
+                    );
+                }
+            }
+
+            serde_json::from_value(choice).map_err(serde::de::Error::custom)
+        })
+        .collect()
 }
 
 /// Shared skeleton for normalizing an OpenAI-shaped *non-streaming* chat
@@ -570,6 +664,7 @@ where
             if let Some(arguments) = incoming.arguments.as_ref()
                 && !arguments.is_empty()
             {
+                slot.observe_arguments_delta(arguments);
                 tool_events.push(RawStreamingChoice::ToolCallDelta {
                     id: slot.key().clone(),
                     content: ToolCallDeltaContent::Delta(arguments.clone()),
@@ -624,7 +719,18 @@ where
         // Tool calls the provider fully delivered are content, so a truncated
         // stream still flushes them to the consumer. Partial calls (arguments
         // that never parse) drop in the accumulator.
+        let output_length_truncation = matches!(
+            self.final_finish_reason.as_ref(),
+            Some(FinishReason::Length)
+        );
         for slot in self.open_tool_calls.drain_ordered() {
+            if output_length_truncation && !slot.has_substantive_arguments() {
+                tracing::debug!(
+                    tool = %slot.name,
+                    "dropping streamed tool call cut off before its first argument token"
+                );
+                continue;
+            }
             let end = slot.end_event(UnparseableToolInput::Drop);
             out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
         }
@@ -1498,6 +1604,68 @@ mod tests {
             !saw_tool_call,
             "finish_reason cleanup should drop partial tool calls instead of emitting them"
         );
+    }
+
+    #[tokio::test]
+    async fn length_finish_reason_drops_a_call_with_no_argument_tokens() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(["empty_start", "length_finish"]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
+            .await
+            .expect("stream should start");
+
+        while stream.next().await.is_some() {}
+
+        assert!(
+            stream.choice.iter().all(|content| !matches!(
+                content,
+                crate::completion::AssistantContent::ToolCall(_)
+            )),
+            "a length-truncated empty argument slot must not become a tool invocation"
+        );
+        assert_eq!(
+            stream
+                .response
+                .as_ref()
+                .and_then(|response| response.finish_reason.clone()),
+            Some(crate::completion::FinishReason::Length)
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_calls_finish_reason_keeps_a_deliberate_zero_argument_call() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(["empty_start", "finish"]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
+            .await
+            .expect("stream should start");
+
+        while stream.next().await.is_some() {}
+
+        let calls = stream
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                crate::completion::AssistantContent::ToolCall(call) => Some(call),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].function.arguments, serde_json::json!({}));
     }
 
     #[tokio::test]

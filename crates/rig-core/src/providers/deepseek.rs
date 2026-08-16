@@ -176,6 +176,9 @@ pub struct CompletionResponse {
     pub object: Option<String>,
     #[serde(default)]
     pub system_fingerprint: Option<String>,
+    #[serde(
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+    )]
     pub choices: Vec<Choice>,
     pub usage: Usage,
 }
@@ -278,15 +281,9 @@ pub enum Message {
         content: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        /// DeepSeek emits the tool call anyway when `max_tokens` runs out
-        /// mid-arguments — live turns capped at 24/32/48/64 tokens come back
-        /// with `finish_reason: "length"` and `arguments` cut off partway
-        /// through the object — so a strict parse took the whole response down
-        /// with it. Such a call is dropped here instead; see
-        /// [`drop_truncated_tool_calls`](json_utils::drop_truncated_tool_calls).
         #[serde(
             default,
-            deserialize_with = "json_utils::drop_truncated_tool_calls",
+            deserialize_with = "json_utils::null_or_default",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -840,6 +837,48 @@ mod tests {
             panic!("expected a parameterless tool call");
         };
         assert_eq!(call.function.arguments, serde_json::json!({}));
+
+        let truncated_empty = normalized(assistant_turn("length", "", None, &[""]));
+        assert!(
+            truncated_empty.choice.is_empty(),
+            "an output-length turn with no argument tokens must not dispatch a tool"
+        );
+    }
+
+    /// DeepSeek documents that an ordinary function call may contain invalid
+    /// JSON. Without an outer `length` signal that is a provider response
+    /// defect and must not disappear from the native response.
+    #[test]
+    fn deepseek_malformed_completed_tool_call_is_loud() {
+        let response = serde_json::json!({
+            "id": "chatcmpl-malformed",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_0",
+                        "index": 0,
+                        "type": "function",
+                        "function": {"name": "page", "arguments": "{\"team\":"}
+                    }]
+                }
+            }],
+            "usage": {
+                "completion_tokens": 1,
+                "prompt_tokens": 1,
+                "total_tokens": 2
+            }
+        });
+
+        assert!(
+            serde_json::from_value::<CompletionResponse>(response).is_err(),
+            "a completed malformed call must not be rewritten away"
+        );
     }
 
     /// The full blocking block-order enumeration: reasoning present/absent x

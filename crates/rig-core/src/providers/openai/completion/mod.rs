@@ -180,12 +180,9 @@ pub enum Message {
         audio: Option<AudioAssistant>,
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
-        /// A call whose `arguments` were truncated mid-JSON is dropped rather
-        /// than failing the whole response; see
-        /// [`drop_truncated_tool_calls`](json_utils::drop_truncated_tool_calls).
         #[serde(
             default,
-            deserialize_with = "json_utils::drop_truncated_tool_calls",
+            deserialize_with = "json_utils::null_or_default",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -1148,6 +1145,9 @@ pub struct CompletionResponse {
     pub created: u64,
     pub model: String,
     pub system_fingerprint: Option<String>,
+    #[serde(
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+    )]
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
 }
@@ -3826,10 +3826,90 @@ mod tests {
         );
     }
 
-    /// The tolerant parse must not weaken a complete payload: an empty string
-    /// and Groq's literal `"null"` are both parameterless invocations, and an
-    /// object-valued `arguments` (llama.cpp, Hugging Face) still passes through
-    /// untouched.
+    fn response_with_tool_call(finish_reason: &str, call: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "choices": [{
+                "finish_reason": finish_reason,
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [call]
+                },
+                "logprobs": null
+            }],
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "object": "chat.completion",
+            "system_fingerprint": null,
+            "usage": { "completion_tokens": 1, "prompt_tokens": 1, "total_tokens": 2 },
+            "id": "chatcmpl-tool-call"
+        })
+    }
+
+    /// Invalid JSON on a completed tool turn is a provider defect, not
+    /// truncation evidence. It must stay visible on the native raw surface.
+    #[test]
+    fn malformed_completed_tool_call_is_not_silently_dropped() {
+        let response = response_with_tool_call(
+            "tool_calls",
+            serde_json::json!({
+                "type": "function",
+                "id": "call_1",
+                "function": { "name": "page", "arguments": "{\"team\":" }
+            }),
+        );
+
+        assert!(
+            serde_json::from_value::<CompletionResponse>(response).is_err(),
+            "ordinary malformed tool output must remain a loud response defect"
+        );
+    }
+
+    /// Repairing the arguments in a validation copy must not hide an
+    /// independent defect on the same truncated call.
+    #[test]
+    fn truncated_tool_call_with_a_compound_defect_is_not_dropped() {
+        let response = response_with_tool_call(
+            "length",
+            serde_json::json!({
+                "type": "not_a_real_tool_type",
+                "id": "call_1",
+                "function": { "name": "page", "arguments": "{\"team\":" }
+            }),
+        );
+
+        assert!(
+            serde_json::from_value::<CompletionResponse>(response).is_err(),
+            "the unknown type must remain loud even beside truncated arguments"
+        );
+    }
+
+    /// Under `length`, an empty string means the turn ended before the first
+    /// argument token. Treating it as `{}` could dispatch a zero-argument
+    /// side-effect tool from an incomplete turn.
+    #[test]
+    fn output_length_drops_a_tool_call_with_no_argument_tokens() {
+        let response = response_with_tool_call(
+            "length",
+            serde_json::json!({
+                "type": "function",
+                "id": "call_1",
+                "function": { "name": "page", "arguments": "" }
+            }),
+        );
+        let response: CompletionResponse =
+            serde_json::from_value(response).expect("the truncated turn should survive");
+        let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+            panic!("expected assistant message");
+        };
+        assert!(tool_calls.is_empty());
+    }
+
+    /// The choice-level truncation policy must not weaken a complete payload:
+    /// an empty string and Groq's literal `"null"` are both parameterless
+    /// invocations, and object-valued `arguments` (llama.cpp, Hugging Face)
+    /// still pass through untouched.
     ///
     /// The `"null"` spelling is not hypothetical: every zero-argument call in
     /// `tests/cassettes/groq/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml`
@@ -3893,7 +3973,7 @@ mod tests {
                 .filter(|content| matches!(content, completion::AssistantContent::ToolCall(_)))
                 .count(),
             4,
-            "every parameterless call survives; only an unparseable one is dropped"
+            "every completed parameterless call survives"
         );
     }
 

@@ -574,6 +574,9 @@ pub struct CompletionResponse {
     pub object: String,
     pub created: u64,
     pub model: String,
+    #[serde(
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+    )]
     pub choices: Vec<Choice>,
     pub system_fingerprint: Option<String>,
     pub usage: Option<Usage>,
@@ -2139,9 +2142,10 @@ mod tests {
         );
     }
 
-    /// The shared `openai::Function` now tolerates the truncated JSON a
-    /// `max_tokens`-capped turn emits, and every normalizer built on it drops
-    /// the unusable call rather than losing the turn. Reproduced live on
+    /// The shared choice decoder tolerates the truncated JSON a
+    /// `max_tokens`-capped turn emits only under `finish_reason: length`, and
+    /// every normalizer built on it drops the unusable call rather than losing
+    /// the turn. Reproduced live on
     /// DeepSeek (rig#2354) at 24/32/48/64-token budgets; the same wire type
     /// backs OpenRouter, so the same turn shape is pinned here.
     #[test]
@@ -2199,6 +2203,34 @@ mod tests {
             converted.choice
         );
         assert_eq!(converted.usage.total_tokens, 34);
+    }
+
+    #[test]
+    fn openrouter_malformed_completed_tool_arguments_remain_loud() {
+        let json = json!({
+            "id": "gen-malformed",
+            "object": "chat.completion",
+            "created": 1,
+            "model": "deepseek/deepseek-chat",
+            "choices": [{
+                "index": 0,
+                "finish_reason": "tool_calls",
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{\"q\":"}
+                    }]
+                }
+            }]
+        });
+
+        assert!(
+            serde_json::from_value::<CompletionResponse>(json).is_err(),
+            "only an outer output-length reason authorizes truncation tolerance"
+        );
     }
 
     #[test]

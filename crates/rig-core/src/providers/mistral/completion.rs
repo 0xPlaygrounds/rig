@@ -333,15 +333,9 @@ pub enum Message {
     Assistant {
         #[serde(default, deserialize_with = "deserialize_mistral_content_string")]
         content: String,
-        /// Mistral emits the tool call anyway when `max_tokens` runs out
-        /// mid-arguments (a live turn capped at 32 tokens returns
-        /// `finish_reason: "length"` with `arguments` cut off partway through
-        /// the object), so such a call is dropped rather than failing the whole
-        /// response; see
-        /// [`drop_truncated_tool_calls`](json_utils::drop_truncated_tool_calls).
         #[serde(
             default,
-            deserialize_with = "json_utils::drop_truncated_tool_calls",
+            deserialize_with = "json_utils::null_or_default",
             skip_serializing_if = "Vec::is_empty"
         )]
         tool_calls: Vec<ToolCall>,
@@ -391,6 +385,9 @@ pub struct CompletionResponse {
     pub created: u64,
     pub model: String,
     pub system_fingerprint: Option<String>,
+    #[serde(
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+    )]
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
 }
@@ -681,6 +678,30 @@ mod tests {
                 .iter()
                 .any(|content| matches!(content, crate::completion::AssistantContent::ToolCall(_))),
             "a complete call must still reach the caller"
+        );
+    }
+
+    /// The choice-level tolerance is gated by the truncation reason. Invalid
+    /// JSON on a completed tool turn remains a response error.
+    #[test]
+    fn malformed_completed_tool_arguments_still_fail() {
+        let data = r#"{
+            "id": "cmpl-1", "object": "chat.completion", "created": 1,
+            "model": "mistral-small-latest", "system_fingerprint": null,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": null, "tool_calls": [{
+                    "id": "call_1", "type": "function",
+                    "function": {"name": "add", "arguments": "{\"x\":"}
+                }]},
+                "logprobs": null, "finish_reason": "tool_calls"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+        }"#;
+
+        assert!(
+            serde_json::from_str::<CompletionResponse>(data).is_err(),
+            "ordinary malformed tool output must remain loud"
         );
     }
 

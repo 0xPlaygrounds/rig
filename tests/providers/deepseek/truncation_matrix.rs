@@ -16,8 +16,8 @@
 //! | budget | recorded `arguments` | `finish_reason` | class |
 //! |---|---|---|---|
 //! | 12 | *(no tool call at all)* | `length` | control: contentless truncation |
-//! | 16 | `""` | `length` | boundary: empty arguments are `{}` |
-//! | 20 | `""` | `length` | boundary: empty arguments are `{}` |
+//! | 16 | `""` | `length` | boundary: cut before first argument token |
+//! | 20 | `""` | `length` | boundary: cut before first argument token |
 //! | 24 | `{"summary": ` | `length` | **truncated** |
 //! | 32 | `{"summary": "Log this incident: the` | `length` | **truncated** |
 //! | 48 | `…raced the artifact uploader, then the ret` | `length` | **truncated** |
@@ -377,11 +377,11 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
 }
 
 #[tokio::test]
-async fn blocking_budget_16_empty_arguments_are_a_parameterless_call() {
+async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
-        "truncation_matrix/blocking_budget_16_empty_arguments_are_a_parameterless_call";
+        "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length";
     with_deepseek_truncation_cassette_result(
-        "truncation_matrix/blocking_budget_16_empty_arguments_are_a_parameterless_call",
+        "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
             let model = client.completion_model(MODEL);
             let normalized = model
@@ -395,17 +395,17 @@ async fn blocking_budget_16_empty_arguments_are_a_parameterless_call() {
                 .await?
                 .normalize("deepseek")?;
             let calls = tool_calls(&normalized.choice);
-            assert_eq!(
-                calls.len(),
-                1,
-                "an empty `arguments` string is a parameterless invocation, not a truncation"
+            assert!(
+                calls.is_empty(),
+                "`length` identifies the empty argument slot as an incomplete call"
             );
-            assert_eq!(calls[0].function.arguments, json!({}));
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("blocking_budget_16_empty_arguments_are_a_parameterless_call should replay from its cassette");
+    .expect(
+        "blocking_budget_16_empty_arguments_are_dropped_on_length should replay from its cassette",
+    );
 
     let arguments = recorded_blocking_arguments(SCENARIO);
     assert_eq!(
@@ -417,11 +417,11 @@ async fn blocking_budget_16_empty_arguments_are_a_parameterless_call() {
 }
 
 #[tokio::test]
-async fn blocking_budget_20_empty_arguments_are_a_parameterless_call() {
+async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
-        "truncation_matrix/blocking_budget_20_empty_arguments_are_a_parameterless_call";
+        "truncation_matrix/blocking_budget_20_empty_arguments_are_dropped_on_length";
     with_deepseek_truncation_cassette_result(
-        "truncation_matrix/blocking_budget_20_empty_arguments_are_a_parameterless_call",
+        "truncation_matrix/blocking_budget_20_empty_arguments_are_dropped_on_length",
         |client| async move {
             let model = client.completion_model(MODEL);
             let normalized = model
@@ -435,8 +435,7 @@ async fn blocking_budget_20_empty_arguments_are_a_parameterless_call() {
                 .await?
                 .normalize("deepseek")?;
             let calls = tool_calls(&normalized.choice);
-            assert_eq!(calls.len(), 1);
-            assert_eq!(calls[0].function.arguments, json!({}));
+            assert!(calls.is_empty());
             assert_eq!(
                 normalized.finish_reason(),
                 Some(rig::completion::FinishReason::Length),
@@ -446,7 +445,9 @@ async fn blocking_budget_20_empty_arguments_are_a_parameterless_call() {
         },
     )
     .await
-    .expect("blocking_budget_20_empty_arguments_are_a_parameterless_call should replay from its cassette");
+    .expect(
+        "blocking_budget_20_empty_arguments_are_dropped_on_length should replay from its cassette",
+    );
 
     assert_eq!(recorded_blocking_arguments(SCENARIO), vec![String::new()]);
     assert_eq!(recorded_blocking_finish_reason(SCENARIO), "length");
@@ -581,11 +582,11 @@ async fn streaming_budget_12_truncates_before_any_tool_call() {
 }
 
 #[tokio::test]
-async fn streaming_budget_16_empty_arguments_are_a_parameterless_call() {
+async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
     const SCENARIO: &str =
-        "truncation_matrix/streaming_budget_16_empty_arguments_are_a_parameterless_call";
+        "truncation_matrix/streaming_budget_16_empty_arguments_are_dropped_on_length";
     with_deepseek_truncation_cassette_result(
-        "truncation_matrix/streaming_budget_16_empty_arguments_are_a_parameterless_call",
+        "truncation_matrix/streaming_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
             let model = client.completion_model(MODEL);
             let outcome = collect_raw_stream_outcome(
@@ -600,17 +601,21 @@ async fn streaming_budget_16_empty_arguments_are_a_parameterless_call() {
                     .await?,
             )
             .await;
-            assert_eq!(
-                outcome.tool_call_names(),
-                vec!["file_report"],
-                "both transports read an empty payload as a parameterless call"
+            assert!(
+                outcome.tool_calls.is_empty(),
+                "`length` prevents an incomplete zero-byte call from reaching a tool"
             );
-            assert_eq!(outcome.tool_calls[0].function.arguments, json!({}));
+            assert_eq!(
+                outcome.finish_reason(),
+                Some(rig::completion::FinishReason::Length)
+            );
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("streaming_budget_16_empty_arguments_are_a_parameterless_call should replay from its cassette");
+    .expect(
+        "streaming_budget_16_empty_arguments_are_dropped_on_length should replay from its cassette",
+    );
 
     assert_eq!(recorded_stream_arguments(SCENARIO), vec![String::new()]);
     assert_eq!(recorded_stream_finish_reason(SCENARIO), "length");
@@ -977,6 +982,9 @@ struct FileReportArgs {
     summary: String,
 }
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct EmptyFileReportArgs {}
+
 #[derive(Debug, thiserror::Error)]
 #[error("file_report failed")]
 struct FileReportError;
@@ -1012,6 +1020,44 @@ impl rig::tool::Tool for FileReport {
         self.invocations
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(format!("filed: {}", args.summary))
+    }
+}
+
+/// A real zero-argument side-effect tool for the empty-wire boundary. This is
+/// intentionally separate from `FileReport`: `{}` cannot reach that tool's
+/// `call` method because its required `summary` fails argument decoding, which
+/// would make an invocation-count assertion pass for the wrong reason.
+#[derive(Clone)]
+struct ZeroArgumentFileReport {
+    invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl rig::tool::Tool for ZeroArgumentFileReport {
+    const NAME: &'static str = "file_report";
+    type Error = FileReportError;
+    type Args = EmptyFileReportArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "File the incident now; this action takes no arguments.".to_owned()
+    }
+
+    fn parameters(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false,
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        self.invocations
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok("filed".to_owned())
     }
 }
 
@@ -1108,6 +1154,93 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
     .expect("agent_streaming_truncated_call_is_not_invoked should replay from its cassette");
 
     assert_unparseable(&recorded_stream_arguments(SCENARIO)[0], SCENARIO);
+}
+
+/// The empty-arguments boundary is safety-sensitive at agent level: without
+/// consulting the outer `length` reason, `{}` would be dispatched to a
+/// zero-argument side-effect tool even though generation ended before the
+/// first argument token.
+#[tokio::test]
+async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
+    const SCENARIO: &str =
+        "truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked";
+    with_deepseek_truncation_cassette_result(
+        "truncation_matrix/agent_blocking_empty_arguments_on_length_are_not_invoked",
+        |client| async move {
+            let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let agent = client
+                .agent(MODEL)
+                .preamble(TOOL_PREAMBLE)
+                .tool(ZeroArgumentFileReport {
+                    invocations: invocations.clone(),
+                })
+                .additional_params(non_thinking_params())
+                .max_tokens(16)
+                .default_max_turns(1)
+                .build();
+
+            let outcome = rig::completion::Prompt::prompt(&agent, INCIDENT_PROMPT).await;
+            if let Err(error) = outcome {
+                assert!(
+                    !error.to_string().contains("ProviderResponseError"),
+                    "the truncated turn must reach the agent loop: {error}"
+                );
+            }
+            assert_eq!(
+                invocations.load(std::sync::atomic::Ordering::SeqCst),
+                0,
+                "the incomplete empty-argument call must not be dispatched"
+            );
+            Ok::<(), anyhow::Error>(())
+        },
+    )
+    .await
+    .expect("blocking empty-argument safety cell should replay");
+
+    assert_eq!(recorded_blocking_arguments(SCENARIO), vec![String::new()]);
+    assert_eq!(recorded_blocking_finish_reason(SCENARIO), "length");
+}
+
+#[tokio::test]
+async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
+    const SCENARIO: &str =
+        "truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked";
+    with_deepseek_truncation_cassette_result(
+        "truncation_matrix/agent_streaming_empty_arguments_on_length_are_not_invoked",
+        |client| async move {
+            let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let agent = client
+                .agent(MODEL)
+                .preamble(TOOL_PREAMBLE)
+                .tool(ZeroArgumentFileReport {
+                    invocations: invocations.clone(),
+                })
+                .additional_params(non_thinking_params())
+                .max_tokens(16)
+                .build();
+
+            let mut stream = rig::streaming::StreamingChat::stream_chat(
+                &agent,
+                INCIDENT_PROMPT,
+                Vec::<rig::completion::Message>::new(),
+            )
+            .max_turns(1)
+            .await;
+            let observation = crate::support::collect_stream_observation(&mut stream).await;
+            assert!(observation.tool_calls.is_empty());
+            assert_eq!(
+                invocations.load(std::sync::atomic::Ordering::SeqCst),
+                0,
+                "the incomplete empty-argument call must not be dispatched"
+            );
+            Ok::<(), anyhow::Error>(())
+        },
+    )
+    .await
+    .expect("streaming empty-argument safety cell should replay");
+
+    assert_eq!(recorded_stream_arguments(SCENARIO), vec![String::new()]);
+    assert_eq!(recorded_stream_finish_reason(SCENARIO), "length");
 }
 
 // ================================================================
