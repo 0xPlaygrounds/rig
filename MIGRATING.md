@@ -1738,7 +1738,23 @@ the compiler no longer insists.
 `Option<WireId>` instead of `Option<String>`. `ProviderResponseError`'s
 `provider_request_id` is the same transport id on the failure path and follows;
 its `provider_request_id()` accessor still returns `Option<&str>`, so readers
-are unchanged.
+are unchanged. `completion::Message::Assistant`'s `id` follows as well — it
+holds the same provider handle, copied straight from a response, so the two
+now share a type and no conversion is needed between them:
+
+```rust
+// before
+Message::Assistant { id: turn.message_id.map(String::from), content }
+// after
+Message::Assistant { id: turn.message_id, content }
+```
+
+Constructing one from a raw string uses `WireId::new`, which yields `None` for
+`""`:
+
+```rust
+Message::Assistant { id: WireId::new(provider_id), content }
+```
 
 `WireId::new` is the only way to build one and it rejects the empty string, so
 the "an empty identifier means absent" rule these types always documented is

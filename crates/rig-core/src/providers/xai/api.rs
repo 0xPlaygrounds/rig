@@ -731,7 +731,7 @@ mod tests {
             }],
         };
         let message = RigMessage::Assistant {
-            id: Some("assistant_1".to_string()),
+            id: crate::streaming::WireId::new("assistant_1"),
             content: vec![AssistantContent::Reasoning(reasoning)],
         };
 
@@ -762,7 +762,7 @@ mod tests {
             ],
         };
         let message = RigMessage::Assistant {
-            id: Some("assistant_2".to_string()),
+            id: crate::streaming::WireId::new("assistant_2"),
             content: vec![AssistantContent::Reasoning(reasoning)],
         };
 
@@ -792,7 +792,7 @@ mod tests {
             content: vec![],
         };
         let message = RigMessage::Assistant {
-            id: Some("assistant_2b".to_string()),
+            id: crate::streaming::WireId::new("assistant_2b"),
             content: vec![AssistantContent::Reasoning(reasoning)],
         };
 
@@ -816,7 +816,7 @@ mod tests {
         // Responses handling — instead of failing the whole request or,
         // worse, fabricating an identifier xAI never issued (#2258 A1).
         let message = RigMessage::Assistant {
-            id: Some("assistant_no_reasoning_id".to_string()),
+            id: crate::streaming::WireId::new("assistant_no_reasoning_id"),
             content: vec![AssistantContent::Reasoning(Reasoning::new("thinking"))],
         };
 
@@ -875,7 +875,7 @@ mod tests {
         // An empty wire id records no provider id and mints the correlation
         // handle; the minted handle (never an empty string) goes on the wire.
         let message = RigMessage::Assistant {
-            id: Some("assistant_3".to_string()),
+            id: crate::streaming::WireId::new("assistant_3"),
             content: vec![AssistantContent::tool_call(
                 "",
                 "my_tool",

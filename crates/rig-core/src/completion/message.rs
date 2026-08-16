@@ -27,7 +27,22 @@ pub enum Message {
     /// Assistant message containing one or more content types defined by `AssistantContent`.
     Assistant {
         /// Provider-assigned assistant message ID, when available.
-        id: Option<String>,
+        ///
+        /// A [`WireId`](crate::streaming::WireId), like the response metadata
+        /// this is copied from: the same provider handle under the same
+        /// empty-is-absent rule, so no conversion is needed between them and
+        /// `Some("")` is unrepresentable on the type that is *persisted* and
+        /// replayed upstream (#2336).
+        // `default` is what preserves the accepted shape: serde treats a bare
+        // `Option<T>` field as implicitly optional, but adding
+        // `deserialize_with` drops that, so without it a record written before
+        // this field existed would stop loading. Same pairing every other
+        // identifier field uses.
+        #[serde(
+            default,
+            deserialize_with = "crate::streaming::deserialize_optional_wire_id"
+        )]
+        id: Option<crate::streaming::WireId>,
         content: Vec<AssistantContent>,
     },
 }
@@ -1823,6 +1838,79 @@ impl From<MessageError> for CompletionError {
 
 #[cfg(test)]
 mod tests {
+
+    /// The persisted assistant id follows the same empty-is-absent rule as the
+    /// response metadata it is copied from (#2336). This is the type that
+    /// actually reaches history and is replayed upstream, so the sentinel
+    /// mattered more here than on the transient response types.
+    #[test]
+    fn an_empty_stored_assistant_id_loads_as_absent() {
+        let loaded: Message = serde_json::from_value(serde_json::json!({
+            "role": "assistant",
+            "id": "",
+            "content": [{ "type": "text", "text": "hi" }]
+        }))
+        .expect("an empty stored id must load, not fail the record");
+
+        match loaded {
+            Message::Assistant { id, .. } => assert_eq!(id, None),
+            other => panic!("expected an assistant message, got {other:?}"),
+        }
+    }
+
+    /// A record written before the field existed still loads. This is what
+    /// `serde(default)` buys: a bare `Option<T>` is implicitly optional, but
+    /// `deserialize_with` drops that special case, so omitting `default` would
+    /// have quietly made every id-less stored message unloadable.
+    #[test]
+    fn an_assistant_message_without_an_id_key_still_loads() {
+        let loaded: Message = serde_json::from_value(serde_json::json!({
+            "role": "assistant",
+            "content": [{ "type": "text", "text": "hi" }]
+        }))
+        .expect("a record with no id key must load");
+
+        match loaded {
+            Message::Assistant { id, .. } => assert_eq!(id, None),
+            other => panic!("expected an assistant message, got {other:?}"),
+        }
+    }
+
+    /// ...and a real id survives verbatim.
+    #[test]
+    fn a_stored_assistant_id_round_trips() {
+        let message = Message::Assistant {
+            id: crate::streaming::WireId::new("msg_1"),
+            content: vec![super::AssistantContent::text("hi")],
+        };
+
+        let json = serde_json::to_value(&message).expect("serializes");
+        assert_eq!(
+            json["id"],
+            serde_json::json!("msg_1"),
+            "the handle must persist as its bare string, so stored records are unchanged"
+        );
+
+        let round_tripped: Message = serde_json::from_value(json).expect("round-trips");
+        match round_tripped {
+            Message::Assistant { id, .. } => assert_eq!(id.as_deref(), Some("msg_1")),
+            other => panic!("expected an assistant message, got {other:?}"),
+        }
+    }
+
+    /// An absent id still serializes as an explicit `null` — the field carries
+    /// no `skip_serializing_if`, and adding one while retyping would have
+    /// reshaped every stored history.
+    #[test]
+    fn an_absent_assistant_id_still_serializes_as_null() {
+        let json = serde_json::to_value(Message::Assistant {
+            id: None,
+            content: vec![super::AssistantContent::text("hi")],
+        })
+        .expect("serializes");
+        assert_eq!(json.get("id"), Some(&serde_json::Value::Null));
+    }
+
     use serde::{Deserialize, Serialize};
 
     use super::{AdditionalParams, Message, Reasoning, ReasoningContent, Text, ToolResultContent};
@@ -1851,7 +1939,7 @@ mod tests {
         #[test]
         fn message_content_round_trips_byte_identically() {
             let message = Message::Assistant {
-                id: Some("msg_1".to_owned()),
+                id: crate::streaming::WireId::new("msg_1"),
                 content: vec![AssistantContent::text("hello")],
             };
             let encoded = serde_json::to_string(&message).expect("serialize");
