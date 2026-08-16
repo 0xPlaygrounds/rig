@@ -796,6 +796,68 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Mistral's assistant message content is no longer a `String`
+
+`mistral::completion::Message::Assistant`'s `content` field changes from
+`String` to `mistral::completion::AssistantMessageContent`, because a reasoning
+(magistral-class) turn does not answer with a string: it answers with a chunk
+array carrying a `thinking` trace beside the answer, and a `String` could only
+hold one of the two.
+
+```rust
+pub struct AssistantMessageContent {
+    pub text: String,          // every `text` chunk, joined — what `content` used to be
+    pub reasoning: Vec<String>, // one entry per `thinking` chunk, empty on an ordinary turn
+}
+```
+
+It `Deref`s and `Display`s to `text`, so reads are unchanged:
+
+```rust
+// Still compiles: `content.is_empty()`, `content.len()`, `content.to_string()`,
+// `&*content`, `format!("{content}")`.
+let Message::Assistant { content, .. } = &choice.message else { … };
+println!("{content}");
+```
+
+Two things do change. A struct literal needs a conversion, and an assertion
+comparing the field to a `&str` needs the text half:
+
+```rust
+// Before
+Message::Assistant { content: "42".to_string(), tool_calls: vec![], prefix: false }
+// After
+Message::Assistant { content: "42".into(), tool_calls: vec![], prefix: false }
+
+// Before
+assert_eq!(content, "42");
+// After
+assert_eq!(content.text, "42");
+```
+
+Serialization follows Mistral's wire: a turn with no trace still writes a plain
+string, and a turn with one writes the chunk array.
+
+### Mistral rejects a reasoning history on a model without the capability
+
+No compile error. Rig used to strip an assistant turn's reasoning before
+sending it to Mistral; it now replays it as Mistral's `thinking` chunk, which
+Mistral's reasoning docs require for the model to stay coherent. Mistral
+answers a reasoning input sent to a model that cannot take one with
+`400 Reasoning input is not enabled for this model`.
+
+If you replay a history containing `AssistantContent::Reasoning` — from Mistral
+or from another provider — pick a reasoning-capable Mistral model
+(`mistral-small-latest` / `magistral-small-latest`, `mistral-medium-latest`),
+or strip the reasoning blocks from the history yourself before handing it to a
+model such as `ministral-3b-latest`.
+
+One exception, worth knowing because it is the case that looks most alarming:
+an assistant turn that carries *only* reasoning — a turn whose `max_tokens` cap
+was spent inside the trace — is dropped from the request entirely by the shared
+message conversion, which emits no assistant message without text or a tool
+call. Such a turn is therefore still replayed as nothing rather than as a 400.
+
 ### `ProviderResponseError` gains a `headers` field
 
 A failed provider response now carries its headers onto the error, so
