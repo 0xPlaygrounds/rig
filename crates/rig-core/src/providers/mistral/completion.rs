@@ -153,8 +153,9 @@ impl Serialize for AssistantMessageContent {
     ///
     /// This is not the request path — Mistral's requests are built from
     /// [`openai::completion::Message`], and the outbound trace is produced by
-    /// [`splice_reasoning_into_content`]. This impl exists so a caller holding
-    /// a decoded response can re-serialize it without losing half of it.
+    /// `splice_reasoning_into_content` (private, in this module). This impl
+    /// exists so a caller holding a decoded response can re-serialize it
+    /// without losing half of it.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
