@@ -9,9 +9,9 @@
 //! events; `CompletionCall::raw` on `PromptResponse::completion_calls`; and
 //! the streamed `StreamedAssistantContent::Final` terminal record. Capture is
 //! unconditional — there is no agent-, run- or request-level switch — so every
-//! one of those surfaces carries the payload on every attempt, and a `None`
-//! there could only mean the record was built without a provider response
-//! behind it, which an agent run never does. Each surface carries the payload
+//! one of those surfaces carries the payload on every attempt, and a
+//! `Value::Null` there could only mean the record was built without a
+//! provider response behind it, which an agent run never does. Each surface carries the payload
 //! **per attempt**: a multi-turn tool run records two different payloads, a
 //! retried turn records the retried attempt's own.
 //!
@@ -143,7 +143,7 @@ impl Route {
     }
 }
 
-type Seen = Arc<Mutex<Vec<(ResponseIdentity, Option<Value>)>>>;
+type Seen = Arc<Mutex<Vec<(ResponseIdentity, Value)>>>;
 
 /// Captures each event's identity and `raw` payload so a cell can compare
 /// every observer surface against the run record.
@@ -155,13 +155,13 @@ struct RawProbe {
 }
 
 impl RawProbe {
-    fn completion_responses(&self) -> Vec<(ResponseIdentity, Option<Value>)> {
+    fn completion_responses(&self) -> Vec<(ResponseIdentity, Value)> {
         self.completion_responses.lock().expect("probe").clone()
     }
-    fn stream_finishes(&self) -> Vec<(ResponseIdentity, Option<Value>)> {
+    fn stream_finishes(&self) -> Vec<(ResponseIdentity, Value)> {
         self.stream_finishes.lock().expect("probe").clone()
     }
-    fn turns(&self) -> Vec<(ResponseIdentity, Option<Value>)> {
+    fn turns(&self) -> Vec<(ResponseIdentity, Value)> {
         self.turns.lock().expect("probe").clone()
     }
 }
@@ -175,7 +175,7 @@ impl AgentHook for RawProbe {
         self.completion_responses
             .lock()
             .expect("probe")
-            .push((event.identity.clone(), event.raw.cloned()));
+            .push((event.identity.clone(), event.raw.clone()));
         ObservationAction::continue_run()
     }
 
@@ -187,7 +187,7 @@ impl AgentHook for RawProbe {
         self.stream_finishes
             .lock()
             .expect("probe")
-            .push((event.identity.clone(), event.raw.cloned()));
+            .push((event.identity.clone(), event.raw.clone()));
         ObservationAction::continue_run()
     }
 
@@ -199,7 +199,7 @@ impl AgentHook for RawProbe {
         self.turns
             .lock()
             .expect("probe")
-            .push((event.identity.clone(), event.raw.cloned()));
+            .push((event.identity.clone(), event.raw.clone()));
         ModelTurnAction::continue_run()
     }
 }
@@ -243,9 +243,9 @@ impl AgentHook for RetryOnceOnMarker {
 struct RunObservation {
     calls: Vec<rig::agent::CompletionCall>,
     /// The `raw` of every streamed `StreamedAssistantContent::Final`, in order.
-    finals: Vec<Option<Value>>,
+    finals: Vec<Value>,
     /// The `raw` of every streamed `MultiTurnStreamItem::CompletionCall`.
-    stream_calls: Vec<Option<Value>>,
+    stream_calls: Vec<Value>,
     output: String,
 }
 
@@ -314,9 +314,9 @@ fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> 
                 match item.expect("stream item should succeed") {
                     MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
                         terminal,
-                    )) => observation.finals.push(terminal.raw.as_deref().cloned()),
+                    )) => observation.finals.push(terminal.raw.clone()),
                     MultiTurnStreamItem::CompletionCall(call) => {
-                        observation.stream_calls.push(call.raw.as_deref().cloned())
+                        observation.stream_calls.push(call.raw.clone())
                     }
                     MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
                     _ => {}
@@ -379,9 +379,11 @@ fn assert_calls_carry_recorded_raw(
         "{scenario}: one recorded interaction per completion call"
     );
     for (index, (call, recorded_id)) in calls.iter().zip(recorded).enumerate() {
-        let raw = call.raw.as_deref().unwrap_or_else(|| {
-            panic!("{scenario}: completion_calls[{index}] must always carry raw")
-        });
+        let raw = &call.raw;
+        assert!(
+            !raw.is_null(),
+            "{scenario}: completion_calls[{index}] must always carry raw"
+        );
         assert!(
             raw_id(raw).is_some_and(|id| id.starts_with(route.id_prefix())),
             "{scenario}: completion_calls[{index}] raw id should be a {} id, got {:?}",
@@ -420,7 +422,7 @@ fn assert_blocking_hooks_see_raw(
     let recorded = recorded_ids(scenario, route, false);
     assert_eq!(recorded.len(), 1, "{scenario}: one text turn");
     assert_calls_carry_recorded_raw(scenario, route, &observation.calls, &recorded);
-    let call_raw = observation.calls[0].raw.as_deref().cloned();
+    let call_raw = observation.calls[0].raw.clone();
 
     let responses = probe.completion_responses();
     assert_eq!(
@@ -457,7 +459,7 @@ fn assert_streamed_hooks_see_raw(
     let recorded = recorded_ids(scenario, route, true);
     assert_eq!(recorded.len(), 1, "{scenario}: one text turn");
     assert_calls_carry_recorded_raw(scenario, route, &observation.calls, &recorded);
-    let call_raw = observation.calls[0].raw.as_deref().cloned();
+    let call_raw = observation.calls[0].raw.clone();
 
     let finishes = probe.stream_finishes();
     assert_eq!(
@@ -512,7 +514,7 @@ fn assert_tool_run_records_distinct_raw(
     let raws: Vec<Value> = observation
         .calls
         .iter()
-        .map(|call| call.raw.as_deref().cloned().expect("checked above"))
+        .map(|call| call.raw.clone())
         .collect();
     // The payloads differ in *content*, not just id: the first turn called the
     // tool, the last answered in text.
@@ -539,28 +541,26 @@ fn assert_tool_run_records_distinct_raw(
     );
     for (index, ((_, turn_raw), raw)) in turns.iter().zip(&raws).enumerate() {
         assert_eq!(
-            turn_raw.as_ref(),
-            Some(raw),
+            turn_raw, raw,
             "{scenario}: turn {index} hook sees that attempt's raw"
         );
     }
     if streamed {
         assert_eq!(
-            observation.stream_calls,
-            raws.iter().cloned().map(Some).collect::<Vec<_>>(),
+            observation.stream_calls, raws,
             "{scenario}: streamed CompletionCall items carry each attempt's raw in order"
         );
         // Only turns that streamed text yield a Final; the last one is the
         // final answer's, and it carries the final turn's payload.
         assert_eq!(
             observation.finals.last(),
-            Some(&Some(last.clone())),
+            Some(last),
             "{scenario}: the streamed Final carries the final turn's raw"
         );
         let finishes = probe.stream_finishes();
         assert_eq!(
-            finishes.last().map(|(_, raw)| raw.clone()),
-            Some(Some(last.clone())),
+            finishes.last().map(|(_, raw)| raw),
+            Some(last),
             "{scenario}: the last StreamResponseFinish sees the final turn's raw"
         );
     } else {
@@ -572,8 +572,7 @@ fn assert_tool_run_records_distinct_raw(
         );
         for (index, ((_, seen), raw)) in responses.iter().zip(&raws).enumerate() {
             assert_eq!(
-                seen.as_ref(),
-                Some(raw),
+                seen, raw,
                 "{scenario}: CompletionResponse {index} sees that attempt's raw"
             );
         }
@@ -705,15 +704,14 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
 
     let recorded = recorded_ids(SCENARIO, Route::Chat, false);
     assert_calls_carry_recorded_raw(SCENARIO, Route::Chat, &observation.calls, &recorded);
-    let retried_raw = observation.calls[1].raw.as_deref().expect("checked above");
+    let retried_raw = &observation.calls[1].raw;
     assert_eq!(
         chat_raw_text(retried_raw).trim(),
         "ACCEPTED",
         "{SCENARIO}: the second record carries the retried attempt's own payload"
     );
     assert!(
-        chat_raw_text(observation.calls[0].raw.as_deref().expect("checked above"))
-            .contains("RETRY:"),
+        chat_raw_text(&observation.calls[0].raw).contains("RETRY:"),
         "{SCENARIO}: the first record carries the rejected attempt's own payload"
     );
     let turns = probe.turns();
@@ -723,8 +721,7 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
         "{SCENARIO}: the retry hook saw both attempts"
     );
     assert_eq!(
-        turns[1].1.as_ref(),
-        Some(retried_raw),
+        &turns[1].1, retried_raw,
         "{SCENARIO}: the retried ModelTurnFinished sees the retried attempt's raw"
     );
     assert_ne!(

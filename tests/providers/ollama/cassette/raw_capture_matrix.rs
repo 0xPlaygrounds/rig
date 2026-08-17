@@ -9,7 +9,7 @@
 //! would have returned — the response as [`ollama::CompletionResponse`] parsed
 //! it — serialized with `serde_json::to_value` before normalization. It never
 //! replaces a normalized field, and it is not a request-side concern: nothing
-//! about it is sent to the daemon. `raw == None` means only that a
+//! about it is sent to the daemon. `raw == Value::Null` means only that a
 //! `CompletionResponse` was built by hand without a provider response behind
 //! it, which no cell here can produce.
 //!
@@ -100,7 +100,7 @@ fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
 /// The normalized response minus its `raw`, as JSON, so a response can be
 /// compared field-for-field against a re-normalization that has no `raw`.
 fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = None;
+    response.raw = Value::Null;
     serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
@@ -120,10 +120,7 @@ async fn raw_round_trips_provider_type() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
 
             // Typed access is recoverable: the provider's own wire type reads the
             // captured value back, and re-serializing it reproduces the capture
@@ -186,11 +183,7 @@ async fn raw_exposes_ollama_durations() {
                 );
             }
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw")
-                .clone();
+            let raw = response.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -248,10 +241,7 @@ async fn normalized_fields_equal_raw_renormalized() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             let from_raw: RigCompletionResponse = ollama::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into ollama::CompletionResponse")
                 .try_into()

@@ -10,9 +10,9 @@
 //! the `metadata` event's usage, the `messageStop` event's `stopReason` in
 //! Bedrock's own vocabulary, and the operation's AWS request id — serialized
 //! with `serde_json::to_value`. It is the terminal record only, and nothing
-//! about it is sent to Bedrock. `raw == None` means only that a `StreamFinal`
-//! was built by hand without a provider terminal behind it, which no cell here
-//! can produce.
+//! about it is sent to Bedrock. `raw == Value::Null` means only that a
+//! `StreamFinal` was built by hand without a provider terminal behind it, which
+//! no cell here can produce.
 //!
 //! Bedrock streams the AWS event-stream binary framing (recorded base64), so
 //! the premise checks below decode the fixture body and locate the JSON
@@ -151,10 +151,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw");
+            let raw = &terminal.raw;
             let typed = BedrockStreamingResponse::deserialize(raw)
                 .expect("raw must deserialize into BedrockStreamingResponse");
             assert_eq!(
@@ -209,7 +206,7 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
             // The normalized terminal spells the finish reason in rig's
             // vocabulary; Bedrock's own spelling is only on raw.
             let mut without_raw = terminal.clone();
-            without_raw.raw = None;
+            without_raw.raw = Value::Null;
             let normalized =
                 serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
             assert!(normalized.get("stop_reason").is_none());
@@ -218,11 +215,7 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
                 Some(rig::completion::FinishReason::Stop)
             );
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw")
-                .clone();
+            let raw = terminal.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

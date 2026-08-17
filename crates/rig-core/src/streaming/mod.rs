@@ -248,20 +248,18 @@ pub struct StreamFinal {
     ///
     /// An escape hatch for provider-specific data rig does not normalize — it
     /// never replaces a normalized field, and every normalized field means the
-    /// same thing whether or not this is populated. `Option` only because a
-    /// terminal record can be built without a provider behind it: `None`
-    /// means the value was constructed by hand ([`StreamFinal::new`] without
-    /// `with_raw`) or persisted before the field existed, never that the
-    /// provider sent nothing.
-    ///
-    /// `Arc` because a terminal record can be large and both the hook stack
-    /// and the run record observe it; clone must stay cheap.
+    /// same thing whatever this holds. `Value::Null` means the record was
+    /// built without a provider behind it — [`StreamFinal::new`] without
+    /// `with_raw` (a provider's mapper before [`normalize_stream`] attaches
+    /// the terminal, test doubles, hand-built records), or a record persisted
+    /// before the field existed — never that the provider sent nothing: no
+    /// stream that reached its terminal yields `Null` here.
     ///
     /// Typed access is recoverable: provider terminal types are
-    /// `Deserialize`, so `provider::StreamingCompletionResponse::deserialize(&*raw)`
+    /// `Deserialize`, so `provider::StreamingCompletionResponse::deserialize(&raw)`
     /// returns the provider's own type.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub raw: Option<std::sync::Arc<serde_json::Value>>,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
 }
 
 impl StreamFinal {
@@ -277,7 +275,7 @@ impl StreamFinal {
             provider_request_id: None,
             provider: provider.into(),
             model: None,
-            raw: None,
+            raw: serde_json::Value::Null,
         }
     }
 
@@ -333,10 +331,10 @@ struct StreamFinalRepr {
     #[serde(default)]
     model: Option<String>,
     // `default` because persisted terminal records predate the field; a
-    // missing key loads as `None`, which is exactly what "no provider record
+    // missing key loads as `Null`, which is exactly what "no provider record
     // behind this value" means.
     #[serde(default)]
-    raw: Option<std::sync::Arc<serde_json::Value>>,
+    raw: serde_json::Value,
 }
 
 impl From<StreamFinalRepr> for StreamFinal {
@@ -361,7 +359,7 @@ impl From<StreamFinalRepr> for StreamFinal {
             .with_optional_response_id(response_id)
             .with_optional_provider_request_id(provider_request_id)
             .with_optional_model(model)
-            .with_optional_raw(raw)
+            .with_raw(raw)
     }
 }
 
@@ -1893,10 +1891,7 @@ mod tests {
             Ok(StreamFinal::new(TEST_PROVIDER, terminal.usage))
         });
         let final_record = drain(normalized).await;
-        let raw = final_record
-            .raw
-            .as_deref()
-            .expect("every normalized terminal carries its provider record");
+        let raw = &final_record.raw;
 
         let typed = ProviderTerminal::deserialize(raw).expect("raw is the provider's terminal");
         assert_eq!(typed.provider_only, "kept");
@@ -1929,7 +1924,7 @@ mod tests {
         });
         let final_record = drain(normalized).await;
         assert_eq!(final_record.finish_reason, Some(FinishReason::ToolCalls));
-        assert!(final_record.raw.is_some());
+        assert!(!final_record.raw.is_null());
     }
 
     /// The deserialization mirror carries `raw`: a terminal record with a
@@ -1950,7 +1945,7 @@ mod tests {
         let encoded = serde_json::to_value(&final_record).expect("serialize");
         assert_eq!(encoded["raw"], payload);
         let decoded = serde_json::from_value::<StreamFinal>(encoded.clone()).expect("deserialize");
-        assert_eq!(decoded.raw.as_deref(), Some(&payload));
+        assert_eq!(decoded.raw, payload);
         assert_eq!(decoded, final_record);
         assert_eq!(
             serde_json::to_value(&decoded).expect("re-serialize"),
@@ -1970,7 +1965,7 @@ mod tests {
             "provider": "example"
         });
         let decoded = serde_json::from_value::<StreamFinal>(legacy).expect("legacy loads");
-        assert!(decoded.raw.is_none());
+        assert!(decoded.raw.is_null());
 
         // Unset `raw` is not written, so a record without capture serializes
         // exactly as it did before the field existed.

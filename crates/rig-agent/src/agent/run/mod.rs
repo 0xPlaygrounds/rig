@@ -218,9 +218,10 @@ pub struct ModelTurn {
     /// surface records the same payload on its [`CompletionCall`] that the
     /// streamed surface records via
     /// [`AgentRun::record_streamed_completion_call`]. `default` because
-    /// persisted run state predates the field.
-    #[serde(default)]
-    pub raw: Option<std::sync::Arc<serde_json::Value>>,
+    /// persisted run state predates the field; `Value::Null` for a turn built
+    /// without a provider response behind it.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
 }
 
 impl ModelTurn {
@@ -242,7 +243,7 @@ impl ModelTurn {
             executable_tool_names,
             allowed_tool_names,
             finish_reason: None,
-            raw: None,
+            raw: serde_json::Value::Null,
         }
     }
 
@@ -263,9 +264,8 @@ impl ModelTurn {
         self
     }
 
-    /// Attach the provider's own response this attempt produced; `None` for
-    /// a turn built without a provider behind it.
-    pub fn with_raw(mut self, raw: Option<std::sync::Arc<serde_json::Value>>) -> Self {
+    /// Attach the provider's own response this attempt produced.
+    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
         self.raw = raw;
         self
     }
@@ -1063,7 +1063,7 @@ impl AgentRun {
         usage: Usage,
         identity: ResponseIdentity,
         finish_reason: Option<FinishReason>,
-        raw: Option<std::sync::Arc<serde_json::Value>>,
+        raw: serde_json::Value,
     ) -> CompletionCall {
         let call = CompletionCall::new(self.completion_call_index, usage)
             .with_identity(identity)
@@ -1422,13 +1422,13 @@ impl AgentRun {
     /// `raw` is the stream's terminal record as carried on `StreamFinal::raw`
     /// — read off the same terminal the driver reads `identity` and
     /// `finish_reason` from, so the recorded call carries *this* attempt's
-    /// payload; `None` when no terminal record arrived.
+    /// payload; `Value::Null` when no terminal record arrived.
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Usage,
         identity: ResponseIdentity,
         finish_reason: Option<FinishReason>,
-        raw: Option<std::sync::Arc<serde_json::Value>>,
+        raw: serde_json::Value,
     ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
@@ -1596,7 +1596,7 @@ impl AgentRun {
                 // A streamed turn's raw lives on the terminal record, which
                 // this fallback never saw; the driver records it via
                 // `record_streamed_completion_call` when it has one.
-                None,
+                serde_json::Value::Null,
             );
             self.streamed_completion_call_recorded = true;
         }
@@ -2372,8 +2372,13 @@ mod tests {
     fn model_response_rejected_after_streamed_completion_call_record() {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
-        run.record_streamed_completion_call(Usage::new(), ResponseIdentity::default(), None, None)
-            .expect("record should succeed");
+        run.record_streamed_completion_call(
+            Usage::new(),
+            ResponseIdentity::default(),
+            None,
+            serde_json::Value::Null,
+        )
+        .expect("record should succeed");
 
         let err = run
             .model_response(text_turn("hi"))
@@ -2972,16 +2977,16 @@ mod tests {
     // response (blocking) or the stream terminal (streamed); the run must
     // record it per call, and persisted run state must carry it across a
     // suspend/resume boundary — while state written before the field existed
-    // still loads. A `None` here means the turn was built without a provider
+    // still loads. A `Value::Null` here means the turn was built without a provider
     // response behind it (hand-built, or persisted before the field existed),
     // never that capture was declined.
     // ---------------------------------------------------------------------
 
-    fn raw_payload(attempt: &str) -> std::sync::Arc<serde_json::Value> {
-        std::sync::Arc::new(json!({
+    fn raw_payload(attempt: &str) -> serde_json::Value {
+        json!({
             "id": format!("resp-{attempt}"),
             "provider_only": attempt,
-        }))
+        })
     }
 
     #[test]
@@ -2992,7 +2997,7 @@ mod tests {
 
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add").with_raw(Some(first.clone())))
+            run.model_response(tool_call_turn("call_1", "add").with_raw(first.clone()))
                 .expect("model_response should succeed"),
         );
         expect_call_tools(&mut run);
@@ -3000,7 +3005,7 @@ mod tests {
             .expect("tool_results should succeed");
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(text_turn("done").with_raw(Some(second.clone())))
+            run.model_response(text_turn("done").with_raw(second.clone()))
                 .expect("model_response should succeed"),
         );
 
@@ -3008,27 +3013,27 @@ mod tests {
         let raws: Vec<_> = response
             .completion_calls
             .iter()
-            .map(|call| call.raw.as_deref())
+            .map(|call| call.raw.clone())
             .collect();
         assert_eq!(
             raws,
-            [Some(&*first), Some(&*second)],
+            [first, second],
             "each call carries its own turn's payload"
         );
     }
 
     /// A `ModelTurn` built without `with_raw` has no provider response behind
-    /// it, so its record carries `None` — the only way a record ends up
+    /// it, so its record carries `Value::Null` — the only way a record ends up
     /// without a payload.
     #[test]
-    fn model_turn_without_raw_records_none() {
+    fn model_turn_without_raw_records_null() {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
         expect_continue(
             run.model_response(text_turn("hi"))
                 .expect("model_response should succeed"),
         );
-        assert_eq!(run.completion_calls()[0].raw, None);
+        assert_eq!(run.completion_calls()[0].raw, serde_json::Value::Null);
     }
 
     #[test]
@@ -3041,20 +3046,26 @@ mod tests {
                 usage(3, 4),
                 ResponseIdentity::default(),
                 None,
-                Some(raw.clone()),
+                raw.clone(),
             )
             .expect("record should succeed");
-        assert_eq!(call.raw.as_deref(), Some(&*raw));
-        assert_eq!(run.completion_calls()[0].raw.as_deref(), Some(&*raw));
+        assert_eq!(call.raw, raw);
+        assert_eq!(run.completion_calls()[0].raw, raw);
 
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
         let call = run
-            .record_streamed_completion_call(usage(3, 4), ResponseIdentity::default(), None, None)
+            .record_streamed_completion_call(
+                usage(3, 4),
+                ResponseIdentity::default(),
+                None,
+                serde_json::Value::Null,
+            )
             .expect("record should succeed");
         assert_eq!(
-            call.raw, None,
-            "a terminal with no payload behind it records none"
+            call.raw,
+            serde_json::Value::Null,
+            "a terminal with no payload behind it records Value::Null"
         );
     }
 
@@ -3067,7 +3078,7 @@ mod tests {
         let mut run = AgentRun::new("add things").max_turns(2);
         expect_call_model(&mut run);
         expect_continue(
-            run.model_response(tool_call_turn("call_1", "add").with_raw(Some(raw.clone())))
+            run.model_response(tool_call_turn("call_1", "add").with_raw(raw.clone()))
                 .expect("model_response should succeed"),
         );
         expect_call_tools(&mut run);
@@ -3076,23 +3087,23 @@ mod tests {
         let restored: AgentRun =
             serde_json::from_str(&serialized).expect("mid-run state should deserialize");
         assert_eq!(restored.completion_calls().len(), 1);
-        assert_eq!(restored.completion_calls()[0].raw.as_deref(), Some(&*raw));
+        assert_eq!(restored.completion_calls()[0].raw, raw);
         assert_eq!(restored.completion_calls(), run.completion_calls());
     }
 
     /// `ModelTurn` carries `raw` through its own serde round trip, and a
     /// turn serialized before the field existed (no `raw` key) still loads
-    /// with `raw` unset.
+    /// with `raw` as `Value::Null`.
     #[test]
-    fn model_turn_raw_round_trips_and_missing_key_loads_as_none() {
+    fn model_turn_raw_round_trips_and_missing_key_loads_as_null() {
         let raw = raw_payload("turn");
-        let turn = text_turn("hi").with_raw(Some(raw.clone()));
+        let turn = text_turn("hi").with_raw(raw.clone());
 
         let value = serde_json::to_value(&turn).expect("turn should serialize");
-        assert_eq!(value["raw"], *raw);
+        assert_eq!(value["raw"], raw);
         let restored: ModelTurn =
             serde_json::from_value(value.clone()).expect("turn should deserialize");
-        assert_eq!(restored.raw.as_deref(), Some(&*raw));
+        assert_eq!(restored.raw, raw);
 
         let mut without_raw = value;
         without_raw
@@ -3102,20 +3113,20 @@ mod tests {
             .expect("the raw key was present");
         let legacy: ModelTurn =
             serde_json::from_value(without_raw).expect("a turn without a raw key still loads");
-        assert_eq!(legacy.raw, None);
+        assert_eq!(legacy.raw, serde_json::Value::Null);
         assert_eq!(legacy.choice, turn.choice);
     }
 
-    /// The same for a persisted `CompletionCall`: `raw` is skipped when unset
+    /// The same for a persisted `CompletionCall`: `raw` is skipped when `Value::Null`
     /// (state written before the field is byte-identical), and a record
-    /// without the key loads with `raw` unset.
+    /// without the key loads with `raw` as `Value::Null`.
     #[test]
-    fn completion_call_raw_round_trips_and_missing_key_loads_as_none() {
+    fn completion_call_raw_round_trips_and_missing_key_loads_as_null() {
         let raw = raw_payload("call");
-        let call = CompletionCall::new(0, usage(1, 2)).with_raw(Some(raw.clone()));
+        let call = CompletionCall::new(0, usage(1, 2)).with_raw(raw.clone());
 
         let value = serde_json::to_value(&call).expect("call should serialize");
-        assert_eq!(value["raw"], *raw);
+        assert_eq!(value["raw"], raw);
         let restored: CompletionCall =
             serde_json::from_value(value).expect("call should deserialize");
         assert_eq!(restored, call);
@@ -3124,10 +3135,10 @@ mod tests {
             .expect("call should serialize");
         assert!(
             unset.get("raw").is_none(),
-            "an unset raw is not written, so pre-field state is unchanged"
+            "a Value::Null raw is not written, so pre-field state is unchanged"
         );
         let legacy: CompletionCall =
             serde_json::from_value(unset).expect("a call without a raw key still loads");
-        assert_eq!(legacy.raw, None);
+        assert_eq!(legacy.raw, serde_json::Value::Null);
     }
 }

@@ -8,8 +8,8 @@
 //! [`CompletionModel::raw_completion`](rig::bedrock::completion::CompletionModel::raw_completion)
 //! would have returned — [`AwsConverseOutput`], rig's serializable mirror of
 //! the SDK's `ConverseOutput` — serialized with `serde_json::to_value` before
-//! normalization. Nothing about it is sent to Bedrock. `raw == None` means
-//! only that a `CompletionResponse` was built by hand without a provider
+//! normalization. Nothing about it is sent to Bedrock. `raw == Value::Null`
+//! means only that a `CompletionResponse` was built by hand without a provider
 //! response behind it, which no cell here can produce.
 //!
 //! Bedrock's response carries `metrics.latencyMs`, the server-side latency the
@@ -106,7 +106,7 @@ fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
 }
 
 fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = None;
+    response.raw = Value::Null;
     serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
@@ -127,10 +127,7 @@ async fn raw_round_trips_provider_type() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             let typed = AwsConverseOutput::deserialize(raw)
                 .expect("raw must deserialize into AwsConverseOutput");
             assert_eq!(
@@ -172,11 +169,7 @@ async fn raw_exposes_latency_metrics() {
                 "normalized CompletionResponse must not grow a `metrics` field"
             );
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw")
-                .clone();
+            let raw = response.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -235,10 +228,7 @@ async fn normalized_fields_equal_raw_renormalized() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             // The AWS request id is the `x-amzn-requestid` header, not part of
             // the Converse body, so the raw-derived normalization is given the
             // same one before the field-for-field comparison.

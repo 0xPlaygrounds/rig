@@ -956,7 +956,7 @@ impl TurnSource for UnaryTurnSource {
                             // never be attributed here. The raw payload is read
                             // from the same `resp` for the same reason.
                             let identity = resp.identity();
-                            let attempt_raw = resp.raw.as_deref();
+                            let attempt_raw = &resp.raw;
                             if let Some(reason) = observe_action(
                                 runner
                                     .config.hooks
@@ -2265,7 +2265,7 @@ mod migrated_tests {
     // `raw_completion` / `raw_stream`; the `raw` payload every response and
     // stream terminal carries is the only route to it. The mock behaves like
     // a real seam — a scripted payload is attached unconditionally, and a
-    // turn scripted without one reports `None` (nothing behind it, not
+    // turn scripted without one reports `Value::Null` (nothing behind it, not
     // "capture was not requested") — so these tests prove the whole route:
     // the payload reaches the hook events on both surfaces, and every
     // recorded call carries *its own* attempt's payload.
@@ -2276,27 +2276,27 @@ mod migrated_tests {
     /// turns), and the medium-neutral `ModelTurnFinished` (both surfaces).
     #[derive(Clone, Default)]
     struct RawCaptureHook {
-        completion_responses: Arc<Mutex<Vec<Option<serde_json::Value>>>>,
-        stream_finishes: Arc<Mutex<Vec<Option<serde_json::Value>>>>,
-        turns: Arc<Mutex<Vec<Option<serde_json::Value>>>>,
+        completion_responses: Arc<Mutex<Vec<serde_json::Value>>>,
+        stream_finishes: Arc<Mutex<Vec<serde_json::Value>>>,
+        turns: Arc<Mutex<Vec<serde_json::Value>>>,
     }
 
     impl RawCaptureHook {
-        fn completion_responses(&self) -> Vec<Option<serde_json::Value>> {
+        fn completion_responses(&self) -> Vec<serde_json::Value> {
             self.completion_responses
                 .lock()
                 .expect("completion response raws")
                 .clone()
         }
 
-        fn stream_finishes(&self) -> Vec<Option<serde_json::Value>> {
+        fn stream_finishes(&self) -> Vec<serde_json::Value> {
             self.stream_finishes
                 .lock()
                 .expect("stream finish raws")
                 .clone()
         }
 
-        fn turns(&self) -> Vec<Option<serde_json::Value>> {
+        fn turns(&self) -> Vec<serde_json::Value> {
             self.turns.lock().expect("turn raws").clone()
         }
     }
@@ -2310,7 +2310,7 @@ mod migrated_tests {
             self.completion_responses
                 .lock()
                 .expect("completion response raws")
-                .push(event.raw.cloned());
+                .push(event.raw.clone());
             ObservationAction::continue_run()
         }
 
@@ -2322,7 +2322,7 @@ mod migrated_tests {
             self.stream_finishes
                 .lock()
                 .expect("stream finish raws")
-                .push(event.raw.cloned());
+                .push(event.raw.clone());
             ObservationAction::continue_run()
         }
 
@@ -2334,7 +2334,7 @@ mod migrated_tests {
             self.turns
                 .lock()
                 .expect("turn raws")
-                .push(event.raw.cloned());
+                .push(event.raw.clone());
             ModelTurnAction::continue_run()
         }
     }
@@ -2369,11 +2369,8 @@ mod migrated_tests {
     }
 
     /// The `raw` each recorded call carries, in call order.
-    fn call_raws(calls: &[crate::agent::CompletionCall]) -> Vec<Option<serde_json::Value>> {
-        calls
-            .iter()
-            .map(|call| call.raw.as_deref().cloned())
-            .collect()
+    fn call_raws(calls: &[crate::agent::CompletionCall]) -> Vec<serde_json::Value> {
+        calls.iter().map(|call| call.raw.clone()).collect()
     }
 
     /// Blocking surface: `CompletionResponse` and `ModelTurnFinished` both
@@ -2394,13 +2391,13 @@ mod migrated_tests {
         .await
         .expect("blocking response");
 
-        assert_eq!(hook.completion_responses(), [Some(payload.clone())]);
-        assert_eq!(hook.turns(), [Some(payload.clone())]);
+        assert_eq!(hook.completion_responses(), std::slice::from_ref(&payload));
+        assert_eq!(hook.turns(), std::slice::from_ref(&payload));
         assert!(
             hook.stream_finishes().is_empty(),
             "StreamResponseFinish is a streamed-surface event"
         );
-        assert_eq!(call_raws(&response.completion_calls), [Some(payload)]);
+        assert_eq!(call_raws(&response.completion_calls), [payload]);
     }
 
     /// Streamed surface: `StreamResponseFinish` (the text turn's) and
@@ -2427,21 +2424,21 @@ mod migrated_tests {
             match item.expect("stream item") {
                 MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
                     final_record,
-                )) => finals.push(final_record.raw.as_deref().cloned()),
+                )) => finals.push(final_record.raw.clone()),
                 MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
                 _ => {}
             }
         }
 
-        assert_eq!(hook.stream_finishes(), [Some(expected.clone())]);
-        assert_eq!(hook.turns(), [Some(expected.clone())]);
+        assert_eq!(hook.stream_finishes(), std::slice::from_ref(&expected));
+        assert_eq!(hook.turns(), std::slice::from_ref(&expected));
         assert!(
             hook.completion_responses().is_empty(),
             "CompletionResponse is a blocking-surface event"
         );
-        assert_eq!(finals, [Some(expected.clone())]);
+        assert_eq!(finals, std::slice::from_ref(&expected));
         let response = final_response.expect("run final response");
-        assert_eq!(call_raws(&response.completion_calls), [Some(expected)]);
+        assert_eq!(call_raws(&response.completion_calls), [expected]);
     }
 
     /// Blocking multi-turn tool run: the two attempts carry two *different*
@@ -2470,14 +2467,11 @@ mod migrated_tests {
 
         assert_eq!(
             call_raws(&response.completion_calls),
-            [Some(first.clone()), Some(second.clone())],
+            [first.clone(), second.clone()],
             "each recorded call carries its own attempt's payload"
         );
-        assert_eq!(
-            hook.completion_responses(),
-            [Some(first.clone()), Some(second.clone())]
-        );
-        assert_eq!(hook.turns(), [Some(first), Some(second)]);
+        assert_eq!(hook.completion_responses(), [first.clone(), second.clone()]);
+        assert_eq!(hook.turns(), [first, second]);
     }
 
     /// Streamed multi-turn tool run: the tool-only turn and the text turn
@@ -2520,12 +2514,10 @@ mod migrated_tests {
         let mut final_response = None;
         while let Some(item) = stream.next().await {
             match item.expect("stream item") {
-                MultiTurnStreamItem::CompletionCall(call) => {
-                    forwarded_calls.push(call.raw.as_deref().cloned())
-                }
+                MultiTurnStreamItem::CompletionCall(call) => forwarded_calls.push(call.raw.clone()),
                 MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
                     final_record,
-                )) => finals.push(final_record.raw.as_deref().cloned()),
+                )) => finals.push(final_record.raw.clone()),
                 MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
                 _ => {}
             }
@@ -2534,23 +2526,23 @@ mod migrated_tests {
         let response = final_response.expect("run final response");
         assert_eq!(
             call_raws(&response.completion_calls),
-            [Some(first.clone()), Some(second.clone())],
+            [first.clone(), second.clone()],
             "each recorded call carries its own attempt's terminal record"
         );
         assert_eq!(
             forwarded_calls,
-            [Some(first.clone()), Some(second.clone())],
+            [first.clone(), second.clone()],
             "the forwarded CompletionCall items agree with the final record"
         );
-        assert_eq!(hook.turns(), [Some(first), Some(second.clone())]);
+        assert_eq!(hook.turns(), [first, second.clone()]);
         assert_eq!(
             hook.stream_finishes(),
-            [Some(second.clone())],
+            std::slice::from_ref(&second),
             "StreamResponseFinish stays text-turn-scoped and carries that turn's payload"
         );
         assert_eq!(
             finals,
-            [Some(second)],
+            [second],
             "the one forwarded Final is the final turn's, carrying its own raw"
         );
     }
@@ -2560,7 +2552,7 @@ mod migrated_tests {
     /// checked against the retried attempt's own script.
     #[derive(Clone, Default)]
     struct RetryOnceCapturingRaw {
-        seen: Arc<Mutex<Vec<Option<serde_json::Value>>>>,
+        seen: Arc<Mutex<Vec<serde_json::Value>>>,
     }
 
     impl AgentHook for RetryOnceCapturingRaw {
@@ -2570,7 +2562,7 @@ mod migrated_tests {
             event: ModelTurnFinished<'_>,
         ) -> ModelTurnAction {
             let mut seen = self.seen.lock().expect("retry raws");
-            seen.push(event.raw.cloned());
+            seen.push(event.raw.clone());
             if seen.len() == 1 {
                 ModelTurnAction::repeat()
             } else {
@@ -2603,12 +2595,12 @@ mod migrated_tests {
         assert_eq!(response.output, "second attempt");
         assert_eq!(
             *hook.seen.lock().expect("retry raws"),
-            [Some(first.clone()), Some(second.clone())],
+            [first.clone(), second.clone()],
             "each attempt's event carries that attempt's payload — no stale leak"
         );
         assert_eq!(
             call_raws(&response.completion_calls),
-            [Some(first), Some(second)],
+            [first, second],
             "the retried attempt's record carries the retried attempt's payload"
         );
     }
@@ -2652,7 +2644,7 @@ mod migrated_tests {
             match item.expect("stream item") {
                 MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
                     final_record,
-                )) => finals.push(final_record.raw.as_deref().cloned()),
+                )) => finals.push(final_record.raw.clone()),
                 MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
                 _ => {}
             }
@@ -2662,23 +2654,23 @@ mod migrated_tests {
         assert_eq!(response.output, "second attempt");
         assert_eq!(
             *retry.seen.lock().expect("retry raws"),
-            [Some(first.clone()), Some(second.clone())],
+            [first.clone(), second.clone()],
             "each attempt's event carries that attempt's terminal record"
         );
-        assert_eq!(probe.turns(), [Some(first.clone()), Some(second.clone())]);
+        assert_eq!(probe.turns(), [first.clone(), second.clone()]);
         assert_eq!(
             probe.stream_finishes(),
-            [Some(first.clone()), Some(second.clone())],
+            [first.clone(), second.clone()],
             "each attempt's finish event carries its own terminal record"
         );
         assert_eq!(
             call_raws(&response.completion_calls),
-            [Some(first), Some(second.clone())],
+            [first, second.clone()],
             "the retried attempt's record carries the retried attempt's terminal record"
         );
         assert_eq!(
             finals,
-            [Some(second)],
+            [second],
             "the rejected attempt's Final is suppressed; the accepted one carries its own raw"
         );
     }
@@ -10897,7 +10889,7 @@ mod migrated_tests {
             calls
                 .iter()
                 .cloned()
-                .map(|call| call.with_raw(None))
+                .map(|call| call.with_raw(serde_json::Value::Null))
                 .collect()
         };
         assert_eq!(
@@ -11293,7 +11285,7 @@ mod migrated_tests {
             // These cases exercise hook dispatch, not termination metadata.
             finish_reason: None,
             max_tokens: None,
-            raw: None,
+            raw: &serde_json::Value::Null,
         };
         let second_event = first_event;
 
@@ -11325,7 +11317,7 @@ mod migrated_tests {
                     identity: no_identity(),
                     finish_reason: None,
                     max_tokens: None,
-                    raw: None,
+                    raw: &serde_json::Value::Null,
                 },
             )
             .await;
@@ -11339,7 +11331,7 @@ mod migrated_tests {
                     identity: no_identity(),
                     finish_reason: None,
                     max_tokens: None,
-                    raw: None,
+                    raw: &serde_json::Value::Null,
                 },
             )
             .await;
@@ -11375,7 +11367,7 @@ mod migrated_tests {
             // These cases exercise hook dispatch, not termination metadata.
             finish_reason: None,
             max_tokens: None,
-            raw: None,
+            raw: &serde_json::Value::Null,
         };
         let ctx = HookContext::new(false, None);
 

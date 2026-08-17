@@ -14,7 +14,7 @@ use crate::{
     tool::{ToolContext, ToolOutput},
 };
 use serde::{Deserialize, Serialize};
-use std::{future::IntoFuture, marker::PhantomData, sync::Arc};
+use std::{future::IntoFuture, marker::PhantomData};
 
 /// The provider-neutral identity carrier, re-exported from rig-core so agent
 /// callers name one type across core responses, stream terminals, completion
@@ -366,17 +366,17 @@ pub struct CompletionCall {
     pub finish_reason: Option<FinishReason>,
     /// The provider's own response for this call — see
     /// `CompletionResponse::raw` for the exact meaning of the payload. Every
-    /// provider seam populates it; `None` only when the call's response was
-    /// built without a provider behind it (a hand-constructed model, a record
-    /// persisted before the field).
+    /// provider seam populates it; `Value::Null` only when the call's response
+    /// was built without a provider behind it (a hand-constructed model, a
+    /// record persisted before the field, a streamed turn whose terminal
+    /// record never arrived).
     ///
     /// Recorded **per call**, like [`Self::finish_reason`]: on a multi-turn
     /// run each entry carries its own attempt's response, never a previous
     /// attempt's, and on a retried turn the recorded call carries the retried
-    /// attempt's own. `Arc` because the hook stack and this record observe
-    /// the same payload and `PromptResponse` is cloned freely.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub raw: Option<Arc<serde_json::Value>>,
+    /// attempt's own.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
 }
 
 impl CompletionCall {
@@ -390,13 +390,12 @@ impl CompletionCall {
             response_id: None,
             provider_request_id: None,
             finish_reason: None,
-            raw: None,
+            raw: serde_json::Value::Null,
         }
     }
 
-    /// Attach the provider's own response this call's attempt produced, when
-    /// the run captured it.
-    pub fn with_raw(mut self, raw: Option<Arc<serde_json::Value>>) -> Self {
+    /// Attach the provider's own response this call's attempt produced.
+    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
         self.raw = raw;
         self
     }

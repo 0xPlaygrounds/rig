@@ -4432,10 +4432,7 @@ mod tests {
                 .await
                 .expect("completion");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("a provider-backed completion always carries raw");
+            let raw = &response.raw;
             let typed = super::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into the provider wire type");
             assert_eq!(

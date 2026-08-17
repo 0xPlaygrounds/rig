@@ -1716,10 +1716,7 @@ mod tests {
         async fn terminal_captures_raw_that_round_trips_into_the_terminal_type() {
             let record = terminal().await;
 
-            let raw = record
-                .raw
-                .as_deref()
-                .expect("a provider-backed terminal always carries raw");
+            let raw = &record.raw;
             let typed: StreamingCompletionResponse =
                 serde_json::from_value(raw.clone()).expect("raw must deserialize");
             assert_eq!(

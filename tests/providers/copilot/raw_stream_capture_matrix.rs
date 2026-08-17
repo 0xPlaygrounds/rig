@@ -10,10 +10,10 @@
 //! [`CopilotStreamingResponse`](rig::providers::copilot::CopilotStreamingResponse)
 //! (`{"api":"chat", …}` wrapping the chat-completions terminal record,
 //! `{"api":"responses", …}` wrapping the Responses one) — serialized with
-//! `serde_json::to_value`. It is the terminal record only, and nothing about
-//! it is sent to Copilot. `raw == None` means only that a `StreamFinal` was
-//! built by hand without a provider terminal behind it, which no cell here
-//! can produce.
+//! `serde_json::to_value`. It is the terminal record only, and nothing about it
+//! is sent to Copilot. `raw == Value::Null` means only that a `StreamFinal` was
+//! built by hand without a provider terminal behind it, which no cell here can
+//! produce.
 //!
 //! Terminal-only fields per route: on the chat route the shared terminal type
 //! accumulates unknown top-level chunk fields under `additional_params`, which
@@ -147,10 +147,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
                     .expect("stream should start"),
             )
             .await;
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw");
+            let raw = &terminal.raw;
             assert_eq!(raw["api"], "chat", "the route tag rides along on raw");
             let typed = CopilotStreamingResponse::deserialize(raw)
                 .expect("raw must deserialize into CopilotStreamingResponse");
@@ -203,7 +200,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
             )
             .await;
             let mut without_raw = terminal.clone();
-            without_raw.raw = None;
+            without_raw.raw = Value::Null;
             let normalized =
                 serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
             for field in ["copilot_usage", "system_fingerprint", "additional_params"] {
@@ -212,11 +209,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
                     "normalized StreamFinal must not grow a `{field}` field"
                 );
             }
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw")
-                .clone();
+            let raw = terminal.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -296,10 +289,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
                     .expect("stream should start"),
             )
             .await;
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw");
+            let raw = &terminal.raw;
             assert_eq!(raw["api"], "responses", "the route tag rides along on raw");
             let typed = CopilotStreamingResponse::deserialize(raw)
                 .expect("raw must deserialize into CopilotStreamingResponse");
@@ -350,15 +340,11 @@ async fn responses_stream_raw_exposes_terminal_status() {
             )
             .await;
             let mut without_raw = terminal.clone();
-            without_raw.raw = None;
+            without_raw.raw = Value::Null;
             let normalized =
                 serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
             assert!(normalized.get("status").is_none());
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw")
-                .clone();
+            let raw = terminal.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

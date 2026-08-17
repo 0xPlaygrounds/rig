@@ -9,9 +9,9 @@
 //! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook
 //! events, on each `CompletionCall` the run records, and on the streamed
-//! `StreamedAssistantContent::Final`. `raw` is `Option` only because a value
-//! built by hand has no provider response behind it; `None` never means "not
-//! requested".
+//! `StreamedAssistantContent::Final`. `raw` is `Value::Null` only on a value
+//! built by hand, with no provider response behind it; `Value::Null` never
+//! means "not requested".
 //!
 //! # Matrix
 //!
@@ -62,9 +62,9 @@ const TOOL_PROMPT: &str = "What is 2 + 3? Use the tool, then state the result.";
 /// Records what each hook event carried as `raw`, per event, in fire order.
 #[derive(Clone, Default)]
 struct RawProbe {
-    completion_response: Arc<Mutex<Vec<Option<Value>>>>,
-    stream_response_finish: Arc<Mutex<Vec<Option<Value>>>>,
-    model_turn_finished: Arc<Mutex<Vec<Option<Value>>>>,
+    completion_response: Arc<Mutex<Vec<Value>>>,
+    stream_response_finish: Arc<Mutex<Vec<Value>>>,
+    model_turn_finished: Arc<Mutex<Vec<Value>>>,
     /// When set, the first `ModelTurnFinished` is rejected with `Repeat`.
     retry_once: bool,
 }
@@ -77,15 +77,15 @@ impl RawProbe {
         }
     }
 
-    fn completion_responses(&self) -> Vec<Option<Value>> {
+    fn completion_responses(&self) -> Vec<Value> {
         self.completion_response.lock().expect("probe").clone()
     }
 
-    fn stream_finishes(&self) -> Vec<Option<Value>> {
+    fn stream_finishes(&self) -> Vec<Value> {
         self.stream_response_finish.lock().expect("probe").clone()
     }
 
-    fn model_turns(&self) -> Vec<Option<Value>> {
+    fn model_turns(&self) -> Vec<Value> {
         self.model_turn_finished.lock().expect("probe").clone()
     }
 }
@@ -99,7 +99,7 @@ impl AgentHook for RawProbe {
         self.completion_response
             .lock()
             .expect("probe")
-            .push(event.raw.cloned());
+            .push(event.raw.clone());
         ObservationAction::continue_run()
     }
 
@@ -111,7 +111,7 @@ impl AgentHook for RawProbe {
         self.stream_response_finish
             .lock()
             .expect("probe")
-            .push(event.raw.cloned());
+            .push(event.raw.clone());
         ObservationAction::continue_run()
     }
 
@@ -121,7 +121,7 @@ impl AgentHook for RawProbe {
         event: ModelTurnFinished<'_>,
     ) -> ModelTurnAction {
         let mut seen = self.model_turn_finished.lock().expect("probe");
-        seen.push(event.raw.cloned());
+        seen.push(event.raw.clone());
         if self.retry_once && seen.len() == 1 {
             ModelTurnAction::repeat()
         } else {
@@ -199,14 +199,19 @@ fn recorded_stop_reasons(scenario: &str, streamed: bool) -> Vec<Option<String>> 
         .collect()
 }
 
-fn ids_of(raws: &[Option<Value>], key: &str) -> Vec<Option<String>> {
+fn ids_of(raws: &[Value], key: &str) -> Vec<Option<String>> {
     raws.iter()
-        .map(|raw| {
-            raw.as_ref()
-                .and_then(|raw| raw[key].as_str())
-                .map(str::to_string)
-        })
+        .map(|raw| raw[key].as_str().map(str::to_string))
         .collect()
+}
+
+/// Every payload in `raws` has a provider response behind it — none is the
+/// hand-built `Value::Null`.
+fn assert_all_populated(raws: &[Value], context: &str) {
+    assert!(
+        raws.iter().all(|raw| !raw.is_null()),
+        "{context}: every call carries raw, got {raws:?}"
+    );
 }
 
 fn assert_distinct_msg_ids(ids: &[Option<String>], context: &str) {
@@ -255,14 +260,9 @@ async fn hooks_observe_raw_blocking() {
         probe.stream_finishes().is_empty(),
         "the blocking surface fires no StreamResponseFinish"
     );
-    let raw = responses[0]
-        .as_ref()
-        .expect("CompletionResponse.raw is populated");
-    assert_eq!(
-        turns[0].as_ref(),
-        Some(raw),
-        "both events observe the same payload"
-    );
+    let raw = &responses[0];
+    assert!(!raw.is_null(), "CompletionResponse.raw is populated");
+    assert_eq!(&turns[0], raw, "both events observe the same payload");
     // The payload is this attempt's own response.
     let recorded = recorded_message_ids(scenario, false);
     assert_eq!(recorded.len(), 1);
@@ -293,7 +293,7 @@ async fn hooks_observe_raw_streamed() {
             assert!(run.output.is_some(), "the run finished");
             assert_eq!(run.finals.len(), 1, "one text turn, one terminal record");
             assert!(
-                run.finals[0].raw.is_some(),
+                !run.finals[0].raw.is_null(),
                 "the streamed terminal carries raw"
             );
         },
@@ -308,14 +308,9 @@ async fn hooks_observe_raw_streamed() {
     );
     assert_eq!(finishes.len(), 1, "one StreamResponseFinish event");
     assert_eq!(turns.len(), 1, "one ModelTurnFinished event");
-    let raw = finishes[0]
-        .as_ref()
-        .expect("StreamResponseFinish.raw is populated");
-    assert_eq!(
-        turns[0].as_ref(),
-        Some(raw),
-        "both events observe the same payload"
-    );
+    let raw = &finishes[0];
+    assert!(!raw.is_null(), "StreamResponseFinish.raw is populated");
+    assert_eq!(&turns[0], raw, "both events observe the same payload");
     // The streamed payload is the Anthropic *terminal* record.
     assert!(raw.get("message_id").is_some() && raw.get("usage").is_some());
     let recorded = recorded_message_ids(scenario, true);
@@ -336,7 +331,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     let scenario = "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking";
     let probe = RawProbe::default();
     let hook = probe.clone();
-    let observed: Arc<Mutex<Vec<Option<Value>>>> = Default::default();
+    let observed: Arc<Mutex<Vec<Value>>> = Default::default();
     let sink = observed.clone();
     with_anthropic_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking",
@@ -356,16 +351,13 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
                 .expect("tool run should succeed");
             let calls = &response.completion_calls;
             assert_eq!(calls.len(), 2, "a tool turn then a text turn");
-            *sink.lock().expect("sink") = calls
-                .iter()
-                .map(|call| call.raw.as_deref().cloned())
-                .collect();
+            *sink.lock().expect("sink") = calls.iter().map(|call| call.raw.clone()).collect();
         },
     )
     .await;
 
     let raws = observed.lock().expect("sink").clone();
-    assert!(raws.iter().all(Option::is_some), "every call carries raw");
+    assert_all_populated(&raws, scenario);
     assert_ne!(raws[0], raws[1], "two attempts, two different payloads");
     let ids = ids_of(&raws, "id");
     let recorded = recorded_message_ids(scenario, false);
@@ -375,10 +367,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     let stop_reasons = recorded_stop_reasons(scenario, false);
     assert_eq!(stop_reasons[0].as_deref(), Some("tool_use"), "premise");
     assert_eq!(ids_of(&raws, "stop_reason"), stop_reasons);
-    assert_eq!(
-        raws[0].as_ref().expect("raw")["content"][0]["type"],
-        "tool_use"
-    );
+    assert_eq!(raws[0]["content"][0]["type"], "tool_use");
     // The hooks saw the same two payloads in the same order.
     assert_eq!(probe.completion_responses(), raws);
     assert_eq!(probe.model_turns(), raws);
@@ -389,7 +378,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
     let scenario = "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed";
     let probe = RawProbe::default();
     let hook = probe.clone();
-    let observed: Arc<Mutex<Vec<Option<Value>>>> = Default::default();
+    let observed: Arc<Mutex<Vec<Value>>> = Default::default();
     let sink = observed.clone();
     with_anthropic_cassette(
         "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
@@ -417,14 +406,14 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
             *sink.lock().expect("sink") = run
                 .completion_calls
                 .iter()
-                .map(|call| call.raw.as_deref().cloned())
+                .map(|call| call.raw.clone())
                 .collect();
         },
     )
     .await;
 
     let raws = observed.lock().expect("sink").clone();
-    assert!(raws.iter().all(Option::is_some), "every call carries raw");
+    assert_all_populated(&raws, scenario);
     assert_ne!(raws[0], raws[1], "two attempts, two different payloads");
     let recorded = recorded_message_ids(scenario, true);
     assert_distinct_msg_ids(&recorded, scenario);
@@ -442,7 +431,7 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
 #[tokio::test]
 async fn streamed_final_carries_final_turn_raw() {
     let scenario = "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw";
-    let observed: Arc<Mutex<Vec<Option<Value>>>> = Default::default();
+    let observed: Arc<Mutex<Vec<Value>>> = Default::default();
     let sink = observed.clone();
     with_anthropic_cassette(
         "raw_capture_agent_matrix/streamed_final_carries_final_turn_raw",
@@ -470,7 +459,7 @@ async fn streamed_final_carries_final_turn_raw() {
             // The last terminal record is the final turn's, and its payload is
             // the one the final call recorded.
             assert_eq!(last.raw, run.completion_calls[1].raw);
-            *sink.lock().expect("sink") = vec![last.raw.as_deref().cloned()];
+            *sink.lock().expect("sink") = vec![last.raw.clone()];
         },
     )
     .await;
@@ -500,7 +489,7 @@ async fn retried_turn_records_retried_attempt_raw_blocking() {
     let scenario = "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking";
     let probe = RawProbe::retrying_once();
     let hook = probe.clone();
-    let observed: Arc<Mutex<Vec<Option<Value>>>> = Default::default();
+    let observed: Arc<Mutex<Vec<Value>>> = Default::default();
     let sink = observed.clone();
     with_anthropic_cassette(
         "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_blocking",
@@ -524,14 +513,14 @@ async fn retried_turn_records_retried_attempt_raw_blocking() {
             *sink.lock().expect("sink") = response
                 .completion_calls
                 .iter()
-                .map(|call| call.raw.as_deref().cloned())
+                .map(|call| call.raw.clone())
                 .collect();
         },
     )
     .await;
 
     let raws = observed.lock().expect("sink").clone();
-    assert!(raws.iter().all(Option::is_some));
+    assert_all_populated(&raws, scenario);
     let recorded = recorded_message_ids(scenario, false);
     assert_distinct_msg_ids(&recorded, scenario);
     assert_eq!(recorded.len(), 2, "premise: two attempts were made");
@@ -549,7 +538,7 @@ async fn retried_turn_records_retried_attempt_raw_streamed() {
     let scenario = "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed";
     let probe = RawProbe::retrying_once();
     let hook = probe.clone();
-    let observed: Arc<Mutex<Vec<Option<Value>>>> = Default::default();
+    let observed: Arc<Mutex<Vec<Value>>> = Default::default();
     let sink = observed.clone();
     with_anthropic_cassette(
         "raw_capture_agent_matrix/retried_turn_records_retried_attempt_raw_streamed",
@@ -571,14 +560,14 @@ async fn retried_turn_records_retried_attempt_raw_streamed() {
             *sink.lock().expect("sink") = run
                 .completion_calls
                 .iter()
-                .map(|call| call.raw.as_deref().cloned())
+                .map(|call| call.raw.clone())
                 .collect();
         },
     )
     .await;
 
     let raws = observed.lock().expect("sink").clone();
-    assert!(raws.iter().all(Option::is_some));
+    assert_all_populated(&raws, scenario);
     let recorded = recorded_message_ids(scenario, true);
     assert_distinct_msg_ids(&recorded, scenario);
     assert_eq!(recorded.len(), 2, "premise: two attempts were made");

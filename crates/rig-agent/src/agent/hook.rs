@@ -574,11 +574,11 @@ pub struct CompletionResponse<'a> {
     /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
     /// payload: the value the model's inherent `raw_completion` /
     /// `raw_stream` would have returned, serialized. Every provider seam
-    /// populates it; `None` only when the response was built without a
-    /// provider behind it (a hand-constructed model, a record persisted
+    /// populates it; `Value::Null` only when the response was built without
+    /// a provider behind it (a hand-constructed model, a record persisted
     /// before the field). On a retry this is the retried attempt's own,
     /// never a previous attempt's.
-    pub raw: Option<&'a serde_json::Value>,
+    pub raw: &'a serde_json::Value,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -638,8 +638,8 @@ pub struct ModelTurnFinished<'a> {
     /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
     /// payload: the value the model's inherent `raw_completion` /
     /// `raw_stream` would have returned, serialized. Every provider seam
-    /// populates it; `None` only when the response was built without a
-    /// provider behind it (a hand-constructed model, a record persisted
+    /// populates it; `Value::Null` only when the response was built without
+    /// a provider behind it (a hand-constructed model, a record persisted
     /// before the field). On a retry this is the retried attempt's own,
     /// never a previous attempt's.
     ///
@@ -647,7 +647,7 @@ pub struct ModelTurnFinished<'a> {
     /// same reason identity is: this is the medium-neutral event, so a hook
     /// observing it alone sees the payload for every accepted call on both
     /// surfaces.
-    pub raw: Option<&'a serde_json::Value>,
+    pub raw: &'a serde_json::Value,
 }
 
 /// How an accepted, tool-free model turn should be retried.
@@ -798,11 +798,11 @@ pub struct StreamResponseFinish<'a> {
     /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
     /// payload: the value the model's inherent `raw_completion` /
     /// `raw_stream` would have returned, serialized. Every provider seam
-    /// populates it; `None` only when the response was built without a
-    /// provider behind it (a hand-constructed model, a record persisted
+    /// populates it; `Value::Null` only when the response was built without
+    /// a provider behind it (a hand-constructed model, a record persisted
     /// before the field). On a retry this is the retried attempt's own,
     /// never a previous attempt's.
-    pub raw: Option<&'a serde_json::Value>,
+    pub raw: &'a serde_json::Value,
 }
 
 /// Hook event kind used only as an observation performance hint.

@@ -232,11 +232,8 @@ async fn raw_normalize_reproduces_completion() {
             // The typed route carries no `raw` (it *is* the raw); the
             // normalized route always carries the same wire type serialized,
             // so it reads back as a `responses_api::CompletionResponse`.
-            assert!(via_raw.raw.is_none());
-            let completion_raw = via_completion
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            assert!(via_raw.raw.is_null());
+            let completion_raw = &via_completion.raw;
             responses_api::CompletionResponse::deserialize(completion_raw)
                 .expect("completion's raw must be the same wire type raw_completion returns");
 
@@ -352,10 +349,7 @@ async fn empty_output_fallback_still_carries_raw() {
                 "the fallback must rebuild the assistant content from the events"
             );
             // …and raw is still the terminal envelope, whose output is empty.
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("the fallback branch carries raw like every other completion");
+            let raw = &response.raw;
             let typed = responses_api::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into responses_api::CompletionResponse");
             assert!(

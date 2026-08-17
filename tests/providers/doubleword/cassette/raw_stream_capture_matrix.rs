@@ -1,17 +1,17 @@
 //! Raw provider response capture on Doubleword's streaming chat-completions
 //! path.
 //!
-//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
-//! carries the value the model's inherent `raw_stream` yielded as its
-//! terminal record — for Doubleword the shared chat-completions terminal
-//! [`StreamingCompletionResponse`] over the shared [`openai::Usage`] —
-//! serialized. Capture is always on: there is no flag to request it, nothing
-//! about it reaches the wire, and a `None` only ever means a terminal built
-//! by hand with no provider record behind it. It is the terminal record only,
-//! never the stream's frames. Doubleword reports usage on the terminal frame
-//! alone, and the terminal's accumulated `additional_params` carries the
-//! `object` tag the frames repeat; the normalized terminal keeps the usage
-//! counts but has no slot for the tag or the raw usage block.
+//! **The feature.** Every stream's terminal
+//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
+//! `raw_stream` yielded as its terminal record — for Doubleword the shared
+//! chat-completions terminal [`StreamingCompletionResponse`] over the shared
+//! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
+//! request it, nothing about it reaches the wire, and a `Value::Null` only ever
+//! means a terminal built by hand with no provider record behind it. It is the
+//! terminal record only, never the stream's frames. Doubleword reports usage on
+//! the terminal frame alone, and the terminal's accumulated `additional_params`
+//! carries the `object` tag the frames repeat; the normalized terminal keeps
+//! the usage counts but has no slot for the tag or the raw usage block.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -122,10 +122,7 @@ async fn stream_raw_round_trips_terminal_type() {
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal carries raw");
+            let raw = &terminal.raw;
             let typed = DoublewordTerminal::deserialize(raw)
                 .expect("raw is the chat-completions terminal over the shared OpenAI usage");
             assert_eq!(
@@ -188,10 +185,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
         .expect("Doubleword tags every chunk with an object");
     let recorded_usage = &frame["usage"];
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .expect("every provider-backed terminal carries raw");
+    let raw = &terminal.raw;
     assert_eq!(
         raw["usage"]["prompt_tokens"],
         recorded_usage["prompt_tokens"]

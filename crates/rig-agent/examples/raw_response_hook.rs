@@ -45,14 +45,12 @@ impl AgentHook for PrintOpenAiFields {
         _ctx: &HookContext,
         event: CompletionResponseEvent<'_>,
     ) -> ObservationAction {
-        match event.raw.map(openai::CompletionResponse::deserialize) {
-            Some(Ok(response)) => println!(
+        match openai::CompletionResponse::deserialize(event.raw) {
+            Ok(response) => println!(
                 "  id {} · system_fingerprint {:?} · service_tier {:?}",
                 response.id, response.system_fingerprint, response.service_tier
             ),
-            Some(Err(err)) => println!("  raw is not an OpenAI response: {err}"),
-            // `None` means capture was off, not that the provider sent nothing.
-            None => println!("  no provider response on this event"),
+            Err(err) => println!("  raw is not an OpenAI response: {err}"),
         }
         ObservationAction::continue_run()
     }
@@ -65,11 +63,8 @@ impl AgentHook for PrintOpenAiFields {
         _ctx: &HookContext,
         event: StreamResponseFinish<'_>,
     ) -> ObservationAction {
-        match event
-            .raw
-            .map(openai::StreamingCompletionResponse::<openai::Usage>::deserialize)
-        {
-            Some(Ok(terminal)) => {
+        match openai::StreamingCompletionResponse::<openai::Usage>::deserialize(event.raw) {
+            Ok(terminal) => {
                 let extra = |key: &str| {
                     terminal
                         .additional_params
@@ -84,8 +79,7 @@ impl AgentHook for PrintOpenAiFields {
                     extra("service_tier"),
                 );
             }
-            Some(Err(err)) => println!("  raw is not an OpenAI terminal: {err}"),
-            None => println!("  no provider response on this event"),
+            Err(err) => println!("  raw is not an OpenAI terminal: {err}"),
         }
         ObservationAction::continue_run()
     }
@@ -109,13 +103,7 @@ async fn main() -> Result<()> {
     println!("  => {}", response.output);
     // The same payload the hook saw is on the run's record, per call.
     for call in &response.completion_calls {
-        println!(
-            "  call {} recorded raw: {}",
-            call.call_index,
-            call.raw
-                .as_ref()
-                .map_or("none".to_owned(), |raw| raw.to_string())
-        );
+        println!("  call {} recorded raw: {}", call.call_index, call.raw);
     }
 
     println!("\nstreaming:");

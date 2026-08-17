@@ -2,16 +2,16 @@
 //!
 //! **The feature.** Every blocking completion attaches the value the model's
 //! inherent `raw_completion` returned onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there
-//! is no flag to request it, nothing about it reaches the wire, and a `None`
-//! only ever means a response built by hand with no provider payload behind
-//! it. Groq reuses the shared [`openai::CompletionResponse`] wire type rather
-//! than declaring its own, so the raw view is that type serialized — and it
-//! is what makes Groq's timing accounting (`usage.queue_time`,
-//! `prompt_time`, `completion_time`, `total_time`) reachable: the shared
-//! usage type models them, the normalized `Usage` has no slot for any of
-//! them. `raw` is a second view of the same response, never a substitute for
-//! a normalized field.
+//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
+//! no flag to request it, nothing about it reaches the wire, and a
+//! `Value::Null` only ever means a response built by hand with no provider
+//! payload behind it. Groq reuses the shared [`openai::CompletionResponse`]
+//! wire type rather than declaring its own, so the raw view is that type
+//! serialized — and it is what makes Groq's timing accounting
+//! (`usage.queue_time`, `prompt_time`, `completion_time`, `total_time`)
+//! reachable: the shared usage type models them, the normalized `Usage` has no
+//! slot for any of them. `raw` is a second view of the same response, never a
+//! substitute for a normalized field.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -163,10 +163,7 @@ async fn raw_round_trips_openai_type() {
         |client| async move {
             let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
             let response = model.completion(request(&model)).await?;
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed response carries raw");
+            let raw = &response.raw;
             let typed = openai::CompletionResponse::deserialize(raw)
                 .expect("raw is the shared OpenAI CompletionResponse Groq parses into");
             assert_eq!(
@@ -225,10 +222,7 @@ async fn raw_exposes_queue_time() {
         .as_str()
         .expect("Groq reports a system_fingerprint");
 
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     assert_eq!(raw["usage"]["queue_time"], json!(recorded_queue_time));
     assert_eq!(raw["usage"]["prompt_time"], json!(recorded_prompt_time));
     assert_matches_recorded_token(
@@ -278,10 +272,7 @@ async fn normalized_fields_match_raw_renormalized() {
 
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     let renormalized = openai::CompletionResponse::deserialize(raw)
         .expect("raw is the shared OpenAI type")
         .normalize(PROVIDER)
@@ -293,7 +284,7 @@ async fn normalized_fields_match_raw_renormalized() {
     assert_eq!(renormalized.usage, response.usage);
     assert_eq!(renormalized.choice, response.choice);
     assert!(
-        renormalized.raw.is_none(),
+        renormalized.raw.is_null(),
         "normalizing a hand-fed typed value attaches no raw of its own"
     );
 }

@@ -362,21 +362,18 @@ pub struct CompletionResponse {
     ///
     /// An escape hatch for provider-specific data rig does not normalize — it
     /// never replaces a normalized field, and every normalized field means the
-    /// same thing whether or not this is populated. `Option` only because a
-    /// response can be built without a provider behind it: `None` means the
-    /// value was constructed by hand ([`CompletionResponse::new`] without
-    /// `with_raw`) or persisted before the field existed, never that the
-    /// provider sent nothing.
-    ///
-    /// `Arc` because a response can be large and both the hook stack and the
-    /// run record observe it; clone must stay cheap.
+    /// same thing whatever this holds. `Value::Null` means the value was built
+    /// without a provider behind it — [`CompletionResponse::new`] without
+    /// `with_raw` (test doubles, hand-built responses), or a response
+    /// persisted before the field existed — never that the provider sent
+    /// nothing: no provider seam produces `Null`.
     ///
     /// Typed access is recoverable: provider raw types are `Deserialize`, so
-    /// `provider::CompletionResponse::deserialize(&*raw)` returns the
+    /// `provider::CompletionResponse::deserialize(&raw)` returns the
     /// provider's own type, and [`NormalizeCompletionResponse`] converts
     /// forward.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub raw: Option<std::sync::Arc<serde_json::Value>>,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
 }
 
 /// Response identity metadata for one completed model call: which provider
@@ -415,7 +412,7 @@ impl CompletionResponse {
             finish_reason: None,
             provider: provider.into(),
             model: None,
-            raw: None,
+            raw: serde_json::Value::Null,
         }
     }
 
@@ -484,10 +481,10 @@ struct CompletionResponseRepr {
     #[serde(default)]
     model: Option<String>,
     // `default` because persisted responses predate the field; a missing key
-    // loads as `None`, which is exactly what "no provider response behind this
+    // loads as `Null`, which is exactly what "no provider response behind this
     // value" means.
     #[serde(default)]
-    raw: Option<std::sync::Arc<serde_json::Value>>,
+    raw: serde_json::Value,
 }
 
 impl From<CompletionResponseRepr> for CompletionResponse {
@@ -509,7 +506,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             .with_optional_provider_request_id(provider_request_id)
             .with_optional_finish_reason(finish_reason)
             .with_optional_model(model)
-            .with_optional_raw(raw)
+            .with_raw(raw)
     }
 }
 
@@ -1687,7 +1684,7 @@ mod tests {
         assert_eq!(encoded["raw"], payload);
         let decoded: CompletionResponse =
             serde_json::from_value(encoded.clone()).expect("deserialize response");
-        assert_eq!(decoded.raw.as_deref(), Some(&payload));
+        assert_eq!(decoded.raw, payload);
         assert_eq!(decoded.response_id.as_deref(), Some("chatcmpl-1"));
         assert_eq!(
             serde_json::to_value(&decoded).expect("re-serialize"),
@@ -1700,7 +1697,7 @@ mod tests {
             "provider": "example"
         });
         let decoded: CompletionResponse = serde_json::from_value(legacy).expect("legacy loads");
-        assert!(decoded.raw.is_none());
+        assert!(decoded.raw.is_null());
 
         let bare = serde_json::to_value(CompletionResponse::new(
             vec![AssistantContent::text("hello")],

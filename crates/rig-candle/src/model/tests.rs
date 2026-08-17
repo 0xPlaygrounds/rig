@@ -1601,10 +1601,11 @@ async fn stream_from_events_terminal_carries_raw()
         .response
         .ok_or("stream did not emit a terminal record")?;
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .ok_or("a provider-backed terminal always carries raw")?;
+    assert!(
+        !terminal.raw.is_null(),
+        "a provider-backed terminal always carries raw"
+    );
+    let raw = &terminal.raw;
     let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
     assert_eq!(typed, terminal_record);
     assert_eq!(terminal.usage.total_tokens, 4);
@@ -1634,10 +1635,11 @@ async fn completion_raw_round_trips_into_the_local_record()
         .raw_completion(request(vec![Message::user("hello")]))
         .await?;
 
-    let raw = response
-        .raw
-        .as_deref()
-        .ok_or("a provider-backed completion always carries raw")?;
+    assert!(
+        !response.raw.is_null(),
+        "a provider-backed completion always carries raw"
+    );
+    let raw = &response.raw;
     let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
     assert_eq!(
         serde_json::to_value(&typed)?,
@@ -1679,10 +1681,11 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
         .ok_or("stream did not emit a terminal record")?;
     let (_, streamed) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .ok_or("a provider-backed terminal always carries raw")?;
+    assert!(
+        !terminal.raw.is_null(),
+        "a provider-backed terminal always carries raw"
+    );
+    let raw = &terminal.raw;
     let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
     assert_eq!(
         serde_json::to_value(&typed)?,

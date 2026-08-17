@@ -1,16 +1,16 @@
 //! Raw provider response capture on Mistral's streaming chat-completions
 //! path.
 //!
-//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
-//! carries the value the model's inherent `raw_stream` yielded as its
-//! terminal record — for Mistral the shared chat-completions terminal
-//! [`StreamingCompletionResponse`] over Mistral's own [`mistral::Usage`] —
-//! serialized. Capture is always on: there is no flag to request it, nothing
-//! about it reaches the wire, and a `None` only ever means a terminal built
-//! by hand with no provider record behind it. It is the terminal record only,
-//! never the stream's frames. Mistral's terminal usage carries the capacity
-//! tier (`usage.service_tier`) that the normalized `Usage` has no slot for,
-//! so it is the terminal-only field pinned here.
+//! **The feature.** Every stream's terminal
+//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
+//! `raw_stream` yielded as its terminal record — for Mistral the shared
+//! chat-completions terminal [`StreamingCompletionResponse`] over Mistral's own
+//! [`mistral::Usage`] — serialized. Capture is always on: there is no flag to
+//! request it, nothing about it reaches the wire, and a `Value::Null` only ever
+//! means a terminal built by hand with no provider record behind it. It is the
+//! terminal record only, never the stream's frames. Mistral's terminal usage
+//! carries the capacity tier (`usage.service_tier`) that the normalized `Usage`
+//! has no slot for, so it is the terminal-only field pinned here.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -143,10 +143,7 @@ async fn stream_raw_round_trips_terminal_type() {
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal carries raw");
+            let raw = &terminal.raw;
             let typed = MistralTerminal::deserialize(raw)
                 .expect("raw is the chat-completions terminal over Mistral usage");
             assert_eq!(
@@ -211,10 +208,7 @@ async fn stream_raw_exposes_terminal_service_tier() {
         .as_u64()
         .expect("terminal usage reports prompt_tokens");
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .expect("every provider-backed terminal carries raw");
+    let raw = &terminal.raw;
     assert_eq!(raw["usage"]["service_tier"], json!(recorded_tier));
     assert_eq!(raw["usage"]["prompt_tokens"], json!(recorded_prompt_tokens));
     // The normalized terminal has no slot for the tier.

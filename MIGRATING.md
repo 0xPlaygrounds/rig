@@ -2684,32 +2684,34 @@ surfaces:
 ```rust
 let response = agent.prompt("…").extended_details().await?;
 for call in response.completion_calls() {
-    let raw = call.raw.as_deref();          // the provider's own response, serialized
+    let stop_sequence = &call.raw["stop_sequence"];   // the provider's own response, serialized
 }
 ```
 
-`CompletionResponse::raw` and `StreamFinal::raw`
-(`Option<Arc<serde_json::Value>>`) carry **the value the model's inherent
-`raw_completion` / `raw_stream` would have returned, serialized** — the
-response as rig's wire type parsed it, not the literal bytes. Every provider
-seam populates it unconditionally, per call — the same parity pre-#2257
-`raw_response: T` had — and the `Arc` keeps the clones the runner makes cheap.
-The payload is exposed on the `CompletionResponse`, `StreamResponseFinish`,
-and `ModelTurnFinished` hook events (`raw: Option<&serde_json::Value>`), on
-each `CompletionCall` in `PromptResponse::completion_calls`, and on the
-streamed `StreamedAssistantContent::Final` terminal record. It is per attempt:
-on a retried turn it is the retried attempt's own. Typed access is
-recoverable (`anthropic::CompletionResponse::deserialize(&*raw)?`), and
-`NormalizeCompletionResponse` converts forward. `None` means the value was
-built without a provider behind it — a hand-constructed response, or one
-persisted before the field existed — never that capture was switched off;
-there is nothing to switch. Six source-level breaks:
+`CompletionResponse::raw` and `StreamFinal::raw` (`serde_json::Value`) carry
+**the value the model's inherent `raw_completion` / `raw_stream` would have
+returned, serialized** — the response as rig's wire type parsed it, not the
+literal bytes. Every provider seam populates it unconditionally, per call —
+the same parity pre-#2257 `raw_response: T` had. The payload is exposed on
+the `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook
+events (`raw: &serde_json::Value`), on each `CompletionCall` in
+`PromptResponse::completion_calls`, and on the streamed
+`StreamedAssistantContent::Final` terminal record. It is per attempt: on a
+retried turn it is the retried attempt's own. Typed access is recoverable
+(`anthropic::CompletionResponse::deserialize(&raw)?`), and
+`NormalizeCompletionResponse` converts forward. The field is a plain `Value`,
+not an `Option`: `Value::Null` means the value was built without a provider
+behind it — a hand-constructed response, a test double, or one persisted
+before the field existed — never that a provider sent nothing (no seam
+produces `Null`) and never that capture was switched off; there is nothing to
+switch. Six source-level breaks:
 
 - **`CompletionResponse` and `StreamFinal` gain `raw`.** Both are built with
-  `new(..)` plus setters (`with_raw` / `with_optional_raw` join the shared
-  metadata setters), so only a struct literal or exhaustive destructure needs
-  the field. Serde-defaulted and omitted when unset: persisted responses and
-  terminal records load unchanged.
+  `new(..)` plus setters (`with_raw` joins the shared metadata setters), so
+  only a struct literal or exhaustive destructure needs the field
+  (`raw: serde_json::Value::Null` reproduces the old value). Serde-defaulted
+  and omitted when `Null`: persisted responses and terminal records load
+  unchanged.
 
 - **`normalize_stream` requires `R: Serialize`.** It now serializes the
   provider-native terminal onto `StreamFinal::raw` before mapping it. An
@@ -2717,10 +2719,10 @@ there is nothing to switch. Six source-level breaks:
   (every in-tree terminal already is). The signature is otherwise unchanged.
 
 - **The `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished`
-  hook events gain `raw: Option<&serde_json::Value>`.** Hooks that only read
-  events are unaffected; hand-constructed events (test harnesses) add
-  `raw: None`, exactly like `finish_reason` / `max_tokens` on
-  `ModelTurnFinished` (#2184).
+  hook events gain `raw: &serde_json::Value`.** Hooks that only read events
+  are unaffected; hand-constructed events (test harnesses) add
+  `raw: &serde_json::Value::Null`, exactly like `finish_reason` /
+  `max_tokens` on `ModelTurnFinished` (#2184).
 
 - **`ModelTurn` gains `raw`.** `ModelTurn::new(..)` is unchanged; attach with
   `.with_raw(resp.raw.clone())`. All fields are public and the type is not
@@ -2729,20 +2731,21 @@ there is nothing to switch. Six source-level breaks:
 
 - **`AgentRun::record_streamed_completion_call` takes the attempt's raw payload
   as a fourth argument.** Read it off the same terminal record you read
-  identity and finish reason from; pass `None` when no terminal arrived:
+  identity and finish reason from; pass `serde_json::Value::Null` when no
+  terminal arrived:
 
   ```rust
   // Was
   run.record_streamed_completion_call(usage, identity, finish_reason)?;
   // Now
   run.record_streamed_completion_call(usage, identity, finish_reason,
-      terminal.and_then(|t| t.raw.clone()))?;
+      terminal.map_or(serde_json::Value::Null, |t| t.raw.clone()))?;
   ```
 
 - **`CompletionCall` is no longer `Eq`.** `serde_json::Value` is `PartialEq`
   but not `Eq` (floats), so a `CompletionCall` cannot be a set or map key any
   more. `PartialEq`, `Clone`, and serde are unchanged; `raw` is
-  serde-defaulted and omitted when unset.
+  serde-defaulted and omitted when `Null`.
 
 One additive change makes the *typed* escape hatch complete:
 `openai::GenericCompletionModel::raw_completion_with_request_id` is now public
@@ -2759,11 +2762,12 @@ public forward conversion. For every provider,
 `raw_completion_parity_matrix` cassettes.
 
 The cost is one `serde_json::to_value` of the provider's parsed response per
-call, and the payload travels with the response: a large body — an
-image-generation response carrying base64 bytes, say — now lives on
-`PromptResponse::completion_calls`, in persisted run state, and in transcripts
-that serialize either. If that is unwanted, drop `raw` at your own boundary
-(`call.raw = None`) before persisting.
+call, plus a clone of the value wherever the runner clones the response or a
+`CompletionCall` (a few per call); the payload travels with the response, so
+a large body — an image-generation response carrying base64 bytes, say — now
+lives on `PromptResponse::completion_calls`, in persisted run state, and in
+transcripts that serialize either. If that is unwanted, drop `raw` at your own
+boundary (`call.raw = serde_json::Value::Null`) before persisting.
 
 Deliberately not in this change: a raw *frame* channel (rig never exposed
 per-SSE-event payloads on any surface — a different mechanism), literal-body

@@ -3,14 +3,15 @@
 //! **The feature.** Every blocking completion attaches the value the model's
 //! inherent `raw_completion` returned — DeepSeek's own
 //! [`deepseek::CompletionResponse`], serialized — onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there
-//! is no flag to request it, nothing about it reaches the wire, and a `None`
-//! only ever means a response built by hand with no provider payload behind
-//! it. `raw` is a second view of the same response, never a substitute for a
-//! normalized field. DeepSeek is worth its own matrix because its usage block
-//! carries a `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` split rig
-//! only half-normalizes: the hit count reaches `Usage::cached_input_tokens`,
-//! the miss count has no slot at all and is reachable only through `raw`.
+//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
+//! no flag to request it, nothing about it reaches the wire, and a
+//! `Value::Null` only ever means a response built by hand with no provider
+//! payload behind it. `raw` is a second view of the same response, never a
+//! substitute for a normalized field. DeepSeek is worth its own matrix because
+//! its usage block carries a `prompt_cache_hit_tokens` /
+//! `prompt_cache_miss_tokens` split rig only half-normalizes: the hit count
+//! reaches `Usage::cached_input_tokens`, the miss count has no slot at all and
+//! is reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -148,10 +149,7 @@ async fn raw_round_trips_deepseek_type() {
         |client| async move {
             let model = client.completion_model(MODEL);
             let response = model.completion(request(&model)).await?;
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed response carries raw");
+            let raw = &response.raw;
             let typed = deepseek::CompletionResponse::deserialize(raw)
                 .expect("raw is DeepSeek's own CompletionResponse");
             assert_eq!(
@@ -207,10 +205,7 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
         .as_str()
         .expect("DeepSeek reports a system_fingerprint");
 
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     assert_eq!(
         raw["usage"]["prompt_cache_miss_tokens"],
         json!(recorded_miss)
@@ -262,10 +257,7 @@ async fn normalized_fields_match_raw_renormalized() {
 
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     let renormalized = deepseek::CompletionResponse::deserialize(raw)
         .expect("raw is DeepSeek's own type")
         .normalize(PROVIDER)
@@ -277,7 +269,7 @@ async fn normalized_fields_match_raw_renormalized() {
     assert_eq!(renormalized.usage, response.usage);
     assert_eq!(renormalized.choice, response.choice);
     assert!(
-        renormalized.raw.is_none(),
+        renormalized.raw.is_null(),
         "normalizing a hand-fed typed value attaches no raw of its own"
     );
 }

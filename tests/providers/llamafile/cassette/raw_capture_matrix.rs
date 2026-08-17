@@ -9,8 +9,8 @@
 //! returns therefore carries `raw`: the value
 //! [`raw_completion`](rig::providers::openai::GenericCompletionModel::raw_completion)
 //! would have returned, serialized with `serde_json::to_value` before
-//! normalization. Nothing about it is sent to the server. `raw == None` means
-//! only that a `CompletionResponse` was built by hand without a provider
+//! normalization. Nothing about it is sent to the server. `raw == Value::Null`
+//! means only that a `CompletionResponse` was built by hand without a provider
 //! response behind it, which no cell here can produce.
 //!
 //! The chat-completions body carries envelope fields the normalized
@@ -129,7 +129,7 @@ fn assert_wire_value_matches(live: &Value, recorded: &Value, field: &str) {
 }
 
 fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = None;
+    response.raw = Value::Null;
     serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
@@ -149,10 +149,7 @@ async fn raw_round_trips_provider_type() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             let typed = openai::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into openai::CompletionResponse");
             assert_eq!(
@@ -202,11 +199,7 @@ async fn raw_exposes_envelope_fields() {
                 );
             }
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw")
-                .clone();
+            let raw = response.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -266,10 +259,7 @@ async fn normalized_fields_equal_raw_renormalized() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             // The transport request id lives in the response headers, not the
             // body, so the raw-derived normalization is given the same one.
             let from_raw = openai::CompletionResponse::deserialize(raw)

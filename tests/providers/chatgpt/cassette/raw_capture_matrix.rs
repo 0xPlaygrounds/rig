@@ -11,12 +11,12 @@
 //! reassembled from the terminal `response.completed` event of the SSE body
 //! ChatGPT answers even a non-streaming request with — serialized with
 //! `serde_json::to_value` before normalization. Nothing about it is sent to
-//! ChatGPT. `raw == None` means only that a `CompletionResponse` was built by
-//! hand without a provider response behind it, which no cell here can
-//! produce. The provider's empty-`output` fallback (the terminal event
-//! carrying no items, the content rebuilt from earlier events) captures the
-//! same `raw_response` on its branch too; see `raw_completion_parity_matrix`
-//! for that state.
+//! ChatGPT. `raw == Value::Null` means only that a `CompletionResponse` was
+//! built by hand without a provider response behind it, which no cell here can
+//! produce. The provider's empty-`output` fallback (the terminal event carrying
+//! no items, the content rebuilt from earlier events) captures the same
+//! `raw_response` on its branch too; see `raw_completion_parity_matrix` for
+//! that state.
 //!
 //! The Responses envelope carries fields the normalized
 //! [`rig::completion::CompletionResponse`] has no home for — `object`,
@@ -117,7 +117,7 @@ fn assert_wire_value_matches(live: &Value, recorded: &Value, field: &str) {
 }
 
 fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = None;
+    response.raw = Value::Null;
     serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
@@ -138,10 +138,7 @@ async fn raw_round_trips_provider_type() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             let typed = responses_api::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into responses_api::CompletionResponse");
             assert_eq!(
@@ -190,11 +187,7 @@ async fn raw_exposes_response_envelope() {
                     "normalized CompletionResponse must not grow a `{field}` field"
                 );
             }
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw")
-                .clone();
+            let raw = response.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -247,10 +240,7 @@ async fn normalized_fields_equal_raw_renormalized() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             // ChatGPT reads no transport request-id header, so the whole
             // identity lives in the body and needs no reassembly here.
             let from_raw = responses_api::CompletionResponse::deserialize(raw)

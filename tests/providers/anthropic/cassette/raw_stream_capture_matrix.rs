@@ -11,9 +11,9 @@
 //! as its `FinalResponse`, not the stream's frames. Anthropic's terminal is
 //! assembled from `message_start` (id, model) and the closing `message_delta`
 //! (`stop_reason`, `stop_sequence`, usage), plus the transport `request-id`
-//! header the driver stamps. `raw` is `Option` only because a `StreamFinal`
-//! built by hand has no provider terminal behind it; `None` never means "not
-//! requested".
+//! header the driver stamps. `raw` is `Value::Null` only on a `StreamFinal`
+//! built by hand, with no provider terminal behind it; `Value::Null` never
+//! means "not requested".
 //!
 //! # Matrix
 //!
@@ -192,10 +192,11 @@ async fn terminal_raw_round_trips_into_provider_type() {
     )
     .await;
     let terminal = take_terminal(&sink);
-    let raw: &Value = terminal
-        .raw
-        .as_deref()
-        .expect("every terminal `stream()` yields carries `raw`");
+    let raw: &Value = &terminal.raw;
+    assert!(
+        !raw.is_null(),
+        "every terminal `stream()` yields carries `raw`"
+    );
 
     // Typed access is recoverable and lossless.
     let typed = StreamingCompletionResponse::deserialize(raw)
@@ -298,10 +299,11 @@ async fn raw_exposes_stop_sequence() {
     })
     .await;
     let terminal = take_terminal(&sink);
-    let raw: &Value = terminal
-        .raw
-        .as_deref()
-        .expect("every terminal `stream()` yields carries `raw`");
+    let raw: &Value = &terminal.raw;
+    assert!(
+        !raw.is_null(),
+        "every terminal `stream()` yields carries `raw`"
+    );
 
     // Premise from the frames: the terminal `message_delta` stopped on the
     // sequence and named it.
@@ -363,10 +365,11 @@ async fn normalized_terminal_matches_raw_renormalized() {
     )
     .await;
     let terminal = take_terminal(&sink);
-    let raw: &Value = terminal
-        .raw
-        .as_deref()
-        .expect("every terminal `stream()` yields carries `raw`");
+    let raw: &Value = &terminal.raw;
+    assert!(
+        !raw.is_null(),
+        "every terminal `stream()` yields carries `raw`"
+    );
 
     let typed = StreamingCompletionResponse::deserialize(raw)
         .expect("`raw` is the serialized anthropic::streaming::StreamingCompletionResponse");

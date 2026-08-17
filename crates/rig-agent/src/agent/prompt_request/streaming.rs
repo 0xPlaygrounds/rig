@@ -1061,7 +1061,10 @@ impl TurnSource for StreamingTurnSource {
                             usage,
                             stream.identity(),
                             $finish_reason,
-                            stream.response.as_ref().and_then(|response| response.raw.clone()),
+                            stream
+                                .response
+                                .as_ref()
+                                .map_or(serde_json::Value::Null, |response| response.raw.clone()),
                         ) {
                             Ok(call) => {
                                 completion_call_emitted = true;
@@ -1338,7 +1341,10 @@ impl TurnSource for StreamingTurnSource {
                     crate::completion::Usage::new(),
                     stream.identity(),
                     fallback_finish_reason,
-                    stream.response.as_ref().and_then(|response| response.raw.clone()),
+                    stream
+                        .response
+                        .as_ref()
+                        .map_or(serde_json::Value::Null, |response| response.raw.clone()),
                 ) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
@@ -1361,11 +1367,11 @@ impl TurnSource for StreamingTurnSource {
             };
             // This attempt's raw payload, from the same terminal record as the
             // identity above — so a retry never observes a previous attempt's
-            // response. `None` when no terminal record arrived.
+            // response. `Null` when no terminal record arrived.
             let attempt_raw = stream
                 .response
                 .as_ref()
-                .and_then(|response| response.raw.as_deref());
+                .map_or(&serde_json::Value::Null, |response| &response.raw);
             if pending_final.is_some()
                 && !turn_recovered
                 && let Some(reason) = observe_action(
@@ -2229,9 +2235,8 @@ mod migrated_tests {
     /// matches.
     fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
         let terminal = mock_final(usage);
-        CompletionCall::new(call_index, usage).with_raw(Some(Arc::new(
-            serde_json::to_value(&terminal).expect("mock terminal serializes"),
-        )))
+        CompletionCall::new(call_index, usage)
+            .with_raw(serde_json::to_value(&terminal).expect("mock terminal serializes"))
     }
 
     fn usage(input_tokens: u64, output_tokens: u64) -> Usage {

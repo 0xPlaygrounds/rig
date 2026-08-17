@@ -328,7 +328,7 @@ pub(crate) use impl_provider_response_helpers;
 /// `with_response_id`, `with_provider_request_id`, `with_model`, `with_raw`
 /// and their `_optional` forms) on a response type with `message_id`,
 /// `response_id`, `provider_request_id`, and `model` fields of type
-/// `Option<String>` and a `raw` field of type `Option<Arc<serde_json::Value>>`.
+/// `Option<String>` and a `raw` field of type `serde_json::Value`.
 ///
 /// An empty string is treated as absent: gateways that echo `""` for fields
 /// they don't populate must not produce a `Some("")` that differs between the
@@ -413,22 +413,9 @@ macro_rules! response_metadata_setters {
             /// Attach the provider's own response, serialized — the value the
             /// model's inherent raw method would have returned. Every provider
             /// seam calls this; see the `raw` field for the exact meaning of
-            /// the payload.
-            pub fn with_raw(self, raw: impl Into<std::sync::Arc<serde_json::Value>>) -> Self {
-                self.with_optional_raw(Some(raw.into()))
-            }
-
-            /// Attach the provider's own response when there is one.
-            ///
-            /// The `Option` form of `with_raw`, for the deserialization
-            /// mirrors and for callers re-attaching a payload they may not
-            /// hold (a hand-built value, a record persisted before the
-            /// field).
-            pub fn with_optional_raw(
-                mut self,
-                raw: Option<impl Into<std::sync::Arc<serde_json::Value>>>,
-            ) -> Self {
-                self.raw = raw.map(Into::into);
+            /// the payload (and of `Value::Null`).
+            pub fn with_raw(mut self, raw: impl Into<serde_json::Value>) -> Self {
+                self.raw = raw.into();
                 self
             }
         }

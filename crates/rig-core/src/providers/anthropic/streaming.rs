@@ -2875,10 +2875,7 @@ mod tests {
             }
             let terminal = stream.response.expect("terminal record");
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("a provider-backed terminal always carries raw");
+            let raw = &terminal.raw;
             let typed: super::super::StreamingCompletionResponse =
                 serde_json::from_value(raw.clone()).expect("raw must deserialize");
             assert_eq!(

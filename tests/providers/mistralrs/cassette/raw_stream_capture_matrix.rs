@@ -11,8 +11,8 @@
 //! usage from the stream's final `data:` frame plus the envelope fields the
 //! chunks carried (`object`, `created`, `system_fingerprint`) accumulated under
 //! `additional_params`. Every terminal record the seam yields carries `raw` —
-//! that record serialized by `normalize_stream` — the terminal record only,
-//! and nothing about it is sent to the server. `raw == None` means only that
+//! that record serialized by `normalize_stream` — the terminal record only, and
+//! nothing about it is sent to the server. `raw == Value::Null` means only that
 //! a `StreamFinal` was built by hand without a provider terminal behind it,
 //! which no cell here can produce.
 //!
@@ -121,10 +121,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
                     .expect("stream should start"),
             )
             .await;
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw");
+            let raw = &terminal.raw;
             let typed = openai::StreamingCompletionResponse::<openai::Usage>::deserialize(raw)
                 .expect("raw must deserialize into openai::StreamingCompletionResponse");
             assert_eq!(
@@ -186,7 +183,7 @@ async fn stream_raw_exposes_envelope_fields() {
             )
             .await;
             let mut without_raw = terminal.clone();
-            without_raw.raw = None;
+            without_raw.raw = Value::Null;
             let normalized =
                 serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
             for field in [
@@ -200,11 +197,7 @@ async fn stream_raw_exposes_envelope_fields() {
                     "normalized StreamFinal must not grow a `{field}` field"
                 );
             }
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw")
-                .clone();
+            let raw = terminal.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

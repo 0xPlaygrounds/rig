@@ -6,9 +6,9 @@
 //! Every `completion()` on either OpenAI route carries `raw`: the value the
 //! model's inherent `raw_completion` would have returned, serialized — so it
 //! round-trips into the route's own wire type and re-serializes to the same
-//! value. There is no switch behind it; `raw` is `None` only on a response
-//! constructed without a provider response behind it, never on one that came
-//! off the wire. Because capture is unconditional it must be an escape hatch,
+//! value. There is no switch behind it; `raw` is `Value::Null` only on a
+//! response constructed without a provider response behind it, never on one
+//! that came off the wire. Because capture is unconditional it must be an escape hatch,
 //! not a second source of truth: re-normalizing `raw` yields the same
 //! `identity()`, `finish_reason()`, `model`, `usage` and `choice` the typed
 //! route reported, so `raw` and the normalized response tell one story. Both
@@ -140,14 +140,15 @@ fn assert_responses_fixture_premise(scenario: &str, response: &CompletionRespons
     );
 }
 
-/// The `raw` a wire response must carry — `None` is reserved for values built
-/// without a provider response behind them, which a `completion()` result
-/// never is.
+/// The `raw` a wire response must carry — `Value::Null` is reserved for
+/// values built without a provider response behind them, which a
+/// `completion()` result never is.
 fn captured_raw<'a>(scenario: &str, response: &'a CompletionResponse) -> &'a Value {
-    response
-        .raw
-        .as_deref()
-        .unwrap_or_else(|| panic!("{scenario}: a response off the wire always carries `raw`"))
+    assert!(
+        !response.raw.is_null(),
+        "{scenario}: a response off the wire always carries `raw`"
+    );
+    &response.raw
 }
 
 /// `raw` and the typed route tell one story: normalizing the captured value

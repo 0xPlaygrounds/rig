@@ -3,14 +3,14 @@
 //! **The feature.** Every blocking completion attaches the value the model's
 //! inherent `raw_completion` returned — Venice's own
 //! [`venice::CompletionResponse`], serialized — onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there
-//! is no flag to request it, nothing about it reaches the wire, and a `None`
-//! only ever means a response built by hand with no provider payload behind
-//! it. `raw` is a second view of the same response, never a substitute for a
-//! normalized field. Venice's payload is OpenAI's plus the resolved
-//! `venice_parameters` echo and the request's `cost`; neither has a slot on
-//! the normalized response, so they are the fields pinned here as reachable
-//! only through `raw`.
+//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
+//! no flag to request it, nothing about it reaches the wire, and a
+//! `Value::Null` only ever means a response built by hand with no provider
+//! payload behind it. `raw` is a second view of the same response, never a
+//! substitute for a normalized field. Venice's payload is OpenAI's plus the
+//! resolved `venice_parameters` echo and the request's `cost`; neither has a
+//! slot on the normalized response, so they are the fields pinned here as
+//! reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -150,10 +150,7 @@ async fn raw_round_trips_venice_type() {
         |client| async move {
             let model = client.completion_model(DEFAULT_MODEL);
             let response = model.completion(request(&model)).await?;
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed response carries raw");
+            let raw = &response.raw;
             let typed = venice::CompletionResponse::deserialize(raw)
                 .expect("raw is Venice's own CompletionResponse");
             assert_eq!(
@@ -217,10 +214,7 @@ async fn raw_exposes_venice_parameters_and_cost() {
         .as_f64()
         .expect("Venice reports what the request cost");
 
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     assert_eq!(
         raw["venice_parameters"]["disable_thinking"],
         json!(recorded_echo)
@@ -263,10 +257,7 @@ async fn normalized_fields_match_raw_renormalized() {
 
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     let renormalized = venice::CompletionResponse::deserialize(raw)
         .expect("raw is Venice's own type")
         .normalize(PROVIDER)
@@ -278,7 +269,7 @@ async fn normalized_fields_match_raw_renormalized() {
     assert_eq!(renormalized.usage, response.usage);
     assert_eq!(renormalized.choice, response.choice);
     assert!(
-        renormalized.raw.is_none(),
+        renormalized.raw.is_null(),
         "normalizing a hand-fed typed value attaches no raw of its own"
     );
 }

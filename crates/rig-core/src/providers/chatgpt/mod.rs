@@ -997,10 +997,7 @@ data: [DONE]"#;
                     .await
                     .expect("raw completion");
 
-                let raw = response
-                    .raw
-                    .as_deref()
-                    .expect("a provider-backed completion always carries raw");
+                let raw = &response.raw;
                 let typed: responses_api::CompletionResponse =
                     serde_json::from_value(raw.clone()).expect("raw must deserialize");
                 assert_eq!(

@@ -1,17 +1,17 @@
 //! Raw provider response capture on Groq's streaming chat-completions path.
 //!
-//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
-//! carries the value the model's inherent `raw_stream` yielded as its
-//! terminal record — for Groq the shared chat-completions terminal
-//! [`StreamingCompletionResponse`] over the shared [`openai::Usage`] —
-//! serialized. Capture is always on: there is no flag to request it, nothing
-//! about it reaches the wire, and a `None` only ever means a terminal built
-//! by hand with no provider record behind it. It is the terminal record only,
-//! never the stream's frames. Groq's terminal usage carries its timing
-//! accounting (`queue_time`, `prompt_time`, ...) that the normalized `Usage`
-//! has no slot for, and the terminal's accumulated `additional_params`
-//! carries the `x_groq` envelope and `system_fingerprint` the frames repeat;
-//! both are reachable only through `raw`.
+//! **The feature.** Every stream's terminal
+//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
+//! `raw_stream` yielded as its terminal record — for Groq the shared
+//! chat-completions terminal [`StreamingCompletionResponse`] over the shared
+//! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
+//! request it, nothing about it reaches the wire, and a `Value::Null` only ever
+//! means a terminal built by hand with no provider record behind it. It is the
+//! terminal record only, never the stream's frames. Groq's terminal usage
+//! carries its timing accounting (`queue_time`, `prompt_time`, ...) that the
+//! normalized `Usage` has no slot for, and the terminal's accumulated
+//! `additional_params` carries the `x_groq` envelope and `system_fingerprint`
+//! the frames repeat; both are reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -144,10 +144,7 @@ async fn stream_raw_round_trips_terminal_type() {
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal carries raw");
+            let raw = &terminal.raw;
             let typed = GroqTerminal::deserialize(raw)
                 .expect("raw is the chat-completions terminal over the shared OpenAI usage");
             assert_eq!(
@@ -215,10 +212,7 @@ async fn stream_raw_exposes_terminal_queue_time() {
         .find_map(|frame| frame["x_groq"]["id"].as_str().map(str::to_owned))
         .expect("Groq's closing frames carry an x_groq envelope with an id");
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .expect("every provider-backed terminal carries raw");
+    let raw = &terminal.raw;
     assert_eq!(raw["usage"]["queue_time"], json!(recorded_queue_time));
     assert_matches_recorded_token(
         raw["additional_params"]["x_groq"]["id"].as_str(),

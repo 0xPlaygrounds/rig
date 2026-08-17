@@ -1296,10 +1296,7 @@ mod tests {
         }
         let terminal = stream.response.expect("terminal record");
 
-        let raw = terminal
-            .raw
-            .as_deref()
-            .expect("a provider-backed terminal always carries raw");
+        let raw = &terminal.raw;
         let typed: BedrockStreamingResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
         assert_eq!(typed.stop_reason, Some(StopReason::EndTurn));
@@ -1322,10 +1319,7 @@ mod tests {
         ]);
         let terminal = normalized_terminal(items).await;
 
-        let raw = terminal
-            .raw
-            .as_deref()
-            .expect("a provider-backed terminal always carries raw");
+        let raw = &terminal.raw;
         let typed: BedrockStreamingResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
         assert_eq!(

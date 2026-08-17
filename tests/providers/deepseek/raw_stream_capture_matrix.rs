@@ -1,17 +1,17 @@
 //! Raw provider response capture on DeepSeek's streaming chat-completions
 //! path.
 //!
-//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
-//! carries the value the model's inherent `raw_stream` yielded as its
-//! terminal record — for DeepSeek the shared chat-completions terminal
-//! [`StreamingCompletionResponse`] parameterized over DeepSeek's own
-//! [`deepseek::Usage`] — serialized. Capture is always on: there is no flag
-//! to request it, nothing about it reaches the wire, and a `None` only ever
-//! means a terminal built by hand with no provider record behind it. It is
-//! the terminal record only, never the stream's frames. DeepSeek's terminal
-//! usage carries the `prompt_cache_miss_tokens` count that the normalized
-//! `Usage` has no slot for, so it is the natural terminal-only field to pin
-//! here.
+//! **The feature.** Every stream's terminal
+//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
+//! `raw_stream` yielded as its terminal record — for DeepSeek the shared
+//! chat-completions terminal [`StreamingCompletionResponse`] parameterized over
+//! DeepSeek's own [`deepseek::Usage`] — serialized. Capture is always on: there
+//! is no flag to request it, nothing about it reaches the wire, and a
+//! `Value::Null` only ever means a terminal built by hand with no provider
+//! record behind it. It is the terminal record only, never the stream's frames.
+//! DeepSeek's terminal usage carries the `prompt_cache_miss_tokens` count that
+//! the normalized `Usage` has no slot for, so it is the natural terminal-only
+//! field to pin here.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -115,10 +115,7 @@ async fn stream_raw_round_trips_terminal_type() {
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal carries raw");
+            let raw = &terminal.raw;
             let typed = DeepSeekTerminal::deserialize(raw)
                 .expect("raw is the chat-completions terminal over DeepSeek usage");
             assert_eq!(
@@ -183,10 +180,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
         .as_u64()
         .expect("DeepSeek's terminal usage reports prompt_cache_hit_tokens");
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .expect("every provider-backed terminal carries raw");
+    let raw = &terminal.raw;
     assert_eq!(
         raw["usage"]["prompt_cache_miss_tokens"],
         json!(recorded_miss)

@@ -61,7 +61,7 @@ struct MockTurnResponse {
     response_id: Option<String>,
     provider_request_id: Option<String>,
     finish_reason: Option<crate::completion::FinishReason>,
-    raw: Option<serde_json::Value>,
+    raw: serde_json::Value,
 }
 
 impl MockTurn {
@@ -122,7 +122,7 @@ impl MockTurn {
                 response_id: None,
                 provider_request_id: None,
                 finish_reason: None,
-                raw: None,
+                raw: serde_json::Value::Null,
             }),
         }
     }
@@ -140,7 +140,7 @@ impl MockTurn {
                 response_id: None,
                 provider_request_id: None,
                 finish_reason: None,
-                raw: None,
+                raw: serde_json::Value::Null,
             }),
         }
     }
@@ -208,11 +208,11 @@ impl MockTurn {
     /// would serialize from its raw type. Attached to the response as-is, so
     /// agent tests can prove the payload reaches every observer of the turn
     /// without a live provider. A turn without a scripted payload reports
-    /// `raw: None`, so `raw.is_some()` in a test means the scripted value
-    /// arrived, never that the mock invented one.
+    /// `raw: Value::Null`, so a non-null `raw` in a test means the scripted
+    /// value arrived, never that the mock invented one.
     pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
         if let Ok(response) = &mut self.response {
-            response.raw = Some(raw);
+            response.raw = raw;
         }
         self
     }
@@ -225,7 +225,7 @@ impl MockTurn {
                 .with_optional_response_id(response.response_id)
                 .with_optional_provider_request_id(response.provider_request_id)
                 .with_optional_finish_reason(response.finish_reason)
-                .with_optional_raw(response.raw),
+                .with_raw(response.raw),
         )
     }
 }
@@ -435,10 +435,10 @@ mod tests {
 
     /// The mock behaves like a real seam: a scripted raw payload rides on the
     /// normalized response unconditionally, and a turn that scripted none
-    /// reports `raw: None` — the mock never invents a payload, so `None`
+    /// reports `raw: Value::Null` — the mock never invents a payload, so `Value::Null`
     /// here means "no provider record was scripted behind this turn".
     #[tokio::test]
-    async fn completion_attaches_scripted_raw_and_reports_none_when_unscripted() {
+    async fn completion_attaches_scripted_raw_and_reports_null_when_unscripted() {
         let payload = serde_json::json!({"provider_only": "kept", "id": "resp_1"});
         let model = MockCompletionModel::new([
             MockTurn::text("first").with_raw(payload.clone()),
@@ -449,13 +449,13 @@ mod tests {
             .completion(request("hello"))
             .await
             .expect("first scripted turn should succeed");
-        assert_eq!(scripted.raw.as_deref(), Some(&payload));
+        assert_eq!(scripted.raw, payload);
 
         let unscripted = model
             .completion(request("hello"))
             .await
             .expect("second scripted turn should succeed");
-        assert!(unscripted.raw.is_none());
+        assert!(unscripted.raw.is_null());
 
         assert_eq!(model.requests().len(), 2);
     }
@@ -482,15 +482,12 @@ mod tests {
             .expect("stream should open");
         while stream.next().await.is_some() {}
         let terminal = stream.response.expect("terminal record");
-        let raw = terminal
-            .raw
-            .as_deref()
-            .expect("the terminal always carries the scripted record");
+        let raw = &terminal.raw;
         let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
         assert_eq!(typed.usage.total_tokens, 3);
-        assert_eq!(
-            typed.raw, None,
-            "the scripted terminal itself carried no raw"
+        assert!(
+            typed.raw.is_null(),
+            "the scripted terminal itself carried no raw (Value::Null)"
         );
         assert_eq!(
             serde_json::to_value(&typed).expect("re-serialize"),

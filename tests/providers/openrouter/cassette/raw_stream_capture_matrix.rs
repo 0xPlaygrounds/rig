@@ -1,18 +1,18 @@
 //! Raw provider response capture on OpenRouter's streaming chat-completions
 //! path.
 //!
-//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
-//! carries the value the model's inherent `raw_stream` yielded as its
-//! terminal record — for OpenRouter the shared chat-completions terminal
-//! [`StreamingCompletionResponse`] over OpenRouter's own
-//! [`openrouter::Usage`] — serialized. Capture is always on: there is no flag
-//! to request it, nothing about it reaches the wire, and a `None` only ever
-//! means a terminal built by hand with no provider record behind it. It is
-//! the terminal record only, never the stream's frames. OpenRouter's terminal
-//! usage carries the turn's `cost`, and the terminal's accumulated
-//! `additional_params` carries the routed `provider` the frames repeat;
-//! neither has a slot on the normalized terminal, so both are pinned here as
-//! reachable only through `raw`.
+//! **The feature.** Every stream's terminal
+//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
+//! `raw_stream` yielded as its terminal record — for OpenRouter the shared
+//! chat-completions terminal [`StreamingCompletionResponse`] over OpenRouter's
+//! own [`openrouter::Usage`] — serialized. Capture is always on: there is no
+//! flag to request it, nothing about it reaches the wire, and a `Value::Null`
+//! only ever means a terminal built by hand with no provider record behind it.
+//! It is the terminal record only, never the stream's frames. OpenRouter's
+//! terminal usage carries the turn's `cost`, and the terminal's accumulated
+//! `additional_params` carries the routed `provider` the frames repeat; neither
+//! has a slot on the normalized terminal, so both are pinned here as reachable
+//! only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -123,10 +123,7 @@ async fn stream_raw_round_trips_terminal_type() {
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal carries raw");
+            let raw = &terminal.raw;
             let typed = OpenRouterTerminal::deserialize(raw)
                 .expect("raw is the chat-completions terminal over OpenRouter usage");
             assert_eq!(
@@ -192,10 +189,7 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
         .as_str()
         .expect("OpenRouter's frames name the routed provider");
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .expect("every provider-backed terminal carries raw");
+    let raw = &terminal.raw;
     assert_eq!(raw["usage"]["cost"], json!(recorded_cost));
     assert_eq!(
         raw["additional_params"]["provider"],

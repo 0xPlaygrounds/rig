@@ -10,7 +10,7 @@
 //! [`StreamingCompletionResponse`](rig::providers::openai::responses_api::streaming::StreamingCompletionResponse):
 //! the terminal `response.completed` event's usage, status, ids and model —
 //! serialized with `serde_json::to_value`. It is the terminal record only, and
-//! nothing about it is sent to ChatGPT. `raw == None` means only that a
+//! nothing about it is sent to ChatGPT. `raw == Value::Null` means only that a
 //! `StreamFinal` was built by hand without a provider terminal behind it,
 //! which no cell here can produce.
 //!
@@ -115,10 +115,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw");
+            let raw = &terminal.raw;
             let typed = responses_api::streaming::StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into the Responses terminal type");
             assert_eq!(
@@ -173,7 +170,7 @@ async fn stream_raw_exposes_terminal_status() {
             .await;
 
             let mut without_raw = terminal.clone();
-            without_raw.raw = None;
+            without_raw.raw = Value::Null;
             let normalized =
                 serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
             assert!(
@@ -181,11 +178,7 @@ async fn stream_raw_exposes_terminal_status() {
                 "normalized StreamFinal must not grow a `status` field"
             );
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw")
-                .clone();
+            let raw = terminal.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

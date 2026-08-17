@@ -1,17 +1,18 @@
 //! Raw provider response capture on Perplexity's streaming chat-completions
 //! path.
 //!
-//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
-//! carries the value the model's inherent `raw_stream` yielded as its
-//! terminal record — for Perplexity the shared chat-completions terminal
-//! [`StreamingCompletionResponse`] over the shared [`openai::Usage`] —
-//! serialized. Capture is always on: there is no flag to request it, nothing
-//! about it reaches the wire, and a `None` only ever means a terminal built
-//! by hand with no provider record behind it. It is the terminal record only,
-//! never the stream's frames. Perplexity reports usage on *every* frame and
-//! the last frame's counts are the terminal's; the terminal's accumulated
-//! `additional_params` carries the `object` tag the frames repeat. Neither
-//! the tag nor the raw usage block has a slot on the normalized terminal.
+//! **The feature.** Every stream's terminal
+//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
+//! `raw_stream` yielded as its terminal record — for Perplexity the shared
+//! chat-completions terminal [`StreamingCompletionResponse`] over the shared
+//! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
+//! request it, nothing about it reaches the wire, and a `Value::Null` only ever
+//! means a terminal built by hand with no provider record behind it. It is the
+//! terminal record only, never the stream's frames. Perplexity reports usage on
+//! *every* frame and the last frame's counts are the terminal's; the terminal's
+//! accumulated `additional_params` carries the `object` tag the frames repeat.
+//! Neither the tag nor the raw usage block has a slot on the normalized
+//! terminal.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -122,10 +123,7 @@ async fn stream_raw_round_trips_terminal_type() {
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal carries raw");
+            let raw = &terminal.raw;
             let typed = PerplexityTerminal::deserialize(raw)
                 .expect("raw is the chat-completions terminal over the shared OpenAI usage");
             assert_eq!(
@@ -187,10 +185,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
         .expect("Perplexity tags every chunk with an object");
     let recorded_usage = &frame["usage"];
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .expect("every provider-backed terminal carries raw");
+    let raw = &terminal.raw;
     assert_eq!(
         raw["usage"]["prompt_tokens"],
         recorded_usage["prompt_tokens"]

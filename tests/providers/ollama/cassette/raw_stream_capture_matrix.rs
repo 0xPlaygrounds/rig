@@ -9,8 +9,8 @@
 //! would have yielded as its `FinalResponse` — Ollama's terminal NDJSON record
 //! as [`ollama::StreamingCompletionResponse`] carries it — serialized with
 //! `serde_json::to_value` by `normalize_stream`. It is the terminal record
-//! only, never the stream's frames, and nothing about it is sent to the
-//! daemon. `raw == None` means only that a `StreamFinal` was built by hand
+//! only, never the stream's frames, and nothing about it is sent to the daemon.
+//! `raw == Value::Null` means only that a `StreamFinal` was built by hand
 //! without a provider terminal behind it, which no cell here can produce.
 //!
 //! Ollama's stream is newline-delimited JSON, not SSE: every line is a chat
@@ -131,10 +131,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
                 .expect("stream should start");
             let terminal = terminal_of(stream).await;
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw");
+            let raw = &terminal.raw;
             let typed = ollama::StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into ollama::StreamingCompletionResponse");
             assert_eq!(
@@ -194,7 +191,7 @@ async fn stream_raw_exposes_terminal_durations() {
 
             // The normalized terminal record provably lacks the timings.
             let mut without_raw = terminal.clone();
-            without_raw.raw = None;
+            without_raw.raw = Value::Null;
             let normalized =
                 serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
             for field in ["total_duration", "eval_duration", "load_duration"] {
@@ -204,11 +201,7 @@ async fn stream_raw_exposes_terminal_durations() {
                 );
             }
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal record carries raw")
-                .clone();
+            let raw = terminal.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )

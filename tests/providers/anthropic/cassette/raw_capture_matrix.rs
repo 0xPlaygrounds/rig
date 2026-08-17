@@ -6,9 +6,9 @@
 //! Capture is always on. Every response `completion` returns carries `raw`:
 //! exactly what `raw_completion` would have returned — the response as
 //! `anthropic::completion::CompletionResponse` parsed it — serialized with
-//! `serde_json::to_value`. `raw` is `Option` only because a
-//! `CompletionResponse` built by hand has no provider response behind it;
-//! `None` never means "not requested". This matrix pins three properties
+//! `serde_json::to_value`. `raw` is `Value::Null` only on a
+//! `CompletionResponse` built by hand, with no provider response behind it;
+//! `Value::Null` never means "not requested". This matrix pins three properties
 //! against live recordings: presence and lossless typed round-trip, a
 //! provider-specific field the normalized response provably lacks
 //! (`stop_sequence`), and that `raw` and the normalized fields tell one story
@@ -76,7 +76,7 @@ struct Observed {
     usage: Usage,
     choice: Vec<AssistantContent>,
     text: String,
-    raw: Option<Value>,
+    raw: Value,
     /// The normalized response itself, serialized — for asserting what it
     /// does *not* carry.
     normalized: Value,
@@ -100,7 +100,7 @@ impl Observed {
             usage: response.usage,
             choice: response.choice.to_vec(),
             text,
-            raw: response.raw.as_deref().cloned(),
+            raw: response.raw.clone(),
             normalized: serde_json::to_value(response).expect("normalized response serializes"),
         }
     }
@@ -183,10 +183,11 @@ async fn raw_round_trips_into_provider_type() {
     })
     .await;
     let observed = take_observed(&sink);
-    let raw = observed
-        .raw
-        .as_ref()
-        .expect("every response `completion` returns carries `raw`");
+    let raw = &observed.raw;
+    assert!(
+        !raw.is_null(),
+        "every response `completion` returns carries `raw`"
+    );
 
     // Typed access is recoverable, and lossless: the provider type reads its
     // own serialization back and re-serializes to the identical value.
@@ -275,10 +276,11 @@ async fn raw_exposes_stop_sequence() {
     // The normalized `CompletionResponse` has no `stop_sequence` field —
     // rig folds the stop into `FinishReason::Stop` and the sequence itself is
     // not part of the normalized vocabulary. Its serialized form proves it.
-    let raw = observed
-        .raw
-        .as_ref()
-        .expect("every response `completion` returns carries `raw`");
+    let raw = &observed.raw;
+    assert!(
+        !raw.is_null(),
+        "every response `completion` returns carries `raw`"
+    );
     assert_eq!(observed.finish_reason, Some(FinishReason::Stop));
     let normalized_keys: Vec<String> = observed
         .normalized
@@ -321,10 +323,11 @@ async fn normalized_fields_match_raw_renormalized() {
     )
     .await;
     let observed = take_observed(&sink);
-    let raw = observed
-        .raw
-        .as_ref()
-        .expect("every response `completion` returns carries `raw`");
+    let raw = &observed.raw;
+    assert!(
+        !raw.is_null(),
+        "every response `completion` returns carries `raw`"
+    );
 
     let renormalized: RigCompletionResponse = CompletionResponse::deserialize(raw)
         .expect("`raw` is the serialized anthropic::completion::CompletionResponse")

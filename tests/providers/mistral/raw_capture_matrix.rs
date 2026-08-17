@@ -3,14 +3,14 @@
 //! **The feature.** Every blocking completion attaches the value the model's
 //! inherent `raw_completion` returned — Mistral's own
 //! [`mistral::CompletionResponse`], serialized — onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there
-//! is no flag to request it, nothing about it reaches the wire, and a `None`
-//! only ever means a response built by hand with no provider payload behind
-//! it. `raw` is a second view of the same response, never a substitute for a
-//! normalized field. Mistral's wire carries envelope metadata the normalized
-//! response has no slot for — the `object` tag and the capacity tier Mistral
-//! reports inside `usage` (`usage.service_tier`) — so those are the fields
-//! pinned here as reachable only through `raw`.
+//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
+//! no flag to request it, nothing about it reaches the wire, and a
+//! `Value::Null` only ever means a response built by hand with no provider
+//! payload behind it. `raw` is a second view of the same response, never a
+//! substitute for a normalized field. Mistral's wire carries envelope metadata
+//! the normalized response has no slot for — the `object` tag and the capacity
+//! tier Mistral reports inside `usage` (`usage.service_tier`) — so those are
+//! the fields pinned here as reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -160,10 +160,7 @@ async fn raw_round_trips_mistral_type() {
         |client| async move {
             let model = client.completion_model(DEFAULT_MODEL);
             let response = model.completion(request(&model)).await?;
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed response carries raw");
+            let raw = &response.raw;
             let typed = mistral::CompletionResponse::deserialize(raw)
                 .expect("raw is Mistral's own CompletionResponse");
             assert_eq!(
@@ -219,10 +216,7 @@ async fn raw_exposes_object_and_service_tier() {
         .as_str()
         .expect("Mistral reports usage.service_tier on the live chat wire");
 
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     assert_eq!(raw["object"], json!(recorded_object));
     assert_eq!(raw["usage"]["service_tier"], json!(recorded_tier));
     // And the normalized view has no slot for either.
@@ -266,10 +260,7 @@ async fn normalized_fields_match_raw_renormalized() {
 
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     let renormalized = mistral::CompletionResponse::deserialize(raw)
         .expect("raw is Mistral's own type")
         .normalize(PROVIDER)
@@ -281,7 +272,7 @@ async fn normalized_fields_match_raw_renormalized() {
     assert_eq!(renormalized.usage, response.usage);
     assert_eq!(renormalized.choice, response.choice);
     assert!(
-        renormalized.raw.is_none(),
+        renormalized.raw.is_null(),
         "normalizing a hand-fed typed value attaches no raw of its own"
     );
 }

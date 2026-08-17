@@ -3,18 +3,19 @@
 //!
 //! **The feature.** Every blocking completion attaches the value the model's
 //! inherent `raw_completion` returned onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there
-//! is no flag to request it, nothing about it reaches the wire, and a `None`
-//! only ever means a response built by hand with no provider payload behind
-//! it. Perplexity reuses the shared [`openai::CompletionResponse`] wire type,
-//! so the raw view is that type serialized. That framing matters here more
-//! than for any other provider in this family: Perplexity's wire also carries
-//! `citations` and `search_results`, which the shared type does *not* model —
-//! and the documented meaning of `raw` is "the response as rig's wire type
-//! parsed it", so those are absent from `raw` by construction. The cells pin
-//! what the type does model and the normalized response lacks (the `object`
-//! tag), and cell 2 pins the absence of the unmodeled fields against the
-//! fixture bytes so the limitation stays documented rather than discovered.
+//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
+//! no flag to request it, nothing about it reaches the wire, and a
+//! `Value::Null` only ever means a response built by hand with no provider
+//! payload behind it. Perplexity reuses the shared
+//! [`openai::CompletionResponse`] wire type, so the raw view is that type
+//! serialized. That framing matters here more than for any other provider in
+//! this family: Perplexity's wire also carries `citations` and
+//! `search_results`, which the shared type does *not* model — and the
+//! documented meaning of `raw` is "the response as rig's wire type parsed it",
+//! so those are absent from `raw` by construction. The cells pin what the type
+//! does model and the normalized response lacks (the `object` tag), and cell 2
+//! pins the absence of the unmodeled fields against the fixture bytes so the
+//! limitation stays documented rather than discovered.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -148,10 +149,7 @@ async fn raw_round_trips_openai_type() {
                 .completion(request(&model))
                 .await
                 .expect("the turn should succeed");
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed response carries raw");
+            let raw = &response.raw;
             let typed = openai::CompletionResponse::deserialize(raw)
                 .expect("raw is the shared OpenAI CompletionResponse Perplexity parses into");
             assert_eq!(
@@ -207,10 +205,7 @@ async fn raw_exposes_object_not_citations() {
         "the recorded Perplexity turn carries citations: {body}"
     );
 
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     assert_eq!(raw["object"], json!(recorded_object));
     // The normalized view has no slot for the tag.
     let normalized = serde_json::to_value(&response).expect("response serializes");
@@ -257,10 +252,7 @@ async fn normalized_fields_match_raw_renormalized() {
 
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     let renormalized = openai::CompletionResponse::deserialize(raw)
         .expect("raw is the shared OpenAI type")
         .normalize(PROVIDER)
@@ -272,7 +264,7 @@ async fn normalized_fields_match_raw_renormalized() {
     assert_eq!(renormalized.usage, response.usage);
     assert_eq!(renormalized.choice, response.choice);
     assert!(
-        renormalized.raw.is_none(),
+        renormalized.raw.is_null(),
         "normalizing a hand-fed typed value attaches no raw of its own"
     );
 }

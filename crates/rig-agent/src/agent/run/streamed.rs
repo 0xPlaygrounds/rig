@@ -1643,7 +1643,7 @@ mod tests {
             usage,
             rig_core::completion::ResponseIdentity::default(),
             None,
-            None,
+            serde_json::Value::Null,
         )
         .expect("record should succeed");
         let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
@@ -1671,7 +1671,7 @@ mod tests {
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            None,
+            serde_json::Value::Null,
         )
         .expect("record should succeed");
         let final_choice = vec![AssistantContent::text("done")];
@@ -1737,7 +1737,7 @@ mod tests {
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            None,
+            serde_json::Value::Null,
         )
         .expect("record after rollback should succeed");
 
@@ -1813,7 +1813,7 @@ mod tests {
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            None,
+            serde_json::Value::Null,
         )
         .expect("completion call should be recorded");
         assert_eq!(run.completion_calls().len(), 1);
@@ -1932,7 +1932,7 @@ mod tests {
                 Usage::new(),
                 rig_core::completion::ResponseIdentity::default(),
                 None,
-                None,
+                serde_json::Value::Null,
             )
             .expect_err("recording before any model call must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
@@ -1943,7 +1943,7 @@ mod tests {
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            None,
+            serde_json::Value::Null,
         )
         .expect("recording during a pending model call succeeds");
     }
@@ -1968,7 +1968,7 @@ mod tests {
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            None,
+            serde_json::Value::Null,
         )
         .expect("record should succeed");
 
@@ -2016,7 +2016,7 @@ mod tests {
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            None,
+            serde_json::Value::Null,
         )
         .expect("first record succeeds");
         let err = run
@@ -2024,7 +2024,7 @@ mod tests {
                 Usage::new(),
                 rig_core::completion::ResponseIdentity::default(),
                 None,
-                None,
+                serde_json::Value::Null,
             )
             .expect_err("second record for the same turn must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
@@ -2043,7 +2043,7 @@ mod tests {
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            None,
+            serde_json::Value::Null,
         )
         .expect("record should succeed");
         let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];

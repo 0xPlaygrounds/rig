@@ -7,9 +7,9 @@
 //! its inherent `raw_completion` returned — here Gemini's own
 //! [`GenerateContentResponse`] — onto [`rig::completion::CompletionResponse::raw`]
 //! before `try_into` normalizes it. There is no opt-in and nothing about it
-//! reaches the wire; `raw` is `None` only on a response constructed without a
-//! provider payload behind it (hand-built, or persisted before the field
-//! existed), never because capture "was not requested".
+//! reaches the wire; `raw` is `Value::Null` only on a response constructed
+//! without a provider payload behind it (hand-built, or persisted before the
+//! field existed), never because capture "was not requested".
 //!
 //! # Matrix
 //!
@@ -116,10 +116,7 @@ async fn raw_roundtrips_generate_content_response() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("a provider-backed response always carries raw");
+            let raw = &response.raw;
 
             // `raw` is the value `raw_completion` returned, serialized: Gemini's
             // own type reads it back, and re-serializing that typed value
@@ -183,10 +180,7 @@ async fn raw_exposes_prompt_tokens_details() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("a provider-backed response always carries raw");
+            let raw = &response.raw;
             *sink.lock().expect("observation lock") = Some(raw.clone());
 
             // The normalized response provably lacks the field: it is only

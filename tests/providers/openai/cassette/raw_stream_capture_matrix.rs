@@ -7,8 +7,8 @@
 //! `StreamedAssistantContent::Final` carries `raw` — the route's
 //! provider-native terminal record, the `R` of that route's `raw_stream`,
 //! serialized at the shared `normalize_stream` seam. There is no switch
-//! behind it; a terminal `raw` is `None` only on a record built by hand,
-//! never on one a stream yielded. It round-trips into that terminal type and
+//! behind it; a terminal `raw` is `Value::Null` only on a record built by
+//! hand, never on one a stream yielded. It round-trips into that terminal type and
 //! re-serializes equal, it exposes a terminal-only field the normalized
 //! `StreamFinal` does not model, and — because capture is unconditional and
 //! must stay an escape hatch — re-normalizing the typed terminal reproduces
@@ -172,13 +172,14 @@ fn last_chunk_field(frames: &[Value], field: &str) -> Value {
         .unwrap_or(Value::Null)
 }
 
-/// The `raw` a streamed terminal must carry — `None` is reserved for records
-/// built by hand, which a terminal off a live stream never is.
+/// The `raw` a streamed terminal must carry — `Value::Null` is reserved for
+/// records built by hand, which a terminal off a live stream never is.
 fn captured_raw<'a>(scenario: &str, terminal: &'a StreamFinal) -> &'a Value {
-    terminal
-        .raw
-        .as_deref()
-        .unwrap_or_else(|| panic!("{scenario}: a streamed terminal always carries `raw`"))
+    assert!(
+        !terminal.raw.is_null(),
+        "{scenario}: a streamed terminal always carries `raw`"
+    );
+    &terminal.raw
 }
 
 /// `raw` and the normalized terminal tell one story: mapping the typed

@@ -2528,10 +2528,7 @@ mod raw_capture_tests {
             .completion(model.completion_request("hello").build())
             .await
             .expect("completion");
-        let raw = response
-            .raw
-            .as_deref()
-            .expect("a provider-backed completion always carries raw");
+        let raw = &response.raw;
         assert_eq!(raw["api"], expected_api_tag);
         let typed: CopilotCompletionResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");

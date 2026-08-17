@@ -709,10 +709,7 @@ mod tests {
         }
         let terminal = stream.response.expect("terminal record");
 
-        let raw = terminal
-            .raw
-            .as_deref()
-            .expect("a provider-backed terminal always carries raw");
+        let raw = &terminal.raw;
         let typed: proto::GenerateContentResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
         assert_eq!(typed, terminal_frame());
@@ -731,10 +728,7 @@ mod tests {
         let terminal =
             normalized_terminal(vec![response(vec![text_part("hi")], 0), terminal_frame()]).await;
 
-        let raw = terminal
-            .raw
-            .as_deref()
-            .expect("a provider-backed terminal always carries raw");
+        let raw = &terminal.raw;
         let typed: proto::GenerateContentResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
         assert_eq!(

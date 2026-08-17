@@ -150,10 +150,7 @@ async fn rest_raw_try_into_matches_completion() {
 
             // Same response: the captured raw, typed and normalized by hand,
             // reproduces `completion()` exactly.
-            let captured = via_completion
-                .raw
-                .as_deref()
-                .expect("a provider-backed response always carries raw");
+            let captured = &via_completion.raw;
             let reproduced: RigCompletionResponse = GenerateContentResponse::deserialize(captured)
                 .expect("captured raw is Gemini's own type")
                 .try_into()
@@ -190,10 +187,7 @@ async fn interactions_raw_try_into_matches_completion() {
 
             assert_cross_request_parity(&via_raw, &via_completion);
 
-            let captured = via_completion
-                .raw
-                .as_deref()
-                .expect("a provider-backed response always carries raw");
+            let captured = &via_completion.raw;
             let reproduced: RigCompletionResponse = Interaction::deserialize(captured)
                 .expect("captured raw is the Interactions API's own type")
                 .try_into()

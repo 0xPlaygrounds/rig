@@ -7,13 +7,13 @@
 //! serialized — a serialization that mirrors the wire body, which is why the
 //! transport `provider_request_id` the typed value carries is *not* in `raw`
 //! (it is on the normalized response instead). Capture is always on: there is
-//! no flag to request it, nothing about it reaches the wire, and a `None`
-//! only ever means a response built by hand with no provider payload behind
-//! it. `raw` is a second view of the same response, never a substitute for a
-//! normalized field. The Responses envelope carries a `status` and, on xAI,
-//! a `service_tier` and a `metadata.system_fingerprint` the normalized
-//! response has no slot for; those are the fields pinned here as reachable
-//! only through `raw`.
+//! no flag to request it, nothing about it reaches the wire, and a
+//! `Value::Null` only ever means a response built by hand with no provider
+//! payload behind it. `raw` is a second view of the same response, never a
+//! substitute for a normalized field. The Responses envelope carries a `status`
+//! and, on xAI, a `service_tier` and a `metadata.system_fingerprint` the
+//! normalized response has no slot for; those are the fields pinned here as
+//! reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -171,10 +171,7 @@ async fn raw_round_trips_responses_type() {
         |client| async move {
             let model = client.completion_model(MODEL);
             let response = model.completion(request(&model)).await?;
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed response carries raw");
+            let raw = &response.raw;
             let typed = xai::CompletionResponse::deserialize(raw)
                 .expect("raw is the Responses CompletionResponse xAI parses into");
             assert_eq!(
@@ -236,10 +233,7 @@ async fn raw_exposes_status_and_service_tier() {
         .as_str()
         .expect("xAI reports metadata.system_fingerprint");
 
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     assert_eq!(raw["status"], json!(recorded_status));
     assert_eq!(raw["service_tier"], json!(recorded_tier));
     assert_matches_recorded_token(
@@ -287,10 +281,7 @@ async fn normalized_fields_match_raw_renormalized() {
     // The normalized fields are exactly what the response's own raw
     // re-normalizes to (plus the transport id the mirrored body cannot
     // carry): capture adds a view, it never changes the mapping.
-    let raw = response
-        .raw
-        .as_deref()
-        .expect("every provider-backed response carries raw");
+    let raw = &response.raw;
     let renormalized = xai::CompletionResponse::deserialize(raw)
         .expect("raw is the Responses type")
         .normalize(PROVIDER)
@@ -302,7 +293,7 @@ async fn normalized_fields_match_raw_renormalized() {
     assert_eq!(renormalized.usage, response.usage);
     assert_eq!(renormalized.choice, response.choice);
     assert!(
-        renormalized.raw.is_none(),
+        renormalized.raw.is_null(),
         "normalizing a hand-fed typed value attaches no raw of its own"
     );
 }

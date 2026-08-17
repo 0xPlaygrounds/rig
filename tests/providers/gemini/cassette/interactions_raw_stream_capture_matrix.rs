@@ -8,9 +8,9 @@
 //! API's own [`StreamingCompletionResponse`] terminal record
 //! (`map_stream_final`'s input, built from the `interaction.completed` event)
 //! — onto the terminal [`rig::streaming::StreamFinal::raw`]. There is no
-//! opt-in and nothing about it reaches the wire; `raw` is `None` only on a
-//! terminal constructed without a provider stream behind it, never because
-//! capture "was not requested".
+//! opt-in and nothing about it reaches the wire; `raw` is `Value::Null` only
+//! on a terminal constructed without a provider stream behind it, never
+//! because capture "was not requested".
 //!
 //! # Matrix
 //!
@@ -136,10 +136,7 @@ async fn raw_roundtrips_streaming_completion_response() {
             let model = client.completion_model(MODEL);
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("a provider-backed terminal always carries raw");
+            let raw = &terminal.raw;
 
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into the Interactions streaming terminal type");
@@ -196,10 +193,7 @@ async fn raw_exposes_terminal_only_fields() {
             let model = client.completion_model(MODEL);
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("a provider-backed terminal always carries raw");
+            let raw = &terminal.raw;
             *sink.lock().expect("observation lock") = Some(raw.clone());
 
             // The normalized terminal provably lacks these: `object` has no

@@ -12,11 +12,10 @@
 //! chat-completions route, `{"api":"responses", …}` wrapping
 //! [`responses_api::CompletionResponse`] on the Responses route) — serialized
 //! with `serde_json::to_value` before normalization. Nothing about it is sent
-//! to Copilot. `raw == None` means only that a `CompletionResponse` was built
-//! by hand without a provider response behind it, which no cell here can
-//! produce. Because the tag rides along, a caller reads raw back into the
-//! same enum the typed escape hatch yields, without knowing the route in
-//! advance.
+//! to Copilot. `raw == Value::Null` means only that a `CompletionResponse` was
+//! built by hand without a provider response behind it, which no cell here can
+//! produce. Because the tag rides along, a caller reads raw back into the same
+//! enum the typed escape hatch yields, without knowing the route in advance.
 //!
 //! Provider-only fields per route: the chat route's `system_fingerprint`
 //! (Copilot omits `object`/`created` on this route — the wire type tolerates
@@ -145,7 +144,7 @@ fn assert_wire_value_matches(live: &Value, recorded: &Value, field: &str) {
 }
 
 fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = None;
+    response.raw = Value::Null;
     serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
@@ -186,10 +185,7 @@ async fn chat_raw_round_trips_provider_type() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             assert_eq!(raw["api"], "chat", "the route tag rides along on raw");
             let typed = CopilotCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into CopilotCompletionResponse");
@@ -233,11 +229,7 @@ async fn chat_raw_exposes_system_fingerprint() {
                 normalized.get("system_fingerprint").is_none(),
                 "normalized CompletionResponse must not grow a `system_fingerprint` field"
             );
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw")
-                .clone();
+            let raw = response.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -283,10 +275,7 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             // The transport id is a response header, not body: reattach it so
             // the raw-derived normalization is comparable field-for-field.
             let from_raw = CopilotCompletionResponse::deserialize(raw)
@@ -345,10 +334,7 @@ async fn responses_raw_round_trips_provider_type() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             assert_eq!(raw["api"], "responses", "the route tag rides along on raw");
             let typed = CopilotCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into CopilotCompletionResponse");
@@ -392,11 +378,7 @@ async fn responses_raw_exposes_envelope() {
                     "normalized CompletionResponse must not grow a `{field}` field"
                 );
             }
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw")
-                .clone();
+            let raw = response.raw.clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
     )
@@ -444,10 +426,7 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("every provider-backed completion carries raw");
+            let raw = &response.raw;
             // On this route the wire type has its own `provider_request_id`
             // slot, stamped from the header by the request driver; its
             // `Serialize` mirrors the wire body and never emits it, so raw

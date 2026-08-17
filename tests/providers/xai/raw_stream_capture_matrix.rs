@@ -1,15 +1,15 @@
 //! Raw provider response capture on xAI's streaming path.
 //!
-//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
-//! carries the value the model's inherent `raw_stream` yielded as its
-//! terminal record — for xAI the Responses terminal
-//! [`StreamingCompletionResponse`], built from the `response.completed`
-//! event — serialized. Capture is always on: there is no flag to request it,
-//! nothing about it reaches the wire, and a `None` only ever means a terminal
+//! **The feature.** Every stream's terminal
+//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
+//! `raw_stream` yielded as its terminal record — for xAI the Responses terminal
+//! [`StreamingCompletionResponse`], built from the `response.completed` event —
+//! serialized. Capture is always on: there is no flag to request it, nothing
+//! about it reaches the wire, and a `Value::Null` only ever means a terminal
 //! built by hand with no provider record behind it. It is the terminal record
-//! only, never the stream's events. The terminal carries the response
-//! `status` the normalized terminal folds into a finish reason, so `status`
-//! is the terminal-only field pinned here as reachable only through `raw`.
+//! only, never the stream's events. The terminal carries the response `status`
+//! the normalized terminal folds into a finish reason, so `status` is the
+//! terminal-only field pinned here as reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
@@ -137,10 +137,7 @@ async fn stream_raw_round_trips_terminal_type() {
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
-            let raw = terminal
-                .raw
-                .as_deref()
-                .expect("every provider-backed terminal carries raw");
+            let raw = &terminal.raw;
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw is the Responses streaming terminal");
             assert_eq!(
@@ -209,10 +206,7 @@ async fn stream_raw_exposes_terminal_status() {
         .as_u64()
         .expect("the completed event carries output_tokens");
 
-    let raw = terminal
-        .raw
-        .as_deref()
-        .expect("every provider-backed terminal carries raw");
+    let raw = &terminal.raw;
     assert_eq!(raw["status"], json!(recorded_status));
     assert_eq!(raw["usage"]["output_tokens"], json!(recorded_output_tokens));
     // The normalized terminal folds the status into a finish reason and keeps

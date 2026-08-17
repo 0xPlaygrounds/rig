@@ -8,9 +8,9 @@
 //! own [`Interaction`] payload — onto
 //! [`rig::completion::CompletionResponse::raw`] before `try_into` normalizes
 //! it. There is no opt-in and nothing about it reaches the wire; `raw` is
-//! `None` only on a response constructed without a provider payload behind it
-//! (hand-built, or persisted before the field existed), never because capture
-//! "was not requested".
+//! `Value::Null` only on a response constructed without a provider payload
+//! behind it (hand-built, or persisted before the field existed), never
+//! because capture "was not requested".
 //!
 //! # Matrix
 //!
@@ -121,10 +121,7 @@ async fn raw_roundtrips_interaction() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("a provider-backed response always carries raw");
+            let raw = &response.raw;
 
             let typed = Interaction::deserialize(raw)
                 .expect("raw must deserialize into the Interactions API's Interaction");
@@ -180,10 +177,7 @@ async fn raw_exposes_lifecycle_fields() {
                 .await
                 .expect("completion should succeed");
 
-            let raw = response
-                .raw
-                .as_deref()
-                .expect("a provider-backed response always carries raw");
+            let raw = &response.raw;
             *sink.lock().expect("observation lock") = Some(raw.clone());
 
             // The normalized response provably lacks these: `object` and `steps`

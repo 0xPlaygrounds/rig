@@ -108,10 +108,7 @@ async fn raw_try_into_matches_completion() {
 
             // Same response: the captured raw, typed and normalized by hand,
             // reproduces `completion()` exactly.
-            let captured = via_completion
-                .raw
-                .as_deref()
-                .expect("a provider-backed response always carries raw");
+            let captured = &via_completion.raw;
             let reproduced: RigCompletionResponse = CompletionResponse::deserialize(captured)
                 .expect("captured raw is Cohere's own type")
                 .try_into()
