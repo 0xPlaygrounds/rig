@@ -796,6 +796,62 @@ handed back a silently short list.
 
 ## 0.41 → next
 
+### Raw OpenAI-compatible streaming terminals gain `logprobs`
+
+`openai::completion::StreamingCompletionResponse<U>` — the provider-native
+terminal record returned by `raw_stream` for OpenAI Chat Completions and its
+compatible providers — gains one public field:
+
+```rust
+pub logprobs: Option<serde_json::Value>
+```
+
+It contains the primary choice's per-chunk log-probability objects, deep-merged
+in arrival order. In particular, token arrays under `content` and
+`reasoning_content` are concatenated rather than overwritten. The normalized
+`CompletionModel::stream` surface is unchanged; use `raw_stream` when you need
+this provider-native metadata.
+
+Code that only reads the terminal record needs no change. A full struct literal
+must add `logprobs: None` to reproduce the old value, and an exhaustive
+destructure must name the field or add `..`. The field is serde-defaulted and
+omitted when absent, so terminal records persisted before this change still
+deserialize and serialization is unchanged when log probabilities were not
+requested.
+
+The same terminal record also gains:
+
+```rust
+pub additional_params: Option<rig::message::AdditionalParams>
+```
+
+This is where otherwise-unmodeled top-level SSE chunk metadata now survives.
+It is accumulated across the stream, so OpenAI and OpenRouter raw terminals no
+longer lose `service_tier`, `system_fingerprint`, routed `provider`, or a new
+compatible-provider extension merely because the shared chunk type did not yet
+name it. As with `logprobs`, a full struct literal must add
+`additional_params: None`; old serialized terminals still load, and the field
+is omitted when empty.
+
+### Four blocking provider response types retain more native metadata
+
+The live cross-provider cassette sweep for #2359 found four blocking fields
+that serde was silently discarding:
+
+```rust
+openai::completion::CompletionResponse::service_tier: Option<String>
+openrouter::completion::CompletionResponse::provider: Option<String>
+openrouter::completion::CompletionResponse::service_tier: Option<String>
+openrouter::completion::Choice::logprobs: Option<serde_json::Value>
+mistral::Usage::service_tier: Option<String>
+```
+
+These are provider-native raw-response fields; normalized choices and usage are
+unchanged. Every field is serde-defaulted and omitted when absent, so old
+payloads remain compatible. These public structs are not non-exhaustive,
+however, so full struct literals must add `None` and exhaustive destructures
+must name the field or use `..`.
+
 ### `ProviderResponseError` gains a `headers` field
 
 A failed provider response now carries its headers onto the error, so
@@ -1053,6 +1109,24 @@ if response.choice.is_empty() {
 
 Matching on `finish_reason()` is the more direct form:
 `FinishReason::truncated_output()` is the predicate normalization itself uses.
+
+### A length-truncated Chat Completions tool call no longer loses the turn
+
+OpenAI-compatible providers can end a turn with `finish_reason: "length"`
+while a tool's JSON argument string is still empty or cut off. Blocking
+deserialization used to reject the entire response, losing its text, valid
+sibling calls, usage, identity, model, and finish reason. It now discards only
+the incomplete call and preserves the rest of the turn; raw and normalized
+streaming apply the same rule, so an empty truncated argument slot cannot be
+dispatched as a zero-argument side-effect tool.
+
+The tolerance is intentionally keyed to the outer finish reason. An ordinary
+`finish_reason: "tool_calls"` turn whose model generated invalid JSON still
+fails loudly—as the OpenAI Chat reference warns callers to expect and validate—
+and a real parameterless call remains `{}`. If code previously treated every
+blocking decode failure as a retry signal, check `finish_reason() == Length`
+and the surviving choice instead; the response now carries enough information
+to make that decision directly.
 
 ### xAI uses the shared Responses wire response
 

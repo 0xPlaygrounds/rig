@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"Call the add tool exactly once with x=17 and y=25. Do not answer in prose.","role":"user"}],"model":"openai/gpt-4.1-mini","provider":{"allow_fallbacks":false,"order":["OpenAI"]},"tool_choice":"required","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":17,\"y\":25}","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"native_finish_reason":"completed"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4.1-mini","object":"chat.completion","provider":"OpenAI","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":10,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.0000488,"cost_details":{"upstream_inference_completions_cost":0.000016,"upstream_inference_cost":0.0000488,"upstream_inference_prompt_cost":0.0000328},"is_byok":false,"prompt_tokens":82,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":92}}'

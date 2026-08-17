@@ -128,6 +128,7 @@ impl FinishReason {
 /// [`CompatibleFinishReason::Absent`]; anything outside the normalized
 /// vocabulary is preserved verbatim in
 /// [`crate::completion::FinishReason::Other`].
+#[cfg(test)]
 pub(crate) fn map_finish_reason(reason: Option<&FinishReason>) -> CompatibleFinishReason {
     CompatibleFinishReason::from_wire(reason.map(FinishReason::as_wire))
 }
@@ -161,11 +162,23 @@ struct StreamingChoice {
     #[serde(default)]
     delta: StreamingDelta,
     finish_reason: Option<FinishReason>,
+    /// Upstream provider spelling forwarded by gateways such as OpenRouter.
+    /// Direct providers omit it; their profile's default mapper ignores it.
+    native_finish_reason: Option<String>,
     /// Which candidate this delta belongs to when the caller asked for
     /// `n > 1`. Optional because providers streaming a single candidate may
     /// omit it; absent is read as candidate 0.
     #[serde(default)]
     index: Option<usize>,
+    /// Per-token probabilities for this chunk. Kept as provider metadata:
+    /// OpenAI-compatible services extend the object independently, while the
+    /// raw terminal response must retain every chunk rather than choosing a
+    /// provider-specific token schema here.
+    #[serde(
+        default,
+        deserialize_with = "crate::message::optional_additional_params"
+    )]
+    logprobs: Option<crate::message::AdditionalParams>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -174,6 +187,12 @@ struct StreamingCompletionChunk<U = Usage> {
     model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<U>,
+    /// Provider-specific top-level chunk fields. Chat-completions-compatible
+    /// services add fields independently (`service_tier`, `provider`, and
+    /// similar metadata), and `raw_stream` must not erase them merely because
+    /// the shared wire shape does not know their names yet.
+    #[serde(flatten)]
+    additional_params: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Final streaming response. `U` is the provider's streaming usage payload
@@ -209,6 +228,23 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// transport. `None` when the provider did not report one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
+    /// Token log probabilities accumulated from all primary-choice chunks.
+    ///
+    /// This stays provider-native on [`GenericCompletionModel::raw_stream`]:
+    /// normalized completions do not currently model log probabilities, just
+    /// as the blocking normalized path omits `Choice::logprobs` while its raw
+    /// response retains them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<serde_json::Value>,
+    /// Provider-specific top-level fields accumulated from the stream's
+    /// chunks, such as OpenAI's `service_tier` and `system_fingerprint` or
+    /// OpenRouter's routed `provider`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::message::optional_additional_params"
+    )]
+    pub additional_params: Option<crate::message::AdditionalParams>,
 }
 
 impl<U> StreamingCompletionResponse<U> {
@@ -221,6 +257,8 @@ impl<U> StreamingCompletionResponse<U> {
             response_id: None,
             model: None,
             provider_request_id: None,
+            logprobs: None,
+            additional_params: None,
         }
     }
 
@@ -235,6 +273,8 @@ impl<U> StreamingCompletionResponse<U> {
             // Stamped by the transport layer; the shared chunk accumulator
             // never sees connection headers.
             provider_request_id: None,
+            logprobs: terminal.logprobs.map(Into::into),
+            additional_params: terminal.additional_params,
         }
     }
 }
@@ -436,12 +476,19 @@ where
                 data.id,
                 data.model,
                 data.usage,
+                crate::message::AdditionalParams::new(data.additional_params),
                 primary,
                 |choice| CompatibleChoiceData {
                     // The shared mapping also folds `function_call` — the
                     // deprecated pre-tools finish reason some compatible
                     // providers still emit — onto `ToolCalls`.
-                    finish_reason: map_finish_reason(choice.finish_reason.as_ref()),
+                    finish_reason: match self.provider.map_streaming_finish_reason(
+                        choice.finish_reason.as_ref().map(FinishReason::as_wire),
+                        choice.native_finish_reason.as_deref(),
+                    ) {
+                        Some(reason) => CompatibleFinishReason::Reported(reason),
+                        None => CompatibleFinishReason::Absent,
+                    },
                     text: delta_text(&choice.delta),
                     reasoning: choice
                         .delta
@@ -452,6 +499,7 @@ where
                         &choice.delta.tool_calls,
                     ),
                     details: choice.delta.reasoning_details.clone(),
+                    logprobs: choice.logprobs.clone(),
                 },
             )
         })
@@ -473,6 +521,10 @@ where
         crate::message::ReasoningContent,
     )> {
         self.provider.streaming_detail_reasoning(detail)
+    }
+
+    fn reasoning_signature(&self, detail: &Self::Detail) -> Option<String> {
+        self.provider.streaming_reasoning_signature(detail)
     }
 
     fn decorate_tool_call(
@@ -639,6 +691,135 @@ mod tests {
         }
 
         (text, terminal)
+    }
+
+    /// Replay Chat Completions chunks without normalizing the terminal, so
+    /// provider-native metadata can be asserted directly.
+    async fn collect_openai_raw_terminal(chunks: &[&str]) -> Option<StreamingCompletionResponse> {
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(
+                chunks.iter().copied().chain(std::iter::once("[DONE]")),
+            ),
+        };
+        let mut stream = send_compatible_raw_streaming_request(client, streaming_request())
+            .await
+            .expect("raw stream should open");
+
+        let mut terminal = None;
+        while let Some(chunk) = stream.next().await {
+            if let streaming::RawStreamingChoice::FinalResponse(response) =
+                chunk.expect("stream item")
+            {
+                terminal = Some(response);
+            }
+        }
+        terminal
+    }
+
+    /// Log probabilities are distributed across token chunks. The raw
+    /// terminal must reconstruct both documented arrays in arrival order,
+    /// including nested top-token arrays, instead of retaining only the last
+    /// chunk or dropping the field entirely.
+    #[tokio::test]
+    async fn raw_terminal_accumulates_streamed_logprobs() {
+        let chunks = [
+            r#"{"choices":[{"index":0,"delta":{"reasoning_content":"why"},"finish_reason":null,"logprobs":{"reasoning_content":[{"token":"why","top_logprobs":[{"token":"why"}]}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{"content":"co"},"finish_reason":null,"logprobs":{"content":[{"token":"co","top_logprobs":[{"token":"co"}]}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{"content":"balt"},"finish_reason":null,"logprobs":{"content":[{"token":"balt","top_logprobs":[{"token":"balt"}]}]}}]}"#,
+            r#"{"choices":[{"index":0,"delta":{},"finish_reason":"stop","logprobs":null}]}"#,
+        ];
+
+        let terminal = collect_openai_raw_terminal(&chunks)
+            .await
+            .expect("stream should terminate");
+        assert_eq!(
+            terminal.logprobs,
+            Some(json!({
+                "reasoning_content": [{
+                    "token": "why",
+                    "top_logprobs": [{"token": "why"}]
+                }],
+                "content": [
+                    {"token": "co", "top_logprobs": [{"token": "co"}]},
+                    {"token": "balt", "top_logprobs": [{"token": "balt"}]}
+                ]
+            }))
+        );
+    }
+
+    /// Top-level metadata is not part of a choice, but it is still native
+    /// response data. Compatible providers add keys independently, so the raw
+    /// terminal preserves and merges both familiar and previously unknown
+    /// fields instead of requiring a shared-wire release for each new key.
+    #[tokio::test]
+    async fn raw_terminal_retains_top_level_chunk_metadata() {
+        let chunks = [
+            r#"{"id":"chatcmpl-1","model":"gpt-test","object":"chat.completion.chunk","created":17,"system_fingerprint":"fp_one","service_tier":"default","provider":"OpenAI","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}"#,
+            r#"{"id":"chatcmpl-1","model":"gpt-test","object":"chat.completion.chunk","created":17,"system_fingerprint":"fp_one","service_tier":"priority","provider":"OpenAI","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
+        ];
+
+        let terminal = collect_openai_raw_terminal(&chunks)
+            .await
+            .expect("stream should terminate");
+        let params = terminal
+            .additional_params
+            .expect("top-level metadata should survive");
+
+        assert_eq!(params["object"], "chat.completion.chunk");
+        assert_eq!(params["created"], 17);
+        assert_eq!(params["system_fingerprint"], "fp_one");
+        assert_eq!(params["service_tier"], "priority");
+        assert_eq!(params["provider"], "OpenAI");
+    }
+
+    /// Empty and null probability objects are both documented absence shapes
+    /// for optional provider metadata. This is a synthetic wire test because
+    /// a live model cannot be instructed to choose the empty-object spelling.
+    #[test]
+    fn empty_and_null_streamed_logprobs_canonicalize_to_absence() {
+        for logprobs in [serde_json::Value::Null, json!({})] {
+            let chunk = json!({
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": "hi"},
+                    "finish_reason": null,
+                    "logprobs": logprobs
+                }]
+            });
+            let decoded = serde_json::from_value::<StreamingCompletionChunk<Usage>>(chunk)
+                .expect("an empty optional metadata shape should decode");
+            assert!(
+                decoded
+                    .choices
+                    .first()
+                    .expect("the fixture has one choice")
+                    .logprobs
+                    .is_none()
+            );
+        }
+    }
+
+    /// The compatibility allowance is limited to object-or-null metadata;
+    /// accepting other JSON kinds would hide a malformed provider response.
+    #[test]
+    fn non_object_streamed_logprobs_remain_loud() {
+        for logprobs in [json!([]), json!("invalid"), json!(42)] {
+            let chunk = json!({
+                "choices": [{
+                    "index": 0,
+                    "delta": {"content": "hi"},
+                    "finish_reason": null,
+                    "logprobs": logprobs
+                }]
+            });
+            assert!(
+                serde_json::from_value::<StreamingCompletionChunk<Usage>>(chunk).is_err(),
+                "non-object logprobs must not be silently discarded"
+            );
+        }
     }
 
     /// The refusal shape the wire actually sends: `content` held at `null` for

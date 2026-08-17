@@ -1,0 +1,28 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":24,"messages":[{"content":"","prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"key\":\"argument-not-answer\"}","name":"lookup_marker"},"id":"call_REDACTED_1","type":"function"}]},{"content":"ZXQ9281","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"The lookup_marker argument is not the answer. Copy exactly the content of its following tool-role result; it is the nonce ZXQ9281.","role":"user"}],"model":"mistral-small-latest","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"Z"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456"}
+
+    data: {"choices":[{"delta":{"content":"XQ92"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy"}
+
+    data: {"choices":[{"delta":{"content":"81"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01","usage":{"completion_tokens":8,"prompt_tokens":72,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":80}}
+
+    data: [DONE]
+

@@ -367,36 +367,8 @@ pub struct ToolCall {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Function {
     pub name: String,
-    #[serde(
-        serialize_with = "json_utils::stringified_json::serialize",
-        deserialize_with = "deserialize_truncatable_arguments"
-    )]
+    #[serde(with = "json_utils::stringified_json")]
     pub arguments: serde_json::Value,
-}
-
-/// Deserialize a tool call's `arguments`, tolerating the truncated JSON a
-/// `max_tokens`-capped turn produces.
-///
-/// Mistral emits the tool call anyway when the budget runs out mid-arguments:
-/// a live turn capped at 32 tokens returns `finish_reason: "length"` with
-/// `arguments` cut off partway through the object. Parsing that strictly fails
-/// the *whole* response — the text, usage, id and finish reason go with it —
-/// where the streaming path keeps the turn and drops the unusable call
-/// ([`UnparseableToolInput::Drop`](crate::streaming::UnparseableToolInput)).
-///
-/// Truncated arguments become `null`, which
-/// [`NormalizeCompletionResponse`] drops the call on, so the two transports
-/// agree: the turn survives and its `Length` finish reason is what tells the
-/// caller the call was cut off.
-fn deserialize_truncatable_arguments<'de, D>(deserializer: D) -> Result<serde_json::Value, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let raw = String::deserialize(deserializer)?;
-    if raw.trim().is_empty() {
-        return Ok(serde_json::Value::Object(serde_json::Map::new()));
-    }
-    Ok(serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null))
 }
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -413,6 +385,9 @@ pub struct CompletionResponse {
     pub created: u64,
     pub model: String,
     pub system_fingerprint: Option<String>,
+    #[serde(
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+    )]
     pub choices: Vec<Choice>,
     pub usage: Option<Usage>,
 }
@@ -482,19 +457,13 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 } => Some(compat::text_then_tool_calls(
                     content,
                     content.is_empty(),
-                    // A call whose arguments were truncated mid-JSON is
-                    // unusable; the turn's `Length` finish reason is what
-                    // reports it, exactly as on the streaming path.
-                    tool_calls
-                        .iter()
-                        .filter(|call| !call.function.arguments.is_null())
-                        .map(|call| {
-                            (
-                                call.id.as_str(),
-                                call.function.name.as_str(),
-                                call.function.arguments.clone(),
-                            )
-                        }),
+                    tool_calls.iter().map(|call| {
+                        (
+                            call.id.as_str(),
+                            call.function.name.as_str(),
+                            call.function.arguments.clone(),
+                        )
+                    }),
                 )),
                 _ => None,
             },
@@ -709,6 +678,30 @@ mod tests {
                 .iter()
                 .any(|content| matches!(content, crate::completion::AssistantContent::ToolCall(_))),
             "a complete call must still reach the caller"
+        );
+    }
+
+    /// The choice-level tolerance is gated by the truncation reason. Invalid
+    /// JSON on a completed tool turn remains a response error.
+    #[test]
+    fn malformed_completed_tool_arguments_still_fail() {
+        let data = r#"{
+            "id": "cmpl-1", "object": "chat.completion", "created": 1,
+            "model": "mistral-small-latest", "system_fingerprint": null,
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": null, "tool_calls": [{
+                    "id": "call_1", "type": "function",
+                    "function": {"name": "add", "arguments": "{\"x\":"}
+                }]},
+                "logprobs": null, "finish_reason": "tool_calls"
+            }],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
+        }"#;
+
+        assert!(
+            serde_json::from_str::<CompletionResponse>(data).is_err(),
+            "ordinary malformed tool output must remain loud"
         );
     }
 

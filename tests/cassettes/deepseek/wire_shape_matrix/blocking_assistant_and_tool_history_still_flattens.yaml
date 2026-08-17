@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Checking the ledger.","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"call_REDACTED_1","index":0,"type":"function"}]},{"content":"pong","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"Now say: history-ok","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tools":[{"function":{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"history-ok","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":3,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":310,"prompt_tokens":310,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":313}}'

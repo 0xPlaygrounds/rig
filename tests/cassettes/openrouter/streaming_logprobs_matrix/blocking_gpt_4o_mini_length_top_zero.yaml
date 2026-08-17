@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"logprobs":true,"max_tokens":1,"messages":[{"content":"Write the word cobalt exactly 100 times, separated by spaces.","role":"user"}],"model":"openai/gpt-4o-mini","provider":{"allow_fallbacks":false,"order":["OpenAI"]},"top_logprobs":0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":{"content":[{"bytes":[99],"logprob":-0.007331405766308308,"token":"c","top_logprobs":[]}],"refusal":null},"message":{"content":"c","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"length"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":1,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":3.6e-6,"cost_details":{"upstream_inference_completions_cost":6e-7,"upstream_inference_cost":3.6e-6,"upstream_inference_prompt_cost":3e-6},"is_byok":false,"prompt_tokens":20,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":21}}'

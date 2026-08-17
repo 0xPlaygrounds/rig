@@ -191,6 +191,15 @@ pub struct Usage {
     pub completion_tokens: usize,
     pub prompt_tokens: usize,
     pub total_tokens: usize,
+    /// Capacity tier that served the request, when Mistral reports it.
+    ///
+    /// Although the generated `UsageInfo` reference currently omits this
+    /// field, the live chat-completions wire includes values such as
+    /// `"standard"` in both blocking responses and terminal stream chunks.
+    /// Keeping it here prevents the provider-native `raw_completion` and
+    /// `raw_stream` surfaces from silently discarding that wire metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
     /// Duration in seconds of audio tokens in the prompt (audio-input models only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_audio_seconds: Option<u64>,
@@ -268,6 +277,8 @@ impl std::fmt::Display for Usage {
 
 #[cfg(test)]
 mod tests {
+    use super::Usage;
+
     #[test]
     fn test_client_initialization() {
         let _client =
@@ -275,5 +286,23 @@ mod tests {
         let builder: crate::providers::mistral::ClientBuilder =
             crate::providers::mistral::Client::builder().api_key("dummy-key");
         let _client_from_builder = builder.build().expect("Client::builder() failed");
+    }
+
+    #[test]
+    fn usage_retains_live_service_tier() {
+        let usage: Usage = serde_json::from_value(serde_json::json!({
+            "completion_tokens": 4,
+            "prompt_tokens": 20,
+            "total_tokens": 24,
+            "prompt_tokens_details": { "cached_tokens": 0 },
+            "service_tier": "standard"
+        }))
+        .expect("live Mistral usage should deserialize");
+
+        assert_eq!(usage.service_tier.as_deref(), Some("standard"));
+        assert_eq!(
+            serde_json::to_value(usage).expect("Mistral usage should serialize")["service_tier"],
+            "standard"
+        );
     }
 }

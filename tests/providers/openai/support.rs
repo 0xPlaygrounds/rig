@@ -130,6 +130,67 @@ pub(super) async fn with_openai_truncation_cassette<F, Fut>(
     with_openai_cassette(spec, test_body).await;
 }
 
+/// Live-recorded Chat Completions log-probability transport matrix.
+pub(super) async fn with_openai_chat_stream_logprobs_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openai_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded Chat Completions tool-call truncation contract matrix.
+pub(super) async fn with_openai_tool_truncation_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openai_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded Chat Completions tool-call lifecycle matrix.
+pub(super) async fn with_openai_tool_lifecycle_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openai_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded Chat Completions terminal identity, usage, and provider
+/// metadata matrix.
+pub(super) async fn with_openai_terminal_metadata_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openai_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded Chat Completions caller-history roundtrip matrix.
+pub(super) async fn with_openai_history_roundtrip_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openai::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openai_cassette_result(spec, test_body).await
+}
+
 /// Per-bug wrapper for the image-generation `additional_params` matrix
 /// (`tests/cassettes/openai/image_params_matrix/`).
 #[cfg(feature = "image")]

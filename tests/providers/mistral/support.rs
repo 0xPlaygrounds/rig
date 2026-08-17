@@ -88,3 +88,94 @@ where
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
+
+/// Live-recorded terminal metadata and primary-choice matrix.
+pub(super) async fn with_mistral_terminal_metadata_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    // Kept inlined for the same reason as the bogus-key wrapper above: this
+    // directory is source-scanned for cassette registrations, so delegating
+    // through another registered wrapper would look like a variable scenario.
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
+
+/// Live-recorded tool-call truncation boundary matrix.
+pub(super) async fn with_mistral_tool_truncation_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    // Inlined because cassette_safety source-scans this whole directory.
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
+
+/// Live-recorded Mistral tool-call lifecycle matrix.
+pub(super) async fn with_mistral_tool_lifecycle_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
+
+/// Live-recorded caller-history roundtrip matrix.
+pub(super) async fn with_mistral_history_roundtrip_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    // Inlined because cassette_safety source-scans this whole directory.
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
+
+/// Live-recorded Mistral tool-policy and response-format finalization matrix.
+pub(super) async fn with_mistral_request_shape_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    // Inlined because cassette_safety source-scans this whole directory.
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}
+
+/// Live-recorded evidence for Mistral's model-level logprobs rejection.
+pub(super) async fn with_mistral_logprobs_rejection_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(mistral::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    // Inlined because cassette_safety source-scans this whole directory.
+    let (cassette, client) = mistral_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    cassette.finish_after_test_result(result).await
+}

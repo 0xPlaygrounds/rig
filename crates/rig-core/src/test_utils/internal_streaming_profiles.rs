@@ -18,6 +18,7 @@ fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
         response_model: None,
         choice: Some(choice),
         usage: None,
+        additional_params: None,
     }
 }
 
@@ -40,6 +41,7 @@ fn tool_call_choice(
         reasoning: None,
         tool_calls,
         details: Vec::new(),
+        logprobs: None,
     }
 }
 
@@ -177,6 +179,7 @@ impl CompatibleStreamProfile for ReasoningAroundToolCallProfile {
                 reasoning: Some("thinking before".to_owned()),
                 tool_calls: Vec::new(),
                 details: Vec::new(),
+                logprobs: None,
             }),
             "tool_call" => Some(tool_call_choice(
                 CompatibleFinishReason::Absent,
@@ -193,6 +196,7 @@ impl CompatibleStreamProfile for ReasoningAroundToolCallProfile {
                 reasoning: Some("thinking after".to_owned()),
                 tool_calls: Vec::new(),
                 details: Vec::new(),
+                logprobs: None,
             }),
             // One chunk carrying BOTH a reasoning delta and a complete tool
             // call — pins the adapter's within-chunk order: the reasoning is
@@ -208,6 +212,7 @@ impl CompatibleStreamProfile for ReasoningAroundToolCallProfile {
                     Some("{\"q\":1}"),
                 )],
                 details: Vec::new(),
+                logprobs: None,
             }),
             "finish" => Some(tool_call_choice(
                 CompatibleFinishReason::Reported(crate::completion::FinishReason::ToolCalls),
@@ -251,8 +256,16 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
                     Some("{\"x\":"),
                 )],
             )),
+            "empty_start" => Some(tool_call_choice(
+                CompatibleFinishReason::Absent,
+                vec![tool_call_chunk(0, Some("call_123"), Some("ping"), Some(""))],
+            )),
             "finish" => Some(tool_call_choice(
                 CompatibleFinishReason::Reported(crate::completion::FinishReason::ToolCalls),
+                Vec::new(),
+            )),
+            "length_finish" => Some(tool_call_choice(
+                CompatibleFinishReason::Reported(crate::completion::FinishReason::Length),
                 Vec::new(),
             )),
             _ => None,

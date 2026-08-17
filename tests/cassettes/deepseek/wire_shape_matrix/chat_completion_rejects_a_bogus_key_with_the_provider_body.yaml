@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":8,"messages":[{"content":"hi","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":"invalid_request_error","message":"Authentication Fails, Your api key: ****-key is invalid","param":null,"type":"authentication_error"}}'

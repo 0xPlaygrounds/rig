@@ -69,7 +69,13 @@ impl openai::completion::OpenAICompatibleProvider for DeepSeekExt {
 
                 if let Some(content) = message.get_mut("content") {
                     let separator = if is_assistant { "" } else { "\n" };
-                    openai::completion::flatten_text_content_parts(content, separator, false);
+                    // Text-only arrays flatten; an array carrying an image,
+                    // audio, video or file part is left alone so DeepSeek's
+                    // own rejection reaches the caller ("unknown variant
+                    // `image_url`, expected `text`", verified live). Dropping
+                    // those parts here answered the question from the text
+                    // alone and never told anyone the attachment was gone.
+                    openai::completion::flatten_text_content_parts(content, separator, true);
                 } else if is_assistant && !message.contains_key("content") {
                     // Tool-call-only assistant turns must still carry an
                     // (empty) string content field.
@@ -170,6 +176,9 @@ pub struct CompletionResponse {
     pub object: Option<String>,
     #[serde(default)]
     pub system_fingerprint: Option<String>,
+    #[serde(
+        deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
+    )]
     pub choices: Vec<Choice>,
     pub usage: Usage,
 }
@@ -327,14 +336,27 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
             |choice| choice.finish_reason.as_str(),
             |choice| {
                 let Message::Assistant {
-                    content,
+                    content: text,
                     tool_calls,
                     reasoning_content,
                     ..
                 } = &choice.message;
-                let mut content = compat::text_then_tool_calls(
-                    content,
-                    content.trim().is_empty(),
+                // Reasoning leads the turn, as it does on the streaming
+                // path: DeepSeek's stream emits every `reasoning_content`
+                // delta before the first `content` delta and before the tool
+                // call, and the shared canonical chunk order is the same
+                // (reasoning, then text, then tool events). Appending it last
+                // made the two transports disagree about identical bytes.
+                let mut content = match reasoning_content {
+                    Some(reasoning_content) => {
+                        vec![completion::AssistantContent::reasoning(reasoning_content)]
+                    }
+                    None => Vec::new(),
+                };
+
+                content.extend(compat::text_then_tool_calls(
+                    text,
+                    text.trim().is_empty(),
                     tool_calls.iter().map(|call| {
                         (
                             call.id.as_str(),
@@ -342,11 +364,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                             call.function.arguments.clone(),
                         )
                     }),
-                );
-
-                if let Some(reasoning_content) = reasoning_content {
-                    content.push(completion::AssistantContent::reasoning(reasoning_content));
-                }
+                ));
 
                 Some(content)
             },
@@ -675,6 +693,234 @@ mod tests {
             let converted = normalized(response_with_finish_reason(wire));
 
             assert_eq!(converted.finish_reason(), Some(expected), "wire: {wire}");
+        }
+    }
+
+    /// Build a one-choice DeepSeek turn out of its three assistant slots.
+    fn assistant_turn(
+        finish_reason: &str,
+        content: &str,
+        reasoning_content: Option<&str>,
+        tool_arguments: &[&str],
+    ) -> CompletionResponse {
+        let mut message = serde_json::json!({
+            "role": "assistant",
+            "content": content,
+        });
+        if let Some(reasoning_content) = reasoning_content {
+            message["reasoning_content"] = serde_json::Value::String(reasoning_content.to_owned());
+        }
+        if !tool_arguments.is_empty() {
+            message["tool_calls"] = tool_arguments
+                .iter()
+                .enumerate()
+                .map(|(index, arguments)| {
+                    serde_json::json!({
+                        "id": format!("call_{index}"),
+                        "index": index,
+                        "type": "function",
+                        "function": {"name": format!("tool_{index}"), "arguments": arguments},
+                    })
+                })
+                .collect();
+        }
+
+        serde_json::from_value(serde_json::json!({
+            "id": "chatcmpl_truncated",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": finish_reason,
+                "index": 0,
+                "logprobs": null,
+                "message": message,
+            }],
+            "usage": {
+                "completion_tokens": 24,
+                "prompt_tokens": 372,
+                "prompt_cache_hit_tokens": 256,
+                "prompt_cache_miss_tokens": 116,
+                "total_tokens": 396
+            }
+        }))
+        .expect("fixture should deserialize")
+    }
+
+    fn block_kinds(choice: &[crate::completion::AssistantContent]) -> Vec<&'static str> {
+        choice
+            .iter()
+            .map(|content| match content {
+                crate::completion::AssistantContent::Text(_) => "text",
+                crate::completion::AssistantContent::ToolCall(_) => "tool_call",
+                crate::completion::AssistantContent::Reasoning(_) => "reasoning",
+                crate::completion::AssistantContent::Image(_) => "image",
+            })
+            .collect()
+    }
+
+    /// DeepSeek emits the tool call anyway when `max_tokens` runs out mid
+    /// arguments -- live turns capped at 24/32/48/64 tokens returned
+    /// `finish_reason: "length"` with `arguments` cut off partway through the
+    /// object. Parsing strictly took the whole response down with it: text,
+    /// usage, id, model and finish reason all went with the unusable call.
+    #[test]
+    fn deepseek_truncated_tool_arguments_do_not_destroy_the_response() {
+        // The 24-token budget's recorded `arguments`, verbatim; the text is
+        // added on top so the assertions below can show it survives too (the
+        // recorded 24-token turn itself came back with `content: ""`).
+        let raw = assistant_turn("length", "Acknowledged.", None, &[r#"{"summary": "#]);
+
+        assert!(
+            match &raw.choices[0].message {
+                Message::Assistant { tool_calls, .. } => tool_calls.is_empty(),
+            },
+            "the unusable call is dropped at decode, not surfaced as a sentinel"
+        );
+
+        let converted = normalized(raw);
+
+        assert_eq!(converted.finish_reason(), Some(FinishReason::Length));
+        assert_eq!(converted.response_id.as_deref(), Some("chatcmpl_truncated"));
+        assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(converted.usage.total_tokens, 396);
+        assert_eq!(converted.usage.cached_input_tokens, 256);
+        assert_eq!(block_kinds(&converted.choice), vec!["text"]);
+    }
+
+    /// The unusable call is dropped, exactly as the streaming path drops it,
+    /// while a complete sibling in the same turn survives.
+    #[test]
+    fn deepseek_parallel_calls_drop_only_the_truncated_one() {
+        let converted = normalized(assistant_turn(
+            "length",
+            "",
+            None,
+            &[r#"{"team": "platform"}"#, r#"{"summary": "Log this"#],
+        ));
+
+        assert_eq!(block_kinds(&converted.choice), vec!["tool_call"]);
+        let crate::completion::AssistantContent::ToolCall(call) = &converted.choice[0] else {
+            panic!("expected the complete call to survive");
+        };
+        assert_eq!(call.function.name, "tool_0");
+        assert_eq!(
+            call.function.arguments,
+            serde_json::json!({"team": "platform"})
+        );
+    }
+
+    /// The tolerant parse must not weaken a complete payload, and must keep
+    /// reading an empty one as a parameterless invocation.
+    #[test]
+    fn deepseek_complete_and_empty_tool_arguments_are_unaffected() {
+        let complete = normalized(assistant_turn(
+            "tool_calls",
+            "",
+            None,
+            &[r#"{"summary": "done"}"#],
+        ));
+        let crate::completion::AssistantContent::ToolCall(call) = &complete.choice[0] else {
+            panic!("expected a tool call");
+        };
+        assert_eq!(
+            call.function.arguments,
+            serde_json::json!({"summary": "done"})
+        );
+
+        let empty = normalized(assistant_turn("tool_calls", "", None, &[""]));
+        let crate::completion::AssistantContent::ToolCall(call) = &empty.choice[0] else {
+            panic!("expected a parameterless tool call");
+        };
+        assert_eq!(call.function.arguments, serde_json::json!({}));
+
+        let truncated_empty = normalized(assistant_turn("length", "", None, &[""]));
+        assert!(
+            truncated_empty.choice.is_empty(),
+            "an output-length turn with no argument tokens must not dispatch a tool"
+        );
+    }
+
+    /// DeepSeek documents that an ordinary function call may contain invalid
+    /// JSON. Without an outer `length` signal that is a provider response
+    /// defect and must not disappear from the native response.
+    #[test]
+    fn deepseek_malformed_completed_tool_call_is_loud() {
+        let response = serde_json::json!({
+            "id": "chatcmpl-malformed",
+            "model": "deepseek-v4-flash",
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_0",
+                        "index": 0,
+                        "type": "function",
+                        "function": {"name": "page", "arguments": "{\"team\":"}
+                    }]
+                }
+            }],
+            "usage": {
+                "completion_tokens": 1,
+                "prompt_tokens": 1,
+                "total_tokens": 2
+            }
+        });
+
+        assert!(
+            serde_json::from_value::<CompletionResponse>(response).is_err(),
+            "a completed malformed call must not be rewritten away"
+        );
+    }
+
+    /// The full blocking block-order enumeration: reasoning present/absent x
+    /// text present/absent x zero/one/two tool calls. Reasoning leads the
+    /// choice on every shape, which is the order DeepSeek's own stream emits
+    /// (`reasoning_content` deltas before the first `content` delta and before
+    /// the tool call) and the order the shared canonical chunk lifecycle
+    /// imposes. Appending it last made the two transports disagree about
+    /// identical wire bytes.
+    #[test]
+    fn deepseek_reasoning_leads_the_choice_on_every_turn_shape() {
+        for reasoning in [None, Some("thinking")] {
+            for text in ["", "spoken"] {
+                for calls in [
+                    &[][..],
+                    &[r#"{"x":1}"#][..],
+                    &[r#"{"x":1}"#, r#"{"y":2}"#][..],
+                ] {
+                    let finish_reason = if calls.is_empty() {
+                        "stop"
+                    } else {
+                        "tool_calls"
+                    };
+                    let raw = assistant_turn(finish_reason, text, reasoning, calls);
+                    // A turn with nothing in it at all is a provider defect the
+                    // shared skeleton rejects; it is not an ordering shape.
+                    if reasoning.is_none() && text.is_empty() && calls.is_empty() {
+                        continue;
+                    }
+                    let kinds = block_kinds(&normalized(raw).choice);
+
+                    let mut expected = Vec::new();
+                    if reasoning.is_some() {
+                        expected.push("reasoning");
+                    }
+                    if !text.is_empty() {
+                        expected.push("text");
+                    }
+                    expected.extend(std::iter::repeat_n("tool_call", calls.len()));
+
+                    assert_eq!(
+                        kinds,
+                        expected,
+                        "reasoning={reasoning:?} text={text:?} calls={}",
+                        calls.len()
+                    );
+                }
+            }
         }
     }
 
