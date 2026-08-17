@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- _(memory)_ `TemplateCompactor::without_max_bytes` clears a previously
+  configured size cap, restoring the default unbounded rollup. This is the
+  supported way to express "no cap" and the inverse of `with_max_bytes`,
+  which matters when a compactor is configured in layers (a shared default
+  that sets a cap, a call site that wants none).
+
+### Changed
+
+- _(memory)_ [**breaking**] `TemplateCompactor::with_max_bytes(0)` no longer
+  means "unbounded". `0` is now a literal cap of zero bytes, which collapses
+  the summary to the header line plus the `"[…truncated…]"` marker; use
+  `without_max_bytes` for unbounded behaviour. The signature is unchanged, so
+  this does not break compilation, it changes runtime behaviour for callers
+  that passed `0` as an off switch, and those callers will silently lose the
+  rolled-up carry-over rather than see an error.
+
+  The sentinel made the cap non-monotonic in its argument (`0` → unbounded,
+  `1` → header + marker, `2` → slightly more), so a cap computed
+  arithmetically — `budget.saturating_sub(overhead)`, a config field left at
+  its zero default, a token estimate that rounds down could land on the one
+  input meaning the opposite of what was asked for. Since the summary spliced
+  by `CompactingMemory` sits **outside** the wrapped `MemoryPolicy`'s budget,
+  that accidental unbounded compactor is precisely the failure the cap exists
+  to prevent; an accidental `0` now fails safe instead.
+
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.41.0...rig-memory-v0.42.0) - 2026-08-16
 
 ### Other
@@ -18,11 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Contributors
 
-* [gold-silver-copper](https://github.com/gold-silver-copper)
+- [gold-silver-copper](https://github.com/gold-silver-copper)
 
 ### Changed
 
-- *(memory)* message content handled by the `MemoryPolicy` implementations is `Vec<T>` instead of `OneOrMany<T>`, transitively through rig-core's message-content change; behavior is unchanged
+- _(memory)_ message content handled by the `MemoryPolicy` implementations is `Vec<T>` instead of `OneOrMany<T>`, transitively through rig-core's message-content change; behavior is unchanged
 
 ## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.40.0...rig-memory-v0.41.0) - 2026-07-28
 
@@ -32,12 +60,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
-- *(client)* [**breaking**] single canonical CompletionClient + AgentClientExt ([#2205](https://github.com/0xPlaygrounds/rig/pull/2205)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- _(client)_ [**breaking**] single canonical CompletionClient + AgentClientExt ([#2205](https://github.com/0xPlaygrounds/rig/pull/2205)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - Simplify tool execution and hook APIs ([#2132](https://github.com/0xPlaygrounds/rig/pull/2132)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2132
 
 ### Contributors
 
-* [gold-silver-copper](https://github.com/gold-silver-copper)
+- [gold-silver-copper](https://github.com/gold-silver-copper)
+
 ## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.1.2...rig-memory-v0.38.1) - 2026-06-02
 
 ### Other
@@ -46,18 +75,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Contributors
 
-* @gold-silver-copper
+- @gold-silver-copper
+
 ## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.1.1...rig-memory-v0.1.2) - 2026-06-02
 
 ### Other
 
 - update Cargo.toml dependencies
+
 ## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.1.0...rig-memory-v0.1.1) - 2026-05-13
 
 ### Added
 
-- *(memory)* add Compactor trait, CompactingMemory adapter, and TemplateCompactor ([#1748](https://github.com/0xPlaygrounds/rig/pull/1748)) (by @ForeverAngry)
-- *(memory)* Rig-managed conversation memory + rig-memory companion crate ([#1702](https://github.com/0xPlaygrounds/rig/pull/1702)) (by @ForeverAngry)
+- _(memory)_ add Compactor trait, CompactingMemory adapter, and TemplateCompactor ([#1748](https://github.com/0xPlaygrounds/rig/pull/1748)) (by @ForeverAngry)
+- _(memory)_ Rig-managed conversation memory + rig-memory companion crate ([#1702](https://github.com/0xPlaygrounds/rig/pull/1702)) (by @ForeverAngry)
 
 ### Other
 
@@ -66,16 +97,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Contributors
 
-* @gold-silver-copper
-* @ForeverAngry
+- @gold-silver-copper
+- @ForeverAngry
 
 ### Added
 
 - `Compactor` trait (re-exported from `rig_core::memory`) +
   `CompactingMemory<M, P, C>` adapter and a `TemplateCompactor`
   reference implementation. Where `DemotingPolicyMemory` only
-  *observes* messages a policy truncates out of active history, a
-  `Compactor` *substitutes* them: it derives a single `Message`-shaped
+  _observes_ messages a policy truncates out of active history, a
+  `Compactor` _substitutes_ them: it derives a single `Message`-shaped
   `Artifact` from the evicted prefix (and, optionally, the previous
   summary), and `CompactingMemory` splices that artifact at the front
   of the loaded history. The resulting prompt shape is

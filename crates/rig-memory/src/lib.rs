@@ -1204,7 +1204,10 @@ where
 /// cap the rolled-up text. When the cap is exceeded, the oldest portion
 /// of the body (after the header) is dropped at a UTF-8 boundary and
 /// replaced with a `"[…truncated…]"` marker, preserving the most recent
-/// context.
+/// context. The cap is taken literally — `with_max_bytes(0)` collapses the
+/// summary to the header and marker, so compute caps freely without
+/// special-casing zero. [`Self::without_max_bytes`] clears a cap that was
+/// already configured.
 ///
 /// # Example
 ///
@@ -1217,6 +1220,11 @@ where
 /// // Custom header plus a 4 KiB cap for use with token-budgeted policies.
 /// let _bounded = TemplateCompactor::with_header("Earlier context")
 ///     .with_max_bytes(4 * 1024);
+///
+/// // Opt back out of a cap inherited from a shared default.
+/// let _unbounded = TemplateCompactor::with_header("Earlier context")
+///     .with_max_bytes(4 * 1024)
+///     .without_max_bytes();
 /// ```
 #[derive(Debug, Clone)]
 pub struct TemplateCompactor {
@@ -1243,17 +1251,20 @@ impl TemplateCompactor {
     /// Cap the rolled-up summary at `max_bytes` bytes (UTF-8). When the
     /// assembled body exceeds the cap, the oldest portion after the
     /// header is dropped at a char boundary and replaced with a
-    /// `"[…truncated…]"` marker.
-    ///
-    /// `max_bytes` of `0` disables truncation (equivalent to the default
-    /// unbounded behaviour). The header line plus the marker are always
-    /// preserved even if they exceed the cap.
+    /// `"[…truncated…]"` marker. The header line plus the marker are
+    /// always preserved even if they exceed the cap, so a `max_bytes` of
+    /// `0` collapses the summary to just the header and marker rather
+    /// than disabling truncation — use [`Self::without_max_bytes`] for
+    /// unbounded behaviour.
     pub fn with_max_bytes(mut self, max_bytes: usize) -> Self {
-        self.max_bytes = if max_bytes == 0 {
-            None
-        } else {
-            Some(max_bytes)
-        };
+        self.max_bytes = Some(max_bytes);
+        self
+    }
+
+    /// Remove any configured size cap, restoring the default unbounded
+    /// behaviour.
+    pub fn without_max_bytes(mut self) -> Self {
+        self.max_bytes = None;
         self
     }
 }
@@ -2855,14 +2866,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn template_compactor_with_max_bytes_zero_is_unbounded() {
+    async fn template_compactor_with_max_bytes_zero_collapses_to_header_and_marker() {
         let compactor = TemplateCompactor::new().with_max_bytes(0);
         let mut evicted = Vec::new();
         for i in 0..200 {
             evicted.push(user(&format!("msg {i}")));
         }
         let summary = compactor.compact("c", &evicted, None).await.unwrap();
+        assert!(summary.as_str().contains("[\u{2026}truncated\u{2026}]"));
+        assert!(!summary.as_str().contains("msg 199"));
+        assert!(
+            summary
+                .as_str()
+                .starts_with("[Conversation summary so far]\n")
+        );
+    }
+
+    #[tokio::test]
+    async fn template_compactor_without_max_bytes_restores_unbounded() {
+        let compactor = TemplateCompactor::new()
+            .with_max_bytes(32)
+            .without_max_bytes();
+        let mut evicted = Vec::new();
+        for i in 0..200 {
+            evicted.push(user(&format!("msg {i}")));
+        }
+        let summary = compactor.compact("c", &evicted, None).await.unwrap();
         assert!(!summary.as_str().contains("[\u{2026}truncated\u{2026}]"));
+        assert!(summary.as_str().contains("msg 0"));
+        assert!(summary.as_str().contains("msg 199"));
     }
 
     #[tokio::test]
