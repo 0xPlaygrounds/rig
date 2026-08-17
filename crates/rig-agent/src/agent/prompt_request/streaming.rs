@@ -3064,6 +3064,150 @@ mod migrated_tests {
         );
     }
 
+    /// The `capture_raw_response` flag as the model actually received it,
+    /// through the erased `ModelHandle`, for one blocking prompt: `agent_on`
+    /// is the builder setting, `request_override` a per-request setter call
+    /// (`None` leaves the agent's setting alone).
+    async fn recorded_capture_raw_flag_blocking(
+        agent_on: bool,
+        request_override: Option<bool>,
+    ) -> bool {
+        let model = MockCompletionModel::text("reply");
+        let recorded_model = model.clone();
+        let agent = AgentBuilder::new(model)
+            .capture_raw_response(agent_on)
+            .build();
+
+        let request = agent.prompt("prompt");
+        let request = match request_override {
+            Some(enabled) => request.capture_raw_response(enabled),
+            None => request,
+        };
+        request.await.expect("prompt should not error");
+
+        let requests = recorded_model.requests();
+        assert_eq!(requests.len(), 1);
+        requests[0].capture_raw_response
+    }
+
+    /// The streaming counterpart of [`recorded_capture_raw_flag_blocking`].
+    async fn recorded_capture_raw_flag_streamed(
+        agent_on: bool,
+        request_override: Option<bool>,
+    ) -> bool {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("reply"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let recorded_model = model.clone();
+        let agent = AgentBuilder::new(model)
+            .capture_raw_response(agent_on)
+            .build();
+
+        let request = agent.stream_prompt("prompt").max_turns(1);
+        let request = match request_override {
+            Some(enabled) => request.capture_raw_response(enabled),
+            None => request,
+        };
+        let mut stream = request.await;
+        while let Some(item) = stream.try_next().await.expect("stream should not error") {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+
+        let requests = recorded_model.requests();
+        assert_eq!(requests.len(), 1);
+        requests[0].capture_raw_response
+    }
+
+    /// The opt-in is local policy carried on the concrete `CompletionRequest`,
+    /// which is how it reaches the provider through the erased model: the
+    /// agent-level setting arrives as-is, a per-request setter overrides it
+    /// in either direction, and the default is off. Blocking surface.
+    #[tokio::test]
+    async fn capture_raw_response_reaches_the_model_through_erasure_blocking() {
+        assert!(
+            !recorded_capture_raw_flag_blocking(false, None).await,
+            "default: capture is off"
+        );
+        assert!(
+            recorded_capture_raw_flag_blocking(true, None).await,
+            "agent opt-in reaches the model"
+        );
+        assert!(
+            !recorded_capture_raw_flag_blocking(true, Some(false)).await,
+            "a per-request opt-out overrides the agent's opt-in"
+        );
+        assert!(
+            recorded_capture_raw_flag_blocking(false, Some(true)).await,
+            "a per-request opt-in overrides the agent's default"
+        );
+    }
+
+    /// The same four cells on the streaming surface: the flag is read off the
+    /// same request the stream is opened with.
+    #[tokio::test]
+    async fn capture_raw_response_reaches_the_model_through_erasure_streamed() {
+        assert!(
+            !recorded_capture_raw_flag_streamed(false, None).await,
+            "default: capture is off"
+        );
+        assert!(
+            recorded_capture_raw_flag_streamed(true, None).await,
+            "agent opt-in reaches the model"
+        );
+        assert!(
+            !recorded_capture_raw_flag_streamed(true, Some(false)).await,
+            "a per-request opt-out overrides the agent's opt-in"
+        );
+        assert!(
+            recorded_capture_raw_flag_streamed(false, Some(true)).await,
+            "a per-request opt-in overrides the agent's default"
+        );
+    }
+
+    /// The per-run override on `AgentRunner` is the same setter the request
+    /// builders forward to, on both of the runner's own surfaces.
+    #[tokio::test]
+    async fn capture_raw_response_runner_override_reaches_the_model() {
+        let model = MockCompletionModel::text("reply");
+        let recorded_model = model.clone();
+        AgentBuilder::new(model)
+            .capture_raw_response(true)
+            .build()
+            .runner("prompt")
+            .capture_raw_response(false)
+            .run()
+            .await
+            .expect("blocking run");
+        assert!(
+            !recorded_model.requests()[0].capture_raw_response,
+            "the runner's opt-out overrides the agent's opt-in"
+        );
+
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("reply"),
+            MockStreamEvent::final_response(Usage::default()),
+        ]]);
+        let recorded_model = model.clone();
+        let mut stream = AgentBuilder::new(model)
+            .build()
+            .runner("prompt")
+            .capture_raw_response(true)
+            .stream()
+            .await;
+        while let Some(item) = stream.try_next().await.expect("stream should not error") {
+            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
+                break;
+            }
+        }
+        assert!(
+            recorded_model.requests()[0].capture_raw_response,
+            "the runner's opt-in overrides the agent's default"
+        );
+    }
+
     #[test]
     fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
         let item: MultiTurnStreamItem =

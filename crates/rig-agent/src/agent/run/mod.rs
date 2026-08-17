@@ -2966,4 +2966,161 @@ mod tests {
         let response = expect_done(&mut resumed);
         assert_eq!(response.output, "done");
     }
+
+    // ---------------------------------------------------------------------
+    // Opt-in raw provider response capture, at the state-machine layer: the
+    // drivers hand `AgentRun` the payload they read off the provider
+    // response (blocking) or the stream terminal (streamed); the run must
+    // record it per call, and persisted run state must carry it across a
+    // suspend/resume boundary — while state written before the field existed
+    // still loads.
+    // ---------------------------------------------------------------------
+
+    fn raw_payload(attempt: &str) -> std::sync::Arc<serde_json::Value> {
+        std::sync::Arc::new(json!({
+            "id": format!("resp-{attempt}"),
+            "provider_only": attempt,
+        }))
+    }
+
+    #[test]
+    fn model_turn_raw_is_recorded_on_the_completion_call() {
+        let first = raw_payload("turn-1");
+        let second = raw_payload("turn-2");
+        let mut run = AgentRun::new("add things").max_turns(2);
+
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add").with_raw(Some(first.clone())))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+        run.tool_results(vec![tool_result("call_1", "2")])
+            .expect("tool_results should succeed");
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("done").with_raw(Some(second.clone())))
+                .expect("model_response should succeed"),
+        );
+
+        let response = expect_done(&mut run);
+        let raws: Vec<_> = response
+            .completion_calls
+            .iter()
+            .map(|call| call.raw.as_deref())
+            .collect();
+        assert_eq!(
+            raws,
+            [Some(&*first), Some(&*second)],
+            "each call carries its own turn's payload"
+        );
+    }
+
+    #[test]
+    fn model_turn_without_raw_records_none() {
+        let mut run = AgentRun::new("hello");
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(text_turn("hi"))
+                .expect("model_response should succeed"),
+        );
+        assert_eq!(run.completion_calls()[0].raw, None);
+    }
+
+    #[test]
+    fn streamed_completion_call_record_carries_raw() {
+        let raw = raw_payload("streamed");
+        let mut run = AgentRun::new("hello");
+        expect_call_model(&mut run);
+        let call = run
+            .record_streamed_completion_call(
+                usage(3, 4),
+                ResponseIdentity::default(),
+                None,
+                Some(raw.clone()),
+            )
+            .expect("record should succeed");
+        assert_eq!(call.raw.as_deref(), Some(&*raw));
+        assert_eq!(run.completion_calls()[0].raw.as_deref(), Some(&*raw));
+
+        let mut run = AgentRun::new("hello");
+        expect_call_model(&mut run);
+        let call = run
+            .record_streamed_completion_call(usage(3, 4), ResponseIdentity::default(), None, None)
+            .expect("record should succeed");
+        assert_eq!(call.raw, None, "capture off records no payload");
+    }
+
+    /// A suspended run's recorded payloads survive the serialize/resume
+    /// boundary intact — a resumed process sees exactly what the live one
+    /// recorded.
+    #[test]
+    fn recorded_raw_survives_serde_round_trip() {
+        let raw = raw_payload("suspended");
+        let mut run = AgentRun::new("add things").max_turns(2);
+        expect_call_model(&mut run);
+        expect_continue(
+            run.model_response(tool_call_turn("call_1", "add").with_raw(Some(raw.clone())))
+                .expect("model_response should succeed"),
+        );
+        expect_call_tools(&mut run);
+
+        let serialized = serde_json::to_string(&run).expect("mid-run state should serialize");
+        let restored: AgentRun =
+            serde_json::from_str(&serialized).expect("mid-run state should deserialize");
+        assert_eq!(restored.completion_calls().len(), 1);
+        assert_eq!(restored.completion_calls()[0].raw.as_deref(), Some(&*raw));
+        assert_eq!(restored.completion_calls(), run.completion_calls());
+    }
+
+    /// `ModelTurn` carries `raw` through its own serde round trip, and a
+    /// turn serialized before the field existed (no `raw` key) still loads
+    /// with `raw` unset.
+    #[test]
+    fn model_turn_raw_round_trips_and_missing_key_loads_as_none() {
+        let raw = raw_payload("turn");
+        let turn = text_turn("hi").with_raw(Some(raw.clone()));
+
+        let value = serde_json::to_value(&turn).expect("turn should serialize");
+        assert_eq!(value["raw"], *raw);
+        let restored: ModelTurn =
+            serde_json::from_value(value.clone()).expect("turn should deserialize");
+        assert_eq!(restored.raw.as_deref(), Some(&*raw));
+
+        let mut without_raw = value;
+        without_raw
+            .as_object_mut()
+            .expect("turn serializes as an object")
+            .remove("raw")
+            .expect("the raw key was present");
+        let legacy: ModelTurn =
+            serde_json::from_value(without_raw).expect("a turn without a raw key still loads");
+        assert_eq!(legacy.raw, None);
+        assert_eq!(legacy.choice, turn.choice);
+    }
+
+    /// The same for a persisted `CompletionCall`: `raw` is skipped when unset
+    /// (state written before the field is byte-identical), and a record
+    /// without the key loads with `raw` unset.
+    #[test]
+    fn completion_call_raw_round_trips_and_missing_key_loads_as_none() {
+        let raw = raw_payload("call");
+        let call = CompletionCall::new(0, usage(1, 2)).with_raw(Some(raw.clone()));
+
+        let value = serde_json::to_value(&call).expect("call should serialize");
+        assert_eq!(value["raw"], *raw);
+        let restored: CompletionCall =
+            serde_json::from_value(value).expect("call should deserialize");
+        assert_eq!(restored, call);
+
+        let unset = serde_json::to_value(CompletionCall::new(0, usage(1, 2)))
+            .expect("call should serialize");
+        assert!(
+            unset.get("raw").is_none(),
+            "an unset raw is not written, so pre-field state is unchanged"
+        );
+        let legacy: CompletionCall =
+            serde_json::from_value(unset).expect("a call without a raw key still loads");
+        assert_eq!(legacy.raw, None);
+    }
 }
