@@ -388,7 +388,10 @@ where
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let stream = self.raw_stream(request).await?;
-        let normalized = streaming::normalize_stream(stream, |response| Ok(response.into()));
+        let normalized =
+            streaming::normalize_stream(stream, |response: StreamingCompletionResponse| {
+                Ok(response.into())
+            });
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,

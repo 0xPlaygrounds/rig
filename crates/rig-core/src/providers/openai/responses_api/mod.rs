@@ -2626,8 +2626,10 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Capture before `normalize` consumes the raw value.
         let response = self.raw_completion(completion_request).await?;
-        response.normalize(Ext::PROVIDER_NAME)
+        let captured = serde_json::to_value(&response)?;
+        Ok(response.normalize(Ext::PROVIDER_NAME)?.with_raw(captured))
     }
 
     async fn stream(
@@ -5644,5 +5646,150 @@ mod tests {
             None,
             "base64 PDF should not carry file_url: {input_file:#}"
         );
+    }
+
+    /// Raw-capture tests: the `normalize` shape through the Responses model,
+    /// driven end to end over a mock transport that hands back a Responses
+    /// body *and* an `x-request-id` response header. The Responses raw type
+    /// carries the transport id (`CompletionResponse::provider_request_id`,
+    /// stamped by the driver), which is why the Part A contract here is a
+    /// plain `raw_completion` → `normalize`. Its manual `Serialize` mirrors
+    /// the wire body and deliberately never emits that id, so the captured
+    /// value is the body as parsed — the transport id lives on the normalized
+    /// response, beside the capture, not inside it. `with_error_response_headers`
+    /// with `200 OK` is the one unary double that carries response headers.
+    mod raw_capture {
+        use super::*;
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::openai::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        const REQUEST_ID: &str = "req_unit_responses_0001";
+
+        /// A Responses body carrying `service_tier`, which the normalized
+        /// response provably lacks.
+        const BODY: &str = r#"{
+            "id": "resp_raw_1",
+            "object": "response",
+            "created_at": 1700000000,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": null,
+            "max_output_tokens": null,
+            "model": "gpt-4o-mini-2024-07-18",
+            "service_tier": "default",
+            "usage": {
+                "input_tokens": 4,
+                "input_tokens_details": {"cached_tokens": 0},
+                "output_tokens": 3,
+                "output_tokens_details": {"reasoning_tokens": 0},
+                "total_tokens": 7
+            },
+            "output": [{
+                "type": "message",
+                "id": "msg_raw_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "hello", "annotations": []}]
+            }],
+            "tools": []
+        }"#;
+
+        fn model() -> ResponsesCompletionModel<RecordingHttpClient> {
+            let mut headers = http::HeaderMap::new();
+            headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
+            let http_client = RecordingHttpClient::with_error_response_headers(
+                http::StatusCode::OK,
+                BODY,
+                headers,
+            );
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(http_client)
+                .build()
+                .expect("build client");
+            client.completion_model("gpt-4o-mini")
+        }
+
+        /// The load-bearing capture property: `raw` is the Responses
+        /// `CompletionResponse` as rig parsed it — it deserializes back into
+        /// that type and re-serializes to the identical value — and
+        /// re-normalizing that capture (with the header id reattached, since
+        /// the capture is body only) reproduces every normalized field. Also
+        /// reads `service_tier` off the capture,
+        /// and pins that the capture mirrors the wire body: the transport id
+        /// the driver stamped onto the raw type is not part of it (the manual
+        /// `Serialize` never emits it), so a value deserialized from `raw`
+        /// reports `None` there while the normalized response beside it still
+        /// carries the header.
+        #[tokio::test]
+        async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
+            let model = model();
+
+            let response = model
+                .completion(model.completion_request("hello").build())
+                .await
+                .expect("completion");
+
+            let raw = &response.raw;
+            let typed: CompletionResponse =
+                serde_json::from_value(raw.clone()).expect("raw must deserialize");
+            assert_eq!(
+                serde_json::to_value(&typed).expect("re-serialize"),
+                *raw,
+                "the capture must be exactly what the wire type serializes to"
+            );
+            assert!(matches!(
+                typed.additional_parameters.service_tier,
+                Some(OpenAIServiceTier::Default)
+            ));
+            assert_eq!(raw["service_tier"], "default");
+            assert!(raw.get("provider_request_id").is_none());
+            assert_eq!(typed.provider_request_id, None);
+
+            let renormalized = typed
+                .normalize(<crate::providers::openai::OpenAIResponsesExt as ResponsesProviderExt>::PROVIDER_NAME)
+                .expect("re-normalize the capture")
+                .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
+            assert_eq!(response.identity(), renormalized.identity());
+            assert_eq!(response.finish_reason(), renormalized.finish_reason());
+            assert_eq!(response.model, renormalized.model);
+            assert_eq!(response.usage, renormalized.usage);
+            assert_eq!(response.choice, renormalized.choice);
+            assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
+            assert_eq!(response.identity().message_id.as_deref(), Some("msg_raw_1"));
+        }
+
+        /// Part A contract statement for a provider whose raw type carries the
+        /// transport id: `raw_completion` → `normalize` reproduces
+        /// `completion()` on identity, finish reason, model and usage — the id
+        /// included — with nothing to reattach.
+        #[tokio::test]
+        async fn raw_completion_then_normalize_reproduces_completion() {
+            let model = model();
+
+            let raw = model
+                .raw_completion(model.completion_request("hello").build())
+                .await
+                .expect("typed route");
+            assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
+            let reassembled = raw
+                .normalize(<crate::providers::openai::OpenAIResponsesExt as ResponsesProviderExt>::PROVIDER_NAME)
+                .expect("normalize");
+
+            let normalized = model
+                .completion(model.completion_request("hello").build())
+                .await
+                .expect("normalized route");
+
+            assert_eq!(reassembled.identity(), normalized.identity());
+            assert_eq!(reassembled.finish_reason(), normalized.finish_reason());
+            assert_eq!(reassembled.model, normalized.model);
+            assert_eq!(reassembled.usage, normalized.usage);
+            assert_eq!(reassembled.provider_request_id.as_deref(), Some(REQUEST_ID));
+            assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
+        }
     }
 }

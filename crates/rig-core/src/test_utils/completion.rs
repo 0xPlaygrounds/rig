@@ -61,6 +61,7 @@ struct MockTurnResponse {
     response_id: Option<String>,
     provider_request_id: Option<String>,
     finish_reason: Option<crate::completion::FinishReason>,
+    raw: serde_json::Value,
 }
 
 impl MockTurn {
@@ -121,6 +122,7 @@ impl MockTurn {
                 response_id: None,
                 provider_request_id: None,
                 finish_reason: None,
+                raw: serde_json::Value::Null,
             }),
         }
     }
@@ -138,6 +140,7 @@ impl MockTurn {
                 response_id: None,
                 provider_request_id: None,
                 finish_reason: None,
+                raw: serde_json::Value::Null,
             }),
         }
     }
@@ -201,6 +204,19 @@ impl MockTurn {
         self
     }
 
+    /// Script the provider's own response for this turn — what a real seam
+    /// would serialize from its raw type. Attached to the response as-is, so
+    /// agent tests can prove the payload reaches every observer of the turn
+    /// without a live provider. A turn without a scripted payload reports
+    /// `raw: Value::Null`, so a non-null `raw` in a test means the scripted
+    /// value arrived, never that the mock invented one.
+    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
+        if let Ok(response) = &mut self.response {
+            response.raw = raw;
+        }
+        self
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(
@@ -208,7 +224,8 @@ impl MockTurn {
                 .with_optional_message_id(response.message_id)
                 .with_optional_response_id(response.response_id)
                 .with_optional_provider_request_id(response.provider_request_id)
-                .with_optional_finish_reason(response.finish_reason),
+                .with_optional_finish_reason(response.finish_reason)
+                .with_raw(response.raw),
         )
     }
 }
@@ -347,7 +364,9 @@ impl CompletionModel for MockCompletionModel {
         };
         // Scripted terminals go through `normalize_stream` like every real
         // provider's, so the mock observes the same `Stop` -> `ToolCalls`
-        // reconciliation callers see in production.
+        // reconciliation callers see in production — and the same raw
+        // capture: the mock's terminal type is `StreamFinal` itself, so `raw`
+        // is the scripted terminal serialized.
         let stream = crate::streaming::normalize_stream(Box::pin(stream), Ok);
         Ok(StreamingCompletionResponse::stream(MOCK_PROVIDER, stream))
     }
@@ -358,7 +377,7 @@ mod tests {
     use super::*;
     use crate::{
         message::Message,
-        streaming::{StreamedAssistantContent, ToolCallDeltaContent},
+        streaming::{StreamFinal, StreamedAssistantContent, ToolCallDeltaContent},
     };
     use futures::StreamExt;
 
@@ -412,6 +431,70 @@ mod tests {
 
         assert_eq!(model.request_count(), 2);
         assert_eq!(model.requests().len(), 2);
+    }
+
+    /// The mock behaves like a real seam: a scripted raw payload rides on the
+    /// normalized response unconditionally, and a turn that scripted none
+    /// reports `raw: Value::Null` — the mock never invents a payload, so `Value::Null`
+    /// here means "no provider record was scripted behind this turn".
+    #[tokio::test]
+    async fn completion_attaches_scripted_raw_and_reports_null_when_unscripted() {
+        let payload = serde_json::json!({"provider_only": "kept", "id": "resp_1"});
+        let model = MockCompletionModel::new([
+            MockTurn::text("first").with_raw(payload.clone()),
+            MockTurn::text("second"),
+        ]);
+
+        let scripted = model
+            .completion(request("hello"))
+            .await
+            .expect("first scripted turn should succeed");
+        assert_eq!(scripted.raw, payload);
+
+        let unscripted = model
+            .completion(request("hello"))
+            .await
+            .expect("second scripted turn should succeed");
+        assert!(unscripted.raw.is_null());
+
+        assert_eq!(model.requests().len(), 2);
+    }
+
+    /// The streaming half of the same contract: the scripted terminal goes
+    /// through `normalize_stream`, so the terminal's `raw` is the scripted
+    /// terminal record serialized (the mock's own terminal type is
+    /// `StreamFinal`).
+    #[tokio::test]
+    async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::text("hello"),
+            MockStreamEvent::final_response(Usage {
+                input_tokens: 1,
+                output_tokens: 2,
+                total_tokens: 3,
+                ..Usage::new()
+            }),
+        ]]);
+
+        let mut stream = model
+            .stream(request("hello"))
+            .await
+            .expect("stream should open");
+        while stream.next().await.is_some() {}
+        let terminal = stream.response.expect("terminal record");
+        let raw = &terminal.raw;
+        let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
+        assert_eq!(typed.usage.total_tokens, 3);
+        assert!(
+            typed.raw.is_null(),
+            "the scripted terminal itself carried no raw (Value::Null)"
+        );
+        assert_eq!(
+            serde_json::to_value(&typed).expect("re-serialize"),
+            *raw,
+            "the capture must be exactly what the scripted terminal serializes to"
+        );
+        assert_eq!(terminal.usage.total_tokens, 3);
     }
 
     #[tokio::test]

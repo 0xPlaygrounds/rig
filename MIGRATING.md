@@ -1742,7 +1742,7 @@ pub struct CompletionResponse {
 | provider stop/finish reason off `raw_response` | `response.finish_reason()` |
 | provider/message identity off `raw_response` | `response.provider`, `response.message_id` |
 | response-scoped ID (`chatcmpl-*`, `responseId`, …) off `raw_response` | `response.response_id` |
-| a genuinely provider-specific field | `model.raw_completion(request).await?` |
+| a genuinely provider-specific field | `model.raw_completion(request).await?` on a concrete model, or read `response.raw` (the same value, serialized — populated on every call, and the route from an agent, whose model type is erased) — see [Raw provider responses are reachable from an agent (#2366)](#raw-provider-responses-are-reachable-from-an-agent-2366) |
 
 `usage` is unchanged, including the rule that all-zero values mean the provider
 supplied no metrics. `model` is the identifier the *wire response* reported, not
@@ -1795,10 +1795,17 @@ error-preservation path with the normalized methods — the normalized method
 calls the raw one and maps the result, so there is still exactly one network
 request.
 
-The trade: raw access now requires the concrete provider model rather than any
-`CompletionResponse`. Code that was generic over `CompletionModel` could never
-touch `raw_response` without a bound anyway, so in practice this affects code
-that had already committed to a provider.
+The trade: typed raw access now requires the concrete provider model rather
+than any `CompletionResponse`. Code that was generic over `CompletionModel`
+could never touch `raw_response` without a bound anyway, so in practice this
+affects code that had already committed to a provider — including agent users,
+whose model type is erased at `AgentBuilder::new`. For them the same value is
+available, serialized, on every call as `CompletionResponse::raw` /
+`StreamFinal::raw` — see [Raw provider responses are reachable from an agent
+(#2366)](#raw-provider-responses-are-reachable-from-an-agent-2366).
+On the OpenAI-compatible family and Copilot's chat route the transport request
+id is not on the wire type: use `raw_completion_with_request_id` when the typed
+route must reproduce everything `completion()` returns.
 
 ### Normalized finish reasons
 
@@ -2663,6 +2670,111 @@ releases they document, but the attribute claim no longer holds on `next`:
 `MemoryError`, and openai's `ToolChoice`. The constructors those passages point
 at all still exist and are still the recommended way to build these types — only
 the compiler no longer insists.
+
+### Raw provider responses are reachable from an agent (#2366)
+
+Rig kept the provider's exact body on every *failed* call
+(`ProviderResponseError::body`) and nothing on a successful one — and after
+#2257 erased the model type at agent construction, `raw_completion` /
+`raw_stream` became unreachable from an agent run altogether (`ModelHandle`
+holds a two-method `ErasedModel` with no downcast). Both are addressed the way
+identity (#2313) and finish reason (#2324) were, threaded through both
+surfaces:
+
+```rust
+let response = agent.prompt("…").extended_details().await?;
+for call in response.completion_calls() {
+    let stop_sequence = &call.raw["stop_sequence"];   // the provider's own response, serialized
+}
+```
+
+`CompletionResponse::raw` and `StreamFinal::raw` (`serde_json::Value`) carry
+**the value the model's inherent `raw_completion` / `raw_stream` would have
+returned, serialized** — the response as rig's wire type parsed it, not the
+literal bytes. Every provider seam populates it unconditionally, per call —
+the same parity pre-#2257 `raw_response: T` had. The payload is exposed on
+the `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook
+events (`raw: &serde_json::Value`), on each `CompletionCall` in
+`PromptResponse::completion_calls`, and on the streamed
+`StreamedAssistantContent::Final` terminal record. It is per attempt: on a
+retried turn it is the retried attempt's own. Typed access is recoverable
+(`anthropic::CompletionResponse::deserialize(&raw)?`), and
+`NormalizeCompletionResponse` converts forward. The field is a plain `Value`,
+not an `Option`: `Value::Null` means the value was built without a provider
+behind it — a hand-constructed response, a test double, or one persisted
+before the field existed — never that a provider sent nothing (no seam
+produces `Null`) and never that capture was switched off; there is nothing to
+switch. Six source-level breaks:
+
+- **`CompletionResponse` and `StreamFinal` gain `raw`.** Both are built with
+  `new(..)` plus setters (`with_raw` joins the shared metadata setters), so
+  only a struct literal or exhaustive destructure needs the field
+  (`raw: serde_json::Value::Null` reproduces the old value). Serde-defaulted
+  and omitted when `Null`: persisted responses and terminal records load
+  unchanged.
+
+- **`normalize_stream` requires `R: Serialize`.** It now serializes the
+  provider-native terminal onto `StreamFinal::raw` before mapping it. An
+  out-of-tree provider whose terminal type is not `Serialize` must derive it
+  (every in-tree terminal already is). The signature is otherwise unchanged.
+
+- **The `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished`
+  hook events gain `raw: &serde_json::Value`.** Hooks that only read events
+  are unaffected; hand-constructed events (test harnesses) add
+  `raw: &serde_json::Value::Null`, exactly like `finish_reason` /
+  `max_tokens` on `ModelTurnFinished` (#2184).
+
+- **`ModelTurn` gains `raw`.** `ModelTurn::new(..)` is unchanged; attach with
+  `.with_raw(resp.raw.clone())`. All fields are public and the type is not
+  `#[non_exhaustive]`, so a struct literal needs the field. Serde-defaulted;
+  persisted run state loads.
+
+- **`AgentRun::record_streamed_completion_call` takes the attempt's raw payload
+  as a fourth argument.** Read it off the same terminal record you read
+  identity and finish reason from; pass `serde_json::Value::Null` when no
+  terminal arrived:
+
+  ```rust
+  // Was
+  run.record_streamed_completion_call(usage, identity, finish_reason)?;
+  // Now
+  run.record_streamed_completion_call(usage, identity, finish_reason,
+      terminal.map_or(serde_json::Value::Null, |t| t.raw.clone()))?;
+  ```
+
+- **`CompletionCall` is no longer `Eq`.** `serde_json::Value` is `PartialEq`
+  but not `Eq` (floats), so a `CompletionCall` cannot be a set or map key any
+  more. `PartialEq`, `Clone`, and serde are unchanged; `raw` is
+  serde-defaulted and omitted when `Null`.
+
+One additive change makes the *typed* escape hatch complete:
+`openai::GenericCompletionModel::raw_completion_with_request_id` is now public
+(it was `pub(crate)`), and `copilot::CompletionModel` gains the same method,
+returning `(raw, Option<String>)`. On the OpenAI-compatible family and
+Copilot's chat route the transport request id has no slot on the shared wire
+type, so plain `raw_completion(..).normalize(..)` silently lacked the
+`provider_request_id` that `completion()` reports; reassemble with
+`.with_optional_provider_request_id(id)`. `CopilotCompletionResponse` also
+implements `NormalizeCompletionResponse`, so both of Copilot's routes have a
+public forward conversion. For every provider,
+`raw_completion[_with_request_id]` + `normalize` now reproduces `completion()`'s
+`identity()`, `finish_reason()`, `model`, and `usage` — pinned by the
+`raw_completion_parity_matrix` cassettes.
+
+The cost is one `serde_json::to_value` of the provider's parsed response per
+call, plus a clone of the value wherever the runner clones the response or a
+`CompletionCall` (a few per call); the payload travels with the response, so
+a large body — an image-generation response carrying base64 bytes, say — now
+lives on `PromptResponse::completion_calls`, in persisted run state, and in
+transcripts that serialize either. If that is unwanted, drop `raw` at your own
+boundary (`call.raw = serde_json::Value::Null`) before persisting.
+
+Deliberately not in this change: a raw *frame* channel (rig never exposed
+per-SSE-event payloads on any surface — a different mechanism), literal-body
+capture (fields rig's wire type never modeled; not possible for SDK/gRPC/local
+providers), and `ModelHandle::downcast_ref` (recovers the model, not the
+turn's response). `cargo run -p rig-agent --example raw_response_hook` reads
+a provider-specific field off `raw` on both surfaces.
 
 ---
 

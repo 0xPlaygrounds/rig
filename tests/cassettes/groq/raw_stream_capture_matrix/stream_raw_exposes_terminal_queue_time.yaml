@@ -1,0 +1,32 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Reply with the single word: pong","role":"user"}],"model":"allam-2-7b","stream":true,"stream_options":{"include_usage":true}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","x_groq":{"id":"req_REDACTED_1","seed":2067642677}}
+
+    data: {"choices":[{"delta":{"content":"p"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"ong"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":" "},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{},"finish_reason":"stop","index":0,"logprobs":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.003193002,"completion_tokens":4,"prompt_time":0.001085734,"prompt_tokens":15,"queue_time":0.237325232,"total_time":0.004278736,"total_tokens":19},"x_groq":{"id":"req_REDACTED_1","usage":{"completion_time":0.003193002,"completion_tokens":4,"prompt_time":0.001085734,"prompt_tokens":15,"queue_time":0.237325232,"total_time":0.004278736,"total_tokens":19}}}
+
+    data: {"choices":[],"created":0,"id":"chatcmpl-REDACTED_1","model":"allam-2-7b","object":"chat.completion.chunk","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.003193002,"completion_tokens":4,"prompt_time":0.001085734,"prompt_tokens":15,"queue_time":0.237325232,"total_time":0.004278736,"total_tokens":19}}
+
+    data: [DONE]
+

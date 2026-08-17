@@ -1240,6 +1240,112 @@ mod tests {
             serde_json::json!({})
         );
     }
+
+    /// Bedrock's terminal `Metadata` event carrying usage, so the stream ends
+    /// with a fully populated `BedrockStreamingResponse`.
+    fn metadata_event_with_usage(input: i32, output: i32) -> aws_bedrock::ConverseStreamOutput {
+        aws_bedrock::ConverseStreamOutput::Metadata(
+            aws_bedrock::ConverseStreamMetadataEvent::builder()
+                .usage(
+                    aws_bedrock::TokenUsage::builder()
+                        .input_tokens(input)
+                        .output_tokens(output)
+                        .total_tokens(input + output)
+                        .build()
+                        .expect("token usage should build"),
+                )
+                .build(),
+        )
+    }
+
+    /// Drive `items` through the normalized pipeline exactly as the
+    /// `CompletionModel` seam does, returning the terminal.
+    async fn normalized_terminal(
+        items: Vec<Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError>>,
+    ) -> rig_core::streaming::StreamFinal {
+        let raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse> =
+            Box::pin(futures::stream::iter(items));
+        let mut stream =
+            StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw));
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+        stream
+            .response
+            .expect("the stream must end with a terminal record")
+    }
+
+    /// The events-first seam captures like the request-driven one: its
+    /// terminal `raw` is the same `BedrockStreamingResponse` the model's
+    /// `stream()` would attach, because both funnel through
+    /// `normalize_bedrock_stream`.
+    #[tokio::test]
+    async fn stream_from_events_terminal_carries_raw() {
+        let mut stream = stream_from_events(futures::stream::iter(
+            vec![
+                text_delta_event(0, "hi"),
+                block_stop(0),
+                message_stop_event(aws_bedrock::StopReason::EndTurn),
+                metadata_event_with_usage(3, 1),
+            ]
+            .into_iter()
+            .map(Ok),
+        ));
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+        let terminal = stream.response.expect("terminal record");
+
+        let raw = &terminal.raw;
+        let typed: BedrockStreamingResponse =
+            serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        assert_eq!(typed.stop_reason, Some(StopReason::EndTurn));
+        assert_eq!(terminal.usage.total_tokens, 4);
+    }
+
+    /// The load-bearing streaming capture property at the seam
+    /// `CompletionModel::stream` routes through: the terminal's `raw` is
+    /// Bedrock's own `BedrockStreamingResponse` — it deserializes back into
+    /// that type and re-serializes identically — and re-normalizing that
+    /// capture reproduces every normalized field. The Bedrock `stopReason`
+    /// spelling is only readable off the capture.
+    #[tokio::test]
+    async fn terminal_raw_round_trips_into_the_terminal_type() {
+        let (items, _) = run_events(vec![
+            text_delta_event(0, "hi"),
+            block_stop(0),
+            message_stop_event(aws_bedrock::StopReason::EndTurn),
+            metadata_event_with_usage(3, 1),
+        ]);
+        let terminal = normalized_terminal(items).await;
+
+        let raw = &terminal.raw;
+        let typed: BedrockStreamingResponse =
+            serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        assert_eq!(
+            serde_json::to_value(&typed).expect("re-serialize"),
+            *raw,
+            "the capture must be exactly what the terminal type serializes to"
+        );
+        assert_eq!(typed.stop_reason, Some(StopReason::EndTurn));
+        assert_eq!(
+            typed.usage.as_ref().map(|usage| usage.total_tokens),
+            Some(4)
+        );
+
+        // Feeding the capture back through the same pipeline tells the same
+        // story as the terminal the stream produced.
+        let renormalized =
+            normalized_terminal(vec![Ok(RawStreamingChoice::FinalResponse(typed))]).await;
+        assert_eq!(terminal.identity(), renormalized.identity());
+        assert_eq!(terminal.finish_reason, renormalized.finish_reason);
+        assert_eq!(terminal.model, renormalized.model);
+        assert_eq!(terminal.usage, renormalized.usage);
+        assert_eq!(
+            terminal.finish_reason,
+            Some(rig_core::completion::FinishReason::Stop)
+        );
+    }
 }
 
 #[cfg(test)]

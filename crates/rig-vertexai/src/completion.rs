@@ -140,7 +140,11 @@ impl CompletionModelTrait for CompletionModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        self.raw_completion(request).await?.try_into()
+        // Capture before `try_into` consumes the raw value.
+        let raw = self.raw_completion(request).await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
     }
 
     async fn stream(

@@ -87,6 +87,7 @@ async fn run_streamed_turn(
                             usage,
                             rig::completion::ResponseIdentity::default(),
                             finish_reason,
+                            serde_json::Value::Null,
                         )
                         .expect("completion call should record while the turn is pending");
                         recorded = true;
@@ -115,7 +116,7 @@ async fn run_streamed_turn(
                                 } => {
                                     let drained_usage = drain_stream_usage(&mut stream).await;
                                     if !recorded {
-                                        run.record_streamed_completion_call(drained_usage, rig::completion::ResponseIdentity::default(), None).expect(
+                                        run.record_streamed_completion_call(drained_usage, rig::completion::ResponseIdentity::default(), None, serde_json::Value::Null).expect(
                                             "abandoned turns may still record their completion call",
                                         );
                                     }
@@ -140,6 +141,7 @@ async fn run_streamed_turn(
             Usage::new(),
             rig::completion::ResponseIdentity::default(),
             None,
+            serde_json::Value::Null,
         )
         .expect("turns without provider usage still record a completion call");
     }
@@ -168,7 +170,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::new(), rig::completion::ResponseIdentity::default(), None).is_err(),
+                fresh.record_streamed_completion_call(Usage::new(), rig::completion::ResponseIdentity::default(), None, serde_json::Value::Null).is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 

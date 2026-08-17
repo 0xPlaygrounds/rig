@@ -2845,5 +2845,60 @@ mod tests {
             );
             assert_eq!(terminal.message_id.as_deref(), Some("msg_1"));
         }
+
+        /// Raw capture on the streaming terminal, through the real
+        /// `CompletionModel::stream` seam over the mock transport:
+        /// `normalize_stream` serializes the terminal before mapping it, so
+        /// the terminal `StreamFinal.raw` is Anthropic's own
+        /// `StreamingCompletionResponse`. A `message_delta` with
+        /// `stop_sequence` set is used because the normalized terminal folds
+        /// it into `FinishReason::Stop` and keeps neither Anthropic's spelling
+        /// nor which sequence fired — both are readable only off the capture.
+        #[tokio::test]
+        async fn terminal_raw_round_trips_into_the_terminal_type() {
+            const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
+
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(MockStreamingClient {
+                    sse_bytes: sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA]),
+                })
+                .build()
+                .expect("build client");
+            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let request = model.completion_request("hello").build();
+            let mut stream = crate::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+            while let Some(item) = stream.next().await {
+                item.expect("stream item");
+            }
+            let terminal = stream.response.expect("terminal record");
+
+            let raw = &terminal.raw;
+            let typed: super::super::StreamingCompletionResponse =
+                serde_json::from_value(raw.clone()).expect("raw must deserialize");
+            assert_eq!(
+                serde_json::to_value(&typed).expect("re-serialize"),
+                *raw,
+                "the capture must be exactly what the terminal type serializes to"
+            );
+            assert_eq!(typed.stop_reason.as_deref(), Some("stop_sequence"));
+            assert_eq!(typed.stop_sequence.as_deref(), Some("alpha"));
+            assert_eq!(typed.message_id.as_deref(), Some("msg_1"));
+
+            // Re-normalizing the capture tells the same story as the terminal
+            // the stream produced.
+            let renormalized = crate::streaming::StreamFinal::from(("anthropic", typed));
+            assert_eq!(terminal.identity(), renormalized.identity());
+            assert_eq!(terminal.finish_reason, renormalized.finish_reason);
+            assert_eq!(terminal.model, renormalized.model);
+            assert_eq!(terminal.usage, renormalized.usage);
+            assert_eq!(
+                terminal.finish_reason,
+                Some(crate::completion::FinishReason::Stop)
+            );
+            assert_eq!(terminal.usage.output_tokens, 3);
+        }
     }
 }

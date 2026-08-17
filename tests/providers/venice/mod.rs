@@ -22,6 +22,8 @@ mod cassette {
     #[cfg(feature = "image")]
     mod image_generation;
     mod model_listing;
+    mod raw_capture_matrix;
+    mod raw_stream_capture_matrix;
     mod request_hook;
     mod streaming;
     mod streaming_tools;

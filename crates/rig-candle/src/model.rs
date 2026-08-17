@@ -540,7 +540,11 @@ impl CompletionModel for CandleModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        Ok(self.infer_completion(request).await?.into_normalized())
+        // Capture the local model's own record — what `raw_completion`
+        // returns — before `into_normalized` consumes it.
+        let inferred = self.infer_completion(request).await?;
+        let captured = serde_json::to_value(&inferred.response)?;
+        Ok(inferred.into_normalized().with_raw(captured))
     }
 
     async fn stream(

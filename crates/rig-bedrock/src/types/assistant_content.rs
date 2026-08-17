@@ -1019,4 +1019,73 @@ mod tests {
             .expect("an un-decodable blob must degrade, not fail the request");
         assert!(converted.is_none());
     }
+
+    /// The load-bearing property behind `CompletionResponse::raw` for Bedrock:
+    /// the captured value is `serde_json::to_value(&AwsConverseOutput)`, and a
+    /// consumer must be able to read it back as the same type and get the
+    /// same JSON — including `metrics` and `additional_model_response_fields`,
+    /// which the normalized response never carries. `AwsConverseOutput` is
+    /// `Serialize + Deserialize`, so both halves are pinned here. The
+    /// SDK-typed extras (`trace`, `performance_config`, `service_tier`) are
+    /// `#[serde(skip)]` and so are absent from the capture by construction;
+    /// they read back as `None`, which is why the assertion is on the JSON
+    /// and on the normalized response, not on struct equality with the
+    /// in-process original.
+    #[test]
+    fn aws_converse_output_round_trips_through_serde_json_value() {
+        let mut builder = aws_sdk_bedrockruntime::operation::converse::ConverseOutput::builder()
+            .output(aws_bedrock::ConverseOutput::Message(
+                aws_bedrock::Message::builder()
+                    .role(aws_bedrock::ConversationRole::Assistant)
+                    .content(aws_bedrock::ContentBlock::Text("hello".into()))
+                    .build()
+                    .expect("message should build"),
+            ))
+            .stop_reason(aws_bedrock::StopReason::EndTurn)
+            .usage(make_usage(3, 1, 4))
+            .metrics(
+                aws_bedrock::ConverseMetrics::builder()
+                    .latency_ms(42)
+                    .build()
+                    .expect("metrics should build"),
+            );
+        builder = builder.additional_model_response_fields(aws_smithy_types::Document::Object(
+            std::collections::HashMap::from([(
+                "stop_sequence".to_string(),
+                aws_smithy_types::Document::String("alpha".to_string()),
+            )]),
+        ));
+        let internal: InternalConverseOutput = builder
+            .build()
+            .expect("converse output should build")
+            .try_into()
+            .expect("the SDK output mirrors");
+        let raw = AwsConverseOutput(internal);
+
+        let value = serde_json::to_value(&raw).expect("serialize");
+        assert_eq!(value["metrics"]["latency_ms"], 42);
+        assert_eq!(
+            value["additional_model_response_fields"]["stop_sequence"],
+            "alpha"
+        );
+        assert!(value.get("trace").is_none(), "SDK-typed extras are skipped");
+
+        let back: AwsConverseOutput = serde_json::from_value(value.clone()).expect("deserialize");
+        assert_eq!(
+            serde_json::to_value(&back).expect("re-serialize"),
+            value,
+            "the capture must read back into AwsConverseOutput and re-serialize identically"
+        );
+
+        let original: completion::CompletionResponse = raw.try_into().expect("original converts");
+        let restored: completion::CompletionResponse = back.try_into().expect("restored converts");
+        assert_eq!(restored.identity(), original.identity());
+        assert_eq!(restored.finish_reason(), original.finish_reason());
+        assert_eq!(restored.usage, original.usage);
+        assert_eq!(restored.choice, original.choice);
+        assert_eq!(
+            restored.finish_reason(),
+            Some(completion::FinishReason::Stop)
+        );
+    }
 }

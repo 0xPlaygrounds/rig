@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- the provider's own response reaches agent observers on every call: `raw` on the `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook events, `CompletionCall::raw`, `ModelTurn::raw`, and the streamed `StreamedAssistantContent::Final` terminal record — per attempt, on both surfaces ([#2366](https://github.com/0xPlaygrounds/rig/issues/2366)) - #2367
+
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.41.0...rig-agent-v0.42.0) - 2026-08-16
 
 ### Added

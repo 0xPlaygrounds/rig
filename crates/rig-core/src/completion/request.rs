@@ -291,9 +291,12 @@ impl FinishReason {
 /// content items.
 ///
 /// This type is concrete — it carries no provider-typed payload. Callers who
-/// need a provider's own wire response call that model's inherent
-/// `raw_completion` method, which performs the same request and returns the
-/// provider's native type.
+/// hold a concrete model and need a provider's own wire response *typed* call
+/// that model's inherent `raw_completion` method, which performs the same
+/// request and returns the provider's native type. Callers who do not hold the
+/// concrete model — an agent erases it at construction — read the same value,
+/// serialized, from [`CompletionResponse::raw`], which every provider seam
+/// populates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "CompletionResponseRepr")]
 pub struct CompletionResponse {
@@ -351,6 +354,26 @@ pub struct CompletionResponse {
     /// requested; it is `None` when the provider reports no identifier.
     #[serde(default)]
     pub model: Option<String>,
+    /// The provider's own response for this call: the value the model's
+    /// inherent `raw_completion` would have returned, serialized. It is the
+    /// response as rig's wire type parsed it — fields that type does not model
+    /// are not here. Every provider seam populates it, unconditionally — the
+    /// same parity the pre-normalization `raw_response: T` had.
+    ///
+    /// An escape hatch for provider-specific data rig does not normalize — it
+    /// never replaces a normalized field, and every normalized field means the
+    /// same thing whatever this holds. `Value::Null` means the value was built
+    /// without a provider behind it — [`CompletionResponse::new`] without
+    /// `with_raw` (test doubles, hand-built responses), or a response
+    /// persisted before the field existed — never that the provider sent
+    /// nothing: no provider seam produces `Null`.
+    ///
+    /// Typed access is recoverable: provider raw types are `Deserialize`, so
+    /// `provider::CompletionResponse::deserialize(&raw)` returns the
+    /// provider's own type, and [`NormalizeCompletionResponse`] converts
+    /// forward.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
 }
 
 /// Response identity metadata for one completed model call: which provider
@@ -389,6 +412,7 @@ impl CompletionResponse {
             finish_reason: None,
             provider: provider.into(),
             model: None,
+            raw: serde_json::Value::Null,
         }
     }
 
@@ -456,6 +480,11 @@ struct CompletionResponseRepr {
     provider: String,
     #[serde(default)]
     model: Option<String>,
+    // `default` because persisted responses predate the field; a missing key
+    // loads as `Null`, which is exactly what "no provider response behind this
+    // value" means.
+    #[serde(default)]
+    raw: serde_json::Value,
 }
 
 impl From<CompletionResponseRepr> for CompletionResponse {
@@ -469,6 +498,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             finish_reason,
             provider,
             model,
+            raw,
         } = repr;
         Self::new(choice, usage, provider)
             .with_optional_message_id(message_id)
@@ -476,6 +506,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             .with_optional_provider_request_id(provider_request_id)
             .with_optional_finish_reason(finish_reason)
             .with_optional_model(model)
+            .with_raw(raw)
     }
 }
 
@@ -1628,6 +1659,53 @@ mod tests {
             !legacy_roundtrip.record_telemetry_content,
             "missing field should deserialize to the safe default"
         );
+    }
+
+    /// The deserialization mirror carries `raw`: a response with a captured
+    /// payload survives serialize → deserialize with the payload intact, a
+    /// response serialized before the field existed still loads with `raw`
+    /// unset, and an unset `raw` is not written.
+    #[test]
+    fn normalized_response_raw_round_trips_through_serde_mirror() {
+        let payload = serde_json::json!({
+            "id": "chatcmpl-1",
+            "system_fingerprint": "fp_abc",
+            "choices": [{"finish_reason": "stop"}]
+        });
+        let response = CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage::new(),
+            "example",
+        )
+        .with_response_id("chatcmpl-1")
+        .with_raw(payload.clone());
+
+        let encoded = serde_json::to_value(&response).expect("serialize response");
+        assert_eq!(encoded["raw"], payload);
+        let decoded: CompletionResponse =
+            serde_json::from_value(encoded.clone()).expect("deserialize response");
+        assert_eq!(decoded.raw, payload);
+        assert_eq!(decoded.response_id.as_deref(), Some("chatcmpl-1"));
+        assert_eq!(
+            serde_json::to_value(&decoded).expect("re-serialize"),
+            encoded
+        );
+
+        let legacy = serde_json::json!({
+            "choice": [{"type": "text", "text": "hello"}],
+            "usage": serde_json::to_value(Usage::new()).unwrap(),
+            "provider": "example"
+        });
+        let decoded: CompletionResponse = serde_json::from_value(legacy).expect("legacy loads");
+        assert!(decoded.raw.is_null());
+
+        let bare = serde_json::to_value(CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage::new(),
+            "example",
+        ))
+        .unwrap();
+        assert!(bare.get("raw").is_none());
     }
 
     fn test_document(id: &str, text: &str) -> Document {

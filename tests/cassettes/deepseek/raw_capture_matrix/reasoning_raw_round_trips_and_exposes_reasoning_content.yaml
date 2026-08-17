@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":640,"messages":[{"content":"What is 17 multiplied by 23? Reply with only the number.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"391","reasoning_content":"We need answer only number. 17*23=391. Ensure only number.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":19,"completion_tokens_details":{"reasoning_tokens":17},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":98,"prompt_tokens":98,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":117}}'

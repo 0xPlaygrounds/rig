@@ -1053,11 +1053,18 @@ impl TurnSource for StreamingTurnSource {
                     if !completion_call_emitted {
                         chat_span.record_token_usage(&usage);
                         // The terminal record (when the provider delivered
-                        // one) carries this attempt's identity metadata.
+                        // one) carries this attempt's identity metadata — and
+                        // its captured raw payload, read from the same
+                        // terminal so the recorded call carries *this*
+                        // attempt's response, never a previous attempt's.
                         match run.record_streamed_completion_call(
                             usage,
                             stream.identity(),
                             $finish_reason,
+                            stream
+                                .response
+                                .as_ref()
+                                .map_or(serde_json::Value::Null, |response| response.raw.clone()),
                         ) {
                             Ok(call) => {
                                 completion_call_emitted = true;
@@ -1334,6 +1341,10 @@ impl TurnSource for StreamingTurnSource {
                     crate::completion::Usage::new(),
                     stream.identity(),
                     fallback_finish_reason,
+                    stream
+                        .response
+                        .as_ref()
+                        .map_or(serde_json::Value::Null, |response| response.raw.clone()),
                 ) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
@@ -1354,6 +1365,13 @@ impl TurnSource for StreamingTurnSource {
                 message_id: streamed_turn.message_id.clone(),
                 ..stream.identity()
             };
+            // This attempt's raw payload, from the same terminal record as the
+            // identity above — so a retry never observes a previous attempt's
+            // response. `Null` when no terminal record arrived.
+            let attempt_raw = stream
+                .response
+                .as_ref()
+                .map_or(&serde_json::Value::Null, |response| &response.raw);
             if pending_final.is_some()
                 && !turn_recovered
                 && let Some(reason) = observe_action(
@@ -1367,6 +1385,7 @@ impl TurnSource for StreamingTurnSource {
                                 usage: last_usage,
                                 message_id: streamed_turn.message_id.as_deref(),
                                 identity: &identity,
+                                raw: attempt_raw,
                             },
                         )
                         .await,
@@ -1409,6 +1428,7 @@ impl TurnSource for StreamingTurnSource {
                             identity: &identity,
                             finish_reason: attempt_finish_reason.as_ref(),
                             max_tokens: attempt_max_tokens,
+                            raw: attempt_raw,
                         },
                     )
                     .await;
@@ -1720,20 +1740,32 @@ mod migrated_tests {
 
         let mut stream = StreamingPromptRequest::new(agent, "go").await;
         let mut saw_error = false;
+        let mut saw_completion_call = false;
         while let Some(item) = stream.next().await {
-            if let Err(error) = item {
-                assert!(
-                    error.to_string().contains("terminal record"),
-                    "truncation should surface as a terminal-record error, got: {error}"
-                );
-                saw_error = true;
-                break;
+            match item {
+                Err(error) => {
+                    assert!(
+                        error.to_string().contains("terminal record"),
+                        "truncation should surface as a terminal-record error, got: {error}"
+                    );
+                    saw_error = true;
+                    break;
+                }
+                Ok(MultiTurnStreamItem::CompletionCall(_)) => saw_completion_call = true,
+                Ok(_) => {}
             }
         }
         assert!(
             saw_error,
             "a stream ending without a terminal record must be rejected, not \
              treated as a successful completion"
+        );
+        // The rejection happens before any usage fallback records the call, so
+        // the runner never produces a `CompletionCall` whose `raw` is `Null`:
+        // a `Null` payload can only come from a hand-driven `AgentRun`.
+        assert!(
+            !saw_completion_call,
+            "no completion call may be recorded for a truncated stream"
         );
     }
 
@@ -2206,6 +2238,17 @@ mod migrated_tests {
                 MockStreamEvent::final_response_with_total_tokens(6),
             ],
         ])
+    }
+
+    /// The record a streamed mock turn scripted with
+    /// `MockStreamEvent::final_response(usage)` leaves on `completion_calls`:
+    /// index, usage, and the mock's terminal record serialized onto `raw` —
+    /// the terminal is always captured, so an expected call without it never
+    /// matches.
+    fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
+        let terminal = mock_final(usage);
+        CompletionCall::new(call_index, usage)
+            .with_raw(serde_json::to_value(&terminal).expect("mock terminal serializes"))
     }
 
     fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
@@ -4177,8 +4220,8 @@ mod migrated_tests {
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, first_usage),
-            CompletionCall::new(1, second_usage),
+            streamed_call(0, first_usage),
+            streamed_call(1, second_usage),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
@@ -4591,8 +4634,8 @@ mod migrated_tests {
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, first_usage),
-            CompletionCall::new(1, second_usage),
+            streamed_call(0, first_usage),
+            streamed_call(1, second_usage),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
@@ -6345,8 +6388,8 @@ mod migrated_tests {
         assert_eq!(
             completion_calls_events,
             vec![
-                CompletionCall::new(0, first_call_usage),
-                CompletionCall::new(1, second_call_usage)
+                streamed_call(0, first_call_usage),
+                streamed_call(1, second_call_usage)
             ]
         );
 
@@ -6366,8 +6409,8 @@ mod migrated_tests {
         assert_eq!(
             final_response.completion_calls(),
             &[
-                CompletionCall::new(0, first_call_usage),
-                CompletionCall::new(1, second_call_usage)
+                streamed_call(0, first_call_usage),
+                streamed_call(1, second_call_usage)
             ]
         );
     }
@@ -6446,7 +6489,7 @@ mod migrated_tests {
             }
         }
 
-        assert_eq!(completion_calls, vec![CompletionCall::new(0, call_usage)]);
+        assert_eq!(completion_calls, vec![streamed_call(0, call_usage)]);
         assert!(saw_error);
     }
 
@@ -6497,8 +6540,8 @@ mod migrated_tests {
         }
 
         let expected_usage = vec![
-            CompletionCall::new(0, Usage::new()),
-            CompletionCall::new(1, second_call_usage),
+            streamed_call(0, Usage::new()),
+            streamed_call(1, second_call_usage),
         ];
         assert_eq!(completion_calls_events, expected_usage);
 

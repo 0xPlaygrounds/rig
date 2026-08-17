@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":1024,"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"qwen3:4b"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"pong","reasoning":"Hmm, the user wants me to reply with exactly the single word \"pong\". That''s pretty straightforward.\n\nI recall that in some contexts, \"pong\" is used as a simple response in programming or gaming, like a ping response. But here, they specifically said \"exactly the single word: pong\", so I shouldn''t add anything else.\n\nThe user might be testing if I follow instructions precisely. Maybe they''re a developer or just curious about how I handle simple requests. I should stick to what they asked for—no explanations, no extra words.\n\nMy response has to be just \"pong\" with no spaces, punctuation, or other text. I''ll make sure it''s a clean, single-word reply to avoid confusion.\n\nOkay, I''m ready to output \"pong\" as the answer.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen3:4b","object":"chat.completion","system_fingerprint":"fp_ollama","usage":{"completion_tokens":165,"prompt_tokens":18,"total_tokens":183}}'

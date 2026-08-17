@@ -325,8 +325,9 @@ impl PromptRequest<Standard> {
 }
 
 /// Details for one successfully completed completion request made by an agent run.
-// No longer `Copy`: the identity fields carry owned strings.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// No longer `Copy`: the identity fields carry owned strings. No longer `Eq`:
+// `raw` is a `serde_json::Value`, which is `PartialEq` but not `Eq` (floats).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
     pub call_index: usize,
@@ -363,6 +364,20 @@ pub struct CompletionCall {
     /// indistinguishable from a turn that simply had nothing to say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
+    /// The provider's own response for this call — see
+    /// `CompletionResponse::raw` for the exact meaning of the payload. Every
+    /// provider seam populates it; `Value::Null` only when the call's response
+    /// was built without a provider behind it (a hand-constructed model, a
+    /// record persisted before the field, or a hand-driven `AgentRun` that
+    /// recorded a streamed call with no terminal record — the runner itself
+    /// rejects such a stream as truncated before recording anything).
+    ///
+    /// Recorded **per call**, like [`Self::finish_reason`]: on a multi-turn
+    /// run each entry carries its own attempt's response, never a previous
+    /// attempt's, and on a retried turn the recorded call carries the retried
+    /// attempt's own.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub raw: serde_json::Value,
 }
 
 impl CompletionCall {
@@ -376,7 +391,14 @@ impl CompletionCall {
             response_id: None,
             provider_request_id: None,
             finish_reason: None,
+            raw: serde_json::Value::Null,
         }
+    }
+
+    /// Attach the provider's own response this call's attempt produced.
+    pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
+        self.raw = raw;
+        self
     }
 
     /// Attach the response identity metadata this call's attempt reported.

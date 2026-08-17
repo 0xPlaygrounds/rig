@@ -975,7 +975,11 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.raw_completion(completion_request).await?.try_into()
+        // Capture before `try_into` consumes the raw value.
+        let raw = self.raw_completion(completion_request).await?;
+        let captured = serde_json::to_value(&raw)?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_raw(captured))
     }
 
     async fn stream(
@@ -983,7 +987,10 @@ where
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
         let stream = self.raw_stream(request).await?;
-        let normalized = streaming::normalize_stream(stream, |response| Ok(response.into()));
+        let normalized =
+            streaming::normalize_stream(stream, |response: StreamingCompletionResponse| {
+                Ok(response.into())
+            });
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
@@ -2942,5 +2949,86 @@ mod tests {
             Some(http::StatusCode::SERVICE_UNAVAILABLE)
         );
         assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    /// Raw-capture tests: the `TryFrom` shape, driven end to end through
+    /// `CompletionModel::completion` over the recording mock transport. Ollama
+    /// has no request-id contract, so there is nothing transport-side to
+    /// reattach; the capture is the `/api/chat` body exactly as `raw_completion`
+    /// parses it. The body carries the timing fields (`total_duration`,
+    /// `eval_duration`, ...) rig never normalizes, so the capture can be shown
+    /// to answer more than the normalized response does.
+    mod raw_capture {
+        use super::*;
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        const BODY: &str = r#"{
+            "model": "llama3.2",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {"role": "assistant", "content": "hello"},
+            "done": true,
+            "done_reason": "stop",
+            "total_duration": 5043500667,
+            "load_duration": 5025959,
+            "prompt_eval_count": 26,
+            "prompt_eval_duration": 325953000,
+            "eval_count": 5,
+            "eval_duration": 4709213000
+        }"#;
+
+        fn model() -> CompletionModel<RecordingHttpClient> {
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(RecordingHttpClient::new(BODY))
+                .build()
+                .expect("build client");
+            client.completion_model(LLAMA3_2)
+        }
+
+        /// The load-bearing capture property: `raw` is Ollama's
+        /// `CompletionResponse` as rig parsed it — it deserializes back into
+        /// that type and re-serializes to the identical value — and
+        /// re-normalizing that capture through the same `TryFrom` reproduces
+        /// every normalized field. Also reads `total_duration` and
+        /// `eval_duration` off the capture, which the normalized response
+        /// provably lacks.
+        #[tokio::test]
+        async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
+            let model = model();
+
+            let response = model
+                .completion(model.completion_request("hello").build())
+                .await
+                .expect("completion");
+
+            let raw = &response.raw;
+            let typed: CompletionResponse =
+                serde_json::from_value(raw.clone()).expect("raw must deserialize");
+            assert_eq!(
+                serde_json::to_value(&typed).expect("re-serialize"),
+                *raw,
+                "the capture must be exactly what the wire type serializes to"
+            );
+            assert_eq!(typed.total_duration, Some(5_043_500_667));
+            assert_eq!(typed.eval_duration, Some(4_709_213_000));
+            assert_eq!(raw["total_duration"], 5_043_500_667_u64);
+            assert_eq!(typed.done_reason.as_deref(), Some("stop"));
+
+            let renormalized: completion::CompletionResponse =
+                typed.try_into().expect("re-normalize the capture");
+            assert_eq!(response.identity(), renormalized.identity());
+            assert_eq!(response.finish_reason(), renormalized.finish_reason());
+            assert_eq!(response.model, renormalized.model);
+            assert_eq!(response.usage, renormalized.usage);
+            assert_eq!(response.choice, renormalized.choice);
+            assert_eq!(
+                response.finish_reason(),
+                Some(completion::FinishReason::Stop)
+            );
+            assert_eq!(response.model.as_deref(), Some("llama3.2"));
+            assert_eq!(response.usage.total_tokens, 31);
+        }
     }
 }

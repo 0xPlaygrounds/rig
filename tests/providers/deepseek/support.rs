@@ -303,3 +303,39 @@ pub(super) async fn collect_raw_stream_outcome(
 
     outcome
 }
+
+/// Compare a generated token (response id, system fingerprint, request id)
+/// observed by a test with the value its fixture holds.
+///
+/// Fixtures are placeholder-scrubbed (`chatcmpl-REDACTED_1`, `fp_REDACTED_1`),
+/// so on the recording pass the live token cannot equal the fixture's; both
+/// are then required to be present and non-empty. On replay the harness
+/// serves the scrubbed bytes back, so equality is exact — which is what CI
+/// runs. Presence must agree in both modes.
+pub(super) fn assert_matches_recorded_token(
+    actual: Option<&str>,
+    recorded: Option<&str>,
+    context: &str,
+) {
+    match crate::cassettes::CassetteMode::current() {
+        crate::cassettes::CassetteMode::Replay => {
+            assert_eq!(
+                actual, recorded,
+                "{context}: replay serves the fixture's token back"
+            );
+        }
+        crate::cassettes::CassetteMode::Record => {
+            assert_eq!(
+                actual.is_some(),
+                recorded.is_some(),
+                "{context}: live and recorded token presence must agree"
+            );
+            if let (Some(actual), Some(recorded)) = (actual, recorded) {
+                assert!(
+                    !actual.trim().is_empty() && !recorded.trim().is_empty(),
+                    "{context}: live and recorded token must both be non-empty"
+                );
+            }
+        }
+    }
+}

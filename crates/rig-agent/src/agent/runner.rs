@@ -903,7 +903,10 @@ impl TurnSource for UnaryTurnSource {
                     resp.response_id.clone(),
                     resp.provider_request_id.clone(),
                 )
-                .with_finish_reason(attempt_finish_reason.clone()),
+                .with_finish_reason(attempt_finish_reason.clone())
+                // This attempt's captured raw payload (an `Arc` clone), so the
+                // run record carries the same payload the hooks observe below.
+                .with_raw(resp.raw.clone()),
             ) {
                 Ok(outcome) => outcome,
                 Err(err) => {
@@ -950,8 +953,10 @@ impl TurnSource for UnaryTurnSource {
                             // Identity comes from this attempt's own `resp` —
                             // a retried turn re-enters `run_model_turn` with a
                             // fresh response, so a stale attempt's ids can
-                            // never be attributed here.
+                            // never be attributed here. The raw payload is read
+                            // from the same `resp` for the same reason.
                             let identity = resp.identity();
+                            let attempt_raw = &resp.raw;
                             if let Some(reason) = observe_action(
                                 runner
                                     .config.hooks
@@ -963,6 +968,7 @@ impl TurnSource for UnaryTurnSource {
                                             usage: resp.usage,
                                             message_id: resp.message_id.as_deref(),
                                             identity: &identity,
+                                            raw: attempt_raw,
                                         },
                                     )
                                     .await,
@@ -982,6 +988,7 @@ impl TurnSource for UnaryTurnSource {
                                         identity: &identity,
                                         finish_reason: attempt_finish_reason.as_ref(),
                                         max_tokens: attempt_max_tokens,
+                                        raw: attempt_raw,
                                     },
                                 )
                                 .await;
@@ -2248,6 +2255,423 @@ mod migrated_tests {
                 Some("req-attempt-2".to_string())
             ],
             "each attempt's event carries that attempt's id — no stale leak"
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Raw provider response capture (always on).
+    //
+    // The agent erased the model, so a caller can never reach the provider's
+    // `raw_completion` / `raw_stream`; the `raw` payload every response and
+    // stream terminal carries is the only route to it. The mock behaves like
+    // a real seam — a scripted payload is attached unconditionally, and a
+    // turn scripted without one reports `Value::Null` (nothing behind it, not
+    // "capture was not requested") — so these tests prove the whole route:
+    // the payload reaches the hook events on both surfaces, and every
+    // recorded call carries *its own* attempt's payload.
+    // ---------------------------------------------------------------------
+
+    /// Hook capturing the `raw` payload from every event that carries one:
+    /// `CompletionResponse` (blocking), `StreamResponseFinish` (streamed text
+    /// turns), and the medium-neutral `ModelTurnFinished` (both surfaces).
+    #[derive(Clone, Default)]
+    struct RawCaptureHook {
+        completion_responses: Arc<Mutex<Vec<serde_json::Value>>>,
+        stream_finishes: Arc<Mutex<Vec<serde_json::Value>>>,
+        turns: Arc<Mutex<Vec<serde_json::Value>>>,
+    }
+
+    impl RawCaptureHook {
+        fn completion_responses(&self) -> Vec<serde_json::Value> {
+            self.completion_responses
+                .lock()
+                .expect("completion response raws")
+                .clone()
+        }
+
+        fn stream_finishes(&self) -> Vec<serde_json::Value> {
+            self.stream_finishes
+                .lock()
+                .expect("stream finish raws")
+                .clone()
+        }
+
+        fn turns(&self) -> Vec<serde_json::Value> {
+            self.turns.lock().expect("turn raws").clone()
+        }
+    }
+
+    impl AgentHook for RawCaptureHook {
+        async fn on_completion_response(
+            &self,
+            _ctx: &HookContext,
+            event: crate::agent::hook::CompletionResponse<'_>,
+        ) -> ObservationAction {
+            self.completion_responses
+                .lock()
+                .expect("completion response raws")
+                .push(event.raw.clone());
+            ObservationAction::continue_run()
+        }
+
+        async fn on_stream_response_finish(
+            &self,
+            _ctx: &HookContext,
+            event: StreamResponseFinish<'_>,
+        ) -> ObservationAction {
+            self.stream_finishes
+                .lock()
+                .expect("stream finish raws")
+                .push(event.raw.clone());
+            ObservationAction::continue_run()
+        }
+
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            self.turns
+                .lock()
+                .expect("turn raws")
+                .push(event.raw.clone());
+            ModelTurnAction::continue_run()
+        }
+    }
+
+    /// A provider payload with a field rig does not normalize, distinct per
+    /// attempt so two attempts can never be confused for one another.
+    fn raw_payload(attempt: &str) -> serde_json::Value {
+        json!({
+            "id": format!("resp-{attempt}"),
+            "system_fingerprint": format!("fp-{attempt}"),
+            "provider_only": attempt,
+        })
+    }
+
+    /// The scripted terminal for one streamed attempt, distinct per attempt.
+    /// The mock's terminal type is `StreamFinal` itself, so the terminal's
+    /// `raw` is exactly this record serialized.
+    fn stream_final_for_attempt(
+        attempt: &str,
+        total_tokens: u64,
+    ) -> rig_core::streaming::StreamFinal {
+        let mut usage = Usage::new();
+        usage.total_tokens = total_tokens;
+        rig_core::streaming::StreamFinal::new("mock", usage)
+            .with_response_id(format!("resp-{attempt}"))
+            .with_provider_request_id(format!("req-{attempt}"))
+    }
+
+    /// What `raw` must be for a streamed attempt scripted with `terminal`.
+    fn expected_stream_raw(terminal: &rig_core::streaming::StreamFinal) -> serde_json::Value {
+        serde_json::to_value(terminal).expect("scripted terminal serializes")
+    }
+
+    /// The `raw` each recorded call carries, in call order.
+    fn call_raws(calls: &[crate::agent::CompletionCall]) -> Vec<serde_json::Value> {
+        calls.iter().map(|call| call.raw.clone()).collect()
+    }
+
+    /// Blocking surface: `CompletionResponse` and `ModelTurnFinished` both
+    /// see the scripted payload, and the recorded call carries it — with no
+    /// opt-in anywhere on the agent, the run, or the request.
+    #[tokio::test]
+    async fn hook_events_carry_raw_blocking() {
+        let payload = raw_payload("blocking");
+
+        let hook = RawCaptureHook::default();
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::text("reply").with_raw(payload.clone())
+        ]))
+        .add_hook(hook.clone())
+        .build()
+        .prompt("prompt")
+        .extended_details()
+        .await
+        .expect("blocking response");
+
+        assert_eq!(hook.completion_responses(), std::slice::from_ref(&payload));
+        assert_eq!(hook.turns(), std::slice::from_ref(&payload));
+        assert!(
+            hook.stream_finishes().is_empty(),
+            "StreamResponseFinish is a streamed-surface event"
+        );
+        assert_eq!(call_raws(&response.completion_calls), [payload]);
+    }
+
+    /// Streamed surface: `StreamResponseFinish` (the text turn's) and
+    /// `ModelTurnFinished` both see the terminal record the mock scripted,
+    /// and so do the recorded call and the forwarded
+    /// `StreamedAssistantContent::Final` — again with no opt-in anywhere.
+    #[tokio::test]
+    async fn hook_events_carry_raw_streamed() {
+        let terminal = stream_final_for_attempt("streamed", 3);
+        let expected = expected_stream_raw(&terminal);
+
+        let hook = RawCaptureHook::default();
+        let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::text("reply"),
+            MockStreamEvent::FinalResponse(terminal),
+        ]]))
+        .add_hook(hook.clone())
+        .build()
+        .stream_prompt("prompt")
+        .await;
+        let mut finals = Vec::new();
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item") {
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    final_record,
+                )) => finals.push(final_record.raw.clone()),
+                MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
+                _ => {}
+            }
+        }
+
+        assert_eq!(hook.stream_finishes(), std::slice::from_ref(&expected));
+        assert_eq!(hook.turns(), std::slice::from_ref(&expected));
+        assert!(
+            hook.completion_responses().is_empty(),
+            "CompletionResponse is a blocking-surface event"
+        );
+        assert_eq!(finals, std::slice::from_ref(&expected));
+        let response = final_response.expect("run final response");
+        assert_eq!(call_raws(&response.completion_calls), [expected]);
+    }
+
+    /// Blocking multi-turn tool run: the two attempts carry two *different*
+    /// payloads, and `completion_calls` records each attempt's own — not the
+    /// same one twice, not the last one duplicated. The hook events agree
+    /// with the record, in order.
+    #[tokio::test]
+    async fn completion_calls_carry_each_attempts_own_raw_blocking() {
+        let first = raw_payload("turn-1");
+        let second = raw_payload("turn-2");
+        assert_ne!(first, second);
+
+        let hook = RawCaptureHook::default();
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3})).with_raw(first.clone()),
+            MockTurn::text("5").with_raw(second.clone()),
+        ]))
+        .tool(crate::test_utils::MockAddTool)
+        .add_hook(hook.clone())
+        .build()
+        .prompt("add 2 and 3")
+        .extended_details()
+        .max_turns(3)
+        .await
+        .expect("blocking tool run");
+
+        assert_eq!(
+            call_raws(&response.completion_calls),
+            [first.clone(), second.clone()],
+            "each recorded call carries its own attempt's payload"
+        );
+        assert_eq!(hook.completion_responses(), [first.clone(), second.clone()]);
+        assert_eq!(hook.turns(), [first, second]);
+    }
+
+    /// Streamed multi-turn tool run: the tool-only turn and the text turn
+    /// carry two *different* terminal records; `completion_calls` (both the
+    /// forwarded items and the final response's record) carry each attempt's
+    /// own, `ModelTurnFinished` agrees for both, `StreamResponseFinish` fires
+    /// for the text turn only with that turn's payload, and the single
+    /// forwarded `StreamedAssistantContent::Final` carries the final turn's.
+    #[tokio::test]
+    async fn completion_calls_carry_each_attempts_own_raw_streamed() {
+        let first_terminal = stream_final_for_attempt("stream-1", 1);
+        let second_terminal = stream_final_for_attempt("stream-2", 2);
+        let first = expected_stream_raw(&first_terminal);
+        let second = expected_stream_raw(&second_terminal);
+        assert_ne!(first, second);
+
+        let hook = RawCaptureHook::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::tool_call_name_delta("tc1", "add"),
+                MockStreamEvent::tool_call_arguments_delta("tc1", "{\"x\":2,\"y\":3}"),
+                MockStreamEvent::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+                MockStreamEvent::FinalResponse(first_terminal),
+            ],
+            vec![
+                MockStreamEvent::text("5"),
+                MockStreamEvent::FinalResponse(second_terminal),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            .tool(crate::test_utils::MockAddTool)
+            .add_hook(hook.clone())
+            .build()
+            .stream_prompt("add 2 and 3")
+            .max_turns(3)
+            .await;
+
+        let mut forwarded_calls = Vec::new();
+        let mut finals = Vec::new();
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item") {
+                MultiTurnStreamItem::CompletionCall(call) => forwarded_calls.push(call.raw.clone()),
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    final_record,
+                )) => finals.push(final_record.raw.clone()),
+                MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
+                _ => {}
+            }
+        }
+
+        let response = final_response.expect("run final response");
+        assert_eq!(
+            call_raws(&response.completion_calls),
+            [first.clone(), second.clone()],
+            "each recorded call carries its own attempt's terminal record"
+        );
+        assert_eq!(
+            forwarded_calls,
+            [first.clone(), second.clone()],
+            "the forwarded CompletionCall items agree with the final record"
+        );
+        assert_eq!(hook.turns(), [first, second.clone()]);
+        assert_eq!(
+            hook.stream_finishes(),
+            std::slice::from_ref(&second),
+            "StreamResponseFinish stays text-turn-scoped and carries that turn's payload"
+        );
+        assert_eq!(
+            finals,
+            [second],
+            "the one forwarded Final is the final turn's, carrying its own raw"
+        );
+    }
+
+    /// Retries the first accepted turn once, capturing the `raw` every
+    /// `ModelTurnFinished` reports — so the second event's payload can be
+    /// checked against the retried attempt's own script.
+    #[derive(Clone, Default)]
+    struct RetryOnceCapturingRaw {
+        seen: Arc<Mutex<Vec<serde_json::Value>>>,
+    }
+
+    impl AgentHook for RetryOnceCapturingRaw {
+        async fn on_model_turn_finished(
+            &self,
+            _ctx: &HookContext,
+            event: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            let mut seen = self.seen.lock().expect("retry raws");
+            seen.push(event.raw.clone());
+            if seen.len() == 1 {
+                ModelTurnAction::repeat()
+            } else {
+                ModelTurnAction::continue_run()
+            }
+        }
+    }
+
+    /// Blocking: a retried turn's `ModelTurnFinished` and its recorded
+    /// `CompletionCall` carry the *retried* attempt's own payload — the first
+    /// attempt's never leaks into the second event or the second record.
+    #[tokio::test]
+    async fn retried_turn_records_the_retried_attempts_own_raw_blocking() {
+        let first = raw_payload("attempt-1");
+        let second = raw_payload("attempt-2");
+
+        let hook = RetryOnceCapturingRaw::default();
+        let response = AgentBuilder::new(MockCompletionModel::new([
+            MockTurn::text("first attempt").with_raw(first.clone()),
+            MockTurn::text("second attempt").with_raw(second.clone()),
+        ]))
+        .add_hook(hook.clone())
+        .build()
+        .prompt("prompt")
+        .extended_details()
+        .max_turns(3)
+        .await
+        .expect("retried run");
+
+        assert_eq!(response.output, "second attempt");
+        assert_eq!(
+            *hook.seen.lock().expect("retry raws"),
+            [first.clone(), second.clone()],
+            "each attempt's event carries that attempt's payload — no stale leak"
+        );
+        assert_eq!(
+            call_raws(&response.completion_calls),
+            [first, second],
+            "the retried attempt's record carries the retried attempt's payload"
+        );
+    }
+
+    /// Streamed: the same retry, same guarantee — the retried attempt's
+    /// `ModelTurnFinished`, `StreamResponseFinish`, and recorded call carry
+    /// its own terminal record, and the one forwarded Final (the rejected
+    /// attempt's is suppressed) is the accepted attempt's.
+    #[tokio::test]
+    async fn retried_turn_records_the_retried_attempts_own_raw_streamed() {
+        let first_terminal = stream_final_for_attempt("attempt-1", 1);
+        let second_terminal = stream_final_for_attempt("attempt-2", 2);
+        let first = expected_stream_raw(&first_terminal);
+        let second = expected_stream_raw(&second_terminal);
+
+        let retry = RetryOnceCapturingRaw::default();
+        let probe = RawCaptureHook::default();
+        let model = MockCompletionModel::from_stream_turns([
+            vec![
+                MockStreamEvent::text("first attempt"),
+                MockStreamEvent::FinalResponse(first_terminal),
+            ],
+            vec![
+                MockStreamEvent::text("second attempt"),
+                MockStreamEvent::FinalResponse(second_terminal),
+            ],
+        ]);
+        let mut stream = AgentBuilder::new(model)
+            // Ahead of the hook that asks for the repeat: a non-continue
+            // action short-circuits the hooks behind it.
+            .add_hook(probe.clone())
+            .add_hook(retry.clone())
+            .build()
+            .stream_prompt("prompt")
+            .max_turns(3)
+            .await;
+
+        let mut finals = Vec::new();
+        let mut final_response = None;
+        while let Some(item) = stream.next().await {
+            match item.expect("stream item") {
+                MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Final(
+                    final_record,
+                )) => finals.push(final_record.raw.clone()),
+                MultiTurnStreamItem::FinalResponse(response) => final_response = Some(response),
+                _ => {}
+            }
+        }
+
+        let response = final_response.expect("run final response");
+        assert_eq!(response.output, "second attempt");
+        assert_eq!(
+            *retry.seen.lock().expect("retry raws"),
+            [first.clone(), second.clone()],
+            "each attempt's event carries that attempt's terminal record"
+        );
+        assert_eq!(probe.turns(), [first.clone(), second.clone()]);
+        assert_eq!(
+            probe.stream_finishes(),
+            [first.clone(), second.clone()],
+            "each attempt's finish event carries its own terminal record"
+        );
+        assert_eq!(
+            call_raws(&response.completion_calls),
+            [first, second.clone()],
+            "the retried attempt's record carries the retried attempt's terminal record"
+        );
+        assert_eq!(
+            finals,
+            [second],
+            "the rejected attempt's Final is suppressed; the accepted one carries its own raw"
         );
     }
 
@@ -10458,7 +10882,20 @@ mod migrated_tests {
         assert!(saw_retry);
         assert_eq!(streaming.output, blocking.output);
         assert_eq!(streaming.usage, blocking.usage);
-        assert_eq!(streaming.completion_calls, blocking.completion_calls);
+        // `raw` is the one field that legitimately differs by medium: the
+        // streamed calls carry the mock's terminal record serialized, the
+        // blocking ones nothing (the turns were scripted without a payload).
+        let without_raw = |calls: &[crate::agent::CompletionCall]| -> Vec<_> {
+            calls
+                .iter()
+                .cloned()
+                .map(|call| call.with_raw(serde_json::Value::Null))
+                .collect()
+        };
+        assert_eq!(
+            without_raw(&streaming.completion_calls),
+            without_raw(&blocking.completion_calls)
+        );
         assert_eq!(
             serde_json::to_value(streaming.messages).expect("streaming history"),
             serde_json::to_value(blocking.messages).expect("blocking history")
@@ -10848,6 +11285,7 @@ mod migrated_tests {
             // These cases exercise hook dispatch, not termination metadata.
             finish_reason: None,
             max_tokens: None,
+            raw: &serde_json::Value::Null,
         };
         let second_event = first_event;
 
@@ -10879,6 +11317,7 @@ mod migrated_tests {
                     identity: no_identity(),
                     finish_reason: None,
                     max_tokens: None,
+                    raw: &serde_json::Value::Null,
                 },
             )
             .await;
@@ -10892,6 +11331,7 @@ mod migrated_tests {
                     identity: no_identity(),
                     finish_reason: None,
                     max_tokens: None,
+                    raw: &serde_json::Value::Null,
                 },
             )
             .await;
@@ -10927,6 +11367,7 @@ mod migrated_tests {
             // These cases exercise hook dispatch, not termination metadata.
             finish_reason: None,
             max_tokens: None,
+            raw: &serde_json::Value::Null,
         };
         let ctx = HookContext::new(false, None);
 

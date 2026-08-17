@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"qwen3:4b","options":{"num_predict":64},"stream":false,"think":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":64,"eval_duration":711061713,"load_duration":57448084,"message":{"content":"Hmm, the user wants me to reply with exactly the single word \"pong\". That''s very specific. \n\nI notice they''re being very precise about the output format - just the word \"pong\" with nothing else. This seems like a test of my ability to follow instructions exactly. \n\nThe user might be checking if","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":18,"prompt_eval_duration":17658625,"total_duration":859303459}'
