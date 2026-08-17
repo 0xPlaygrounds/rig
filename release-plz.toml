@@ -2,7 +2,15 @@
 git_release_body = """{{ changelog }}"""
 git_release_enable = false
 git_tag_enable = false
-release_always = false
+# Publish whenever a crate's manifest version is ahead of crates.io, on any
+# push to main — not only on the release-PR merge commit. With `false`, a
+# publish that fails for a reason unrelated to the code (v0.42.0: an empty
+# `CARGO_REGISTRY_TOKEN`) is stranded: every later push logs "current commit
+# is not from a release PR" and nothing ever retries, while the queued run
+# from the previous push opens a stale duplicate release PR (#2360). With
+# `true` the next push simply publishes the version main already declares,
+# and a version whose crates are all on crates.io is a no-op.
+release_always = true
 
 [[package]]
 name = "rig"

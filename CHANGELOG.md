@@ -6,12 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
-### Changed
-
-- *(deps)* dependency requirements are now floors — the lowest version rig's own code needs (a bare major, or the version that introduced an API rig relies on) — instead of the latest patch at the time of release; Dependabot only moves `Cargo.lock` for in-range releases, and `scripts/check-dependency-floors.py` (CI `dependency-floors`) builds the workspace against the declared floors. The `deranged = "=0.5.8"` exact pin is gone. Downstream users no longer have to `cargo update` unrelated crates to take a rig release ([#2195](https://github.com/0xPlaygrounds/rig/issues/2195)) - #2369
-
-## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/v0.41.0...v0.42.0) - 2026-08-16
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/v0.41.0...v0.42.0) - 2026-08-17
 
 ### Added
 
@@ -197,6 +192,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(deps)* dependency requirements are now floors — the lowest version rig's own code needs (a bare major, or the version that introduced an API rig relies on) — instead of the latest patch at the time of release; Dependabot only moves `Cargo.lock` for in-range releases, and `scripts/check-dependency-floors.py` (CI `dependency-floors`) builds the workspace against the declared floors. The `deranged = "=0.5.8"` exact pin is gone. Downstream users no longer have to `cargo update` unrelated crates to take a rig release ([#2195](https://github.com/0xPlaygrounds/rig/issues/2195)) - #2369
 - *(providers)* the cursor-paginated model listers (Anthropic, Gemini) share one loop. Each had hand-rolled its own and each shipped the same unbounded-loop bug in [#2334](https://github.com/0xPlaygrounds/rig/pull/2334); the termination rules — no next cursor ends the listing, a repeated cursor ends it, and a hard page ceiling ends it — now live once in `internal::model_listing::paginate_models`, with each provider supplying only how it spells a cursor and how it reads one out of a page. The ceiling is the new rule: both listers were bare `loop`s, so a cursor that keeps *changing* without advancing — a gateway alternating `c1, c2, c1, …`, or minting a fresh one per request — never terminated, where the shared loop now stops after `MAX_LISTING_PAGES` (1000), warns, and returns the pages fetched so far. Venice's lister, which was the shared macro's output written by hand, uses the macro. No public type changed ([#2079](https://github.com/0xPlaygrounds/rig/issues/2079))
 - *(workspace)* remove `#[non_exhaustive]` from every type in the workspace — 53 attributes across `rig-core`, `rig-agent`, `rig-bedrock` and `rig-candle`. Struct literals, functional update (`..Default::default()`) and exhaustive `match` now work from any crate, which is the point: these types read as plain data again. This is a permissive change, so it is **not** breaking and nothing stops compiling because of it. Two consequences to know about. First, downstream `match` arms that exist only to satisfy a previously non-exhaustive enum may now warn `unreachable_patterns`, which is an error under `-D warnings` — delete the wildcard (two in-tree matches over `ReasoningContent` needed this). Second, the reverse of the old bargain now applies: adding a field to any of these structs, or a variant to any of these enums, is a breaking change from here on, so it must wait for a breaking window. `#[non_exhaustive]` cannot be reintroduced outside one either. See `MIGRATING.md` for the superseded guidance and the one invariant this widens ([#2335](https://github.com/0xPlaygrounds/rig/pull/2335))
 - *(agent)* [**breaking**] `ToolSetBuilder` and `ToolSet::builder()` are removed, and the `rig` facade drops `ToolSetBuilder` from its `rig::tool` re-export. A tool set is populated in place instead: `ToolSet::default()` (or `from_tools`/`from_dynamic_tools`) plus `add_tool`, `add_dynamic_tool`, `add_portable_dynamic_tool` and the new `add_retrieved_tool`, so `ToolSet::builder().retrieved_tool(t).build()` becomes `let mut set = ToolSet::default(); set.add_retrieved_tool(t);` ([#2320](https://github.com/0xPlaygrounds/rig/pull/2320))

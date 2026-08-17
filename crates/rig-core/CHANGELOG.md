@@ -6,20 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
-### Changed
-
-- *(deps)* dependency requirements are now floors — the lowest version rig's own code needs (a bare major, or the version that introduced an API rig relies on) — instead of the latest patch at the time of release; Dependabot only moves `Cargo.lock` for in-range releases, and `scripts/check-dependency-floors.py` (CI `dependency-floors`) builds the workspace against the declared floors. The `deranged = "=0.5.8"` exact pin is gone. Downstream users no longer have to `cargo update` unrelated crates to take a rig release ([#2195](https://github.com/0xPlaygrounds/rig/issues/2195)) - #2369
-
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.41.0...rig-core-v0.42.0) - 2026-08-17
 
 ### Added
 
 - the provider's own response on every completion: `raw: serde_json::Value` on `CompletionResponse` and `StreamFinal` — the value `raw_completion` / `raw_stream` would have returned, serialized — populated at every provider seam and the shared `normalize_stream` seam; `openai::GenericCompletionModel::raw_completion_with_request_id` and `copilot::CompletionModel::raw_completion_with_request_id` are public so the typed route reproduces `completion()` ([#2366](https://github.com/0xPlaygrounds/rig/issues/2366)) - #2367
-
-## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.41.0...rig-core-v0.42.0) - 2026-08-16
-
-### Added
-
 - *(voyageai)* expose embedding request options ([#2343](https://github.com/0xPlaygrounds/rig/pull/2343)) (by [sergiomeneses](https://github.com/sergiomeneses))
 - carry the provider transport request id on completion errors ([#2314](https://github.com/0xPlaygrounds/rig/pull/2314)) ([#2315](https://github.com/0xPlaygrounds/rig/pull/2315)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2315
 - response identity metadata — native response id + provider transport request id, to every completion observer ([#2265](https://github.com/0xPlaygrounds/rig/pull/2265)) ([#2313](https://github.com/0xPlaygrounds/rig/pull/2313)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2313
@@ -87,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(deps)* dependency requirements are now floors — the lowest version rig's own code needs (a bare major, or the version that introduced an API rig relies on) — instead of the latest patch at the time of release; Dependabot only moves `Cargo.lock` for in-range releases, and `scripts/check-dependency-floors.py` (CI `dependency-floors`) builds the workspace against the declared floors. The `deranged = "=0.5.8"` exact pin is gone. Downstream users no longer have to `cargo update` unrelated crates to take a rig release ([#2195](https://github.com/0xPlaygrounds/rig/issues/2195)) - #2369
 - *(anthropic)* [**breaking**] `completion::Citation`'s five locator variants become newtypes over five new public payload structs: `CharLocation(CharLocationCitation)`, `PageLocation(PageLocationCitation)`, `ContentBlockLocation(ContentBlockLocationCitation)`, `SearchResultLocation(SearchResultLocationCitation)`, `WebSearchResultLocation(WebSearchResultLocationCitation)` — the crate-private `*CitationFields` DTOs the hand-written `Deserialize` already decoded into, made public as the variant payload itself and renamed without the `Fields` suffix. Field names, types and optionality are carried over verbatim and the `type`-tagged wire shape is untouched (including `web_search_result_location`'s `title`, still written even when absent), so persisted citations load and a serialized one carries the same keys and values; only source that spells the fields breaks — `Citation::CharLocation { cited_text, .. }` becomes `Citation::CharLocation(CharLocationCitation { cited_text, .. })`. `Citation::Unknown(serde_json::Value)` is unchanged. Both routes to the type are provider-native: `Content::Text { citations, .. }` and `streaming::ContentDelta::CitationsDelta`
 
 - *(image, audio)* `image_generation::ImageGenerationModel` and `audio_generation::AudioGenerationModel` state their bounds as `WasmCompatSend`/`WasmCompatSync` rather than `Send`/`Sync`: `ImageGenerationModel`'s own supertraits, plus the associated `Response` and the returned future on both. That is the shape `CompletionModel`, `EmbeddingModel` and `TranscriptionModel` already had. On native targets nothing changes — `WasmCompatSend: Send`, `WasmCompatSync: Sync`, blanket-implemented for every qualifying type — so existing implementors compile unchanged and generic code still gets `Send`/`Sync` from the bound; on `wasm32-unknown-unknown` both markers are empty, so a model whose HTTP future is not `Send` can implement either trait, which the old `+ Send` future bound ruled out
