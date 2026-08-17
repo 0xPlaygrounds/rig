@@ -1,0 +1,65 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":1200,"messages":[{"content":[{"text":"Reason before the requested first tool call. After its result, answer exactly DONE without calling another tool.","type":"text"}],"role":"system"},{"content":"Think briefly about the instruction, then call lookup exactly once with value cobalt. Do not answer in prose.","role":"user"}],"model":"anthropic/claude-haiku-4.5","provider":{"allow_fallbacks":false,"order":["Anthropic"]},"reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Record one lookup value","name":"lookup","parameters":{"additionalProperties":false,"properties":{"value":{"type":"string"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"The user wants me to:","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"The user wants me to:","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":"\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nSo I need to call the lookup function with the value parameter set to \"cobalt\".","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"text":"\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nSo I need to call the lookup function with the value parameter set to \"cobalt\".","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning_details":[{"format":"anthropic-claude-v1","index":0,"signature":"signature_REDACTED_1","type":"reasoning.text"}],"role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"","name":"lookup"},"id":"toolu_REDACTED_1","index":0,"type":"function"}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":""},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"value\": \"cobalt"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"\"}"},"index":0}]},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","reasoning":null,"role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","index":0,"native_finish_reason":"tool_use"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic","service_tier":"default","usage":{"completion_tokens":113,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":59},"cost":0.0012,"cost_details":{"upstream_inference_completions_cost":0.000565,"upstream_inference_cost":0.0012,"upstream_inference_prompt_cost":0.000635},"is_byok":false,"prompt_tokens":635,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":748}}
+
+    data: [DONE]
+
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":1200,"messages":[{"content":[{"text":"Reason before the requested first tool call. After its result, answer exactly DONE without calling another tool.","type":"text"}],"role":"system"},{"content":"Think briefly about the instruction, then call lookup exactly once with value cobalt. Do not answer in prose.","role":"user"},{"reasoning_details":[{"format":null,"id":null,"index":0,"signature":"signature_REDACTED_1","text":"The user wants me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nSo I need to call the lookup function with the value parameter set to \"cobalt\".","type":"reasoning.text"}],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"value\":\"cobalt\"}","name":"lookup"},"id":"toolu_REDACTED_1","type":"function"}]},{"content":"lookup recorded; answer exactly DONE without another tool","role":"tool","tool_call_id":"toolu_REDACTED_1"}],"model":"anthropic/claude-haiku-4.5","provider":{"allow_fallbacks":false,"order":["Anthropic"]},"reasoning":{"max_tokens":1024},"stream":true,"tools":[{"function":{"description":"Record one lookup value","name":"lookup","parameters":{"additionalProperties":false,"properties":{"value":{"type":"string"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"DONE","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"end_turn"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"anthropic/claude-haiku-4.5","object":"chat.completion.chunk","provider":"Anthropic","service_tier":"default","usage":{"completion_tokens":5,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.000795,"cost_details":{"upstream_inference_completions_cost":0.000025,"upstream_inference_cost":0.000795,"upstream_inference_prompt_cost":0.00077},"is_byok":false,"prompt_tokens":770,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":775}}
+
+    data: [DONE]
+

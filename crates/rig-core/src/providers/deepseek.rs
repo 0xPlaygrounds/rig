@@ -347,12 +347,6 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 // call, and the shared canonical chunk order is the same
                 // (reasoning, then text, then tool events). Appending it last
                 // made the two transports disagree about identical bytes.
-                //
-                // OpenRouter's normalizer still appends reasoning after its
-                // tool calls (`openrouter/completion.rs`), so this is not the
-                // last blocking normalizer in the tree that disagrees with its
-                // own stream — only the one this hunt recorded the parity
-                // fixtures for.
                 let mut content = match reasoning_content {
                     Some(reasoning_content) => {
                         vec![completion::AssistantContent::reasoning(reasoning_content)]

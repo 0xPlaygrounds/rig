@@ -1,0 +1,24 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Call the add tool exactly once with x=17 and y=25. Do not answer in prose.","role":"user"}],"model":"mistral-small-latest","stream":true,"tool_choice":"any","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234567","usage":{"completion_tokens":18,"prompt_tokens":128,"prompt_tokens_details":{"cached_tokens":96},"service_tier":"standard","total_tokens":146}}
+
+    data: [DONE]
+

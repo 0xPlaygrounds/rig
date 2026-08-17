@@ -114,3 +114,76 @@ pub(super) async fn with_openrouter_usage_cassette<F, Fut>(
 {
     with_openrouter_cassette(spec, test_body).await;
 }
+
+/// Live-recorded native OpenRouter log-probability transport matrix.
+pub(super) async fn with_openrouter_stream_logprobs_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openrouter_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded malformed/truncated tool-call contract matrix.
+pub(super) async fn with_openrouter_tool_truncation_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openrouter_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded native OpenRouter tool-call lifecycle matrix.
+pub(super) async fn with_openrouter_tool_lifecycle_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openrouter_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded terminal identity, usage, and routed-provider metadata
+/// matrix.
+pub(super) async fn with_openrouter_terminal_metadata_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openrouter_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded caller-history roundtrip matrix.
+pub(super) async fn with_openrouter_history_roundtrip_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openrouter_cassette_result(spec, test_body).await
+}
+
+/// Live-recorded reasoning/tool ordering and signed-history parity matrix.
+pub(super) async fn with_openrouter_reasoning_tool_order_cassette_result<F, Fut, E>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+) -> Result<(), E>
+where
+    F: FnOnce(openrouter::Client) -> Fut,
+    Fut: Future<Output = Result<(), E>>,
+{
+    with_openrouter_cassette_result(spec, test_body).await
+}

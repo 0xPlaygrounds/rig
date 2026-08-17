@@ -91,6 +91,30 @@ where
     D: Deserializer<'de>,
     T: serde::de::DeserializeOwned,
 {
+    deserialize_choices_dropping_incomplete_tool_calls_when(deserializer, |choice| {
+        choice
+            .get("finish_reason")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|reason| matches!(map_openai_finish_reason(reason), FinishReason::Length))
+    })
+}
+
+/// Provider-aware form of
+/// [`deserialize_choices_dropping_incomplete_tool_calls`].
+///
+/// Most compatible providers have one normalized `finish_reason`. Gateways
+/// such as OpenRouter can expose a second upstream-native reason with explicit
+/// precedence rules; their response type supplies that effective-length
+/// predicate here while reusing the same compound-safe repair/drop policy.
+pub(crate) fn deserialize_choices_dropping_incomplete_tool_calls_when<'de, D, T, F>(
+    deserializer: D,
+    is_output_length: F,
+) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+    F: Fn(&serde_json::Value) -> bool,
+{
     fn incomplete_arguments(call: &serde_json::Value) -> bool {
         call.get("function")
             .and_then(|function| function.get("arguments"))
@@ -143,14 +167,7 @@ where
     Vec::<serde_json::Value>::deserialize(deserializer)?
         .into_iter()
         .map(|mut choice| {
-            let is_length = choice
-                .get("finish_reason")
-                .and_then(serde_json::Value::as_str)
-                .is_some_and(|reason| {
-                    matches!(map_openai_finish_reason(reason), FinishReason::Length)
-                });
-
-            if is_length {
+            if is_output_length(&choice) {
                 let mut repaired = choice.clone();
                 if repair_incomplete_arguments(&mut repaired)
                     && serde_json::from_value::<T>(repaired).is_ok()
@@ -251,6 +268,7 @@ pub(crate) enum CompatibleFinishReason {
 
 impl CompatibleFinishReason {
     /// Normalize a wire `finish_reason` field.
+    #[cfg(test)]
     pub(crate) fn from_wire(reason: Option<&str>) -> Self {
         match reason.filter(|reason| !reason.is_empty()) {
             Some(reason) => Self::Reported(map_openai_finish_reason(reason)),
@@ -287,6 +305,9 @@ pub(crate) struct CompatibleTerminal<U> {
     /// Per-chunk primary-choice log probabilities, deep-merged in arrival
     /// order so token arrays retain the exact streamed sequence.
     pub(crate) logprobs: Option<crate::message::AdditionalParams>,
+    /// Provider-specific top-level chunk metadata, deep-merged in arrival
+    /// order so the raw terminal record does not lose additive wire fields.
+    pub(crate) additional_params: Option<crate::message::AdditionalParams>,
 }
 
 #[derive(Debug, Clone)]
@@ -348,6 +369,7 @@ pub(crate) struct CompatibleChunk<U, D> {
     pub(crate) response_model: Option<String>,
     pub(crate) choice: Option<CompatibleChoice<D>>,
     pub(crate) usage: Option<U>,
+    pub(crate) additional_params: Option<crate::message::AdditionalParams>,
 }
 
 impl<T, D> From<CompatibleChoiceData<T, D>> for CompatibleChoice<D>
@@ -370,6 +392,7 @@ pub(crate) fn normalize_first_choice_chunk<U, D, Choice, ToolCall, F>(
     response_id: Option<String>,
     response_model: Option<String>,
     usage: Option<U>,
+    additional_params: Option<crate::message::AdditionalParams>,
     choices: &[Choice],
     map_choice: F,
 ) -> CompatibleChunk<U, D>
@@ -384,6 +407,7 @@ where
         response_model,
         choice,
         usage,
+        additional_params,
     }
 }
 
@@ -449,6 +473,12 @@ pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
         Option<crate::streaming::WireId>,
         crate::message::ReasoningContent,
     )> {
+        None
+    }
+
+    /// Extract a signature that authoritatively closes the currently
+    /// accumulating plaintext reasoning block.
+    fn reasoning_signature(&self, _detail: &Self::Detail) -> Option<String> {
         None
     }
 
@@ -519,6 +549,8 @@ struct CompatAdapter<P: CompatibleStreamProfile> {
     /// Accumulated primary-choice token metadata. `AdditionalParams::merge`
     /// concatenates nested arrays, which is the wire's token order.
     logprobs: Option<crate::message::AdditionalParams>,
+    /// Accumulated provider-specific top-level chunk metadata.
+    additional_params: Option<crate::message::AdditionalParams>,
     /// Whether `[DONE]` or a chunk carrying a finish reason arrived — the only
     /// signals that count as the provider completing the turn.
     saw_terminal: bool,
@@ -539,6 +571,7 @@ impl<P: CompatibleStreamProfile> CompatAdapter<P> {
             response_id: None,
             response_model: None,
             logprobs: None,
+            additional_params: None,
             saw_terminal: false,
             saw_any_valid_frame: false,
         }
@@ -592,6 +625,13 @@ where
 
         if let Some(usage) = chunk.usage {
             self.final_usage = Some(usage);
+        }
+
+        if let Some(additional_params) = chunk.additional_params {
+            match self.additional_params.as_mut() {
+                Some(accumulated) => accumulated.merge(additional_params),
+                None => self.additional_params = Some(additional_params),
+            }
         }
 
         let Some(choice) = chunk.choice else {
@@ -685,13 +725,15 @@ where
             }
         }
 
+        let reasoning_signature = choice
+            .details
+            .iter()
+            .find_map(|detail| self.profile.reasoning_signature(detail));
+
         self.reasoning.emit_chunk(
             ChunkParts {
                 reasoning: choice.reasoning,
-                // The chat-completions wire never signs a reasoning block:
-                // encrypted reasoning details ride the profile's
-                // `detail_reasoning` hook as whole blocks instead.
-                reasoning_signature: None,
+                reasoning_signature,
                 text: choice.text,
                 tool_events,
             },
@@ -709,7 +751,12 @@ where
 
         if choice.finish_reason.is_tool_calls() {
             for slot in self.open_tool_calls.drain_ordered() {
-                let end = slot.end_event(UnparseableToolInput::Drop);
+                // `tool_calls` says the provider completed the call. Invalid
+                // JSON in that state is a provider defect, not evidence that
+                // the output-token cap cut the payload short, and must remain
+                // loud. Empty arguments still normalize to `{}` for genuine
+                // zero-argument tools.
+                let end = slot.end_event(UnparseableToolInput::Error);
                 out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
             }
         }
@@ -731,7 +778,17 @@ where
                 );
                 continue;
             }
-            let end = slot.end_event(UnparseableToolInput::Drop);
+            // Only a provider-declared output-length truncation authorizes
+            // discarding malformed partial arguments. `stop`, an unknown
+            // reason, and a bare `[DONE]` all claim completion; treating their
+            // malformed calls as truncation would silently erase provider
+            // output and could hide compound wire defects.
+            let on_unparseable = if output_length_truncation {
+                UnparseableToolInput::Drop
+            } else {
+                UnparseableToolInput::Error
+            };
+            let end = slot.end_event(on_unparseable);
             out.push(Ok(RawStreamingChoice::ToolInputEnd(end)));
         }
 
@@ -755,6 +812,7 @@ where
                 response_id: self.response_id.take(),
                 model: self.response_model.take(),
                 logprobs: self.logprobs.take(),
+                additional_params: self.additional_params.take(),
             }),
         )));
     }
@@ -1567,7 +1625,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_calls_finish_reason_drops_partial_argument_payloads() {
+    async fn tool_calls_finish_reason_surfaces_partial_argument_errors() {
         let client = MockStreamingClient {
             sse_bytes: sse_bytes_from_data_lines(["start", "finish"]),
         };
@@ -1584,25 +1642,74 @@ mod tests {
 
         let mut saw_final = false;
         let mut saw_tool_call = false;
+        let mut errors = Vec::new();
 
         while let Some(item) = stream.next().await {
-            match item.expect("stream item should be ok") {
-                StreamedAssistantContent::ToolCallDelta { .. } => {}
-                StreamedAssistantContent::Final(_) => saw_final = true,
-                StreamedAssistantContent::ToolCall { .. } => saw_tool_call = true,
-                other => panic!(
-                    "unexpected stream item while asserting finish-reason cleanup: {other:?}"
-                ),
+            match item {
+                Ok(StreamedAssistantContent::ToolCallDelta { .. }) => {}
+                Ok(StreamedAssistantContent::Final(_)) => saw_final = true,
+                Ok(StreamedAssistantContent::ToolCall { .. }) => saw_tool_call = true,
+                Ok(other) => {
+                    panic!("unexpected stream item while asserting finish-reason policy: {other:?}")
+                }
+                Err(error) => errors.push(error.to_string()),
             }
         }
 
         assert!(
             saw_final,
-            "stream should still yield a final response after dropping the partial tool call"
+            "the malformed call error must not erase terminal metadata"
         );
         assert!(
             !saw_tool_call,
-            "finish_reason cleanup should drop partial tool calls instead of emitting them"
+            "a malformed call must not be emitted as valid"
+        );
+        assert_eq!(errors.len(), 1, "the malformed completed call stays loud");
+        assert!(
+            errors[0].contains("tool call") && errors[0].contains("malformed JSON input"),
+            "the error should identify malformed tool arguments: {}",
+            errors[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn length_finish_reason_drops_partial_argument_payloads() {
+        let client = MockStreamingClient {
+            sse_bytes: sse_bytes_from_data_lines(["start", "length_finish"]),
+        };
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("http://localhost/v1/chat/completions")
+            .body(Vec::new())
+            .expect("request should build");
+
+        let mut stream = send_compatible_streaming_request(client, req, FinishReasonCleanupProfile)
+            .await
+            .expect("stream should start");
+
+        while let Some(item) = stream.next().await {
+            match item.expect("length-truncated partial calls are tolerated") {
+                StreamedAssistantContent::ToolCallDelta { .. }
+                | StreamedAssistantContent::Final(_) => {}
+                StreamedAssistantContent::ToolCall { .. } => {
+                    panic!("a partial length-truncated call must not be emitted")
+                }
+                other => panic!("unexpected truncation stream item: {other:?}"),
+            }
+        }
+
+        assert!(
+            stream.choice.iter().all(|content| !matches!(
+                content,
+                crate::completion::AssistantContent::ToolCall(_)
+            ))
+        );
+        assert_eq!(
+            stream
+                .response
+                .as_ref()
+                .and_then(|response| response.finish_reason.clone()),
+            Some(crate::completion::FinishReason::Length)
         );
     }
 

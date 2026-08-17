@@ -8,6 +8,11 @@ mod cassette {
     #[cfg(feature = "audio")]
     mod audio_params_matrix;
     mod chat_history;
+    mod chat_history_roundtrip_matrix;
+    mod chat_streaming_logprobs_matrix;
+    mod chat_terminal_metadata_matrix;
+    mod chat_tool_lifecycle_matrix;
+    mod chat_tool_truncation_matrix;
     mod completions_api;
     mod document_ordering;
     mod error_envelope;

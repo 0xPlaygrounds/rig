@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":[{"text":"Follow the user''s tool-call instruction exactly. Do not answer in prose.","type":"text"}],"role":"system"},{"content":"Call alpha with value red and beta with value blue in the same turn, in that order.","role":"user"}],"model":"gpt-4.1-mini","parallel_tool_calls":true,"tool_choice":"required","tools":[{"function":{"description":"Matrix tool alpha","name":"alpha","parameters":{"properties":{"value":{"type":"string"}},"required":["value"],"type":"object"}},"type":"function"},{"function":{"description":"Matrix tool beta","name":"beta","parameters":{"properties":{"value":{"type":"string"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"annotations":[],"content":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"value\": \"red\"}","name":"alpha"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"value\": \"blue\"}","name":"beta"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4.1-mini-2025-04-14","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":42,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":90,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":132}}'

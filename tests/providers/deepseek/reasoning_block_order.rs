@@ -208,9 +208,18 @@ async fn blocking_reasoner_parallel_tool_turn_leads_with_reasoning() {
                 .normalize("deepseek")?;
 
             let kinds = block_kinds(&normalized.choice);
-            assert!(
-                kinds.iter().filter(|kind| **kind == "tool_call").count() >= 1,
-                "premise requires at least one tool call: {kinds:?}"
+            let tool_call_names = normalized
+                .choice
+                .iter()
+                .filter_map(|content| match content {
+                    AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                tool_call_names,
+                vec!["get_weather", "get_air_quality"],
+                "parallel premise requires both recorded tool calls in order"
             );
             assert_reasoning_leads(&kinds, "blocking reasoner parallel tool turn");
             Ok::<(), anyhow::Error>(())
@@ -247,10 +256,10 @@ async fn streaming_reasoner_parallel_tool_turn_leads_with_reasoning() {
             )
             .await;
 
-            assert!(
-                outcome.order.contains(&"tool_call"),
-                "premise requires a tool call: {:?}",
-                outcome.order
+            assert_eq!(
+                outcome.tool_call_names(),
+                vec!["get_weather", "get_air_quality"],
+                "parallel premise requires both recorded tool calls in order"
             );
             assert_reasoning_leads(&outcome.order, "streaming reasoner parallel tool turn");
             Ok::<(), anyhow::Error>(())

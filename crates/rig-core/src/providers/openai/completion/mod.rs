@@ -1145,6 +1145,9 @@ pub struct CompletionResponse {
     pub created: u64,
     pub model: String,
     pub system_fingerprint: Option<String>,
+    /// Service tier that processed the request, when OpenAI reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
     #[serde(
         deserialize_with = "crate::providers::internal::openai_chat_completions_compatible::deserialize_choices_dropping_incomplete_tool_calls"
     )]
@@ -1501,6 +1504,22 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// this to false.
     const STREAM_INCLUDE_USAGE: bool = true;
 
+    /// Map a streamed terminal reason for this compatible provider.
+    ///
+    /// The normalized Chat Completions field is the default contract. Gateway
+    /// providers that also expose an upstream-native reason can override this
+    /// to apply their documented precedence without teaching the shared wire
+    /// adapter provider names or native vocabularies.
+    fn map_streaming_finish_reason(
+        &self,
+        finish_reason: Option<&str>,
+        _native_finish_reason: Option<&str>,
+    ) -> Option<crate::completion::FinishReason> {
+        finish_reason
+            .filter(|reason| !reason.is_empty())
+            .map(crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason)
+    }
+
     /// Whether `model`'s endpoint rejects the legacy `max_tokens` field and
     /// requires `max_completion_tokens` instead.
     ///
@@ -1631,6 +1650,14 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
         Option<crate::streaming::WireId>,
         crate::message::ReasoningContent,
     )> {
+        let _ = detail;
+        None
+    }
+
+    /// Extract a signature-only reasoning detail from a streamed compatible
+    /// response. The default wire has no such extension; gateway providers
+    /// can attach the signature to the shared plaintext reasoning lifecycle.
+    fn streaming_reasoning_signature(&self, detail: &serde_json::Value) -> Option<String> {
         let _ = detail;
         None
     }
@@ -2951,6 +2978,7 @@ mod tests {
             created: 0,
             model: GPT_4O.to_owned(),
             system_fingerprint: None,
+            service_tier: None,
             choices: vec![Choice {
                 index: 0,
                 message: Message::Assistant {
@@ -2986,6 +3014,26 @@ mod tests {
     }
 
     #[test]
+    fn raw_completion_response_retains_service_tier() {
+        let response: CompletionResponse = serde_json::from_value(json!({
+            "id": "chatcmpl-tier",
+            "object": "chat.completion",
+            "created": 0,
+            "model": GPT_4O,
+            "system_fingerprint": "fp_test",
+            "service_tier": "priority",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "ok"},
+                "finish_reason": "stop"
+            }]
+        }))
+        .expect("live Chat Completions metadata should deserialize");
+
+        assert_eq!(response.service_tier.as_deref(), Some("priority"));
+    }
+
+    #[test]
     fn provider_response_text_response_falls_back_to_assistant_refusal_field() {
         let response = CompletionResponse {
             id: "resp_123".to_owned(),
@@ -2993,6 +3041,7 @@ mod tests {
             created: 0,
             model: GPT_4O.to_owned(),
             system_fingerprint: None,
+            service_tier: None,
             choices: vec![Choice {
                 index: 0,
                 message: Message::Assistant {

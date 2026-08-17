@@ -128,6 +128,7 @@ impl FinishReason {
 /// [`CompatibleFinishReason::Absent`]; anything outside the normalized
 /// vocabulary is preserved verbatim in
 /// [`crate::completion::FinishReason::Other`].
+#[cfg(test)]
 pub(crate) fn map_finish_reason(reason: Option<&FinishReason>) -> CompatibleFinishReason {
     CompatibleFinishReason::from_wire(reason.map(FinishReason::as_wire))
 }
@@ -161,6 +162,9 @@ struct StreamingChoice {
     #[serde(default)]
     delta: StreamingDelta,
     finish_reason: Option<FinishReason>,
+    /// Upstream provider spelling forwarded by gateways such as OpenRouter.
+    /// Direct providers omit it; their profile's default mapper ignores it.
+    native_finish_reason: Option<String>,
     /// Which candidate this delta belongs to when the caller asked for
     /// `n > 1`. Optional because providers streaming a single candidate may
     /// omit it; absent is read as candidate 0.
@@ -183,6 +187,12 @@ struct StreamingCompletionChunk<U = Usage> {
     model: Option<String>,
     choices: Vec<StreamingChoice>,
     usage: Option<U>,
+    /// Provider-specific top-level chunk fields. Chat-completions-compatible
+    /// services add fields independently (`service_tier`, `provider`, and
+    /// similar metadata), and `raw_stream` must not erase them merely because
+    /// the shared wire shape does not know their names yet.
+    #[serde(flatten)]
+    additional_params: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Final streaming response. `U` is the provider's streaming usage payload
@@ -226,6 +236,15 @@ pub struct StreamingCompletionResponse<U = Usage> {
     /// response retains them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<serde_json::Value>,
+    /// Provider-specific top-level fields accumulated from the stream's
+    /// chunks, such as OpenAI's `service_tier` and `system_fingerprint` or
+    /// OpenRouter's routed `provider`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::message::optional_additional_params"
+    )]
+    pub additional_params: Option<crate::message::AdditionalParams>,
 }
 
 impl<U> StreamingCompletionResponse<U> {
@@ -239,6 +258,7 @@ impl<U> StreamingCompletionResponse<U> {
             model: None,
             provider_request_id: None,
             logprobs: None,
+            additional_params: None,
         }
     }
 
@@ -254,6 +274,7 @@ impl<U> StreamingCompletionResponse<U> {
             // never sees connection headers.
             provider_request_id: None,
             logprobs: terminal.logprobs.map(Into::into),
+            additional_params: terminal.additional_params,
         }
     }
 }
@@ -455,12 +476,19 @@ where
                 data.id,
                 data.model,
                 data.usage,
+                crate::message::AdditionalParams::new(data.additional_params),
                 primary,
                 |choice| CompatibleChoiceData {
                     // The shared mapping also folds `function_call` — the
                     // deprecated pre-tools finish reason some compatible
                     // providers still emit — onto `ToolCalls`.
-                    finish_reason: map_finish_reason(choice.finish_reason.as_ref()),
+                    finish_reason: match self.provider.map_streaming_finish_reason(
+                        choice.finish_reason.as_ref().map(FinishReason::as_wire),
+                        choice.native_finish_reason.as_deref(),
+                    ) {
+                        Some(reason) => CompatibleFinishReason::Reported(reason),
+                        None => CompatibleFinishReason::Absent,
+                    },
                     text: delta_text(&choice.delta),
                     reasoning: choice
                         .delta
@@ -493,6 +521,10 @@ where
         crate::message::ReasoningContent,
     )> {
         self.provider.streaming_detail_reasoning(detail)
+    }
+
+    fn reasoning_signature(&self, detail: &Self::Detail) -> Option<String> {
+        self.provider.streaming_reasoning_signature(detail)
     }
 
     fn decorate_tool_call(
@@ -716,6 +748,31 @@ mod tests {
                 ]
             }))
         );
+    }
+
+    /// Top-level metadata is not part of a choice, but it is still native
+    /// response data. Compatible providers add keys independently, so the raw
+    /// terminal preserves and merges both familiar and previously unknown
+    /// fields instead of requiring a shared-wire release for each new key.
+    #[tokio::test]
+    async fn raw_terminal_retains_top_level_chunk_metadata() {
+        let chunks = [
+            r#"{"id":"chatcmpl-1","model":"gpt-test","object":"chat.completion.chunk","created":17,"system_fingerprint":"fp_one","service_tier":"default","provider":"OpenAI","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}"#,
+            r#"{"id":"chatcmpl-1","model":"gpt-test","object":"chat.completion.chunk","created":17,"system_fingerprint":"fp_one","service_tier":"priority","provider":"OpenAI","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#,
+        ];
+
+        let terminal = collect_openai_raw_terminal(&chunks)
+            .await
+            .expect("stream should terminate");
+        let params = terminal
+            .additional_params
+            .expect("top-level metadata should survive");
+
+        assert_eq!(params["object"], "chat.completion.chunk");
+        assert_eq!(params["created"], 17);
+        assert_eq!(params["system_fingerprint"], "fp_one");
+        assert_eq!(params["service_tier"], "priority");
+        assert_eq!(params["provider"], "OpenAI");
     }
 
     /// Empty and null probability objects are both documented absence shapes

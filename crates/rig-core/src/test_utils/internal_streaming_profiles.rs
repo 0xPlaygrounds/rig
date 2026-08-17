@@ -18,6 +18,7 @@ fn test_chunk(choice: CompatibleChoice<()>) -> CompatibleChunk<Usage, ()> {
         response_model: None,
         choice: Some(choice),
         usage: None,
+        additional_params: None,
     }
 }
 

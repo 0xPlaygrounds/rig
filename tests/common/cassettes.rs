@@ -24,6 +24,7 @@ use std::any::Any;
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::fmt;
+use std::fs;
 use std::net::SocketAddr;
 use std::panic::{AssertUnwindSafe, resume_unwind};
 use std::path::{Path, PathBuf};
@@ -1487,6 +1488,75 @@ pub(crate) fn cassette_path(provider: &str, scenario: &str) -> PathBuf {
     }
     path.set_extension("yaml");
     path
+}
+
+/// Recorded request/response bodies for one provider scenario, in wire order.
+///
+/// Provider edge matrices use these bytes to prove that a replay fixture still
+/// carries the premise it claims to exercise. Keeping the reader beside the
+/// cassette parser avoids every provider growing a subtly different YAML
+/// decoder.
+pub(crate) fn recorded_interaction_bodies(provider: &str, scenario: &str) -> Vec<(String, String)> {
+    let path = cassette_path(provider, scenario);
+    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "provider cassette {} should be readable: {error}",
+            path.display()
+        )
+    });
+
+    parse_cassette_interactions(&path, &contents)
+        .into_iter()
+        .map(|interaction| {
+            (
+                interaction.when.body.unwrap_or_default(),
+                interaction.then.body.unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+/// First recorded request body for one provider scenario, parsed as JSON.
+pub(crate) fn recorded_json_request(provider: &str, scenario: &str) -> Value {
+    let (request, _) = recorded_interaction_bodies(provider, scenario)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("cassette {provider}/{scenario} should contain an interaction"));
+    serde_json::from_str(&request).unwrap_or_else(|error| {
+        panic!("cassette {provider}/{scenario} request should be JSON: {error}")
+    })
+}
+
+/// First recorded non-streaming response body, parsed as JSON.
+pub(crate) fn recorded_json_response(provider: &str, scenario: &str) -> Value {
+    let (_, response) = recorded_interaction_bodies(provider, scenario)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("cassette {provider}/{scenario} should contain an interaction"));
+    serde_json::from_str(&response).unwrap_or_else(|error| {
+        panic!("cassette {provider}/{scenario} response should be JSON: {error}")
+    })
+}
+
+/// JSON `data:` frames from the first recorded SSE response, excluding
+/// `[DONE]`.
+pub(crate) fn recorded_sse_json_frames(provider: &str, scenario: &str) -> Vec<Value> {
+    let (_, response) = recorded_interaction_bodies(provider, scenario)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| panic!("cassette {provider}/{scenario} should contain an interaction"));
+
+    response
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("data:"))
+        .map(str::trim)
+        .filter(|payload| *payload != "[DONE]")
+        .map(|payload| {
+            serde_json::from_str(payload).unwrap_or_else(|error| {
+                panic!("cassette {provider}/{scenario} SSE frame should be JSON: {error}")
+            })
+        })
+        .collect()
 }
 
 fn sanitize_path_segment(segment: &str) -> String {

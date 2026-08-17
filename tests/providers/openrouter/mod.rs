@@ -7,6 +7,7 @@ mod cassette {
     mod document_ordering;
     mod extractor;
     mod extractor_usage;
+    mod history_roundtrip_matrix;
     mod models;
     mod multi_extract;
     mod multimodal;
@@ -14,13 +15,18 @@ mod cassette {
     mod permission_control;
     mod provider_selection;
     mod reasoning_roundtrip;
+    mod reasoning_tool_order_matrix;
     mod reasoning_tool_roundtrip;
     mod reasoning_usage_matrix;
     mod refusal_matrix;
     mod request_hook;
     mod response_identity_edge;
     mod streaming;
+    mod streaming_logprobs_matrix;
     mod streaming_tools;
+    mod terminal_metadata_matrix;
+    mod tool_lifecycle_matrix;
+    mod tool_truncation_contract_matrix;
     mod transcription;
     mod typed_prompt_tools;
 }
