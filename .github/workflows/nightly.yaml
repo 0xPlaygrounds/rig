@@ -78,6 +78,8 @@ on:
       # vector-store contract is caught by merge_group below at the latest.)
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/*/Cargo.toml"
+      - "scripts/check-dependency-floors.py"
   # The repo merges through a merge queue (ALLGREEN, squash, batches up to
   # 5), so the commit that actually lands on main is the merge-group commit —
   # not the PR head that the `pull_request` triggers above validated. Without
@@ -156,3 +158,33 @@ jobs:
       # archived in 2023 and pins Node 20.
       - name: Test with all features
         run: cargo nextest run --locked --all-features --retries 2
+
+  # The declared dependency requirements are floors, not pins (`tokio = "1"`
+  # is `^1`), and a downstream resolves anywhere inside them — usually to
+  # whatever its own lockfile already holds. So rig has to actually build at
+  # the lowest version it declares, or the floor is a lie that surfaces as a
+  # build break in someone else's tree (#2195). Cargo's `-Zdirect-minimal-
+  # versions` is nightly-only and dead-ends in this workspace's transitive
+  # graph, so `scripts/check-dependency-floors.py` does the equivalent on
+  # stable: `cargo update --precise` every direct dependency down to the
+  # lowest version the tree admits, then `cargo check --workspace
+  # --all-features --all-targets`. It runs here rather than on the PR gate
+  # because it is a full all-features build; the `pull_request` paths above
+  # still run it on every PR that touches a manifest, the lockfile, or the
+  # script itself, which is where a floor can silently rot (a PR that starts
+  # using an API newer than the declared floor).
+  dependency-floors:
+    name: stable / dependency floors
+    runs-on: ubuntu-latest
+    if: github.repository == '0xPlaygrounds/rig'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust stable
+        uses: ./.github/actions/rust-setup
+        with:
+          protoc: "true"
+
+      - name: Build against the declared dependency floors
+        run: python3 scripts/check-dependency-floors.py

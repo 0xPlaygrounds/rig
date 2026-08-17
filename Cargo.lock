@@ -10047,7 +10047,6 @@ version = "0.42.0"
 dependencies = [
  "anyhow",
  "arrow-array",
- "deranged",
  "futures",
  "httpmock",
  "lancedb",
