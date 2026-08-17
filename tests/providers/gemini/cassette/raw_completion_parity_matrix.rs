@@ -5,12 +5,12 @@
 //! Gemini is a `TryFrom`-shaped provider: `CompletionModel::completion` is
 //! `raw_completion(req)?.try_into()` (`rig::completion::CompletionResponse:
 //! TryFrom<GenerateContentResponse>` for the REST route,
-//! `TryFrom<Interaction>` for the Interactions API) plus the raw capture
-//! seam. So a caller holding the concrete model who prefers the escape hatch
-//! and normalizes by hand must land on the same `identity()`,
-//! `finish_reason()`, `model` and `usage` that `completion()` reports —
-//! and, when capture is on, `try_into` over the typed `raw` must reproduce
-//! that very response.
+//! `TryFrom<Interaction>` for the Interactions API) plus the always-on raw
+//! capture seam. So a caller holding the concrete model who prefers the
+//! escape hatch and normalizes by hand must land on the same `identity()`,
+//! `finish_reason()`, `model` and `usage` that `completion()` reports — and
+//! `try_into` over the typed `raw` every `completion()` carries must
+//! reproduce that very response.
 //!
 //! Neither Gemini route reports a transport request-id header (verified
 //! against the live API; see the `send_completion` call in
@@ -30,8 +30,8 @@
 //!
 //! Both cells are recorded (`GEMINI_API_KEY` was available). Each records one
 //! scenario with **two** interactions — the raw request first, then the
-//! `completion` twin with capture on — because the contract is between the
-//! two; the harness replays interactions in order.
+//! `completion` twin — because the contract is between the two seams; the
+//! harness replays interactions in order.
 
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
 use rig::prelude::*;
@@ -133,22 +133,16 @@ async fn rest_raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/rest_raw_try_into_matches_completion",
         |client| async move {
             let model = client.completion_model(REST_MODEL);
-            let request = |capture: bool| {
-                model
-                    .completion_request(PROMPT)
-                    .temperature(0.0)
-                    .capture_raw_response(capture)
-                    .build()
-            };
+            let request = || model.completion_request(PROMPT).temperature(0.0).build();
 
             let raw = model
-                .raw_completion(request(false))
+                .raw_completion(request())
                 .await
                 .expect("raw completion should succeed");
             let via_raw: RigCompletionResponse = raw.try_into().expect("raw should normalize");
 
             let via_completion = model
-                .completion(request(true))
+                .completion(request())
                 .await
                 .expect("completion should succeed");
 
@@ -159,7 +153,7 @@ async fn rest_raw_try_into_matches_completion() {
             let captured = via_completion
                 .raw
                 .as_deref()
-                .expect("capture was requested");
+                .expect("a provider-backed response always carries raw");
             let reproduced: RigCompletionResponse = GenerateContentResponse::deserialize(captured)
                 .expect("captured raw is Gemini's own type")
                 .try_into()
@@ -181,22 +175,16 @@ async fn interactions_raw_try_into_matches_completion() {
         |client| async move {
             let model: InteractionsCompletionModel<reqwest::Client> =
                 client.completion_model(INTERACTIONS_MODEL);
-            let request = |capture: bool| {
-                model
-                    .completion_request(PROMPT)
-                    .temperature(0.0)
-                    .capture_raw_response(capture)
-                    .build()
-            };
+            let request = || model.completion_request(PROMPT).temperature(0.0).build();
 
             let raw = model
-                .raw_completion(request(false))
+                .raw_completion(request())
                 .await
                 .expect("raw completion should succeed");
             let via_raw: RigCompletionResponse = raw.try_into().expect("raw should normalize");
 
             let via_completion = model
-                .completion(request(true))
+                .completion(request())
                 .await
                 .expect("completion should succeed");
 
@@ -205,7 +193,7 @@ async fn interactions_raw_try_into_matches_completion() {
             let captured = via_completion
                 .raw
                 .as_deref()
-                .expect("capture was requested");
+                .expect("a provider-backed response always carries raw");
             let reproduced: RigCompletionResponse = Interaction::deserialize(captured)
                 .expect("captured raw is the Interactions API's own type")
                 .try_into()

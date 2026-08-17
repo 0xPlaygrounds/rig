@@ -152,19 +152,6 @@ macro_rules! forward_prompt_setters {
             self
         }
 
-        /// Opt in or out of capturing the provider's own response for the
-        /// completions this request makes.
-        ///
-        /// Defaults to the agent's setting, which defaults to `false`. When
-        /// enabled, the payload is exposed on the hook events, on each
-        /// [`CompletionCall`](super::CompletionCall) in
-        /// `PromptResponse::completion_calls`, and on the streamed terminal
-        /// record; see `AgentBuilder::capture_raw_response`.
-        pub fn capture_raw_response(mut self, enabled: bool) -> Self {
-            self.$recv = self.$recv.capture_raw_response(enabled);
-            self
-        }
-
         /// Set the conversation id used to load and persist memory for this request.
         ///
         /// Overrides any default conversation id set on the agent. If memory is not
@@ -377,10 +364,11 @@ pub struct CompletionCall {
     /// indistinguishable from a turn that simply had nothing to say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
-    /// The provider's own response for this call, when the run asked for raw
-    /// capture (`AgentBuilder::capture_raw_response` or its per-run /
-    /// per-request overrides) — see `CompletionResponse::raw` for the exact
-    /// meaning of the payload. `None` when capture was off (the default).
+    /// The provider's own response for this call — see
+    /// `CompletionResponse::raw` for the exact meaning of the payload. Every
+    /// provider seam populates it; `None` only when the call's response was
+    /// built without a provider behind it (a hand-constructed model, a record
+    /// persisted before the field).
     ///
     /// Recorded **per call**, like [`Self::finish_reason`]: on a multi-turn
     /// run each entry carries its own attempt's response, never a previous

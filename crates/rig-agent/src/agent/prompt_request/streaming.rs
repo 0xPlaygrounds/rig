@@ -1361,7 +1361,7 @@ impl TurnSource for StreamingTurnSource {
             };
             // This attempt's raw payload, from the same terminal record as the
             // identity above — so a retry never observes a previous attempt's
-            // response. `None` when capture was off or no terminal arrived.
+            // response. `None` when no terminal record arrived.
             let attempt_raw = stream
                 .response
                 .as_ref()
@@ -2222,6 +2222,18 @@ mod migrated_tests {
         ])
     }
 
+    /// The record a streamed mock turn scripted with
+    /// `MockStreamEvent::final_response(usage)` leaves on `completion_calls`:
+    /// index, usage, and the mock's terminal record serialized onto `raw` —
+    /// the terminal is always captured, so an expected call without it never
+    /// matches.
+    fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
+        let terminal = mock_final(usage);
+        CompletionCall::new(call_index, usage).with_raw(Some(Arc::new(
+            serde_json::to_value(&terminal).expect("mock terminal serializes"),
+        )))
+    }
+
     fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
         Usage {
             input_tokens,
@@ -3061,150 +3073,6 @@ mod migrated_tests {
                 .iter()
                 .all(|request| !request.record_telemetry_content),
             "agent-owned repaired telemetry should clear provider request flags"
-        );
-    }
-
-    /// The `capture_raw_response` flag as the model actually received it,
-    /// through the erased `ModelHandle`, for one blocking prompt: `agent_on`
-    /// is the builder setting, `request_override` a per-request setter call
-    /// (`None` leaves the agent's setting alone).
-    async fn recorded_capture_raw_flag_blocking(
-        agent_on: bool,
-        request_override: Option<bool>,
-    ) -> bool {
-        let model = MockCompletionModel::text("reply");
-        let recorded_model = model.clone();
-        let agent = AgentBuilder::new(model)
-            .capture_raw_response(agent_on)
-            .build();
-
-        let request = agent.prompt("prompt");
-        let request = match request_override {
-            Some(enabled) => request.capture_raw_response(enabled),
-            None => request,
-        };
-        request.await.expect("prompt should not error");
-
-        let requests = recorded_model.requests();
-        assert_eq!(requests.len(), 1);
-        requests[0].capture_raw_response
-    }
-
-    /// The streaming counterpart of [`recorded_capture_raw_flag_blocking`].
-    async fn recorded_capture_raw_flag_streamed(
-        agent_on: bool,
-        request_override: Option<bool>,
-    ) -> bool {
-        let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::text("reply"),
-            MockStreamEvent::final_response(Usage::default()),
-        ]]);
-        let recorded_model = model.clone();
-        let agent = AgentBuilder::new(model)
-            .capture_raw_response(agent_on)
-            .build();
-
-        let request = agent.stream_prompt("prompt").max_turns(1);
-        let request = match request_override {
-            Some(enabled) => request.capture_raw_response(enabled),
-            None => request,
-        };
-        let mut stream = request.await;
-        while let Some(item) = stream.try_next().await.expect("stream should not error") {
-            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
-                break;
-            }
-        }
-
-        let requests = recorded_model.requests();
-        assert_eq!(requests.len(), 1);
-        requests[0].capture_raw_response
-    }
-
-    /// The opt-in is local policy carried on the concrete `CompletionRequest`,
-    /// which is how it reaches the provider through the erased model: the
-    /// agent-level setting arrives as-is, a per-request setter overrides it
-    /// in either direction, and the default is off. Blocking surface.
-    #[tokio::test]
-    async fn capture_raw_response_reaches_the_model_through_erasure_blocking() {
-        assert!(
-            !recorded_capture_raw_flag_blocking(false, None).await,
-            "default: capture is off"
-        );
-        assert!(
-            recorded_capture_raw_flag_blocking(true, None).await,
-            "agent opt-in reaches the model"
-        );
-        assert!(
-            !recorded_capture_raw_flag_blocking(true, Some(false)).await,
-            "a per-request opt-out overrides the agent's opt-in"
-        );
-        assert!(
-            recorded_capture_raw_flag_blocking(false, Some(true)).await,
-            "a per-request opt-in overrides the agent's default"
-        );
-    }
-
-    /// The same four cells on the streaming surface: the flag is read off the
-    /// same request the stream is opened with.
-    #[tokio::test]
-    async fn capture_raw_response_reaches_the_model_through_erasure_streamed() {
-        assert!(
-            !recorded_capture_raw_flag_streamed(false, None).await,
-            "default: capture is off"
-        );
-        assert!(
-            recorded_capture_raw_flag_streamed(true, None).await,
-            "agent opt-in reaches the model"
-        );
-        assert!(
-            !recorded_capture_raw_flag_streamed(true, Some(false)).await,
-            "a per-request opt-out overrides the agent's opt-in"
-        );
-        assert!(
-            recorded_capture_raw_flag_streamed(false, Some(true)).await,
-            "a per-request opt-in overrides the agent's default"
-        );
-    }
-
-    /// The per-run override on `AgentRunner` is the same setter the request
-    /// builders forward to, on both of the runner's own surfaces.
-    #[tokio::test]
-    async fn capture_raw_response_runner_override_reaches_the_model() {
-        let model = MockCompletionModel::text("reply");
-        let recorded_model = model.clone();
-        AgentBuilder::new(model)
-            .capture_raw_response(true)
-            .build()
-            .runner("prompt")
-            .capture_raw_response(false)
-            .run()
-            .await
-            .expect("blocking run");
-        assert!(
-            !recorded_model.requests()[0].capture_raw_response,
-            "the runner's opt-out overrides the agent's opt-in"
-        );
-
-        let model = MockCompletionModel::from_stream_turns([[
-            MockStreamEvent::text("reply"),
-            MockStreamEvent::final_response(Usage::default()),
-        ]]);
-        let recorded_model = model.clone();
-        let mut stream = AgentBuilder::new(model)
-            .build()
-            .runner("prompt")
-            .capture_raw_response(true)
-            .stream()
-            .await;
-        while let Some(item) = stream.try_next().await.expect("stream should not error") {
-            if matches!(item, MultiTurnStreamItem::FinalResponse(_)) {
-                break;
-            }
-        }
-        assert!(
-            recorded_model.requests()[0].capture_raw_response,
-            "the runner's opt-in overrides the agent's default"
         );
     }
 
@@ -4335,8 +4203,8 @@ mod migrated_tests {
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, first_usage),
-            CompletionCall::new(1, second_usage),
+            streamed_call(0, first_usage),
+            streamed_call(1, second_usage),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
@@ -4749,8 +4617,8 @@ mod migrated_tests {
         let mut second_usage = Usage::new();
         second_usage.total_tokens = 6;
         let expected_completion_calls = vec![
-            CompletionCall::new(0, first_usage),
-            CompletionCall::new(1, second_usage),
+            streamed_call(0, first_usage),
+            streamed_call(1, second_usage),
         ];
         assert_eq!(completion_call_events, expected_completion_calls);
         assert_eq!(final_completion_calls, expected_completion_calls);
@@ -6503,8 +6371,8 @@ mod migrated_tests {
         assert_eq!(
             completion_calls_events,
             vec![
-                CompletionCall::new(0, first_call_usage),
-                CompletionCall::new(1, second_call_usage)
+                streamed_call(0, first_call_usage),
+                streamed_call(1, second_call_usage)
             ]
         );
 
@@ -6524,8 +6392,8 @@ mod migrated_tests {
         assert_eq!(
             final_response.completion_calls(),
             &[
-                CompletionCall::new(0, first_call_usage),
-                CompletionCall::new(1, second_call_usage)
+                streamed_call(0, first_call_usage),
+                streamed_call(1, second_call_usage)
             ]
         );
     }
@@ -6604,7 +6472,7 @@ mod migrated_tests {
             }
         }
 
-        assert_eq!(completion_calls, vec![CompletionCall::new(0, call_usage)]);
+        assert_eq!(completion_calls, vec![streamed_call(0, call_usage)]);
         assert!(saw_error);
     }
 
@@ -6655,8 +6523,8 @@ mod migrated_tests {
         }
 
         let expected_usage = vec![
-            CompletionCall::new(0, Usage::new()),
-            CompletionCall::new(1, second_call_usage),
+            streamed_call(0, Usage::new()),
+            streamed_call(1, second_call_usage),
         ];
         assert_eq!(completion_calls_events, expected_usage);
 

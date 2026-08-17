@@ -411,18 +411,19 @@ macro_rules! response_metadata_setters {
             }
 
             /// Attach the provider's own response, serialized — the value the
-            /// model's inherent raw method would have returned. Provider seams
-            /// call this only when the request opted in via
-            /// `CompletionRequest::capture_raw_response`; see the `raw` field
-            /// for the exact meaning of the payload.
+            /// model's inherent raw method would have returned. Every provider
+            /// seam calls this; see the `raw` field for the exact meaning of
+            /// the payload.
             pub fn with_raw(self, raw: impl Into<std::sync::Arc<serde_json::Value>>) -> Self {
                 self.with_optional_raw(Some(raw.into()))
             }
 
-            /// Attach the provider's own response when it was captured.
+            /// Attach the provider's own response when there is one.
             ///
-            /// The `Option` form of `with_raw`; provider seams hold an
-            /// `Option` (capture is opt-in) and pass it straight through.
+            /// The `Option` form of `with_raw`, for the deserialization
+            /// mirrors and for callers re-attaching a payload they may not
+            /// hold (a hand-built value, a record persisted before the
+            /// field).
             pub fn with_optional_raw(
                 mut self,
                 raw: Option<impl Into<std::sync::Arc<serde_json::Value>>>,

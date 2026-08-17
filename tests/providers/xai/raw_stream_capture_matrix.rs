@@ -1,20 +1,20 @@
 //! Raw provider response capture on xAI's streaming path.
 //!
-//! **The feature.** With `CompletionRequest::capture_raw_response` on, the
-//! stream's terminal [`rig::streaming::StreamFinal::raw`] carries the value
-//! the model's inherent `raw_stream` would have yielded as its terminal
-//! record — for xAI the Responses terminal [`StreamingCompletionResponse`],
-//! built from the `response.completed` event — serialized. It is the terminal
-//! record only, never the stream's events. The terminal carries the response
+//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
+//! carries the value the model's inherent `raw_stream` yielded as its
+//! terminal record — for xAI the Responses terminal
+//! [`StreamingCompletionResponse`], built from the `response.completed`
+//! event — serialized. Capture is always on: there is no flag to request it,
+//! nothing about it reaches the wire, and a `None` only ever means a terminal
+//! built by hand with no provider record behind it. It is the terminal record
+//! only, never the stream's events. The terminal carries the response
 //! `status` the normalized terminal folds into a finish reason, so `status`
 //! is the terminal-only field pinned here as reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_capture_off_leaves_raw_none` | flag off (the default) | terminal `raw == None` | recorded |
-//! | 2 | `stream_capture_on_round_trips_terminal_type` | flag on | terminal `raw` deserializes into the Responses `StreamingCompletionResponse` and re-serializes equal | recorded |
-//! | 3 | `stream_capture_on_exposes_terminal_status` | terminal-only field | `raw.status` and `raw.usage.output_tokens` equal the recorded `response.completed` event's | recorded |
-//! | 4 | `stream_request_invariant_off_vs_on` | on-wire request | the flag-off and flag-on request bodies are byte-identical | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into the Responses `StreamingCompletionResponse` and re-serializes equal; the normalized terminal reproduces the recorded `response.completed` event and `x-request-id` header | recorded |
+//! | 2 | `stream_raw_exposes_terminal_status` | terminal-only field | `raw.status` and `raw.usage.output_tokens` equal the recorded `response.completed` event's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that the recorded event stream ends with exactly one
@@ -39,11 +39,8 @@ const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &xai::CompletionModel, capture: bool) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .capture_raw_response(capture)
-        .build()
+fn request(model: &xai::CompletionModel) -> CompletionRequest {
+    model.completion_request(PROMPT).build()
 }
 
 /// The `response` object of the single recorded `response.completed` event.
@@ -77,28 +74,27 @@ fn assert_terminal_reproduces_event(
     terminal: &StreamFinal,
     response: &Value,
     request_id: Option<&str>,
-    context: &str,
 ) {
-    assert_eq!(terminal.provider, PROVIDER, "{context}: provider");
+    assert_eq!(terminal.provider, PROVIDER, "provider");
     assert_matches_recorded_token(
         terminal.response_id.as_deref(),
         response["id"].as_str(),
-        &format!("{context}: response id"),
+        "response id",
     );
     assert_eq!(
         terminal.model.as_deref(),
         response["model"].as_str(),
-        "{context}: model"
+        "model"
     );
     assert_eq!(
         response["status"],
         json!("completed"),
-        "{context}: the recorded turn completed"
+        "the recorded turn completed"
     );
     assert_eq!(
         terminal.finish_reason,
         Some(FinishReason::Stop),
-        "{context}: finish reason"
+        "finish reason"
     );
     assert_eq!(
         (
@@ -111,84 +107,40 @@ fn assert_terminal_reproduces_event(
             response["usage"]["output_tokens"].as_u64().expect("output"),
             response["usage"]["total_tokens"].as_u64().expect("total"),
         ),
-        "{context}: usage"
+        "usage"
     );
     assert!(
         request_id.is_some(),
-        "{context}: the recorded SSE response must carry x-request-id"
+        "the recorded SSE response must carry x-request-id"
     );
     assert_matches_recorded_token(
         terminal.provider_request_id.as_deref(),
         request_id,
-        &format!("{context}: request id"),
+        "request id",
     );
 }
 
 // ================================================================
-// 1. Off leaves the terminal raw None
+// 1. raw round-trips the terminal type
 // ================================================================
 
 #[tokio::test]
-async fn stream_capture_off_leaves_raw_none() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_capture_off_leaves_raw_none";
+async fn stream_raw_round_trips_terminal_type() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_xai_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_off_leaves_raw_none",
+        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
             let model = client.completion_model(MODEL);
-            let stream = model.stream(request(&model, false)).await?;
+            let stream = model.stream(request(&model)).await?;
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
-            assert!(
-                terminal.raw.is_none(),
-                "raw must stay None unless asked for"
-            );
             assert!(!text.is_empty());
-            *sink.lock().expect("observation lock") = Some(terminal);
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("stream_capture_off_leaves_raw_none should replay from its cassette");
-
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
-    let response = recorded_completed_response(SCENARIO);
-    assert_terminal_reproduces_event(
-        &terminal,
-        &response,
-        recorded_request_id(SCENARIO).as_deref(),
-        "flag off",
-    );
-    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(request_body["stream"], json!(true));
-    assert!(request_body.get("capture_raw_response").is_none());
-}
-
-// ================================================================
-// 2. On round-trips the terminal type
-// ================================================================
-
-#[tokio::test]
-async fn stream_capture_on_round_trips_terminal_type() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_capture_on_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_xai_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_on_round_trips_terminal_type",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let stream = model.stream(request(&model, true)).await?;
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("stream should end with a terminal record");
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("raw is captured when asked for");
+                .expect("every provider-backed terminal carries raw");
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw is the Responses streaming terminal");
             assert_eq!(
@@ -204,7 +156,7 @@ async fn stream_capture_on_round_trips_terminal_type() {
         },
     )
     .await
-    .expect("stream_capture_on_round_trips_terminal_type should replay from its cassette");
+    .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
     let terminal = observed
         .lock()
@@ -216,24 +168,25 @@ async fn stream_capture_on_round_trips_terminal_type() {
         &terminal,
         &response,
         recorded_request_id(SCENARIO).as_deref(),
-        "flag on",
     );
+    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
+    assert_eq!(request_body["stream"], json!(true));
 }
 
 // ================================================================
-// 3. A terminal-only field the normalized record lacks
+// 2. A terminal-only field the normalized record lacks
 // ================================================================
 
 #[tokio::test]
-async fn stream_capture_on_exposes_terminal_status() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_status";
+async fn stream_raw_exposes_terminal_status() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_status";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_xai_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_status",
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
         |client| async move {
             let model = client.completion_model(MODEL);
-            let stream = model.stream(request(&model, true)).await?;
+            let stream = model.stream(request(&model)).await?;
             let (_, terminal) = collect_text_and_terminal(stream).await;
             *sink.lock().expect("observation lock") =
                 Some(terminal.expect("stream should end with a terminal record"));
@@ -241,7 +194,7 @@ async fn stream_capture_on_exposes_terminal_status() {
         },
     )
     .await
-    .expect("stream_capture_on_exposes_terminal_status should replay from its cassette");
+    .expect("stream_raw_exposes_terminal_status should replay from its cassette");
 
     let terminal = observed
         .lock()
@@ -256,7 +209,10 @@ async fn stream_capture_on_exposes_terminal_status() {
         .as_u64()
         .expect("the completed event carries output_tokens");
 
-    let raw = terminal.raw.as_deref().expect("raw is captured");
+    let raw = terminal
+        .raw
+        .as_deref()
+        .expect("every provider-backed terminal carries raw");
     assert_eq!(raw["status"], json!(recorded_status));
     assert_eq!(raw["usage"]["output_tokens"], json!(recorded_output_tokens));
     // The normalized terminal folds the status into a finish reason and keeps
@@ -264,36 +220,4 @@ async fn stream_capture_on_exposes_terminal_status() {
     assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
     let normalized = serde_json::to_value(&terminal).expect("terminal serializes");
     assert!(normalized.get("status").is_none());
-}
-
-// ================================================================
-// 4. The flag never reaches the wire
-// ================================================================
-
-#[tokio::test]
-async fn stream_request_invariant_off_vs_on() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_request_invariant_off_vs_on";
-    with_xai_cassette_result(
-        "raw_stream_capture_matrix/stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let (_, off) =
-                collect_text_and_terminal(model.stream(request(&model, false)).await?).await;
-            let (_, on) =
-                collect_text_and_terminal(model.stream(request(&model, true)).await?).await;
-            assert!(off.expect("off terminal").raw.is_none());
-            assert!(on.expect("on terminal").raw.is_some());
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("stream_request_invariant_off_vs_on should replay from its cassette");
-
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    assert_eq!(interactions.len(), 2, "one flag-off and one flag-on stream");
-    assert_eq!(
-        interactions[0].0, interactions[1].0,
-        "the flag-off and flag-on request bodies must be byte-identical"
-    );
-    assert!(!interactions[0].0.contains("capture_raw"));
 }

@@ -1,16 +1,18 @@
-//! Opt-in raw provider response capture on OpenAI's streaming seams
-//! (`CompletionRequest::capture_raw_response` → `StreamFinal::raw`).
+//! Raw provider response capture on OpenAI's streaming seams
+//! (`StreamFinal::raw`).
 //!
 //! # What this pins
 //!
-//! The streamed twin of `raw_capture_matrix`: the terminal
-//! `StreamedAssistantContent::Final` carries `raw` only when the request opted
-//! in, and then it is the route's provider-native terminal record — the `R`
-//! of that route's `raw_stream` — serialized at the shared `normalize_stream`
-//! seam. It round-trips into that terminal type and re-serializes equal, it
-//! exposes a terminal-only field the normalized `StreamFinal` does not model,
-//! and the request the provider receives is byte-identical with the flag off
-//! and on.
+//! The streamed twin of `raw_capture_matrix`: every terminal
+//! `StreamedAssistantContent::Final` carries `raw` — the route's
+//! provider-native terminal record, the `R` of that route's `raw_stream`,
+//! serialized at the shared `normalize_stream` seam. There is no switch
+//! behind it; a terminal `raw` is `None` only on a record built by hand,
+//! never on one a stream yielded. It round-trips into that terminal type and
+//! re-serializes equal, it exposes a terminal-only field the normalized
+//! `StreamFinal` does not model, and — because capture is unconditional and
+//! must stay an escape hatch — re-normalizing the typed terminal reproduces
+//! the `usage`, `finish_reason`, `model` and identity the stream reported.
 //!
 //! Terminal types: Chat Completions'
 //! `openai::completion::streaming::StreamingCompletionResponse` (whose
@@ -24,14 +26,10 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_off_is_none` | chat, flag off | terminal `raw.is_none()` | recorded |
-//! | 2 | `chat_stream_on_round_trips_typed` | chat, flag on | chat terminal type round trip | recorded |
-//! | 3 | `chat_stream_on_exposes_service_tier` | chat, terminal-only field | `raw["additional_params"]["service_tier"]` = last chunk | recorded |
-//! | 4 | `chat_stream_off_on_request_invariant` | chat, off then on | identical request bytes | recorded |
-//! | 5 | `responses_stream_off_is_none` | Responses, flag off | terminal `raw.is_none()` | recorded |
-//! | 6 | `responses_stream_on_round_trips_typed` | Responses, flag on | Responses terminal type round trip | recorded |
-//! | 7 | `responses_stream_on_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
-//! | 8 | `responses_stream_off_on_request_invariant` | Responses, off then on | identical request bytes | recorded |
+//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | chat terminal type round trip; re-normalized `raw` ≡ terminal | recorded |
+//! | 2 | `chat_stream_raw_exposes_service_tier` | chat, terminal-only field | `raw["additional_params"]["service_tier"]` = last chunk | recorded |
+//! | 3 | `responses_stream_raw_round_trips_typed` | Responses, streamed | Responses terminal type round trip; re-normalized `raw` ≡ terminal | recorded |
+//! | 4 | `responses_stream_raw_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Premise, re-derived from each
 //! cell's fixture after the wrapper returns: the recorded stream ends with a
@@ -59,12 +57,11 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 type ChatTerminal = openai::completion::streaming::StreamingCompletionResponse;
 type ResponsesTerminal = openai::responses_api::streaming::StreamingCompletionResponse;
 
-fn request(model: &(impl CompletionModel + Clone), capture_raw: bool) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .capture_raw_response(capture_raw)
         .build()
 }
 
@@ -84,55 +81,48 @@ async fn drain_to_terminal(
     terminal.unwrap_or_else(|| panic!("{context}: stream should yield a terminal record"))
 }
 
-type Observed = std::sync::Arc<std::sync::Mutex<Vec<StreamFinal>>>;
+type Observed = std::sync::Arc<std::sync::Mutex<Option<StreamFinal>>>;
 
 /// A cassette test body: boxed so the cell can build it in a helper while the
 /// wrapper call — and its string-literal scenario, which the cassette safety
 /// scan reads — stays in the test itself.
 type Body = Box<dyn FnOnce(openai::Client) -> Pin<Box<dyn Future<Output = ()>>>>;
 
-/// One stream per flag on the chat route, in one scenario (one interaction
-/// per flag); each terminal record is pushed onto `sink` in order.
-fn chat_body(sink: Observed, flags: &'static [bool]) -> Body {
+/// One stream on the chat route; its terminal record is saved onto `sink`.
+fn chat_body(sink: Observed) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
             let model = client.completions_api().completion_model(MODEL);
-            for &capture_raw in flags {
-                let stream = model
-                    .stream(request(&model, capture_raw))
-                    .await
-                    .expect("chat stream should open");
-                let terminal = drain_to_terminal(stream, "chat stream").await;
-                sink.lock().expect("observation mutex").push(terminal);
-            }
+            let stream = model
+                .stream(request(&model))
+                .await
+                .expect("chat stream should open");
+            let terminal = drain_to_terminal(stream, "chat stream").await;
+            *sink.lock().expect("observation mutex") = Some(terminal);
         })
     })
 }
 
-fn responses_body(sink: Observed, flags: &'static [bool]) -> Body {
+fn responses_body(sink: Observed) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
             let model = client.completion_model(MODEL);
-            for &capture_raw in flags {
-                let stream = model
-                    .stream(request(&model, capture_raw))
-                    .await
-                    .expect("responses stream should open");
-                let terminal = drain_to_terminal(stream, "responses stream").await;
-                sink.lock().expect("observation mutex").push(terminal);
-            }
+            let stream = model
+                .stream(request(&model))
+                .await
+                .expect("responses stream should open");
+            let terminal = drain_to_terminal(stream, "responses stream").await;
+            *sink.lock().expect("observation mutex") = Some(terminal);
         })
     })
 }
 
-fn take(observed: &Observed, scenario: &str, expected: usize) -> Vec<StreamFinal> {
-    let terminals = std::mem::take(&mut *observed.lock().expect("observation mutex"));
-    assert_eq!(
-        terminals.len(),
-        expected,
-        "{scenario}: one terminal per flag"
-    );
-    terminals
+fn take(observed: &Observed) -> StreamFinal {
+    observed
+        .lock()
+        .expect("observation mutex")
+        .take()
+        .expect("test body should save its observation")
 }
 
 /// Chat premise: the request asked for usage on the stream and the last
@@ -182,6 +172,38 @@ fn last_chunk_field(frames: &[Value], field: &str) -> Value {
         .unwrap_or(Value::Null)
 }
 
+/// The `raw` a streamed terminal must carry — `None` is reserved for records
+/// built by hand, which a terminal off a live stream never is.
+fn captured_raw<'a>(scenario: &str, terminal: &'a StreamFinal) -> &'a Value {
+    terminal
+        .raw
+        .as_deref()
+        .unwrap_or_else(|| panic!("{scenario}: a streamed terminal always carries `raw`"))
+}
+
+/// `raw` and the normalized terminal tell one story: mapping the typed
+/// terminal through the route's own `From<(&str, R)> for StreamFinal` — the
+/// mapper `normalize_stream` ran — reproduces every normalized field. A text
+/// turn emits no tool call, so the reconciliation `normalize_stream` layers
+/// on top leaves `finish_reason` untouched and the comparison is exact.
+fn assert_raw_renormalizes_to(scenario: &str, terminal: &StreamFinal, renormalized: &StreamFinal) {
+    assert_eq!(terminal.usage, renormalized.usage, "{scenario}: usage");
+    assert_eq!(
+        terminal.finish_reason, renormalized.finish_reason,
+        "{scenario}: finish reason"
+    );
+    assert_eq!(terminal.model, renormalized.model, "{scenario}: model");
+    assert_eq!(
+        terminal.provider, renormalized.provider,
+        "{scenario}: provider"
+    );
+    assert_eq!(
+        terminal.identity(),
+        renormalized.identity(),
+        "{scenario}: identity (message, response and transport ids)"
+    );
+}
+
 fn assert_normalized_lacks_key(scenario: &str, terminal: &StreamFinal, key: &str) {
     let normalized = serde_json::to_value(terminal).expect("terminal record serializes");
     assert!(
@@ -196,45 +218,19 @@ fn assert_normalized_lacks_key(scenario: &str, terminal: &StreamFinal, key: &str
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn chat_stream_off_is_none() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_off_is_none";
+async fn chat_stream_raw_round_trips_typed() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed";
     let observed = Observed::default();
     with_openai_cassette(
-        "raw_stream_capture_matrix/chat_stream_off_is_none",
-        chat_body(observed.clone(), &[false]),
+        "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed",
+        chat_body(observed.clone()),
     )
     .await;
-    let terminals = take(&observed, SCENARIO, 1);
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    let frames = chat_frames_with_terminal_usage(SCENARIO, &bodies[0].0, &bodies[0].1);
-    assert_eq!(
-        Some(terminals[0].usage.input_tokens),
-        last_chunk_field(&frames, "usage")["prompt_tokens"].as_u64(),
-        "{SCENARIO}: the terminal reflects the fixture's usage"
-    );
-    assert!(
-        terminals[0].raw.is_none(),
-        "{SCENARIO}: capture was not requested, so the terminal `raw` must be None"
-    );
-}
-
-#[tokio::test]
-async fn chat_stream_on_round_trips_typed() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_on_round_trips_typed";
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_stream_capture_matrix/chat_stream_on_round_trips_typed",
-        chat_body(observed.clone(), &[true]),
-    )
-    .await;
-    let terminals = take(&observed, SCENARIO, 1);
+    let terminal = take(&observed);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let frames = chat_frames_with_terminal_usage(SCENARIO, &bodies[0].0, &bodies[0].1);
 
-    let raw = terminals[0]
-        .raw
-        .as_deref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: capture was requested, so `raw` must be Some"));
+    let raw = captured_raw(SCENARIO, &terminal);
     let typed = ChatTerminal::deserialize(raw)
         .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the chat terminal type: {err}"));
     assert_eq!(
@@ -268,21 +264,24 @@ async fn chat_stream_on_round_trips_typed() {
     // The transport id is stamped on the terminal record and is the same one
     // the normalized record reports.
     assert_eq!(
-        typed.provider_request_id, terminals[0].provider_request_id,
+        typed.provider_request_id, terminal.provider_request_id,
         "{SCENARIO}: the captured terminal carries the stream's request id"
     );
+    // One story: the typed terminal re-normalizes to what the stream yielded.
+    let renormalized = StreamFinal::from((PROVIDER, typed));
+    assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
 }
 
 #[tokio::test]
-async fn chat_stream_on_exposes_service_tier() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_on_exposes_service_tier";
+async fn chat_stream_raw_exposes_service_tier() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier";
     let observed = Observed::default();
     with_openai_cassette(
-        "raw_stream_capture_matrix/chat_stream_on_exposes_service_tier",
-        chat_body(observed.clone(), &[true]),
+        "raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier",
+        chat_body(observed.clone()),
     )
     .await;
-    let terminals = take(&observed, SCENARIO, 1);
+    let terminal = take(&observed);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let frames = chat_frames_with_terminal_usage(SCENARIO, &bodies[0].0, &bodies[0].1);
     let recorded_tier = last_chunk_field(&frames, "service_tier");
@@ -291,10 +290,7 @@ async fn chat_stream_on_exposes_service_tier() {
         "{SCENARIO}: the recorded chunks must report a `service_tier`"
     );
 
-    let raw = terminals[0]
-        .raw
-        .as_deref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: capture was requested, so `raw` must be Some"));
+    let raw = captured_raw(SCENARIO, &terminal);
     assert_eq!(
         raw["additional_params"]["service_tier"], recorded_tier,
         "{SCENARIO}: `service_tier` is readable off the captured terminal and equals the \
@@ -305,41 +301,8 @@ async fn chat_stream_on_exposes_service_tier() {
         last_chunk_field(&frames, "system_fingerprint").as_str(),
         &format!("{SCENARIO}: `system_fingerprint` off the captured terminal vs the fixture"),
     );
-    assert_normalized_lacks_key(SCENARIO, &terminals[0], "additional_params");
-    assert_normalized_lacks_key(SCENARIO, &terminals[0], "service_tier");
-}
-
-#[tokio::test]
-async fn chat_stream_off_on_request_invariant() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_off_on_request_invariant";
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_stream_capture_matrix/chat_stream_off_on_request_invariant",
-        chat_body(observed.clone(), &[false, true]),
-    )
-    .await;
-    let terminals = take(&observed, SCENARIO, 2);
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    assert_eq!(bodies.len(), 2, "{SCENARIO}: one interaction per flag");
-    assert_eq!(
-        bodies[0].0, bodies[1].0,
-        "{SCENARIO}: the flag is local policy — the stream request the provider received \
-         must be byte-identical with it off and on"
-    );
-    for (index, (request, body)) in bodies.iter().enumerate() {
-        let frames = chat_frames_with_terminal_usage(SCENARIO, request, body);
-        assert_eq!(
-            Some(terminals[index].usage.input_tokens),
-            last_chunk_field(&frames, "usage")["prompt_tokens"].as_u64(),
-            "{SCENARIO}: interaction {index} usage"
-        );
-    }
-    assert!(terminals[0].raw.is_none(), "{SCENARIO}: off → None");
-    assert!(terminals[1].raw.is_some(), "{SCENARIO}: on → Some");
-    assert_eq!(terminals[0].finish_reason, terminals[1].finish_reason);
-    assert_eq!(terminals[0].model, terminals[1].model);
-    assert_eq!(terminals[0].provider, terminals[1].provider);
-    assert_eq!(terminals[0].usage, terminals[1].usage, "{SCENARIO}: usage");
+    assert_normalized_lacks_key(SCENARIO, &terminal, "additional_params");
+    assert_normalized_lacks_key(SCENARIO, &terminal, "service_tier");
 }
 
 // ---------------------------------------------------------------------------
@@ -347,45 +310,19 @@ async fn chat_stream_off_on_request_invariant() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn responses_stream_off_is_none() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_off_is_none";
+async fn responses_stream_raw_round_trips_typed() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_raw_round_trips_typed";
     let observed = Observed::default();
     with_openai_cassette(
-        "raw_stream_capture_matrix/responses_stream_off_is_none",
-        responses_body(observed.clone(), &[false]),
+        "raw_stream_capture_matrix/responses_stream_raw_round_trips_typed",
+        responses_body(observed.clone()),
     )
     .await;
-    let terminals = take(&observed, SCENARIO, 1);
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    let completed = responses_completed_frame(SCENARIO, &bodies[0].1);
-    assert_eq!(
-        Some(terminals[0].usage.input_tokens),
-        completed["usage"]["input_tokens"].as_u64(),
-        "{SCENARIO}: the terminal reflects the fixture's usage"
-    );
-    assert!(
-        terminals[0].raw.is_none(),
-        "{SCENARIO}: capture was not requested, so the terminal `raw` must be None"
-    );
-}
-
-#[tokio::test]
-async fn responses_stream_on_round_trips_typed() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_on_round_trips_typed";
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_stream_capture_matrix/responses_stream_on_round_trips_typed",
-        responses_body(observed.clone(), &[true]),
-    )
-    .await;
-    let terminals = take(&observed, SCENARIO, 1);
+    let terminal = take(&observed);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let completed = responses_completed_frame(SCENARIO, &bodies[0].1);
 
-    let raw = terminals[0]
-        .raw
-        .as_deref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: capture was requested, so `raw` must be Some"));
+    let raw = captured_raw(SCENARIO, &terminal);
     let typed = ResponsesTerminal::deserialize(raw)
         .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the Responses terminal type: {err}"));
     assert_eq!(
@@ -414,21 +351,24 @@ async fn responses_stream_on_round_trips_typed() {
         "{SCENARIO}: terminal output tokens"
     );
     assert_eq!(
-        typed.provider_request_id, terminals[0].provider_request_id,
+        typed.provider_request_id, terminal.provider_request_id,
         "{SCENARIO}: the captured terminal carries the stream's request id"
     );
+    // One story: the typed terminal re-normalizes to what the stream yielded.
+    let renormalized = StreamFinal::from((PROVIDER, typed));
+    assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
 }
 
 #[tokio::test]
-async fn responses_stream_on_exposes_status() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_on_exposes_status";
+async fn responses_stream_raw_exposes_status() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_raw_exposes_status";
     let observed = Observed::default();
     with_openai_cassette(
-        "raw_stream_capture_matrix/responses_stream_on_exposes_status",
-        responses_body(observed.clone(), &[true]),
+        "raw_stream_capture_matrix/responses_stream_raw_exposes_status",
+        responses_body(observed.clone()),
     )
     .await;
-    let terminals = take(&observed, SCENARIO, 1);
+    let terminal = take(&observed);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let completed = responses_completed_frame(SCENARIO, &bodies[0].1);
     let recorded_status = completed["status"].as_str().unwrap_or_else(|| {
@@ -442,10 +382,7 @@ async fn responses_stream_on_exposes_status() {
             panic!("{SCENARIO}: the terminal response object must carry a message output item")
         });
 
-    let raw = terminals[0]
-        .raw
-        .as_deref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: capture was requested, so `raw` must be Some"));
+    let raw = captured_raw(SCENARIO, &terminal);
     assert_eq!(
         raw["status"].as_str(),
         Some(recorded_status),
@@ -461,41 +398,8 @@ async fn responses_stream_on_exposes_status() {
     // terminal and the normalized record must agree on it.
     assert_eq!(
         raw["message_id"].as_str(),
-        terminals[0].message_id.as_deref(),
+        terminal.message_id.as_deref(),
         "{SCENARIO}: captured and normalized message ids agree"
     );
-    assert_normalized_lacks_key(SCENARIO, &terminals[0], "status");
-}
-
-#[tokio::test]
-async fn responses_stream_off_on_request_invariant() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_off_on_request_invariant";
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_stream_capture_matrix/responses_stream_off_on_request_invariant",
-        responses_body(observed.clone(), &[false, true]),
-    )
-    .await;
-    let terminals = take(&observed, SCENARIO, 2);
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    assert_eq!(bodies.len(), 2, "{SCENARIO}: one interaction per flag");
-    assert_eq!(
-        bodies[0].0, bodies[1].0,
-        "{SCENARIO}: the flag is local policy — the stream request the provider received \
-         must be byte-identical with it off and on"
-    );
-    for (index, (_, body)) in bodies.iter().enumerate() {
-        let completed = responses_completed_frame(SCENARIO, body);
-        assert_eq!(
-            Some(terminals[index].usage.input_tokens),
-            completed["usage"]["input_tokens"].as_u64(),
-            "{SCENARIO}: interaction {index} usage"
-        );
-    }
-    assert!(terminals[0].raw.is_none(), "{SCENARIO}: off → None");
-    assert!(terminals[1].raw.is_some(), "{SCENARIO}: on → Some");
-    assert_eq!(terminals[0].finish_reason, terminals[1].finish_reason);
-    assert_eq!(terminals[0].model, terminals[1].model);
-    assert_eq!(terminals[0].provider, terminals[1].provider);
-    assert_eq!(terminals[0].usage, terminals[1].usage, "{SCENARIO}: usage");
+    assert_normalized_lacks_key(SCENARIO, &terminal, "status");
 }

@@ -1,50 +1,40 @@
-//! Matrix for opt-in raw provider response capture through the agent: the
-//! hook events, `PromptResponse::completion_calls`, the streamed terminal
-//! record, and the three toggles that decide whether a run captures.
+//! Matrix for raw provider response capture through the agent: the hook
+//! events, `PromptResponse::completion_calls`, and the streamed terminal
+//! record.
 //!
 //! # The feature
 //!
-//! `AgentBuilder::capture_raw_response`, overridable per run
-//! (`AgentRunner::capture_raw_response`) and per request
-//! (`PromptRequest::capture_raw_response`), travels on the concrete
-//! `CompletionRequest` to the provider, which populates
-//! `CompletionResponse::raw` / `StreamFinal::raw`. The agent then exposes that
-//! payload — **per attempt**, never a previous attempt's — as `raw` on the
+//! Capture is always on. The provider populates `CompletionResponse::raw` /
+//! `StreamFinal::raw` on every response, and the agent exposes that payload —
+//! **per attempt**, never a previous attempt's — as `raw` on the
 //! `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook
 //! events, on each `CompletionCall` the run records, and on the streamed
-//! `StreamedAssistantContent::Final`. Off (the default) means `None`
-//! everywhere, and the flag never changes the request on the wire.
+//! `StreamedAssistantContent::Final`. `raw` is `Option` only because a value
+//! built by hand has no provider response behind it; `None` never means "not
+//! requested".
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `hooks_observe_raw_blocking_on` | `agent.prompt`, agent-level on | `CompletionResponse` and `ModelTurnFinished` see `raw`; `id` matches fixture | recorded |
-//! | 2 | `hooks_observe_none_blocking_off` | `agent.prompt`, default | both events see `None` | recorded |
-//! | 3 | `hooks_observe_raw_streamed_on` | `agent.stream_prompt`, agent-level on | `StreamResponseFinish` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
-//! | 4 | `hooks_observe_none_streamed_off` | `agent.stream_prompt`, default | both events see `None` | recorded |
-//! | 5 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["id"]`s equal to the interactions' ids in order | recorded |
-//! | 6 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.stream_prompt` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
-//! | 7 | `streamed_final_carries_final_turn_raw` | tool run, `agent.stream_prompt` | the last `StreamedAssistantContent::Final.raw["message_id"]` is the last interaction's id | recorded |
-//! | 8 | `retried_turn_records_retried_attempt_raw_blocking` | `ModelTurnFinished` → `Retry` once, `agent.prompt` | second recorded call / second event carry the second interaction's `id` | recorded |
-//! | 9 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.stream_prompt` | same, by `message_id` | recorded |
-//! | 10 | `toggle_agent_level_on` | `AgentBuilder::capture_raw_response(true)` | `completion_calls[0].raw` present | recorded |
-//! | 11 | `toggle_per_run_override_off` | agent on, `AgentRunner::capture_raw_response(false)` | `completion_calls[0].raw` absent | recorded |
-//! | 12 | `toggle_per_request_override_on` | agent default, `PromptRequest::capture_raw_response(true)` | `completion_calls[0].raw` present | recorded |
-//! | 13 | `toggle_default_off` | agent default, request default | `completion_calls[0].raw` absent | recorded |
-//! | 14 | `toggle_request_invariant` | recorded request bodies of 10–13 | byte-identical | recorded (derived from cells 10–13) |
+//! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; `id` matches fixture | recorded |
+//! | 2 | `hooks_observe_raw_streamed` | `agent.stream_prompt` | `StreamResponseFinish` and `ModelTurnFinished` see `raw`; `message_id` matches fixture | recorded |
+//! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different `raw["id"]`s equal to the interactions' ids in order | recorded |
+//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.stream_prompt` | two `CompletionCall` items, two different `raw["message_id"]`s equal to the interactions' ids in order | recorded |
+//! | 5 | `streamed_final_carries_final_turn_raw` | tool run, `agent.stream_prompt` | the last `StreamedAssistantContent::Final.raw["message_id"]` is the last interaction's id | recorded |
+//! | 6 | `retried_turn_records_retried_attempt_raw_blocking` | `ModelTurnFinished` → `Retry` once, `agent.prompt` | second recorded call / second event carry the second interaction's `id` | recorded |
+//! | 7 | `retried_turn_records_retried_attempt_raw_streamed` | same, `agent.stream_prompt` | same, by `message_id` | recorded |
 //!
 //! Each surface fires its own response event — `CompletionResponse` on the
 //! blocking surface, `StreamResponseFinish` on the streamed one — and both
-//! fire the medium-neutral `ModelTurnFinished`; cells 1–4 pin exactly which
+//! fire the medium-neutral `ModelTurnFinished`; cells 1–2 pin exactly which
 //! events fire and what each carries, so a hook observing `ModelTurnFinished`
 //! alone provably sees the payload for every accepted call on both surfaces.
 //!
-//! Cell 14 makes no request of its own; it reads the four toggle fixtures,
-//! which send the same prompt for exactly that comparison. Every recorded cell
-//! re-derives its premise from its own fixture: the recorded interactions
-//! carry `msg_…` ids (distinct per attempt where the cell needs two), and the
-//! multi-turn cells' first interaction is a `tool_use` turn.
+//! Every recorded cell re-derives its premise from its own fixture: the
+//! recorded interactions carry `msg_…` ids (distinct per attempt where the
+//! cell needs two), and the multi-turn cells' first interaction is a
+//! `tool_use` turn.
 
 use std::sync::{Arc, Mutex};
 
@@ -68,13 +58,6 @@ use crate::support::{Adder, TOOLS_PREAMBLE};
 const ANTHROPIC_PROVIDER: &str = "anthropic";
 const TEXT_PROMPT: &str = "Reply with exactly: agent raw probe";
 const TOOL_PROMPT: &str = "What is 2 + 3? Use the tool, then state the result.";
-
-const TOGGLE_SCENARIOS: [&str; 4] = [
-    "raw_capture_agent_matrix/toggle_agent_level_on",
-    "raw_capture_agent_matrix/toggle_per_run_override_off",
-    "raw_capture_agent_matrix/toggle_per_request_override_on",
-    "raw_capture_agent_matrix/toggle_default_off",
-];
 
 /// Records what each hook event carried as `raw`, per event, in fire order.
 #[derive(Clone, Default)]
@@ -240,21 +223,20 @@ fn assert_distinct_msg_ids(ids: &[Option<String>], context: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// 1–4: the hook events
+// 1–2: the hook events
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn hooks_observe_raw_blocking_on() {
-    let scenario = "raw_capture_agent_matrix/hooks_observe_raw_blocking_on";
+async fn hooks_observe_raw_blocking() {
+    let scenario = "raw_capture_agent_matrix/hooks_observe_raw_blocking";
     let probe = RawProbe::default();
     let hook = probe.clone();
     with_anthropic_cassette(
-        "raw_capture_agent_matrix/hooks_observe_raw_blocking_on",
+        "raw_capture_agent_matrix/hooks_observe_raw_blocking",
         move |client| async move {
             let agent = client
                 .agent(CLAUDE_HAIKU_4_5)
                 .max_tokens(32)
-                .capture_raw_response(true)
                 .add_hook(hook)
                 .build();
             agent
@@ -273,7 +255,9 @@ async fn hooks_observe_raw_blocking_on() {
         probe.stream_finishes().is_empty(),
         "the blocking surface fires no StreamResponseFinish"
     );
-    let raw = responses[0].as_ref().expect("CompletionResponse.raw on");
+    let raw = responses[0]
+        .as_ref()
+        .expect("CompletionResponse.raw is populated");
     assert_eq!(
         turns[0].as_ref(),
         Some(raw),
@@ -293,46 +277,16 @@ async fn hooks_observe_raw_blocking_on() {
 }
 
 #[tokio::test]
-async fn hooks_observe_none_blocking_off() {
-    let scenario = "raw_capture_agent_matrix/hooks_observe_none_blocking_off";
+async fn hooks_observe_raw_streamed() {
+    let scenario = "raw_capture_agent_matrix/hooks_observe_raw_streamed";
     let probe = RawProbe::default();
     let hook = probe.clone();
     with_anthropic_cassette(
-        "raw_capture_agent_matrix/hooks_observe_none_blocking_off",
+        "raw_capture_agent_matrix/hooks_observe_raw_streamed",
         move |client| async move {
             let agent = client
                 .agent(CLAUDE_HAIKU_4_5)
                 .max_tokens(32)
-                .add_hook(hook)
-                .build();
-            agent
-                .prompt(TEXT_PROMPT)
-                .await
-                .expect("prompt should succeed");
-        },
-    )
-    .await;
-
-    assert_eq!(probe.completion_responses(), vec![None]);
-    assert_eq!(probe.model_turns(), vec![None]);
-    assert!(probe.stream_finishes().is_empty());
-    // The fixture did record a full response — `None` is policy, not absence.
-    let body = recorded_response_body(scenario);
-    assert!(body["id"].as_str().is_some_and(|id| id.starts_with("msg_")));
-}
-
-#[tokio::test]
-async fn hooks_observe_raw_streamed_on() {
-    let scenario = "raw_capture_agent_matrix/hooks_observe_raw_streamed_on";
-    let probe = RawProbe::default();
-    let hook = probe.clone();
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/hooks_observe_raw_streamed_on",
-        move |client| async move {
-            let agent = client
-                .agent(CLAUDE_HAIKU_4_5)
-                .max_tokens(32)
-                .capture_raw_response(true)
                 .add_hook(hook)
                 .build();
             let run = drain(agent.stream_prompt(Message::user(TEXT_PROMPT)).await).await;
@@ -354,7 +308,9 @@ async fn hooks_observe_raw_streamed_on() {
     );
     assert_eq!(finishes.len(), 1, "one StreamResponseFinish event");
     assert_eq!(turns.len(), 1, "one ModelTurnFinished event");
-    let raw = finishes[0].as_ref().expect("StreamResponseFinish.raw on");
+    let raw = finishes[0]
+        .as_ref()
+        .expect("StreamResponseFinish.raw is populated");
     assert_eq!(
         turns[0].as_ref(),
         Some(raw),
@@ -371,37 +327,8 @@ async fn hooks_observe_raw_streamed_on() {
     );
 }
 
-#[tokio::test]
-async fn hooks_observe_none_streamed_off() {
-    let scenario = "raw_capture_agent_matrix/hooks_observe_none_streamed_off";
-    let probe = RawProbe::default();
-    let hook = probe.clone();
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/hooks_observe_none_streamed_off",
-        move |client| async move {
-            let agent = client
-                .agent(CLAUDE_HAIKU_4_5)
-                .max_tokens(32)
-                .add_hook(hook)
-                .build();
-            let run = drain(agent.stream_prompt(Message::user(TEXT_PROMPT)).await).await;
-            assert_eq!(run.finals.len(), 1);
-            assert!(run.finals[0].raw.is_none(), "terminal raw off by default");
-            assert_eq!(run.completion_calls.len(), 1);
-            assert!(run.completion_calls[0].raw.is_none());
-        },
-    )
-    .await;
-
-    assert!(probe.completion_responses().is_empty());
-    assert_eq!(probe.stream_finishes(), vec![None]);
-    assert_eq!(probe.model_turns(), vec![None]);
-    let recorded = recorded_message_ids(scenario, true);
-    assert_distinct_msg_ids(&recorded, scenario);
-}
-
 // ---------------------------------------------------------------------------
-// 5–7: multi-turn tool runs
+// 3–5: multi-turn tool runs
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -419,7 +346,6 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
                 .tool(Adder)
-                .capture_raw_response(true)
                 .add_hook(hook)
                 .build();
             let response = agent
@@ -473,7 +399,6 @@ async fn multi_turn_tool_run_records_distinct_raw_streamed() {
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
                 .tool(Adder)
-                .capture_raw_response(true)
                 .add_hook(hook)
                 .build();
             let run = drain(
@@ -527,7 +452,6 @@ async fn streamed_final_carries_final_turn_raw() {
                 .preamble(TOOLS_PREAMBLE)
                 .max_tokens(1024)
                 .tool(Adder)
-                .capture_raw_response(true)
                 .build();
             let run = drain(
                 agent
@@ -568,7 +492,7 @@ async fn streamed_final_carries_final_turn_raw() {
 }
 
 // ---------------------------------------------------------------------------
-// 8–9: a retried turn
+// 6–7: a retried turn
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -584,7 +508,6 @@ async fn retried_turn_records_retried_attempt_raw_blocking() {
             let agent = client
                 .agent(CLAUDE_HAIKU_4_5)
                 .max_tokens(32)
-                .capture_raw_response(true)
                 .add_hook(hook)
                 .build();
             let response = agent
@@ -634,7 +557,6 @@ async fn retried_turn_records_retried_attempt_raw_streamed() {
             let agent = client
                 .agent(CLAUDE_HAIKU_4_5)
                 .max_tokens(32)
-                .capture_raw_response(true)
                 .add_hook(hook)
                 .build();
             let run = drain(
@@ -663,157 +585,6 @@ async fn retried_turn_records_retried_attempt_raw_streamed() {
     assert_ne!(raws[0], raws[1]);
     assert_ids_match_recording(&ids_of(&raws, "message_id"), &recorded, scenario);
     assert_eq!(probe.model_turns(), raws);
-}
-
-// ---------------------------------------------------------------------------
-// 10–14: the toggles
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn toggle_agent_level_on() {
-    let scenario = "raw_capture_agent_matrix/toggle_agent_level_on";
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/toggle_agent_level_on",
-        |client| async move {
-            let agent = client
-                .agent(CLAUDE_HAIKU_4_5)
-                .max_tokens(32)
-                .capture_raw_response(true)
-                .build();
-            let response = agent
-                .prompt(TEXT_PROMPT)
-                .extended_details()
-                .await
-                .expect("prompt should succeed");
-            assert_eq!(response.completion_calls.len(), 1);
-            assert!(
-                response.completion_calls[0].raw.is_some(),
-                "agent-level opt-in reaches the recorded call"
-            );
-        },
-    )
-    .await;
-    assert!(
-        recorded_response_body(scenario)["id"]
-            .as_str()
-            .is_some_and(|id| id.starts_with("msg_"))
-    );
-}
-
-#[tokio::test]
-async fn toggle_per_run_override_off() {
-    let scenario = "raw_capture_agent_matrix/toggle_per_run_override_off";
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/toggle_per_run_override_off",
-        |client| async move {
-            let agent = client
-                .agent(CLAUDE_HAIKU_4_5)
-                .max_tokens(32)
-                .capture_raw_response(true)
-                .build();
-            let response = agent
-                .runner(Message::user(TEXT_PROMPT))
-                .capture_raw_response(false)
-                .run()
-                .await
-                .expect("run should succeed");
-            assert_eq!(response.completion_calls.len(), 1);
-            assert!(
-                response.completion_calls[0].raw.is_none(),
-                "a per-run override turns an agent-level opt-in off"
-            );
-        },
-    )
-    .await;
-    assert!(
-        recorded_response_body(scenario)["id"]
-            .as_str()
-            .is_some_and(|id| id.starts_with("msg_"))
-    );
-}
-
-#[tokio::test]
-async fn toggle_per_request_override_on() {
-    let scenario = "raw_capture_agent_matrix/toggle_per_request_override_on";
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/toggle_per_request_override_on",
-        |client| async move {
-            let agent = client.agent(CLAUDE_HAIKU_4_5).max_tokens(32).build();
-            let response = agent
-                .prompt(TEXT_PROMPT)
-                .capture_raw_response(true)
-                .extended_details()
-                .await
-                .expect("prompt should succeed");
-            assert_eq!(response.completion_calls.len(), 1);
-            assert!(
-                response.completion_calls[0].raw.is_some(),
-                "a per-request opt-in works on an agent that never asked"
-            );
-        },
-    )
-    .await;
-    assert!(
-        recorded_response_body(scenario)["id"]
-            .as_str()
-            .is_some_and(|id| id.starts_with("msg_"))
-    );
-}
-
-#[tokio::test]
-async fn toggle_default_off() {
-    let scenario = "raw_capture_agent_matrix/toggle_default_off";
-    with_anthropic_cassette(
-        "raw_capture_agent_matrix/toggle_default_off",
-        |client| async move {
-            let agent = client.agent(CLAUDE_HAIKU_4_5).max_tokens(32).build();
-            let response = agent
-                .prompt(TEXT_PROMPT)
-                .extended_details()
-                .await
-                .expect("prompt should succeed");
-            assert_eq!(response.completion_calls.len(), 1);
-            assert!(
-                response.completion_calls[0].raw.is_none(),
-                "nobody asked, nobody pays"
-            );
-        },
-    )
-    .await;
-    assert!(
-        recorded_response_body(scenario)["id"]
-            .as_str()
-            .is_some_and(|id| id.starts_with("msg_"))
-    );
-}
-
-/// None of the toggles reaches the wire: the four toggle cells recorded
-/// byte-identical request bodies.
-#[test]
-fn toggle_request_invariant() {
-    let bodies: Vec<Vec<(String, String)>> = TOGGLE_SCENARIOS
-        .iter()
-        .map(|scenario| crate::cassettes::recorded_interaction_bodies(ANTHROPIC_PROVIDER, scenario))
-        .collect();
-    for (scenario, interactions) in TOGGLE_SCENARIOS.iter().zip(&bodies) {
-        assert_eq!(
-            interactions.len(),
-            1,
-            "{scenario}: one recorded interaction"
-        );
-    }
-    let reference = &bodies[0][0].0;
-    for (scenario, interactions) in TOGGLE_SCENARIOS.iter().zip(&bodies).skip(1) {
-        assert_eq!(
-            &interactions[0].0, reference,
-            "{scenario}: the recorded request must be byte-identical to {}",
-            TOGGLE_SCENARIOS[0]
-        );
-    }
-    assert!(
-        !reference.contains("capture_raw") && !reference.contains("captureRaw"),
-        "the flag is `#[serde(skip)]`; it must never serialize: {reference}"
-    );
 }
 
 // Keeps `Tool` in scope for `Adder`'s definition even if a future edit stops

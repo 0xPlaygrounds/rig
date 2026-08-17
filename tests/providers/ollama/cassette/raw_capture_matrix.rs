@@ -1,19 +1,19 @@
-//! Matrix for opt-in raw response capture on Ollama's blocking `/api/chat`
-//! path (`CompletionRequest::capture_raw_response` →
-//! `CompletionResponse::raw`).
+//! Matrix for raw response capture on Ollama's blocking `/api/chat` path
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
-//! `raw` is the value the model's inherent
+//! Capture is always on. Every completion returned by the provider seam
+//! carries `raw`: the value the model's inherent
 //! [`CompletionModel::raw_completion`](rig::providers::ollama::CompletionModel::raw_completion)
 //! would have returned — the response as [`ollama::CompletionResponse`] parsed
-//! it — serialized with `serde_json::to_value`. It is populated only when the
-//! request opted in, never replaces a normalized field, and never reaches the
-//! wire: the flag is `#[serde(skip)]` and Ollama's request struct is built
-//! from named fields, so an opted-in request must serialize byte-for-byte like
-//! an opted-out one.
+//! it — serialized with `serde_json::to_value` before normalization. It never
+//! replaces a normalized field, and it is not a request-side concern: nothing
+//! about it is sent to the daemon. `raw == None` means only that a
+//! `CompletionResponse` was built by hand without a provider response behind
+//! it, which no cell here can produce.
 //!
-//! Ollama is the natural provider for cell 3: its response carries
+//! Ollama is the natural provider for cell 2: its response carries
 //! nanosecond timings (`total_duration`, `load_duration`, `eval_duration`) that
 //! the normalized [`rig::completion::CompletionResponse`] has no field for, so
 //! `raw` is the only way a caller can read them without a second request.
@@ -22,16 +22,14 @@
 //!
 //! Recorded cells re-derive their premise from their own fixture bytes after
 //! the cassette wrapper returns (record mode writes the fixture on the way
-//! out): a fixture without the durations, or a pair of interactions whose
-//! request bodies differ, fails loudly rather than passing vacuously.
+//! out): a fixture without the durations, or one that is not a completed
+//! (`done: true`) turn, fails loudly rather than passing vacuously.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `capture_off_raw_is_none` | flag off (default) | `raw == None` | recorded |
-//! | 2 | `capture_on_raw_round_trips_provider_type` | flag on | `ollama::CompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
-//! | 3 | `capture_on_exposes_ollama_durations` | provider-only fields | `total_duration`/`load_duration`/`eval_duration` in `raw` equal the fixture body | recorded |
-//! | 4 | `request_invariant_off_vs_on` | on-wire request | flag-off and flag-on request bodies byte-identical | recorded |
-//! | 5 | `normalized_fields_identical_off_vs_on` | normalized view | off/on responses normalize their own wire bytes identically; only `raw` differs | recorded |
+//! | 1 | `raw_round_trips_provider_type` | typed access | `ollama::CompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
+//! | 2 | `raw_exposes_ollama_durations` | provider-only fields | `total_duration`/`load_duration`/`eval_duration` in `raw` equal the fixture body | recorded |
+//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized response equals `raw` re-normalized (`try_into`) and the fixture body re-normalized | recorded |
 //!
 //! Every cell is recorded: Ollama runs locally with no credential, so there is
 //! nothing here the harness cannot reproduce.
@@ -46,7 +44,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_ollama_cassette;
-use crate::cassettes::{recorded_interaction_bodies, recorded_json_request};
+use crate::cassettes::recorded_interaction_bodies;
 
 const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
@@ -57,15 +55,11 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 
 /// `think: false` keeps qwen3's reasoning trace out of the recording; the
 /// durations this matrix reads are reported either way.
-fn request(
-    model: &ollama::CompletionModel,
-    capture_raw: bool,
-) -> rig::completion::CompletionRequest {
+fn request(model: &ollama::CompletionModel) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .max_tokens(64)
         .additional_params(json!({ "think": false }))
-        .capture_raw_response(capture_raw)
         .build()
 }
 
@@ -86,93 +80,50 @@ fn assert_recorded_completed_with_durations(body: &Value, scenario: &str) {
     }
 }
 
-/// The recorded interaction bodies of a scenario, request and response parsed
-/// as JSON, in wire order.
-fn recorded_json_interactions(scenario: &str) -> Vec<(Value, Value)> {
-    recorded_interaction_bodies(OLLAMA_PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, response)| {
-            let request: Value = serde_json::from_str(&request)
-                .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
-            let response: Value = serde_json::from_str(&response).unwrap_or_else(|err| {
-                panic!("{scenario}: recorded response should be JSON: {err}")
-            });
-            (request, response)
-        })
-        .collect()
+/// The single recorded interaction of a scenario, request and response parsed
+/// as JSON.
+fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
+    let bodies = recorded_interaction_bodies(OLLAMA_PROVIDER, scenario);
+    assert_eq!(
+        bodies.len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
+    let (request, response) = &bodies[0];
+    let request: Value = serde_json::from_str(request)
+        .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
+    let response: Value = serde_json::from_str(response)
+        .unwrap_or_else(|err| panic!("{scenario}: recorded response should be JSON: {err}"));
+    (request, response)
 }
 
-/// The normalized response minus its `raw`, as JSON, so two responses can be
-/// compared field-for-field regardless of whether one captured raw.
+/// The normalized response minus its `raw`, as JSON, so a response can be
+/// compared field-for-field against a re-normalization that has no `raw`.
 fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
     response.raw = None;
     serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
 // ---------------------------------------------------------------------------
-// 1: the default is off, and off means None — not an empty object
+// 1: raw is exactly what raw_completion would have returned, serialized
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn capture_off_raw_is_none() {
-    let scenario = "raw_capture_matrix/capture_off_raw_is_none";
+async fn raw_round_trips_provider_type() {
+    let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
     with_ollama_cassette(
-        "raw_capture_matrix/capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let request = request(&model, false);
-            assert!(
-                !request.capture_raw_response,
-                "premise: the builder default is off"
-            );
-
-            let response = model
-                .completion(request)
-                .await
-                .expect("completion should succeed");
-
-            assert!(
-                response.raw.is_none(),
-                "raw must stay None when capture was not requested, got {:?}",
-                response.raw
-            );
-            assert!(
-                !response.choice.is_empty(),
-                "the normalized choice is unaffected by the flag"
-            );
-        },
-    )
-    .await;
-
-    // The recording is a real completed turn: `None` above means "not
-    // requested", not "the provider sent nothing".
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
-    assert_eq!(body.get("done"), Some(&Value::Bool(true)));
-}
-
-// ---------------------------------------------------------------------------
-// 2: on → raw is exactly what raw_completion would have returned, serialized
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn capture_on_raw_round_trips_provider_type() {
-    let scenario = "raw_capture_matrix/capture_on_raw_round_trips_provider_type";
-    with_ollama_cassette(
-        "raw_capture_matrix/capture_on_raw_round_trips_provider_type",
+        "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(MODEL);
             let response = model
-                .completion(request(&model, true))
+                .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw must be populated when capture was requested");
+                .expect("every provider-backed completion carries raw");
 
             // Typed access is recoverable: the provider's own wire type reads the
             // captured value back, and re-serializing it reproduces the capture
@@ -201,30 +152,27 @@ async fn capture_on_raw_round_trips_provider_type() {
 
     // Premise: what was captured is what the wire carried — the fixture body
     // deserializes into the same provider type.
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
+    let (_, body) = recorded_json_interaction(scenario);
     let recorded = ollama::CompletionResponse::deserialize(&body)
         .expect("recorded body must be an Ollama chat response");
     assert!(recorded.done);
 }
 
 // ---------------------------------------------------------------------------
-// 3: a provider-only field rig does not normalize is readable from raw
+// 2: a provider-only field rig does not normalize is readable from raw
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn capture_on_exposes_ollama_durations() {
-    let scenario = "raw_capture_matrix/capture_on_exposes_ollama_durations";
+async fn raw_exposes_ollama_durations() {
+    let scenario = "raw_capture_matrix/raw_exposes_ollama_durations";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_ollama_cassette(
-        "raw_capture_matrix/capture_on_exposes_ollama_durations",
+        "raw_capture_matrix/raw_exposes_ollama_durations",
         |client| async move {
             let model = client.completion_model(MODEL);
             let response = model
-                .completion(request(&model, true))
+                .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
@@ -241,7 +189,7 @@ async fn capture_on_exposes_ollama_durations() {
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw must be populated when capture was requested")
+                .expect("every provider-backed completion carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -256,10 +204,7 @@ async fn capture_on_exposes_ollama_durations() {
 
     // Premise + assertion in one: the fixture body reports the durations, and
     // raw carries exactly the values the wire did.
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
+    let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_completed_with_durations(&body, scenario);
     for field in [
         "total_duration",
@@ -281,116 +226,70 @@ async fn capture_on_exposes_ollama_durations() {
 }
 
 // ---------------------------------------------------------------------------
-// 4: the flag never reaches the provider
+// 3: raw and the typed route tell one story
 // ---------------------------------------------------------------------------
 
-/// One scenario, two interactions in wire order — off then on — so the two
-/// request bodies came from the same process and the same builder and differ
-/// in nothing but the local flag.
+/// The normalized response, with `raw` stripped, must equal the normalization
+/// (`try_into`) of `raw` read back through the provider type — and equal the
+/// normalization of the recorded wire body. Capture is a pure serialization of
+/// the value normalization consumed: it neither alters a normalized field nor
+/// diverges from the bytes the daemon sent.
 #[tokio::test]
-async fn request_invariant_off_vs_on() {
-    let scenario = "raw_capture_matrix/request_invariant_off_vs_on";
-    with_ollama_cassette(
-        "raw_capture_matrix/request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let off = model
-                .completion(request(&model, false))
-                .await
-                .expect("flag-off completion should succeed");
-            let on = model
-                .completion(request(&model, true))
-                .await
-                .expect("flag-on completion should succeed");
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-        },
-    )
-    .await;
-
-    let bodies = recorded_interaction_bodies(OLLAMA_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        2,
-        "{scenario}: the scenario must record exactly the off and on requests"
-    );
-    let (off_request, _) = &bodies[0];
-    let (on_request, _) = &bodies[1];
-    assert_eq!(
-        off_request, on_request,
-        "the flag-on request body must be byte-identical to the flag-off one — \
-         capture_raw_response is local policy and must never reach Ollama"
-    );
-    // And neither body mentions the flag under any spelling.
-    let first: Value = recorded_json_request(OLLAMA_PROVIDER, scenario);
-    assert!(
-        !off_request.contains("capture_raw"),
-        "the request body must not carry the flag: {off_request}"
-    );
-    assert_eq!(first["model"], MODEL);
-    assert_eq!(first["stream"], Value::Bool(false));
-}
-
-// ---------------------------------------------------------------------------
-// 5: normalization is a pure function of the wire bytes, flag or no flag
-// ---------------------------------------------------------------------------
-
-/// Two interactions (off, on). Each response, with `raw` stripped, must equal
-/// the normalization of *its own* recorded body — proving the flag changed
-/// nothing on the normalized surface — and the two must agree on every field
-/// the model does not decide token-by-token.
-#[tokio::test]
-async fn normalized_fields_identical_off_vs_on() {
-    let scenario = "raw_capture_matrix/normalized_fields_identical_off_vs_on";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+async fn normalized_fields_equal_raw_renormalized() {
+    let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_ollama_cassette(
-        "raw_capture_matrix/normalized_fields_identical_off_vs_on",
+        "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
             let model = client.completion_model(MODEL);
-            let off = model
-                .completion(request(&model, false))
+            let response = model
+                .completion(request(&model))
                 .await
-                .expect("flag-off completion should succeed");
-            let on = model
-                .completion(request(&model, true))
-                .await
-                .expect("flag-on completion should succeed");
+                .expect("completion should succeed");
 
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(off.provider, OLLAMA_PROVIDER);
-            assert_eq!(on.provider, off.provider);
-            assert_eq!(on.model, off.model);
-            assert_eq!(on.finish_reason(), off.finish_reason());
-            assert_eq!(on.identity(), off.identity());
-            assert!(!off.choice.is_empty());
-            assert!(!on.choice.is_empty());
+            let raw = response
+                .raw
+                .as_deref()
+                .expect("every provider-backed completion carries raw");
+            let from_raw: RigCompletionResponse = ollama::CompletionResponse::deserialize(raw)
+                .expect("raw must deserialize into ollama::CompletionResponse")
+                .try_into()
+                .expect("raw must normalize");
 
-            *sink.lock().expect("capture mutex") = vec![off, on];
+            assert_eq!(response.provider, OLLAMA_PROVIDER);
+            assert_eq!(from_raw.provider, response.provider);
+            assert_eq!(from_raw.model, response.model);
+            assert_eq!(from_raw.finish_reason(), response.finish_reason());
+            assert_eq!(from_raw.identity(), response.identity());
+            assert_eq!(from_raw.usage, response.usage);
+            assert!(!response.choice.is_empty());
+            assert_eq!(
+                normalized_without_raw(from_raw),
+                normalized_without_raw(response.clone()),
+                "re-normalizing raw must reproduce the normalized response field-for-field"
+            );
+
+            *sink.lock().expect("capture mutex") = Some(response);
         },
     )
     .await;
 
-    let responses = std::mem::take(&mut *captured.lock().expect("capture mutex"));
-    let interactions = recorded_json_interactions(scenario);
+    let response = captured
+        .lock()
+        .expect("capture mutex")
+        .take()
+        .expect("the test body must have captured the response");
+    let (_, body) = recorded_json_interaction(scenario);
+    assert_recorded_completed_with_durations(&body, scenario);
+    let from_wire: RigCompletionResponse = ollama::CompletionResponse::deserialize(&body)
+        .expect("recorded body must be an Ollama chat response")
+        .try_into()
+        .expect("recorded body must normalize");
     assert_eq!(
-        interactions.len(),
-        2,
-        "{scenario}: expected off and on turns"
+        normalized_without_raw(response),
+        normalized_without_raw(from_wire),
+        "the normalized response must equal the normalization of the wire bytes \
+         it was built from"
     );
-
-    for ((_, body), response) in interactions.into_iter().zip(responses) {
-        assert_recorded_completed_with_durations(&body, scenario);
-        let from_wire: RigCompletionResponse = ollama::CompletionResponse::deserialize(&body)
-            .expect("recorded body must be an Ollama chat response")
-            .try_into()
-            .expect("recorded body must normalize");
-        assert_eq!(
-            normalized_without_raw(response),
-            normalized_without_raw(from_wire),
-            "the normalized response must equal the normalization of its own \
-             wire bytes — capture must not touch any normalized field"
-        );
-    }
 }

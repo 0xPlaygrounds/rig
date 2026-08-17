@@ -1,21 +1,22 @@
-//! Matrix for opt-in raw terminal-record capture on Ollama's streaming
-//! `/api/chat` path (`CompletionRequest::capture_raw_response` →
-//! `StreamFinal::raw`).
+//! Matrix for raw terminal-record capture on Ollama's streaming `/api/chat`
+//! path ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
 //!
 //! # The feature
 //!
-//! `StreamFinal::raw` is the value the model's inherent
+//! Capture is always on. The terminal record of every stream the provider seam
+//! yields carries `raw`: the value the model's inherent
 //! [`CompletionModel::raw_stream`](rig::providers::ollama::CompletionModel::raw_stream)
 //! would have yielded as its `FinalResponse` — Ollama's terminal NDJSON record
 //! as [`ollama::StreamingCompletionResponse`] carries it — serialized with
-//! `serde_json::to_value`. It is the terminal record only, never the stream's
-//! frames; it is populated only when the request opted in; and it never
-//! reaches the wire.
+//! `serde_json::to_value` by `normalize_stream`. It is the terminal record
+//! only, never the stream's frames, and nothing about it is sent to the
+//! daemon. `raw == None` means only that a `StreamFinal` was built by hand
+//! without a provider terminal behind it, which no cell here can produce.
 //!
 //! Ollama's stream is newline-delimited JSON, not SSE: every line is a chat
 //! record and exactly one — the last — carries `done: true` together with the
 //! token counts and the nanosecond timings. Those timings (`total_duration`,
-//! `eval_duration`, …) are what cell 3 reads back: the normalized
+//! `eval_duration`, …) are what cell 2 reads back: the normalized
 //! [`StreamFinal`](rig::streaming::StreamFinal) has no field for them.
 //!
 //! # Matrix
@@ -26,10 +27,8 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_capture_off_raw_is_none` | flag off (default) | terminal `raw == None` | recorded |
-//! | 2 | `stream_capture_on_terminal_round_trips_provider_type` | flag on | `ollama::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
-//! | 3 | `stream_capture_on_exposes_terminal_durations` | terminal-only fields | `eval_duration`/`total_duration`/`eval_count` in `raw` equal the fixture's `done: true` line | recorded |
-//! | 4 | `stream_request_invariant_off_vs_on` | on-wire request | flag-off and flag-on request bodies byte-identical | recorded |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `ollama::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
+//! | 2 | `stream_raw_exposes_terminal_durations` | terminal-only fields | `eval_duration`/`total_duration`/`eval_count` in `raw` equal the fixture's `done: true` line | recorded |
 //!
 //! Every cell is recorded: Ollama runs locally with no credential.
 //!
@@ -51,15 +50,11 @@ const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &ollama::CompletionModel,
-    capture_raw: bool,
-) -> rig::completion::CompletionRequest {
+fn request(model: &ollama::CompletionModel) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .max_tokens(64)
         .additional_params(json!({ "think": false }))
-        .capture_raw_response(capture_raw)
         .build()
 }
 
@@ -79,14 +74,17 @@ async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) ->
     finals.remove(0)
 }
 
-/// The premise every streaming cell rests on: the recorded NDJSON body ends
-/// with a `done: true` record carrying token counts and timings. Returns that
-/// terminal line parsed.
-fn recorded_terminal_line(scenario: &str, interaction: usize) -> Value {
+/// The premise every streaming cell rests on: the scenario recorded exactly
+/// one interaction whose NDJSON body ends with a `done: true` record carrying
+/// token counts and timings. Returns that terminal line parsed.
+fn recorded_terminal_line(scenario: &str) -> Value {
     let bodies = recorded_interaction_bodies(OLLAMA_PROVIDER, scenario);
-    let (_, response) = bodies
-        .get(interaction)
-        .unwrap_or_else(|| panic!("{scenario}: interaction {interaction} should be recorded"));
+    assert_eq!(
+        bodies.len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
+    let (_, response) = &bodies[0];
     let last = response
         .lines()
         .map(str::trim)
@@ -114,60 +112,21 @@ fn recorded_terminal_line(scenario: &str, interaction: usize) -> Value {
     terminal
 }
 
-fn recorded_request_body(scenario: &str, interaction: usize) -> String {
-    recorded_interaction_bodies(OLLAMA_PROVIDER, scenario)
-        .get(interaction)
-        .map(|(request, _)| request.clone())
-        .unwrap_or_else(|| panic!("{scenario}: interaction {interaction} should be recorded"))
-}
-
 // ---------------------------------------------------------------------------
-// 1: off → None
+// 1: raw is the raw_stream FinalResponse, serialized
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn stream_capture_off_raw_is_none() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_off_raw_is_none";
-    with_ollama_cassette(
-        "raw_stream_capture_matrix/stream_capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let request = request(&model, false);
-            assert!(!request.capture_raw_response, "premise: default is off");
-            let stream = model.stream(request).await.expect("stream should start");
-            let terminal = terminal_of(stream).await;
-
-            assert!(
-                terminal.raw.is_none(),
-                "terminal raw must stay None when capture was not requested, got {:?}",
-                terminal.raw
-            );
-            assert!(terminal.usage.total_tokens > 0, "usage is unaffected");
-            assert_eq!(terminal.provider, OLLAMA_PROVIDER);
-        },
-    )
-    .await;
-
-    // `None` means "not requested": the wire did end with a usage-bearing
-    // terminal record.
-    recorded_terminal_line(scenario, 0);
-}
-
-// ---------------------------------------------------------------------------
-// 2: on → raw is the raw_stream FinalResponse, serialized
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn stream_capture_on_terminal_round_trips_provider_type() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_on_terminal_round_trips_provider_type";
+async fn stream_raw_terminal_round_trips_provider_type() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_ollama_cassette(
-        "raw_stream_capture_matrix/stream_capture_on_terminal_round_trips_provider_type",
+        "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(MODEL);
             let stream = model
-                .stream(request(&model, true))
+                .stream(request(&model))
                 .await
                 .expect("stream should start");
             let terminal = terminal_of(stream).await;
@@ -175,7 +134,7 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested");
+                .expect("every provider-backed terminal record carries raw");
             let typed = ollama::StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into ollama::StreamingCompletionResponse");
             assert_eq!(
@@ -203,7 +162,7 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
     .await;
 
     // Premise: the wire's terminal line is what raw carries.
-    let terminal_line = recorded_terminal_line(scenario, 0);
+    let terminal_line = recorded_terminal_line(scenario);
     let raw = captured
         .lock()
         .expect("capture mutex")
@@ -215,20 +174,20 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
 }
 
 // ---------------------------------------------------------------------------
-// 3: terminal-only fields
+// 2: terminal-only fields
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn stream_capture_on_exposes_terminal_durations() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_durations";
+async fn stream_raw_exposes_terminal_durations() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_ollama_cassette(
-        "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_durations",
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
         |client| async move {
             let model = client.completion_model(MODEL);
             let stream = model
-                .stream(request(&model, true))
+                .stream(request(&model))
                 .await
                 .expect("stream should start");
             let terminal = terminal_of(stream).await;
@@ -248,7 +207,7 @@ async fn stream_capture_on_exposes_terminal_durations() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested")
+                .expect("every provider-backed terminal record carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -260,7 +219,7 @@ async fn stream_capture_on_exposes_terminal_durations() {
         .expect("capture mutex")
         .take()
         .expect("the test body must have captured raw");
-    let terminal_line = recorded_terminal_line(scenario, 0);
+    let terminal_line = recorded_terminal_line(scenario);
     for field in [
         "total_duration",
         "load_duration",
@@ -282,54 +241,4 @@ async fn stream_capture_on_exposes_terminal_durations() {
         typed.total_duration,
         terminal_line["total_duration"].as_u64()
     );
-}
-
-// ---------------------------------------------------------------------------
-// 4: the flag never reaches the provider
-// ---------------------------------------------------------------------------
-
-/// One scenario, two interactions in wire order — off then on.
-#[tokio::test]
-async fn stream_request_invariant_off_vs_on() {
-    let scenario = "raw_stream_capture_matrix/stream_request_invariant_off_vs_on";
-    with_ollama_cassette(
-        "raw_stream_capture_matrix/stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let off = terminal_of(
-                model
-                    .stream(request(&model, false))
-                    .await
-                    .expect("flag-off stream should start"),
-            )
-            .await;
-            let on = terminal_of(
-                model
-                    .stream(request(&model, true))
-                    .await
-                    .expect("flag-on stream should start"),
-            )
-            .await;
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(off.provider, on.provider);
-            assert_eq!(off.model, on.model);
-        },
-    )
-    .await;
-
-    let off_request = recorded_request_body(scenario, 0);
-    let on_request = recorded_request_body(scenario, 1);
-    assert_eq!(
-        off_request, on_request,
-        "the flag-on streaming request body must be byte-identical to the \
-         flag-off one — capture_raw_response must never reach Ollama"
-    );
-    assert!(!off_request.contains("capture_raw"));
-    let body: Value = serde_json::from_str(&off_request).expect("recorded request should be JSON");
-    assert_eq!(body["stream"], Value::Bool(true));
-    assert_eq!(body["model"], MODEL);
-    // Both interactions completed with a usage-bearing terminal record.
-    recorded_terminal_line(scenario, 0);
-    recorded_terminal_line(scenario, 1);
 }

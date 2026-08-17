@@ -1,19 +1,22 @@
-//! Matrix for opt-in raw terminal-record capture on llamafile's streaming path
-//! (`CompletionRequest::capture_raw_response` → `StreamFinal::raw`).
+//! Matrix for raw terminal-record capture on llamafile's streaming path
+//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
 //!
 //! # The feature
 //!
-//! llamafile streams through the shared OpenAI Chat Completions model, whose
+//! Capture is always on. llamafile streams through the shared OpenAI Chat
+//! Completions model, whose
 //! [`raw_stream`](rig::providers::openai::GenericCompletionModel::raw_stream)
 //! yields [`openai::StreamingCompletionResponse`] as its terminal record: the
 //! usage from the stream's final `data:` frame plus the envelope fields the
 //! chunks carried (`object`, `created`, `system_fingerprint`) accumulated under
-//! `additional_params`. `StreamFinal::raw` is that record serialized — the
-//! terminal record only, never the frames — populated only when the request
-//! opted in, and never on the wire.
+//! `additional_params`. Every terminal record the seam yields carries `raw` —
+//! that record serialized by `normalize_stream` — the terminal record only,
+//! never the frames, and nothing about it is sent to the server. `raw == None`
+//! means only that a `StreamFinal` was built by hand without a provider
+//! terminal behind it, which no cell here can produce.
 //!
 //! The envelope fields are exactly what the normalized
-//! [`StreamFinal`](rig::streaming::StreamFinal) has no home for, so cell 3
+//! [`StreamFinal`](rig::streaming::StreamFinal) has no home for, so cell 2
 //! reads them back through `raw` and checks them against the recorded frames.
 //!
 //! # Matrix
@@ -24,10 +27,8 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_capture_off_raw_is_none` | flag off (default) | terminal `raw == None` | recorded |
-//! | 2 | `stream_capture_on_terminal_round_trips_provider_type` | flag on | `openai::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
-//! | 3 | `stream_capture_on_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded frames; usage equals the terminal frame | recorded |
-//! | 4 | `stream_request_invariant_off_vs_on` | on-wire request | flag-off and flag-on request bodies byte-identical | recorded |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `openai::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
+//! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded frames; usage equals the terminal frame | recorded |
 //!
 //! Every cell is recorded against Ollama's OpenAI-compatible endpoint (the
 //! `cassette_support` default upstream) serving `qwen3:4b`. Re-record with:
@@ -48,15 +49,8 @@ const LLAMAFILE_PROVIDER: &str = "llamafile";
 const MODEL: &str = "qwen3:4b";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &llamafile::CompletionModel,
-    capture_raw: bool,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .max_tokens(1024)
-        .capture_raw_response(capture_raw)
-        .build()
+fn request(model: &llamafile::CompletionModel) -> rig::completion::CompletionRequest {
+    model.completion_request(PROMPT).max_tokens(1024).build()
 }
 
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
@@ -74,9 +68,15 @@ async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) ->
     finals.remove(0)
 }
 
-/// The premise every streaming cell rests on: the recorded SSE body's last
-/// JSON frame carries `usage`. Returns `(all frames, terminal frame)`.
+/// The premise every streaming cell rests on: the scenario recorded exactly
+/// one interaction whose SSE body's last JSON frame carries `usage`. Returns
+/// `(all frames, terminal frame)`.
 fn recorded_frames_with_terminal(scenario: &str) -> (Vec<Value>, Value) {
+    assert_eq!(
+        recorded_interaction_bodies(LLAMAFILE_PROVIDER, scenario).len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
     let frames = recorded_sse_json_frames(LLAMAFILE_PROVIDER, scenario);
     let terminal = frames
         .last()
@@ -103,59 +103,22 @@ fn recorded_envelope_field(frames: &[Value], key: &str, scenario: &str) -> Value
     first
 }
 
-fn recorded_request_bodies(scenario: &str) -> Vec<String> {
-    recorded_interaction_bodies(LLAMAFILE_PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, _)| request)
-        .collect()
-}
-
 // ---------------------------------------------------------------------------
-// 1: off → None
+// 1: raw is the raw_stream FinalResponse, serialized
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn stream_capture_off_raw_is_none() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_off_raw_is_none";
-    with_llamafile_cassette(
-        "raw_stream_capture_matrix/stream_capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let request = request(&model, false);
-            assert!(!request.capture_raw_response, "premise: default is off");
-            let terminal =
-                terminal_of(model.stream(request).await.expect("stream should start")).await;
-
-            assert!(
-                terminal.raw.is_none(),
-                "terminal raw must stay None when capture was not requested, got {:?}",
-                terminal.raw
-            );
-            assert!(terminal.usage.total_tokens > 0, "usage is unaffected");
-            assert_eq!(terminal.provider, LLAMAFILE_PROVIDER);
-        },
-    )
-    .await;
-
-    recorded_frames_with_terminal(scenario);
-}
-
-// ---------------------------------------------------------------------------
-// 2: on → raw is the raw_stream FinalResponse, serialized
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn stream_capture_on_terminal_round_trips_provider_type() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_on_terminal_round_trips_provider_type";
+async fn stream_raw_terminal_round_trips_provider_type() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_llamafile_cassette(
-        "raw_stream_capture_matrix/stream_capture_on_terminal_round_trips_provider_type",
+        "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(MODEL);
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -164,7 +127,7 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested");
+                .expect("every provider-backed terminal record carries raw");
             let typed = openai::StreamingCompletionResponse::<openai::Usage>::deserialize(raw)
                 .expect("raw must deserialize into openai::StreamingCompletionResponse");
             assert_eq!(
@@ -207,21 +170,21 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
 }
 
 // ---------------------------------------------------------------------------
-// 3: terminal-only fields
+// 2: terminal-only fields
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn stream_capture_on_exposes_envelope_fields() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_on_exposes_envelope_fields";
+async fn stream_raw_exposes_envelope_fields() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_llamafile_cassette(
-        "raw_stream_capture_matrix/stream_capture_on_exposes_envelope_fields",
+        "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
             let model = client.completion_model(MODEL);
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -247,7 +210,7 @@ async fn stream_capture_on_exposes_envelope_fields() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested")
+                .expect("every provider-backed terminal record carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -291,67 +254,4 @@ async fn stream_capture_on_exposes_envelope_fields() {
         typed_params.get("system_fingerprint"),
         frames[0].get("system_fingerprint")
     );
-}
-
-// ---------------------------------------------------------------------------
-// 4: the flag never reaches the provider
-// ---------------------------------------------------------------------------
-
-/// One scenario, two interactions in wire order — off then on.
-#[tokio::test]
-async fn stream_request_invariant_off_vs_on() {
-    let scenario = "raw_stream_capture_matrix/stream_request_invariant_off_vs_on";
-    with_llamafile_cassette(
-        "raw_stream_capture_matrix/stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let off = terminal_of(
-                model
-                    .stream(request(&model, false))
-                    .await
-                    .expect("flag-off stream should start"),
-            )
-            .await;
-            let on = terminal_of(
-                model
-                    .stream(request(&model, true))
-                    .await
-                    .expect("flag-on stream should start"),
-            )
-            .await;
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(off.provider, on.provider);
-            assert_eq!(off.model, on.model);
-        },
-    )
-    .await;
-
-    let requests = recorded_request_bodies(scenario);
-    assert_eq!(
-        requests.len(),
-        2,
-        "{scenario}: the scenario must record exactly the off and on requests"
-    );
-    assert_eq!(
-        requests[0], requests[1],
-        "the flag-on streaming request body must be byte-identical to the \
-         flag-off one — capture_raw_response must never reach the server"
-    );
-    assert!(!requests[0].contains("capture_raw"));
-    let body: Value = serde_json::from_str(&requests[0]).expect("recorded request should be JSON");
-    assert_eq!(body["stream"], Value::Bool(true));
-    assert_eq!(body["model"], MODEL);
-    // Both interactions ended on a usage-bearing terminal frame.
-    let bodies = recorded_interaction_bodies(LLAMAFILE_PROVIDER, scenario);
-    for (_, response) in &bodies {
-        let last_frame = response
-            .lines()
-            .filter_map(|line| line.trim().strip_prefix("data:"))
-            .map(str::trim)
-            .rfind(|payload| *payload != "[DONE]")
-            .expect("each recorded stream should carry frames");
-        let frame: Value = serde_json::from_str(last_frame).expect("terminal frame should be JSON");
-        assert!(frame.get("usage").is_some_and(Value::is_object));
-    }
 }

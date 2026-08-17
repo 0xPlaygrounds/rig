@@ -1,23 +1,23 @@
 //! Raw provider response capture on OpenRouter's streaming chat-completions
 //! path.
 //!
-//! **The feature.** With `CompletionRequest::capture_raw_response` on, the
-//! stream's terminal [`rig::streaming::StreamFinal::raw`] carries the value
-//! the model's inherent `raw_stream` would have yielded as its terminal
-//! record — for OpenRouter the shared chat-completions terminal
+//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
+//! carries the value the model's inherent `raw_stream` yielded as its
+//! terminal record — for OpenRouter the shared chat-completions terminal
 //! [`StreamingCompletionResponse`] over OpenRouter's own
-//! [`openrouter::Usage`] — serialized. It is the terminal record only, never
-//! the stream's frames. OpenRouter's terminal usage carries the turn's
-//! `cost`, and the terminal's accumulated `additional_params` carries the
-//! routed `provider` the frames repeat; neither has a slot on the normalized
-//! terminal, so both are pinned here as reachable only through `raw`.
+//! [`openrouter::Usage`] — serialized. Capture is always on: there is no flag
+//! to request it, nothing about it reaches the wire, and a `None` only ever
+//! means a terminal built by hand with no provider record behind it. It is
+//! the terminal record only, never the stream's frames. OpenRouter's terminal
+//! usage carries the turn's `cost`, and the terminal's accumulated
+//! `additional_params` carries the routed `provider` the frames repeat;
+//! neither has a slot on the normalized terminal, so both are pinned here as
+//! reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_capture_off_leaves_raw_none` | flag off (the default) | terminal `raw == None` | recorded |
-//! | 2 | `stream_capture_on_round_trips_terminal_type` | flag on | terminal `raw` deserializes into `StreamingCompletionResponse<openrouter::Usage>` and re-serializes equal | recorded |
-//! | 3 | `stream_capture_on_exposes_terminal_cost_and_provider` | terminal-only field | `raw.usage.cost` and `raw.additional_params.provider` equal the recorded terminal frame's | recorded |
-//! | 4 | `stream_request_invariant_off_vs_on` | on-wire request | the flag-off and flag-on request bodies are byte-identical | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<openrouter::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 2 | `stream_raw_exposes_terminal_cost_and_provider` | terminal-only field | `raw.usage.cost` and `raw.additional_params.provider` equal the recorded terminal frame's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that usage appears on exactly one frame — the stream's last
@@ -44,12 +44,8 @@ type OpenRouterTerminal = StreamingCompletionResponse<openrouter::Usage>;
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &openrouter::CompletionModel, capture: bool) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .max_tokens(16)
-        .capture_raw_response(capture)
-        .build()
+fn request(model: &openrouter::CompletionModel) -> CompletionRequest {
+    model.completion_request(PROMPT).max_tokens(16).build()
 }
 
 /// The single recorded frame that carries usage — the stream's last data
@@ -75,105 +71,62 @@ fn recorded_terminal_frame(scenario: &str) -> Value {
     terminal.clone()
 }
 
-fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value, context: &str) {
-    assert_eq!(terminal.provider, PROVIDER, "{context}: provider");
+fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
+    assert_eq!(terminal.provider, PROVIDER, "provider");
     assert_matches_recorded_token(
         terminal.response_id.as_deref(),
         frame["id"].as_str(),
-        &format!("{context}: response id"),
+        "response id",
     );
-    assert_eq!(
-        terminal.model.as_deref(),
-        frame["model"].as_str(),
-        "{context}: model"
-    );
+    assert_eq!(terminal.model.as_deref(), frame["model"].as_str(), "model");
     assert_eq!(
         terminal.usage.input_tokens,
         frame["usage"]["prompt_tokens"]
             .as_u64()
             .expect("prompt_tokens"),
-        "{context}: input tokens"
+        "input tokens"
     );
     assert_eq!(
         terminal.usage.output_tokens,
         frame["usage"]["completion_tokens"]
             .as_u64()
             .expect("completion_tokens"),
-        "{context}: output tokens"
+        "output tokens"
     );
     assert_eq!(
         terminal.usage.total_tokens,
         frame["usage"]["total_tokens"]
             .as_u64()
             .expect("total_tokens"),
-        "{context}: total tokens"
+        "total tokens"
     );
     assert_eq!(
         terminal.provider_request_id, None,
-        "{context}: OpenRouter contracts no id header"
+        "OpenRouter contracts no id header"
     );
 }
 
 // ================================================================
-// 1. Off leaves the terminal raw None
+// 1. raw round-trips the terminal type
 // ================================================================
 
 #[tokio::test]
-async fn stream_capture_off_leaves_raw_none() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_capture_off_leaves_raw_none";
+async fn stream_raw_round_trips_terminal_type() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_openrouter_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_off_leaves_raw_none",
+        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
             let model = client.completion_model(DEFAULT_MODEL);
-            let stream = model.stream(request(&model, false)).await?;
+            let stream = model.stream(request(&model)).await?;
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
-            assert!(
-                terminal.raw.is_none(),
-                "raw must stay None unless asked for"
-            );
             assert!(!text.is_empty());
-            *sink.lock().expect("observation lock") = Some(terminal);
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("stream_capture_off_leaves_raw_none should replay from its cassette");
-
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
-    let frame = recorded_terminal_frame(SCENARIO);
-    assert_terminal_reproduces_frame(&terminal, &frame, "flag off");
-    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(request_body["stream"], json!(true));
-    assert!(request_body.get("capture_raw_response").is_none());
-}
-
-// ================================================================
-// 2. On round-trips the terminal type
-// ================================================================
-
-#[tokio::test]
-async fn stream_capture_on_round_trips_terminal_type() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_capture_on_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_openrouter_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_on_round_trips_terminal_type",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let stream = model.stream(request(&model, true)).await?;
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("stream should end with a terminal record");
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("raw is captured when asked for");
+                .expect("every provider-backed terminal carries raw");
             let typed = OpenRouterTerminal::deserialize(raw)
                 .expect("raw is the chat-completions terminal over OpenRouter usage");
             assert_eq!(
@@ -189,7 +142,7 @@ async fn stream_capture_on_round_trips_terminal_type() {
         },
     )
     .await
-    .expect("stream_capture_on_round_trips_terminal_type should replay from its cassette");
+    .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
     let terminal = observed
         .lock()
@@ -197,24 +150,26 @@ async fn stream_capture_on_round_trips_terminal_type() {
         .take()
         .expect("the cell should observe a terminal record");
     let frame = recorded_terminal_frame(SCENARIO);
-    assert_terminal_reproduces_frame(&terminal, &frame, "flag on");
+    assert_terminal_reproduces_frame(&terminal, &frame);
+    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
+    assert_eq!(request_body["stream"], json!(true));
 }
 
 // ================================================================
-// 3. Terminal-only fields the normalized record lacks
+// 2. Terminal-only fields the normalized record lacks
 // ================================================================
 
 #[tokio::test]
-async fn stream_capture_on_exposes_terminal_cost_and_provider() {
+async fn stream_raw_exposes_terminal_cost_and_provider() {
     const SCENARIO: &str =
-        "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_cost_and_provider";
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_openrouter_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_cost_and_provider",
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider",
         |client| async move {
             let model = client.completion_model(DEFAULT_MODEL);
-            let stream = model.stream(request(&model, true)).await?;
+            let stream = model.stream(request(&model)).await?;
             let (_, terminal) = collect_text_and_terminal(stream).await;
             *sink.lock().expect("observation lock") =
                 Some(terminal.expect("stream should end with a terminal record"));
@@ -222,7 +177,7 @@ async fn stream_capture_on_exposes_terminal_cost_and_provider() {
         },
     )
     .await
-    .expect("stream_capture_on_exposes_terminal_cost_and_provider should replay from its cassette");
+    .expect("stream_raw_exposes_terminal_cost_and_provider should replay from its cassette");
 
     let terminal = observed
         .lock()
@@ -237,7 +192,10 @@ async fn stream_capture_on_exposes_terminal_cost_and_provider() {
         .as_str()
         .expect("OpenRouter's frames name the routed provider");
 
-    let raw = terminal.raw.as_deref().expect("raw is captured");
+    let raw = terminal
+        .raw
+        .as_deref()
+        .expect("every provider-backed terminal carries raw");
     assert_eq!(raw["usage"]["cost"], json!(recorded_cost));
     assert_eq!(
         raw["additional_params"]["provider"],
@@ -251,36 +209,4 @@ async fn stream_capture_on_exposes_terminal_cost_and_provider() {
         normalized_usage.get("cost").is_none(),
         "the normalized usage has no cost slot: {normalized_usage}"
     );
-}
-
-// ================================================================
-// 4. The flag never reaches the wire
-// ================================================================
-
-#[tokio::test]
-async fn stream_request_invariant_off_vs_on() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_request_invariant_off_vs_on";
-    with_openrouter_cassette_result(
-        "raw_stream_capture_matrix/stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let (_, off) =
-                collect_text_and_terminal(model.stream(request(&model, false)).await?).await;
-            let (_, on) =
-                collect_text_and_terminal(model.stream(request(&model, true)).await?).await;
-            assert!(off.expect("off terminal").raw.is_none());
-            assert!(on.expect("on terminal").raw.is_some());
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("stream_request_invariant_off_vs_on should replay from its cassette");
-
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    assert_eq!(interactions.len(), 2, "one flag-off and one flag-on stream");
-    assert_eq!(
-        interactions[0].0, interactions[1].0,
-        "the flag-off and flag-on request bodies must be byte-identical"
-    );
-    assert!(!interactions[0].0.contains("capture_raw"));
 }

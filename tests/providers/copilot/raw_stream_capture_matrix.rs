@@ -1,16 +1,19 @@
-//! Matrix for opt-in raw terminal-record capture on both Copilot streaming
-//! routes (`CompletionRequest::capture_raw_response` → `StreamFinal::raw`).
+//! Matrix for raw terminal-record capture on both Copilot streaming routes
+//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
 //!
 //! # The feature
 //!
-//! `StreamFinal::raw` is the value
+//! Capture is always on. The terminal record of every stream the seam yields
+//! carries `raw`: the value
 //! [`CompletionModel::raw_stream`](rig::providers::copilot::CompletionModel::raw_stream)
 //! would have yielded as its `FinalResponse` — the route-tagged
 //! [`CopilotStreamingResponse`](rig::providers::copilot::CopilotStreamingResponse)
 //! (`{"api":"chat", …}` wrapping the chat-completions terminal record,
 //! `{"api":"responses", …}` wrapping the Responses one) — serialized with
-//! `serde_json::to_value`. It is the terminal record only, populated only when
-//! the request opted in, and never on the wire.
+//! `serde_json::to_value`. It is the terminal record only, and nothing about
+//! it is sent to Copilot. `raw == None` means only that a `StreamFinal` was
+//! built by hand without a provider terminal behind it, which no cell here
+//! can produce.
 //!
 //! Terminal-only fields per route: on the chat route the shared terminal type
 //! accumulates unknown top-level chunk fields under `additional_params`, which
@@ -23,14 +26,10 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_capture_off_raw_is_none` | chat route, flag off | terminal `raw == None` | unrecorded (no COPILOT credentials in this environment) |
-//! | 2 | `chat_stream_capture_on_terminal_round_trips_provider_type` | chat route, flag on | `CopilotStreamingResponse::deserialize(&*raw)` is `Chat(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
-//! | 3 | `chat_stream_capture_on_exposes_copilot_usage` | chat route, terminal-only fields | `raw.additional_params.copilot_usage` equals the terminal frame's; usage equals the frame's | unrecorded (no COPILOT credentials in this environment) |
-//! | 4 | `chat_stream_request_invariant_off_vs_on` | chat route, on-wire request | flag-off and flag-on request bodies byte-identical | unrecorded (no COPILOT credentials in this environment) |
-//! | 5 | `responses_stream_capture_off_raw_is_none` | responses route, flag off | terminal `raw == None` | unrecorded (no COPILOT credentials in this environment) |
-//! | 6 | `responses_stream_capture_on_terminal_round_trips_provider_type` | responses route, flag on | `CopilotStreamingResponse::deserialize(&*raw)` is `Responses(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
-//! | 7 | `responses_stream_capture_on_exposes_terminal_status` | responses route, terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says | unrecorded (no COPILOT credentials in this environment) |
-//! | 8 | `responses_stream_request_invariant_off_vs_on` | responses route, on-wire request | flag-off and flag-on request bodies byte-identical | unrecorded (no COPILOT credentials in this environment) |
+//! | 1 | `chat_stream_raw_terminal_round_trips_provider_type` | chat route, typed access | `CopilotStreamingResponse::deserialize(&*raw)` is `Chat(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
+//! | 2 | `chat_stream_raw_exposes_copilot_usage` | chat route, terminal-only fields | `raw.additional_params.copilot_usage` equals the terminal frame's; usage equals the frame's | unrecorded (no COPILOT credentials in this environment) |
+//! | 3 | `responses_stream_raw_terminal_round_trips_provider_type` | responses route, typed access | `CopilotStreamingResponse::deserialize(&*raw)` is `Responses(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
+//! | 4 | `responses_stream_raw_exposes_terminal_status` | responses route, terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says | unrecorded (no COPILOT credentials in this environment) |
 //!
 //! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
 //! `COPILOT_API_KEY`, `COPILOT_GITHUB_ACCESS_TOKEN`/`GITHUB_TOKEN` nor a Copilot
@@ -57,15 +56,18 @@ const CHAT_MODEL: &str = copilot::GPT_4O;
 const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &copilot::CompletionModel,
-    capture_raw: bool,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .max_tokens(64)
-        .capture_raw_response(capture_raw)
-        .build()
+fn request(model: &copilot::CompletionModel) -> rig::completion::CompletionRequest {
+    model.completion_request(PROMPT).max_tokens(64).build()
+}
+
+/// Every cell records exactly one interaction; a scenario with more has
+/// drifted from the matrix's premise.
+fn assert_single_interaction(scenario: &str) {
+    assert_eq!(
+        recorded_interaction_bodies(COPILOT_PROVIDER, scenario).len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
 }
 
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
@@ -86,6 +88,7 @@ async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) ->
 /// Chat-route premise: the recorded SSE stream's last frame carries `usage`
 /// (and Copilot's `copilot_usage`). Returns `(all frames, terminal frame)`.
 fn recorded_chat_frames(scenario: &str) -> (Vec<Value>, Value) {
+    assert_single_interaction(scenario);
     let frames = recorded_sse_json_frames(COPILOT_PROVIDER, scenario);
     let terminal = frames
         .iter()
@@ -106,6 +109,7 @@ fn recorded_chat_frames(scenario: &str) -> (Vec<Value>, Value) {
 /// Responses-route premise: the recorded SSE stream ends with a
 /// `response.completed` frame carrying usage. Returns its `response`.
 fn recorded_responses_terminal(scenario: &str) -> Value {
+    assert_single_interaction(scenario);
     let frames = recorded_sse_json_frames(COPILOT_PROVIDER, scenario);
     let terminal = frames
         .iter()
@@ -122,75 +126,23 @@ fn recorded_responses_terminal(scenario: &str) -> Value {
     response
 }
 
-fn recorded_request_bodies(scenario: &str) -> Vec<String> {
-    recorded_interaction_bodies(COPILOT_PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, _)| request)
-        .collect()
-}
-
-fn assert_two_identical_requests(scenario: &str, model: &str) {
-    let requests = recorded_request_bodies(scenario);
-    assert_eq!(
-        requests.len(),
-        2,
-        "{scenario}: expected the off and on requests"
-    );
-    assert_eq!(
-        requests[0], requests[1],
-        "the flag-on streaming request body must be byte-identical to the \
-         flag-off one — capture_raw_response must never reach Copilot"
-    );
-    assert!(!requests[0].contains("capture_raw"));
-    let body: Value = serde_json::from_str(&requests[0]).expect("recorded request should be JSON");
-    assert_eq!(body["stream"], Value::Bool(true));
-    assert_eq!(body["model"], model);
-}
-
 // ===========================================================================
 // Chat-completions route
 // ===========================================================================
 
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_stream_capture_off_raw_is_none() {
-    let scenario = "raw_stream_capture_matrix/chat_stream_capture_off_raw_is_none";
-    with_copilot_cassette(
-        "raw_stream_capture_matrix/chat_stream_capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(CHAT_MODEL);
-            let request = request(&model, false);
-            assert!(!request.capture_raw_response, "premise: default is off");
-            let terminal =
-                terminal_of(model.stream(request).await.expect("stream should start")).await;
-            assert!(
-                terminal.raw.is_none(),
-                "terminal raw must stay None when capture was not requested, got {:?}",
-                terminal.raw
-            );
-            assert!(terminal.usage.total_tokens > 0, "usage is unaffected");
-            assert_eq!(terminal.provider, COPILOT_PROVIDER);
-        },
-    )
-    .await;
-
-    recorded_chat_frames(scenario);
-}
-
-#[tokio::test]
-#[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_stream_capture_on_terminal_round_trips_provider_type() {
-    let scenario =
-        "raw_stream_capture_matrix/chat_stream_capture_on_terminal_round_trips_provider_type";
+async fn chat_stream_raw_terminal_round_trips_provider_type() {
+    let scenario = "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_copilot_cassette(
-        "raw_stream_capture_matrix/chat_stream_capture_on_terminal_round_trips_provider_type",
+        "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(CHAT_MODEL);
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -198,7 +150,7 @@ async fn chat_stream_capture_on_terminal_round_trips_provider_type() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested");
+                .expect("every provider-backed terminal record carries raw");
             assert_eq!(raw["api"], "chat", "the route tag rides along on raw");
             let typed = CopilotStreamingResponse::deserialize(raw)
                 .expect("raw must deserialize into CopilotStreamingResponse");
@@ -235,17 +187,17 @@ async fn chat_stream_capture_on_terminal_round_trips_provider_type() {
 
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_stream_capture_on_exposes_copilot_usage() {
-    let scenario = "raw_stream_capture_matrix/chat_stream_capture_on_exposes_copilot_usage";
+async fn chat_stream_raw_exposes_copilot_usage() {
+    let scenario = "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_copilot_cassette(
-        "raw_stream_capture_matrix/chat_stream_capture_on_exposes_copilot_usage",
+        "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage",
         |client| async move {
             let model = client.completion_model(CHAT_MODEL);
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -263,7 +215,7 @@ async fn chat_stream_capture_on_exposes_copilot_usage() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested")
+                .expect("every provider-backed terminal record carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -322,81 +274,24 @@ async fn chat_stream_capture_on_exposes_copilot_usage() {
     );
 }
 
-/// One scenario, two interactions in wire order — off then on.
-#[tokio::test]
-#[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_stream_request_invariant_off_vs_on() {
-    let scenario = "raw_stream_capture_matrix/chat_stream_request_invariant_off_vs_on";
-    with_copilot_cassette(
-        "raw_stream_capture_matrix/chat_stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(CHAT_MODEL);
-            let off = terminal_of(
-                model
-                    .stream(request(&model, false))
-                    .await
-                    .expect("flag-off stream should start"),
-            )
-            .await;
-            let on = terminal_of(
-                model
-                    .stream(request(&model, true))
-                    .await
-                    .expect("flag-on stream should start"),
-            )
-            .await;
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-        },
-    )
-    .await;
-
-    assert_two_identical_requests(scenario, CHAT_MODEL);
-}
-
 // ===========================================================================
 // Responses route
 // ===========================================================================
 
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_stream_capture_off_raw_is_none() {
-    let scenario = "raw_stream_capture_matrix/responses_stream_capture_off_raw_is_none";
-    with_copilot_cassette(
-        "raw_stream_capture_matrix/responses_stream_capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(RESPONSES_MODEL);
-            let request = request(&model, false);
-            assert!(!request.capture_raw_response, "premise: default is off");
-            let terminal =
-                terminal_of(model.stream(request).await.expect("stream should start")).await;
-            assert!(
-                terminal.raw.is_none(),
-                "terminal raw must stay None when capture was not requested, got {:?}",
-                terminal.raw
-            );
-            assert!(terminal.usage.total_tokens > 0, "usage is unaffected");
-        },
-    )
-    .await;
-
-    recorded_responses_terminal(scenario);
-}
-
-#[tokio::test]
-#[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_stream_capture_on_terminal_round_trips_provider_type() {
+async fn responses_stream_raw_terminal_round_trips_provider_type() {
     let scenario =
-        "raw_stream_capture_matrix/responses_stream_capture_on_terminal_round_trips_provider_type";
+        "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_copilot_cassette(
-        "raw_stream_capture_matrix/responses_stream_capture_on_terminal_round_trips_provider_type",
+        "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(RESPONSES_MODEL);
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -404,7 +299,7 @@ async fn responses_stream_capture_on_terminal_round_trips_provider_type() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested");
+                .expect("every provider-backed terminal record carries raw");
             assert_eq!(raw["api"], "responses", "the route tag rides along on raw");
             let typed = CopilotStreamingResponse::deserialize(raw)
                 .expect("raw must deserialize into CopilotStreamingResponse");
@@ -439,17 +334,17 @@ async fn responses_stream_capture_on_terminal_round_trips_provider_type() {
 
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_stream_capture_on_exposes_terminal_status() {
-    let scenario = "raw_stream_capture_matrix/responses_stream_capture_on_exposes_terminal_status";
+async fn responses_stream_raw_exposes_terminal_status() {
+    let scenario = "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_copilot_cassette(
-        "raw_stream_capture_matrix/responses_stream_capture_on_exposes_terminal_status",
+        "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status",
         |client| async move {
             let model = client.completion_model(RESPONSES_MODEL);
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -462,7 +357,7 @@ async fn responses_stream_capture_on_exposes_terminal_status() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested")
+                .expect("every provider-backed terminal record carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -484,36 +379,4 @@ async fn responses_stream_capture_on_exposes_terminal_status() {
         panic!("responses-route raw must read back as the Responses variant");
     };
     assert_eq!(typed.status, Some(responses_api::ResponseStatus::Completed));
-}
-
-/// One scenario, two interactions in wire order — off then on.
-#[tokio::test]
-#[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_stream_request_invariant_off_vs_on() {
-    let scenario = "raw_stream_capture_matrix/responses_stream_request_invariant_off_vs_on";
-    with_copilot_cassette(
-        "raw_stream_capture_matrix/responses_stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(RESPONSES_MODEL);
-            let off = terminal_of(
-                model
-                    .stream(request(&model, false))
-                    .await
-                    .expect("flag-off stream should start"),
-            )
-            .await;
-            let on = terminal_of(
-                model
-                    .stream(request(&model, true))
-                    .await
-                    .expect("flag-on stream should start"),
-            )
-            .await;
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-        },
-    )
-    .await;
-
-    assert_two_identical_requests(scenario, RESPONSES_MODEL);
 }

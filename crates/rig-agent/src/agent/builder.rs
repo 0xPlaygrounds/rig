@@ -230,29 +230,6 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Opt in or out of capturing the provider's own response for every
-    /// completion this agent makes.
-    ///
-    /// Defaults to `false`: capture costs a serialization of the provider's
-    /// parsed response on every call, which no caller should pay for unless
-    /// they asked — rig already keeps the raw body on the *failure* path
-    /// (`ProviderResponseError::body`); this is the same access for successful
-    /// calls, opt-in. Like [`record_content_telemetry`](Self::record_content_telemetry)
-    /// it is local policy: it changes nothing the provider sees.
-    ///
-    /// When enabled, the payload — the value the model's inherent
-    /// `raw_completion` / `raw_stream` would have returned, serialized — is
-    /// exposed on the `CompletionResponse`, `StreamResponseFinish`, and
-    /// `ModelTurnFinished` hook events (`raw`), on each
-    /// [`CompletionCall`](crate::agent::CompletionCall) in
-    /// `PromptResponse::completion_calls`, and on the streamed
-    /// `StreamedAssistantContent::Final` terminal record. It can be overridden
-    /// per run and per request.
-    pub fn capture_raw_response(mut self, enabled: bool) -> Self {
-        self.config.capture_raw_response = enabled;
-        self
-    }
-
     /// Set the output schema for structured output. When set, providers that support
     /// native structured outputs will constrain the model's response to match this schema.
     pub fn output_schema<T>(mut self) -> Self

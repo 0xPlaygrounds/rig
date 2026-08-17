@@ -975,29 +975,22 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Read the local-policy flag before `raw_completion` consumes the
-        // request, and capture before `try_into` consumes the raw value.
-        let capture_raw = completion_request.capture_raw_response;
+        // Capture before `try_into` consumes the raw value.
         let raw = self.raw_completion(completion_request).await?;
-        let captured = capture_raw
-            .then(|| serde_json::to_value(&raw))
-            .transpose()?;
+        let captured = serde_json::to_value(&raw)?;
         let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_optional_raw(captured))
+        Ok(response.with_raw(captured))
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        // Same flag, read before `raw_stream` consumes the request.
-        let capture_raw = request.capture_raw_response;
         let stream = self.raw_stream(request).await?;
-        let normalized = streaming::normalize_stream(
-            stream,
-            capture_raw,
-            |response: StreamingCompletionResponse| Ok(response.into()),
-        );
+        let normalized =
+            streaming::normalize_stream(stream, |response: StreamingCompletionResponse| {
+                Ok(response.into())
+            });
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
@@ -2121,7 +2114,6 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2187,7 +2179,6 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2253,7 +2244,6 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2319,7 +2309,6 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2385,7 +2374,6 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2416,7 +2404,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2472,7 +2459,6 @@ mod tests {
             additional_params: Some(json!({ "num_predict": 42 })),
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -2507,7 +2493,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -2546,7 +2531,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -2588,7 +2572,6 @@ mod tests {
             additional_params: None,
             output_schema: Some(schema),
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -2632,7 +2615,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -3005,45 +2987,26 @@ mod tests {
             client.completion_model(LLAMA3_2)
         }
 
-        /// Pins the default: a request that did not opt in gets `raw: None`,
-        /// even though the transport answered with a capturable body.
-        #[tokio::test]
-        async fn completion_leaves_raw_unset_unless_requested() {
-            let model = model();
-            let request = model.completion_request("hello").build();
-            assert!(!request.capture_raw_response, "the flag defaults off");
-
-            let response = model.completion(request).await.expect("completion");
-
-            assert!(response.raw.is_none());
-            assert_eq!(response.usage.total_tokens, 31);
-        }
-
-        /// The load-bearing capture property: with the flag on, `raw` is
-        /// Ollama's `CompletionResponse` as rig parsed it — it deserializes
-        /// back into that type and re-serializes to the identical value —
-        /// while every normalized field equals the flag-off run of the same
-        /// body. Also reads `total_duration` and `eval_duration` off the
-        /// capture, which the normalized response provably lacks.
+        /// The load-bearing capture property: `raw` is Ollama's
+        /// `CompletionResponse` as rig parsed it — it deserializes back into
+        /// that type and re-serializes to the identical value — and
+        /// re-normalizing that capture through the same `TryFrom` reproduces
+        /// every normalized field. Also reads `total_duration` and
+        /// `eval_duration` off the capture, which the normalized response
+        /// provably lacks.
         #[tokio::test]
         async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
             let model = model();
 
-            let off = model
+            let response = model
                 .completion(model.completion_request("hello").build())
                 .await
-                .expect("flag-off completion");
-            let on = model
-                .completion(
-                    model
-                        .completion_request("hello")
-                        .capture_raw_response(true)
-                        .build(),
-                )
-                .await
-                .expect("flag-on completion");
+                .expect("completion");
 
-            let raw = on.raw.as_deref().expect("flag on must capture");
+            let raw = response
+                .raw
+                .as_deref()
+                .expect("a provider-backed completion always carries raw");
             let typed: CompletionResponse =
                 serde_json::from_value(raw.clone()).expect("raw must deserialize");
             assert_eq!(
@@ -3056,13 +3019,19 @@ mod tests {
             assert_eq!(raw["total_duration"], 5_043_500_667_u64);
             assert_eq!(typed.done_reason.as_deref(), Some("stop"));
 
-            assert_eq!(on.identity(), off.identity());
-            assert_eq!(on.finish_reason(), off.finish_reason());
-            assert_eq!(on.model, off.model);
-            assert_eq!(on.usage, off.usage);
-            assert_eq!(on.choice, off.choice);
-            assert_eq!(on.finish_reason(), Some(completion::FinishReason::Stop));
-            assert_eq!(on.model.as_deref(), Some("llama3.2"));
+            let renormalized: completion::CompletionResponse =
+                typed.try_into().expect("re-normalize the capture");
+            assert_eq!(response.identity(), renormalized.identity());
+            assert_eq!(response.finish_reason(), renormalized.finish_reason());
+            assert_eq!(response.model, renormalized.model);
+            assert_eq!(response.usage, renormalized.usage);
+            assert_eq!(response.choice, renormalized.choice);
+            assert_eq!(
+                response.finish_reason(),
+                Some(completion::FinishReason::Stop)
+            );
+            assert_eq!(response.model.as_deref(), Some("llama3.2"));
+            assert_eq!(response.usage.total_tokens, 31);
         }
     }
 }

@@ -328,7 +328,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         }
     }
 

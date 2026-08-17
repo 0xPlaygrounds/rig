@@ -1,16 +1,19 @@
-//! Matrix for opt-in raw response capture on Bedrock's blocking Converse path
-//! (`CompletionRequest::capture_raw_response` → `CompletionResponse::raw`).
+//! Matrix for raw response capture on Bedrock's blocking Converse path
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
-//! `raw` is the value
+//! Capture is always on. Every completion the seam returns carries `raw`: the
+//! value
 //! [`CompletionModel::raw_completion`](rig::bedrock::completion::CompletionModel::raw_completion)
 //! would have returned — [`AwsConverseOutput`], rig's serializable mirror of
-//! the SDK's `ConverseOutput` — serialized with `serde_json::to_value`. It is
-//! populated only when the request opted in and never reaches the wire.
+//! the SDK's `ConverseOutput` — serialized with `serde_json::to_value` before
+//! normalization. Nothing about it is sent to Bedrock. `raw == None` means
+//! only that a `CompletionResponse` was built by hand without a provider
+//! response behind it, which no cell here can produce.
 //!
 //! Bedrock's response carries `metrics.latencyMs`, the server-side latency the
-//! normalized [`rig::completion::CompletionResponse`] has no field for; cell 3
+//! normalized [`rig::completion::CompletionResponse`] has no field for; cell 2
 //! reads it back through `raw` and checks it against the fixture body. Two
 //! Converse fields are deliberately *not* on `raw` even when the wire carried
 //! them: the guardrail `trace`, `performance_config` and `service_tier` keep
@@ -24,11 +27,9 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `capture_off_raw_is_none` | flag off (default) | `raw == None` | unrecorded (no valid AWS credentials in this environment) |
-//! | 2 | `capture_on_raw_round_trips_provider_type` | flag on | `AwsConverseOutput::deserialize(&*raw)` re-serializes equal | unrecorded (no valid AWS credentials in this environment) |
-//! | 3 | `capture_on_exposes_latency_metrics` | provider-only field | `raw.metrics.latency_ms` equals the fixture's `metrics.latencyMs` | unrecorded (no valid AWS credentials in this environment) |
-//! | 4 | `request_invariant_off_vs_on` | on-wire request | flag-off and flag-on request bodies byte-identical | unrecorded (no valid AWS credentials in this environment) |
-//! | 5 | `normalized_fields_identical_off_vs_on` | normalized view | off/on responses normalize their own wire bytes identically; only `raw` differs | unrecorded (no valid AWS credentials in this environment) |
+//! | 1 | `raw_round_trips_provider_type` | typed access | `AwsConverseOutput::deserialize(&*raw)` re-serializes equal | unrecorded (no valid AWS credentials in this environment) |
+//! | 2 | `raw_exposes_latency_metrics` | provider-only field | `raw.metrics.latency_ms` equals the fixture's `metrics.latencyMs` | unrecorded (no valid AWS credentials in this environment) |
+//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized response equals `raw` re-normalized (`try_into`); choice text and usage equal the fixture body | unrecorded (no valid AWS credentials in this environment) |
 //!
 //! Every cell is unrecorded: the `AWS_*` variables present when this matrix
 //! was written carried an expired session token (`aws sts get-caller-identity`
@@ -53,21 +54,17 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
-use crate::cassettes::{recorded_interaction_bodies, recorded_json_request};
+use crate::cassettes::recorded_interaction_bodies;
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &bedrock::completion::CompletionModel,
-    capture_raw: bool,
-) -> rig::completion::CompletionRequest {
+fn request(model: &bedrock::completion::CompletionModel) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .capture_raw_response(capture_raw)
         .build()
 }
 
@@ -91,18 +88,21 @@ fn assert_recorded_converse_with_metrics(body: &Value, scenario: &str) {
     );
 }
 
-fn recorded_json_interactions(scenario: &str) -> Vec<(Value, Value)> {
-    recorded_interaction_bodies(BEDROCK_PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, response)| {
-            let request: Value = serde_json::from_str(&request)
-                .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
-            let response: Value = serde_json::from_str(&response).unwrap_or_else(|err| {
-                panic!("{scenario}: recorded response should be JSON: {err}")
-            });
-            (request, response)
-        })
-        .collect()
+/// The single recorded interaction of a scenario, request and response parsed
+/// as JSON.
+fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
+    let bodies = recorded_interaction_bodies(BEDROCK_PROVIDER, scenario);
+    assert_eq!(
+        bodies.len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
+    let (request, response) = &bodies[0];
+    let request: Value = serde_json::from_str(request)
+        .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
+    let response: Value = serde_json::from_str(response)
+        .unwrap_or_else(|err| panic!("{scenario}: recorded response should be JSON: {err}"));
+    (request, response)
 }
 
 fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
@@ -111,66 +111,26 @@ fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// 1: off → None
+// 1: raw is the raw_completion value, serialized
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
-async fn capture_off_raw_is_none() {
-    let scenario = "raw_capture_matrix/capture_off_raw_is_none";
+async fn raw_round_trips_provider_type() {
+    let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
     with_bedrock_cassette(
-        "raw_capture_matrix/capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let request = request(&model, false);
-            assert!(
-                !request.capture_raw_response,
-                "premise: the builder default is off"
-            );
-
-            let response = model
-                .completion(request)
-                .await
-                .expect("completion should succeed");
-
-            assert!(
-                response.raw.is_none(),
-                "raw must stay None when capture was not requested, got {:?}",
-                response.raw
-            );
-            assert!(!response.choice.is_empty());
-        },
-    )
-    .await;
-
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
-    assert_recorded_converse_with_metrics(&body, scenario);
-}
-
-// ---------------------------------------------------------------------------
-// 2: on → raw is the raw_completion value, serialized
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore = "unrecorded (no valid AWS credentials in this environment)"]
-async fn capture_on_raw_round_trips_provider_type() {
-    let scenario = "raw_capture_matrix/capture_on_raw_round_trips_provider_type";
-    with_bedrock_cassette(
-        "raw_capture_matrix/capture_on_raw_round_trips_provider_type",
+        "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(MODEL);
             let response = model
-                .completion(request(&model, true))
+                .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw must be populated when capture was requested");
+                .expect("every provider-backed completion carries raw");
             let typed = AwsConverseOutput::deserialize(raw)
                 .expect("raw must deserialize into AwsConverseOutput");
             assert_eq!(
@@ -178,43 +138,31 @@ async fn capture_on_raw_round_trips_provider_type() {
                 *raw,
                 "AwsConverseOutput must round-trip through its own serde"
             );
-
-            // The typed view normalizes to the same surface `completion`
-            // produced: raw is the value the seam normalized.
-            let renormalized: RigCompletionResponse =
-                typed.try_into().expect("typed raw must normalize");
-            assert_eq!(
-                normalized_without_raw(renormalized),
-                normalized_without_raw(response),
-                "normalizing the captured raw must reproduce the normalized response"
-            );
+            assert!(!response.choice.is_empty());
         },
     )
     .await;
 
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
+    let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
 }
 
 // ---------------------------------------------------------------------------
-// 3: a provider-only field rig does not normalize is readable from raw
+// 2: a provider-only field rig does not normalize is readable from raw
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
-async fn capture_on_exposes_latency_metrics() {
-    let scenario = "raw_capture_matrix/capture_on_exposes_latency_metrics";
+async fn raw_exposes_latency_metrics() {
+    let scenario = "raw_capture_matrix/raw_exposes_latency_metrics";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_bedrock_cassette(
-        "raw_capture_matrix/capture_on_exposes_latency_metrics",
+        "raw_capture_matrix/raw_exposes_latency_metrics",
         |client| async move {
             let model = client.completion_model(MODEL);
             let response = model
-                .completion(request(&model, true))
+                .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
@@ -227,7 +175,7 @@ async fn capture_on_exposes_latency_metrics() {
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw must be populated when capture was requested")
+                .expect("every provider-backed completion carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -239,10 +187,7 @@ async fn capture_on_exposes_latency_metrics() {
         .expect("capture mutex")
         .take()
         .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
+    let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
 
     // The mirror type spells the field `latency_ms`; the wire spells it
@@ -268,125 +213,86 @@ async fn capture_on_exposes_latency_metrics() {
 }
 
 // ---------------------------------------------------------------------------
-// 4: the flag never reaches the provider
+// 3: raw and the typed route tell one story
 // ---------------------------------------------------------------------------
 
-/// One scenario, two interactions in wire order — off then on.
+/// The normalized response, with `raw` stripped, must equal the normalization
+/// (`try_into`) of `raw` read back through the mirror type — and the fields
+/// the wire body decides (choice text, usage) must equal the recorded body.
+/// Capture is a pure serialization of the value normalization consumed.
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
-async fn request_invariant_off_vs_on() {
-    let scenario = "raw_capture_matrix/request_invariant_off_vs_on";
-    with_bedrock_cassette(
-        "raw_capture_matrix/request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let off = model
-                .completion(request(&model, false))
-                .await
-                .expect("flag-off completion should succeed");
-            let on = model
-                .completion(request(&model, true))
-                .await
-                .expect("flag-on completion should succeed");
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-        },
-    )
-    .await;
-
-    let bodies = recorded_interaction_bodies(BEDROCK_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        2,
-        "{scenario}: the scenario must record exactly the off and on requests"
-    );
-    let (off_request, _) = &bodies[0];
-    let (on_request, _) = &bodies[1];
-    assert_eq!(
-        off_request, on_request,
-        "the flag-on request body must be byte-identical to the flag-off one — \
-         capture_raw_response is local policy and must never reach Bedrock"
-    );
-    assert!(!off_request.contains("capture_raw"));
-    let first: Value = recorded_json_request(BEDROCK_PROVIDER, scenario);
-    assert!(first.get("messages").is_some_and(Value::is_array));
-}
-
-// ---------------------------------------------------------------------------
-// 5: normalization is a pure function of the wire bytes, flag or no flag
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore = "unrecorded (no valid AWS credentials in this environment)"]
-async fn normalized_fields_identical_off_vs_on() {
-    let scenario = "raw_capture_matrix/normalized_fields_identical_off_vs_on";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+async fn normalized_fields_equal_raw_renormalized() {
+    let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_bedrock_cassette(
-        "raw_capture_matrix/normalized_fields_identical_off_vs_on",
+        "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
             let model = client.completion_model(MODEL);
-            let off = model
-                .completion(request(&model, false))
+            let response = model
+                .completion(request(&model))
                 .await
-                .expect("flag-off completion should succeed");
-            let on = model
-                .completion(request(&model, true))
-                .await
-                .expect("flag-on completion should succeed");
+                .expect("completion should succeed");
 
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(on.provider, off.provider);
-            assert_eq!(on.model, off.model);
-            assert_eq!(on.finish_reason(), off.finish_reason());
-            assert!(!off.choice.is_empty());
-            assert!(!on.choice.is_empty());
-            *sink.lock().expect("capture mutex") = vec![off, on];
+            let raw = response
+                .raw
+                .as_deref()
+                .expect("every provider-backed completion carries raw");
+            // The AWS request id is the `x-amzn-requestid` header, not part of
+            // the Converse body, so the raw-derived normalization is given the
+            // same one before the field-for-field comparison.
+            let from_raw: RigCompletionResponse = AwsConverseOutput::deserialize(raw)
+                .expect("raw must deserialize into AwsConverseOutput")
+                .try_into()
+                .expect("raw must normalize");
+            let from_raw =
+                from_raw.with_optional_provider_request_id(response.provider_request_id.clone());
+
+            assert_eq!(response.provider, BEDROCK_PROVIDER);
+            assert_eq!(from_raw.provider, response.provider);
+            assert_eq!(from_raw.model, response.model);
+            assert_eq!(from_raw.finish_reason(), response.finish_reason());
+            assert_eq!(from_raw.identity(), response.identity());
+            assert_eq!(from_raw.usage, response.usage);
+            assert!(!response.choice.is_empty());
+            assert_eq!(
+                normalized_without_raw(from_raw),
+                normalized_without_raw(response.clone()),
+                "re-normalizing raw must reproduce the normalized response field-for-field"
+            );
+
+            *sink.lock().expect("capture mutex") = Some(response);
         },
     )
     .await;
 
-    let responses = std::mem::take(&mut *captured.lock().expect("capture mutex"));
-    let interactions = recorded_json_interactions(scenario);
-    assert_eq!(
-        interactions.len(),
-        2,
-        "{scenario}: expected off and on turns"
+    let response = captured
+        .lock()
+        .expect("capture mutex")
+        .take()
+        .expect("the test body must have captured the response");
+    let (_, body) = recorded_json_interaction(scenario);
+    assert_recorded_converse_with_metrics(&body, scenario);
+    assert!(
+        response.provider_request_id.is_some(),
+        "Bedrock always reports an x-amzn-requestid on success"
     );
-
-    // The wire body has no room for the AWS request id (it is the
-    // `x-amzn-requestid` header, scrubbed to a placeholder on disk), so the
-    // body-derived comparison masks it and checks it separately.
-    for ((_, body), response) in interactions.into_iter().zip(responses) {
-        assert_recorded_converse_with_metrics(&body, scenario);
-        assert!(
-            response.provider_request_id.is_some(),
-            "Bedrock always reports an x-amzn-requestid on success"
-        );
-        let mut live = normalized_without_raw(response);
-        live["provider_request_id"] = Value::Null;
-        // Only the fields the wire body decides are compared: choice, usage,
-        // finish reason, model and provider all come from the JSON body.
-        for field in ["choice", "usage", "finish_reason", "provider", "model"] {
-            assert!(
-                live.get(field).is_some(),
-                "normalized response should carry `{field}`"
-            );
-        }
-        let text = body
-            .pointer("/output/message/content/0/text")
-            .and_then(Value::as_str)
-            .expect("recorded Converse body carries an assistant text block");
-        assert_eq!(
-            live.pointer("/choice/0/text").and_then(Value::as_str),
-            Some(text),
-            "the normalized choice must be the recorded body's text"
-        );
-        assert_eq!(
-            live.pointer("/usage/total_tokens"),
-            body.pointer("/usage/totalTokens"),
-            "the normalized usage must be the recorded body's usage"
-        );
-    }
+    // Only the fields the wire body decides are compared against it: the
+    // request id lives in a header the scrubber placeholders on disk.
+    let live = normalized_without_raw(response);
+    let text = body
+        .pointer("/output/message/content/0/text")
+        .and_then(Value::as_str)
+        .expect("recorded Converse body carries an assistant text block");
+    assert_eq!(
+        live.pointer("/choice/0/text").and_then(Value::as_str),
+        Some(text),
+        "the normalized choice must be the recorded body's text"
+    );
+    assert_eq!(
+        live.pointer("/usage/total_tokens"),
+        body.pointer("/usage/totalTokens"),
+        "the normalized usage must be the recorded body's usage"
+    );
 }

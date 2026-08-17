@@ -1,15 +1,15 @@
-//! Feature matrix for opt-in raw provider response capture on the Cohere
-//! `/v2/chat` streaming seam.
+//! Feature matrix for raw provider response capture on the Cohere `/v2/chat`
+//! streaming seam.
 //!
 //! # The feature
 //!
-//! [`rig::completion::CompletionRequest::capture_raw_response`] read before
-//! `raw_stream` and handed to `normalize_stream`: when set, the terminal
-//! [`rig::streaming::StreamFinal`] carries, serialized, the value the inherent
-//! `raw_stream` would have yielded as its `FinalResponse` — Cohere's own
+//! Raw capture is always on: `normalize_stream` serializes the value the
+//! inherent `raw_stream` yielded as its `FinalResponse` — Cohere's own
 //! [`StreamingCompletionResponse`] terminal record, built from the
-//! `message-end` event. Off (the default) it stays `None`; the flag never
-//! reaches the wire.
+//! `message-end` event — onto the terminal [`rig::streaming::StreamFinal::raw`].
+//! There is no opt-in and nothing about it reaches the wire; `raw` is `None`
+//! only on a terminal constructed without a provider stream behind it, never
+//! because capture "was not requested".
 //!
 //! # Matrix
 //!
@@ -21,17 +21,11 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `flag_off_leaves_terminal_raw_unset` | default (`false`) | `StreamFinal.raw.is_none()` | recorded |
-//! | 2 | `flag_on_roundtrips_streaming_completion_response` | `true` → typed access | `StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
-//! | 3 | `flag_on_exposes_terminal_only_fields` | `true` → un-normalized terminal fields | `finish_reason` spelled `"COMPLETE"`, `usage.billed_units.*` == `message-end` delta, absent from the normalized terminal | recorded |
-//! | 4 | `request_bytes_invariant_across_flag` | request boundary | recorded off/on request bodies byte-identical | recorded |
+//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal and agrees with the normalized terminal | recorded |
+//! | 2 | `raw_exposes_terminal_only_fields` | un-normalized terminal fields | `finish_reason` spelled `"COMPLETE"`, `usage.billed_units.*` == `message-end` delta, absent from the normalized terminal | recorded |
 //!
 //! Every cell is recorded: `COHERE_API_KEY` was available and the seam under
 //! test is the plain streaming `/v2/chat` route.
-//!
-//! Cell 4 records one scenario with **two** interactions — the flag-off stream
-//! first, then its flag-on twin — because the invariant is between the two;
-//! the harness replays interactions in order.
 //!
 //! The "wire" side of each premise is the `message-end` SSE frame: it is the
 //! only frame carrying usage and the finish reason, and it is what rig's
@@ -52,12 +46,11 @@ use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
-fn request(model: &cohere::CompletionModel, capture: bool) -> rig::completion::CompletionRequest {
+fn request(model: &cohere::CompletionModel) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-        .capture_raw_response(capture)
         .build()
 }
 
@@ -113,19 +106,9 @@ fn recorded_message_end_delta(scenario: &str) -> Value {
             .and_then(Value::as_f64)
             .is_some(),
         "{scenario}: the recorded message-end should carry billed_units, the un-normalized \
-         field cell 3 reads through `raw`"
+         field cell 2 reads through `raw`"
     );
     delta
-}
-
-fn assert_request_body_never_names_the_flag(scenario: &str, body: &str) {
-    for spelling in ["capture_raw_response", "captureRawResponse"] {
-        assert!(
-            !body.contains(spelling),
-            "{scenario}: the recorded request body must not carry {spelling:?}; the flag is \
-             `#[serde(skip)]` local policy and must never reach Cohere"
-        );
-    }
 }
 
 fn contains_key(value: &Value, needle: &str) -> bool {
@@ -145,72 +128,24 @@ fn number_at(value: &Value, pointer: &str) -> Option<f64> {
 }
 
 // ---------------------------------------------------------------------------
-// 1: default off
+// 1: typed access is recoverable
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn flag_off_leaves_terminal_raw_unset() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/flag_off_leaves_terminal_raw_unset";
-    let observed_input: Arc<Mutex<Option<u64>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed_input);
-    with_cohere_cassette(
-        "raw_stream_capture_matrix/flag_off_leaves_terminal_raw_unset",
-        |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
-            let terminal = stream_to_terminal(&model, request(&model, false)).await;
-
-            assert!(
-                terminal.raw.is_none(),
-                "capture was not requested, so the terminal record must not carry raw"
-            );
-            assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
-            // Cohere's stream names no model, so the normalized field stays unset
-            // regardless of the flag.
-            assert_eq!(terminal.model, None);
-            *sink.lock().expect("observation lock") = Some(terminal.usage.input_tokens);
-        },
-    )
-    .await;
-
-    let delta = recorded_message_end_delta(SCENARIO);
-    // The normalized terminal is untouched by the flag being off: its usage is
-    // the `tokens` counter from the message-end delta.
-    assert_eq!(
-        observed_input
-            .lock()
-            .expect("observation lock")
-            .take()
-            .map(|tokens| tokens as f64),
-        number_at(&delta, "/usage/tokens/input_tokens"),
-        "{SCENARIO}: the terminal usage should be the message-end token counter"
-    );
-    let (request_body, _) = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
-    assert_request_body_never_names_the_flag(SCENARIO, &request_body);
-}
-
-// ---------------------------------------------------------------------------
-// 2: on → typed access is recoverable
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn flag_on_roundtrips_streaming_completion_response() {
-    const SCENARIO: &str =
-        "raw_stream_capture_matrix/flag_on_roundtrips_streaming_completion_response";
+async fn raw_roundtrips_streaming_completion_response() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
     let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
     let sink = Arc::clone(&observed);
     with_cohere_cassette(
-        "raw_stream_capture_matrix/flag_on_roundtrips_streaming_completion_response",
+        "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
             let model = client.completion_model(CASSETTE_MODEL);
-            let terminal = stream_to_terminal(&model, request(&model, true)).await;
+            let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("capture was requested, so the terminal must carry raw");
+                .expect("a provider-backed terminal always carries raw");
 
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into Cohere's streaming terminal type");
@@ -251,24 +186,24 @@ async fn flag_on_roundtrips_streaming_completion_response() {
 }
 
 // ---------------------------------------------------------------------------
-// 3: on → terminal-only fields are readable and match the wire
+// 2: terminal-only fields are readable and match the wire
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn flag_on_exposes_terminal_only_fields() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/flag_on_exposes_terminal_only_fields";
+async fn raw_exposes_terminal_only_fields() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
     let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
     let sink = Arc::clone(&observed);
     with_cohere_cassette(
-        "raw_stream_capture_matrix/flag_on_exposes_terminal_only_fields",
+        "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
             let model = client.completion_model(CASSETTE_MODEL);
-            let terminal = stream_to_terminal(&model, request(&model, true)).await;
+            let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("capture was requested, so the terminal must carry raw");
+                .expect("a provider-backed terminal always carries raw");
             *sink.lock().expect("observation lock") = Some(raw.clone());
 
             // The normalized terminal provably lacks these: billed units have no
@@ -318,43 +253,4 @@ async fn flag_on_exposes_terminal_only_fields() {
             "{SCENARIO}: the recorded message-end delta should carry {pointer}"
         );
     }
-}
-
-// ---------------------------------------------------------------------------
-// 4: the request boundary never sees the flag
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn request_bytes_invariant_across_flag() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/request_bytes_invariant_across_flag";
-    with_cohere_cassette(
-        "raw_stream_capture_matrix/request_bytes_invariant_across_flag",
-        |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
-            let off = stream_to_terminal(&model, request(&model, false)).await;
-            let on = stream_to_terminal(&model, request(&model, true)).await;
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(off.finish_reason, on.finish_reason);
-            assert_eq!(off.model, on.model);
-            assert_eq!(off.provider, on.provider);
-            assert_eq!(off.usage.input_tokens, on.usage.input_tokens);
-        },
-    )
-    .await;
-
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    assert_eq!(
-        bodies.len(),
-        2,
-        "{SCENARIO}: the cell records the flag-off stream and then its flag-on twin"
-    );
-    let (off_request, _) = &bodies[0];
-    let (on_request, _) = &bodies[1];
-    assert_eq!(
-        off_request, on_request,
-        "the flag-on request must be byte-identical to the flag-off request; the flag is local \
-         policy and never reaches Cohere"
-    );
-    assert_request_body_never_names_the_flag(SCENARIO, on_request);
 }

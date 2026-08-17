@@ -416,14 +416,11 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        // Read the local-policy flag before `raw_stream` consumes the request,
-        // exactly as the unary seam reads it before `raw_completion`.
-        let capture_raw = completion_request.capture_raw_response;
         let stream = self.raw_stream(completion_request).await?;
 
         Ok(streaming::StreamingCompletionResponse::stream(
             Ext::PROVIDER_NAME,
-            streaming::normalize_stream(stream, capture_raw, |response| {
+            streaming::normalize_stream(stream, |response| {
                 Ok((Ext::PROVIDER_NAME, response).into())
             }),
         ))
@@ -571,19 +568,10 @@ where
 /// parameter rather than a constant because this helper is public and the
 /// chat-completions wire shape is shared: hardcoding `"openai"` would label
 /// every out-of-tree compatible provider's stream as OpenAI's.
-///
-/// `capture_raw` is the request's
-/// [`capture_raw_response`](crate::completion::CompletionRequest::capture_raw_response):
-/// this helper takes an already-built HTTP request and never sees the
-/// `CompletionRequest`, so a compatible provider built on it reads the flag
-/// off its request and passes it here, the way every in-tree seam does before
-/// `raw_stream` consumes the request. Otherwise a model built on this helper
-/// would silently ignore an agent's opt-in.
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
     provider: impl Into<String>,
-    capture_raw: bool,
 ) -> Result<streaming::StreamingCompletionResponse, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
@@ -594,7 +582,7 @@ where
     let mapper_provider = provider.clone();
     Ok(streaming::StreamingCompletionResponse::stream(
         provider,
-        streaming::normalize_stream(stream, capture_raw, move |response| {
+        streaming::normalize_stream(stream, move |response| {
             Ok((mapper_provider.as_str(), response).into())
         }),
     ))
@@ -686,10 +674,9 @@ mod tests {
                 chunks.iter().copied().chain(std::iter::once("[DONE]")),
             ),
         };
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .expect("stream should open");
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .expect("stream should open");
 
         let mut text = String::new();
         let mut terminal = None;
@@ -1175,10 +1162,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut final_usage = None;
         while let Some(chunk) = stream.next().await {
@@ -1206,10 +1192,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut final_response = None;
         while let Some(chunk) = stream.next().await {
@@ -1240,10 +1225,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut final_response = None;
         while let Some(chunk) = stream.next().await {
@@ -1279,10 +1263,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut saw_tool_call = false;
         let mut final_response = None;
@@ -1315,10 +1298,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut reasoning_chunks = Vec::new();
         let mut text_chunks = Vec::new();
@@ -1424,10 +1406,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -1476,10 +1457,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -1527,10 +1507,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -1573,10 +1552,9 @@ mod tests {
             ]),
         };
 
-        let stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
@@ -1591,10 +1569,9 @@ mod tests {
             ]),
         };
 
-        let stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         // The tool call was fully delivered, so it is still flushed at EOF —
         // but the stream reached EOF without `[DONE]` or a finish reason, so
@@ -1623,10 +1600,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut error_count = 0;
         let mut saw_final = false;
@@ -1671,10 +1647,9 @@ mod tests {
             ]),
         };
 
-        let mut stream =
-            send_compatible_streaming_request(client, streaming_request(), "openai", false)
-                .await
-                .unwrap();
+        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
+            .await
+            .unwrap();
 
         let mut texts = Vec::new();
         let mut saw_final = false;
@@ -1694,8 +1669,8 @@ mod tests {
     /// Raw-capture tests for the streaming terminal, through
     /// [`send_compatible_streaming_request`] — the shared helper every
     /// OpenAI-compatible stream (and every out-of-tree compatible provider)
-    /// funnels through, so the `capture_raw` argument it takes is the whole
-    /// streaming opt-in for this wire shape.
+    /// funnels through, so the terminal it produces is the whole streaming
+    /// capture story for this wire shape.
     mod raw_capture {
         use super::*;
         use crate::test_utils::MockStreamingClient;
@@ -1710,20 +1685,16 @@ mod tests {
             "{\"id\":\"chatcmpl-raw-7\",\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_stream\",\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":1,\"total_tokens\":4}}",
         ];
 
-        async fn terminal(capture_raw: bool) -> streaming::StreamFinal {
+        async fn terminal() -> streaming::StreamFinal {
             let client = MockStreamingClient {
                 sse_bytes: sse_bytes_from_data_lines(
                     CHUNKS.iter().copied().chain(std::iter::once("[DONE]")),
                 ),
             };
-            let mut stream = send_compatible_streaming_request(
-                client,
-                streaming_request(),
-                "openai",
-                capture_raw,
-            )
-            .await
-            .expect("stream should open");
+            let mut stream =
+                send_compatible_streaming_request(client, streaming_request(), "openai")
+                    .await
+                    .expect("stream should open");
 
             let mut terminal = None;
             while let Some(item) = stream.next().await {
@@ -1736,28 +1707,19 @@ mod tests {
             terminal.expect("the stream must end with a terminal record")
         }
 
-        /// Pins the default: `capture_raw: false` leaves the terminal's `raw`
-        /// unset even though the terminal record itself was fully populated.
-        #[tokio::test]
-        async fn terminal_leaves_raw_unset_unless_requested() {
-            let record = terminal(false).await;
-
-            assert!(record.raw.is_none());
-            assert_eq!(record.usage.total_tokens, 4);
-        }
-
-        /// The load-bearing streaming property: with the flag on, the
-        /// terminal's `raw` is the provider-native terminal record — it
-        /// deserializes back into
-        /// [`StreamingCompletionResponse`] and re-serializes identically —
-        /// and nothing normalized differs from the flag-off run of the same
-        /// bytes. Also reads terminal-only metadata off the capture.
+        /// The load-bearing streaming property: the terminal's `raw` is the
+        /// provider-native terminal record — it deserializes back into
+        /// [`StreamingCompletionResponse`] and re-serializes identically — and
+        /// re-normalizing that capture reproduces every normalized field.
+        /// Also reads terminal-only metadata off the capture.
         #[tokio::test]
         async fn terminal_captures_raw_that_round_trips_into_the_terminal_type() {
-            let off = terminal(false).await;
-            let on = terminal(true).await;
+            let record = terminal().await;
 
-            let raw = on.raw.as_deref().expect("flag on must capture");
+            let raw = record
+                .raw
+                .as_deref()
+                .expect("a provider-backed terminal always carries raw");
             let typed: StreamingCompletionResponse =
                 serde_json::from_value(raw.clone()).expect("raw must deserialize");
             assert_eq!(
@@ -1769,12 +1731,14 @@ mod tests {
             assert_eq!(raw["additional_params"]["service_tier"], "default");
             assert_eq!(raw["additional_params"]["system_fingerprint"], "fp_stream");
 
-            assert_eq!(on.identity(), off.identity());
-            assert_eq!(on.finish_reason, off.finish_reason);
-            assert_eq!(on.model, off.model);
-            assert_eq!(on.usage, off.usage);
-            assert_eq!(on.finish_reason, Some(NormalizedFinishReason::Stop));
-            assert_eq!(on.model.as_deref(), Some("gpt-4o-mini-2024-07-18"));
+            let renormalized: streaming::StreamFinal = ("openai", typed).into();
+            assert_eq!(record.identity(), renormalized.identity());
+            assert_eq!(record.finish_reason, renormalized.finish_reason);
+            assert_eq!(record.model, renormalized.model);
+            assert_eq!(record.usage, renormalized.usage);
+            assert_eq!(record.finish_reason, Some(NormalizedFinishReason::Stop));
+            assert_eq!(record.model.as_deref(), Some("gpt-4o-mini-2024-07-18"));
+            assert_eq!(record.usage.total_tokens, 4);
         }
     }
 }

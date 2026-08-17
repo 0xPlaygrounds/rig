@@ -1,26 +1,27 @@
-//! Matrix for opt-in raw terminal-record capture on mistral.rs's streaming
-//! `/v1/chat/completions` route (`CompletionRequest::capture_raw_response` →
-//! `StreamFinal::raw`).
+//! Matrix for raw terminal-record capture on mistral.rs's streaming
+//! `/v1/chat/completions` route
+//! ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
 //!
 //! # The feature
 //!
-//! mistral.rs streams through rig's OpenAI chat-completions client, whose
+//! Capture is always on. mistral.rs streams through rig's OpenAI
+//! chat-completions client, whose
 //! [`raw_stream`](rig::providers::openai::GenericCompletionModel::raw_stream)
 //! yields [`openai::StreamingCompletionResponse`] as its terminal record: the
 //! usage from the stream's final `data:` frame plus the envelope fields the
 //! chunks carried (`object`, `created`, `system_fingerprint`) accumulated under
-//! `additional_params`. `StreamFinal::raw` is that record serialized — the
-//! terminal record only — populated only when the request opted in, and never
-//! on the wire.
+//! `additional_params`. Every terminal record the seam yields carries `raw` —
+//! that record serialized by `normalize_stream` — the terminal record only,
+//! and nothing about it is sent to the server. `raw == None` means only that
+//! a `StreamFinal` was built by hand without a provider terminal behind it,
+//! which no cell here can produce.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_capture_off_raw_is_none` | flag off (default) | terminal `raw == None` | unrecorded (no mistral.rs server in this environment) |
-//! | 2 | `stream_capture_on_terminal_round_trips_provider_type` | flag on | `openai::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no mistral.rs server in this environment) |
-//! | 3 | `stream_capture_on_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded chunks; usage equals the terminal frame | unrecorded (no mistral.rs server in this environment) |
-//! | 4 | `stream_request_invariant_off_vs_on` | on-wire request | flag-off and flag-on request bodies byte-identical | unrecorded (no mistral.rs server in this environment) |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `openai::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no mistral.rs server in this environment) |
+//! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded chunks; usage equals the terminal frame | unrecorded (no mistral.rs server in this environment) |
 //!
 //! Every cell is unrecorded: no mistral.rs server was listening on
 //! `127.0.0.1:1234` when this matrix was written, and a fixture is never
@@ -45,15 +46,8 @@ const MISTRALRS_PROVIDER: &str = "mistralrs";
 const NORMALIZED_PROVIDER: &str = "openai";
 const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
 
-fn request(
-    model: &openai::CompletionModel,
-    capture_raw: bool,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .max_tokens(64)
-        .capture_raw_response(capture_raw)
-        .build()
+fn request(model: &openai::CompletionModel) -> rig::completion::CompletionRequest {
+    model.completion_request(PROMPT).max_tokens(64).build()
 }
 
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
@@ -71,9 +65,15 @@ async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) ->
     finals.remove(0)
 }
 
-/// The premise every streaming cell rests on: the recorded SSE stream's last
-/// JSON frame carries `usage`. Returns `(all frames, terminal frame)`.
+/// The premise every streaming cell rests on: the scenario recorded exactly
+/// one interaction whose SSE stream's last JSON frame carries `usage`. Returns
+/// `(all frames, terminal frame)`.
 fn recorded_frames_with_terminal(scenario: &str) -> (Vec<Value>, Value) {
+    assert_eq!(
+        recorded_interaction_bodies(MISTRALRS_PROVIDER, scenario).len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
     let frames = recorded_sse_json_frames(MISTRALRS_PROVIDER, scenario);
     let terminal = frames
         .last()
@@ -100,60 +100,23 @@ fn recorded_envelope_field(frames: &[Value], key: &str, scenario: &str) -> Value
     first
 }
 
-fn recorded_request_bodies(scenario: &str) -> Vec<String> {
-    recorded_interaction_bodies(MISTRALRS_PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, _)| request)
-        .collect()
-}
-
 // ---------------------------------------------------------------------------
-// 1: off → None
+// 1: raw is the raw_stream FinalResponse, serialized
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
-async fn stream_capture_off_raw_is_none() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_off_raw_is_none";
-    with_mistralrs_completions_cassette(
-        "raw_stream_capture_matrix/stream_capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(model_name());
-            let request = request(&model, false);
-            assert!(!request.capture_raw_response, "premise: default is off");
-            let terminal =
-                terminal_of(model.stream(request).await.expect("stream should start")).await;
-            assert!(
-                terminal.raw.is_none(),
-                "terminal raw must stay None when capture was not requested, got {:?}",
-                terminal.raw
-            );
-            assert!(terminal.usage.total_tokens > 0, "usage is unaffected");
-            assert_eq!(terminal.provider, NORMALIZED_PROVIDER);
-        },
-    )
-    .await;
-
-    recorded_frames_with_terminal(scenario);
-}
-
-// ---------------------------------------------------------------------------
-// 2: on → raw is the raw_stream FinalResponse, serialized
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore = "unrecorded (no mistral.rs server in this environment)"]
-async fn stream_capture_on_terminal_round_trips_provider_type() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_on_terminal_round_trips_provider_type";
+async fn stream_raw_terminal_round_trips_provider_type() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_mistralrs_completions_cassette(
-        "raw_stream_capture_matrix/stream_capture_on_terminal_round_trips_provider_type",
+        "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(model_name());
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -161,7 +124,7 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested");
+                .expect("every provider-backed terminal record carries raw");
             let typed = openai::StreamingCompletionResponse::<openai::Usage>::deserialize(raw)
                 .expect("raw must deserialize into openai::StreamingCompletionResponse");
             assert_eq!(
@@ -179,6 +142,7 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.model, terminal.model);
+            assert_eq!(terminal.provider, NORMALIZED_PROVIDER);
             *sink.lock().expect("capture mutex") = Some(raw.clone());
         },
     )
@@ -201,22 +165,22 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
 }
 
 // ---------------------------------------------------------------------------
-// 3: terminal-only fields
+// 2: terminal-only fields
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
-async fn stream_capture_on_exposes_envelope_fields() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_on_exposes_envelope_fields";
+async fn stream_raw_exposes_envelope_fields() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_mistralrs_completions_cassette(
-        "raw_stream_capture_matrix/stream_capture_on_exposes_envelope_fields",
+        "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
             let model = client.completion_model(model_name());
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -239,7 +203,7 @@ async fn stream_capture_on_exposes_envelope_fields() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested")
+                .expect("every provider-backed terminal record carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -282,64 +246,4 @@ async fn stream_capture_on_exposes_envelope_fields() {
         typed_params.get("system_fingerprint"),
         frames[0].get("system_fingerprint")
     );
-}
-
-// ---------------------------------------------------------------------------
-// 4: the flag never reaches the provider
-// ---------------------------------------------------------------------------
-
-/// One scenario, two interactions in wire order — off then on.
-#[tokio::test]
-#[ignore = "unrecorded (no mistral.rs server in this environment)"]
-async fn stream_request_invariant_off_vs_on() {
-    let scenario = "raw_stream_capture_matrix/stream_request_invariant_off_vs_on";
-    with_mistralrs_completions_cassette(
-        "raw_stream_capture_matrix/stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(model_name());
-            let off = terminal_of(
-                model
-                    .stream(request(&model, false))
-                    .await
-                    .expect("flag-off stream should start"),
-            )
-            .await;
-            let on = terminal_of(
-                model
-                    .stream(request(&model, true))
-                    .await
-                    .expect("flag-on stream should start"),
-            )
-            .await;
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(off.provider, on.provider);
-        },
-    )
-    .await;
-
-    let requests = recorded_request_bodies(scenario);
-    assert_eq!(
-        requests.len(),
-        2,
-        "{scenario}: expected the off and on requests"
-    );
-    assert_eq!(
-        requests[0], requests[1],
-        "the flag-on streaming request body must be byte-identical to the \
-         flag-off one — capture_raw_response must never reach the server"
-    );
-    assert!(!requests[0].contains("capture_raw"));
-    let body: Value = serde_json::from_str(&requests[0]).expect("recorded request should be JSON");
-    assert_eq!(body["stream"], Value::Bool(true));
-    for (_, response) in recorded_interaction_bodies(MISTRALRS_PROVIDER, scenario) {
-        let last_frame = response
-            .lines()
-            .filter_map(|line| line.trim().strip_prefix("data:"))
-            .map(str::trim)
-            .rfind(|payload| *payload != "[DONE]")
-            .expect("each recorded stream should carry frames");
-        let frame: Value = serde_json::from_str(last_frame).expect("terminal frame should be JSON");
-        assert!(frame.get("usage").is_some_and(Value::is_object));
-    }
 }

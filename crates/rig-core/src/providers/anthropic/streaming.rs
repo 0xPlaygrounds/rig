@@ -623,11 +623,8 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        // Read the local-policy flag before `raw_stream` consumes the request,
-        // exactly as the unary seam reads it before `raw_completion`.
-        let capture_raw = completion_request.capture_raw_response;
         let stream = self.raw_stream(completion_request).await?;
-        let normalized = streaming::normalize_stream(stream, capture_raw, |response| {
+        let normalized = streaming::normalize_stream(stream, |response| {
             Ok(StreamFinal::from((Ext::PROVIDER_NAME, response)))
         });
 
@@ -884,7 +881,7 @@ mod tests {
         > + Send
         + 'static,
     ) -> crate::streaming::StreamingResult {
-        crate::streaming::normalize_stream(Box::pin(stream), false, |response| {
+        crate::streaming::normalize_stream(Box::pin(stream), |response| {
             Ok(StreamFinal::from(("anthropic", response)))
         })
     }
@@ -895,7 +892,7 @@ mod tests {
             Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
         > + 'static,
     ) -> crate::streaming::StreamingResult {
-        crate::streaming::normalize_stream(Box::pin(stream), false, |response| {
+        crate::streaming::normalize_stream(Box::pin(stream), |response| {
             Ok(StreamFinal::from(("anthropic", response)))
         })
     }
@@ -980,7 +977,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
@@ -1030,7 +1026,6 @@ mod tests {
             additional_params: None,
             output_schema: Some(schema),
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let streaming_body = built_streaming_body(CLAUDE_OPUS_4_8, request.clone(), false)
@@ -1093,7 +1088,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
@@ -1128,7 +1122,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let body = built_streaming_body(CLAUDE_OPUS_4_8, request, true)
@@ -1163,7 +1156,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
@@ -2855,50 +2847,38 @@ mod tests {
         }
 
         /// Raw capture on the streaming terminal, through the real
-        /// `CompletionModel::stream` seam over the mock transport: the flag
-        /// on the request is read before `raw_stream` and handed to
-        /// `normalize_stream`, so the terminal `StreamFinal.raw` is
-        /// Anthropic's own `StreamingCompletionResponse`. A `message_delta`
-        /// with `stop_sequence` set is used because the normalized terminal
-        /// folds it into `FinishReason::Stop` and keeps neither Anthropic's
-        /// spelling nor which sequence fired — both are readable only off
-        /// the capture.
+        /// `CompletionModel::stream` seam over the mock transport:
+        /// `normalize_stream` serializes the terminal before mapping it, so
+        /// the terminal `StreamFinal.raw` is Anthropic's own
+        /// `StreamingCompletionResponse`. A `message_delta` with
+        /// `stop_sequence` set is used because the normalized terminal folds
+        /// it into `FinishReason::Stop` and keeps neither Anthropic's spelling
+        /// nor which sequence fired — both are readable only off the capture.
         #[tokio::test]
-        async fn terminal_captures_raw_only_when_requested_and_round_trips() {
+        async fn terminal_raw_round_trips_into_the_terminal_type() {
             const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
 
-            async fn terminal(capture_raw: bool) -> crate::streaming::StreamFinal {
-                let client = Client::builder()
-                    .api_key("test-key")
-                    .http_client(MockStreamingClient {
-                        sse_bytes: sse(&[
-                            MESSAGE_START,
-                            TEXT_START,
-                            TEXT_DELTA,
-                            STOP_SEQUENCE_DELTA,
-                        ]),
-                    })
-                    .build()
-                    .expect("build client");
-                let model = client.completion_model(CLAUDE_SONNET_4_6);
-                let request = model
-                    .completion_request("hello")
-                    .capture_raw_response(capture_raw)
-                    .build();
-                let mut stream = crate::completion::CompletionModel::stream(&model, request)
-                    .await
-                    .expect("stream should open");
-                while let Some(item) = stream.next().await {
-                    item.expect("stream item");
-                }
-                stream.response.expect("terminal record")
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(MockStreamingClient {
+                    sse_bytes: sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA]),
+                })
+                .build()
+                .expect("build client");
+            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let request = model.completion_request("hello").build();
+            let mut stream = crate::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("stream should open");
+            while let Some(item) = stream.next().await {
+                item.expect("stream item");
             }
+            let terminal = stream.response.expect("terminal record");
 
-            let off = terminal(false).await;
-            assert!(off.raw.is_none(), "the flag defaults off; nothing captured");
-
-            let on = terminal(true).await;
-            let raw = on.raw.as_deref().expect("flag on must capture");
+            let raw = terminal
+                .raw
+                .as_deref()
+                .expect("a provider-backed terminal always carries raw");
             let typed: super::super::StreamingCompletionResponse =
                 serde_json::from_value(raw.clone()).expect("raw must deserialize");
             assert_eq!(
@@ -2910,15 +2890,18 @@ mod tests {
             assert_eq!(typed.stop_sequence.as_deref(), Some("alpha"));
             assert_eq!(typed.message_id.as_deref(), Some("msg_1"));
 
-            assert_eq!(on.identity(), off.identity());
-            assert_eq!(on.finish_reason, off.finish_reason);
-            assert_eq!(on.model, off.model);
-            assert_eq!(on.usage, off.usage);
+            // Re-normalizing the capture tells the same story as the terminal
+            // the stream produced.
+            let renormalized = crate::streaming::StreamFinal::from(("anthropic", typed));
+            assert_eq!(terminal.identity(), renormalized.identity());
+            assert_eq!(terminal.finish_reason, renormalized.finish_reason);
+            assert_eq!(terminal.model, renormalized.model);
+            assert_eq!(terminal.usage, renormalized.usage);
             assert_eq!(
-                on.finish_reason,
+                terminal.finish_reason,
                 Some(crate::completion::FinishReason::Stop)
             );
-            assert_eq!(on.usage.output_tokens, 3);
+            assert_eq!(terminal.usage.output_tokens, 3);
         }
     }
 }

@@ -37,6 +37,10 @@ pub(super) const MULTI_EXTRACT_SENTIMENT_MODEL: &str = "llama-3.3-70b-versatile"
 pub(super) const PERMISSION_CONTROL_PROMPT_MODEL: &str = "openai/gpt-oss-20b";
 pub(super) const PERMISSION_CONTROL_STREAMING_MODEL: &str = "openai/gpt-oss-20b";
 pub(super) const RAW_CAPTURE_MODEL: &str = "llama-3.1-8b-instant";
+/// The raw-capture matrices were re-recorded after Groq retired
+/// `llama-3.1-8b-instant`; the parity fixtures above predate that and keep
+/// the old id, so the two constants deliberately differ.
+pub(super) const RAW_CAPTURE_MATRIX_MODEL: &str = "allam-2-7b";
 pub(super) const REQUEST_HOOK_MODEL: &str = "llama-3.1-8b-instant";
 pub(super) const STREAMING_MODEL: &str = "allam-2-7b";
 pub(super) const STREAMING_REASONING_MODEL: &str = "openai/gpt-oss-120b";

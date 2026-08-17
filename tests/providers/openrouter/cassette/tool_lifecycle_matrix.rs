@@ -296,7 +296,7 @@ async fn run_model(client: openrouter::Client, cell: Cell) -> Observation {
                     };
                 }
             };
-            let normalized = rig::streaming::normalize_stream(raw, false, |terminal| {
+            let normalized = rig::streaming::normalize_stream(raw, |terminal| {
                 Ok::<_, rig::completion::CompletionError>(("openrouter", terminal).into())
             });
             let mut stream = StreamingCompletionResponse::stream("openrouter", normalized);

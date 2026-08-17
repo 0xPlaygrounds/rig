@@ -2328,19 +2328,15 @@ where
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Read the local-policy flag before the request is consumed, and
-        // capture before `normalize` consumes the raw value.
-        let capture_raw = completion_request.capture_raw_response;
+        // Capture before `normalize` consumes the raw value.
         let (response, provider_request_id) = self
             .raw_completion_with_request_id(completion_request)
             .await?;
-        let captured = capture_raw
-            .then(|| serde_json::to_value(&response))
-            .transpose()?;
+        let captured = serde_json::to_value(&response)?;
         Ok(response
             .normalize(Ext::PROVIDER_NAME)?
             .with_optional_provider_request_id(provider_request_id)
-            .with_optional_raw(captured))
+            .with_raw(captured))
     }
 
     async fn stream(
@@ -2499,7 +2495,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         }
     }
 
@@ -2753,7 +2748,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2785,7 +2779,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2871,7 +2864,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3320,7 +3312,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3357,7 +3348,6 @@ mod tests {
                 additional_params,
                 output_schema: None,
                 record_telemetry_content: false,
-                capture_raw_response: false,
             },
             strict_tools: false,
             tool_result_array_content: false,
@@ -3513,7 +3503,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3568,7 +3557,6 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3610,7 +3598,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let result = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3662,7 +3649,6 @@ mod tests {
                 .expect("schema should deserialize"),
             ),
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3734,7 +3720,6 @@ mod tests {
                 .expect("schema should deserialize"),
             ),
             record_telemetry_content: false,
-            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -4431,46 +4416,26 @@ mod tests {
             client.completion_model("gpt-4o-mini")
         }
 
-        /// Pins the default: a request that did not opt in gets `raw: None`,
-        /// even though the transport answered with a perfectly capturable
-        /// body — "capture was not requested" is the field's resting state.
-        #[tokio::test]
-        async fn completion_leaves_raw_unset_unless_requested() {
-            let model = model();
-            let request = model.completion_request("hello").build();
-            assert!(!request.capture_raw_response, "the flag defaults off");
-
-            let response = model.completion(request).await.expect("completion");
-
-            assert!(response.raw.is_none());
-            assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
-        }
-
-        /// The load-bearing capture property: with the flag on, `raw` is the
-        /// wire type as rig parsed it — it deserializes back into
+        /// The load-bearing capture property: `raw` is the wire type as rig
+        /// parsed it — it deserializes back into
         /// `openai::completion::CompletionResponse` and re-serializes to the
-        /// identical value — while every normalized field is exactly what the
-        /// flag-off run of the same body produced. Also reads a field rig
-        /// does not normalize (`system_fingerprint`) off the capture.
+        /// identical value — and re-normalizing that capture (with the header
+        /// id reattached, exactly as `completion()` does) reproduces every
+        /// normalized field. Also reads a field rig does not normalize
+        /// (`system_fingerprint`) off the capture.
         #[tokio::test]
         async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
             let model = model();
 
-            let off = model
+            let response = model
                 .completion(model.completion_request("hello").build())
                 .await
-                .expect("flag-off completion");
-            let on = model
-                .completion(
-                    model
-                        .completion_request("hello")
-                        .capture_raw_response(true)
-                        .build(),
-                )
-                .await
-                .expect("flag-on completion");
+                .expect("completion");
 
-            let raw = on.raw.as_deref().expect("flag on must capture");
+            let raw = response
+                .raw
+                .as_deref()
+                .expect("a provider-backed completion always carries raw");
             let typed = super::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into the provider wire type");
             assert_eq!(
@@ -4481,15 +4446,19 @@ mod tests {
             assert_eq!(typed.system_fingerprint.as_deref(), Some("fp_unit_test"));
             assert_eq!(raw["service_tier"], "default");
 
-            // Capture is additive: nothing normalized may differ.
-            assert_eq!(on.identity(), off.identity());
-            assert_eq!(on.finish_reason(), off.finish_reason());
-            assert_eq!(on.model, off.model);
-            assert_eq!(on.usage, off.usage);
-            assert_eq!(on.choice, off.choice);
-            assert_eq!(on.provider_request_id.as_deref(), Some(REQUEST_ID));
+            // The capture and the normalized response tell one story.
+            let renormalized = typed
+                .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+                .expect("re-normalize the capture")
+                .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
+            assert_eq!(response.identity(), renormalized.identity());
+            assert_eq!(response.finish_reason(), renormalized.finish_reason());
+            assert_eq!(response.model, renormalized.model);
+            assert_eq!(response.usage, renormalized.usage);
+            assert_eq!(response.choice, renormalized.choice);
+            assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
             assert_eq!(
-                on.finish_reason(),
+                response.finish_reason(),
                 Some(crate::completion::FinishReason::Stop)
             );
         }

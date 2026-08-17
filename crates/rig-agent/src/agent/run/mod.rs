@@ -213,8 +213,8 @@ pub struct ModelTurn {
     /// reason the streamed surface does (rig#2322).
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
-    /// The provider's own response for this attempt, when the run asked for
-    /// raw capture — see `CompletionResponse::raw`. Carried so the blocking
+    /// The provider's own response for this attempt — see
+    /// `CompletionResponse::raw`. Carried so the blocking
     /// surface records the same payload on its [`CompletionCall`] that the
     /// streamed surface records via
     /// [`AgentRun::record_streamed_completion_call`]. `default` because
@@ -263,8 +263,8 @@ impl ModelTurn {
         self
     }
 
-    /// Attach the provider's own response this attempt produced, when the
-    /// run captured it.
+    /// Attach the provider's own response this attempt produced; `None` for
+    /// a turn built without a provider behind it.
     pub fn with_raw(mut self, raw: Option<std::sync::Arc<serde_json::Value>>) -> Self {
         self.raw = raw;
         self
@@ -1419,11 +1419,10 @@ impl AgentRun {
     /// aggregates `usage` into the run total. Zero-valued usage means the
     /// provider reported no usage metrics.
     ///
-    /// `raw` is the stream's terminal record as captured on
-    /// `StreamFinal::raw` when the run asked for it — read off the same
-    /// terminal the driver reads `identity` and `finish_reason` from, so the
-    /// recorded call carries *this* attempt's payload; `None` when capture
-    /// was off.
+    /// `raw` is the stream's terminal record as carried on `StreamFinal::raw`
+    /// — read off the same terminal the driver reads `identity` and
+    /// `finish_reason` from, so the recorded call carries *this* attempt's
+    /// payload; `None` when no terminal record arrived.
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Usage,
@@ -2968,12 +2967,14 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------
-    // Opt-in raw provider response capture, at the state-machine layer: the
-    // drivers hand `AgentRun` the payload they read off the provider
+    // Raw provider response capture (always on), at the state-machine layer:
+    // the drivers hand `AgentRun` the payload they read off the provider
     // response (blocking) or the stream terminal (streamed); the run must
     // record it per call, and persisted run state must carry it across a
     // suspend/resume boundary — while state written before the field existed
-    // still loads.
+    // still loads. A `None` here means the turn was built without a provider
+    // response behind it (hand-built, or persisted before the field existed),
+    // never that capture was declined.
     // ---------------------------------------------------------------------
 
     fn raw_payload(attempt: &str) -> std::sync::Arc<serde_json::Value> {
@@ -3016,6 +3017,9 @@ mod tests {
         );
     }
 
+    /// A `ModelTurn` built without `with_raw` has no provider response behind
+    /// it, so its record carries `None` — the only way a record ends up
+    /// without a payload.
     #[test]
     fn model_turn_without_raw_records_none() {
         let mut run = AgentRun::new("hello");
@@ -3048,7 +3052,10 @@ mod tests {
         let call = run
             .record_streamed_completion_call(usage(3, 4), ResponseIdentity::default(), None, None)
             .expect("record should succeed");
-        assert_eq!(call.raw, None, "capture off records no payload");
+        assert_eq!(
+            call.raw, None,
+            "a terminal with no payload behind it records none"
+        );
     }
 
     /// A suspended run's recorded payloads survive the serialize/resume

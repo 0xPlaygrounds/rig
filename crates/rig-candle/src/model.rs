@@ -408,23 +408,15 @@ pub fn stream_from_events(
     + 'static,
 ) -> StreamingCompletionResponse {
     let raw = run_wire_stream(events, CandleAdapter);
-    // A conformance seam over already-typed events: there is no
-    // `CompletionRequest` here to carry `capture_raw_response`, and no agent
-    // can hold this stream, so it never captures. The `CompletionModel` seam
-    // below is the one that reads the flag.
-    StreamingCompletionResponse::stream(
-        crate::types::PROVIDER_NAME,
-        normalize_candle_stream(raw, false),
-    )
+    StreamingCompletionResponse::stream(crate::types::PROVIDER_NAME, normalize_candle_stream(raw))
 }
 
 /// Normalize the provider-native terminal record into rig's
 /// [`rig_core::streaming::StreamFinal`].
 fn normalize_candle_stream(
     raw: RawStreamingResult<CandleCompletionResponse>,
-    capture_raw: bool,
 ) -> rig_core::streaming::StreamingResult {
-    rig_core::streaming::normalize_stream(raw, capture_raw, |response| {
+    rig_core::streaming::normalize_stream(raw, |response| {
         let usage = (&response).into();
         Ok(
             rig_core::streaming::StreamFinal::new(crate::types::PROVIDER_NAME, usage)
@@ -548,28 +540,22 @@ impl CompletionModel for CandleModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        // Read the local-policy flag before inference consumes the request,
-        // and capture the local model's own record — what `raw_completion`
+        // Capture the local model's own record — what `raw_completion`
         // returns — before `into_normalized` consumes it.
-        let capture_raw = request.capture_raw_response;
         let inferred = self.infer_completion(request).await?;
-        let captured = capture_raw
-            .then(|| serde_json::to_value(&inferred.response))
-            .transpose()?;
-        Ok(inferred.into_normalized().with_optional_raw(captured))
+        let captured = serde_json::to_value(&inferred.response)?;
+        Ok(inferred.into_normalized().with_raw(captured))
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        // Same flag, read before `raw_stream` consumes the request.
-        let capture_raw = request.capture_raw_response;
         let raw = self.raw_stream(request).await?;
 
         Ok(StreamingCompletionResponse::stream(
             crate::types::PROVIDER_NAME,
-            normalize_candle_stream(raw, capture_raw),
+            normalize_candle_stream(raw),
         ))
     }
 }

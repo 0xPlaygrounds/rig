@@ -8,14 +8,12 @@
 //! OpenAI's `system_fingerprint` and `service_tier`, Anthropic's
 //! `stop_sequence`, Ollama's timings, and so on.
 //!
-//! `AgentBuilder::capture_raw_response(true)` is the opt-in path. With it on,
-//! every attempt's provider response — the value `raw_completion` /
+//! So every attempt's provider response — the value `raw_completion` /
 //! `raw_stream` would have returned, serialized — travels as `raw` on the
 //! `CompletionResponse` (blocking) and `StreamResponseFinish` (streamed) hook
 //! events, on the medium-neutral `ModelTurnFinished` event, and on each
-//! `CompletionCall` in the run's record. It is off by default because it costs
-//! a serialization of the provider's parsed response per call, and it is local
-//! policy: the provider never sees the flag.
+//! `CompletionCall` in the run's record. Nothing to switch on: it is the same
+//! parity the pre-normalization `raw_response` had.
 //!
 //! The hook below runs unchanged on both surfaces. It recovers OpenAI's own
 //! response types from `raw` — the provider's types are `Deserialize`, so
@@ -54,7 +52,7 @@ impl AgentHook for PrintOpenAiFields {
             ),
             Some(Err(err)) => println!("  raw is not an OpenAI response: {err}"),
             // `None` means capture was off, not that the provider sent nothing.
-            None => println!("  no raw captured"),
+            None => println!("  no provider response on this event"),
         }
         ObservationAction::continue_run()
     }
@@ -87,7 +85,7 @@ impl AgentHook for PrintOpenAiFields {
                 );
             }
             Some(Err(err)) => println!("  raw is not an OpenAI terminal: {err}"),
-            None => println!("  no raw captured"),
+            None => println!("  no provider response on this event"),
         }
         ObservationAction::continue_run()
     }
@@ -100,8 +98,6 @@ async fn main() -> Result<()> {
     let agent = client
         .agent(openai::GPT_5_2)
         .preamble("Answer in one short sentence.")
-        // The opt-in. Everything below would print "no raw captured" without it.
-        .capture_raw_response(true)
         .add_hook(PrintOpenAiFields)
         .build();
 

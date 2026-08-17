@@ -248,7 +248,6 @@ pub(crate) async fn build_prepared_completion_request(
     let max_tokens = runner.config.max_tokens;
     let additional_params = runner.config.additional_params.as_ref();
     let record_telemetry_content = runner.config.record_telemetry_content;
-    let capture_raw_response = runner.config.capture_raw_response;
     let tool_choice = runner.config.tool_choice.as_ref();
     let tool_server_handle = &runner.tool_server_handle;
     let output_schema = runner.config.output_schema.as_ref();
@@ -494,10 +493,6 @@ pub(crate) async fn build_prepared_completion_request(
         .max_tokens_opt(max_tokens)
         .additional_params_opt(additional_params)
         .record_content_telemetry(record_telemetry_content)
-        // Local policy travels on the concrete `CompletionRequest`, which is
-        // how an agent-level opt-in reaches the provider through the erased
-        // model without touching `ModelHandle`.
-        .capture_raw_response(capture_raw_response)
         .documents(static_context.to_vec())
         .tools(tooldefs);
 
@@ -607,12 +602,6 @@ pub(crate) struct AgentConfig {
     /// through OpenTelemetry span attributes, which can increase observability
     /// backend storage and query costs.
     pub(crate) record_telemetry_content: bool,
-    /// Whether to capture the provider's own response onto every completion
-    /// this agent makes — `CompletionResponse::raw` / `StreamFinal::raw`,
-    /// surfaced on the hook events, `PromptResponse::completion_calls`, and
-    /// the streamed terminal record. Defaults to `false`: capture costs a
-    /// serialization of the provider's parsed response per call.
-    pub(crate) capture_raw_response: bool,
     /// Maximum number of tokens for the completion
     pub(crate) max_tokens: Option<u64>,
     /// Temperature of the model
@@ -648,7 +637,6 @@ impl AgentConfig {
             static_context: vec![],
             additional_params: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
             max_tokens: None,
             temperature: None,
             tool_choice: None,

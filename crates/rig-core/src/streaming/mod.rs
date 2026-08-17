@@ -238,18 +238,21 @@ pub struct StreamFinal {
     /// Provider-reported model identifier, when available.
     #[serde(default)]
     pub model: Option<String>,
-    /// The provider's own terminal record for this stream, when
-    /// [`CompletionRequest::capture_raw_response`](crate::completion::CompletionRequest::capture_raw_response)
-    /// asked for it: the value the model's inherent `raw_stream` would have
-    /// yielded as its `FinalResponse`, serialized. It is the terminal record
-    /// as rig's wire type parsed it — fields that type does not model are not
-    /// here — and it is the terminal record only, not the stream's frames;
-    /// see the module docs for why frames are a separate mechanism.
+    /// The provider's own terminal record for this stream: the value the
+    /// model's inherent `raw_stream` would have yielded as its `FinalResponse`,
+    /// serialized. It is the terminal record as rig's wire type parsed it —
+    /// fields that type does not model are not here — and it is the terminal
+    /// record only, not the stream's frames; see the module docs for why
+    /// frames are a separate mechanism. [`normalize_stream`] populates it
+    /// unconditionally — the same parity the pre-normalization `Final(R)` had.
     ///
     /// An escape hatch for provider-specific data rig does not normalize — it
     /// never replaces a normalized field, and every normalized field means the
-    /// same thing whether or not this is populated. `None` means capture was
-    /// not requested (the default), not that the provider sent nothing.
+    /// same thing whether or not this is populated. `Option` only because a
+    /// terminal record can be built without a provider behind it: `None`
+    /// means the value was constructed by hand ([`StreamFinal::new`] without
+    /// `with_raw`) or persisted before the field existed, never that the
+    /// provider sent nothing.
     ///
     /// `Arc` because a terminal record can be large and both the hook stack
     /// and the run record observe it; clone must stay cheap.
@@ -330,7 +333,8 @@ struct StreamFinalRepr {
     #[serde(default)]
     model: Option<String>,
     // `default` because persisted terminal records predate the field; a
-    // missing key means capture was not requested, which is what `None` means.
+    // missing key loads as `None`, which is exactly what "no provider record
+    // behind this value" means.
     #[serde(default)]
     raw: Option<std::sync::Arc<serde_json::Value>>,
 }
@@ -803,14 +807,13 @@ impl From<RawStreamingToolCall> for ToolCall {
 /// accumulation ([`normalize_stream`] / the parts accumulator) — the
 /// semantic channel maps this stream's terminal record exactly once. There
 /// is deliberately no provider-*typed* payload on the normalized types; the
-/// typed channels are the contract. What the normalized types can carry,
-/// opt-in, is that same terminal record *serialized* ([`StreamFinal::raw`]) —
-/// for callers who no longer hold the concrete model, an agent having erased
-/// it, and so cannot reach the typed channel at all. The frames of the stream
-/// are a different axis: they were never exposed on any rig surface, and
-/// exposing them is a per-frame mechanism (an opt-in raw stream part), not
-/// a field on the terminal record — so [`StreamFinal::raw`] captures the
-/// terminal only.
+/// typed channels are the contract. What the normalized types also carry is
+/// that same terminal record *serialized* ([`StreamFinal::raw`]) — for
+/// callers who no longer hold the concrete model, an agent having erased it,
+/// and so cannot reach the typed channel at all. The frames of the stream are
+/// a different axis: they were never exposed on any rig surface, and exposing
+/// them is a per-frame mechanism (a raw stream part), not a field on the
+/// terminal record — so [`StreamFinal::raw`] captures the terminal only.
 ///
 /// Precedent, read carefully: openai-agents also splits raw from semantic,
 /// but the load-bearing part of its design is elsewhere — its semantic
@@ -846,20 +849,14 @@ pub type StreamingResult = RawStreamingResult<StreamFinal>;
 /// [`CompletionResponse::with_finish_reason`] does on the unary path, so both
 /// paths agree about a `stop` that was really a tool call.
 ///
-/// `capture_raw` is the request's
-/// [`capture_raw_response`](crate::completion::CompletionRequest::capture_raw_response),
-/// read by the provider before `raw_stream` consumed the request. When set,
-/// the provider-native terminal `R` is serialized onto [`StreamFinal::raw`]
-/// *before* `map` consumes it — this is the one streaming seam every provider
-/// routes through, so it is the streaming counterpart of the capture each
-/// provider's unary `completion` performs before `normalize`. That is why `R`
-/// is bounded `Serialize`: every in-tree terminal type already is, and a
-/// terminal that could not be serialized could not honor the opt-in.
-pub fn normalize_stream<R, F>(
-    stream: RawStreamingResult<R>,
-    capture_raw: bool,
-    mut map: F,
-) -> StreamingResult
+/// The provider-native terminal `R` is also serialized onto
+/// [`StreamFinal::raw`] *before* `map` consumes it — this is the one
+/// streaming seam every provider routes through, so it is the streaming
+/// counterpart of the capture each provider's unary `completion` performs
+/// before `normalize`. That is why `R` is bounded `Serialize`: every in-tree
+/// terminal type already is, and a terminal that could not be serialized
+/// could not be surfaced to callers who no longer hold the typed model.
+pub fn normalize_stream<R, F>(stream: RawStreamingResult<R>, mut map: F) -> StreamingResult
 where
     R: Serialize + 'static,
     F: FnMut(R) -> Result<StreamFinal, CompletionError> + WasmCompatSend + 'static,
@@ -878,14 +875,12 @@ where
             }
             choice.try_map_final(|response| {
                 // Capture before `map` consumes the terminal. A serialization
-                // failure propagates: the caller opted in, and a silent `None`
-                // would contradict the field's meaning ("capture was not
-                // requested"). In practice `to_value` on a value that just
-                // deserialized cannot fail.
-                let raw = capture_raw
-                    .then(|| serde_json::to_value(&response))
-                    .transpose()?;
-                let mut response = map(response)?.with_optional_raw(raw);
+                // failure propagates: a silent `None` would contradict the
+                // field's meaning (a provider record stands behind every
+                // normalized terminal). In practice `to_value` on a value
+                // that just deserialized cannot fail.
+                let raw = serde_json::to_value(&response)?;
+                let mut response = map(response)?.with_raw(raw);
                 response.finish_reason = response
                     .finish_reason
                     .map(|reason| reason.reconcile_with_output(emitted_tool_call));
@@ -1757,7 +1752,7 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(Usage::new()));
         });
 
-        let normalized = normalize_stream(raw, false, |usage| {
+        let normalized = normalize_stream(raw, |usage| {
             Ok(StreamFinal::new(TEST_PROVIDER, usage).with_finish_reason(FinishReason::Stop))
         });
 
@@ -1780,7 +1775,7 @@ mod tests {
             yield Ok(RawStreamingChoice::FinalResponse(Usage::new()));
         });
 
-        let normalized = normalize_stream(raw, false, |usage| {
+        let normalized = normalize_stream(raw, |usage| {
             Ok(StreamFinal::new(TEST_PROVIDER, usage).with_finish_reason(FinishReason::Stop))
         });
 
@@ -1888,29 +1883,20 @@ mod tests {
             .expect("stream should end with a terminal record")
     }
 
-    /// Capture is opt-in: with the flag off — the default every provider seam
-    /// reads off the request — the terminal carries no raw payload.
+    /// The load-bearing streaming test: `raw` is the provider's terminal
+    /// record serialized — it deserializes back into the provider's own type
+    /// and re-serializes equal — and the normalized fields are what the
+    /// mapper produced.
     #[tokio::test]
-    async fn normalize_stream_leaves_raw_unset_when_capture_is_off() {
-        let normalized = normalize_stream(provider_terminal_stream(), false, |terminal| {
+    async fn normalize_stream_captures_the_terminal_record() {
+        let normalized = normalize_stream(provider_terminal_stream(), |terminal| {
             Ok(StreamFinal::new(TEST_PROVIDER, terminal.usage))
         });
         let final_record = drain(normalized).await;
-        assert!(final_record.raw.is_none());
-        assert_eq!(final_record.usage.total_tokens, 8);
-    }
-
-    /// The load-bearing streaming test: with the flag on, `raw` is the
-    /// provider's terminal record serialized — it deserializes back into the
-    /// provider's own type and re-serializes equal — while every normalized
-    /// field is exactly what it was with the flag off.
-    #[tokio::test]
-    async fn normalize_stream_captures_the_terminal_record_when_capture_is_on() {
-        let normalized = normalize_stream(provider_terminal_stream(), true, |terminal| {
-            Ok(StreamFinal::new(TEST_PROVIDER, terminal.usage))
-        });
-        let final_record = drain(normalized).await;
-        let raw = final_record.raw.as_deref().expect("capture was requested");
+        let raw = final_record
+            .raw
+            .as_deref()
+            .expect("every normalized terminal carries its provider record");
 
         let typed = ProviderTerminal::deserialize(raw).expect("raw is the provider's terminal");
         assert_eq!(typed.provider_only, "kept");
@@ -1922,9 +1908,9 @@ mod tests {
     }
 
     /// Finish-reason reconciliation is unchanged by capture: a `stop` that
-    /// carried a tool call is still upgraded with `raw` attached.
+    /// carried a tool call is still upgraded, with `raw` attached.
     #[tokio::test]
-    async fn normalize_stream_reconciles_finish_reason_with_capture_on() {
+    async fn normalize_stream_reconciles_finish_reason_with_raw_attached() {
         let raw: RawStreamingResult<Usage> = Box::pin(stream! {
             yield Ok(RawStreamingChoice::ToolCall(RawStreamingToolCall {
                 tool_id: WireId::new("call_1"),
@@ -1938,7 +1924,7 @@ mod tests {
             }));
             yield Ok(RawStreamingChoice::FinalResponse(Usage::new()));
         });
-        let normalized = normalize_stream(raw, true, |usage| {
+        let normalized = normalize_stream(raw, |usage| {
             Ok(StreamFinal::new(TEST_PROVIDER, usage).with_finish_reason(FinishReason::Stop))
         });
         let final_record = drain(normalized).await;

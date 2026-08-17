@@ -265,7 +265,6 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-        capture_raw_response: false,
     };
 
     let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
@@ -348,7 +347,6 @@ pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-        capture_raw_response: false,
     };
 
     let mut stream2 = agent.model.stream(request2).await.expect("Turn 2 stream");
@@ -400,7 +398,6 @@ where
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-        capture_raw_response: false,
     };
 
     let response = agent
@@ -447,7 +444,6 @@ where
         model: None,
         output_schema: None,
         record_telemetry_content: false,
-        capture_raw_response: false,
     };
 
     let response2 = agent

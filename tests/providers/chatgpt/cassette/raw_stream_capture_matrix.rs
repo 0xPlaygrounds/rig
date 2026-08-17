@@ -1,29 +1,29 @@
-//! Matrix for opt-in raw terminal-record capture on ChatGPT's streaming
-//! `/responses` path (`CompletionRequest::capture_raw_response` →
-//! `StreamFinal::raw`).
+//! Matrix for raw terminal-record capture on ChatGPT's streaming `/responses`
+//! path ([`StreamFinal::raw`](rig::streaming::StreamFinal::raw)).
 //!
 //! # The feature
 //!
-//! `StreamFinal::raw` is the value
+//! Capture is always on. The terminal record of every stream the seam yields
+//! carries `raw`: the value
 //! [`ResponsesCompletionModel::raw_stream`](rig::providers::chatgpt::ResponsesCompletionModel::raw_stream)
 //! would have yielded as its `FinalResponse` — the Responses API's
 //! [`StreamingCompletionResponse`](rig::providers::openai::responses_api::streaming::StreamingCompletionResponse):
 //! the terminal `response.completed` event's usage, status, ids and model —
-//! serialized with `serde_json::to_value`. It is the terminal record only,
-//! populated only when the request opted in, and never on the wire.
+//! serialized with `serde_json::to_value`. It is the terminal record only, and
+//! nothing about it is sent to ChatGPT. `raw == None` means only that a
+//! `StreamFinal` was built by hand without a provider terminal behind it,
+//! which no cell here can produce.
 //!
 //! The terminal record spells the provider's `status` (`completed`), which
 //! the normalized [`StreamFinal`](rig::streaming::StreamFinal) folds into a
-//! finish reason and does not carry; cell 3 reads it back through `raw`.
+//! finish reason and does not carry; cell 2 reads it back through `raw`.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_capture_off_raw_is_none` | flag off (default) | terminal `raw == None` | unrecorded (no CHATGPT credentials in this environment) |
-//! | 2 | `stream_capture_on_terminal_round_trips_provider_type` | flag on | `responses_api::streaming::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no CHATGPT credentials in this environment) |
-//! | 3 | `stream_capture_on_exposes_terminal_status` | terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says; usage equals the frame's | unrecorded (no CHATGPT credentials in this environment) |
-//! | 4 | `stream_request_invariant_off_vs_on` | on-wire request | flag-off and flag-on request bodies byte-identical | unrecorded (no CHATGPT credentials in this environment) |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `responses_api::streaming::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no CHATGPT credentials in this environment) |
+//! | 2 | `stream_raw_exposes_terminal_status` | terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says; usage equals the frame's | unrecorded (no CHATGPT credentials in this environment) |
 //!
 //! Every cell is unrecorded: neither `CHATGPT_ACCESS_TOKEN`/`CHATGPT_ACCOUNT_ID`
 //! nor a usable ChatGPT OAuth cache was present when this matrix was written,
@@ -48,15 +48,8 @@ const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &chatgpt::ResponsesCompletionModel,
-    capture_raw: bool,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .max_tokens(64)
-        .capture_raw_response(capture_raw)
-        .build()
+fn request(model: &chatgpt::ResponsesCompletionModel) -> rig::completion::CompletionRequest {
+    model.completion_request(PROMPT).max_tokens(64).build()
 }
 
 async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
@@ -74,9 +67,15 @@ async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) ->
     finals.remove(0)
 }
 
-/// The premise every streaming cell rests on: the recorded SSE stream ends
-/// with a `response.completed` frame carrying usage. Returns its `response`.
+/// The premise every streaming cell rests on: the scenario recorded exactly
+/// one interaction whose SSE stream ends with a `response.completed` frame
+/// carrying usage. Returns its `response`.
 fn recorded_terminal_response(scenario: &str) -> Value {
+    assert_eq!(
+        recorded_interaction_bodies(CHATGPT_PROVIDER, scenario).len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
     let frames = recorded_sse_json_frames(CHATGPT_PROVIDER, scenario);
     let terminal = frames
         .iter()
@@ -94,61 +93,23 @@ fn recorded_terminal_response(scenario: &str) -> Value {
     response
 }
 
-fn recorded_request_bodies(scenario: &str) -> Vec<String> {
-    recorded_interaction_bodies(CHATGPT_PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, _)| request)
-        .collect()
-}
-
 // ---------------------------------------------------------------------------
-// 1: off → None
+// 1: raw is the raw_stream FinalResponse, serialized
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
-async fn stream_capture_off_raw_is_none() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_off_raw_is_none";
-    with_chatgpt_cassette(
-        "raw_stream_capture_matrix/stream_capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let request = request(&model, false);
-            assert!(!request.capture_raw_response, "premise: default is off");
-            let terminal =
-                terminal_of(model.stream(request).await.expect("stream should start")).await;
-
-            assert!(
-                terminal.raw.is_none(),
-                "terminal raw must stay None when capture was not requested, got {:?}",
-                terminal.raw
-            );
-            assert!(terminal.usage.total_tokens > 0, "usage is unaffected");
-            assert_eq!(terminal.provider, CHATGPT_PROVIDER);
-        },
-    )
-    .await;
-
-    recorded_terminal_response(scenario);
-}
-
-// ---------------------------------------------------------------------------
-// 2: on → raw is the raw_stream FinalResponse, serialized
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
-async fn stream_capture_on_terminal_round_trips_provider_type() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_on_terminal_round_trips_provider_type";
+async fn stream_raw_terminal_round_trips_provider_type() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_chatgpt_cassette(
-        "raw_stream_capture_matrix/stream_capture_on_terminal_round_trips_provider_type",
+        "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(MODEL);
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -157,7 +118,7 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested");
+                .expect("every provider-backed terminal record carries raw");
             let typed = responses_api::streaming::StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into the Responses terminal type");
             assert_eq!(
@@ -190,22 +151,22 @@ async fn stream_capture_on_terminal_round_trips_provider_type() {
 }
 
 // ---------------------------------------------------------------------------
-// 3: terminal-only field
+// 2: terminal-only field
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
-async fn stream_capture_on_exposes_terminal_status() {
-    let scenario = "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_status";
+async fn stream_raw_exposes_terminal_status() {
+    let scenario = "raw_stream_capture_matrix/stream_raw_exposes_terminal_status";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_chatgpt_cassette(
-        "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_status",
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
         |client| async move {
             let model = client.completion_model(MODEL);
             let terminal = terminal_of(
                 model
-                    .stream(request(&model, true))
+                    .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
@@ -223,7 +184,7 @@ async fn stream_capture_on_exposes_terminal_status() {
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("terminal raw must be populated when capture was requested")
+                .expect("every provider-backed terminal record carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -246,55 +207,4 @@ async fn stream_capture_on_exposes_terminal_status() {
     let typed = responses_api::streaming::StreamingCompletionResponse::deserialize(&raw)
         .expect("raw must deserialize");
     assert_eq!(typed.status, Some(responses_api::ResponseStatus::Completed));
-}
-
-// ---------------------------------------------------------------------------
-// 4: the flag never reaches the provider
-// ---------------------------------------------------------------------------
-
-/// One scenario, two interactions in wire order — off then on.
-#[tokio::test]
-#[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
-async fn stream_request_invariant_off_vs_on() {
-    let scenario = "raw_stream_capture_matrix/stream_request_invariant_off_vs_on";
-    with_chatgpt_cassette(
-        "raw_stream_capture_matrix/stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let off = terminal_of(
-                model
-                    .stream(request(&model, false))
-                    .await
-                    .expect("flag-off stream should start"),
-            )
-            .await;
-            let on = terminal_of(
-                model
-                    .stream(request(&model, true))
-                    .await
-                    .expect("flag-on stream should start"),
-            )
-            .await;
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(off.provider, on.provider);
-        },
-    )
-    .await;
-
-    let requests = recorded_request_bodies(scenario);
-    assert_eq!(
-        requests.len(),
-        2,
-        "{scenario}: the scenario must record exactly the off and on requests"
-    );
-    assert_eq!(
-        requests[0], requests[1],
-        "the flag-on streaming request body must be byte-identical to the \
-         flag-off one — capture_raw_response must never reach ChatGPT"
-    );
-    assert!(!requests[0].contains("capture_raw"));
-    let body: Value = serde_json::from_str(&requests[0]).expect("recorded request should be JSON");
-    assert_eq!(body["stream"], Value::Bool(true));
-    assert_eq!(body["model"], MODEL);
 }

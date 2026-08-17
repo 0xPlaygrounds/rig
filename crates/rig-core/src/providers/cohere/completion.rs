@@ -791,15 +791,11 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Read the local-policy flag before `raw_completion` consumes the
-        // request, and capture before `try_into` consumes the raw value.
-        let capture_raw = completion_request.capture_raw_response;
+        // Capture before `try_into` consumes the raw value.
         let raw = self.raw_completion(completion_request).await?;
-        let captured = capture_raw
-            .then(|| serde_json::to_value(&raw))
-            .transpose()?;
+        let captured = serde_json::to_value(&raw)?;
         let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_optional_raw(captured))
+        Ok(response.with_raw(captured))
     }
 
     async fn stream(

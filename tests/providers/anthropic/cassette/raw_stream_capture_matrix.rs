@@ -1,32 +1,36 @@
-//! Matrix for opt-in raw provider response capture on the streaming path:
-//! `CompletionRequest::capture_raw_response` → `StreamFinal::raw`.
+//! Matrix for raw provider response capture on the streaming path:
+//! `StreamFinal::raw` beside the normalized terminal fields.
 //!
 //! # The feature
 //!
-//! `stream()` reads the flag before `raw_stream` consumes the request and
-//! passes it to `normalize_stream`, which serializes the provider-native
-//! terminal — `anthropic::streaming::StreamingCompletionResponse`, the `R` of
+//! Capture is always on. `stream()` opens `raw_stream` and hands it to
+//! `normalize_stream`, which serializes the provider-native terminal —
+//! `anthropic::streaming::StreamingCompletionResponse`, the `R` of
 //! `raw_stream` — onto the terminal `StreamFinal::raw` before mapping it. So
 //! `raw` is the **terminal record only**: what `raw_stream` would have yielded
 //! as its `FinalResponse`, not the stream's frames. Anthropic's terminal is
 //! assembled from `message_start` (id, model) and the closing `message_delta`
 //! (`stop_reason`, `stop_sequence`, usage), plus the transport `request-id`
-//! header the driver stamps.
+//! header the driver stamps. `raw` is `Option` only because a `StreamFinal`
+//! built by hand has no provider terminal behind it; `None` never means "not
+//! requested".
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `flag_off_terminal_raw_is_none` | default request | terminal `raw.is_none()` | recorded |
-//! | 2 | `flag_on_terminal_raw_round_trips` | `capture_raw_response(true)` | `raw` deserializes into the Anthropic terminal type and re-serializes equal; terminal-only shape (no frames) | recorded |
-//! | 3 | `flag_on_exposes_stop_sequence` | streamed twin of the `stop_sequences: ["alpha"]` request | `raw["stop_sequence"] == "alpha"`, `raw["stop_reason"] == "stop_sequence"` (verbatim spelling) | recorded |
-//! | 4 | `request_invariant_off_vs_on` | recorded request bodies of 1 and 2 | byte-identical | recorded (derived from cells 1 and 2) |
+//! | 1 | `terminal_raw_round_trips_into_provider_type` | plain text request | terminal `raw` populated; deserializes into the Anthropic terminal type and re-serializes equal; terminal-only shape (no frames) | recorded |
+//! | 2 | `raw_exposes_stop_sequence` | streamed twin of the `stop_sequences: ["alpha"]` request | `raw["stop_sequence"] == "alpha"`, `raw["stop_reason"] == "stop_sequence"` (verbatim spelling) | recorded |
+//! | 3 | `normalized_terminal_matches_raw_renormalized` | plain text request | `StreamFinal::from(("anthropic", StreamingCompletionResponse::deserialize(raw)))` reproduces `identity()`, `finish_reason`, `model`, `usage` | recorded |
 //!
-//! Cell 4 makes no request of its own: it reads the fixtures of cells 1 and 2,
-//! which send the same prompt for exactly that comparison. Every recorded cell
-//! re-derives its premise from its own SSE frames: the stream opens with a
-//! `message_start` naming a `msg_…` id, closes with a `message_delta` carrying
-//! `usage`, and the response carries a `request-id` header.
+//! Every recorded cell re-derives its premise from its own SSE frames: the
+//! stream opens with a `message_start` naming a `msg_…` id, closes with a
+//! `message_delta` carrying `usage`, and the response carries a `request-id`
+//! header. Cell 3 is not cell 1 restated: cell 1 proves `raw` is lossless
+//! against the *provider* terminal type; cell 3 proves rig's own mapping of
+//! that value agrees with the normalized terminal delivered beside it — the
+//! single-stream form of the parity contract `raw_completion_parity_matrix.rs`
+//! records across two exchanges.
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel as _, FinishReason};
@@ -47,18 +51,16 @@ const PROMPT: &str = "Reply with exactly: raw stream capture probe";
 /// matches and Anthropic names it on the terminal `message_delta`.
 const IMMEDIATE_PROMPT: &str = "Reply with exactly this one word and nothing else: alpha";
 
-const OFF_SCENARIO: &str = "raw_stream_capture_matrix/flag_off_terminal_raw_is_none";
-const ON_SCENARIO: &str = "raw_stream_capture_matrix/flag_on_terminal_raw_round_trips";
-const STOP_SEQUENCE_SCENARIO: &str = "raw_stream_capture_matrix/flag_on_exposes_stop_sequence";
+const ROUND_TRIP_SCENARIO: &str =
+    "raw_stream_capture_matrix/terminal_raw_round_trips_into_provider_type";
+const STOP_SEQUENCE_SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_stop_sequence";
+const RENORMALIZED_SCENARIO: &str =
+    "raw_stream_capture_matrix/normalized_terminal_matches_raw_renormalized";
 
 type AnthropicModel = anthropic::completion::CompletionModel;
 
-fn probe_request(model: &AnthropicModel, capture: bool) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .max_tokens(32)
-        .capture_raw_response(capture)
-        .build()
+fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
+    model.completion_request(PROMPT).max_tokens(32).build()
 }
 
 type TerminalSink = std::sync::Arc<std::sync::Mutex<Option<StreamFinal>>>;
@@ -141,8 +143,7 @@ fn recorded_stream(scenario: &str) -> RecordedStream {
     }
 }
 
-/// The normalized terminal reports what its own recording says, capture or
-/// not.
+/// The normalized terminal reports what its own recording says.
 fn assert_terminal_matches_fixture(
     scenario: &str,
     terminal: &StreamFinal,
@@ -176,40 +177,17 @@ fn assert_terminal_matches_fixture(
 }
 
 // ---------------------------------------------------------------------------
-// 1: default off
+// 1: typed round trip, terminal-only shape
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn flag_off_terminal_raw_is_none() {
-    let sink = TerminalSink::default();
-    with_anthropic_cassette("raw_stream_capture_matrix/flag_off_terminal_raw_is_none", {
-        let sink = sink.clone();
-        move |client| probe_body(client, |model| probe_request(model, false), sink)
-    })
-    .await;
-    let terminal = take_terminal(&sink);
-    assert!(
-        terminal.raw.is_none(),
-        "capture is opt-in: a stream that did not ask must not pay for it"
-    );
-    let recorded = recorded_stream(OFF_SCENARIO);
-    assert_eq!(recorded.stop_reason.as_deref(), Some("end_turn"));
-    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
-    assert_terminal_matches_fixture(OFF_SCENARIO, &terminal, &recorded);
-}
-
-// ---------------------------------------------------------------------------
-// 2: on → typed round trip, terminal-only shape
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn flag_on_terminal_raw_round_trips() {
+async fn terminal_raw_round_trips_into_provider_type() {
     let sink = TerminalSink::default();
     with_anthropic_cassette(
-        "raw_stream_capture_matrix/flag_on_terminal_raw_round_trips",
+        "raw_stream_capture_matrix/terminal_raw_round_trips_into_provider_type",
         {
             let sink = sink.clone();
-            move |client| probe_body(client, |model| probe_request(model, true), sink)
+            move |client| probe_body(client, probe_request, sink)
         },
     )
     .await;
@@ -217,7 +195,7 @@ async fn flag_on_terminal_raw_round_trips() {
     let raw: &Value = terminal
         .raw
         .as_deref()
-        .expect("the request opted in, so the terminal `raw` must be populated");
+        .expect("every terminal `stream()` yields carries `raw`");
 
     // Typed access is recoverable and lossless.
     let typed = StreamingCompletionResponse::deserialize(raw)
@@ -264,7 +242,7 @@ async fn flag_on_terminal_raw_round_trips() {
 
     // Wire-derived fields equal what the recorded frames say; the transport
     // id is the header the driver stamped.
-    let recorded = recorded_stream(ON_SCENARIO);
+    let recorded = recorded_stream(ROUND_TRIP_SCENARIO);
     assert!(
         recorded
             .frame_types
@@ -275,12 +253,12 @@ async fn flag_on_terminal_raw_round_trips() {
     assert_ids_match_recording(
         &[raw["message_id"].as_str().map(str::to_string)],
         std::slice::from_ref(&recorded.message_id),
-        ON_SCENARIO,
+        ROUND_TRIP_SCENARIO,
     );
     assert_ids_match_recording(
         &[raw["provider_request_id"].as_str().map(str::to_string)],
         std::slice::from_ref(&recorded.request_id),
-        ON_SCENARIO,
+        ROUND_TRIP_SCENARIO,
     );
     assert_eq!(raw["model"].as_str(), recorded.model.as_deref());
     assert_eq!(raw["stop_reason"].as_str(), recorded.stop_reason.as_deref());
@@ -290,19 +268,19 @@ async fn flag_on_terminal_raw_round_trips() {
     assert_eq!(typed.stop_reason.as_deref(), Some("end_turn"));
     assert_eq!(typed.usage.output_tokens as u64, recorded.output_tokens);
 
-    // The normalized view beside it is unchanged by capture.
+    // The normalized view beside it reports what the fixture recorded.
     assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
-    assert_terminal_matches_fixture(ON_SCENARIO, &terminal, &recorded);
+    assert_terminal_matches_fixture(ROUND_TRIP_SCENARIO, &terminal, &recorded);
 }
 
 // ---------------------------------------------------------------------------
-// 3: a terminal-only field, verbatim
+// 2: a terminal-only field, verbatim
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn flag_on_exposes_stop_sequence() {
+async fn raw_exposes_stop_sequence() {
     let sink = TerminalSink::default();
-    with_anthropic_cassette("raw_stream_capture_matrix/flag_on_exposes_stop_sequence", {
+    with_anthropic_cassette("raw_stream_capture_matrix/raw_exposes_stop_sequence", {
         let sink = sink.clone();
         move |client| {
             probe_body(
@@ -312,7 +290,6 @@ async fn flag_on_exposes_stop_sequence() {
                         .completion_request(IMMEDIATE_PROMPT)
                         .max_tokens(32)
                         .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                        .capture_raw_response(true)
                         .build()
                 },
                 sink,
@@ -321,7 +298,10 @@ async fn flag_on_exposes_stop_sequence() {
     })
     .await;
     let terminal = take_terminal(&sink);
-    let raw: &Value = terminal.raw.as_deref().expect("the request opted in");
+    let raw: &Value = terminal
+        .raw
+        .as_deref()
+        .expect("every terminal `stream()` yields carries `raw`");
 
     // Premise from the frames: the terminal `message_delta` stopped on the
     // sequence and named it.
@@ -362,30 +342,48 @@ async fn flag_on_exposes_stop_sequence() {
 }
 
 // ---------------------------------------------------------------------------
-// 4: request invariant
+// 3: raw and the normalized terminal tell one story
 // ---------------------------------------------------------------------------
 
-/// The flag never reaches the provider: the streamed request bodies the off
-/// and on cells recorded are byte-identical.
-#[test]
-fn request_invariant_off_vs_on() {
-    let off = crate::cassettes::recorded_interaction_bodies(ANTHROPIC_PROVIDER, OFF_SCENARIO);
-    let on = crate::cassettes::recorded_interaction_bodies(ANTHROPIC_PROVIDER, ON_SCENARIO);
-    assert_eq!(off.len(), 1, "{OFF_SCENARIO}: one recorded interaction");
-    assert_eq!(on.len(), 1, "{ON_SCENARIO}: one recorded interaction");
+/// The normalized terminal and `raw` describe the same stream: reading `raw`
+/// back into the provider terminal type and mapping it through the public
+/// `StreamFinal::from((&str, StreamingCompletionResponse))` — the same
+/// mapping `stream()` applies — reproduces every normalized field delivered
+/// beside it: identity, finish reason, model, usage. And each of those is
+/// what the fixture recorded.
+#[tokio::test]
+async fn normalized_terminal_matches_raw_renormalized() {
+    let sink = TerminalSink::default();
+    with_anthropic_cassette(
+        "raw_stream_capture_matrix/normalized_terminal_matches_raw_renormalized",
+        {
+            let sink = sink.clone();
+            move |client| probe_body(client, probe_request, sink)
+        },
+    )
+    .await;
+    let terminal = take_terminal(&sink);
+    let raw: &Value = terminal
+        .raw
+        .as_deref()
+        .expect("every terminal `stream()` yields carries `raw`");
+
+    let typed = StreamingCompletionResponse::deserialize(raw)
+        .expect("`raw` is the serialized anthropic::streaming::StreamingCompletionResponse");
+    let renormalized = StreamFinal::from((ANTHROPIC_PROVIDER, typed));
     assert_eq!(
-        off[0].0, on[0].0,
-        "the recorded request bodies must be byte-identical: capture is local policy"
+        renormalized.identity(),
+        terminal.identity(),
+        "identity (message id, transport id) survives raw → typed → StreamFinal"
     );
-    let request = crate::cassettes::recorded_json_request(ANTHROPIC_PROVIDER, ON_SCENARIO);
-    assert_eq!(
-        request["stream"], true,
-        "premise: these are the streamed twins"
-    );
-    for (body, _) in off.iter().chain(on.iter()) {
-        assert!(
-            !body.contains("capture_raw") && !body.contains("captureRaw"),
-            "the flag is `#[serde(skip)]`; it must never serialize: {body}"
-        );
-    }
+    assert_eq!(renormalized.finish_reason, terminal.finish_reason);
+    assert_eq!(renormalized.model, terminal.model);
+    assert_eq!(renormalized.usage, terminal.usage);
+    assert_eq!(renormalized.provider, terminal.provider);
+
+    // …and none of that is vacuous: the normalized terminal is the fixture's.
+    let recorded = recorded_stream(RENORMALIZED_SCENARIO);
+    assert_eq!(recorded.stop_reason.as_deref(), Some("end_turn"));
+    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+    assert_terminal_matches_fixture(RENORMALIZED_SCENARIO, &terminal, &recorded);
 }

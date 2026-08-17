@@ -1038,16 +1038,14 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        // Read the local-policy flag before `raw_stream` consumes the request,
-        // exactly as the unary seam reads it before `raw_completion`.
-        let capture_raw = completion_request.capture_raw_response;
         let raw = self.raw_stream(completion_request).await?;
 
         Ok(StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            crate::streaming::normalize_stream(raw, capture_raw, |response| {
-                Ok((PROVIDER_NAME, response).into())
-            }),
+            crate::streaming::normalize_stream(
+                raw,
+                |response| Ok((PROVIDER_NAME, response).into()),
+            ),
         ))
     }
 }
@@ -1071,21 +1069,17 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Read the local-policy flag before the request is consumed. The
-        // captured value is the route-tagged `CopilotCompletionResponse` —
+        // The captured value is the route-tagged `CopilotCompletionResponse` —
         // what `raw_completion` returns — not the inner route type, so it
         // round-trips into the same type the typed escape hatch yields.
-        let capture_raw = completion_request.capture_raw_response;
         let (response, provider_request_id) = self
             .raw_completion_with_request_id(completion_request)
             .await?;
-        let captured = capture_raw
-            .then(|| serde_json::to_value(&response))
-            .transpose()?;
+        let captured = serde_json::to_value(&response)?;
         Ok(response
             .normalize(PROVIDER_NAME)?
             .with_optional_provider_request_id(provider_request_id)
-            .with_optional_raw(captured))
+            .with_raw(captured))
     }
 
     async fn stream(
@@ -2520,31 +2514,24 @@ mod raw_capture_tests {
         client.completion_model(model)
     }
 
-    /// Run the flag-off and flag-on completions for one route and check the
-    /// shared contract: off leaves `raw` unset; on captures a value that
-    /// deserializes into [`CopilotCompletionResponse`] under the expected
-    /// route tag and re-serializes identically; nothing normalized differs;
-    /// and both runs report the header's id.
+    /// Run one completion for a route and check the shared capture contract:
+    /// `raw` deserializes into [`CopilotCompletionResponse`] under the
+    /// expected route tag and re-serializes identically; re-normalizing the
+    /// capture (with the header id reattached, exactly as `completion()`
+    /// does) reproduces every normalized field; and the response reports the
+    /// header's id.
     async fn assert_capture_contract(
         model: &CompletionModel<RecordingHttpClient>,
         expected_api_tag: &str,
     ) -> (completion::CompletionResponse, CopilotCompletionResponse) {
-        let off = model
+        let response = model
             .completion(model.completion_request("hello").build())
             .await
-            .expect("flag-off completion");
-        assert!(off.raw.is_none(), "the flag defaults off; nothing captured");
-
-        let on = model
-            .completion(
-                model
-                    .completion_request("hello")
-                    .capture_raw_response(true)
-                    .build(),
-            )
-            .await
-            .expect("flag-on completion");
-        let raw = on.raw.as_deref().expect("flag on must capture");
+            .expect("completion");
+        let raw = response
+            .raw
+            .as_deref()
+            .expect("a provider-backed completion always carries raw");
         assert_eq!(raw["api"], expected_api_tag);
         let typed: CopilotCompletionResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
@@ -2554,14 +2541,18 @@ mod raw_capture_tests {
             "the capture must be exactly what the route-tagged raw type serializes to"
         );
 
-        assert_eq!(on.identity(), off.identity());
-        assert_eq!(on.finish_reason(), off.finish_reason());
-        assert_eq!(on.model, off.model);
-        assert_eq!(on.usage, off.usage);
-        assert_eq!(on.choice, off.choice);
-        assert_eq!(off.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(on.provider_request_id.as_deref(), Some(REQUEST_ID));
-        (on, typed)
+        let renormalized = typed
+            .clone()
+            .normalize(PROVIDER_NAME)
+            .expect("re-normalize the capture")
+            .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
+        assert_eq!(response.identity(), renormalized.identity());
+        assert_eq!(response.finish_reason(), renormalized.finish_reason());
+        assert_eq!(response.model, renormalized.model);
+        assert_eq!(response.usage, renormalized.usage);
+        assert_eq!(response.choice, renormalized.choice);
+        assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
+        (response, typed)
     }
 
     /// Part A parity for one route: `raw_completion_with_request_id` →
@@ -2596,18 +2587,21 @@ mod raw_capture_tests {
     /// Chat route: the capture is tagged `api: chat`, wraps the shared OpenAI
     /// chat wire type, and keeps `system_fingerprint`.
     #[tokio::test]
-    async fn chat_route_captures_raw_only_when_requested_and_round_trips() {
+    async fn chat_route_raw_round_trips_into_the_route_tagged_type() {
         let model = model("gpt-4o", CHAT_BODY);
 
-        let (on, typed) = assert_capture_contract(&model, "chat").await;
+        let (response, typed) = assert_capture_contract(&model, "chat").await;
 
         let CopilotCompletionResponse::Chat(chat) = typed else {
             panic!("the chat route must capture the chat variant");
         };
         assert_eq!(chat.system_fingerprint.as_deref(), Some("fp_copilot_chat"));
-        assert_eq!(on.finish_reason(), Some(completion::FinishReason::Stop));
         assert_eq!(
-            on.identity().response_id.as_deref(),
+            response.finish_reason(),
+            Some(completion::FinishReason::Stop)
+        );
+        assert_eq!(
+            response.identity().response_id.as_deref(),
             Some("chatcmpl-copilot-raw")
         );
     }
@@ -2636,10 +2630,10 @@ mod raw_capture_tests {
     /// deliberately not emitted — so the deserialized capture reports `None`
     /// there while the normalized response beside it carries the header).
     #[tokio::test]
-    async fn responses_route_captures_raw_only_when_requested_and_round_trips() {
+    async fn responses_route_raw_round_trips_into_the_route_tagged_type() {
         let model = model("gpt-5.3-codex", RESPONSES_BODY);
 
-        let (on, typed) = assert_capture_contract(&model, "responses").await;
+        let (response, typed) = assert_capture_contract(&model, "responses").await;
 
         let CopilotCompletionResponse::Responses(responses) = typed else {
             panic!("the responses route must capture the responses variant");
@@ -2649,9 +2643,12 @@ mod raw_capture_tests {
             Some(responses_api::OpenAIServiceTier::Default)
         ));
         assert_eq!(responses.provider_request_id, None);
-        assert_eq!(on.identity().message_id.as_deref(), Some("msg_copilot_raw"));
         assert_eq!(
-            on.identity().response_id.as_deref(),
+            response.identity().message_id.as_deref(),
+            Some("msg_copilot_raw")
+        );
+        assert_eq!(
+            response.identity().response_id.as_deref(),
             Some("resp_copilot_raw")
         );
     }

@@ -205,12 +205,11 @@ impl MockTurn {
     }
 
     /// Script the provider's own response for this turn — what a real seam
-    /// would serialize from its raw type.
-    ///
-    /// The mock attaches it only when the request opted in via
-    /// `CompletionRequest::capture_raw_response`, exactly like a real seam,
-    /// so agent tests can prove the opt-in reaches the model through erasure
-    /// without a live provider.
+    /// would serialize from its raw type. Attached to the response as-is, so
+    /// agent tests can prove the payload reaches every observer of the turn
+    /// without a live provider. A turn without a scripted payload reports
+    /// `raw: None`, so `raw.is_some()` in a test means the scripted value
+    /// arrived, never that the mock invented one.
     pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
         if let Ok(response) = &mut self.response {
             response.raw = Some(raw);
@@ -218,23 +217,15 @@ impl MockTurn {
         self
     }
 
-    fn into_completion_response(
-        self,
-        capture_raw: bool,
-    ) -> Result<CompletionResponse, CompletionError> {
+    fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
         let response = self.response.map_err(MockError::into_completion_error)?;
-        // Like a real seam: the scripted raw payload is attached only when the
-        // request asked for it. A scripted turn without a payload attaches
-        // nothing even when asked, so `raw.is_some()` in a test means the
-        // scripted value arrived, never that the mock invented one.
-        let raw = if capture_raw { response.raw } else { None };
         Ok(
             CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER)
                 .with_optional_message_id(response.message_id)
                 .with_optional_response_id(response.response_id)
                 .with_optional_provider_request_id(response.provider_request_id)
                 .with_optional_finish_reason(response.finish_reason)
-                .with_optional_raw(raw),
+                .with_optional_raw(response.raw),
         )
     }
 }
@@ -345,7 +336,6 @@ impl CompletionModel for MockCompletionModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
-        let capture_raw = request.capture_raw_response;
         self.record_request(request);
         let Some(turn) = self.next_turn() else {
             return Err(CompletionError::ProviderError(
@@ -353,14 +343,13 @@ impl CompletionModel for MockCompletionModel {
             ));
         };
 
-        turn.into_completion_response(capture_raw)
+        turn.into_completion_response()
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
-        let capture_raw = request.capture_raw_response;
         self.record_request(request);
         let Some(events) = self.next_stream_turn() else {
             return Err(CompletionError::ProviderError(
@@ -375,10 +364,10 @@ impl CompletionModel for MockCompletionModel {
         };
         // Scripted terminals go through `normalize_stream` like every real
         // provider's, so the mock observes the same `Stop` -> `ToolCalls`
-        // reconciliation callers see in production — and the same opt-in raw
-        // capture: the mock's terminal type is `StreamFinal` itself, so with
-        // the flag on `raw` is the scripted terminal serialized.
-        let stream = crate::streaming::normalize_stream(Box::pin(stream), capture_raw, Ok);
+        // reconciliation callers see in production — and the same raw
+        // capture: the mock's terminal type is `StreamFinal` itself, so `raw`
+        // is the scripted terminal serialized.
+        let stream = crate::streaming::normalize_stream(Box::pin(stream), Ok);
         Ok(StreamingCompletionResponse::stream(MOCK_PROVIDER, stream))
     }
 }
@@ -405,7 +394,6 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
-            capture_raw_response: false,
         }
     }
 
@@ -445,92 +433,71 @@ mod tests {
         assert_eq!(model.requests().len(), 2);
     }
 
-    /// The mock honors `capture_raw_response` exactly like a real seam: a
-    /// scripted raw payload is attached only when the request opted in, and
-    /// the flag is visible on the recorded request — which is what lets agent
-    /// tests prove the opt-in reaches the model through erasure.
+    /// The mock behaves like a real seam: a scripted raw payload rides on the
+    /// normalized response unconditionally, and a turn that scripted none
+    /// reports `raw: None` — the mock never invents a payload, so `None`
+    /// here means "no provider record was scripted behind this turn".
     #[tokio::test]
-    async fn completion_attaches_scripted_raw_only_when_requested() {
+    async fn completion_attaches_scripted_raw_and_reports_none_when_unscripted() {
         let payload = serde_json::json!({"provider_only": "kept", "id": "resp_1"});
         let model = MockCompletionModel::new([
             MockTurn::text("first").with_raw(payload.clone()),
-            MockTurn::text("second").with_raw(payload.clone()),
-            MockTurn::text("third"),
+            MockTurn::text("second"),
         ]);
 
-        let off = model
+        let scripted = model
             .completion(request("hello"))
             .await
             .expect("first scripted turn should succeed");
-        assert!(off.raw.is_none(), "capture is opt-in");
+        assert_eq!(scripted.raw.as_deref(), Some(&payload));
 
-        let mut on_request = request("hello");
-        on_request.capture_raw_response = true;
-        let on = model
-            .completion(on_request)
+        let unscripted = model
+            .completion(request("hello"))
             .await
             .expect("second scripted turn should succeed");
-        assert_eq!(on.raw.as_deref(), Some(&payload));
-
-        // Asked, but nothing scripted: the mock never invents a payload.
-        let mut on_request = request("hello");
-        on_request.capture_raw_response = true;
-        let unscripted = model
-            .completion(on_request)
-            .await
-            .expect("third scripted turn should succeed");
         assert!(unscripted.raw.is_none());
 
-        let requests = model.requests();
-        assert_eq!(
-            requests
-                .iter()
-                .map(|request| request.capture_raw_response)
-                .collect::<Vec<_>>(),
-            vec![false, true, true]
-        );
+        assert_eq!(model.requests().len(), 2);
     }
 
     /// The streaming half of the same contract: the scripted terminal goes
-    /// through `normalize_stream`, so with the flag on the terminal's `raw`
-    /// is the scripted terminal record serialized (the mock's own terminal
-    /// type is `StreamFinal`), and with it off `raw` is unset.
+    /// through `normalize_stream`, so the terminal's `raw` is the scripted
+    /// terminal record serialized (the mock's own terminal type is
+    /// `StreamFinal`).
     #[tokio::test]
-    async fn stream_attaches_terminal_raw_only_when_requested() {
-        let events = || {
-            vec![
-                MockStreamEvent::text("hello"),
-                MockStreamEvent::final_response(Usage {
-                    input_tokens: 1,
-                    output_tokens: 2,
-                    total_tokens: 3,
-                    ..Usage::new()
-                }),
-            ]
-        };
-        let model = MockCompletionModel::from_stream_turns([events(), events()]);
+    async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::text("hello"),
+            MockStreamEvent::final_response(Usage {
+                input_tokens: 1,
+                output_tokens: 2,
+                total_tokens: 3,
+                ..Usage::new()
+            }),
+        ]]);
 
-        let mut off = model
+        let mut stream = model
             .stream(request("hello"))
             .await
             .expect("stream should open");
-        while off.next().await.is_some() {}
-        let off_final = off.response.expect("terminal record");
-        assert!(off_final.raw.is_none());
-
-        let mut on_request = request("hello");
-        on_request.capture_raw_response = true;
-        let mut on = model.stream(on_request).await.expect("stream should open");
-        while on.next().await.is_some() {}
-        let on_final = on.response.expect("terminal record");
-        let raw = on_final.raw.as_deref().expect("capture was requested");
+        while stream.next().await.is_some() {}
+        let terminal = stream.response.expect("terminal record");
+        let raw = terminal
+            .raw
+            .as_deref()
+            .expect("the terminal always carries the scripted record");
         let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
         assert_eq!(typed.usage.total_tokens, 3);
         assert_eq!(
             typed.raw, None,
             "the scripted terminal itself carried no raw"
         );
-        assert_eq!(on_final.usage.total_tokens, 3);
+        assert_eq!(
+            serde_json::to_value(&typed).expect("re-serialize"),
+            *raw,
+            "the capture must be exactly what the scripted terminal serializes to"
+        );
+        assert_eq!(terminal.usage.total_tokens, 3);
     }
 
     #[tokio::test]

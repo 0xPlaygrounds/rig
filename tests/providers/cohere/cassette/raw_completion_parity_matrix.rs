@@ -4,12 +4,12 @@
 //!
 //! Cohere is a `TryFrom`-shaped provider: `CompletionModel::completion` is
 //! `raw_completion(req)?.try_into()` (`rig::completion::CompletionResponse:
-//! TryFrom<cohere::completion::CompletionResponse>`) plus the raw capture
-//! seam. So a caller holding the concrete model who prefers the escape hatch
-//! and normalizes by hand must land on the same `identity()`,
-//! `finish_reason()`, `model` and `usage` that `completion()` reports — and,
-//! when capture is on, `try_into` over the typed `raw` must reproduce that
-//! very response.
+//! TryFrom<cohere::completion::CompletionResponse>`) plus the always-on raw
+//! capture seam. So a caller holding the concrete model who prefers the
+//! escape hatch and normalizes by hand must land on the same `identity()`,
+//! `finish_reason()`, `model` and `usage` that `completion()` reports — and
+//! `try_into` over the typed `raw` every `completion()` carries must
+//! reproduce that very response.
 //!
 //! Cohere reports no documented request-id response header (its
 //! `x-debug-trace-id` is a debug trace handle, deliberately not adopted — see
@@ -26,9 +26,9 @@
 //! | 1 | `raw_try_into_matches_completion` | `raw_completion` + `try_into` vs `completion` | identity / finish reason / model / usage agree | recorded |
 //!
 //! Recorded (`COHERE_API_KEY` was available) as one scenario with **two**
-//! interactions — the raw request first, then the `completion` twin with
-//! capture on — because the contract is between the two; the harness replays
-//! interactions in order.
+//! interactions — the raw request first, then the `completion` twin — because
+//! the contract is between the two seams; the harness replays interactions in
+//! order.
 
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
 use rig::prelude::*;
@@ -48,23 +48,22 @@ async fn raw_try_into_matches_completion() {
         "raw_completion_parity_matrix/raw_try_into_matches_completion",
         |client| async move {
             let model = client.completion_model(CASSETTE_MODEL);
-            let request = |capture: bool| {
+            let request = || {
                 model
                     .completion_request(PROMPT)
                     .temperature(0.0)
                     .max_tokens(16)
-                    .capture_raw_response(capture)
                     .build()
             };
 
             let raw = model
-                .raw_completion(request(false))
+                .raw_completion(request())
                 .await
                 .expect("raw completion should succeed");
             let via_raw: RigCompletionResponse = raw.try_into().expect("raw should normalize");
 
             let via_completion = model
-                .completion(request(true))
+                .completion(request())
                 .await
                 .expect("completion should succeed");
 
@@ -112,7 +111,7 @@ async fn raw_try_into_matches_completion() {
             let captured = via_completion
                 .raw
                 .as_deref()
-                .expect("capture was requested");
+                .expect("a provider-backed response always carries raw");
             let reproduced: RigCompletionResponse = CompletionResponse::deserialize(captured)
                 .expect("captured raw is Cohere's own type")
                 .try_into()

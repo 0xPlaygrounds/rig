@@ -294,7 +294,7 @@ async fn run_model(client: mistral::Client, cell: Cell) -> Observation {
                     };
                 }
             };
-            let normalized = rig::streaming::normalize_stream(raw, false, |terminal| {
+            let normalized = rig::streaming::normalize_stream(raw, |terminal| {
                 Ok::<_, rig::completion::CompletionError>(("mistral", terminal).into())
             });
             let mut stream = StreamingCompletionResponse::stream("mistral", normalized);

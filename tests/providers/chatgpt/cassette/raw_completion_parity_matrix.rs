@@ -230,9 +230,15 @@ async fn raw_normalize_reproduces_completion() {
                 via_completion.usage.input_tokens
             );
             // The typed route carries no `raw` (it *is* the raw); the
-            // normalized route without opt-in carries none either.
+            // normalized route always carries the same wire type serialized,
+            // so it reads back as a `responses_api::CompletionResponse`.
             assert!(via_raw.raw.is_none());
-            assert!(via_completion.raw.is_none());
+            let completion_raw = via_completion
+                .raw
+                .as_deref()
+                .expect("every provider-backed completion carries raw");
+            responses_api::CompletionResponse::deserialize(completion_raw)
+                .expect("completion's raw must be the same wire type raw_completion returns");
 
             *sink.lock().expect("capture mutex") = vec![via_raw, via_completion];
         },
@@ -336,13 +342,7 @@ async fn empty_output_fallback_still_carries_raw() {
         |client| async move {
             let model = client.completion_model(MODEL);
             let response = model
-                .completion(
-                    model
-                        .completion_request(PROMPT)
-                        .max_tokens(64)
-                        .capture_raw_response(true)
-                        .build(),
-                )
+                .completion(model.completion_request(PROMPT).max_tokens(64).build())
                 .await
                 .expect("the fallback rebuilds the response from the event stream");
 
@@ -355,7 +355,7 @@ async fn empty_output_fallback_still_carries_raw() {
             let raw = response
                 .raw
                 .as_deref()
-                .expect("the fallback branch must carry raw when capture was requested");
+                .expect("the fallback branch carries raw like every other completion");
             let typed = responses_api::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into responses_api::CompletionResponse");
             assert!(

@@ -1,13 +1,15 @@
 //! Raw provider response capture on xAI's blocking path.
 //!
-//! **The feature.** `CompletionRequest::capture_raw_response` asks the model
-//! to attach the value its inherent `raw_completion` would have returned onto
-//! the normalized [`rig::completion::CompletionResponse::raw`]. xAI speaks
-//! the OpenAI Responses wire, so the raw view is the Responses
-//! [`CompletionResponse`] serialized — a serialization that mirrors the wire
-//! body, which is why the transport `provider_request_id` the typed value
-//! carries is *not* in `raw` (it is on the normalized response instead). Off
-//! by default, never serialized into the request, never a substitute for a
+//! **The feature.** Every blocking completion attaches the value the model's
+//! inherent `raw_completion` returned onto the normalized
+//! [`rig::completion::CompletionResponse::raw`]. xAI speaks the OpenAI
+//! Responses wire, so the raw view is the Responses [`CompletionResponse`]
+//! serialized — a serialization that mirrors the wire body, which is why the
+//! transport `provider_request_id` the typed value carries is *not* in `raw`
+//! (it is on the normalized response instead). Capture is always on: there is
+//! no flag to request it, nothing about it reaches the wire, and a `None`
+//! only ever means a response built by hand with no provider payload behind
+//! it. `raw` is a second view of the same response, never a substitute for a
 //! normalized field. The Responses envelope carries a `status` and, on xAI,
 //! a `service_tier` and a `metadata.system_fingerprint` the normalized
 //! response has no slot for; those are the fields pinned here as reachable
@@ -15,18 +17,17 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `capture_off_leaves_raw_none` | flag off (the default) | `raw == None` | recorded |
-//! | 2 | `capture_on_round_trips_responses_type` | flag on | `raw` deserializes into the Responses `CompletionResponse` and re-serializes equal | recorded |
-//! | 3 | `capture_on_exposes_status_and_service_tier` | provider-only field | `raw.status`, `raw.service_tier` and `raw.metadata.system_fingerprint` equal the fixture body | recorded |
-//! | 4 | `request_invariant_off_vs_on` | on-wire request | the flag-off and flag-on request bodies are byte-identical | recorded |
-//! | 5 | `normalized_fields_identical_off_vs_on` | normalized view | both responses reproduce their own fixture bytes (including the `x-request-id` header); the on-response equals its raw re-normalized plus the id | recorded |
+//! | 1 | `raw_round_trips_responses_type` | typed round trip | `raw` deserializes into the Responses `CompletionResponse` and re-serializes equal | recorded |
+//! | 2 | `raw_exposes_status_and_service_tier` | provider-only field | `raw.status`, `raw.service_tier` and `raw.metadata.system_fingerprint` equal the fixture body | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (including the `x-request-id` header) and equals its own `raw` re-normalized plus the id | recorded |
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
-//! after the wrapper returns: cell 3 reads the status and tier out of the
-//! recorded body rather than trusting what the typed view reports, and cells
-//! 4 and 5 record the flag-off and flag-on turns as two interactions of one
-//! scenario so the comparison is between bytes that crossed the wire in the
-//! same session.
+//! after the wrapper returns: cell 2 reads the status and tier out of the
+//! recorded body rather than trusting what the typed view reports, and cell 3
+//! checks the normalized fields against the recorded body and the recorded
+//! `x-request-id` header before comparing them with the re-normalized `raw`,
+//! so a recording that stopped carrying usage, a status, or the id header
+//! fails loudly instead of covering nothing.
 
 use rig::completion::{
     CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
@@ -46,29 +47,28 @@ const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &xai::CompletionModel, capture: bool) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .capture_raw_response(capture)
-        .build()
+fn request(model: &xai::CompletionModel) -> CompletionRequest {
+    model.completion_request(PROMPT).build()
 }
 
-/// Every recorded interaction of `scenario` as `(request, response)` JSON.
-fn recorded_json(scenario: &str) -> Vec<(Value, Value)> {
-    crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, response)| {
-            (
-                serde_json::from_str(&request).expect("recorded request should be JSON"),
-                serde_json::from_str(&response).expect("recorded response should be JSON"),
-            )
-        })
-        .collect()
+/// The single recorded interaction of `scenario` as `(request, response)` JSON.
+fn recorded_json(scenario: &str) -> (Value, Value) {
+    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
+    assert_eq!(
+        interactions.len(),
+        1,
+        "every cell here is a single completion turn"
+    );
+    let (request, response) = &interactions[0];
+    (
+        serde_json::from_str(request).expect("recorded request should be JSON"),
+        serde_json::from_str(response).expect("recorded response should be JSON"),
+    )
 }
 
-/// The `x-request-id` the recorded interaction at `index` carried.
-fn recorded_request_id(scenario: &str, index: usize) -> Option<String> {
-    recorded_response_headers(scenario)[index]
+/// The `x-request-id` the single recorded interaction carried.
+fn recorded_request_id(scenario: &str) -> Option<String> {
+    recorded_response_headers(scenario)[0]
         .iter()
         .find(|(name, _)| name == "x-request-id")
         .map(|(_, value)| value.clone())
@@ -114,29 +114,24 @@ fn assert_reproduces_fixture(
     response: &CompletionResponse,
     body: &Value,
     request_id: Option<&str>,
-    context: &str,
 ) {
-    assert_eq!(response.provider, PROVIDER, "{context}: provider");
+    assert_eq!(response.provider, PROVIDER, "provider");
     let (message_id, text) = recorded_message(body);
     assert_matches_recorded_token(
         response.response_id.as_deref(),
         body["id"].as_str(),
-        &format!("{context}: response id"),
+        "response id",
     );
     assert_matches_recorded_token(
         response.message_id.as_deref(),
         Some(message_id),
-        &format!("{context}: message id"),
+        "message id",
     );
-    assert_eq!(
-        response.model.as_deref(),
-        body["model"].as_str(),
-        "{context}: model"
-    );
+    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
     assert_eq!(
         response.finish_reason(),
         Some(recorded_finish_reason(body)),
-        "{context}: finish reason"
+        "finish reason"
     );
     assert_eq!(
         (
@@ -149,67 +144,37 @@ fn assert_reproduces_fixture(
             body["usage"]["output_tokens"].as_u64().expect("output"),
             body["usage"]["total_tokens"].as_u64().expect("total"),
         ),
-        "{context}: usage"
+        "usage"
     );
-    assert_eq!(text_of(&response.choice), text, "{context}: choice text");
+    assert_eq!(text_of(&response.choice), text, "choice text");
     // xAI contracts `x-request-id`; the recorded header is the premise.
     assert!(
         request_id.is_some(),
-        "{context}: the recorded response must carry x-request-id"
+        "the recorded response must carry x-request-id"
     );
     assert_matches_recorded_token(
         response.provider_request_id.as_deref(),
         request_id,
-        &format!("{context}: request id"),
+        "request id",
     );
 }
 
 // ================================================================
-// 1. Off leaves raw None
+// 1. raw round-trips the Responses type
 // ================================================================
 
 #[tokio::test]
-async fn capture_off_leaves_raw_none() {
-    const SCENARIO: &str = "raw_capture_matrix/capture_off_leaves_raw_none";
+async fn raw_round_trips_responses_type() {
+    const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_responses_type";
     with_xai_cassette_result(
-        "raw_capture_matrix/capture_off_leaves_raw_none",
+        "raw_capture_matrix/raw_round_trips_responses_type",
         |client| async move {
             let model = client.completion_model(MODEL);
-            let response = model.completion(request(&model, false)).await?;
-            assert!(
-                response.raw.is_none(),
-                "raw must stay None unless asked for"
-            );
-            assert!(!response.choice.is_empty());
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("capture_off_leaves_raw_none should replay from its cassette");
-
-    let (request_body, _) = &recorded_json(SCENARIO)[0];
-    assert!(
-        request_body.get("capture_raw_response").is_none(),
-        "the flag is local policy and must never reach the wire"
-    );
-}
-
-// ================================================================
-// 2. On round-trips the Responses type
-// ================================================================
-
-#[tokio::test]
-async fn capture_on_round_trips_responses_type() {
-    const SCENARIO: &str = "raw_capture_matrix/capture_on_round_trips_responses_type";
-    with_xai_cassette_result(
-        "raw_capture_matrix/capture_on_round_trips_responses_type",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let response = model.completion(request(&model, true)).await?;
+            let response = model.completion(request(&model)).await?;
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw is captured when asked for");
+                .expect("every provider-backed response carries raw");
             let typed = xai::CompletionResponse::deserialize(raw)
                 .expect("raw is the Responses CompletionResponse xAI parses into");
             assert_eq!(
@@ -228,40 +193,39 @@ async fn capture_on_round_trips_responses_type() {
         },
     )
     .await
-    .expect("capture_on_round_trips_responses_type should replay from its cassette");
+    .expect("raw_round_trips_responses_type should replay from its cassette");
 
-    let (request_body, response_body) = &recorded_json(SCENARIO)[0];
-    assert!(request_body.get("capture_raw_response").is_none());
+    let (_, response_body) = recorded_json(SCENARIO);
     assert_eq!(response_body["object"], json!("response"));
 }
 
 // ================================================================
-// 3. Fields the normalized response provably lacks
+// 2. Fields the normalized response provably lacks
 // ================================================================
 
 #[tokio::test]
-async fn capture_on_exposes_status_and_service_tier() {
-    const SCENARIO: &str = "raw_capture_matrix/capture_on_exposes_status_and_service_tier";
+async fn raw_exposes_status_and_service_tier() {
+    const SCENARIO: &str = "raw_capture_matrix/raw_exposes_status_and_service_tier";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_xai_cassette_result(
-        "raw_capture_matrix/capture_on_exposes_status_and_service_tier",
+        "raw_capture_matrix/raw_exposes_status_and_service_tier",
         |client| async move {
             let model = client.completion_model(MODEL);
-            let response = model.completion(request(&model, true)).await?;
+            let response = model.completion(request(&model)).await?;
             *sink.lock().expect("observation lock") = Some(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("capture_on_exposes_status_and_service_tier should replay from its cassette");
+    .expect("raw_exposes_status_and_service_tier should replay from its cassette");
 
     let response = observed
         .lock()
         .expect("observation lock")
         .take()
         .expect("the cell should observe a response");
-    let (_, body) = &recorded_json(SCENARIO)[0];
+    let (_, body) = recorded_json(SCENARIO);
     let recorded_status = body["status"]
         .as_str()
         .expect("a Responses body carries a status");
@@ -272,7 +236,10 @@ async fn capture_on_exposes_status_and_service_tier() {
         .as_str()
         .expect("xAI reports metadata.system_fingerprint");
 
-    let raw = response.raw.as_deref().expect("raw is captured");
+    let raw = response
+        .raw
+        .as_deref()
+        .expect("every provider-backed response carries raw");
     assert_eq!(raw["status"], json!(recorded_status));
     assert_eq!(raw["service_tier"], json!(recorded_tier));
     assert_matches_recorded_token(
@@ -289,94 +256,53 @@ async fn capture_on_exposes_status_and_service_tier() {
 }
 
 // ================================================================
-// 4. The flag never reaches the wire
+// 3. The normalized view and raw tell one story
 // ================================================================
 
 #[tokio::test]
-async fn request_invariant_off_vs_on() {
-    const SCENARIO: &str = "raw_capture_matrix/request_invariant_off_vs_on";
-    with_xai_cassette_result(
-        "raw_capture_matrix/request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(MODEL);
-            let off = model.completion(request(&model, false)).await?;
-            let on = model.completion(request(&model, true)).await?;
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("request_invariant_off_vs_on should replay from its cassette");
-
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    assert_eq!(interactions.len(), 2, "one flag-off and one flag-on turn");
-    assert_eq!(
-        interactions[0].0, interactions[1].0,
-        "the flag-off and flag-on request bodies must be byte-identical"
-    );
-    assert!(!interactions[0].0.contains("capture_raw"));
-}
-
-// ================================================================
-// 5. Normalized fields are the same either way
-// ================================================================
-
-#[tokio::test]
-async fn normalized_fields_identical_off_vs_on() {
-    const SCENARIO: &str = "raw_capture_matrix/normalized_fields_identical_off_vs_on";
+async fn normalized_fields_match_raw_renormalized() {
+    const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_xai_cassette_result(
-        "raw_capture_matrix/normalized_fields_identical_off_vs_on",
+        "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| async move {
             let model = client.completion_model(MODEL);
-            let off = model.completion(request(&model, false)).await?;
-            let on = model.completion(request(&model, true)).await?;
-            *sink.lock().expect("observation lock") = Some((off, on));
+            let response = model.completion(request(&model)).await?;
+            *sink.lock().expect("observation lock") = Some(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
-    .expect("normalized_fields_identical_off_vs_on should replay from its cassette");
+    .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
 
-    let (off, on) = observed
+    let response = observed
         .lock()
         .expect("observation lock")
         .take()
-        .expect("the cell should observe both responses");
-    let interactions = recorded_json(SCENARIO);
-    assert_eq!(interactions.len(), 2);
-    assert!(off.raw.is_none());
-    assert_reproduces_fixture(
-        &off,
-        &interactions[0].1,
-        recorded_request_id(SCENARIO, 0).as_deref(),
-        "flag off",
-    );
-    assert_reproduces_fixture(
-        &on,
-        &interactions[1].1,
-        recorded_request_id(SCENARIO, 1).as_deref(),
-        "flag on",
-    );
+        .expect("the cell should observe a response");
+    let (_, body) = recorded_json(SCENARIO);
+    assert_reproduces_fixture(&response, &body, recorded_request_id(SCENARIO).as_deref());
 
-    // The on-response's normalized fields are exactly what its own raw
+    // The normalized fields are exactly what the response's own raw
     // re-normalizes to (plus the transport id the mirrored body cannot
     // carry): capture adds a view, it never changes the mapping.
-    let raw = on.raw.as_deref().expect("raw is captured");
+    let raw = response
+        .raw
+        .as_deref()
+        .expect("every provider-backed response carries raw");
     let renormalized = xai::CompletionResponse::deserialize(raw)
         .expect("raw is the Responses type")
         .normalize(PROVIDER)
         .expect("raw normalizes")
-        .with_optional_provider_request_id(on.provider_request_id.clone());
-    assert_eq!(renormalized.identity(), on.identity());
-    assert_eq!(renormalized.finish_reason(), on.finish_reason());
-    assert_eq!(renormalized.model, on.model);
-    assert_eq!(renormalized.usage, on.usage);
-    assert_eq!(renormalized.choice, on.choice);
+        .with_optional_provider_request_id(response.provider_request_id.clone());
+    assert_eq!(renormalized.identity(), response.identity());
+    assert_eq!(renormalized.finish_reason(), response.finish_reason());
+    assert_eq!(renormalized.model, response.model);
+    assert_eq!(renormalized.usage, response.usage);
+    assert_eq!(renormalized.choice, response.choice);
     assert!(
         renormalized.raw.is_none(),
-        "normalizing raw does not re-capture"
+        "normalizing a hand-fed typed value attaches no raw of its own"
     );
 }

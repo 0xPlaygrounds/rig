@@ -1,23 +1,22 @@
 //! Raw provider response capture on Groq's streaming chat-completions path.
 //!
-//! **The feature.** With `CompletionRequest::capture_raw_response` on, the
-//! stream's terminal [`rig::streaming::StreamFinal::raw`] carries the value
-//! the model's inherent `raw_stream` would have yielded as its terminal
-//! record — for Groq the shared chat-completions terminal
+//! **The feature.** Every stream's terminal [`rig::streaming::StreamFinal::raw`]
+//! carries the value the model's inherent `raw_stream` yielded as its
+//! terminal record — for Groq the shared chat-completions terminal
 //! [`StreamingCompletionResponse`] over the shared [`openai::Usage`] —
-//! serialized. It is the terminal record only, never the stream's frames.
-//! Groq's terminal usage carries its timing accounting (`queue_time`,
-//! `prompt_time`, ...) that the normalized `Usage` has no slot for, and the
-//! terminal's accumulated `additional_params` carries the `x_groq` envelope
-//! and `system_fingerprint` the frames repeat; both are reachable only
-//! through `raw`.
+//! serialized. Capture is always on: there is no flag to request it, nothing
+//! about it reaches the wire, and a `None` only ever means a terminal built
+//! by hand with no provider record behind it. It is the terminal record only,
+//! never the stream's frames. Groq's terminal usage carries its timing
+//! accounting (`queue_time`, `prompt_time`, ...) that the normalized `Usage`
+//! has no slot for, and the terminal's accumulated `additional_params`
+//! carries the `x_groq` envelope and `system_fingerprint` the frames repeat;
+//! both are reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_capture_off_leaves_raw_none` | flag off (the default) | terminal `raw == None` | recorded |
-//! | 2 | `stream_capture_on_round_trips_terminal_type` | flag on | terminal `raw` deserializes into `StreamingCompletionResponse<openai::Usage>` and re-serializes equal | recorded |
-//! | 3 | `stream_capture_on_exposes_terminal_queue_time` | terminal-only field | `raw.usage.queue_time` and `raw.additional_params.x_groq.id` equal the recorded terminal frame's | recorded |
-//! | 4 | `stream_request_invariant_off_vs_on` | on-wire request | the flag-off and flag-on request bodies are byte-identical | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<openai::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame and `x-request-id` header | recorded |
+//! | 2 | `stream_raw_exposes_terminal_queue_time` | terminal-only field | `raw.usage.queue_time` and `raw.additional_params.x_groq.id` equal the recorded terminal frame's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that usage appears only on the stream's closing frames (Groq
@@ -34,7 +33,7 @@ use rig::streaming::StreamFinal;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::RAW_CAPTURE_MODEL;
+use super::RAW_CAPTURE_MATRIX_MODEL;
 use super::support::{
     assert_matches_recorded_token, recorded_response_headers, with_groq_cassette_result,
 };
@@ -45,12 +44,8 @@ type GroqTerminal = StreamingCompletionResponse<openai::Usage>;
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &groq::CompletionModel, capture: bool) -> CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .max_tokens(16)
-        .capture_raw_response(capture)
-        .build()
+fn request(model: &groq::CompletionModel) -> CompletionRequest {
+    model.completion_request(PROMPT).max_tokens(16).build()
 }
 
 /// The last recorded frame that carries usage — the terminal frame — after
@@ -92,116 +87,67 @@ fn assert_terminal_reproduces_frame(
     terminal: &StreamFinal,
     frame: &Value,
     request_id: Option<&str>,
-    context: &str,
 ) {
-    assert_eq!(terminal.provider, PROVIDER, "{context}: provider");
+    assert_eq!(terminal.provider, PROVIDER, "provider");
     assert_matches_recorded_token(
         terminal.response_id.as_deref(),
         frame["id"].as_str(),
-        &format!("{context}: response id"),
+        "response id",
     );
-    assert_eq!(
-        terminal.model.as_deref(),
-        frame["model"].as_str(),
-        "{context}: model"
-    );
+    assert_eq!(terminal.model.as_deref(), frame["model"].as_str(), "model");
     assert_eq!(
         terminal.usage.input_tokens,
         frame["usage"]["prompt_tokens"]
             .as_u64()
             .expect("prompt_tokens"),
-        "{context}: input tokens"
+        "input tokens"
     );
     assert_eq!(
         terminal.usage.output_tokens,
         frame["usage"]["completion_tokens"]
             .as_u64()
             .expect("completion_tokens"),
-        "{context}: output tokens"
+        "output tokens"
     );
     assert_eq!(
         terminal.usage.total_tokens,
         frame["usage"]["total_tokens"]
             .as_u64()
             .expect("total_tokens"),
-        "{context}: total tokens"
+        "total tokens"
     );
     assert!(
         request_id.is_some(),
-        "{context}: the recorded SSE response must carry x-request-id"
+        "the recorded SSE response must carry x-request-id"
     );
     assert_matches_recorded_token(
         terminal.provider_request_id.as_deref(),
         request_id,
-        &format!("{context}: request id"),
+        "request id",
     );
 }
 
 // ================================================================
-// 1. Off leaves the terminal raw None
+// 1. raw round-trips the terminal type
 // ================================================================
 
 #[tokio::test]
-async fn stream_capture_off_leaves_raw_none() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_capture_off_leaves_raw_none";
+async fn stream_raw_round_trips_terminal_type() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_groq_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_off_leaves_raw_none",
+        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MODEL);
-            let stream = model.stream(request(&model, false)).await?;
+            let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
+            let stream = model.stream(request(&model)).await?;
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
-            assert!(
-                terminal.raw.is_none(),
-                "raw must stay None unless asked for"
-            );
             assert!(!text.is_empty());
-            *sink.lock().expect("observation lock") = Some(terminal);
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("stream_capture_off_leaves_raw_none should replay from its cassette");
-
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
-    let frame = recorded_terminal_frame(SCENARIO);
-    assert_terminal_reproduces_frame(
-        &terminal,
-        &frame,
-        recorded_request_id(SCENARIO).as_deref(),
-        "flag off",
-    );
-    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(request_body["stream"], json!(true));
-    assert!(request_body.get("capture_raw_response").is_none());
-}
-
-// ================================================================
-// 2. On round-trips the terminal type
-// ================================================================
-
-#[tokio::test]
-async fn stream_capture_on_round_trips_terminal_type() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_capture_on_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_groq_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_on_round_trips_terminal_type",
-        |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MODEL);
-            let stream = model.stream(request(&model, true)).await?;
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("stream should end with a terminal record");
             let raw = terminal
                 .raw
                 .as_deref()
-                .expect("raw is captured when asked for");
+                .expect("every provider-backed terminal carries raw");
             let typed = GroqTerminal::deserialize(raw)
                 .expect("raw is the chat-completions terminal over the shared OpenAI usage");
             assert_eq!(
@@ -217,7 +163,7 @@ async fn stream_capture_on_round_trips_terminal_type() {
         },
     )
     .await
-    .expect("stream_capture_on_round_trips_terminal_type should replay from its cassette");
+    .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
     let terminal = observed
         .lock()
@@ -225,29 +171,25 @@ async fn stream_capture_on_round_trips_terminal_type() {
         .take()
         .expect("the cell should observe a terminal record");
     let frame = recorded_terminal_frame(SCENARIO);
-    assert_terminal_reproduces_frame(
-        &terminal,
-        &frame,
-        recorded_request_id(SCENARIO).as_deref(),
-        "flag on",
-    );
+    assert_terminal_reproduces_frame(&terminal, &frame, recorded_request_id(SCENARIO).as_deref());
+    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
+    assert_eq!(request_body["stream"], json!(true));
 }
 
 // ================================================================
-// 3. Terminal-only fields the normalized record lacks
+// 2. Terminal-only fields the normalized record lacks
 // ================================================================
 
 #[tokio::test]
-async fn stream_capture_on_exposes_terminal_queue_time() {
-    const SCENARIO: &str =
-        "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_queue_time";
+async fn stream_raw_exposes_terminal_queue_time() {
+    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_groq_cassette_result(
-        "raw_stream_capture_matrix/stream_capture_on_exposes_terminal_queue_time",
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time",
         |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MODEL);
-            let stream = model.stream(request(&model, true)).await?;
+            let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
+            let stream = model.stream(request(&model)).await?;
             let (_, terminal) = collect_text_and_terminal(stream).await;
             *sink.lock().expect("observation lock") =
                 Some(terminal.expect("stream should end with a terminal record"));
@@ -255,7 +197,7 @@ async fn stream_capture_on_exposes_terminal_queue_time() {
         },
     )
     .await
-    .expect("stream_capture_on_exposes_terminal_queue_time should replay from its cassette");
+    .expect("stream_raw_exposes_terminal_queue_time should replay from its cassette");
 
     let terminal = observed
         .lock()
@@ -273,7 +215,10 @@ async fn stream_capture_on_exposes_terminal_queue_time() {
         .find_map(|frame| frame["x_groq"]["id"].as_str().map(str::to_owned))
         .expect("Groq's closing frames carry an x_groq envelope with an id");
 
-    let raw = terminal.raw.as_deref().expect("raw is captured");
+    let raw = terminal
+        .raw
+        .as_deref()
+        .expect("every provider-backed terminal carries raw");
     assert_eq!(raw["usage"]["queue_time"], json!(recorded_queue_time));
     assert_matches_recorded_token(
         raw["additional_params"]["x_groq"]["id"].as_str(),
@@ -288,36 +233,4 @@ async fn stream_capture_on_exposes_terminal_queue_time() {
     );
     let normalized = serde_json::to_value(&terminal).expect("terminal serializes");
     assert!(normalized.get("x_groq").is_none() && normalized.get("additional_params").is_none());
-}
-
-// ================================================================
-// 4. The flag never reaches the wire
-// ================================================================
-
-#[tokio::test]
-async fn stream_request_invariant_off_vs_on() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_request_invariant_off_vs_on";
-    with_groq_cassette_result(
-        "raw_stream_capture_matrix/stream_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MODEL);
-            let (_, off) =
-                collect_text_and_terminal(model.stream(request(&model, false)).await?).await;
-            let (_, on) =
-                collect_text_and_terminal(model.stream(request(&model, true)).await?).await;
-            assert!(off.expect("off terminal").raw.is_none());
-            assert!(on.expect("on terminal").raw.is_some());
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("stream_request_invariant_off_vs_on should replay from its cassette");
-
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    assert_eq!(interactions.len(), 2, "one flag-off and one flag-on stream");
-    assert_eq!(
-        interactions[0].0, interactions[1].0,
-        "the flag-off and flag-on request bodies must be byte-identical"
-    );
-    assert!(!interactions[0].0.contains("capture_raw"));
 }

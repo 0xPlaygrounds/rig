@@ -1,19 +1,22 @@
-//! Matrix for opt-in raw response capture on both Copilot blocking routes
-//! (`CompletionRequest::capture_raw_response` → `CompletionResponse::raw`).
+//! Matrix for raw response capture on both Copilot blocking routes
+//! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
-//! `raw` is the value
+//! Capture is always on. Every completion the seam returns carries `raw`: the
+//! value
 //! [`CompletionModel::raw_completion`](rig::providers::copilot::CompletionModel::raw_completion)
 //! would have returned — the route-tagged
 //! [`CopilotCompletionResponse`](rig::providers::copilot::CopilotCompletionResponse)
 //! (`{"api":"chat", …}` wrapping [`openai::CompletionResponse`] on the
 //! chat-completions route, `{"api":"responses", …}` wrapping
 //! [`responses_api::CompletionResponse`] on the Responses route) — serialized
-//! with `serde_json::to_value`. It is populated only when the request opted in
-//! and never reaches the wire. Because the tag rides along, a caller reads raw
-//! back into the same enum the typed escape hatch yields, without knowing the
-//! route in advance.
+//! with `serde_json::to_value` before normalization. Nothing about it is sent
+//! to Copilot. `raw == None` means only that a `CompletionResponse` was built
+//! by hand without a provider response behind it, which no cell here can
+//! produce. Because the tag rides along, a caller reads raw back into the
+//! same enum the typed escape hatch yields, without knowing the route in
+//! advance.
 //!
 //! Provider-only fields per route: the chat route's `system_fingerprint`
 //! (Copilot omits `object`/`created` on this route — the wire type tolerates
@@ -25,16 +28,12 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_capture_off_raw_is_none` | chat route, flag off | `raw == None` | unrecorded (no COPILOT credentials in this environment) |
-//! | 2 | `chat_capture_on_raw_round_trips_provider_type` | chat route, flag on | `CopilotCompletionResponse::deserialize(&*raw)` is `Chat(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
-//! | 3 | `chat_capture_on_exposes_system_fingerprint` | chat route, provider-only field | `raw.system_fingerprint` equals the fixture body's | unrecorded (no COPILOT credentials in this environment) |
-//! | 4 | `chat_request_invariant_off_vs_on` | chat route, on-wire request | flag-off and flag-on request bodies byte-identical | unrecorded (no COPILOT credentials in this environment) |
-//! | 5 | `chat_normalized_fields_identical_off_vs_on` | chat route, normalized view | off/on responses normalize their own wire bytes identically; only `raw` differs | unrecorded (no COPILOT credentials in this environment) |
-//! | 6 | `responses_capture_off_raw_is_none` | responses route, flag off | `raw == None` | unrecorded (no COPILOT credentials in this environment) |
-//! | 7 | `responses_capture_on_raw_round_trips_provider_type` | responses route, flag on | `CopilotCompletionResponse::deserialize(&*raw)` is `Responses(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
-//! | 8 | `responses_capture_on_exposes_envelope` | responses route, provider-only fields | `raw.object`/`raw.status` equal the fixture body's | unrecorded (no COPILOT credentials in this environment) |
-//! | 9 | `responses_request_invariant_off_vs_on` | responses route, on-wire request | flag-off and flag-on request bodies byte-identical | unrecorded (no COPILOT credentials in this environment) |
-//! | 10 | `responses_normalized_fields_identical_off_vs_on` | responses route, normalized view | off/on responses normalize their own wire bytes identically; only `raw` differs | unrecorded (no COPILOT credentials in this environment) |
+//! | 1 | `chat_raw_round_trips_provider_type` | chat route, typed access | `CopilotCompletionResponse::deserialize(&*raw)` is `Chat(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
+//! | 2 | `chat_raw_exposes_system_fingerprint` | chat route, provider-only field | `raw.system_fingerprint` equals the fixture body's | unrecorded (no COPILOT credentials in this environment) |
+//! | 3 | `chat_normalized_fields_equal_raw_renormalized` | chat route, normalized view | the normalized response equals `raw` re-normalized (`normalize`) and the fixture body re-normalized | unrecorded (no COPILOT credentials in this environment) |
+//! | 4 | `responses_raw_round_trips_provider_type` | responses route, typed access | `CopilotCompletionResponse::deserialize(&*raw)` is `Responses(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
+//! | 5 | `responses_raw_exposes_envelope` | responses route, provider-only fields | `raw.object`/`raw.status` equal the fixture body's | unrecorded (no COPILOT credentials in this environment) |
+//! | 6 | `responses_normalized_fields_equal_raw_renormalized` | responses route, normalized view | the normalized response equals `raw` re-normalized (`normalize`) and the fixture body re-normalized | unrecorded (no COPILOT credentials in this environment) |
 //!
 //! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
 //! `COPILOT_API_KEY`, `COPILOT_GITHUB_ACCESS_TOKEN`/`GITHUB_TOKEN` nor a Copilot
@@ -53,7 +52,7 @@ use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_json_request};
+use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
 use crate::copilot::with_copilot_cassette;
 
 const COPILOT_PROVIDER: &str = "copilot";
@@ -61,29 +60,25 @@ const CHAT_MODEL: &str = copilot::GPT_4O;
 const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(
-    model: &copilot::CompletionModel,
-    capture_raw: bool,
-) -> rig::completion::CompletionRequest {
-    model
-        .completion_request(PROMPT)
-        .max_tokens(64)
-        .capture_raw_response(capture_raw)
-        .build()
+fn request(model: &copilot::CompletionModel) -> rig::completion::CompletionRequest {
+    model.completion_request(PROMPT).max_tokens(64).build()
 }
 
-fn recorded_json_interactions(scenario: &str) -> Vec<(Value, Value)> {
-    recorded_interaction_bodies(COPILOT_PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, response)| {
-            let request: Value = serde_json::from_str(&request)
-                .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
-            let response: Value = serde_json::from_str(&response).unwrap_or_else(|err| {
-                panic!("{scenario}: recorded response should be JSON: {err}")
-            });
-            (request, response)
-        })
-        .collect()
+/// The single recorded interaction of a scenario, request and response parsed
+/// as JSON.
+fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
+    let bodies = recorded_interaction_bodies(COPILOT_PROVIDER, scenario);
+    assert_eq!(
+        bodies.len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
+    let (request, response) = &bodies[0];
+    let request: Value = serde_json::from_str(request)
+        .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
+    let response: Value = serde_json::from_str(response)
+        .unwrap_or_else(|err| panic!("{scenario}: recorded response should be JSON: {err}"));
+    (request, response)
 }
 
 /// Chat-route premise: the recorded body is a chat-completions response with
@@ -154,9 +149,9 @@ fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
     serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
-/// Compares a route's normalized response with the normalization of its own
-/// recorded body, masking only the generated ids the scrubber placeholders
-/// (and only while recording).
+/// Compares a route's normalized response with the normalization of the
+/// recorded body it was built from, masking only the generated ids the
+/// scrubber placeholders (and only while recording).
 fn assert_normalizes_like_own_wire(live: RigCompletionResponse, from_wire: RigCompletionResponse) {
     let mut live = normalized_without_raw(live);
     let mut from_wire = normalized_without_raw(from_wire);
@@ -169,8 +164,8 @@ fn assert_normalizes_like_own_wire(live: RigCompletionResponse, from_wire: RigCo
     }
     assert_eq!(
         live, from_wire,
-        "the normalized response must equal the normalization of its own wire \
-         bytes — capture must not touch any normalized field"
+        "the normalized response must equal the normalization of the wire bytes \
+         it was built from"
     );
 }
 
@@ -180,56 +175,21 @@ fn assert_normalizes_like_own_wire(live: RigCompletionResponse, from_wire: RigCo
 
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_capture_off_raw_is_none() {
-    let scenario = "raw_capture_matrix/chat_capture_off_raw_is_none";
+async fn chat_raw_round_trips_provider_type() {
+    let scenario = "raw_capture_matrix/chat_raw_round_trips_provider_type";
     with_copilot_cassette(
-        "raw_capture_matrix/chat_capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(CHAT_MODEL);
-            let request = request(&model, false);
-            assert!(
-                !request.capture_raw_response,
-                "premise: the builder default is off"
-            );
-            let response = model
-                .completion(request)
-                .await
-                .expect("completion should succeed");
-            assert!(
-                response.raw.is_none(),
-                "raw must stay None when capture was not requested, got {:?}",
-                response.raw
-            );
-            assert!(!response.choice.is_empty());
-            assert_eq!(response.provider, COPILOT_PROVIDER);
-        },
-    )
-    .await;
-
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
-    assert_recorded_chat_body(&body, scenario);
-}
-
-#[tokio::test]
-#[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_capture_on_raw_round_trips_provider_type() {
-    let scenario = "raw_capture_matrix/chat_capture_on_raw_round_trips_provider_type";
-    with_copilot_cassette(
-        "raw_capture_matrix/chat_capture_on_raw_round_trips_provider_type",
+        "raw_capture_matrix/chat_raw_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(CHAT_MODEL);
             let response = model
-                .completion(request(&model, true))
+                .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw must be populated when capture was requested");
+                .expect("every provider-backed completion carries raw");
             assert_eq!(raw["api"], "chat", "the route tag rides along on raw");
             let typed = CopilotCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into CopilotCompletionResponse");
@@ -242,23 +202,13 @@ async fn chat_capture_on_raw_round_trips_provider_type() {
                 *raw,
                 "CopilotCompletionResponse must round-trip through its own serde"
             );
-            let renormalized = typed
-                .normalize(COPILOT_PROVIDER)
-                .expect("typed raw must normalize")
-                .with_optional_provider_request_id(response.provider_request_id.clone());
-            assert_eq!(
-                normalized_without_raw(renormalized),
-                normalized_without_raw(response),
-                "normalizing the captured raw must reproduce the normalized response"
-            );
+            assert_eq!(response.provider, COPILOT_PROVIDER);
+            assert!(!response.choice.is_empty());
         },
     )
     .await;
 
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
+    let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_chat_body(&body, scenario);
     openai::CompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response");
@@ -266,16 +216,16 @@ async fn chat_capture_on_raw_round_trips_provider_type() {
 
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_capture_on_exposes_system_fingerprint() {
-    let scenario = "raw_capture_matrix/chat_capture_on_exposes_system_fingerprint";
+async fn chat_raw_exposes_system_fingerprint() {
+    let scenario = "raw_capture_matrix/chat_raw_exposes_system_fingerprint";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_copilot_cassette(
-        "raw_capture_matrix/chat_capture_on_exposes_system_fingerprint",
+        "raw_capture_matrix/chat_raw_exposes_system_fingerprint",
         |client| async move {
             let model = client.completion_model(CHAT_MODEL);
             let response = model
-                .completion(request(&model, true))
+                .completion(request(&model))
                 .await
                 .expect("completion should succeed");
             let normalized = normalized_without_raw(response.clone());
@@ -286,7 +236,7 @@ async fn chat_capture_on_exposes_system_fingerprint() {
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw must be populated when capture was requested")
+                .expect("every provider-backed completion carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -298,10 +248,7 @@ async fn chat_capture_on_exposes_system_fingerprint() {
         .expect("capture mutex")
         .take()
         .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
+    let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_chat_body(&body, scenario);
     // `fp_…` fingerprints are placeholdered on disk like generated ids.
     assert_wire_value_matches(&raw, &body, "system_fingerprint");
@@ -317,91 +264,68 @@ async fn chat_capture_on_exposes_system_fingerprint() {
     );
 }
 
-/// One scenario, two interactions in wire order — off then on.
+/// The normalized response, with `raw` stripped, must equal the normalization
+/// of `raw` read back through the route-tagged enum — and equal the
+/// normalization of the recorded wire body. Capture is a pure serialization of
+/// the value normalization consumed on this route.
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_request_invariant_off_vs_on() {
-    let scenario = "raw_capture_matrix/chat_request_invariant_off_vs_on";
-    with_copilot_cassette(
-        "raw_capture_matrix/chat_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(CHAT_MODEL);
-            let off = model
-                .completion(request(&model, false))
-                .await
-                .expect("flag-off completion should succeed");
-            let on = model
-                .completion(request(&model, true))
-                .await
-                .expect("flag-on completion should succeed");
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-        },
-    )
-    .await;
-
-    let bodies = recorded_interaction_bodies(COPILOT_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        2,
-        "{scenario}: expected the off and on requests"
-    );
-    assert_eq!(
-        bodies[0].0, bodies[1].0,
-        "the flag-on request body must be byte-identical to the flag-off one — \
-         capture_raw_response is local policy and must never reach Copilot"
-    );
-    assert!(!bodies[0].0.contains("capture_raw"));
-    let first: Value = recorded_json_request(COPILOT_PROVIDER, scenario);
-    assert_eq!(first["model"], CHAT_MODEL);
-}
-
-#[tokio::test]
-#[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn chat_normalized_fields_identical_off_vs_on() {
-    let scenario = "raw_capture_matrix/chat_normalized_fields_identical_off_vs_on";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+async fn chat_normalized_fields_equal_raw_renormalized() {
+    let scenario = "raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized";
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_copilot_cassette(
-        "raw_capture_matrix/chat_normalized_fields_identical_off_vs_on",
+        "raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized",
         |client| async move {
             let model = client.completion_model(CHAT_MODEL);
-            let off = model
-                .completion(request(&model, false))
+            let response = model
+                .completion(request(&model))
                 .await
-                .expect("flag-off completion should succeed");
-            let on = model
-                .completion(request(&model, true))
-                .await
-                .expect("flag-on completion should succeed");
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(on.provider, off.provider);
-            assert_eq!(on.model, off.model);
-            assert_eq!(on.finish_reason(), off.finish_reason());
-            *sink.lock().expect("capture mutex") = vec![off, on];
+                .expect("completion should succeed");
+
+            let raw = response
+                .raw
+                .as_deref()
+                .expect("every provider-backed completion carries raw");
+            // The transport id is a response header, not body: reattach it so
+            // the raw-derived normalization is comparable field-for-field.
+            let from_raw = CopilotCompletionResponse::deserialize(raw)
+                .expect("raw must deserialize into CopilotCompletionResponse")
+                .normalize(COPILOT_PROVIDER)
+                .expect("raw must normalize")
+                .with_optional_provider_request_id(response.provider_request_id.clone());
+
+            assert_eq!(response.provider, COPILOT_PROVIDER);
+            assert_eq!(from_raw.provider, response.provider);
+            assert_eq!(from_raw.model, response.model);
+            assert_eq!(from_raw.finish_reason(), response.finish_reason());
+            assert_eq!(from_raw.identity(), response.identity());
+            assert_eq!(from_raw.usage, response.usage);
+            assert!(!response.choice.is_empty());
+            assert_eq!(
+                normalized_without_raw(from_raw),
+                normalized_without_raw(response.clone()),
+                "re-normalizing raw must reproduce the normalized response field-for-field"
+            );
+
+            *sink.lock().expect("capture mutex") = Some(response);
         },
     )
     .await;
 
-    let responses = std::mem::take(&mut *captured.lock().expect("capture mutex"));
-    let interactions = recorded_json_interactions(scenario);
-    assert_eq!(
-        interactions.len(),
-        2,
-        "{scenario}: expected off and on turns"
-    );
-    for ((_, body), response) in interactions.into_iter().zip(responses) {
-        assert_recorded_chat_body(&body, scenario);
-        // The transport id is a response header, not body: reattach it so the
-        // body-derived normalization is comparable.
-        let from_wire = openai::CompletionResponse::deserialize(&body)
-            .expect("recorded body must be a chat-completions response")
-            .normalize(COPILOT_PROVIDER)
-            .expect("recorded body must normalize")
-            .with_optional_provider_request_id(response.provider_request_id.clone());
-        assert_normalizes_like_own_wire(response, from_wire);
-    }
+    let response = captured
+        .lock()
+        .expect("capture mutex")
+        .take()
+        .expect("the test body must have captured the response");
+    let (_, body) = recorded_json_interaction(scenario);
+    assert_recorded_chat_body(&body, scenario);
+    let from_wire = openai::CompletionResponse::deserialize(&body)
+        .expect("recorded body must be a chat-completions response")
+        .normalize(COPILOT_PROVIDER)
+        .expect("recorded body must normalize")
+        .with_optional_provider_request_id(response.provider_request_id.clone());
+    assert_normalizes_like_own_wire(response, from_wire);
 }
 
 // ===========================================================================
@@ -410,55 +334,21 @@ async fn chat_normalized_fields_identical_off_vs_on() {
 
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_capture_off_raw_is_none() {
-    let scenario = "raw_capture_matrix/responses_capture_off_raw_is_none";
+async fn responses_raw_round_trips_provider_type() {
+    let scenario = "raw_capture_matrix/responses_raw_round_trips_provider_type";
     with_copilot_cassette(
-        "raw_capture_matrix/responses_capture_off_raw_is_none",
-        |client| async move {
-            let model = client.completion_model(RESPONSES_MODEL);
-            let request = request(&model, false);
-            assert!(
-                !request.capture_raw_response,
-                "premise: the builder default is off"
-            );
-            let response = model
-                .completion(request)
-                .await
-                .expect("completion should succeed");
-            assert!(
-                response.raw.is_none(),
-                "raw must stay None when capture was not requested, got {:?}",
-                response.raw
-            );
-            assert!(!response.choice.is_empty());
-        },
-    )
-    .await;
-
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
-    assert_recorded_responses_body(&body, scenario);
-}
-
-#[tokio::test]
-#[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_capture_on_raw_round_trips_provider_type() {
-    let scenario = "raw_capture_matrix/responses_capture_on_raw_round_trips_provider_type";
-    with_copilot_cassette(
-        "raw_capture_matrix/responses_capture_on_raw_round_trips_provider_type",
+        "raw_capture_matrix/responses_raw_round_trips_provider_type",
         |client| async move {
             let model = client.completion_model(RESPONSES_MODEL);
             let response = model
-                .completion(request(&model, true))
+                .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw must be populated when capture was requested");
+                .expect("every provider-backed completion carries raw");
             assert_eq!(raw["api"], "responses", "the route tag rides along on raw");
             let typed = CopilotCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into CopilotCompletionResponse");
@@ -471,38 +361,28 @@ async fn responses_capture_on_raw_round_trips_provider_type() {
                 *raw,
                 "CopilotCompletionResponse must round-trip through its own serde"
             );
-            let renormalized = typed
-                .normalize(COPILOT_PROVIDER)
-                .expect("typed raw must normalize")
-                .with_optional_provider_request_id(response.provider_request_id.clone());
-            assert_eq!(
-                normalized_without_raw(renormalized),
-                normalized_without_raw(response),
-                "normalizing the captured raw must reproduce the normalized response"
-            );
+            assert_eq!(response.provider, COPILOT_PROVIDER);
+            assert!(!response.choice.is_empty());
         },
     )
     .await;
 
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
+    let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_responses_body(&body, scenario);
 }
 
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_capture_on_exposes_envelope() {
-    let scenario = "raw_capture_matrix/responses_capture_on_exposes_envelope";
+async fn responses_raw_exposes_envelope() {
+    let scenario = "raw_capture_matrix/responses_raw_exposes_envelope";
     let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_copilot_cassette(
-        "raw_capture_matrix/responses_capture_on_exposes_envelope",
+        "raw_capture_matrix/responses_raw_exposes_envelope",
         |client| async move {
             let model = client.completion_model(RESPONSES_MODEL);
             let response = model
-                .completion(request(&model, true))
+                .completion(request(&model))
                 .await
                 .expect("completion should succeed");
             let normalized = normalized_without_raw(response.clone());
@@ -515,7 +395,7 @@ async fn responses_capture_on_exposes_envelope() {
             let raw = response
                 .raw
                 .as_deref()
-                .expect("raw must be populated when capture was requested")
+                .expect("every provider-backed completion carries raw")
                 .clone();
             *sink.lock().expect("capture mutex") = Some(raw);
         },
@@ -527,10 +407,7 @@ async fn responses_capture_on_exposes_envelope() {
         .expect("capture mutex")
         .take()
         .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interactions(scenario)
-        .into_iter()
-        .next()
-        .expect("scenario should record one interaction");
+    let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_responses_body(&body, scenario);
     for field in ["object", "status", "model"] {
         assert_eq!(
@@ -551,91 +428,66 @@ async fn responses_capture_on_exposes_envelope() {
     );
 }
 
-/// One scenario, two interactions in wire order — off then on.
+/// The Responses-route twin of `chat_normalized_fields_equal_raw_renormalized`.
 #[tokio::test]
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_request_invariant_off_vs_on() {
-    let scenario = "raw_capture_matrix/responses_request_invariant_off_vs_on";
-    with_copilot_cassette(
-        "raw_capture_matrix/responses_request_invariant_off_vs_on",
-        |client| async move {
-            let model = client.completion_model(RESPONSES_MODEL);
-            let off = model
-                .completion(request(&model, false))
-                .await
-                .expect("flag-off completion should succeed");
-            let on = model
-                .completion(request(&model, true))
-                .await
-                .expect("flag-on completion should succeed");
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-        },
-    )
-    .await;
-
-    let bodies = recorded_interaction_bodies(COPILOT_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        2,
-        "{scenario}: expected the off and on requests"
-    );
-    assert_eq!(
-        bodies[0].0, bodies[1].0,
-        "the flag-on request body must be byte-identical to the flag-off one — \
-         capture_raw_response is local policy and must never reach Copilot"
-    );
-    assert!(!bodies[0].0.contains("capture_raw"));
-    let first: Value = recorded_json_request(COPILOT_PROVIDER, scenario);
-    assert_eq!(first["model"], RESPONSES_MODEL);
-}
-
-#[tokio::test]
-#[ignore = "unrecorded (no COPILOT credentials in this environment)"]
-async fn responses_normalized_fields_identical_off_vs_on() {
-    let scenario = "raw_capture_matrix/responses_normalized_fields_identical_off_vs_on";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+async fn responses_normalized_fields_equal_raw_renormalized() {
+    let scenario = "raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized";
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_copilot_cassette(
-        "raw_capture_matrix/responses_normalized_fields_identical_off_vs_on",
+        "raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized",
         |client| async move {
             let model = client.completion_model(RESPONSES_MODEL);
-            let off = model
-                .completion(request(&model, false))
+            let response = model
+                .completion(request(&model))
                 .await
-                .expect("flag-off completion should succeed");
-            let on = model
-                .completion(request(&model, true))
-                .await
-                .expect("flag-on completion should succeed");
-            assert!(off.raw.is_none());
-            assert!(on.raw.is_some());
-            assert_eq!(on.provider, off.provider);
-            assert_eq!(on.model, off.model);
-            assert_eq!(on.finish_reason(), off.finish_reason());
-            *sink.lock().expect("capture mutex") = vec![off, on];
+                .expect("completion should succeed");
+
+            let raw = response
+                .raw
+                .as_deref()
+                .expect("every provider-backed completion carries raw");
+            // On this route the wire type has its own `provider_request_id`
+            // slot, stamped from the header by the request driver; its
+            // `Serialize` mirrors the wire body and never emits it, so raw
+            // reads back without it and gets the live one reattached — the
+            // same reassembly the typed escape hatch contracts.
+            let from_raw = CopilotCompletionResponse::deserialize(raw)
+                .expect("raw must deserialize into CopilotCompletionResponse")
+                .normalize(COPILOT_PROVIDER)
+                .expect("raw must normalize")
+                .with_optional_provider_request_id(response.provider_request_id.clone());
+
+            assert_eq!(response.provider, COPILOT_PROVIDER);
+            assert_eq!(from_raw.provider, response.provider);
+            assert_eq!(from_raw.model, response.model);
+            assert_eq!(from_raw.finish_reason(), response.finish_reason());
+            assert_eq!(from_raw.identity(), response.identity());
+            assert_eq!(from_raw.usage, response.usage);
+            assert!(!response.choice.is_empty());
+            assert_eq!(
+                normalized_without_raw(from_raw),
+                normalized_without_raw(response.clone()),
+                "re-normalizing raw must reproduce the normalized response field-for-field"
+            );
+
+            *sink.lock().expect("capture mutex") = Some(response);
         },
     )
     .await;
 
-    let responses = std::mem::take(&mut *captured.lock().expect("capture mutex"));
-    let interactions = recorded_json_interactions(scenario);
-    assert_eq!(
-        interactions.len(),
-        2,
-        "{scenario}: expected off and on turns"
-    );
-    for ((_, body), response) in interactions.into_iter().zip(responses) {
-        assert_recorded_responses_body(&body, scenario);
-        // On this route the wire type has its own `provider_request_id` slot,
-        // stamped from the header by the request driver — the body-parsed
-        // copy has none, so reattach the live one for a like-for-like compare.
-        let from_wire =
-            rig::providers::openai::responses_api::CompletionResponse::deserialize(&body)
-                .expect("recorded body must be a Responses envelope")
-                .normalize(COPILOT_PROVIDER)
-                .expect("recorded body must normalize")
-                .with_optional_provider_request_id(response.provider_request_id.clone());
-        assert_normalizes_like_own_wire(response, from_wire);
-    }
+    let response = captured
+        .lock()
+        .expect("capture mutex")
+        .take()
+        .expect("the test body must have captured the response");
+    let (_, body) = recorded_json_interaction(scenario);
+    assert_recorded_responses_body(&body, scenario);
+    let from_wire = rig::providers::openai::responses_api::CompletionResponse::deserialize(&body)
+        .expect("recorded body must be a Responses envelope")
+        .normalize(COPILOT_PROVIDER)
+        .expect("recorded body must normalize")
+        .with_optional_provider_request_id(response.provider_request_id.clone());
+    assert_normalizes_like_own_wire(response, from_wire);
 }

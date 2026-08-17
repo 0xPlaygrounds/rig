@@ -127,16 +127,14 @@ impl From<(&str, StreamingCompletionResponse)> for streaming::StreamFinal {
 /// Normalize a provider-native Responses stream for `provider`.
 ///
 /// Maps only the terminal record; every incremental event passes through
-/// untouched. `capture_raw` is the request's `capture_raw_response`, read by
-/// the caller before `raw_stream` consumed the request.
+/// untouched.
 pub(crate) fn normalize_responses_stream(
     provider: &str,
     raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
-    capture_raw: bool,
 ) -> streaming::StreamingCompletionResponse {
     let provider = provider.to_owned();
     let mapped_provider = provider.clone();
-    let normalized = streaming::normalize_stream(raw, capture_raw, move |response| {
+    let normalized = streaming::normalize_stream(raw, move |response| {
         Ok(streaming::StreamFinal::from((
             mapped_provider.as_str(),
             response,
@@ -950,7 +948,7 @@ pub(crate) async fn completion_response_from_raw_choices(
             .map(Ok::<_, CompletionError>)
             .collect::<Vec<_>>(),
     );
-    let mut stream = normalize_responses_stream(provider, Box::pin(stream), false);
+    let mut stream = normalize_responses_stream(provider, Box::pin(stream));
 
     while let Some(item) = stream.next().await {
         item?;
@@ -1545,16 +1543,9 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        // Read the local-policy flag before `raw_stream` consumes the request,
-        // exactly as the unary seam reads it before `raw_completion`.
-        let capture_raw = completion_request.capture_raw_response;
         let raw = self.raw_stream(completion_request).await?;
 
-        Ok(normalize_responses_stream(
-            Ext::PROVIDER_NAME,
-            raw,
-            capture_raw,
-        ))
+        Ok(normalize_responses_stream(Ext::PROVIDER_NAME, raw))
     }
 }
 
@@ -2579,7 +2570,6 @@ mod tests {
         let mut stream = super::normalize_responses_stream(
             "openai",
             super::raw_stream_from_event_source(event_source, tracing::Span::none()),
-            false,
         );
 
         match stream
@@ -2888,7 +2878,6 @@ mod tests {
         let mut stream = super::normalize_responses_stream(
             "openai",
             super::raw_stream_from_event_source(event_source, span),
-            false,
         );
 
         let err = stream
@@ -3796,7 +3785,6 @@ data: {completed}
         let mut stream = super::normalize_responses_stream(
             "openai",
             super::raw_stream_from_event_source(event_source, span),
-            false,
         );
 
         let err = stream

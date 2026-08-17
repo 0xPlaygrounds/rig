@@ -1742,7 +1742,7 @@ pub struct CompletionResponse {
 | provider stop/finish reason off `raw_response` | `response.finish_reason()` |
 | provider/message identity off `raw_response` | `response.provider`, `response.message_id` |
 | response-scoped ID (`chatcmpl-*`, `responseId`, …) off `raw_response` | `response.response_id` |
-| a genuinely provider-specific field | `model.raw_completion(request).await?` on a concrete model; from an agent (the model type is erased), opt in with `capture_raw_response(true)` and read `response.raw` — see [Raw provider responses are reachable from an agent, opt-in (#2366)](#raw-provider-responses-are-reachable-from-an-agent-opt-in-2366) |
+| a genuinely provider-specific field | `model.raw_completion(request).await?` on a concrete model, or read `response.raw` (the same value, serialized — populated on every call, and the route from an agent, whose model type is erased) — see [Raw provider responses are reachable from an agent (#2366)](#raw-provider-responses-are-reachable-from-an-agent-2366) |
 
 `usage` is unchanged, including the rule that all-zero values mean the provider
 supplied no metrics. `model` is the identifier the *wire response* reported, not
@@ -1800,9 +1800,9 @@ than any `CompletionResponse`. Code that was generic over `CompletionModel`
 could never touch `raw_response` without a bound anyway, so in practice this
 affects code that had already committed to a provider — including agent users,
 whose model type is erased at `AgentBuilder::new`. For them the same value is
-available, serialized and opt-in, as `CompletionResponse::raw` /
-`StreamFinal::raw` — see [Raw provider responses are reachable from an agent,
-opt-in (#2366)](#raw-provider-responses-are-reachable-from-an-agent-opt-in-2366).
+available, serialized, on every call as `CompletionResponse::raw` /
+`StreamFinal::raw` — see [Raw provider responses are reachable from an agent
+(#2366)](#raw-provider-responses-are-reachable-from-an-agent-2366).
 On the OpenAI-compatible family and Copilot's chat route the transport request
 id is not on the wire type: use `raw_completion_with_request_id` when the typed
 route must reproduce everything `completion()` returns.
@@ -2671,36 +2671,39 @@ releases they document, but the attribute claim no longer holds on `next`:
 at all still exist and are still the recommended way to build these types — only
 the compiler no longer insists.
 
-### Raw provider responses are reachable from an agent, opt-in (#2366)
+### Raw provider responses are reachable from an agent (#2366)
 
 Rig kept the provider's exact body on every *failed* call
 (`ProviderResponseError::body`) and nothing on a successful one — and after
 #2257 erased the model type at agent construction, `raw_completion` /
 `raw_stream` became unreachable from an agent run altogether (`ModelHandle`
-holds a two-method `ErasedModel` with no downcast). Both are addressed with one
-opt-in mechanism, threaded through both surfaces exactly as identity (#2313)
-and finish reason (#2324) were:
+holds a two-method `ErasedModel` with no downcast). Both are addressed the way
+identity (#2313) and finish reason (#2324) were, threaded through both
+surfaces:
 
 ```rust
-let agent = client
-    .agent(model)
-    .capture_raw_response(true)   // also per run and per request
-    .build();
+let response = agent.prompt("…").extended_details().await?;
+for call in response.completion_calls() {
+    let raw = call.raw.as_deref();          // the provider's own response, serialized
+}
 ```
 
-With the flag on, `CompletionResponse::raw` and `StreamFinal::raw`
+`CompletionResponse::raw` and `StreamFinal::raw`
 (`Option<Arc<serde_json::Value>>`) carry **the value the model's inherent
 `raw_completion` / `raw_stream` would have returned, serialized** — the
-response as rig's wire type parsed it, not the literal bytes. That payload is
-exposed on the `CompletionResponse`, `StreamResponseFinish`, and
-`ModelTurnFinished` hook events (`raw: Option<&serde_json::Value>`), on each
-`CompletionCall` in `PromptResponse::completion_calls`, and on the streamed
-`StreamedAssistantContent::Final` terminal record. It is per attempt: on a
-retried turn it is the retried attempt's own. Typed access is recoverable
-(`anthropic::CompletionResponse::deserialize(&*raw)?`), and
-`NormalizeCompletionResponse` converts forward. With the flag off — the
-default — every field is `None` and nothing is serialized. Seven source-level
-breaks:
+response as rig's wire type parsed it, not the literal bytes. Every provider
+seam populates it unconditionally, per call — the same parity pre-#2257
+`raw_response: T` had — and the `Arc` keeps the clones the runner makes cheap.
+The payload is exposed on the `CompletionResponse`, `StreamResponseFinish`,
+and `ModelTurnFinished` hook events (`raw: Option<&serde_json::Value>`), on
+each `CompletionCall` in `PromptResponse::completion_calls`, and on the
+streamed `StreamedAssistantContent::Final` terminal record. It is per attempt:
+on a retried turn it is the retried attempt's own. Typed access is
+recoverable (`anthropic::CompletionResponse::deserialize(&*raw)?`), and
+`NormalizeCompletionResponse` converts forward. `None` means the value was
+built without a provider behind it — a hand-constructed response, or one
+persisted before the field existed — never that capture was switched off;
+there is nothing to switch. Six source-level breaks:
 
 - **`CompletionResponse` and `StreamFinal` gain `raw`.** Both are built with
   `new(..)` plus setters (`with_raw` / `with_optional_raw` join the shared
@@ -2708,27 +2711,10 @@ breaks:
   the field. Serde-defaulted and omitted when unset: persisted responses and
   terminal records load unchanged.
 
-- **`CompletionRequest` gains `capture_raw_response: bool`.** `#[serde(skip)]`
-  like `record_telemetry_content` — local policy, never on the wire. Struct
-  literals add `capture_raw_response: false`; the builder has
-  `capture_raw_response(bool)`.
-
-- **`normalize_stream` takes the capture flag and requires
-  `R: Serialize`.** Every provider's `stream()` reads the flag off the request
-  *before* `raw_stream` consumes it and passes it through:
-
-  ```rust
-  // Was
-  normalize_stream(raw, |terminal| Ok(map(terminal)))
-  // Now
-  let capture_raw = request.capture_raw_response;
-  let raw = self.raw_stream(request).await?;
-  normalize_stream(raw, capture_raw, |terminal| Ok(map(terminal)))
-  ```
-
-  An out-of-tree provider whose terminal type is not `Serialize` must derive
-  it (every in-tree terminal already is). `openai::send_compatible_streaming_request`
-  gains the same trailing `capture_raw: bool` for the same reason.
+- **`normalize_stream` requires `R: Serialize`.** It now serializes the
+  provider-native terminal onto `StreamFinal::raw` before mapping it. An
+  out-of-tree provider whose terminal type is not `Serialize` must derive it
+  (every in-tree terminal already is). The signature is otherwise unchanged.
 
 - **The `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished`
   hook events gain `raw: Option<&serde_json::Value>`.** Hooks that only read
@@ -2743,7 +2729,7 @@ breaks:
 
 - **`AgentRun::record_streamed_completion_call` takes the attempt's raw payload
   as a fourth argument.** Read it off the same terminal record you read
-  identity and finish reason from; pass `None` when capture is off:
+  identity and finish reason from; pass `None` when no terminal arrived:
 
   ```rust
   // Was
@@ -2771,6 +2757,13 @@ public forward conversion. For every provider,
 `raw_completion[_with_request_id]` + `normalize` now reproduces `completion()`'s
 `identity()`, `finish_reason()`, `model`, and `usage` — pinned by the
 `raw_completion_parity_matrix` cassettes.
+
+The cost is one `serde_json::to_value` of the provider's parsed response per
+call, and the payload travels with the response: a large body — an
+image-generation response carrying base64 bytes, say — now lives on
+`PromptResponse::completion_calls`, in persisted run state, and in transcripts
+that serialize either. If that is unwanted, drop `raw` at your own boundary
+(`call.raw = None`) before persisting.
 
 Deliberately not in this change: a raw *frame* channel (rig never exposed
 per-SSE-event payloads on any surface — a different mechanism), literal-body

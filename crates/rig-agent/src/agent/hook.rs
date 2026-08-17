@@ -570,13 +570,14 @@ pub struct CompletionResponse<'a> {
     /// This exact attempt's response identity metadata (message-scoped,
     /// response-scoped, and transport request ids).
     pub identity: &'a ResponseIdentity,
-    /// The provider's own response for this attempt, when the run asked for
-    /// raw capture (`AgentBuilder::capture_raw_response` or its per-run /
-    /// per-request overrides) — see `CompletionResponse::raw` in `rig-core`
-    /// for the exact meaning of the payload: the value the model's inherent
-    /// `raw_completion` / `raw_stream` would have returned, serialized.
-    /// `None` when capture was off (the default). On a retry this is the
-    /// retried attempt's own, never a previous attempt's.
+    /// The provider's own response for this attempt — see
+    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
+    /// payload: the value the model's inherent `raw_completion` /
+    /// `raw_stream` would have returned, serialized. Every provider seam
+    /// populates it; `None` only when the response was built without a
+    /// provider behind it (a hand-constructed model, a record persisted
+    /// before the field). On a retry this is the retried attempt's own,
+    /// never a previous attempt's.
     pub raw: Option<&'a serde_json::Value>,
 }
 
@@ -633,13 +634,14 @@ pub struct ModelTurnFinished<'a> {
     /// portable retry-on-truncation decision possible: a hook can tell a turn
     /// cut short at a cap it chose from one cut short at a cap it did not.
     pub max_tokens: Option<u64>,
-    /// The provider's own response for this attempt, when the run asked for
-    /// raw capture (`AgentBuilder::capture_raw_response` or its per-run /
-    /// per-request overrides) — see `CompletionResponse::raw` in `rig-core`
-    /// for the exact meaning of the payload: the value the model's inherent
-    /// `raw_completion` / `raw_stream` would have returned, serialized.
-    /// `None` when capture was off (the default). On a retry this is the
-    /// retried attempt's own, never a previous attempt's.
+    /// The provider's own response for this attempt — see
+    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
+    /// payload: the value the model's inherent `raw_completion` /
+    /// `raw_stream` would have returned, serialized. Every provider seam
+    /// populates it; `None` only when the response was built without a
+    /// provider behind it (a hand-constructed model, a record persisted
+    /// before the field). On a retry this is the retried attempt's own,
+    /// never a previous attempt's.
     ///
     /// Carried here, and not only on the surface-specific events, for the
     /// same reason identity is: this is the medium-neutral event, so a hook
@@ -792,13 +794,14 @@ pub struct StreamResponseFinish<'a> {
     /// This exact attempt's response identity metadata (message-scoped,
     /// response-scoped, and transport request ids).
     pub identity: &'a ResponseIdentity,
-    /// The provider's own response for this attempt, when the run asked for
-    /// raw capture (`AgentBuilder::capture_raw_response` or its per-run /
-    /// per-request overrides) — see `CompletionResponse::raw` in `rig-core`
-    /// for the exact meaning of the payload: the value the model's inherent
-    /// `raw_completion` / `raw_stream` would have returned, serialized.
-    /// `None` when capture was off (the default). On a retry this is the
-    /// retried attempt's own, never a previous attempt's.
+    /// The provider's own response for this attempt — see
+    /// `CompletionResponse::raw` in `rig-core` for the exact meaning of the
+    /// payload: the value the model's inherent `raw_completion` /
+    /// `raw_stream` would have returned, serialized. Every provider seam
+    /// populates it; `None` only when the response was built without a
+    /// provider behind it (a hand-constructed model, a record persisted
+    /// before the field). On a retry this is the retried attempt's own,
+    /// never a previous attempt's.
     pub raw: Option<&'a serde_json::Value>,
 }
 

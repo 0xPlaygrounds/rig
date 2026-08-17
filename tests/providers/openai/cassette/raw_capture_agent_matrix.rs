@@ -1,20 +1,19 @@
-//! Opt-in raw provider response capture through the OpenAI agent surfaces
-//! (`AgentBuilder::capture_raw_response` and its per-run / per-request
-//! overrides → hook events, `completion_calls`, the streamed terminal).
+//! Raw provider response capture through the OpenAI agent surfaces
+//! (hook events, `completion_calls`, the streamed terminal).
 //!
 //! # What this pins
 //!
-//! The agent erases the model, so a caller who opted in through the agent
-//! can only reach the provider's own response through the surfaces the agent
-//! exposes: the `raw` on the `CompletionResponse`, `StreamResponseFinish`,
-//! and `ModelTurnFinished` hook events; `CompletionCall::raw` on
-//! `PromptResponse::completion_calls`; and the streamed
-//! `StreamedAssistantContent::Final` terminal record. Each carries the payload
-//! **per attempt** — a multi-turn tool run records two different payloads, a
-//! retried turn records the retried attempt's own — and every surface reports
-//! `None` when capture is off. The precedence of the three switches is pinned
-//! by four cells: agent-level on, per-run override off, per-request override
-//! on, and the default off.
+//! The agent erases the model, so a caller can only reach the provider's own
+//! response through the surfaces the agent exposes: the `raw` on the
+//! `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook
+//! events; `CompletionCall::raw` on `PromptResponse::completion_calls`; and
+//! the streamed `StreamedAssistantContent::Final` terminal record. Capture is
+//! unconditional — there is no agent-, run- or request-level switch — so every
+//! one of those surfaces carries the payload on every attempt, and a `None`
+//! there could only mean the record was built without a provider response
+//! behind it, which an agent run never does. Each surface carries the payload
+//! **per attempt**: a multi-turn tool run records two different payloads, a
+//! retried turn records the retried attempt's own.
 //!
 //! The chat route is the primary surface (each turn's payload is an
 //! `openai::CompletionResponse` whose `id` is a `chatcmpl-` id); the
@@ -29,23 +28,15 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_blocking_hooks_see_raw_on` | chat, blocking, agent on | `CompletionResponse`/`ModelTurnFinished` hooks see `raw` = call's raw | recorded |
-//! | 2 | `chat_blocking_hooks_see_none_off` | chat, blocking, default | every surface `None` | recorded |
-//! | 3 | `chat_streamed_hooks_see_raw_on` | chat, streamed, agent on | `StreamResponseFinish`/`ModelTurnFinished` hooks, `Final`, `CompletionCall` see raw | recorded |
-//! | 4 | `chat_streamed_hooks_see_none_off` | chat, streamed, default | every surface `None` | recorded |
-//! | 5 | `chat_blocking_tool_run_records_distinct_raw` | chat, blocking, tool run | two `completion_calls`, two payloads, ids in fixture order | recorded |
-//! | 6 | `chat_streamed_tool_run_records_distinct_raw` | chat, streamed, tool run | as 5, `Final` carries the final turn's raw | recorded |
-//! | 7 | `chat_retried_turn_records_retried_attempt_raw` | chat, retry hook | second record carries the retried attempt's raw | recorded |
-//! | 8 | `chat_agent_toggle_on` | chat, `AgentBuilder::capture_raw_response(true)` | `completion_calls[0].raw` Some | recorded |
-//! | 9 | `chat_run_override_off` | chat, agent on, `AgentRunner::capture_raw_response(false)` | `None` | recorded |
-//! | 10 | `chat_request_override_on` | chat, agent default, `PromptRequest::capture_raw_response(true)` | Some | recorded |
-//! | 11 | `chat_default_off` | chat, nothing set | `None` | recorded |
-//! | 12 | `responses_blocking_hooks_see_raw_on` | Responses, blocking, agent on | as 1 | recorded |
-//! | 13 | `responses_blocking_hooks_see_none_off` | Responses, blocking, default | as 2 | recorded |
-//! | 14 | `responses_streamed_hooks_see_raw_on` | Responses, streamed, agent on | as 3 | recorded |
-//! | 15 | `responses_streamed_hooks_see_none_off` | Responses, streamed, default | as 4 | recorded |
-//! | 16 | `responses_blocking_tool_run_records_distinct_raw` | Responses, blocking, tool run | as 5 | recorded |
-//! | 17 | `responses_streamed_tool_run_records_distinct_raw` | Responses, streamed, tool run | as 6 | recorded |
+//! | 1 | `chat_blocking_hooks_see_raw` | chat, blocking | `CompletionResponse`/`ModelTurnFinished` hooks see `raw` = call's raw | recorded |
+//! | 2 | `chat_streamed_hooks_see_raw` | chat, streamed | `StreamResponseFinish`/`ModelTurnFinished` hooks, `Final`, `CompletionCall` see raw | recorded |
+//! | 3 | `chat_blocking_tool_run_records_distinct_raw` | chat, blocking, tool run | two `completion_calls`, two payloads, ids in fixture order | recorded |
+//! | 4 | `chat_streamed_tool_run_records_distinct_raw` | chat, streamed, tool run | as 3, `Final` carries the final turn's raw | recorded |
+//! | 5 | `chat_retried_turn_records_retried_attempt_raw` | chat, retry hook | second record carries the retried attempt's raw | recorded |
+//! | 6 | `responses_blocking_hooks_see_raw` | Responses, blocking | as 1 | recorded |
+//! | 7 | `responses_streamed_hooks_see_raw` | Responses, streamed | as 2 | recorded |
+//! | 8 | `responses_blocking_tool_run_records_distinct_raw` | Responses, blocking, tool run | as 3 | recorded |
+//! | 9 | `responses_streamed_tool_run_records_distinct_raw` | Responses, streamed, tool run | as 4 | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Premise, re-derived from each
 //! cell's fixture after the wrapper returns: the fixture holds exactly as many
@@ -260,18 +251,14 @@ struct RunObservation {
 
 type Observed = Arc<Mutex<Option<RunObservation>>>;
 
-/// The agent every hook / tool-run cell drives: `configure` applies the
-/// cell's capture switch before the tool typestate transition.
+/// The agent every hook / tool-run cell drives.
 fn build_agent(
     route: Route,
     client: openai::Client,
     tools: bool,
     probe: RawProbe,
-    configure: fn(AgentBuilder) -> AgentBuilder,
 ) -> (rig::agent::Agent, &'static str) {
-    let builder = configure(route.builder(client))
-        .temperature(0.0)
-        .add_hook(probe);
+    let builder = route.builder(client).temperature(0.0).add_hook(probe);
     if tools {
         (
             builder.preamble(TOOLS_PREAMBLE).tool(Adder).build(),
@@ -296,16 +283,10 @@ fn take(observed: &Observed) -> RunObservation {
 }
 
 /// A blocking `prompt(..).extended_details()` run.
-fn blocking_body(
-    sink: Observed,
-    route: Route,
-    tools: bool,
-    probe: RawProbe,
-    configure: fn(AgentBuilder) -> AgentBuilder,
-) -> Body {
+fn blocking_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let (agent, prompt) = build_agent(route, client, tools, probe, configure);
+            let (agent, prompt) = build_agent(route, client, tools, probe);
             let response = agent
                 .prompt(prompt)
                 .max_turns(3)
@@ -322,16 +303,10 @@ fn blocking_body(
 }
 
 /// A streamed `stream_prompt(..)` run, drained to its `FinalResponse`.
-fn streamed_body(
-    sink: Observed,
-    route: Route,
-    tools: bool,
-    probe: RawProbe,
-    configure: fn(AgentBuilder) -> AgentBuilder,
-) -> Body {
+fn streamed_body(sink: Observed, route: Route, tools: bool, probe: RawProbe) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let (agent, prompt) = build_agent(route, client, tools, probe, configure);
+            let (agent, prompt) = build_agent(route, client, tools, probe);
             let mut stream = agent.stream_prompt(prompt).max_turns(3).await;
             let mut observation = RunObservation::default();
             let mut final_response = None;
@@ -405,7 +380,7 @@ fn assert_calls_carry_recorded_raw(
     );
     for (index, (call, recorded_id)) in calls.iter().zip(recorded).enumerate() {
         let raw = call.raw.as_deref().unwrap_or_else(|| {
-            panic!("{scenario}: completion_calls[{index}] must carry raw when capture is on")
+            panic!("{scenario}: completion_calls[{index}] must always carry raw")
         });
         assert!(
             raw_id(raw).is_some_and(|id| id.starts_with(route.id_prefix())),
@@ -432,41 +407,11 @@ fn assert_calls_carry_recorded_raw(
     }
 }
 
-fn assert_all_none(scenario: &str, calls: &[rig::agent::CompletionCall], probe: &RawProbe) {
-    for (index, call) in calls.iter().enumerate() {
-        assert!(
-            call.raw.is_none(),
-            "{scenario}: completion_calls[{index}].raw must be None when capture is off"
-        );
-    }
-    for (identity, raw) in probe
-        .completion_responses()
-        .into_iter()
-        .chain(probe.stream_finishes())
-        .chain(probe.turns())
-    {
-        assert!(
-            raw.is_none(),
-            "{scenario}: hook event for {identity:?} must see raw = None when capture is off"
-        );
-    }
-}
-
-/// Agent-level opt-in.
-fn on(builder: AgentBuilder) -> AgentBuilder {
-    builder.capture_raw_response(true)
-}
-
-/// Nothing set: the default (off).
-fn leave_default(builder: AgentBuilder) -> AgentBuilder {
-    builder
-}
-
 // ---------------------------------------------------------------------------
-// Hook surfaces (cells 1–4, 12–15)
+// Hook surfaces (cells 1–2, 6–7)
 // ---------------------------------------------------------------------------
 
-fn assert_blocking_hooks_see_raw_on(
+fn assert_blocking_hooks_see_raw(
     scenario: &str,
     route: Route,
     probe: &RawProbe,
@@ -503,26 +448,7 @@ fn assert_blocking_hooks_see_raw_on(
     );
 }
 
-fn assert_blocking_hooks_see_none_off(
-    scenario: &str,
-    route: Route,
-    probe: &RawProbe,
-    observation: RunObservation,
-) {
-    let recorded = recorded_ids(scenario, route, false);
-    assert_eq!(recorded.len(), 1, "{scenario}: one text turn");
-    assert_eq!(observation.calls.len(), 1);
-    assert_matches_recorded_token(
-        observation.calls[0].response_id.as_deref(),
-        Some(&recorded[0]),
-        &format!("{scenario}: the run still records the attempt's identity"),
-    );
-    assert_eq!(probe.completion_responses().len(), 1);
-    assert_eq!(probe.turns().len(), 1);
-    assert_all_none(scenario, &observation.calls, probe);
-}
-
-fn assert_streamed_hooks_see_raw_on(
+fn assert_streamed_hooks_see_raw(
     scenario: &str,
     route: Route,
     probe: &RawProbe,
@@ -565,33 +491,8 @@ fn assert_streamed_hooks_see_raw_on(
     );
 }
 
-fn assert_streamed_hooks_see_none_off(
-    scenario: &str,
-    route: Route,
-    probe: &RawProbe,
-    observation: RunObservation,
-) {
-    let recorded = recorded_ids(scenario, route, true);
-    assert_eq!(recorded.len(), 1, "{scenario}: one text turn");
-    assert_eq!(observation.calls.len(), 1);
-    assert_matches_recorded_token(
-        observation.calls[0].response_id.as_deref(),
-        Some(&recorded[0]),
-        &format!("{scenario}: the run still records the attempt's identity"),
-    );
-    assert_eq!(probe.stream_finishes().len(), 1);
-    assert_eq!(probe.turns().len(), 1);
-    assert_all_none(scenario, &observation.calls, probe);
-    assert_eq!(observation.finals, vec![None], "{scenario}: Final raw None");
-    assert_eq!(
-        observation.stream_calls,
-        vec![None],
-        "{scenario}: CompletionCall item raw None"
-    );
-}
-
 // ---------------------------------------------------------------------------
-// Multi-turn tool runs (cells 5–6, 16–17)
+// Multi-turn tool runs (cells 3–4, 8–9)
 // ---------------------------------------------------------------------------
 
 fn assert_tool_run_records_distinct_raw(
@@ -684,67 +585,29 @@ fn assert_tool_run_records_distinct_raw(
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn chat_blocking_hooks_see_raw_on() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/chat_blocking_hooks_see_raw_on";
+async fn chat_blocking_hooks_see_raw() {
+    const SCENARIO: &str = "raw_capture_agent_matrix/chat_blocking_hooks_see_raw";
     let probe = RawProbe::default();
     let observed = Observed::default();
     with_openai_cassette(
-        "raw_capture_agent_matrix/chat_blocking_hooks_see_raw_on",
-        blocking_body(observed.clone(), Route::Chat, false, probe.clone(), on),
+        "raw_capture_agent_matrix/chat_blocking_hooks_see_raw",
+        blocking_body(observed.clone(), Route::Chat, false, probe.clone()),
     )
     .await;
-    assert_blocking_hooks_see_raw_on(SCENARIO, Route::Chat, &probe, take(&observed));
+    assert_blocking_hooks_see_raw(SCENARIO, Route::Chat, &probe, take(&observed));
 }
 
 #[tokio::test]
-async fn chat_blocking_hooks_see_none_off() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/chat_blocking_hooks_see_none_off";
+async fn chat_streamed_hooks_see_raw() {
+    const SCENARIO: &str = "raw_capture_agent_matrix/chat_streamed_hooks_see_raw";
     let probe = RawProbe::default();
     let observed = Observed::default();
     with_openai_cassette(
-        "raw_capture_agent_matrix/chat_blocking_hooks_see_none_off",
-        blocking_body(
-            observed.clone(),
-            Route::Chat,
-            false,
-            probe.clone(),
-            leave_default,
-        ),
+        "raw_capture_agent_matrix/chat_streamed_hooks_see_raw",
+        streamed_body(observed.clone(), Route::Chat, false, probe.clone()),
     )
     .await;
-    assert_blocking_hooks_see_none_off(SCENARIO, Route::Chat, &probe, take(&observed));
-}
-
-#[tokio::test]
-async fn chat_streamed_hooks_see_raw_on() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/chat_streamed_hooks_see_raw_on";
-    let probe = RawProbe::default();
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_capture_agent_matrix/chat_streamed_hooks_see_raw_on",
-        streamed_body(observed.clone(), Route::Chat, false, probe.clone(), on),
-    )
-    .await;
-    assert_streamed_hooks_see_raw_on(SCENARIO, Route::Chat, &probe, take(&observed));
-}
-
-#[tokio::test]
-async fn chat_streamed_hooks_see_none_off() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/chat_streamed_hooks_see_none_off";
-    let probe = RawProbe::default();
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_capture_agent_matrix/chat_streamed_hooks_see_none_off",
-        streamed_body(
-            observed.clone(),
-            Route::Chat,
-            false,
-            probe.clone(),
-            leave_default,
-        ),
-    )
-    .await;
-    assert_streamed_hooks_see_none_off(SCENARIO, Route::Chat, &probe, take(&observed));
+    assert_streamed_hooks_see_raw(SCENARIO, Route::Chat, &probe, take(&observed));
 }
 
 #[tokio::test]
@@ -754,7 +617,7 @@ async fn chat_blocking_tool_run_records_distinct_raw() {
     let observed = Observed::default();
     with_openai_cassette(
         "raw_capture_agent_matrix/chat_blocking_tool_run_records_distinct_raw",
-        blocking_body(observed.clone(), Route::Chat, true, probe.clone(), on),
+        blocking_body(observed.clone(), Route::Chat, true, probe.clone()),
     )
     .await;
     assert_tool_run_records_distinct_raw(SCENARIO, Route::Chat, false, &probe, take(&observed));
@@ -767,7 +630,7 @@ async fn chat_streamed_tool_run_records_distinct_raw() {
     let observed = Observed::default();
     with_openai_cassette(
         "raw_capture_agent_matrix/chat_streamed_tool_run_records_distinct_raw",
-        streamed_body(observed.clone(), Route::Chat, true, probe.clone(), on),
+        streamed_body(observed.clone(), Route::Chat, true, probe.clone()),
     )
     .await;
     assert_tool_run_records_distinct_raw(SCENARIO, Route::Chat, true, &probe, take(&observed));
@@ -796,7 +659,6 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
                  replace the rejected response, reply exactly `ACCEPTED`.",
                 )
                 .temperature(0.0)
-                .capture_raw_response(true)
                 .build()
                 .runner("Begin the retry-hook demonstration.")
                 .max_turns(2)
@@ -872,210 +734,33 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
 }
 
 // ---------------------------------------------------------------------------
-// Toggle precedence (cells 8–11)
-// ---------------------------------------------------------------------------
-
-fn single_call(observation: RunObservation, scenario: &str) -> rig::agent::CompletionCall {
-    assert_eq!(observation.calls.len(), 1, "{scenario}: one call");
-    let recorded = recorded_ids(scenario, Route::Chat, false);
-    assert_eq!(recorded.len(), 1, "{scenario}: one recorded interaction");
-    let call = observation.calls.into_iter().next().expect("one call");
-    assert_matches_recorded_token(
-        call.response_id.as_deref(),
-        Some(&recorded[0]),
-        &format!("{scenario}: the record names the fixture's attempt"),
-    );
-    call
-}
-
-#[tokio::test]
-async fn chat_agent_toggle_on() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/chat_agent_toggle_on";
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_capture_agent_matrix/chat_agent_toggle_on",
-        blocking_body(
-            observed.clone(),
-            Route::Chat,
-            false,
-            RawProbe::default(),
-            on,
-        ),
-    )
-    .await;
-    let observation = take(&observed);
-    let call = single_call(observation, SCENARIO);
-    let raw = call
-        .raw
-        .as_deref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: agent-level opt-in captures"));
-    assert_matches_recorded_token(
-        raw_id(raw),
-        Some(&recorded_ids(SCENARIO, Route::Chat, false)[0]),
-        &format!("{SCENARIO}: captured payload is this attempt's"),
-    );
-}
-
-#[tokio::test]
-async fn chat_run_override_off() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/chat_run_override_off";
-    let observed = Observed::default();
-    let sink = observed.clone();
-    with_openai_cassette(
-        "raw_capture_agent_matrix/chat_run_override_off",
-        |client| async move {
-            let response = client
-                .completions_api()
-                .agent(MODEL)
-                .temperature(0.0)
-                .capture_raw_response(true)
-                .build()
-                .runner(TEXT_PROMPT)
-                .capture_raw_response(false)
-                .run()
-                .await
-                .expect("agent run should succeed");
-            *sink.lock().expect("observation mutex") = Some(RunObservation {
-                calls: response.completion_calls,
-                output: response.output,
-                ..Default::default()
-            });
-        },
-    )
-    .await;
-    let observation = take(&observed);
-    let call = single_call(observation, SCENARIO);
-    assert!(
-        call.raw.is_none(),
-        "{SCENARIO}: the per-run override turns an agent-level opt-in off"
-    );
-}
-
-#[tokio::test]
-async fn chat_request_override_on() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/chat_request_override_on";
-    let observed = Observed::default();
-    let sink = observed.clone();
-    with_openai_cassette(
-        "raw_capture_agent_matrix/chat_request_override_on",
-        |client| async move {
-            let response = client
-                .completions_api()
-                .agent(MODEL)
-                .temperature(0.0)
-                .build()
-                .prompt(TEXT_PROMPT)
-                .capture_raw_response(true)
-                .extended_details()
-                .await
-                .expect("agent run should succeed");
-            *sink.lock().expect("observation mutex") = Some(RunObservation {
-                calls: response.completion_calls,
-                output: response.output,
-                ..Default::default()
-            });
-        },
-    )
-    .await;
-    let observation = take(&observed);
-    let call = single_call(observation, SCENARIO);
-    let raw = call
-        .raw
-        .as_deref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: the per-request override turns capture on"));
-    assert_matches_recorded_token(
-        raw_id(raw),
-        Some(&recorded_ids(SCENARIO, Route::Chat, false)[0]),
-        &format!("{SCENARIO}: captured payload is this attempt's"),
-    );
-}
-
-#[tokio::test]
-async fn chat_default_off() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/chat_default_off";
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_capture_agent_matrix/chat_default_off",
-        blocking_body(
-            observed.clone(),
-            Route::Chat,
-            false,
-            RawProbe::default(),
-            leave_default,
-        ),
-    )
-    .await;
-    let observation = take(&observed);
-    let call = single_call(observation, SCENARIO);
-    assert!(call.raw.is_none(), "{SCENARIO}: capture is off by default");
-}
-
-// ---------------------------------------------------------------------------
 // Responses route
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn responses_blocking_hooks_see_raw_on() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/responses_blocking_hooks_see_raw_on";
+async fn responses_blocking_hooks_see_raw() {
+    const SCENARIO: &str = "raw_capture_agent_matrix/responses_blocking_hooks_see_raw";
     let probe = RawProbe::default();
     let observed = Observed::default();
     with_openai_cassette(
-        "raw_capture_agent_matrix/responses_blocking_hooks_see_raw_on",
-        blocking_body(observed.clone(), Route::Responses, false, probe.clone(), on),
+        "raw_capture_agent_matrix/responses_blocking_hooks_see_raw",
+        blocking_body(observed.clone(), Route::Responses, false, probe.clone()),
     )
     .await;
-    assert_blocking_hooks_see_raw_on(SCENARIO, Route::Responses, &probe, take(&observed));
+    assert_blocking_hooks_see_raw(SCENARIO, Route::Responses, &probe, take(&observed));
 }
 
 #[tokio::test]
-async fn responses_blocking_hooks_see_none_off() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/responses_blocking_hooks_see_none_off";
+async fn responses_streamed_hooks_see_raw() {
+    const SCENARIO: &str = "raw_capture_agent_matrix/responses_streamed_hooks_see_raw";
     let probe = RawProbe::default();
     let observed = Observed::default();
     with_openai_cassette(
-        "raw_capture_agent_matrix/responses_blocking_hooks_see_none_off",
-        blocking_body(
-            observed.clone(),
-            Route::Responses,
-            false,
-            probe.clone(),
-            leave_default,
-        ),
+        "raw_capture_agent_matrix/responses_streamed_hooks_see_raw",
+        streamed_body(observed.clone(), Route::Responses, false, probe.clone()),
     )
     .await;
-    assert_blocking_hooks_see_none_off(SCENARIO, Route::Responses, &probe, take(&observed));
-}
-
-#[tokio::test]
-async fn responses_streamed_hooks_see_raw_on() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/responses_streamed_hooks_see_raw_on";
-    let probe = RawProbe::default();
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_capture_agent_matrix/responses_streamed_hooks_see_raw_on",
-        streamed_body(observed.clone(), Route::Responses, false, probe.clone(), on),
-    )
-    .await;
-    assert_streamed_hooks_see_raw_on(SCENARIO, Route::Responses, &probe, take(&observed));
-}
-
-#[tokio::test]
-async fn responses_streamed_hooks_see_none_off() {
-    const SCENARIO: &str = "raw_capture_agent_matrix/responses_streamed_hooks_see_none_off";
-    let probe = RawProbe::default();
-    let observed = Observed::default();
-    with_openai_cassette(
-        "raw_capture_agent_matrix/responses_streamed_hooks_see_none_off",
-        streamed_body(
-            observed.clone(),
-            Route::Responses,
-            false,
-            probe.clone(),
-            leave_default,
-        ),
-    )
-    .await;
-    assert_streamed_hooks_see_none_off(SCENARIO, Route::Responses, &probe, take(&observed));
+    assert_streamed_hooks_see_raw(SCENARIO, Route::Responses, &probe, take(&observed));
 }
 
 #[tokio::test]
@@ -1086,7 +771,7 @@ async fn responses_blocking_tool_run_records_distinct_raw() {
     let observed = Observed::default();
     with_openai_cassette(
         "raw_capture_agent_matrix/responses_blocking_tool_run_records_distinct_raw",
-        blocking_body(observed.clone(), Route::Responses, true, probe.clone(), on),
+        blocking_body(observed.clone(), Route::Responses, true, probe.clone()),
     )
     .await;
     assert_tool_run_records_distinct_raw(
@@ -1106,7 +791,7 @@ async fn responses_streamed_tool_run_records_distinct_raw() {
     let observed = Observed::default();
     with_openai_cassette(
         "raw_capture_agent_matrix/responses_streamed_tool_run_records_distinct_raw",
-        streamed_body(observed.clone(), Route::Responses, true, probe.clone(), on),
+        streamed_body(observed.clone(), Route::Responses, true, probe.clone()),
     )
     .await;
     assert_tool_run_records_distinct_raw(SCENARIO, Route::Responses, true, &probe, take(&observed));
