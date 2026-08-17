@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- opt-in raw provider response capture: `CompletionRequest::capture_raw_response` and `raw: Option<Arc<serde_json::Value>>` on `CompletionResponse` and `StreamFinal` — the value `raw_completion` / `raw_stream` would have returned, serialized — populated at every provider seam and the shared `normalize_stream` seam; `openai::GenericCompletionModel::raw_completion_with_request_id` and `copilot::CompletionModel::raw_completion_with_request_id` are public so the typed route reproduces `completion()` ([#2366](https://github.com/0xPlaygrounds/rig/issues/2366)) - #PR
+- opt-in raw provider response capture: `CompletionRequest::capture_raw_response` and `raw: Option<Arc<serde_json::Value>>` on `CompletionResponse` and `StreamFinal` — the value `raw_completion` / `raw_stream` would have returned, serialized — populated at every provider seam and the shared `normalize_stream` seam; `openai::GenericCompletionModel::raw_completion_with_request_id` and `copilot::CompletionModel::raw_completion_with_request_id` are public so the typed route reproduces `completion()` ([#2366](https://github.com/0xPlaygrounds/rig/issues/2366)) - #2367
 
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.41.0...rig-core-v0.42.0) - 2026-08-16
 
