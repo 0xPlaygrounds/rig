@@ -325,15 +325,22 @@ macro_rules! impl_provider_response_helpers {
 pub(crate) use impl_provider_response_helpers;
 
 /// Implements the shared response-metadata setters (`with_message_id`,
-/// `with_response_id`, `with_model` and their `_optional` forms) on a response
-/// type with `message_id`, `response_id`, and `model` fields of type
-/// `Option<String>`.
+/// `with_response_id`, `with_provider_request_id`, `with_model`, `with_raw`
+/// and their `_optional` forms) on a response type with `message_id`,
+/// `response_id`, `provider_request_id`, and `model` fields of type
+/// `Option<String>` and a `raw` field of type `Option<Arc<serde_json::Value>>`.
 ///
 /// An empty string is treated as absent: gateways that echo `""` for fields
 /// they don't populate must not produce a `Some("")` that differs between the
 /// buffered and streaming paths. The invariant lives in these generated
 /// setters so no provider call site can diverge. `finish_reason` handling is
 /// intentionally left to each type, since reconciliation rules differ.
+///
+/// `raw` is not an identifier, but it belongs here for the same reason the
+/// identifiers do: it is per-attempt metadata that both surfaces observe —
+/// the unary response and the streaming terminal record carry the same field
+/// with the same meaning, populated at the provider seams from one setter, so
+/// neither surface can grow a variant the other lacks.
 macro_rules! response_metadata_setters {
     ($ty:ty) => {
         impl $ty {
@@ -400,6 +407,27 @@ macro_rules! response_metadata_setters {
             /// response carried one.
             pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
                 self.model = model.map(Into::into).filter(|model| !model.is_empty());
+                self
+            }
+
+            /// Attach the provider's own response, serialized — the value the
+            /// model's inherent raw method would have returned. Provider seams
+            /// call this only when the request opted in via
+            /// `CompletionRequest::capture_raw_response`; see the `raw` field
+            /// for the exact meaning of the payload.
+            pub fn with_raw(self, raw: impl Into<std::sync::Arc<serde_json::Value>>) -> Self {
+                self.with_optional_raw(Some(raw.into()))
+            }
+
+            /// Attach the provider's own response when it was captured.
+            ///
+            /// The `Option` form of `with_raw`; provider seams hold an
+            /// `Option` (capture is opt-in) and pass it straight through.
+            pub fn with_optional_raw(
+                mut self,
+                raw: Option<impl Into<std::sync::Arc<serde_json::Value>>>,
+            ) -> Self {
+                self.raw = raw.map(Into::into);
                 self
             }
         }

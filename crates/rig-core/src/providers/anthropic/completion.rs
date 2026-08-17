@@ -3045,8 +3045,16 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Read the local-policy flag before `raw_completion` consumes the
+        // request, and capture before `normalize` consumes the raw value.
+        let capture_raw = completion_request.capture_raw_response;
         let response = self.raw_completion(completion_request).await?;
-        response.normalize(Ext::PROVIDER_NAME)
+        let captured = capture_raw
+            .then(|| serde_json::to_value(&response))
+            .transpose()?;
+        Ok(response
+            .normalize(Ext::PROVIDER_NAME)?
+            .with_optional_raw(captured))
     }
 
     async fn stream(
@@ -3583,6 +3591,7 @@ mod tests {
             additional_params,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         }
     }
 
@@ -3602,6 +3611,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         }
     }
 

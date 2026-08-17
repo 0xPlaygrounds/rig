@@ -1820,7 +1820,7 @@ pub async fn drain_openai_responses_websocket_events(
         raw.extend(accumulator.finish().into_iter().map(Ok));
     }
 
-    let stream = normalize_responses_stream(provider, Box::pin(futures::stream::iter(raw)));
+    let stream = normalize_responses_stream(provider, Box::pin(futures::stream::iter(raw)), false);
     fixtures::drain(stream).await
 }
 

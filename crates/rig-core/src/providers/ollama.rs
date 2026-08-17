@@ -975,15 +975,29 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.raw_completion(completion_request).await?.try_into()
+        // Read the local-policy flag before `raw_completion` consumes the
+        // request, and capture before `try_into` consumes the raw value.
+        let capture_raw = completion_request.capture_raw_response;
+        let raw = self.raw_completion(completion_request).await?;
+        let captured = capture_raw
+            .then(|| serde_json::to_value(&raw))
+            .transpose()?;
+        let response: completion::CompletionResponse = raw.try_into()?;
+        Ok(response.with_optional_raw(captured))
     }
 
     async fn stream(
         &self,
         request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        // Same flag, read before `raw_stream` consumes the request.
+        let capture_raw = request.capture_raw_response;
         let stream = self.raw_stream(request).await?;
-        let normalized = streaming::normalize_stream(stream, |response| Ok(response.into()));
+        let normalized = streaming::normalize_stream(
+            stream,
+            capture_raw,
+            |response: StreamingCompletionResponse| Ok(response.into()),
+        );
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
@@ -2107,6 +2121,7 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2172,6 +2187,7 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2237,6 +2253,7 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2302,6 +2319,7 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2367,6 +2385,7 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2397,6 +2416,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         // Convert to OllamaCompletionRequest
@@ -2452,6 +2472,7 @@ mod tests {
             additional_params: Some(json!({ "num_predict": 42 })),
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -2486,6 +2507,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -2524,6 +2546,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.2", completion_request))
@@ -2565,6 +2588,7 @@ mod tests {
             additional_params: None,
             output_schema: Some(schema),
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))
@@ -2608,6 +2632,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let ollama_request = OllamaCompletionRequest::try_from(("llama3.1", completion_request))

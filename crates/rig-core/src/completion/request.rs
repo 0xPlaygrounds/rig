@@ -291,9 +291,12 @@ impl FinishReason {
 /// content items.
 ///
 /// This type is concrete — it carries no provider-typed payload. Callers who
-/// need a provider's own wire response call that model's inherent
-/// `raw_completion` method, which performs the same request and returns the
-/// provider's native type.
+/// hold a concrete model and need a provider's own wire response call that
+/// model's inherent `raw_completion` method, which performs the same request
+/// and returns the provider's native type. Callers who do not hold the
+/// concrete model — an agent erases it at construction — opt in to
+/// [`CompletionRequest::capture_raw_response`] and read the same value,
+/// serialized, from [`CompletionResponse::raw`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "CompletionResponseRepr")]
 pub struct CompletionResponse {
@@ -351,6 +354,26 @@ pub struct CompletionResponse {
     /// requested; it is `None` when the provider reports no identifier.
     #[serde(default)]
     pub model: Option<String>,
+    /// The provider's own response for this call, when
+    /// [`CompletionRequest::capture_raw_response`] asked for it: the value the
+    /// model's inherent `raw_completion` would have returned, serialized. It is
+    /// the response as rig's wire type parsed it — fields that type does not
+    /// model are not here.
+    ///
+    /// An escape hatch for provider-specific data rig does not normalize — it
+    /// never replaces a normalized field, and every normalized field means the
+    /// same thing whether or not this is populated. `None` means capture was
+    /// not requested (the default), not that the provider sent nothing.
+    ///
+    /// `Arc` because a response can be large and both the hook stack and the
+    /// run record observe it; clone must stay cheap.
+    ///
+    /// Typed access is recoverable: provider raw types are `Deserialize`, so
+    /// `provider::CompletionResponse::deserialize(&*raw)` returns the
+    /// provider's own type, and [`NormalizeCompletionResponse`] converts
+    /// forward.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<std::sync::Arc<serde_json::Value>>,
 }
 
 /// Response identity metadata for one completed model call: which provider
@@ -389,6 +412,7 @@ impl CompletionResponse {
             finish_reason: None,
             provider: provider.into(),
             model: None,
+            raw: None,
         }
     }
 
@@ -456,6 +480,10 @@ struct CompletionResponseRepr {
     provider: String,
     #[serde(default)]
     model: Option<String>,
+    // `default` because persisted responses predate the field; a missing key
+    // means capture was not requested, which is exactly what `None` means.
+    #[serde(default)]
+    raw: Option<std::sync::Arc<serde_json::Value>>,
 }
 
 impl From<CompletionResponseRepr> for CompletionResponse {
@@ -469,6 +497,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             finish_reason,
             provider,
             model,
+            raw,
         } = repr;
         Self::new(choice, usage, provider)
             .with_optional_message_id(message_id)
@@ -476,6 +505,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             .with_optional_provider_request_id(provider_request_id)
             .with_optional_finish_reason(finish_reason)
             .with_optional_model(model)
+            .with_optional_raw(raw)
     }
 }
 
@@ -735,6 +765,23 @@ pub struct CompletionRequest {
     /// request payloads.
     #[serde(skip)]
     pub record_telemetry_content: bool,
+    /// Capture the provider's own response onto [`CompletionResponse::raw`]
+    /// (unary) or [`StreamFinal::raw`](crate::streaming::StreamFinal::raw)
+    /// (streaming).
+    ///
+    /// Off by default: capture costs a serialization of the provider's parsed
+    /// response on every call, which no caller should pay for unless they
+    /// asked. Rig already preserves the raw body on the *failure* path
+    /// ([`ProviderResponseError::body`](crate::provider_response::ProviderResponseError::body));
+    /// this is the same access for successful calls, opt-in.
+    ///
+    /// Local policy, like `record_telemetry_content`: it changes nothing the
+    /// provider sees and is never serialized into a request. Because
+    /// `CompletionRequest` is concrete and crosses a type-erased model
+    /// untouched, an agent-level toggle reaches the provider through erasure
+    /// with no change to the erased model interface.
+    #[serde(skip)]
+    pub capture_raw_response: bool,
 }
 
 impl CompletionRequest {
@@ -1006,6 +1053,7 @@ pub struct CompletionRequestBuilder<M: CompletionModel> {
     additional_params: Option<serde_json::Value>,
     output_schema: Option<schemars::Schema>,
     record_telemetry_content: bool,
+    capture_raw_response: bool,
 }
 
 impl<M: CompletionModel> CompletionRequestBuilder<M> {
@@ -1025,6 +1073,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         }
     }
 
@@ -1204,6 +1253,22 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
         self
     }
 
+    /// Capture the provider's own response onto the normalized result —
+    /// [`CompletionResponse::raw`] for [`send`](Self::send),
+    /// [`StreamFinal::raw`](crate::streaming::StreamFinal::raw) for
+    /// [`stream`](Self::stream).
+    ///
+    /// Defaults to `false`: capture costs a serialization of the provider's
+    /// parsed response on every call. Like
+    /// [`record_content_telemetry`](Self::record_content_telemetry) this is
+    /// local policy — it changes nothing the provider sees and is never
+    /// serialized into the request. See
+    /// [`CompletionRequest::capture_raw_response`].
+    pub fn capture_raw_response(mut self, enabled: bool) -> Self {
+        self.capture_raw_response = enabled;
+        self
+    }
+
     /// Returns the normalized input messages used by runtime telemetry.
     pub fn messages_for_telemetry(&self) -> Vec<Message> {
         let mut chat_history = self.chat_history.clone();
@@ -1259,6 +1324,7 @@ impl<M: CompletionModel> CompletionRequestBuilder<M> {
             additional_params,
             output_schema: self.output_schema,
             record_telemetry_content: self.record_telemetry_content,
+            capture_raw_response: self.capture_raw_response,
         };
         (model, request)
     }
@@ -1300,6 +1366,7 @@ mod tests {
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
+                capture_raw_response: false,
             }
         }
 
@@ -1630,6 +1697,90 @@ mod tests {
         );
     }
 
+    /// Twin of the telemetry test above: raw capture is local policy, off by
+    /// default, and never serialized into a provider request.
+    #[test]
+    fn completion_request_capture_raw_response_is_opt_in_and_not_serialized() {
+        let default_request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
+                .build();
+        assert!(!default_request.capture_raw_response);
+
+        let default_json = serde_json::to_value(&default_request).expect("serialize request");
+        assert!(
+            default_json.get("capture_raw_response").is_none(),
+            "safe default should not serialize the raw-capture opt-in field"
+        );
+        let default_roundtrip: CompletionRequest =
+            serde_json::from_value(default_json).expect("deserialize default request");
+        assert!(!default_roundtrip.capture_raw_response);
+
+        let opt_in_request =
+            CompletionRequestBuilder::new(MockCompletionModel::default(), "completion prompt")
+                .capture_raw_response(true)
+                .build();
+        assert!(opt_in_request.capture_raw_response);
+
+        let opt_in_json = serde_json::to_value(&opt_in_request).expect("serialize opt-in request");
+        assert!(
+            opt_in_json.get("capture_raw_response").is_none(),
+            "local raw-capture policy must not be serialized into provider requests"
+        );
+        let legacy_roundtrip: CompletionRequest =
+            serde_json::from_value(opt_in_json).expect("deserialize legacy request");
+        assert!(
+            !legacy_roundtrip.capture_raw_response,
+            "missing field should deserialize to the safe default"
+        );
+    }
+
+    /// The deserialization mirror carries `raw`: a response with a captured
+    /// payload survives serialize → deserialize with the payload intact, a
+    /// response serialized before the field existed still loads with `raw`
+    /// unset, and an unset `raw` is not written.
+    #[test]
+    fn normalized_response_raw_round_trips_through_serde_mirror() {
+        let payload = serde_json::json!({
+            "id": "chatcmpl-1",
+            "system_fingerprint": "fp_abc",
+            "choices": [{"finish_reason": "stop"}]
+        });
+        let response = CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage::new(),
+            "example",
+        )
+        .with_response_id("chatcmpl-1")
+        .with_raw(payload.clone());
+
+        let encoded = serde_json::to_value(&response).expect("serialize response");
+        assert_eq!(encoded["raw"], payload);
+        let decoded: CompletionResponse =
+            serde_json::from_value(encoded.clone()).expect("deserialize response");
+        assert_eq!(decoded.raw.as_deref(), Some(&payload));
+        assert_eq!(decoded.response_id.as_deref(), Some("chatcmpl-1"));
+        assert_eq!(
+            serde_json::to_value(&decoded).expect("re-serialize"),
+            encoded
+        );
+
+        let legacy = serde_json::json!({
+            "choice": [{"type": "text", "text": "hello"}],
+            "usage": serde_json::to_value(Usage::new()).unwrap(),
+            "provider": "example"
+        });
+        let decoded: CompletionResponse = serde_json::from_value(legacy).expect("legacy loads");
+        assert!(decoded.raw.is_none());
+
+        let bare = serde_json::to_value(CompletionResponse::new(
+            vec![AssistantContent::text("hello")],
+            Usage::new(),
+            "example",
+        ))
+        .unwrap();
+        assert!(bare.get("raw").is_none());
+    }
+
     fn test_document(id: &str, text: &str) -> Document {
         Document {
             id: id.to_string(),
@@ -1737,6 +1888,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let expected = Message::User {
@@ -1769,6 +1921,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         assert_eq!(request.normalized_documents(), None);
@@ -1894,6 +2047,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         assert_eq!(request.documents.len(), 1);
@@ -1927,6 +2081,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let history = request.chat_history_with_documents();
@@ -1964,6 +2119,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let history = request.chat_history_with_documents();

@@ -385,13 +385,18 @@ pub fn stream_from_events(
     + 'static,
 ) -> StreamingCompletionResponse {
     let raw = run_wire_stream(events, StreamState::default());
-    StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw))
+    // A conformance seam over already-typed events: there is no
+    // `CompletionRequest` here to carry `capture_raw_response`, and no agent
+    // can hold this stream, so it never captures. The `CompletionModel` seam
+    // below is the one that reads the flag.
+    StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw, false))
 }
 
 fn normalize_bedrock_stream(
     raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse>,
+    capture_raw: bool,
 ) -> rig_core::streaming::StreamingResult {
-    rig_core::streaming::normalize_stream(raw, |response| {
+    rig_core::streaming::normalize_stream(raw, capture_raw, |response| {
         let usage = (&response).into();
         let finish_reason = response.stop_reason.as_ref().map(map_stop_reason);
         Ok(rig_core::streaming::StreamFinal::new(PROVIDER_NAME, usage)
@@ -492,11 +497,14 @@ impl CompletionModel {
         &self,
         completion_request: rig_core::completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
+        // Read the local-policy flag before `raw_stream` consumes the request,
+        // exactly as the unary seam reads it before `raw_completion`.
+        let capture_raw = completion_request.capture_raw_response;
         let raw = self.raw_stream(completion_request).await?;
 
         Ok(StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            normalize_bedrock_stream(raw),
+            normalize_bedrock_stream(raw, capture_raw),
         ))
     }
 }
@@ -1036,8 +1044,10 @@ mod tests {
         use futures::StreamExt;
         let raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse> =
             Box::pin(futures::stream::iter(items));
-        let mut stream =
-            StreamingCompletionResponse::stream(PROVIDER_NAME, normalize_bedrock_stream(raw));
+        let mut stream = StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            normalize_bedrock_stream(raw, false),
+        );
         let mut calls = Vec::new();
         let mut errors = Vec::new();
         while let Some(item) = stream.next().await {

@@ -416,11 +416,14 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        // Read the local-policy flag before `raw_stream` consumes the request,
+        // exactly as the unary seam reads it before `raw_completion`.
+        let capture_raw = completion_request.capture_raw_response;
         let stream = self.raw_stream(completion_request).await?;
 
         Ok(streaming::StreamingCompletionResponse::stream(
             Ext::PROVIDER_NAME,
-            streaming::normalize_stream(stream, |response| {
+            streaming::normalize_stream(stream, capture_raw, |response| {
                 Ok((Ext::PROVIDER_NAME, response).into())
             }),
         ))
@@ -568,10 +571,19 @@ where
 /// parameter rather than a constant because this helper is public and the
 /// chat-completions wire shape is shared: hardcoding `"openai"` would label
 /// every out-of-tree compatible provider's stream as OpenAI's.
+///
+/// `capture_raw` is the request's
+/// [`capture_raw_response`](crate::completion::CompletionRequest::capture_raw_response):
+/// this helper takes an already-built HTTP request and never sees the
+/// `CompletionRequest`, so a compatible provider built on it reads the flag
+/// off its request and passes it here, the way every in-tree seam does before
+/// `raw_stream` consumes the request. Otherwise a model built on this helper
+/// would silently ignore an agent's opt-in.
 pub async fn send_compatible_streaming_request<T>(
     http_client: T,
     req: Request<Vec<u8>>,
     provider: impl Into<String>,
+    capture_raw: bool,
 ) -> Result<streaming::StreamingCompletionResponse, CompletionError>
 where
     T: HttpClientExt + Clone + 'static,
@@ -582,7 +594,7 @@ where
     let mapper_provider = provider.clone();
     Ok(streaming::StreamingCompletionResponse::stream(
         provider,
-        streaming::normalize_stream(stream, move |response| {
+        streaming::normalize_stream(stream, capture_raw, move |response| {
             Ok((mapper_provider.as_str(), response).into())
         }),
     ))
@@ -674,9 +686,10 @@ mod tests {
                 chunks.iter().copied().chain(std::iter::once("[DONE]")),
             ),
         };
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .expect("stream should open");
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .expect("stream should open");
 
         let mut text = String::new();
         let mut terminal = None;
@@ -1162,9 +1175,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut final_usage = None;
         while let Some(chunk) = stream.next().await {
@@ -1192,9 +1206,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut final_response = None;
         while let Some(chunk) = stream.next().await {
@@ -1225,9 +1240,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut final_response = None;
         while let Some(chunk) = stream.next().await {
@@ -1263,9 +1279,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut saw_tool_call = false;
         let mut final_response = None;
@@ -1298,9 +1315,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut reasoning_chunks = Vec::new();
         let mut text_chunks = Vec::new();
@@ -1406,9 +1424,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -1457,9 +1476,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -1507,9 +1527,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut collected_tool_calls = Vec::new();
         while let Some(chunk) = stream.next().await {
@@ -1552,9 +1573,10 @@ mod tests {
             ]),
         };
 
-        let stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         assert_zero_arg_tool_call_is_emitted(stream, "call_123", "ping", true).await;
     }
@@ -1569,9 +1591,10 @@ mod tests {
             ]),
         };
 
-        let stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         // The tool call was fully delivered, so it is still flushed at EOF —
         // but the stream reached EOF without `[DONE]` or a finish reason, so
@@ -1600,9 +1623,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut error_count = 0;
         let mut saw_final = false;
@@ -1647,9 +1671,10 @@ mod tests {
             ]),
         };
 
-        let mut stream = send_compatible_streaming_request(client, streaming_request(), "openai")
-            .await
-            .unwrap();
+        let mut stream =
+            send_compatible_streaming_request(client, streaming_request(), "openai", false)
+                .await
+                .unwrap();
 
         let mut texts = Vec::new();
         let mut saw_final = false;

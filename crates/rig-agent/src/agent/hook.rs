@@ -570,6 +570,14 @@ pub struct CompletionResponse<'a> {
     /// This exact attempt's response identity metadata (message-scoped,
     /// response-scoped, and transport request ids).
     pub identity: &'a ResponseIdentity,
+    /// The provider's own response for this attempt, when the run asked for
+    /// raw capture (`AgentBuilder::capture_raw_response` or its per-run /
+    /// per-request overrides) — see `CompletionResponse::raw` in `rig-core`
+    /// for the exact meaning of the payload: the value the model's inherent
+    /// `raw_completion` / `raw_stream` would have returned, serialized.
+    /// `None` when capture was off (the default). On a retry this is the
+    /// retried attempt's own, never a previous attempt's.
+    pub raw: Option<&'a serde_json::Value>,
 }
 
 /// Medium-neutral accepted model-turn event.
@@ -625,6 +633,19 @@ pub struct ModelTurnFinished<'a> {
     /// portable retry-on-truncation decision possible: a hook can tell a turn
     /// cut short at a cap it chose from one cut short at a cap it did not.
     pub max_tokens: Option<u64>,
+    /// The provider's own response for this attempt, when the run asked for
+    /// raw capture (`AgentBuilder::capture_raw_response` or its per-run /
+    /// per-request overrides) — see `CompletionResponse::raw` in `rig-core`
+    /// for the exact meaning of the payload: the value the model's inherent
+    /// `raw_completion` / `raw_stream` would have returned, serialized.
+    /// `None` when capture was off (the default). On a retry this is the
+    /// retried attempt's own, never a previous attempt's.
+    ///
+    /// Carried here, and not only on the surface-specific events, for the
+    /// same reason identity is: this is the medium-neutral event, so a hook
+    /// observing it alone sees the payload for every accepted call on both
+    /// surfaces.
+    pub raw: Option<&'a serde_json::Value>,
 }
 
 /// How an accepted, tool-free model turn should be retried.
@@ -771,6 +792,14 @@ pub struct StreamResponseFinish<'a> {
     /// This exact attempt's response identity metadata (message-scoped,
     /// response-scoped, and transport request ids).
     pub identity: &'a ResponseIdentity,
+    /// The provider's own response for this attempt, when the run asked for
+    /// raw capture (`AgentBuilder::capture_raw_response` or its per-run /
+    /// per-request overrides) — see `CompletionResponse::raw` in `rig-core`
+    /// for the exact meaning of the payload: the value the model's inherent
+    /// `raw_completion` / `raw_stream` would have returned, serialized.
+    /// `None` when capture was off (the default). On a retry this is the
+    /// retried attempt's own, never a previous attempt's.
+    pub raw: Option<&'a serde_json::Value>,
 }
 
 /// Hook event kind used only as an observation performance hint.

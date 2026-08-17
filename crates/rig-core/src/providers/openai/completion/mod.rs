@@ -2205,6 +2205,10 @@ where
     /// [`CompletionModel::completion`](completion::CompletionModel::completion),
     /// which calls it and then applies the provider-local mapping — one
     /// network request either way.
+    ///
+    /// The transport request id is not on the wire type and is dropped here;
+    /// use [`Self::raw_completion_with_request_id`] when the typed route must
+    /// reproduce everything `completion` returns.
     pub async fn raw_completion(
         &self,
         completion_request: CoreCompletionRequest,
@@ -2216,9 +2220,18 @@ where
 
     /// [`Self::raw_completion`] plus the transport request id from the
     /// provider's request-id response header ([`OpenAICompatibleProvider::REQUEST_ID_HEADER`]).
-    /// Internal because the id belongs on the normalized response; the generic
-    /// wire type `Ext::Response` has no slot for it.
-    pub(crate) async fn raw_completion_with_request_id(
+    ///
+    /// The pair exists because the wire type is substitutable — `Ext::Response`
+    /// is whatever the compatible provider parses — so the transport id cannot
+    /// live on it, while the normalized [`completion::CompletionResponse`]
+    /// carries one. Without this method, `raw_completion(..)` followed by
+    /// [`NormalizeCompletionResponse::normalize`](crate::completion::NormalizeCompletionResponse::normalize)
+    /// would silently lack the `provider_request_id` that
+    /// [`CompletionModel::completion`](completion::CompletionModel::completion)
+    /// reports — the typed escape hatch would not reproduce the normalized
+    /// path. Reassemble with
+    /// [`with_optional_provider_request_id`](completion::CompletionResponse::with_optional_provider_request_id).
+    pub async fn raw_completion_with_request_id(
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<(Ext::Response, Option<String>), CompletionError> {
@@ -2315,12 +2328,19 @@ where
         &self,
         completion_request: CoreCompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Read the local-policy flag before the request is consumed, and
+        // capture before `normalize` consumes the raw value.
+        let capture_raw = completion_request.capture_raw_response;
         let (response, provider_request_id) = self
             .raw_completion_with_request_id(completion_request)
             .await?;
+        let captured = capture_raw
+            .then(|| serde_json::to_value(&response))
+            .transpose()?;
         Ok(response
             .normalize(Ext::PROVIDER_NAME)?
-            .with_optional_provider_request_id(provider_request_id))
+            .with_optional_provider_request_id(provider_request_id)
+            .with_optional_raw(captured))
     }
 
     async fn stream(
@@ -2479,6 +2499,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         }
     }
 
@@ -2732,6 +2753,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2763,6 +2785,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -2848,6 +2871,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3296,6 +3320,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3332,6 +3357,7 @@ mod tests {
                 additional_params,
                 output_schema: None,
                 record_telemetry_content: false,
+                capture_raw_response: false,
             },
             strict_tools: false,
             tool_result_array_content: false,
@@ -3487,6 +3513,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3541,6 +3568,7 @@ mod tests {
             })),
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3582,6 +3610,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let result = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3633,6 +3662,7 @@ mod tests {
                 .expect("schema should deserialize"),
             ),
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
@@ -3704,6 +3734,7 @@ mod tests {
                 .expect("schema should deserialize"),
             ),
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openai_request = CompletionRequest::try_from(OpenAIRequestParams {

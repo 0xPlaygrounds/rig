@@ -1023,7 +1023,7 @@ mod tests {
         let raw = send_compatible_raw_streaming_request(http_client, req, None, profile).await?;
         Ok(crate::streaming::StreamingCompletionResponse::stream(
             "test-compatible",
-            crate::streaming::normalize_stream(raw, Ok),
+            crate::streaming::normalize_stream(raw, false, Ok),
         ))
     }
 
@@ -1486,7 +1486,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req, "openai")
+        let mut stream = send_compatible_streaming_request(client, req, "openai", false)
             .await
             .expect("stream should start");
 
@@ -1536,7 +1536,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req, "openai")
+        let mut stream = send_compatible_streaming_request(client, req, "openai", false)
             .await
             .expect("stream should start");
 
@@ -1605,7 +1605,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req, "openai")
+        let mut stream = send_compatible_streaming_request(client, req, "openai", false)
             .await
             .expect("stream should start");
 
@@ -1800,7 +1800,7 @@ mod tests {
             .body(Vec::new())
             .expect("request should build");
 
-        let mut stream = send_compatible_streaming_request(client, req, "openai")
+        let mut stream = send_compatible_streaming_request(client, req, "openai", false)
             .await
             .expect("stream should start");
 

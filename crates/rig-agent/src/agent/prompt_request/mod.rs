@@ -14,7 +14,7 @@ use crate::{
     tool::{ToolContext, ToolOutput},
 };
 use serde::{Deserialize, Serialize};
-use std::{future::IntoFuture, marker::PhantomData};
+use std::{future::IntoFuture, marker::PhantomData, sync::Arc};
 
 /// The provider-neutral identity carrier, re-exported from rig-core so agent
 /// callers name one type across core responses, stream terminals, completion
@@ -149,6 +149,19 @@ macro_rules! forward_prompt_setters {
         /// token usage remain available when disabled.
         pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
             self.$recv = self.$recv.record_content_telemetry(enabled);
+            self
+        }
+
+        /// Opt in or out of capturing the provider's own response for the
+        /// completions this request makes.
+        ///
+        /// Defaults to the agent's setting, which defaults to `false`. When
+        /// enabled, the payload is exposed on the hook events, on each
+        /// [`CompletionCall`](super::CompletionCall) in
+        /// `PromptResponse::completion_calls`, and on the streamed terminal
+        /// record; see `AgentBuilder::capture_raw_response`.
+        pub fn capture_raw_response(mut self, enabled: bool) -> Self {
+            self.$recv = self.$recv.capture_raw_response(enabled);
             self
         }
 
@@ -325,8 +338,9 @@ impl PromptRequest<Standard> {
 }
 
 /// Details for one successfully completed completion request made by an agent run.
-// No longer `Copy`: the identity fields carry owned strings.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// No longer `Copy`: the identity fields carry owned strings. No longer `Eq`:
+// `raw` is a `serde_json::Value`, which is `PartialEq` but not `Eq` (floats).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletionCall {
     /// Zero-based index of the completion request within this agent run.
     pub call_index: usize,
@@ -363,6 +377,18 @@ pub struct CompletionCall {
     /// indistinguishable from a turn that simply had nothing to say.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish_reason: Option<FinishReason>,
+    /// The provider's own response for this call, when the run asked for raw
+    /// capture (`AgentBuilder::capture_raw_response` or its per-run /
+    /// per-request overrides) — see `CompletionResponse::raw` for the exact
+    /// meaning of the payload. `None` when capture was off (the default).
+    ///
+    /// Recorded **per call**, like [`Self::finish_reason`]: on a multi-turn
+    /// run each entry carries its own attempt's response, never a previous
+    /// attempt's, and on a retried turn the recorded call carries the retried
+    /// attempt's own. `Arc` because the hook stack and this record observe
+    /// the same payload and `PromptResponse` is cloned freely.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<Arc<serde_json::Value>>,
 }
 
 impl CompletionCall {
@@ -376,7 +402,15 @@ impl CompletionCall {
             response_id: None,
             provider_request_id: None,
             finish_reason: None,
+            raw: None,
         }
+    }
+
+    /// Attach the provider's own response this call's attempt produced, when
+    /// the run captured it.
+    pub fn with_raw(mut self, raw: Option<Arc<serde_json::Value>>) -> Self {
+        self.raw = raw;
+        self
     }
 
     /// Attach the response identity metadata this call's attempt reported.

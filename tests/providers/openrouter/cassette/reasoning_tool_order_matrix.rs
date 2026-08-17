@@ -171,7 +171,7 @@ async fn run_cell(client: openrouter::Client, cell: Cell, observed: SharedChoice
         }
         Transport::Streaming => {
             let raw = model.raw_stream(request(&model, cell)).await?;
-            let normalized = rig::streaming::normalize_stream(raw, |terminal| {
+            let normalized = rig::streaming::normalize_stream(raw, false, |terminal| {
                 Ok::<_, rig::completion::CompletionError>(("openrouter", terminal).into())
             });
             let mut stream = StreamingCompletionResponse::stream("openrouter", normalized);

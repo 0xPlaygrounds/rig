@@ -64,7 +64,7 @@ impl CompletionModel for CapturingProviderFinals {
 
         Ok(StreamingCompletionResponse::stream(
             copilot::PROVIDER_NAME,
-            normalize_stream(Box::pin(captured), |response| {
+            normalize_stream(Box::pin(captured), false, |response| {
                 Ok((copilot::PROVIDER_NAME, response).into())
             }),
         ))

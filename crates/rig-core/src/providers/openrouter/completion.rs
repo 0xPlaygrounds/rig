@@ -1724,6 +1724,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openrouter_request =
@@ -1752,6 +1753,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openrouter_request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
@@ -1784,6 +1786,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let request = OpenrouterCompletionRequest::try_from(OpenRouterRequestParams {
@@ -1814,6 +1817,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openrouter_request =
@@ -1885,6 +1889,7 @@ mod tests {
             additional_params: None,
             output_schema: Some(schema),
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openrouter_request =
@@ -1941,6 +1946,7 @@ mod tests {
             ),
             output_schema: Some(schema),
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let openrouter_request =
@@ -4434,6 +4440,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         }
     }
 

@@ -586,6 +586,20 @@ pub enum CopilotCompletionResponse {
     Responses(Box<responses_api::CompletionResponse>),
 }
 
+/// The forward direction for the route-tagged raw type, so
+/// [`CompletionModel::raw_completion`] followed by `normalize` is a complete
+/// typed route regardless of which route answered — each variant delegates to
+/// its wire type's own conversion. This is also what
+/// [`completion::CompletionModel::completion`] uses, so the two cannot drift.
+impl NormalizeCompletionResponse for CopilotCompletionResponse {
+    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
+        match self {
+            Self::Chat(response) => response.normalize(provider),
+            Self::Responses(response) => response.normalize(provider),
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "api", rename_all = "snake_case")]
 pub enum CopilotStreamingResponse {
@@ -958,21 +972,50 @@ where
     /// This is the escape hatch for fields rig does not normalize;
     /// [`completion::CompletionModel::completion`] shares the same request,
     /// transport, telemetry and error path.
+    ///
+    /// On the chat route the transport request id (`x-request-id`) is not on
+    /// the wire type and is dropped here; use
+    /// [`Self::raw_completion_with_request_id`] when the typed route must
+    /// reproduce everything `completion` returns.
     pub async fn raw_completion(
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<CopilotCompletionResponse, CompletionError> {
+        self.raw_completion_with_request_id(completion_request)
+            .await
+            .map(|(response, _)| response)
+    }
+
+    /// [`Self::raw_completion`] plus the transport request id from the
+    /// `x-request-id` response header.
+    ///
+    /// The pair exists because the chat route's wire type
+    /// ([`openai::completion::CompletionResponse`]) has no slot for a
+    /// transport id — it is the shared OpenAI-compatible shape — while the
+    /// normalized [`completion::CompletionResponse`] carries one. Without this
+    /// method, `raw_completion(..)` followed by
+    /// [`NormalizeCompletionResponse::normalize`] would silently lack the
+    /// `provider_request_id` that [`completion::CompletionModel::completion`]
+    /// reports. Reassemble with
+    /// [`with_optional_provider_request_id`](completion::CompletionResponse::with_optional_provider_request_id).
+    /// On the responses route the wire type carries the id itself; the pair's
+    /// second element is that same value, so reassembly is a no-op there.
+    pub async fn raw_completion_with_request_id(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<(CopilotCompletionResponse, Option<String>), CompletionError> {
         match self.route() {
             CompletionRoute::ChatCompletions => self
                 .raw_completion_chat(completion_request)
                 .await
-                // The chat wire type has no transport-metadata slot; the
-                // captured id is a normalized-surface concern.
-                .map(|(response, _)| CopilotCompletionResponse::Chat(Box::new(response))),
+                .map(|(response, id)| (CopilotCompletionResponse::Chat(Box::new(response)), id)),
             CompletionRoute::Responses => self
                 .raw_completion_responses(completion_request)
                 .await
-                .map(|response| CopilotCompletionResponse::Responses(Box::new(response))),
+                .map(|response| {
+                    let id = response.provider_request_id.clone();
+                    (CopilotCompletionResponse::Responses(Box::new(response)), id)
+                }),
         }
     }
 
@@ -995,14 +1038,16 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
+        // Read the local-policy flag before `raw_stream` consumes the request,
+        // exactly as the unary seam reads it before `raw_completion`.
+        let capture_raw = completion_request.capture_raw_response;
         let raw = self.raw_stream(completion_request).await?;
 
         Ok(StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            crate::streaming::normalize_stream(
-                raw,
-                |response| Ok((PROVIDER_NAME, response).into()),
-            ),
+            crate::streaming::normalize_stream(raw, capture_raw, |response| {
+                Ok((PROVIDER_NAME, response).into())
+            }),
         ))
     }
 }
@@ -1026,20 +1071,21 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        match self.route() {
-            CompletionRoute::ChatCompletions => {
-                let (response, provider_request_id) =
-                    self.raw_completion_chat(completion_request).await?;
-                Ok(response
-                    .normalize(PROVIDER_NAME)?
-                    .with_optional_provider_request_id(provider_request_id))
-            }
-            // The responses wire type carries the id; `normalize` maps it.
-            CompletionRoute::Responses => self
-                .raw_completion_responses(completion_request)
-                .await?
-                .normalize(PROVIDER_NAME),
-        }
+        // Read the local-policy flag before the request is consumed. The
+        // captured value is the route-tagged `CopilotCompletionResponse` —
+        // what `raw_completion` returns — not the inner route type, so it
+        // round-trips into the same type the typed escape hatch yields.
+        let capture_raw = completion_request.capture_raw_response;
+        let (response, provider_request_id) = self
+            .raw_completion_with_request_id(completion_request)
+            .await?;
+        let captured = capture_raw
+            .then(|| serde_json::to_value(&response))
+            .transpose()?;
+        Ok(response
+            .normalize(PROVIDER_NAME)?
+            .with_optional_provider_request_id(provider_request_id)
+            .with_optional_raw(captured))
     }
 
     async fn stream(

@@ -515,14 +515,23 @@ where
 
     /// Normalize a ChatGPT completion, falling back to the SSE event stream
     /// when the reassembled response carries no output items.
+    ///
+    /// `capture_raw` is the request's `capture_raw_response`, read before
+    /// `create_request` consumed it. The captured value is `raw_response` —
+    /// what [`ResponsesCompletionModel::raw_completion`] returns — on both
+    /// branches, so the empty-output fallback carries it too.
     async fn normalized_completion(
         &self,
         request: ResponsesRequest,
+        capture_raw: bool,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let (raw_response, text) = self.send_completion(request).await?;
+        let captured = capture_raw
+            .then(|| serde_json::to_value(&raw_response))
+            .transpose()?;
 
-        match raw_response.clone().normalize(PROVIDER_NAME) {
-            Ok(response) => Ok(response),
+        let response = match raw_response.clone().normalize(PROVIDER_NAME) {
+            Ok(response) => response,
             // An empty `output` means the terminal event never carried the
             // assembled items; rebuild the response from the raw event stream.
             Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
@@ -531,10 +540,11 @@ where
                     &text,
                     raw_response,
                 )
-                .await
+                .await?
             }
-            Err(error) => Err(error),
-        }
+            Err(error) => return Err(error),
+        };
+        Ok(response.with_optional_raw(captured))
     }
 }
 
@@ -567,12 +577,15 @@ where
         completion_request: completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
         let record_telemetry_content = completion_request.record_telemetry_content;
+        // Read the local-policy flag before `create_request` consumes the
+        // request; capture happens on `raw_response` before `normalize`.
+        let capture_raw = completion_request.capture_raw_response;
         let request = self.create_request(completion_request)?;
         let span = self.completion_span(&request, record_telemetry_content);
 
         tracing_futures::Instrument::instrument(
             async move {
-                let response = self.normalized_completion(request).await?;
+                let response = self.normalized_completion(request, capture_raw).await?;
                 let span = tracing::Span::current();
                 span.record_token_usage(&response.usage);
                 Ok(response)
@@ -603,11 +616,15 @@ where
         &self,
         completion_request: completion::CompletionRequest,
     ) -> Result<StreamingCompletionResponse, CompletionError> {
+        // Read the local-policy flag before `raw_stream` consumes the request,
+        // exactly as the unary seam reads it before `raw_completion`.
+        let capture_raw = completion_request.capture_raw_response;
         let raw = self.raw_stream(completion_request).await?;
 
         Ok(responses_api::streaming::normalize_responses_stream(
             PROVIDER_NAME,
             raw,
+            capture_raw,
         ))
     }
 
@@ -763,6 +780,7 @@ data: [DONE]"#;
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
+                capture_raw_response: false,
             })
             .expect("request")
     }
@@ -807,6 +825,7 @@ data: [DONE]"#;
         let request = model
             .create_request(completion::CompletionRequest {
                 record_telemetry_content: false,
+                capture_raw_response: false,
                 model: None,
                 preamble: Some("Respond tersely.".to_string()),
                 chat_history: vec![completion::Message::user("hello")],
@@ -845,6 +864,7 @@ data: [DONE]"#;
                 additional_params: None,
                 output_schema: None,
                 record_telemetry_content: false,
+                capture_raw_response: false,
             })
             .expect("request");
 

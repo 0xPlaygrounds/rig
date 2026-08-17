@@ -2626,8 +2626,16 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
+        // Read the local-policy flag before `raw_completion` consumes the
+        // request, and capture before `normalize` consumes the raw value.
+        let capture_raw = completion_request.capture_raw_response;
         let response = self.raw_completion(completion_request).await?;
-        response.normalize(Ext::PROVIDER_NAME)
+        let captured = capture_raw
+            .then(|| serde_json::to_value(&response))
+            .transpose()?;
+        Ok(response
+            .normalize(Ext::PROVIDER_NAME)?
+            .with_optional_raw(captured))
     }
 
     async fn stream(
@@ -3563,6 +3571,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         }
     }
 
@@ -3733,6 +3742,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         }
     }
 
@@ -3749,6 +3759,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         }
     }
 
@@ -4169,6 +4180,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
@@ -5128,6 +5140,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))
@@ -5606,6 +5619,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))

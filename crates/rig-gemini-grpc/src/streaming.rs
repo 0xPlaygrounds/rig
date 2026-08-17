@@ -212,9 +212,13 @@ pub fn stream_from_events(
     + 'static,
 ) -> streaming::StreamingCompletionResponse {
     let raw = run_wire_stream(events, GrpcAdapter::default());
+    // A conformance seam over already-typed events: there is no
+    // `CompletionRequest` here to carry `capture_raw_response`, and no agent
+    // can hold this stream, so it never captures. The `CompletionModel` seam
+    // below is the one that reads the flag.
     streaming::StreamingCompletionResponse::stream(
         super::completion::PROVIDER_NAME,
-        normalize_grpc_stream(raw),
+        normalize_grpc_stream(raw, false),
     )
 }
 
@@ -260,11 +264,14 @@ pub(crate) async fn stream(
     model: String,
     completion_request: CompletionRequest,
 ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+    // Read the local-policy flag before `raw_stream` consumes the request,
+    // exactly as the unary seam reads it before `raw_completion`.
+    let capture_raw = completion_request.capture_raw_response;
     let raw = raw_stream(client, model, completion_request).await?;
 
     Ok(streaming::StreamingCompletionResponse::stream(
         super::completion::PROVIDER_NAME,
-        normalize_grpc_stream(raw),
+        normalize_grpc_stream(raw, capture_raw),
     ))
 }
 
@@ -272,8 +279,9 @@ pub(crate) async fn stream(
 /// [`streaming::StreamFinal`].
 fn normalize_grpc_stream(
     raw: streaming::RawStreamingResult<StreamingCompletionResponse>,
+    capture_raw: bool,
 ) -> streaming::StreamingResult {
-    streaming::normalize_stream(raw, |response| {
+    streaming::normalize_stream(raw, capture_raw, |response| {
         let usage = super::completion::map_usage(response.usage_metadata.as_ref());
         let finish_reason = response
             .candidates

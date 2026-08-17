@@ -623,8 +623,11 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        // Read the local-policy flag before `raw_stream` consumes the request,
+        // exactly as the unary seam reads it before `raw_completion`.
+        let capture_raw = completion_request.capture_raw_response;
         let stream = self.raw_stream(completion_request).await?;
-        let normalized = streaming::normalize_stream(stream, |response| {
+        let normalized = streaming::normalize_stream(stream, capture_raw, |response| {
             Ok(StreamFinal::from((Ext::PROVIDER_NAME, response)))
         });
 
@@ -881,7 +884,7 @@ mod tests {
         > + Send
         + 'static,
     ) -> crate::streaming::StreamingResult {
-        crate::streaming::normalize_stream(Box::pin(stream), |response| {
+        crate::streaming::normalize_stream(Box::pin(stream), false, |response| {
             Ok(StreamFinal::from(("anthropic", response)))
         })
     }
@@ -892,7 +895,7 @@ mod tests {
             Item = Result<RawStreamingChoice<StreamingCompletionResponse>, CompletionError>,
         > + 'static,
     ) -> crate::streaming::StreamingResult {
-        crate::streaming::normalize_stream(Box::pin(stream), |response| {
+        crate::streaming::normalize_stream(Box::pin(stream), false, |response| {
             Ok(StreamFinal::from(("anthropic", response)))
         })
     }
@@ -977,6 +980,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
@@ -1026,6 +1030,7 @@ mod tests {
             additional_params: None,
             output_schema: Some(schema),
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let streaming_body = built_streaming_body(CLAUDE_OPUS_4_8, request.clone(), false)
@@ -1088,6 +1093,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
@@ -1122,6 +1128,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let body = built_streaming_body(CLAUDE_OPUS_4_8, request, true)
@@ -1156,6 +1163,7 @@ mod tests {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            capture_raw_response: false,
         };
 
         let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)

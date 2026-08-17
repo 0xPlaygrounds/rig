@@ -1053,11 +1053,15 @@ impl TurnSource for StreamingTurnSource {
                     if !completion_call_emitted {
                         chat_span.record_token_usage(&usage);
                         // The terminal record (when the provider delivered
-                        // one) carries this attempt's identity metadata.
+                        // one) carries this attempt's identity metadata — and
+                        // its captured raw payload, read from the same
+                        // terminal so the recorded call carries *this*
+                        // attempt's response, never a previous attempt's.
                         match run.record_streamed_completion_call(
                             usage,
                             stream.identity(),
                             $finish_reason,
+                            stream.response.as_ref().and_then(|response| response.raw.clone()),
                         ) {
                             Ok(call) => {
                                 completion_call_emitted = true;
@@ -1334,6 +1338,7 @@ impl TurnSource for StreamingTurnSource {
                     crate::completion::Usage::new(),
                     stream.identity(),
                     fallback_finish_reason,
+                    stream.response.as_ref().and_then(|response| response.raw.clone()),
                 ) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
@@ -1354,6 +1359,13 @@ impl TurnSource for StreamingTurnSource {
                 message_id: streamed_turn.message_id.clone(),
                 ..stream.identity()
             };
+            // This attempt's raw payload, from the same terminal record as the
+            // identity above — so a retry never observes a previous attempt's
+            // response. `None` when capture was off or no terminal arrived.
+            let attempt_raw = stream
+                .response
+                .as_ref()
+                .and_then(|response| response.raw.as_deref());
             if pending_final.is_some()
                 && !turn_recovered
                 && let Some(reason) = observe_action(
@@ -1367,6 +1379,7 @@ impl TurnSource for StreamingTurnSource {
                                 usage: last_usage,
                                 message_id: streamed_turn.message_id.as_deref(),
                                 identity: &identity,
+                                raw: attempt_raw,
                             },
                         )
                         .await,
@@ -1409,6 +1422,7 @@ impl TurnSource for StreamingTurnSource {
                             identity: &identity,
                             finish_reason: attempt_finish_reason.as_ref(),
                             max_tokens: attempt_max_tokens,
+                            raw: attempt_raw,
                         },
                     )
                     .await;

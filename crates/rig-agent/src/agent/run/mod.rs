@@ -213,6 +213,14 @@ pub struct ModelTurn {
     /// reason the streamed surface does (rig#2322).
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
+    /// The provider's own response for this attempt, when the run asked for
+    /// raw capture — see `CompletionResponse::raw`. Carried so the blocking
+    /// surface records the same payload on its [`CompletionCall`] that the
+    /// streamed surface records via
+    /// [`AgentRun::record_streamed_completion_call`]. `default` because
+    /// persisted run state predates the field.
+    #[serde(default)]
+    pub raw: Option<std::sync::Arc<serde_json::Value>>,
 }
 
 impl ModelTurn {
@@ -234,6 +242,7 @@ impl ModelTurn {
             executable_tool_names,
             allowed_tool_names,
             finish_reason: None,
+            raw: None,
         }
     }
 
@@ -251,6 +260,13 @@ impl ModelTurn {
     /// Attach the terminal finish reason this attempt reported.
     pub fn with_finish_reason(mut self, finish_reason: Option<FinishReason>) -> Self {
         self.finish_reason = finish_reason;
+        self
+    }
+
+    /// Attach the provider's own response this attempt produced, when the
+    /// run captured it.
+    pub fn with_raw(mut self, raw: Option<std::sync::Arc<serde_json::Value>>) -> Self {
+        self.raw = raw;
         self
     }
 }
@@ -992,6 +1008,7 @@ impl AgentRun {
                 provider_request_id: turn.provider_request_id.clone(),
             },
             turn.finish_reason.clone(),
+            turn.raw.clone(),
         );
 
         let items: Vec<AssistantContent> = turn.choice.clone();
@@ -1046,10 +1063,12 @@ impl AgentRun {
         usage: Usage,
         identity: ResponseIdentity,
         finish_reason: Option<FinishReason>,
+        raw: Option<std::sync::Arc<serde_json::Value>>,
     ) -> CompletionCall {
         let call = CompletionCall::new(self.completion_call_index, usage)
             .with_identity(identity)
-            .with_finish_reason(finish_reason);
+            .with_finish_reason(finish_reason)
+            .with_raw(raw);
         self.completion_call_index += 1;
         self.completion_calls.push(call.clone());
         self.usage += usage;
@@ -1399,11 +1418,18 @@ impl AgentRun {
     /// or between a turn rollback and the next [`AgentRunStep::CallModel`];
     /// aggregates `usage` into the run total. Zero-valued usage means the
     /// provider reported no usage metrics.
+    ///
+    /// `raw` is the stream's terminal record as captured on
+    /// `StreamFinal::raw` when the run asked for it — read off the same
+    /// terminal the driver reads `identity` and `finish_reason` from, so the
+    /// recorded call carries *this* attempt's payload; `None` when capture
+    /// was off.
     pub fn record_streamed_completion_call(
         &mut self,
         usage: Usage,
         identity: ResponseIdentity,
         finish_reason: Option<FinishReason>,
+        raw: Option<std::sync::Arc<serde_json::Value>>,
     ) -> Result<CompletionCall, PromptError> {
         let recordable = matches!(self.state, RunState::AwaitingModel)
             || (matches!(self.state, RunState::PreparingRequest) && self.rollback_pending);
@@ -1419,7 +1445,7 @@ impl AgentRun {
         }
         self.streamed_completion_call_recorded = true;
 
-        Ok(self.record_completion_call(usage, identity, finish_reason))
+        Ok(self.record_completion_call(usage, identity, finish_reason, raw))
     }
 
     /// The recovery-hook context for an invalid tool call surfaced
@@ -1568,6 +1594,10 @@ impl AgentRun {
                     ..ResponseIdentity::default()
                 },
                 turn.finish_reason.clone(),
+                // A streamed turn's raw lives on the terminal record, which
+                // this fallback never saw; the driver records it via
+                // `record_streamed_completion_call` when it has one.
+                None,
             );
             self.streamed_completion_call_recorded = true;
         }
@@ -2343,7 +2373,7 @@ mod tests {
     fn model_response_rejected_after_streamed_completion_call_record() {
         let mut run = AgentRun::new("hello");
         expect_call_model(&mut run);
-        run.record_streamed_completion_call(Usage::new(), ResponseIdentity::default(), None)
+        run.record_streamed_completion_call(Usage::new(), ResponseIdentity::default(), None, None)
             .expect("record should succeed");
 
         let err = run

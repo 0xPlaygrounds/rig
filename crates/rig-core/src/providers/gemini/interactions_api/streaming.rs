@@ -169,11 +169,14 @@ where
         &self,
         completion_request: CompletionRequest,
     ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
+        // Read the local-policy flag before `raw_stream` consumes the request,
+        // exactly as the unary seam reads it before `raw_completion`.
+        let capture_raw = completion_request.capture_raw_response;
         let inner = self.raw_stream(completion_request).await?;
 
         Ok(streaming::StreamingCompletionResponse::stream(
             PROVIDER_NAME,
-            streaming::normalize_stream(inner, map_stream_final),
+            streaming::normalize_stream(inner, capture_raw, map_stream_final),
         ))
     }
 }

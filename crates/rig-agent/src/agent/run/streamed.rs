@@ -1643,6 +1643,7 @@ mod tests {
             usage,
             rig_core::completion::ResponseIdentity::default(),
             None,
+            None,
         )
         .expect("record should succeed");
         let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
@@ -1669,6 +1670,7 @@ mod tests {
         run.record_streamed_completion_call(
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
+            None,
             None,
         )
         .expect("record should succeed");
@@ -1734,6 +1736,7 @@ mod tests {
         run.record_streamed_completion_call(
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
+            None,
             None,
         )
         .expect("record after rollback should succeed");
@@ -1809,6 +1812,7 @@ mod tests {
         run.record_streamed_completion_call(
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
+            None,
             None,
         )
         .expect("completion call should be recorded");
@@ -1928,6 +1932,7 @@ mod tests {
                 Usage::new(),
                 rig_core::completion::ResponseIdentity::default(),
                 None,
+                None,
             )
             .expect_err("recording before any model call must be rejected");
         assert!(matches!(err, PromptError::PromptCancelled { .. }));
@@ -1937,6 +1942,7 @@ mod tests {
         run.record_streamed_completion_call(
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
+            None,
             None,
         )
         .expect("recording during a pending model call succeeds");
@@ -1961,6 +1967,7 @@ mod tests {
         run.record_streamed_completion_call(
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
+            None,
             None,
         )
         .expect("record should succeed");
@@ -2009,12 +2016,14 @@ mod tests {
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
             None,
+            None,
         )
         .expect("first record succeeds");
         let err = run
             .record_streamed_completion_call(
                 Usage::new(),
                 rig_core::completion::ResponseIdentity::default(),
+                None,
                 None,
             )
             .expect_err("second record for the same turn must be rejected");
@@ -2033,6 +2042,7 @@ mod tests {
         run.record_streamed_completion_call(
             Usage::new(),
             rig_core::completion::ResponseIdentity::default(),
+            None,
             None,
         )
         .expect("record should succeed");

@@ -226,7 +226,7 @@ async fn run_model(client: openai::Client, cell: Cell) -> Observation {
                     };
                 }
             };
-            let normalized = rig::streaming::normalize_stream(raw, |terminal| {
+            let normalized = rig::streaming::normalize_stream(raw, false, |terminal| {
                 Ok::<_, rig::completion::CompletionError>(("openai", terminal).into())
             });
             let mut stream = StreamingCompletionResponse::stream("openai", normalized);

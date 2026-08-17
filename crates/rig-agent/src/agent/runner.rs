@@ -389,6 +389,19 @@ impl AgentRunner {
         self
     }
 
+    /// Opt in or out of capturing the provider's own response for the
+    /// completions this run makes.
+    ///
+    /// Defaults to the agent's setting, which defaults to `false`. When
+    /// enabled, the payload is exposed on the hook events, on each
+    /// [`CompletionCall`](super::CompletionCall) in
+    /// `PromptResponse::completion_calls`, and on the streamed terminal
+    /// record; see `AgentBuilder::capture_raw_response`.
+    pub fn capture_raw_response(mut self, enabled: bool) -> Self {
+        self.config.capture_raw_response = enabled;
+        self
+    }
+
     /// Execute up to `concurrency` tools at once (1 by default). Applies to
     /// **both** the blocking [`run`](Self::run) and the streaming
     /// [`stream`](Self::stream) paths.
@@ -903,7 +916,10 @@ impl TurnSource for UnaryTurnSource {
                     resp.response_id.clone(),
                     resp.provider_request_id.clone(),
                 )
-                .with_finish_reason(attempt_finish_reason.clone()),
+                .with_finish_reason(attempt_finish_reason.clone())
+                // This attempt's captured raw payload (an `Arc` clone), so the
+                // run record carries the same payload the hooks observe below.
+                .with_raw(resp.raw.clone()),
             ) {
                 Ok(outcome) => outcome,
                 Err(err) => {
@@ -950,8 +966,10 @@ impl TurnSource for UnaryTurnSource {
                             // Identity comes from this attempt's own `resp` —
                             // a retried turn re-enters `run_model_turn` with a
                             // fresh response, so a stale attempt's ids can
-                            // never be attributed here.
+                            // never be attributed here. The raw payload is read
+                            // from the same `resp` for the same reason.
                             let identity = resp.identity();
+                            let attempt_raw = resp.raw.as_deref();
                             if let Some(reason) = observe_action(
                                 runner
                                     .config.hooks
@@ -963,6 +981,7 @@ impl TurnSource for UnaryTurnSource {
                                             usage: resp.usage,
                                             message_id: resp.message_id.as_deref(),
                                             identity: &identity,
+                                            raw: attempt_raw,
                                         },
                                     )
                                     .await,
@@ -982,6 +1001,7 @@ impl TurnSource for UnaryTurnSource {
                                         identity: &identity,
                                         finish_reason: attempt_finish_reason.as_ref(),
                                         max_tokens: attempt_max_tokens,
+                                        raw: attempt_raw,
                                     },
                                 )
                                 .await;
@@ -10848,6 +10868,7 @@ mod migrated_tests {
             // These cases exercise hook dispatch, not termination metadata.
             finish_reason: None,
             max_tokens: None,
+            raw: None,
         };
         let second_event = first_event;
 
@@ -10879,6 +10900,7 @@ mod migrated_tests {
                     identity: no_identity(),
                     finish_reason: None,
                     max_tokens: None,
+                    raw: None,
                 },
             )
             .await;
@@ -10892,6 +10914,7 @@ mod migrated_tests {
                     identity: no_identity(),
                     finish_reason: None,
                     max_tokens: None,
+                    raw: None,
                 },
             )
             .await;
@@ -10927,6 +10950,7 @@ mod migrated_tests {
             // These cases exercise hook dispatch, not termination metadata.
             finish_reason: None,
             max_tokens: None,
+            raw: None,
         };
         let ctx = HookContext::new(false, None);
 
