@@ -88,7 +88,8 @@ anyhow = { workspace = true }
 # downstream builds.
 rig-core = { path = ".", features = ["test-utils"] }
 # identity-leak compile-fail tests (tests/identity_leak.rs)
-trybuild = "1.0"
+# 1.0.111: the compiler-output normalization the trybuild cases were written against.
+trybuild = "1.0.111"
 # streaming identity/merge law property tests
 proptest = "1"
 assert_fs = { workspace = true }

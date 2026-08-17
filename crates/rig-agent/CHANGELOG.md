@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- *(deps)* dependency requirements are now floors — the lowest version rig's own code needs (a bare major, or the version that introduced an API rig relies on) — instead of the latest patch at the time of release; Dependabot only moves `Cargo.lock` for in-range releases, and `scripts/check-dependency-floors.py` (CI `dependency-floors`) builds the workspace against the declared floors. The `deranged = "=0.5.8"` exact pin is gone. Downstream users no longer have to `cargo update` unrelated crates to take a rig release ([#2195](https://github.com/0xPlaygrounds/rig/issues/2195)) - #2369
+
+
 ### Added
 
 - the provider's own response reaches agent observers on every call: `raw` on the `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook events, `CompletionCall::raw`, `ModelTurn::raw`, and the streamed `StreamedAssistantContent::Final` terminal record — per attempt, on both surfaces ([#2366](https://github.com/0xPlaygrounds/rig/issues/2366)) - #2367

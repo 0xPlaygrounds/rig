@@ -27,7 +27,7 @@ tracing = { workspace = true }
 [build-dependencies]
 tonic-build = { workspace = true }
 tonic-prost-build = { workspace = true }
-protoc-bin-vendored = "3.2.0"
+protoc-bin-vendored = "3"
 
 [dev-dependencies]
 anyhow = { workspace = true }
