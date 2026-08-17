@@ -250,3 +250,111 @@ pub(super) async fn with_anthropic_reasoning_usage_cassette<F, Fut>(
 {
     with_anthropic_cassette(spec, test_body).await;
 }
+
+/// The `request-id` response header each interaction of an Anthropic cassette
+/// recorded, in wire order — one entry per interaction, `None` for an
+/// interaction whose response carried no such header.
+///
+/// The header is the transport id Anthropic support asks for, and the harness
+/// keeps it (placeholder-scrubbed) precisely so a cell can prove the wire
+/// reported one. Reading it back from the fixture is how the raw-capture and
+/// parity matrices assert that premise instead of assuming it.
+pub(super) fn recorded_request_id_headers(scenario: &str) -> Vec<Option<String>> {
+    let path = crate::cassettes::cassette_path("anthropic", scenario);
+    let contents = std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
+
+    let mut ids = Vec::new();
+    let mut in_response = false;
+    let mut pending_request_id_header = false;
+    for line in contents.lines() {
+        if line == "when:" {
+            in_response = false;
+        } else if line == "then:" {
+            in_response = true;
+            ids.push(None);
+        } else if in_response {
+            let trimmed = line.trim_start();
+            if pending_request_id_header {
+                pending_request_id_header = false;
+                if let Some(value) = trimmed.strip_prefix("value: ")
+                    && let Some(slot) = ids.last_mut()
+                {
+                    *slot = Some(value.trim().to_string());
+                }
+            } else if trimmed == "- name: request-id" {
+                pending_request_id_header = true;
+            }
+        }
+    }
+    ids
+}
+
+/// JSON `data:` frames of one recorded SSE body, excluding `[DONE]`.
+///
+/// `crate::cassettes::recorded_sse_json_frames` reads only a scenario's first
+/// interaction; multi-interaction streamed cells (agent tool runs) need the
+/// frames of *each* interaction, which they get by pairing this with
+/// `crate::cassettes::recorded_interaction_bodies`.
+pub(super) fn sse_json_frames(body: &str) -> Vec<serde_json::Value> {
+    body.lines()
+        .filter_map(|line| line.trim().strip_prefix("data:"))
+        .map(str::trim)
+        .filter(|payload| *payload != "[DONE]")
+        .map(|payload| {
+            serde_json::from_str(payload)
+                .unwrap_or_else(|err| panic!("recorded SSE frame should be JSON: {err}"))
+        })
+        .collect()
+}
+
+/// Assert that a sequence of ids the code under test observed is the sequence
+/// the fixture recorded — in both cassette modes.
+///
+/// The harness scrubs generated ids (`msg_…`, `req_…`) to numbered
+/// placeholders on the way out, mapping equal originals to equal placeholders
+/// and distinct originals to distinct ones. On replay the observed values *are*
+/// the placeholders, so the two sequences must be identical. In record mode
+/// the observed values are the live ids, so only their equality structure is
+/// comparable: which positions repeat, and which are new. Checking that
+/// structure in both modes (and exact equality on replay) means the same cell
+/// proves "each attempt reports its own id, in recorded order" whether it is
+/// being recorded or replayed.
+pub(super) fn assert_ids_match_recording(
+    observed: &[Option<String>],
+    recorded: &[Option<String>],
+    context: &str,
+) {
+    fn ranks(ids: &[Option<String>]) -> Vec<Option<usize>> {
+        let mut seen: Vec<&str> = Vec::new();
+        ids.iter()
+            .map(|id| {
+                id.as_deref().map(|id| {
+                    seen.iter()
+                        .position(|known| *known == id)
+                        .unwrap_or_else(|| {
+                            seen.push(id);
+                            seen.len() - 1
+                        })
+                })
+            })
+            .collect()
+    }
+
+    assert_eq!(
+        observed.len(),
+        recorded.len(),
+        "{context}: observed {observed:?} and recorded {recorded:?} must have one id per interaction"
+    );
+    assert_eq!(
+        ranks(observed),
+        ranks(recorded),
+        "{context}: observed {observed:?} must repeat/differ exactly as the recording {recorded:?}"
+    );
+    if crate::cassettes::CassetteMode::current() == crate::cassettes::CassetteMode::Replay {
+        assert_eq!(
+            observed, recorded,
+            "{context}: on replay the observed ids are the fixture's own"
+        );
+    }
+}

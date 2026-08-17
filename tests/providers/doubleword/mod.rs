@@ -12,6 +12,8 @@ mod cassette {
     mod extractor;
     mod finish_reason_matrix;
     mod model_family_matrix;
+    mod raw_capture_matrix;
+    mod raw_stream_capture_matrix;
     mod reasoning_matrix;
     mod request_hook;
     mod request_parameter_matrix;

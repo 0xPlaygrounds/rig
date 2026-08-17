@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"Reply with the single word: pong","role":"user"}],"model":"Qwen/Qwen3.5-9B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"pong","reasoning_content":"Thinking Process:\n1.  **Analyze the Request:** The user is asking for a single-word reply. Specifically, the word \"pong\".\n2.  **Identify the Constraint:** \"Reply with the single word: pong\". This means the output must be exactly \"pong\", nothing else (no punctuation, no explanations, no markdown unless it''s just the word itself).\n3.  **Formulate Output:** The word is \"pong\".\n4.  **Final Verification:** Does this meet the single-word constraint? Yes. Is it the correct word? Yes.\n\nOutput: pong\n","reasoning_details":[{"format":"unknown","index":0,"text":"Thinking Process:\n1.  **Analyze the Request:** The user is asking for a single-word reply. Specifically, the word \"pong\".\n2.  **Identify the Constraint:** \"Reply with the single word: pong\". This means the output must be exactly \"pong\", nothing else (no punctuation, no explanations, no markdown unless it''s just the word itself).\n3.  **Formulate Output:** The word is \"pong\".\n4.  **Final Verification:** Does this meet the single-word constraint? Yes. Is it the correct word? Yes.\n\nOutput: pong\n","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":128,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":127},"prompt_tokens":17,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":145}}'

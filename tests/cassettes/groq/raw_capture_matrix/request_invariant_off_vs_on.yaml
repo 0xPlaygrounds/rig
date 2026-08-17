@@ -1,0 +1,37 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Reply with the single word: pong","role":"user"}],"model":"llama-3.1-8b-instant"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Pong","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.1-8b-instant","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.010097116,"completion_tokens":3,"prompt_time":0.006079268,"prompt_tokens":42,"queue_time":0.061271385,"total_time":0.016176384,"total_tokens":45},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":1308215129}}'
+---
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Reply with the single word: pong","role":"user"}],"model":"llama-3.1-8b-instant"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_2
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Pong","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"llama-3.1-8b-instant","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.007927274,"completion_tokens":3,"prompt_time":0.002120962,"prompt_tokens":42,"queue_time":0.059177467,"total_time":0.010048236,"total_tokens":45},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_2","seed":1720841178}}'

@@ -1,0 +1,16 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":16,"messages":[{"content":[{"text":"Reply with exactly this one word and nothing else: captured","type":"text"}],"role":"user"}],"model":"command-a-03-2025","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"COMPLETE","id":"deefdaf6-b2f2-4dd7-a7d1-2b4bafe5bf2a","message":{"content":[{"text":"captured","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":11,"output_tokens":1},"cached_tokens":448,"tokens":{"input_tokens":506,"output_tokens":4}}}'

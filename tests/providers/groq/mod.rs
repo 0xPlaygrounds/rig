@@ -10,6 +10,9 @@ mod loaders;
 mod models;
 mod multi_extract;
 mod permission_control;
+mod raw_capture_matrix;
+mod raw_completion_parity_matrix;
+mod raw_stream_capture_matrix;
 mod request_hook;
 mod streaming;
 mod streaming_reasoning;
@@ -33,6 +36,7 @@ pub(super) const MULTI_EXTRACT_TOPICS_MODEL: &str = "meta-llama/llama-4-scout-17
 pub(super) const MULTI_EXTRACT_SENTIMENT_MODEL: &str = "llama-3.3-70b-versatile";
 pub(super) const PERMISSION_CONTROL_PROMPT_MODEL: &str = "openai/gpt-oss-20b";
 pub(super) const PERMISSION_CONTROL_STREAMING_MODEL: &str = "openai/gpt-oss-20b";
+pub(super) const RAW_CAPTURE_MODEL: &str = "llama-3.1-8b-instant";
 pub(super) const REQUEST_HOOK_MODEL: &str = "llama-3.1-8b-instant";
 pub(super) const STREAMING_MODEL: &str = "allam-2-7b";
 pub(super) const STREAMING_REASONING_MODEL: &str = "openai/gpt-oss-120b";

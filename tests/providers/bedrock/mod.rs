@@ -6,8 +6,10 @@ mod cassette {
     mod document_ordering;
     mod embeddings;
     mod model_ids;
+    mod raw_capture_matrix;
     mod raw_completion;
     mod raw_provider_data;
+    mod raw_stream_capture_matrix;
     mod raw_streaming;
     mod streaming;
     mod tool_choice;

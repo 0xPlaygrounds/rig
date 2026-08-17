@@ -10,6 +10,8 @@ mod followup_hunt_matrix;
 mod models;
 mod multi_extract;
 mod permission_control;
+mod raw_capture_matrix;
+mod raw_stream_capture_matrix;
 mod reasoning_block_order;
 mod reasoning_roundtrip;
 mod reasoning_tool_roundtrip;

@@ -22,6 +22,10 @@ mod cassette {
     mod pdf_citations;
     mod plaintext_document;
     mod prompt_caching;
+    mod raw_capture_agent_matrix;
+    mod raw_capture_matrix;
+    mod raw_completion_parity_matrix;
+    mod raw_stream_capture_matrix;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
     mod reasoning_usage_matrix;

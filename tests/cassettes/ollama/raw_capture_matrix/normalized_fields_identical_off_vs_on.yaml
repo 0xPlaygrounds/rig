@@ -1,0 +1,33 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"qwen3:4b","options":{"num_predict":64},"stream":false,"think":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":64,"eval_duration":711200580,"load_duration":52380333,"message":{"content":"Hmm, the user just asked me to reply with exactly the single word \"pong\". \n\nThis seems like a simple test to see if I follow instructions precisely. They probably want to check my ability to handle very specific output requirements without adding anything extra. \n\nI recall that in some contexts \"pong\" is used as a","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":18,"prompt_eval_duration":17088208,"total_duration":854412625}'
+---
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"qwen3:4b","options":{"num_predict":64},"stream":false,"think":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":64,"eval_duration":756816751,"load_duration":55569417,"message":{"content":"Hmm, the user wants me to reply with exactly the single word \"pong\". That''s pretty straightforward. \n\nI wonder why they specified \"exactly the single word\" though. Maybe they''re testing if I can follow precise instructions? Or perhaps they''re setting up for some kind of game or chat protocol. \n\nThe","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":18,"prompt_eval_duration":16275875,"total_duration":950885667}'
