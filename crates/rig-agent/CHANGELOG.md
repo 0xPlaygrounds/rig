@@ -6,20 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
-### Changed
-
-- *(deps)* dependency requirements are now floors — the lowest version rig's own code needs (a bare major, or the version that introduced an API rig relies on) — instead of the latest patch at the time of release; Dependabot only moves `Cargo.lock` for in-range releases, and `scripts/check-dependency-floors.py` (CI `dependency-floors`) builds the workspace against the declared floors. The `deranged = "=0.5.8"` exact pin is gone. Downstream users no longer have to `cargo update` unrelated crates to take a rig release ([#2195](https://github.com/0xPlaygrounds/rig/issues/2195)) - #2369
-
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.41.0...rig-agent-v0.42.0) - 2026-08-17
 
 ### Added
 
 - the provider's own response reaches agent observers on every call: `raw` on the `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished` hook events, `CompletionCall::raw`, `ModelTurn::raw`, and the streamed `StreamedAssistantContent::Final` terminal record — per attempt, on both surfaces ([#2366](https://github.com/0xPlaygrounds/rig/issues/2366)) - #2367
-
-## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.41.0...rig-agent-v0.42.0) - 2026-08-16
-
-### Added
-
 - *(agent)* [**breaking**] expose portable model-turn termination metadata to hooks ([#2341](https://github.com/0xPlaygrounds/rig/pull/2341)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - carry the provider transport request id on completion errors ([#2314](https://github.com/0xPlaygrounds/rig/pull/2314)) ([#2315](https://github.com/0xPlaygrounds/rig/pull/2315)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2315
 - response identity metadata — native response id + provider transport request id, to every completion observer ([#2265](https://github.com/0xPlaygrounds/rig/pull/2265)) ([#2313](https://github.com/0xPlaygrounds/rig/pull/2313)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2313
@@ -70,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- *(deps)* dependency requirements are now floors — the lowest version rig's own code needs (a bare major, or the version that introduced an API rig relies on) — instead of the latest patch at the time of release; Dependabot only moves `Cargo.lock` for in-range releases, and `scripts/check-dependency-floors.py` (CI `dependency-floors`) builds the workspace against the declared floors. The `deranged = "=0.5.8"` exact pin is gone. Downstream users no longer have to `cargo update` unrelated crates to take a rig release ([#2195](https://github.com/0xPlaygrounds/rig/issues/2195)) - #2369
 - *(agent)* `AgentBuilder`, `Agent`, and `AgentRunner` now share one private `AgentConfig`; `AgentRunner::from_agent` clones it as a single unit instead of copying 15 settings field by field, so a new agent setting can no longer compile while silently failing to propagate to execution (#2326). Per-run overrides mutate only the runner's cloned config, never the source agent. Internal renames within the private config: `default_max_turns` is now a resolved `max_turns: usize` (default `1`, preserving the one-call budget) and `default_conversation_id` is now `conversation_id`. No public API change
 
 - *(tool)* [**breaking**] `ToolSetBuilder` and `ToolSet::builder()` are removed; a tool set is populated in place with `ToolSet::default()` (or `from_tools`/`from_dynamic_tools`) plus `add_tool`, `add_dynamic_tool`, `add_portable_dynamic_tool` and the new `add_retrieved_tool` — `ToolSet::builder().retrieved_tool(t).build()` becomes `let mut set = ToolSet::default(); set.add_retrieved_tool(t);`
