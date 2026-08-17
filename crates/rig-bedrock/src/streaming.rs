@@ -1250,6 +1250,114 @@ mod tests {
             serde_json::json!({})
         );
     }
+
+    /// Bedrock's terminal `Metadata` event carrying usage, so the stream ends
+    /// with a fully populated `BedrockStreamingResponse`.
+    fn metadata_event_with_usage(input: i32, output: i32) -> aws_bedrock::ConverseStreamOutput {
+        aws_bedrock::ConverseStreamOutput::Metadata(
+            aws_bedrock::ConverseStreamMetadataEvent::builder()
+                .usage(
+                    aws_bedrock::TokenUsage::builder()
+                        .input_tokens(input)
+                        .output_tokens(output)
+                        .total_tokens(input + output)
+                        .build()
+                        .expect("token usage should build"),
+                )
+                .build(),
+        )
+    }
+
+    /// Drive `items` through the normalized pipeline with the capture flag
+    /// set as the `CompletionModel` seam would set it, returning the terminal.
+    async fn normalized_terminal(
+        items: Vec<Result<RawStreamingChoice<BedrockStreamingResponse>, CompletionError>>,
+        capture_raw: bool,
+    ) -> rig_core::streaming::StreamFinal {
+        let raw: rig_core::streaming::RawStreamingResult<BedrockStreamingResponse> =
+            Box::pin(futures::stream::iter(items));
+        let mut stream = StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            normalize_bedrock_stream(raw, capture_raw),
+        );
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+        stream
+            .response
+            .expect("the stream must end with a terminal record")
+    }
+
+    /// The events-first seam never captures: it has no `CompletionRequest`
+    /// to read `capture_raw_response` from, so its terminal `raw` is `None`
+    /// — the same resting state a flag-off request yields.
+    #[tokio::test]
+    async fn stream_from_events_leaves_terminal_raw_unset() {
+        let mut stream = stream_from_events(futures::stream::iter(
+            vec![
+                text_delta_event(0, "hi"),
+                block_stop(0),
+                message_stop_event(aws_bedrock::StopReason::EndTurn),
+                metadata_event_with_usage(3, 1),
+            ]
+            .into_iter()
+            .map(Ok),
+        ));
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+        let terminal = stream.response.expect("terminal record");
+
+        assert!(terminal.raw.is_none());
+        assert_eq!(terminal.usage.total_tokens, 4);
+    }
+
+    /// The load-bearing streaming capture property at the seam
+    /// `CompletionModel::stream` routes through: with `capture_raw` on, the
+    /// terminal's `raw` is Bedrock's own `BedrockStreamingResponse` — it
+    /// deserializes back into that type and re-serializes identically — and
+    /// nothing normalized differs from the flag-off run of the same events.
+    /// The Bedrock `stopReason` spelling is only readable off the capture.
+    #[tokio::test]
+    async fn terminal_captures_raw_only_when_requested_and_round_trips() {
+        let events = || {
+            vec![
+                text_delta_event(0, "hi"),
+                block_stop(0),
+                message_stop_event(aws_bedrock::StopReason::EndTurn),
+                metadata_event_with_usage(3, 1),
+            ]
+        };
+
+        let (items, _) = run_events(events());
+        let off = normalized_terminal(items, false).await;
+        assert!(off.raw.is_none(), "the flag defaults off; nothing captured");
+
+        let (items, _) = run_events(events());
+        let on = normalized_terminal(items, true).await;
+        let raw = on.raw.as_deref().expect("flag on must capture");
+        let typed: BedrockStreamingResponse =
+            serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        assert_eq!(
+            serde_json::to_value(&typed).expect("re-serialize"),
+            *raw,
+            "the capture must be exactly what the terminal type serializes to"
+        );
+        assert_eq!(typed.stop_reason, Some(StopReason::EndTurn));
+        assert_eq!(
+            typed.usage.as_ref().map(|usage| usage.total_tokens),
+            Some(4)
+        );
+
+        assert_eq!(on.identity(), off.identity());
+        assert_eq!(on.finish_reason, off.finish_reason);
+        assert_eq!(on.model, off.model);
+        assert_eq!(on.usage, off.usage);
+        assert_eq!(
+            on.finish_reason,
+            Some(rig_core::completion::FinishReason::Stop)
+        );
+    }
 }
 
 #[cfg(test)]

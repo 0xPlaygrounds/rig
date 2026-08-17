@@ -1690,4 +1690,91 @@ mod tests {
         assert_eq!(texts, ["hi"]);
         assert!(saw_final, "the genuine terminal must still arrive");
     }
+
+    /// Raw-capture tests for the streaming terminal, through
+    /// [`send_compatible_streaming_request`] — the shared helper every
+    /// OpenAI-compatible stream (and every out-of-tree compatible provider)
+    /// funnels through, so the `capture_raw` argument it takes is the whole
+    /// streaming opt-in for this wire shape.
+    mod raw_capture {
+        use super::*;
+        use crate::test_utils::MockStreamingClient;
+        use futures::StreamExt;
+
+        /// A stream whose terminal carries metadata that only the
+        /// provider-native terminal keeps (`service_tier`, `system_fingerprint`
+        /// under `additional_params`, plus usage and `finish_reason`).
+        const CHUNKS: [&str; 3] = [
+            "{\"id\":\"chatcmpl-raw-7\",\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_stream\",\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":null}],\"usage\":null}",
+            "{\"id\":\"chatcmpl-raw-7\",\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_stream\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":null}",
+            "{\"id\":\"chatcmpl-raw-7\",\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_stream\",\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":1,\"total_tokens\":4}}",
+        ];
+
+        async fn terminal(capture_raw: bool) -> streaming::StreamFinal {
+            let client = MockStreamingClient {
+                sse_bytes: sse_bytes_from_data_lines(
+                    CHUNKS.iter().copied().chain(std::iter::once("[DONE]")),
+                ),
+            };
+            let mut stream = send_compatible_streaming_request(
+                client,
+                streaming_request(),
+                "openai",
+                capture_raw,
+            )
+            .await
+            .expect("stream should open");
+
+            let mut terminal = None;
+            while let Some(item) = stream.next().await {
+                if let streaming::StreamedAssistantContent::Final(record) =
+                    item.expect("stream item")
+                {
+                    terminal = Some(record);
+                }
+            }
+            terminal.expect("the stream must end with a terminal record")
+        }
+
+        /// Pins the default: `capture_raw: false` leaves the terminal's `raw`
+        /// unset even though the terminal record itself was fully populated.
+        #[tokio::test]
+        async fn terminal_leaves_raw_unset_unless_requested() {
+            let record = terminal(false).await;
+
+            assert!(record.raw.is_none());
+            assert_eq!(record.usage.total_tokens, 4);
+        }
+
+        /// The load-bearing streaming property: with the flag on, the
+        /// terminal's `raw` is the provider-native terminal record — it
+        /// deserializes back into
+        /// [`StreamingCompletionResponse`] and re-serializes identically —
+        /// and nothing normalized differs from the flag-off run of the same
+        /// bytes. Also reads terminal-only metadata off the capture.
+        #[tokio::test]
+        async fn terminal_captures_raw_that_round_trips_into_the_terminal_type() {
+            let off = terminal(false).await;
+            let on = terminal(true).await;
+
+            let raw = on.raw.as_deref().expect("flag on must capture");
+            let typed: StreamingCompletionResponse =
+                serde_json::from_value(raw.clone()).expect("raw must deserialize");
+            assert_eq!(
+                serde_json::to_value(&typed).expect("re-serialize"),
+                *raw,
+                "the capture must be exactly what the terminal type serializes to"
+            );
+            assert_eq!(typed.response_id.as_deref(), Some("chatcmpl-raw-7"));
+            assert_eq!(raw["additional_params"]["service_tier"], "default");
+            assert_eq!(raw["additional_params"]["system_fingerprint"], "fp_stream");
+
+            assert_eq!(on.identity(), off.identity());
+            assert_eq!(on.finish_reason, off.finish_reason);
+            assert_eq!(on.model, off.model);
+            assert_eq!(on.usage, off.usage);
+            assert_eq!(on.finish_reason, Some(NormalizedFinishReason::Stop));
+            assert_eq!(on.model.as_deref(), Some("gpt-4o-mini-2024-07-18"));
+        }
+    }
 }

@@ -2225,7 +2225,7 @@ where
     /// is whatever the compatible provider parses — so the transport id cannot
     /// live on it, while the normalized [`completion::CompletionResponse`]
     /// carries one. Without this method, `raw_completion(..)` followed by
-    /// [`NormalizeCompletionResponse::normalize`](crate::completion::NormalizeCompletionResponse::normalize)
+    /// [`normalize`](crate::completion::NormalizeCompletionResponse::normalize)
     /// would silently lack the `provider_request_id` that
     /// [`CompletionModel::completion`](completion::CompletionModel::completion)
     /// reports — the typed escape hatch would not reproduce the normalized
@@ -4378,5 +4378,153 @@ mod tests {
             .expect("raw body should be valid JSON")
             .expect("parsed JSON should be present");
         assert_eq!(json["error"]["type"], "rate_limit_error");
+    }
+
+    /// Raw-capture tests: the `normalize` shape through the OpenAI-compatible
+    /// model, driven end to end over a mock transport that hands back a real
+    /// chat-completions body *and* an `x-request-id` response header, so the
+    /// same fixture serves the capture contract and the Part A parity
+    /// contract. `with_error_response_headers` is the only unary double that
+    /// carries headers; with `200 OK` it is simply a successful response with
+    /// headers (`completion_send` already relies on that).
+    mod raw_capture {
+        use super::*;
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::openai::CompletionsClient;
+        use crate::test_utils::RecordingHttpClient;
+
+        const REQUEST_ID: &str = "req_unit_chat_0001";
+
+        /// A chat-completions body carrying fields the normalized response
+        /// provably lacks (`system_fingerprint`, `service_tier`), so the
+        /// captured value can be shown to answer more than `completion()`.
+        const BODY: &str = r#"{
+            "id": "chatcmpl-raw-1",
+            "object": "chat.completion",
+            "created": 1700000000,
+            "model": "gpt-4o-mini-2024-07-18",
+            "system_fingerprint": "fp_unit_test",
+            "service_tier": "default",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "hello"},
+                "logprobs": null,
+                "finish_reason": "stop"
+            }],
+            "usage": {"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5}
+        }"#;
+
+        fn model() -> CompletionModel<RecordingHttpClient> {
+            let mut headers = http::HeaderMap::new();
+            headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
+            let http_client = RecordingHttpClient::with_error_response_headers(
+                http::StatusCode::OK,
+                BODY,
+                headers,
+            );
+            let client = CompletionsClient::builder()
+                .api_key("test-key")
+                .http_client(http_client)
+                .build()
+                .expect("build client");
+            client.completion_model("gpt-4o-mini")
+        }
+
+        /// Pins the default: a request that did not opt in gets `raw: None`,
+        /// even though the transport answered with a perfectly capturable
+        /// body — "capture was not requested" is the field's resting state.
+        #[tokio::test]
+        async fn completion_leaves_raw_unset_unless_requested() {
+            let model = model();
+            let request = model.completion_request("hello").build();
+            assert!(!request.capture_raw_response, "the flag defaults off");
+
+            let response = model.completion(request).await.expect("completion");
+
+            assert!(response.raw.is_none());
+            assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
+        }
+
+        /// The load-bearing capture property: with the flag on, `raw` is the
+        /// wire type as rig parsed it — it deserializes back into
+        /// `openai::completion::CompletionResponse` and re-serializes to the
+        /// identical value — while every normalized field is exactly what the
+        /// flag-off run of the same body produced. Also reads a field rig
+        /// does not normalize (`system_fingerprint`) off the capture.
+        #[tokio::test]
+        async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
+            let model = model();
+
+            let off = model
+                .completion(model.completion_request("hello").build())
+                .await
+                .expect("flag-off completion");
+            let on = model
+                .completion(
+                    model
+                        .completion_request("hello")
+                        .capture_raw_response(true)
+                        .build(),
+                )
+                .await
+                .expect("flag-on completion");
+
+            let raw = on.raw.as_deref().expect("flag on must capture");
+            let typed = super::CompletionResponse::deserialize(raw)
+                .expect("raw must deserialize into the provider wire type");
+            assert_eq!(
+                serde_json::to_value(&typed).expect("re-serialize"),
+                *raw,
+                "the capture must be exactly what the wire type serializes to"
+            );
+            assert_eq!(typed.system_fingerprint.as_deref(), Some("fp_unit_test"));
+            assert_eq!(raw["service_tier"], "default");
+
+            // Capture is additive: nothing normalized may differ.
+            assert_eq!(on.identity(), off.identity());
+            assert_eq!(on.finish_reason(), off.finish_reason());
+            assert_eq!(on.model, off.model);
+            assert_eq!(on.usage, off.usage);
+            assert_eq!(on.choice, off.choice);
+            assert_eq!(on.provider_request_id.as_deref(), Some(REQUEST_ID));
+            assert_eq!(
+                on.finish_reason(),
+                Some(crate::completion::FinishReason::Stop)
+            );
+        }
+
+        /// Part A parity, unit form: the typed route
+        /// `raw_completion_with_request_id` → `normalize` →
+        /// `with_optional_provider_request_id` reproduces `completion()` on
+        /// identity, finish reason, model and usage — and specifically the
+        /// transport id, which lives only on the response header and which
+        /// plain `raw_completion` drops. This is why the pair is public.
+        #[tokio::test]
+        async fn raw_completion_with_request_id_reproduces_completion() {
+            let model = model();
+
+            let (raw, id) = model
+                .raw_completion_with_request_id(model.completion_request("hello").build())
+                .await
+                .expect("typed route");
+            assert_eq!(id.as_deref(), Some(REQUEST_ID));
+            let reassembled = raw
+                .normalize(<crate::providers::openai::OpenAICompletionsExt as OpenAICompatibleProvider>::PROVIDER_NAME)
+                .expect("normalize")
+                .with_optional_provider_request_id(id);
+
+            let normalized = model
+                .completion(model.completion_request("hello").build())
+                .await
+                .expect("normalized route");
+
+            assert_eq!(reassembled.identity(), normalized.identity());
+            assert_eq!(reassembled.finish_reason(), normalized.finish_reason());
+            assert_eq!(reassembled.model, normalized.model);
+            assert_eq!(reassembled.usage, normalized.usage);
+            assert_eq!(reassembled.provider_request_id.as_deref(), Some(REQUEST_ID));
+            assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
+        }
     }
 }

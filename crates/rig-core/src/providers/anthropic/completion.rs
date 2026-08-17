@@ -7144,4 +7144,142 @@ mod tests {
             );
         }
     }
+
+    /// Raw-capture tests: the `normalize` shape through the Anthropic model,
+    /// driven end to end over a mock transport that hands back a Messages body
+    /// *and* a `request-id` response header. Anthropic's raw type carries the
+    /// transport id itself (`CompletionResponse::provider_request_id`, stamped
+    /// by the driver), which is why the Part A contract here is a plain
+    /// `raw_completion` → `normalize`, with no id to reattach.
+    /// `with_error_response_headers` with `200 OK` is the one unary double
+    /// that carries response headers.
+    mod raw_capture {
+        use super::*;
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::providers::anthropic::Client;
+        use crate::test_utils::RecordingHttpClient;
+
+        const REQUEST_ID: &str = "req_unit_anthropic_0001";
+
+        /// A Messages body whose `stop_sequence` is set: the normalized
+        /// response maps it to `FinishReason::Stop` and drops which sequence
+        /// fired, so the capture provably answers more than `completion()`.
+        const BODY: &str = r#"{
+            "id": "msg_raw_1",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-4-6",
+            "content": [{"type": "text", "text": "hello"}],
+            "stop_reason": "stop_sequence",
+            "stop_sequence": "alpha",
+            "usage": {"input_tokens": 7, "output_tokens": 2}
+        }"#;
+
+        fn model() -> CompletionModel<RecordingHttpClient> {
+            let mut headers = http::HeaderMap::new();
+            headers.insert("request-id", http::HeaderValue::from_static(REQUEST_ID));
+            let http_client = RecordingHttpClient::with_error_response_headers(
+                http::StatusCode::OK,
+                BODY,
+                headers,
+            );
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(http_client)
+                .build()
+                .expect("build client");
+            client.completion_model(CLAUDE_SONNET_4_6)
+        }
+
+        /// Pins the default: a request that did not opt in gets `raw: None`,
+        /// even though the transport answered with a capturable body.
+        #[tokio::test]
+        async fn completion_leaves_raw_unset_unless_requested() {
+            let model = model();
+            let request = model.completion_request("hello").build();
+            assert!(!request.capture_raw_response, "the flag defaults off");
+
+            let response = model.completion(request).await.expect("completion");
+
+            assert!(response.raw.is_none());
+            assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
+        }
+
+        /// The load-bearing capture property: with the flag on, `raw` is
+        /// Anthropic's `CompletionResponse` as rig parsed it — it deserializes
+        /// back into that type and re-serializes to the identical value,
+        /// including the transport id the driver stamped onto the raw type —
+        /// while every normalized field equals the flag-off run of the same
+        /// body. Also reads `stop_sequence` off the capture, which the
+        /// normalized response does not carry.
+        #[tokio::test]
+        async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
+            let model = model();
+
+            let off = model
+                .completion(model.completion_request("hello").build())
+                .await
+                .expect("flag-off completion");
+            let on = model
+                .completion(
+                    model
+                        .completion_request("hello")
+                        .capture_raw_response(true)
+                        .build(),
+                )
+                .await
+                .expect("flag-on completion");
+
+            let raw = on.raw.as_deref().expect("flag on must capture");
+            let typed: CompletionResponse =
+                serde_json::from_value(raw.clone()).expect("raw must deserialize");
+            assert_eq!(
+                serde_json::to_value(&typed).expect("re-serialize"),
+                *raw,
+                "the capture must be exactly what the wire type serializes to"
+            );
+            assert_eq!(typed.stop_sequence.as_deref(), Some("alpha"));
+            assert_eq!(typed.provider_request_id.as_deref(), Some(REQUEST_ID));
+            assert_eq!(raw["stop_sequence"], "alpha");
+
+            assert_eq!(on.identity(), off.identity());
+            assert_eq!(on.finish_reason(), off.finish_reason());
+            assert_eq!(on.model, off.model);
+            assert_eq!(on.usage, off.usage);
+            assert_eq!(on.choice, off.choice);
+            assert_eq!(on.finish_reason(), Some(completion::FinishReason::Stop));
+            assert_eq!(on.provider_request_id.as_deref(), Some(REQUEST_ID));
+        }
+
+        /// Part A contract statement for a provider whose raw type carries the
+        /// transport id: `raw_completion` → `normalize` reproduces
+        /// `completion()` on identity, finish reason, model and usage — the id
+        /// included — with nothing to reattach.
+        #[tokio::test]
+        async fn raw_completion_then_normalize_reproduces_completion() {
+            let model = model();
+
+            let raw = model
+                .raw_completion(model.completion_request("hello").build())
+                .await
+                .expect("typed route");
+            assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
+            let reassembled = raw
+                .normalize(<crate::providers::anthropic::client::AnthropicExt as AnthropicCompatibleProvider>::PROVIDER_NAME)
+                .expect("normalize");
+
+            let normalized = model
+                .completion(model.completion_request("hello").build())
+                .await
+                .expect("normalized route");
+
+            assert_eq!(reassembled.identity(), normalized.identity());
+            assert_eq!(reassembled.finish_reason(), normalized.finish_reason());
+            assert_eq!(reassembled.model, normalized.model);
+            assert_eq!(reassembled.usage, normalized.usage);
+            assert_eq!(reassembled.provider_request_id.as_deref(), Some(REQUEST_ID));
+            assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
+        }
+    }
 }

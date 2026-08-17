@@ -946,4 +946,127 @@ data: [DONE]"#;
             );
         }
     }
+
+    /// Raw-capture tests for the ChatGPT model — the `other` seam shape: the
+    /// `/responses` endpoint answers a non-streaming call with an SSE body, so
+    /// `raw_completion` is a wire response *reassembled* from the event
+    /// stream, and the normalized path has an empty-`output` fallback that
+    /// rebuilds the choice from that same stream. The capture must be the
+    /// reassembled `responses_api::CompletionResponse` on both branches.
+    /// Driven end to end over the recording mock transport with an access
+    /// token, the same way the error-path tests above reach `completion()`.
+    mod raw_capture {
+        use super::*;
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        /// A complete turn: the terminal `response.completed` carries the
+        /// assembled output plus `service_tier`, which the normalized
+        /// response provably lacks.
+        const SSE_BODY: &str = r#"data: {"type":"response.output_text.delta","delta":"hi"}
+data: {"type":"response.completed","response":{"id":"resp_chatgpt_raw","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.4","service_tier":"default","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[{"type":"message","id":"msg_chatgpt_raw","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"hi"}]}],"tools":[]}}
+data: [DONE]"#;
+
+        /// The same turn with an empty terminal `output`: the normalized path
+        /// takes the streamed-text fallback.
+        const EMPTY_OUTPUT_SSE_BODY: &str = r#"data: {"type":"response.output_text.delta","delta":"hi"}
+data: {"type":"response.completed","response":{"id":"resp_chatgpt_raw","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.4","service_tier":"default","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[],"tools":[]}}
+data: [DONE]"#;
+
+        fn model(body: &'static str) -> ResponsesCompletionModel<RecordingHttpClient> {
+            let client = crate::providers::chatgpt::Client::builder()
+                .api_key(ChatGPTAuth::AccessToken {
+                    access_token: "test-token".to_string(),
+                    account_id: Some("account-id".to_string()),
+                })
+                .http_client(RecordingHttpClient::new(body))
+                .build()
+                .expect("client should build");
+            client.completion_model(GPT_5_4)
+        }
+
+        /// Pins the default: a request that did not opt in gets `raw: None`,
+        /// even though the transport answered with a capturable body.
+        #[tokio::test]
+        async fn completion_leaves_raw_unset_unless_requested() {
+            let model = model(SSE_BODY);
+            let request = model.completion_request("hello").build();
+            assert!(!request.capture_raw_response, "the flag defaults off");
+
+            let response = model.completion(request).await.expect("completion");
+
+            assert!(response.raw.is_none());
+            assert_eq!(response.usage.total_tokens, 2);
+        }
+
+        /// The load-bearing capture property, on both normalization branches:
+        /// with the flag on, `raw` is the reassembled Responses
+        /// `CompletionResponse` — it deserializes back into that type and
+        /// re-serializes to the identical value, and equals what
+        /// `raw_completion` returns for the same body — while every normalized
+        /// field equals the flag-off run. On the empty-`output` body the
+        /// choice comes from the streamed text, and the capture is still the
+        /// terminal record (with its empty `output`), because that is what
+        /// `raw_completion` would have returned.
+        #[tokio::test]
+        async fn completion_captures_raw_on_both_normalization_branches() {
+            for (body, case) in [
+                (SSE_BODY, "assembled output"),
+                (EMPTY_OUTPUT_SSE_BODY, "empty-output fallback"),
+            ] {
+                let model = model(body);
+
+                let off = model
+                    .completion(model.completion_request("hello").build())
+                    .await
+                    .expect("flag-off completion");
+                let on = model
+                    .completion(
+                        model
+                            .completion_request("hello")
+                            .capture_raw_response(true)
+                            .build(),
+                    )
+                    .await
+                    .expect("flag-on completion");
+                let escape_hatch = model
+                    .raw_completion(model.completion_request("hello").build())
+                    .await
+                    .expect("raw completion");
+
+                let raw = on.raw.as_deref().expect("flag on must capture");
+                let typed: responses_api::CompletionResponse =
+                    serde_json::from_value(raw.clone()).expect("raw must deserialize");
+                assert_eq!(
+                    serde_json::to_value(&typed).expect("re-serialize"),
+                    *raw,
+                    "{case}: the capture must be exactly what the wire type serializes to"
+                );
+                assert_eq!(
+                    serde_json::to_value(&escape_hatch).expect("serialize raw_completion"),
+                    *raw,
+                    "{case}: the capture must be what raw_completion returns"
+                );
+                assert_eq!(raw["service_tier"], "default", "{case}");
+                assert_eq!(typed.id, "resp_chatgpt_raw", "{case}");
+
+                assert_eq!(on.identity(), off.identity(), "{case}");
+                assert_eq!(on.finish_reason(), off.finish_reason(), "{case}");
+                assert_eq!(on.model, off.model, "{case}");
+                assert_eq!(on.usage, off.usage, "{case}");
+                assert_eq!(on.choice, off.choice, "{case}");
+                assert_eq!(
+                    on.choice,
+                    vec![completion::AssistantContent::text("hi")],
+                    "{case}: both branches yield the streamed text"
+                );
+                assert_eq!(
+                    on.identity().response_id.as_deref(),
+                    Some("resp_chatgpt_raw"),
+                    "{case}"
+                );
+            }
+        }
+    }
 }

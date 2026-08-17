@@ -2968,4 +2968,101 @@ mod tests {
         );
         assert_eq!(error.provider_response_body(), Some(body));
     }
+
+    /// Raw-capture tests: the `TryFrom` shape, driven end to end through
+    /// `CompletionModel::completion` over the recording mock transport. Ollama
+    /// has no request-id contract, so there is nothing transport-side to
+    /// reattach; the capture is the `/api/chat` body exactly as `raw_completion`
+    /// parses it. The body carries the timing fields (`total_duration`,
+    /// `eval_duration`, ...) rig never normalizes, so the capture can be shown
+    /// to answer more than the normalized response does.
+    mod raw_capture {
+        use super::*;
+        use crate::client::CompletionClient;
+        use crate::completion::CompletionModel as _;
+        use crate::test_utils::RecordingHttpClient;
+
+        const BODY: &str = r#"{
+            "model": "llama3.2",
+            "created_at": "2023-08-04T19:22:45.499127Z",
+            "message": {"role": "assistant", "content": "hello"},
+            "done": true,
+            "done_reason": "stop",
+            "total_duration": 5043500667,
+            "load_duration": 5025959,
+            "prompt_eval_count": 26,
+            "prompt_eval_duration": 325953000,
+            "eval_count": 5,
+            "eval_duration": 4709213000
+        }"#;
+
+        fn model() -> CompletionModel<RecordingHttpClient> {
+            let client = Client::builder()
+                .api_key("test-key")
+                .http_client(RecordingHttpClient::new(BODY))
+                .build()
+                .expect("build client");
+            client.completion_model(LLAMA3_2)
+        }
+
+        /// Pins the default: a request that did not opt in gets `raw: None`,
+        /// even though the transport answered with a capturable body.
+        #[tokio::test]
+        async fn completion_leaves_raw_unset_unless_requested() {
+            let model = model();
+            let request = model.completion_request("hello").build();
+            assert!(!request.capture_raw_response, "the flag defaults off");
+
+            let response = model.completion(request).await.expect("completion");
+
+            assert!(response.raw.is_none());
+            assert_eq!(response.usage.total_tokens, 31);
+        }
+
+        /// The load-bearing capture property: with the flag on, `raw` is
+        /// Ollama's `CompletionResponse` as rig parsed it — it deserializes
+        /// back into that type and re-serializes to the identical value —
+        /// while every normalized field equals the flag-off run of the same
+        /// body. Also reads `total_duration` and `eval_duration` off the
+        /// capture, which the normalized response provably lacks.
+        #[tokio::test]
+        async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
+            let model = model();
+
+            let off = model
+                .completion(model.completion_request("hello").build())
+                .await
+                .expect("flag-off completion");
+            let on = model
+                .completion(
+                    model
+                        .completion_request("hello")
+                        .capture_raw_response(true)
+                        .build(),
+                )
+                .await
+                .expect("flag-on completion");
+
+            let raw = on.raw.as_deref().expect("flag on must capture");
+            let typed: CompletionResponse =
+                serde_json::from_value(raw.clone()).expect("raw must deserialize");
+            assert_eq!(
+                serde_json::to_value(&typed).expect("re-serialize"),
+                *raw,
+                "the capture must be exactly what the wire type serializes to"
+            );
+            assert_eq!(typed.total_duration, Some(5_043_500_667));
+            assert_eq!(typed.eval_duration, Some(4_709_213_000));
+            assert_eq!(raw["total_duration"], 5_043_500_667_u64);
+            assert_eq!(typed.done_reason.as_deref(), Some("stop"));
+
+            assert_eq!(on.identity(), off.identity());
+            assert_eq!(on.finish_reason(), off.finish_reason());
+            assert_eq!(on.model, off.model);
+            assert_eq!(on.usage, off.usage);
+            assert_eq!(on.choice, off.choice);
+            assert_eq!(on.finish_reason(), Some(completion::FinishReason::Stop));
+            assert_eq!(on.model.as_deref(), Some("llama3.2"));
+        }
+    }
 }

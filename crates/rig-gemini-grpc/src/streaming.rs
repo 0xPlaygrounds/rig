@@ -640,4 +640,127 @@ mod tests {
         assert_eq!(err.provider_response_body(), Some(expected.as_str()));
         assert_eq!(err.provider_response_status(), None);
     }
+
+    fn text_part(text: &str) -> proto::Part {
+        proto::Part {
+            data: Some(proto::part::Data::Text(text.to_string())),
+            ..Default::default()
+        }
+    }
+
+    /// The terminal frame of a stream: the last `GenerateContentResponse`,
+    /// carrying usage, a finish reason and the response id, so the stream
+    /// ends with a fully populated terminal record.
+    fn terminal_frame() -> proto::GenerateContentResponse {
+        proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![proto::Part {
+                        data: Some(proto::part::Data::Text("!".to_string())),
+                        ..Default::default()
+                    }],
+                    role: "model".to_string(),
+                }),
+                finish_reason: proto::candidate::FinishReason::Stop as i32,
+                ..Default::default()
+            }],
+            usage_metadata: Some(proto::UsageMetadata {
+                prompt_token_count: 3,
+                candidates_token_count: 2,
+                total_token_count: 5,
+                cached_content_token_count: 0,
+            }),
+            model_version: "gemini-2.5-flash".to_string(),
+            response_id: "resp-grpc-stream".to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// Drive protobuf events through the pipeline the `CompletionModel` seam
+    /// uses, with the capture flag set as that seam would set it, returning
+    /// the terminal record.
+    async fn normalized_terminal(
+        events: Vec<proto::GenerateContentResponse>,
+        capture_raw: bool,
+    ) -> streaming::StreamFinal {
+        let raw = run_wire_stream(
+            futures::stream::iter(events.into_iter().map(Ok)),
+            GrpcAdapter::default(),
+        );
+        let mut stream = streaming::StreamingCompletionResponse::stream(
+            super::super::completion::PROVIDER_NAME,
+            normalize_grpc_stream(Box::pin(raw), capture_raw),
+        );
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+        stream
+            .response
+            .expect("the stream must end with a terminal record")
+    }
+
+    /// The events-first seam never captures: it has no `CompletionRequest`
+    /// to read `capture_raw_response` from, so its terminal `raw` is `None`
+    /// — the same resting state a flag-off request yields.
+    #[tokio::test]
+    async fn stream_from_events_leaves_terminal_raw_unset() {
+        let mut stream = stream_from_events(futures::stream::iter(
+            vec![response(vec![text_part("hi")], 0), terminal_frame()]
+                .into_iter()
+                .map(Ok),
+        ));
+        while let Some(item) = stream.next().await {
+            item.expect("stream item");
+        }
+        let terminal = stream.response.expect("terminal record");
+
+        assert!(terminal.raw.is_none());
+        assert_eq!(terminal.usage.total_tokens, 5);
+    }
+
+    /// The load-bearing streaming capture property at the seam
+    /// `CompletionModel::stream` routes through: with `capture_raw` on, the
+    /// terminal's `raw` is Gemini's own terminal `GenerateContentResponse` —
+    /// it deserializes back into that prost message and re-serializes
+    /// identically — and nothing normalized differs from the flag-off run of
+    /// the same events. The raw `finish_reason` number and the last frame's
+    /// text are only readable off the capture.
+    #[tokio::test]
+    async fn terminal_captures_raw_only_when_requested_and_round_trips() {
+        let events = || vec![response(vec![text_part("hi")], 0), terminal_frame()];
+
+        let off = normalized_terminal(events(), false).await;
+        assert!(off.raw.is_none(), "the flag defaults off; nothing captured");
+
+        let on = normalized_terminal(events(), true).await;
+        let raw = on.raw.as_deref().expect("flag on must capture");
+        let typed: proto::GenerateContentResponse =
+            serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        assert_eq!(
+            serde_json::to_value(&typed).expect("re-serialize"),
+            *raw,
+            "the capture must be exactly what the terminal type serializes to"
+        );
+        assert_eq!(typed, terminal_frame());
+        assert_eq!(
+            raw.pointer("/candidates/0/finish_reason"),
+            Some(&serde_json::json!(
+                proto::candidate::FinishReason::Stop as i32
+            ))
+        );
+
+        assert_eq!(on.identity(), off.identity());
+        assert_eq!(on.finish_reason, off.finish_reason);
+        assert_eq!(on.model, off.model);
+        assert_eq!(on.usage, off.usage);
+        assert_eq!(
+            on.finish_reason,
+            Some(rig_core::completion::FinishReason::Stop)
+        );
+        assert_eq!(on.model.as_deref(), Some("gemini-2.5-flash"));
+        assert_eq!(
+            on.identity().response_id.as_deref(),
+            Some("resp-grpc-stream")
+        );
+    }
 }

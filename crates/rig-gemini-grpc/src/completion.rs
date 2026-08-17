@@ -1248,4 +1248,80 @@ mod tests {
             normalized.choice
         );
     }
+
+    /// The load-bearing property behind `CompletionResponse::raw` for the
+    /// gRPC provider: the captured value is
+    /// `serde_json::to_value(&GenerateContentResponse)` — the prost message
+    /// `raw_completion` returns, with the serde derives `build.rs` attaches to
+    /// every generated type — and a consumer must be able to read it back as
+    /// the same message and get the same JSON. There is no cassette harness
+    /// for gRPC, so this is the unit-form pin. Fields rig never normalizes
+    /// (`cached_content_token_count` under `usage_metadata`, the candidate's
+    /// `finish_message`) survive both directions, and normalizing the
+    /// restored message agrees with normalizing the original.
+    #[test]
+    fn generate_content_response_round_trips_through_serde_json_value() {
+        let raw = proto::GenerateContentResponse {
+            candidates: vec![proto::Candidate {
+                content: Some(proto::Content {
+                    parts: vec![proto::Part {
+                        data: Some(proto::part::Data::Text("hello".to_string())),
+                        ..Default::default()
+                    }],
+                    role: "model".to_string(),
+                }),
+                finish_reason: proto::candidate::FinishReason::Stop as i32,
+                index: Some(0),
+                finish_message: Some("done".to_string()),
+            }],
+            usage_metadata: Some(proto::UsageMetadata {
+                prompt_token_count: 10,
+                candidates_token_count: 20,
+                total_token_count: 30,
+                cached_content_token_count: 4,
+            }),
+            model_version: "gemini-2.5-flash".to_string(),
+            response_id: "resp-grpc-1".to_string(),
+            prompt_feedback: None,
+        };
+
+        let value = serde_json::to_value(&raw).expect("serialize");
+        assert_eq!(
+            value.pointer("/usage_metadata/cached_content_token_count"),
+            Some(&serde_json::json!(4))
+        );
+        assert_eq!(
+            value.pointer("/candidates/0/finish_message"),
+            Some(&serde_json::json!("done"))
+        );
+        assert_eq!(
+            value.pointer("/model_version"),
+            Some(&serde_json::json!("gemini-2.5-flash"))
+        );
+
+        let back: proto::GenerateContentResponse =
+            serde_json::from_value(value.clone()).expect("deserialize");
+        assert_eq!(
+            serde_json::to_value(&back).expect("re-serialize"),
+            value,
+            "the capture must read back into GenerateContentResponse and re-serialize identically"
+        );
+        assert_eq!(back, raw);
+
+        let original: completion::CompletionResponse = raw.try_into().expect("original converts");
+        let restored: completion::CompletionResponse = back.try_into().expect("restored converts");
+        assert_eq!(restored.identity(), original.identity());
+        assert_eq!(restored.finish_reason(), original.finish_reason());
+        assert_eq!(restored.model, original.model);
+        assert_eq!(restored.usage, original.usage);
+        assert_eq!(restored.choice, original.choice);
+        assert_eq!(
+            restored.identity().response_id.as_deref(),
+            Some("resp-grpc-1")
+        );
+        assert_eq!(
+            restored.finish_reason(),
+            Some(completion::FinishReason::Stop)
+        );
+    }
 }

@@ -500,4 +500,71 @@ mod tests {
 
         assert!(completion_response.is_err());
     }
+
+    /// The load-bearing property behind `CompletionResponse::raw` for Vertex
+    /// AI: the captured value is `serde_json::to_value(&VertexGenerateContentOutput)`
+    /// — the SDK response as `raw_completion` returns it — and a consumer must
+    /// be able to read it back as the same type and get the same JSON.
+    /// Vertex has no cassette harness, so this is the unit-form pin: the
+    /// serde derives on the newtype delegate to the SDK's own (camelCase)
+    /// wire encoding (camelCase keys, enums as proto numbers), and fields
+    /// rig never normalizes (`modelVersion` is mapped, but a candidate's
+    /// `safetyRatings` and `avgLogprobs` are not)
+    /// survive both directions. Normalizing the restored value agrees with
+    /// normalizing the original.
+    #[test]
+    fn vertex_generate_content_output_round_trips_through_serde_json_value() {
+        let part = vertexai::model::Part::new().set_text("hello".to_string());
+        let content = vertexai::model::Content::new()
+            .set_role("model")
+            .set_parts([part]);
+        let candidate = vertexai::model::Candidate::new()
+            .set_content(content)
+            .set_finish_reason(vertexai::model::candidate::FinishReason::Stop)
+            .set_avg_logprobs(-0.25)
+            .set_safety_ratings([vertexai::model::SafetyRating::new()
+                .set_category(vertexai::model::HarmCategory::Harassment)
+                .set_probability(vertexai::model::safety_rating::HarmProbability::Negligible)]);
+        let usage_metadata = vertexai::model::generate_content_response::UsageMetadata::new()
+            .set_prompt_token_count(10)
+            .set_candidates_token_count(20)
+            .set_total_token_count(30);
+        let response = vertexai::model::GenerateContentResponse::new()
+            .set_candidates([candidate])
+            .set_model_version("gemini-2.5-flash-001")
+            .set_response_id("resp-vertex-1")
+            .set_usage_metadata(usage_metadata);
+        let raw = VertexGenerateContentOutput(response);
+
+        let value = serde_json::to_value(&raw).expect("serialize");
+        assert_eq!(value["modelVersion"], "gemini-2.5-flash-001");
+        assert_eq!(value["candidates"][0]["avgLogprobs"], -0.25);
+        // The SDK encodes enums as their proto numbers, not their names —
+        // `HARM_CATEGORY_HARASSMENT` is 3, `STOP` is 1 — so that is what the
+        // capture carries; a consumer decodes it through the SDK's own enum.
+        assert_eq!(value["candidates"][0]["safetyRatings"][0]["category"], 3);
+        assert_eq!(value["candidates"][0]["finishReason"], 1);
+
+        let back: VertexGenerateContentOutput =
+            serde_json::from_value(value.clone()).expect("deserialize");
+        assert_eq!(
+            serde_json::to_value(&back).expect("re-serialize"),
+            value,
+            "the capture must read back into VertexGenerateContentOutput and re-serialize identically"
+        );
+        assert_eq!(back.0, raw.0);
+
+        let original: CompletionResponse = raw.try_into().expect("original converts");
+        let restored: CompletionResponse = back.try_into().expect("restored converts");
+        assert_eq!(restored.identity(), original.identity());
+        assert_eq!(restored.finish_reason(), original.finish_reason());
+        assert_eq!(restored.model, original.model);
+        assert_eq!(restored.usage, original.usage);
+        assert_eq!(restored.choice, original.choice);
+        assert_eq!(restored.model.as_deref(), Some("gemini-2.5-flash-001"));
+        assert_eq!(
+            restored.identity().response_id.as_deref(),
+            Some("resp-vertex-1")
+        );
+    }
 }

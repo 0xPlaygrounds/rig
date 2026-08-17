@@ -1527,3 +1527,188 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
     assert_eq!(response.tokens_per_second, Some(100.0));
     Ok(())
 }
+
+/// The load-bearing property behind `CompletionResponse::raw` and
+/// `StreamFinal::raw` for this crate: the captured value is
+/// `serde_json::to_value(&CandleCompletionResponse)` — the local record
+/// `raw_completion` returns — and a consumer must be able to read it back as
+/// the same type and get the same JSON, with the local generation metrics rig
+/// never normalizes (timings, tokens/second, the local finish reason) intact.
+/// There is no cassette harness for a local model, so this is the unit-form
+/// pin, independent of any model load.
+#[test]
+fn candle_completion_response_round_trips_through_serde_json_value()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let raw = CandleCompletionResponse {
+        text: "done".to_string(),
+        prompt_tokens: 5,
+        generated_tokens: 2,
+        requested_max_tokens: 4,
+        effective_max_tokens: 3,
+        finish_reason: FinishReason::MaxTokens,
+        prefill_duration_ms: 8,
+        time_to_first_token_ms: Some(10),
+        generation_duration_ms: 20,
+        tokens_per_second: Some(100.5),
+    };
+
+    let value = serde_json::to_value(&raw)?;
+    assert_eq!(
+        value.pointer("/tokens_per_second"),
+        Some(&serde_json::json!(100.5))
+    );
+    assert_eq!(
+        value.pointer("/finish_reason"),
+        Some(&serde_json::json!("max_tokens"))
+    );
+
+    let back: CandleCompletionResponse = serde_json::from_value(value.clone())?;
+    assert_eq!(
+        serde_json::to_value(&back)?,
+        value,
+        "the capture must read back into CandleCompletionResponse and re-serialize identically"
+    );
+    assert_eq!(back, raw);
+    Ok(())
+}
+
+/// The events-first seam never captures: it has no `CompletionRequest` to
+/// read `capture_raw_response` from, so its terminal `raw` is `None` — the
+/// same resting state a flag-off request yields.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test(flavor = "current_thread")]
+async fn stream_from_events_leaves_terminal_raw_unset()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let terminal_record = CandleCompletionResponse {
+        text: "hi".to_string(),
+        prompt_tokens: 3,
+        generated_tokens: 1,
+        requested_max_tokens: 4,
+        effective_max_tokens: 4,
+        finish_reason: FinishReason::Eos,
+        prefill_duration_ms: 1,
+        time_to_first_token_ms: Some(1),
+        generation_duration_ms: 2,
+        tokens_per_second: Some(500.0),
+    };
+    let mut stream = stream_from_events(futures::stream::iter(vec![
+        Ok(RawStreamingChoice::Message("hi".to_string())),
+        Ok(RawStreamingChoice::FinalResponse(terminal_record)),
+    ]));
+    while let Some(item) = stream.next().await {
+        item?;
+    }
+    let terminal = stream
+        .response
+        .ok_or("stream did not emit a terminal record")?;
+
+    assert!(terminal.raw.is_none());
+    assert_eq!(terminal.usage.total_tokens, 4);
+    Ok(())
+}
+
+/// Raw capture through the real `CompletionModel::completion` path on the
+/// tiny in-crate model (greedy, so two runs generate the same tokens): the
+/// flag off leaves `raw` unset; the flag on captures a value that
+/// deserializes back into `CandleCompletionResponse`, re-serializes
+/// identically, and reports the same text and token counts `raw_completion`
+/// returns for the same request — while every normalized field equals the
+/// flag-off run. Timings are wall-clock and so are compared only through the
+/// round-trip, never across runs.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test(flavor = "current_thread")]
+async fn completion_captures_raw_only_when_requested_and_round_trips()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let model = LlamaModel::builder(model_data()?)
+        .temperature(0.0)
+        .max_tokens(2)
+        .build()?;
+
+    let off = model
+        .completion(request(vec![Message::user("hello")]))
+        .await?;
+    assert!(off.raw.is_none(), "the flag defaults off; nothing captured");
+
+    let mut opted_in = request(vec![Message::user("hello")]);
+    opted_in.capture_raw_response = true;
+    let on = model.completion(opted_in).await?;
+    let escape_hatch = model
+        .raw_completion(request(vec![Message::user("hello")]))
+        .await?;
+
+    let raw = on.raw.as_deref().ok_or("flag on must capture")?;
+    let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
+    assert_eq!(
+        serde_json::to_value(&typed)?,
+        *raw,
+        "the capture must be exactly what the local record serializes to"
+    );
+    assert_eq!(typed.text, escape_hatch.text);
+    assert_eq!(typed.prompt_tokens, escape_hatch.prompt_tokens);
+    assert_eq!(typed.generated_tokens, escape_hatch.generated_tokens);
+    assert_eq!(typed.finish_reason, escape_hatch.finish_reason);
+    assert_eq!(typed.generated_tokens, 2);
+
+    assert_eq!(on.identity(), off.identity());
+    assert_eq!(on.finish_reason(), off.finish_reason());
+    assert_eq!(on.model, off.model);
+    assert_eq!(on.usage, off.usage);
+    assert_eq!(on.choice, off.choice);
+    assert_eq!(on.usage.output_tokens, 2);
+    Ok(())
+}
+
+/// The streaming twin through the real `CompletionModel::stream` path: the
+/// flag is read before `raw_stream` and handed to `normalize_stream`, so the
+/// terminal `StreamFinal.raw` is the same local record the raw stream's
+/// `FinalResponse` carries — it round-trips into `CandleCompletionResponse`
+/// and agrees with `raw_stream` on text and token counts.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test(flavor = "current_thread")]
+async fn stream_captures_raw_only_when_requested_and_round_trips()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let model = LlamaModel::builder(model_data()?)
+        .temperature(0.0)
+        .max_tokens(2)
+        .build()?;
+
+    async fn terminal(
+        model: &LlamaModel,
+        request: CompletionRequest,
+    ) -> Result<rig_core::streaming::StreamFinal, Box<dyn std::error::Error + Send + Sync>> {
+        let mut stream = model.stream(request).await?;
+        while let Some(item) = stream.next().await {
+            item?;
+        }
+        Ok(stream
+            .response
+            .ok_or("stream did not emit a terminal record")?)
+    }
+
+    let off = terminal(&model, request(vec![Message::user("hello")])).await?;
+    assert!(off.raw.is_none(), "the flag defaults off; nothing captured");
+
+    let mut opted_in = request(vec![Message::user("hello")]);
+    opted_in.capture_raw_response = true;
+    let on = terminal(&model, opted_in).await?;
+    let (_, streamed) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
+
+    let raw = on.raw.as_deref().ok_or("flag on must capture")?;
+    let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
+    assert_eq!(
+        serde_json::to_value(&typed)?,
+        *raw,
+        "the capture must be exactly what the terminal record serializes to"
+    );
+    assert_eq!(typed.text, streamed.text);
+    assert_eq!(typed.prompt_tokens, streamed.prompt_tokens);
+    assert_eq!(typed.generated_tokens, streamed.generated_tokens);
+    assert_eq!(typed.finish_reason, streamed.finish_reason);
+
+    assert_eq!(on.identity(), off.identity());
+    assert_eq!(on.finish_reason, off.finish_reason);
+    assert_eq!(on.model, off.model);
+    assert_eq!(on.usage, off.usage);
+    assert_eq!(on.usage.output_tokens, 2);
+    Ok(())
+}
