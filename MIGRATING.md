@@ -1742,7 +1742,7 @@ pub struct CompletionResponse {
 | provider stop/finish reason off `raw_response` | `response.finish_reason()` |
 | provider/message identity off `raw_response` | `response.provider`, `response.message_id` |
 | response-scoped ID (`chatcmpl-*`, `responseId`, …) off `raw_response` | `response.response_id` |
-| a genuinely provider-specific field | `model.raw_completion(request).await?` |
+| a genuinely provider-specific field | `model.raw_completion(request).await?` on a concrete model; from an agent (the model type is erased), opt in with `capture_raw_response(true)` and read `response.raw` — see [Raw provider responses are reachable from an agent, opt-in (#2366)](#raw-provider-responses-are-reachable-from-an-agent-opt-in-2366) |
 
 `usage` is unchanged, including the rule that all-zero values mean the provider
 supplied no metrics. `model` is the identifier the *wire response* reported, not
@@ -1795,10 +1795,17 @@ error-preservation path with the normalized methods — the normalized method
 calls the raw one and maps the result, so there is still exactly one network
 request.
 
-The trade: raw access now requires the concrete provider model rather than any
-`CompletionResponse`. Code that was generic over `CompletionModel` could never
-touch `raw_response` without a bound anyway, so in practice this affects code
-that had already committed to a provider.
+The trade: typed raw access now requires the concrete provider model rather
+than any `CompletionResponse`. Code that was generic over `CompletionModel`
+could never touch `raw_response` without a bound anyway, so in practice this
+affects code that had already committed to a provider — including agent users,
+whose model type is erased at `AgentBuilder::new`. For them the same value is
+available, serialized and opt-in, as `CompletionResponse::raw` /
+`StreamFinal::raw` — see [Raw provider responses are reachable from an agent,
+opt-in (#2366)](#raw-provider-responses-are-reachable-from-an-agent-opt-in-2366).
+On the OpenAI-compatible family and Copilot's chat route the transport request
+id is not on the wire type: use `raw_completion_with_request_id` when the typed
+route must reproduce everything `completion()` returns.
 
 ### Normalized finish reasons
 
@@ -2663,6 +2670,114 @@ releases they document, but the attribute claim no longer holds on `next`:
 `MemoryError`, and openai's `ToolChoice`. The constructors those passages point
 at all still exist and are still the recommended way to build these types — only
 the compiler no longer insists.
+
+### Raw provider responses are reachable from an agent, opt-in (#2366)
+
+Rig kept the provider's exact body on every *failed* call
+(`ProviderResponseError::body`) and nothing on a successful one — and after
+#2257 erased the model type at agent construction, `raw_completion` /
+`raw_stream` became unreachable from an agent run altogether (`ModelHandle`
+holds a two-method `ErasedModel` with no downcast). Both are addressed with one
+opt-in mechanism, threaded through both surfaces exactly as identity (#2313)
+and finish reason (#2324) were:
+
+```rust
+let agent = client
+    .agent(model)
+    .capture_raw_response(true)   // also per run and per request
+    .build();
+```
+
+With the flag on, `CompletionResponse::raw` and `StreamFinal::raw`
+(`Option<Arc<serde_json::Value>>`) carry **the value the model's inherent
+`raw_completion` / `raw_stream` would have returned, serialized** — the
+response as rig's wire type parsed it, not the literal bytes. That payload is
+exposed on the `CompletionResponse`, `StreamResponseFinish`, and
+`ModelTurnFinished` hook events (`raw: Option<&serde_json::Value>`), on each
+`CompletionCall` in `PromptResponse::completion_calls`, and on the streamed
+`StreamedAssistantContent::Final` terminal record. It is per attempt: on a
+retried turn it is the retried attempt's own. Typed access is recoverable
+(`anthropic::CompletionResponse::deserialize(&*raw)?`), and
+`NormalizeCompletionResponse` converts forward. With the flag off — the
+default — every field is `None` and nothing is serialized. Seven source-level
+breaks:
+
+- **`CompletionResponse` and `StreamFinal` gain `raw`.** Both are built with
+  `new(..)` plus setters (`with_raw` / `with_optional_raw` join the shared
+  metadata setters), so only a struct literal or exhaustive destructure needs
+  the field. Serde-defaulted and omitted when unset: persisted responses and
+  terminal records load unchanged.
+
+- **`CompletionRequest` gains `capture_raw_response: bool`.** `#[serde(skip)]`
+  like `record_telemetry_content` — local policy, never on the wire. Struct
+  literals add `capture_raw_response: false`; the builder has
+  `capture_raw_response(bool)`.
+
+- **`normalize_stream` takes the capture flag and requires
+  `R: Serialize`.** Every provider's `stream()` reads the flag off the request
+  *before* `raw_stream` consumes it and passes it through:
+
+  ```rust
+  // Was
+  normalize_stream(raw, |terminal| Ok(map(terminal)))
+  // Now
+  let capture_raw = request.capture_raw_response;
+  let raw = self.raw_stream(request).await?;
+  normalize_stream(raw, capture_raw, |terminal| Ok(map(terminal)))
+  ```
+
+  An out-of-tree provider whose terminal type is not `Serialize` must derive
+  it (every in-tree terminal already is). `openai::send_compatible_streaming_request`
+  gains the same trailing `capture_raw: bool` for the same reason.
+
+- **The `CompletionResponse`, `StreamResponseFinish`, and `ModelTurnFinished`
+  hook events gain `raw: Option<&serde_json::Value>`.** Hooks that only read
+  events are unaffected; hand-constructed events (test harnesses) add
+  `raw: None`, exactly like `finish_reason` / `max_tokens` on
+  `ModelTurnFinished` (#2184).
+
+- **`ModelTurn` gains `raw`.** `ModelTurn::new(..)` is unchanged; attach with
+  `.with_raw(resp.raw.clone())`. All fields are public and the type is not
+  `#[non_exhaustive]`, so a struct literal needs the field. Serde-defaulted;
+  persisted run state loads.
+
+- **`AgentRun::record_streamed_completion_call` takes the attempt's raw payload
+  as a fourth argument.** Read it off the same terminal record you read
+  identity and finish reason from; pass `None` when capture is off:
+
+  ```rust
+  // Was
+  run.record_streamed_completion_call(usage, identity, finish_reason)?;
+  // Now
+  run.record_streamed_completion_call(usage, identity, finish_reason,
+      terminal.and_then(|t| t.raw.clone()))?;
+  ```
+
+- **`CompletionCall` is no longer `Eq`.** `serde_json::Value` is `PartialEq`
+  but not `Eq` (floats), so a `CompletionCall` cannot be a set or map key any
+  more. `PartialEq`, `Clone`, and serde are unchanged; `raw` is
+  serde-defaulted and omitted when unset.
+
+One additive change makes the *typed* escape hatch complete:
+`openai::GenericCompletionModel::raw_completion_with_request_id` is now public
+(it was `pub(crate)`), and `copilot::CompletionModel` gains the same method,
+returning `(raw, Option<String>)`. On the OpenAI-compatible family and
+Copilot's chat route the transport request id has no slot on the shared wire
+type, so plain `raw_completion(..).normalize(..)` silently lacked the
+`provider_request_id` that `completion()` reports; reassemble with
+`.with_optional_provider_request_id(id)`. `CopilotCompletionResponse` also
+implements `NormalizeCompletionResponse`, so both of Copilot's routes have a
+public forward conversion. For every provider,
+`raw_completion[_with_request_id]` + `normalize` now reproduces `completion()`'s
+`identity()`, `finish_reason()`, `model`, and `usage` — pinned by the
+`raw_completion_parity_matrix` cassettes.
+
+Deliberately not in this change: a raw *frame* channel (rig never exposed
+per-SSE-event payloads on any surface — a different mechanism), literal-body
+capture (fields rig's wire type never modeled; not possible for SDK/gRPC/local
+providers), and `ModelHandle::downcast_ref` (recovers the model, not the
+turn's response). `cargo run -p rig-agent --example raw_response_hook` reads
+a provider-specific field off `raw` on both surfaces.
 
 ---
 
