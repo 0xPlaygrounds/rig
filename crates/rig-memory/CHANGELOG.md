@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- *(memory)* `TemplateCompactor::without_max_bytes` clears a configured size
+  cap, restoring the default unbounded rollup. It is the inverse of
+  `with_max_bytes` and the migration target for callers that passed `0`.
+
+### Changed
+
+- *(memory)* [**breaking**] `TemplateCompactor::with_max_bytes(0)` no longer
+  means "unbounded" — the cap is now taken literally. Use `without_max_bytes`
+  for unbounded behaviour. The signature is unchanged, so this does not break
+  compilation: callers that passed `0` as an off switch keep building and
+  silently lose the rolled-up carry-over instead of seeing an error.
+
+  The sentinel made the cap non-monotonic in its argument, so a bound computed
+  rather than typed (`budget.saturating_sub(overhead)`, a config field left at
+  its zero default) could land on the one input meaning the opposite of what
+  was asked for. Since the summary spliced by `CompactingMemory` sits
+  **outside** the wrapped `MemoryPolicy`'s budget, an accidentally-unbounded
+  compactor is precisely the failure the cap exists to prevent; an accidental
+  `0` now fails safe instead.
+
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-memory-v0.41.0...rig-memory-v0.42.0) - 2026-08-16
 
 ### Other
