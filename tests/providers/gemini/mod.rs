@@ -33,6 +33,7 @@ mod cassette {
     mod interactions_raw_stream_capture_matrix;
     mod models;
     mod multi_turn_streaming;
+    mod raw_capture_agent_matrix;
     mod raw_capture_matrix;
     mod raw_completion_parity_matrix;
     mod raw_stream_capture_matrix;

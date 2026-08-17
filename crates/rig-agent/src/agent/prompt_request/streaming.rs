@@ -1740,20 +1740,32 @@ mod migrated_tests {
 
         let mut stream = StreamingPromptRequest::new(agent, "go").await;
         let mut saw_error = false;
+        let mut saw_completion_call = false;
         while let Some(item) = stream.next().await {
-            if let Err(error) = item {
-                assert!(
-                    error.to_string().contains("terminal record"),
-                    "truncation should surface as a terminal-record error, got: {error}"
-                );
-                saw_error = true;
-                break;
+            match item {
+                Err(error) => {
+                    assert!(
+                        error.to_string().contains("terminal record"),
+                        "truncation should surface as a terminal-record error, got: {error}"
+                    );
+                    saw_error = true;
+                    break;
+                }
+                Ok(MultiTurnStreamItem::CompletionCall(_)) => saw_completion_call = true,
+                Ok(_) => {}
             }
         }
         assert!(
             saw_error,
             "a stream ending without a terminal record must be rejected, not \
              treated as a successful completion"
+        );
+        // The rejection happens before any usage fallback records the call, so
+        // the runner never produces a `CompletionCall` whose `raw` is `Null`:
+        // a `Null` payload can only come from a hand-driven `AgentRun`.
+        assert!(
+            !saw_completion_call,
+            "no completion call may be recorded for a truncated stream"
         );
     }
 

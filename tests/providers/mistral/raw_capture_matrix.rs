@@ -17,18 +17,21 @@
 //! | 1 | `raw_round_trips_mistral_type` | typed round trip | `raw` deserializes into `mistral::CompletionResponse` and re-serializes equal | recorded |
 //! | 2 | `raw_exposes_object_and_service_tier` | provider-only field | `raw.object` and `raw.usage.service_tier` equal the fixture body | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (including the `mistral-correlation-id` header) and equals its own `raw` re-normalized | recorded |
+//! | 4 | `tool_call_raw_round_trips_and_exposes_wire_tool_call` | forced tool call | a `tool_choice: any` turn's `raw` round-trips into `mistral::CompletionResponse`; `raw.choices[0].message.tool_calls[0].function.arguments` is a JSON *string* that parses to the fixture's arguments while the normalized call carries an object; `finish_reason()` is `ToolCalls` while `raw.choices[0].finish_reason` is the wire's `"tool_calls"` | recorded |
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the tier out of the recorded body
-//! rather than trusting the string the typed view reports, and cell 3 checks
+//! rather than trusting the string the typed view reports, cell 3 checks
 //! the normalized fields against the recorded body and headers before
-//! comparing them with the re-normalized `raw`, so a recording that stopped
-//! carrying a usage block, a finish reason, or the correlation-id header
-//! fails loudly instead of covering nothing.
+//! comparing them with the re-normalized `raw`, and cell 4 reads the tool
+//! call (id, name, stringified arguments) and the `"tool_calls"` finish out
+//! of the recorded body, so a recording that stopped carrying a usage block,
+//! a finish reason, the correlation-id header, or a tool call fails loudly
+//! instead of covering nothing.
 
 use rig::completion::{
     CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse,
+    NormalizeCompletionResponse, ToolDefinition,
 };
 use rig::message::AssistantContent;
 use rig::prelude::*;
@@ -43,9 +46,37 @@ use super::support::{
 
 const PROVIDER: &str = "mistral";
 const PROMPT: &str = "Reply with the single word: pong";
+/// The forced-call request shape the tool-lifecycle matrix uses: a preamble
+/// that forbids prose, `tool_choice: any`, and a prompt naming the one call.
+const TOOL_PREAMBLE: &str =
+    "Follow the user's tool-call instruction exactly. Do not answer in prose.";
+const TOOL_PROMPT: &str = "Call lookup_city exactly once with city Paris.";
+const TOOL_NAME: &str = "lookup_city";
 
 fn request(model: &mistral::CompletionModel) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
+}
+
+fn lookup_city_tool() -> ToolDefinition {
+    ToolDefinition {
+        name: TOOL_NAME.to_owned(),
+        description: "Look up a city by name.".to_owned(),
+        parameters: json!({
+            "type": "object",
+            "properties": { "city": { "type": "string" } },
+            "required": ["city"]
+        }),
+    }
+}
+
+fn tool_request(model: &mistral::CompletionModel) -> CompletionRequest {
+    model
+        .completion_request(TOOL_PROMPT)
+        .preamble(TOOL_PREAMBLE.to_owned())
+        .tool(lookup_city_tool())
+        .additional_params(json!({ "tool_choice": "any", "parallel_tool_calls": false }))
+        .max_tokens(128)
+        .build()
 }
 
 /// The single recorded interaction of `scenario` as `(request, response)` JSON.
@@ -274,5 +305,111 @@ async fn normalized_fields_match_raw_renormalized() {
     assert!(
         renormalized.raw.is_null(),
         "normalizing a hand-fed typed value attaches no raw of its own"
+    );
+}
+
+// ================================================================
+// 4. A forced tool call: raw round-trips and keeps the wire's spelling
+// ================================================================
+
+#[tokio::test]
+async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
+    const SCENARIO: &str =
+        "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call";
+    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let sink = observed.clone();
+    with_mistral_cassette_result(
+        "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call",
+        |client| async move {
+            let model = client.completion_model(DEFAULT_MODEL);
+            let response = model.completion(tool_request(&model)).await?;
+            let raw = &response.raw;
+            let typed = mistral::CompletionResponse::deserialize(raw)
+                .expect("raw is Mistral's own CompletionResponse");
+            assert_eq!(
+                serde_json::to_value(&typed).expect("typed serializes"),
+                *raw,
+                "the captured value is the typed view serialized, nothing more"
+            );
+            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+            *sink.lock().expect("observation lock") = Some(response);
+            Ok::<(), anyhow::Error>(())
+        },
+    )
+    .await
+    .expect("tool_call_raw_round_trips_and_exposes_wire_tool_call should replay from its cassette");
+
+    let response = observed
+        .lock()
+        .expect("observation lock")
+        .take()
+        .expect("the cell should observe a response");
+    let (request_body, body) = recorded_json(SCENARIO);
+    // Premise, from the bytes: the call was forced and the recorded turn is
+    // one tool call to `lookup_city`, finishing on the wire's `tool_calls`.
+    assert_eq!(request_body["tool_choice"], json!("any"));
+    assert_eq!(
+        request_body["tools"][0]["function"]["name"],
+        json!(TOOL_NAME)
+    );
+    assert_eq!(body["choices"][0]["finish_reason"], json!("tool_calls"));
+    let recorded_calls = body["choices"][0]["message"]["tool_calls"]
+        .as_array()
+        .expect("a forced turn carries message.tool_calls");
+    assert_eq!(recorded_calls.len(), 1, "exactly one recorded call");
+    let recorded_call = &recorded_calls[0];
+    assert_eq!(recorded_call["function"]["name"], json!(TOOL_NAME));
+    let recorded_arguments = recorded_call["function"]["arguments"]
+        .as_str()
+        .expect("Mistral spells tool-call arguments as a JSON string");
+    let recorded_arguments: Value =
+        serde_json::from_str(recorded_arguments).expect("recorded arguments parse as JSON");
+    assert_eq!(recorded_arguments["city"], json!("Paris"));
+
+    // raw keeps the wire's representation: `arguments` is a JSON string
+    // (the typed view re-serializes it compactly, so it is compared parsed,
+    // not byte-for-byte), and the finish reason is the wire's own spelling.
+    let raw = &response.raw;
+    assert_eq!(raw["choices"][0]["finish_reason"], json!("tool_calls"));
+    let raw_call = &raw["choices"][0]["message"]["tool_calls"][0];
+    assert_matches_recorded_token(
+        raw_call["id"].as_str(),
+        recorded_call["id"].as_str(),
+        "tool call id",
+    );
+    assert_eq!(raw_call["function"]["name"], json!(TOOL_NAME));
+    let raw_arguments = raw_call["function"]["arguments"]
+        .as_str()
+        .expect("raw keeps arguments as the wire's JSON string");
+    assert_eq!(
+        serde_json::from_str::<Value>(raw_arguments).expect("raw arguments parse as JSON"),
+        recorded_arguments,
+        "raw's stringified arguments parse to the recorded arguments"
+    );
+
+    // The normalized view maps both: an object for the arguments and
+    // `ToolCalls` for the finish reason.
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+    let normalized_calls = response
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(normalized_calls.len(), 1, "one normalized tool call");
+    let normalized_call = normalized_calls[0];
+    assert_eq!(normalized_call.function.name, TOOL_NAME);
+    assert!(
+        normalized_call.function.arguments.is_object(),
+        "the normalized call carries arguments as an object: {}",
+        normalized_call.function.arguments
+    );
+    assert_eq!(normalized_call.function.arguments, recorded_arguments);
+    assert_matches_recorded_token(
+        Some(normalized_call.id.as_str()),
+        recorded_call["id"].as_str(),
+        "normalized tool call id",
     );
 }

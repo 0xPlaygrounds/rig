@@ -11,6 +11,7 @@ mod cassette {
     mod agent;
     mod agentic;
     mod models;
+    mod raw_capture_agent_matrix;
     mod raw_capture_matrix;
     mod raw_stream_capture_matrix;
     mod reasoning_roundtrip;

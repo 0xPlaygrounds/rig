@@ -17,8 +17,12 @@
 //! whole run state is `Serialize + Deserialize`: a driver can serialize a run
 //! between steps (for example while tool calls are pending), persist it, and
 //! resume it later in another process. Note that serialized run state embeds
-//! the full conversation accumulated so far — persisting it inherits whatever
-//! sensitivity the conversation content has — and the serialization format
+//! the full conversation accumulated so far *and* every completed call's
+//! provider response ([`CompletionCall::raw`], the value the model's raw
+//! method would have returned, serialized) — persisting it inherits whatever
+//! sensitivity the conversation content has and grows with each provider
+//! body; a driver that does not want the raw payloads persisted clears
+//! `raw` on its own copy before writing — and the serialization format
 //! carries no cross-version stability guarantee yet: resume with the same rig
 //! version that suspended the run.
 //!

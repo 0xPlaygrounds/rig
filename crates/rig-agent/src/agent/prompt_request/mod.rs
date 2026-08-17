@@ -368,8 +368,9 @@ pub struct CompletionCall {
     /// `CompletionResponse::raw` for the exact meaning of the payload. Every
     /// provider seam populates it; `Value::Null` only when the call's response
     /// was built without a provider behind it (a hand-constructed model, a
-    /// record persisted before the field, a streamed turn whose terminal
-    /// record never arrived).
+    /// record persisted before the field, or a hand-driven `AgentRun` that
+    /// recorded a streamed call with no terminal record — the runner itself
+    /// rejects such a stream as truncated before recording anything).
     ///
     /// Recorded **per call**, like [`Self::finish_reason`]: on a multi-turn
     /// run each entry carries its own attempt's response, never a previous
