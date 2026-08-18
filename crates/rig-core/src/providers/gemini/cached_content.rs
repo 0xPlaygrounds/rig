@@ -354,6 +354,21 @@ where
 
     /// Every cached content this API key can see, following pagination.
     pub async fn list(&self) -> Result<Vec<CachedContent>, CachedContentError> {
+        self.list_with_page_size(MAX_PAGE_SIZE).await
+    }
+
+    /// [`Self::list`] with an explicit page size.
+    ///
+    /// Exists for two reasons. A caller holding thousands of caches may want
+    /// smaller responses, and — less obviously but more importantly — the
+    /// cursor-following loop below is otherwise unreachable in a test: Gemini
+    /// returns up to 1,000 entries per page, so proving the loop works would
+    /// mean creating a thousand billed caches. With a page size of 1 and three
+    /// caches it is three pages and the loop is exercised for real.
+    pub async fn list_with_page_size(
+        &self,
+        page_size: usize,
+    ) -> Result<Vec<CachedContent>, CachedContentError> {
         let mut all = Vec::new();
         let mut page_token: Option<String> = None;
 
@@ -363,7 +378,7 @@ where
             // pinning `pageToken=weird+token%26x%3D1`. Concatenating the cursor
             // raw would let a `+`, `&`, `=` or `/` in it truncate the cursor or
             // inject a query parameter, silently dropping pages.
-            let page_size = MAX_PAGE_SIZE.to_string();
+            let page_size = page_size.to_string();
             let mut pairs: Vec<(&str, &str)> = vec![("pageSize", page_size.as_str())];
             if let Some(token) = &page_token {
                 pairs.push(("pageToken", token.as_str()));

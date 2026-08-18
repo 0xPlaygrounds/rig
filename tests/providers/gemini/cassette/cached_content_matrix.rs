@@ -36,6 +36,7 @@
 //!     cached_content_matrix -- --test-threads=1
 //! ```
 
+use rig::client::CompletionClient as _;
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use std::time::Duration;
@@ -2451,6 +2452,299 @@ async fn both_threetools_autocfg_named_default() {
                 },
             )
             .await
+        },
+    )
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// Edges the create matrix cannot reach
+// ---------------------------------------------------------------------------
+
+/// A cache under the minimum is refused by the provider, citing the minimum.
+///
+/// The create matrix pads every cell just over 1,024 tokens; this is the cell
+/// that proves that number is real rather than folklore. If Gemini lowers the
+/// floor, this fails and the matrix's padding can come down with it.
+#[tokio::test]
+async fn a_cache_below_the_minimum_is_refused_by_the_provider() {
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/edge_below_minimum",
+        |client| async move {
+            let error = client
+                .cached_contents()
+                .create(
+                    NewCachedContent::new(CACHE_MODEL)
+                        .system_instruction(crate::cache_conformance::cache_padding(4))
+                        .expiry(CacheExpiry::ttl(Duration::from_secs(120))),
+                )
+                .await
+                .expect_err("a cache under the minimum should be refused");
+
+            let message = error.to_string();
+            assert!(
+                message.contains("too small") || message.contains("min_total_token_count"),
+                "the provider should say the cache is too small: {message}"
+            );
+        },
+    )
+    .await;
+}
+
+/// An `expireTime` already in the past is **accepted**.
+///
+/// Surprising, and worth pinning precisely because it is: Gemini does not
+/// validate that the timestamp is in the future, so a caller can create a cache
+/// that is dead on arrival and pay to store it. rig cannot prevent this without
+/// a clock, and guessing the caller's intent would be worse — so it is recorded
+/// as provider behaviour rather than patched over.
+#[tokio::test]
+async fn an_expiry_in_the_past_is_accepted_by_the_provider() {
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/edge_expiry_in_the_past",
+        |client| async move {
+            let created = client
+                .cached_contents()
+                .create(
+                    NewCachedContent::new(CACHE_MODEL)
+                        .system_instruction(pad())
+                        .expiry(CacheExpiry::expire_time("2020-01-01T00:00:00Z")),
+                )
+                .await
+                .expect("gemini accepts an expiry in the past");
+
+            assert_eq!(
+                created.expire_time.as_deref(),
+                Some("2020-01-01T00:00:00Z"),
+                "the past timestamp should be echoed back verbatim"
+            );
+
+            let _ = client.cached_contents().delete(&created.name).await;
+        },
+    )
+    .await;
+}
+
+/// Omitting both expiry forms defaults to one hour.
+#[tokio::test]
+async fn omitting_expiry_defaults_to_one_hour() {
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/edge_default_expiry_is_one_hour",
+        |client| async move {
+            let created = client
+                .cached_contents()
+                .create(NewCachedContent::new(CACHE_MODEL).system_instruction(pad()))
+                .await
+                .expect("a cache with no expiry should be created");
+
+            let (create_time, expire_time) = (
+                created.create_time.as_deref().expect("create time"),
+                created.expire_time.as_deref().expect("expire time"),
+            );
+            // Compare the hour fields rather than parsing RFC 3339: the default
+            // is one hour, and both stamps are same-day UTC.
+            let hour = |stamp: &str| stamp[11..13].parse::<i32>().expect("hour");
+            assert_eq!(
+                (hour(expire_time) - hour(create_time)).rem_euclid(24),
+                1,
+                "the documented default is one hour: created {create_time}, expires {expire_time}"
+            );
+
+            let _ = client.cached_contents().delete(&created.name).await;
+        },
+    )
+    .await;
+}
+
+/// `list` follows the cursor when the page is smaller than the collection.
+///
+/// The pagination loop and its cursor-does-not-advance guard were unreachable
+/// while only one cache existed. Creating three and asking the provider for
+/// them a page at a time exercises the loop for real rather than trusting it by
+/// inspection.
+#[tokio::test]
+async fn list_follows_the_cursor_across_pages() {
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/edge_list_pagination",
+        |client| async move {
+            let caches = client.cached_contents();
+            let mut created = Vec::new();
+            for index in 0..3 {
+                created.push(
+                    caches
+                        .create(
+                            NewCachedContent::new(CACHE_MODEL)
+                                .system_instruction(pad())
+                                .display_name(format!("rig-page-{index}"))
+                                .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
+                        )
+                        .await
+                        .expect("creating a page fixture should succeed")
+                        .name,
+                );
+            }
+
+            // Page size 1 with three caches means three pages and a cursor
+            // followed twice — the loop runs for real instead of returning
+            // everything in one response as pageSize=1000 does.
+            let listed = caches
+                .list_with_page_size(1)
+                .await
+                .expect("paginated list should succeed");
+            for name in &created {
+                assert!(
+                    listed.iter().any(|entry| entry.name == *name),
+                    "every created cache should appear in the listing: {name} missing from {} \
+                     entries",
+                    listed.len()
+                );
+            }
+
+            for name in &created {
+                let _ = caches.delete(name).await;
+            }
+        },
+    )
+    .await;
+}
+
+/// Deleting a handle twice reports the second as gone rather than succeeding.
+#[tokio::test]
+async fn deleting_twice_reports_the_second_as_expired() {
+    use rig::providers::gemini::cached_content::CachedContentError;
+
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/edge_double_delete",
+        |client| async move {
+            let caches = client.cached_contents();
+            let created = caches
+                .create(
+                    NewCachedContent::new(CACHE_MODEL)
+                        .system_instruction(pad())
+                        .expiry(CacheExpiry::ttl(Duration::from_secs(120))),
+                )
+                .await
+                .expect("create should succeed");
+
+            caches.delete(&created.name).await.expect("first delete");
+            let error = caches
+                .delete(&created.name)
+                .await
+                .expect_err("a second delete should not silently succeed");
+            assert!(
+                matches!(&error, CachedContentError::Expired { name, .. } if *name == created.name),
+                "a handle that is already gone should report Expired: {error:?}"
+            );
+        },
+    )
+    .await;
+}
+
+/// Extending expiry with an absolute timestamp uses the `expireTime` update
+/// mask, not the `ttl` one.
+#[tokio::test]
+async fn update_expiry_accepts_an_absolute_timestamp() {
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/edge_update_expiry_absolute",
+        |client| async move {
+            let caches = client.cached_contents();
+            let created = caches
+                .create(
+                    NewCachedContent::new(CACHE_MODEL)
+                        .system_instruction(pad())
+                        .expiry(CacheExpiry::ttl(Duration::from_secs(120))),
+                )
+                .await
+                .expect("create should succeed");
+
+            let updated = caches
+                .update_expiry(&created.name, CacheExpiry::expire_time(ABSOLUTE_EXPIRY))
+                .await
+                .expect("updating to an absolute expiry should succeed");
+            assert_eq!(updated.expire_time.as_deref(), Some(ABSOLUTE_EXPIRY));
+
+            let _ = caches.delete(&created.name).await;
+        },
+    )
+    .await;
+}
+
+/// Streaming against a cache handle.
+///
+/// The recorded explicit-cache cells all drive the blocking surface. Cache
+/// counters arrive on a different frame when streaming, and the accumulator has
+/// to carry them to the final response — a bug class that has bitten this
+/// provider family before — so the streamed path needs its own recording rather
+/// than an assumption that it matches.
+#[tokio::test]
+async fn streaming_against_a_cache_reports_the_cache_read() {
+    use futures::StreamExt;
+    use rig::streaming::StreamedAssistantContent;
+
+    with_gemini_prompt_caching_cassette(
+        "cached_content_matrix/use_streaming",
+        |client| async move {
+            let cache = client
+                .cached_contents()
+                .create(
+                    NewCachedContent::new(CACHE_MODEL)
+                        .system_instruction(pad())
+                        .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
+                )
+                .await
+                .expect("create should succeed");
+
+            let model = client
+                .completion_model(CACHE_MODEL)
+                .with_cached_content(cache.name.clone());
+
+            let request = rig::completion::CompletionRequest {
+                preamble: None,
+                chat_history: vec![rig::message::Message::User {
+                    content: vec![rig::message::UserContent::text(
+                        "Reply with exactly: streamed",
+                    )],
+                }],
+                documents: vec![],
+                tools: vec![],
+                temperature: Some(0.0),
+                max_tokens: Some(16),
+                tool_choice: None,
+                additional_params: Some(serde_json::json!({
+                    "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+                })),
+                model: None,
+                output_schema: None,
+                record_telemetry_content: false,
+            };
+
+            let mut stream = rig::completion::CompletionModel::stream(&model, request)
+                .await
+                .expect("streamed cached-content request should start");
+            let mut usage = None;
+            while let Some(item) = stream.next().await {
+                if let StreamedAssistantContent::Final(response) =
+                    item.expect("stream item should succeed")
+                {
+                    usage = Some(response.usage);
+                }
+            }
+
+            let usage = usage.expect(
+                "the stream should carry final usage; losing it on the streaming path is the \
+                 exact bug this cell exists to catch",
+            );
+            let ratio = usage.cached_input_tokens as f64 / usage.input_tokens as f64;
+            assert!(
+                ratio >= 0.95,
+                "a streamed request against a cache handle should read essentially the whole \
+                 prefix from cache, got {} of {} ({:.1}%)",
+                usage.cached_input_tokens,
+                usage.input_tokens,
+                ratio * 100.0
+            );
+
+            let _ = client.cached_contents().delete(&cache.name).await;
         },
     )
     .await;
