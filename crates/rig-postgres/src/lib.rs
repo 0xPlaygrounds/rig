@@ -131,7 +131,7 @@ impl PgSearchFilter {
     }
 
     pub fn member(key: String, values: Vec<<Self as SearchFilter>::Value>) -> Self {
-        Self(SqlCondition::list(key, "is in", PLACEHOLDER, values))
+        Self(SqlCondition::list(key, "IN", PLACEHOLDER, values))
     }
 
     // String matching ops
@@ -426,7 +426,7 @@ mod tests {
         let (cond, values) = PgSearchFilter::eq("kind", json!("fruit"))
             .and(member)
             .into_clause();
-        assert_eq!(cond, "(kind = $) AND (id is in ($, $))");
+        assert_eq!(cond, "(kind = $) AND (id IN ($, $))");
         assert!(!cond.contains('?'));
         assert_eq!(cond.matches('$').count(), values.len());
     }
