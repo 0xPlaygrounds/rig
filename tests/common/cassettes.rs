@@ -1893,6 +1893,10 @@ const GENERATED_ID_HEADERS: &[&str] = &[
 
 const GENERATED_ID_KEYS: &[&str] = &[
     "call_id",
+    // Pagination cursors: opaque to rig, but they encode provider-side resource
+    // ids, so a recorded cursor leaks what the rest of the fixture redacted.
+    "nextpagetoken",
+    "next_page_token",
     "item_id",
     "previous_interaction_id",
     "previous_response_id",
@@ -1947,6 +1951,30 @@ impl CassetteScrubber {
         scrub_query_params(self.policy, &mut request.query_param);
 
         for query_param in &mut request.query_param {
+            // A pagination cursor is an opaque blob to rig, but not to the
+            // provider: Gemini's `cachedContents` cursors are base64 protobuf
+            // carrying the *real* resource ids of the entries either side of the
+            // page boundary, so a recorded cursor re-exposes ids that were
+            // placeholdered everywhere else in the same fixture.
+            //
+            // Placeholdered rather than blanket-redacted because distinct
+            // cursors must stay distinct: a loop that follows them compares each
+            // against the last to detect a server that stops advancing, and
+            // collapsing every cursor to one value would end that loop early on
+            // replay. `placeholder` maps equal originals to equal placeholders
+            // and distinct ones to distinct, which is exactly the property the
+            // cursor needs — and the same scrubber instance handles the response
+            // body, so the request's cursor and the response that issued it
+            // agree.
+            if query_param.name.eq_ignore_ascii_case("pageToken") {
+                // Scrubbing must be idempotent: the safety check re-scrubs its
+                // own output and requires a fixed point, and minting a fresh
+                // placeholder for an already-placeholdered cursor is not one.
+                if !is_redacted_placeholder(&query_param.value) {
+                    query_param.value = self.placeholder(&query_param.value, "cursor-");
+                }
+                continue;
+            }
             query_param.value = self.scrub_text(&query_param.value);
         }
 
@@ -3914,6 +3942,44 @@ mod cached_content_scrub_edge_tests {
         assert_eq!(
             scrub("expected cachedContents/<id>"),
             "expected cachedContents/<id>"
+        );
+    }
+}
+
+#[cfg(test)]
+mod pagination_cursor_scrub_tests {
+    use super::*;
+
+    /// Gemini's `cachedContents` cursors are base64 protobuf carrying the real
+    /// resource ids of the entries either side of the page boundary — so a
+    /// recorded cursor re-exposed ids that were placeholdered everywhere else in
+    /// the same fixture.
+    #[test]
+    fn a_next_page_token_is_placeholdered_in_the_body() {
+        let scrubbed = CassetteScrubber::new(CassettePolicy::default())
+            .scrub_body(r#"{"nextPageToken":"cjwKDoIBCwifnJDUBhDo0c8VCipCKHZi"}"#);
+        assert!(
+            !scrubbed.contains("cjwKDoIBCwifnJDUBhDo0c8VCipCKHZi"),
+            "{scrubbed}"
+        );
+        assert!(scrubbed.contains("nextPageToken"), "{scrubbed}");
+    }
+
+    /// Distinct cursors must stay distinct: a loop that follows them compares
+    /// each against the last to spot a server that stops advancing, so
+    /// collapsing them to one value would end that loop early on replay.
+    #[test]
+    fn distinct_cursors_get_distinct_placeholders() {
+        let mut scrubber = CassetteScrubber::new(CassettePolicy::default());
+        let first = scrubber.placeholder("cursor-one-original", "cursor-");
+        let second = scrubber.placeholder("cursor-two-original", "cursor-");
+        let first_again = scrubber.placeholder("cursor-one-original", "cursor-");
+
+        assert_ne!(first, second, "different cursors must not collapse");
+        assert_eq!(
+            first, first_again,
+            "the same cursor must map to the same placeholder, or the request that \
+             replays it stops matching the response that issued it"
         );
     }
 }

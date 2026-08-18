@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T07:47:42.212528Z","displayName":"rig-page-0","expireTime":"2026-08-18T07:50:41.816561784Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T07:47:42.212528Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-08-18T08:36:45.024058Z","displayName":"rig-page-0","expireTime":"2026-08-18T08:39:44.769601846Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T08:36:45.024058Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -34,7 +34,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T07:47:42.572292Z","displayName":"rig-page-1","expireTime":"2026-08-18T07:50:42.334814639Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_2","updateTime":"2026-08-18T07:47:42.572292Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-08-18T08:36:45.511449Z","displayName":"rig-page-1","expireTime":"2026-08-18T08:39:45.144211898Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_2","updateTime":"2026-08-18T08:36:45.511449Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -53,7 +53,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-08-18T07:47:43.045345Z","displayName":"rig-page-2","expireTime":"2026-08-18T07:50:42.676112757Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_3","updateTime":"2026-08-18T07:47:43.045345Z","usageMetadata":{"totalTokenCount":1081}}'
+  body: '{"createTime":"2026-08-18T08:36:45.882020Z","displayName":"rig-page-2","expireTime":"2026-08-18T08:39:45.640639582Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_3","updateTime":"2026-08-18T08:36:45.882020Z","usageMetadata":{"totalTokenCount":1081}}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -74,30 +74,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"cachedContents":[{"createTime":"2026-08-18T07:47:43.045345Z","displayName":"rig-page-2","expireTime":"2026-08-18T07:50:42.676112757Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_3","updateTime":"2026-08-18T07:47:43.045345Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"cjwKDoIBCwifnJDUBhDo0c8VCipCKHZiYWV5d3p5Z2kxNDBjZG9tdDY5bDBqc3p3eDY1dmV5ZGFhZWJ0bWE"}'
----
-when:
-  path: /v1beta/cachedContents
-  method: GET
-  query_param:
-  - name: pageSize
-    value: '1'
-  - name: pageToken
-    value: cjwKDoIBCwifnJDUBhDo0c8VCipCKHZiYWV5d3p5Z2kxNDBjZG9tdDY5bDBqc3p3eDY1dmV5ZGFhZWJ0bWE
-  - name: key
-    value: '[REDACTED]'
-  header:
-  - name: accept
-    value: '*/*'
-  - name: content-type
-    value: application/json
-  body: null
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json; charset=UTF-8
-  body: '{"cachedContents":[{"createTime":"2026-08-18T07:47:42.572292Z","displayName":"rig-page-1","expireTime":"2026-08-18T07:50:42.334814639Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_2","updateTime":"2026-08-18T07:47:42.572292Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"cj0KD4IBDAienJDUBhCg9_GQAgoqQih2MDNlcnhkdGRhdGo3cWI1bHR6MmtucGo0c3IyYnZ5Z2V4Njh2MmN4"}'
+  body: '{"cachedContents":[{"createTime":"2026-08-18T08:36:45.882020Z","displayName":"rig-page-2","expireTime":"2026-08-18T08:39:45.640639582Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_3","updateTime":"2026-08-18T08:36:45.882020Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"id_REDACTED_1"}'
 ---
 when:
   path: /v1beta/cachedContents
@@ -106,7 +83,7 @@ when:
   - name: pageSize
     value: '1'
   - name: pageToken
-    value: cj0KD4IBDAienJDUBhCg9_GQAgoqQih2MDNlcnhkdGRhdGo3cWI1bHR6MmtucGo0c3IyYnZ5Z2V4Njh2MmN4
+    value: id_REDACTED_1
   - name: key
     value: '[REDACTED]'
   header:
@@ -120,7 +97,30 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"cachedContents":[{"createTime":"2026-08-18T07:47:42.212528Z","displayName":"rig-page-0","expireTime":"2026-08-18T07:50:41.816561784Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T07:47:42.212528Z","usageMetadata":{"totalTokenCount":1081}}]}'
+  body: '{"cachedContents":[{"createTime":"2026-08-18T08:36:45.511449Z","displayName":"rig-page-1","expireTime":"2026-08-18T08:39:45.144211898Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_2","updateTime":"2026-08-18T08:36:45.511449Z","usageMetadata":{"totalTokenCount":1081}}],"nextPageToken":"id_REDACTED_2"}'
+---
+when:
+  path: /v1beta/cachedContents
+  method: GET
+  query_param:
+  - name: pageSize
+    value: '1'
+  - name: pageToken
+    value: id_REDACTED_2
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"cachedContents":[{"createTime":"2026-08-18T08:36:45.024058Z","displayName":"rig-page-0","expireTime":"2026-08-18T08:39:44.769601846Z","model":"models/gemini-2.5-flash","name":"cachedContents/cached-REDACTED_1","updateTime":"2026-08-18T08:36:45.024058Z","usageMetadata":{"totalTokenCount":1081}}]}'
 ---
 when:
   path: /v1beta/cachedContents/cached-REDACTED_1

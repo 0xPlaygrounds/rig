@@ -243,6 +243,23 @@ pub(crate) fn create_request_body(
         .unwrap_or_else(|| Value::Object(Map::new()));
     let mut additional_tools =
         extract_tools_from_additional_params(&mut additional_params_payload)?;
+    // Lift any `cachedContent` out of `additional_params` so it lands in the
+    // typed field instead of being flattened in beside it. Flattened fields
+    // serialize *after* named ones, so leaving it here would overwrite the typed
+    // value — and, worse, skip the conflict validation entirely, because that
+    // only inspects the typed fields. Callers reach this path whenever they set
+    // the handle through `additional_params` without touching
+    // `with_cached_content`, which is the plainest route there is.
+    let smuggled_cached_content = additional_params_payload
+        .as_object_mut()
+        .and_then(|object| object.remove("cachedContent"))
+        .map(|value| match value {
+            Value::String(name) => Ok(name),
+            other => Err(CompletionError::RequestError(
+                format!("additional_params.cachedContent should be a string, got {other}").into(),
+            )),
+        })
+        .transpose()?;
 
     let AdditionalParameters {
         mut generation_config,
@@ -312,7 +329,7 @@ pub(crate) fn create_request_body(
         None
     };
 
-    let request = GenerateContentRequest {
+    let mut request = GenerateContentRequest {
         contents: full_history
             .into_iter()
             .map(|msg| {
@@ -328,6 +345,10 @@ pub(crate) fn create_request_body(
         cached_content: None,
         additional_params,
     };
+
+    if let Some(name) = smuggled_cached_content {
+        request.with_cached_content(&name)?;
+    }
 
     Ok(request)
 }
@@ -2371,20 +2392,17 @@ impl gemini_api_types::GenerateContentRequest {
             ));
         }
 
-        // `additional_params` is `#[serde(flatten)]` and serde emits flattened
-        // fields *after* the named ones, so a `cachedContent` in there
-        // overwrites this one on the wire. Silently sending a different handle
-        // than the caller asked for — and skipping the conflict checks below,
-        // which only inspect the typed fields — is worse than refusing.
-        if let Some(serde_json::Value::Object(extra)) = self.additional_params.as_ref()
-            && let Some(smuggled) = extra.get("cachedContent")
+        // Set twice with different handles: the caller asked for two caches and
+        // only one can win, so refuse rather than pick. Reachable when a request
+        // carries `cachedContent` in `additional_params` *and* the model was
+        // built with `with_cached_content`.
+        if let Some(existing) = self.cached_content.as_deref()
+            && existing != name
         {
             return Err(CompletionError::RequestError(
                 format!(
-                    "a Gemini request set cached content `{name}` and also carries \
-                     `cachedContent` in additional_params ({smuggled}). The flattened value \
-                     overwrites the typed one on the wire, so this would silently send the \
-                     wrong handle — set it one way or the other."
+                    "a Gemini request set cached content twice, to `{existing}` and `{name}` — \
+                     set it one way or the other"
                 )
                 .into(),
             ));
@@ -4135,7 +4153,7 @@ mod tests {
 #[cfg(test)]
 mod cached_content_request_tests {
     use super::gemini_api_types::GenerateContentRequest;
-    use crate::completion::CompletionRequest;
+    use crate::completion::{CompletionError, CompletionRequest};
     use crate::message::{Message, UserContent};
 
     fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
@@ -4219,10 +4237,12 @@ mod cached_content_request_tests {
     /// test asserted the opposite invariant while passing an unrelated key
     /// (`topK`), so it never exercised the collision and stayed green over a
     /// real wire bug.
-    #[test]
-    fn a_cached_content_smuggled_through_additional_params_is_refused() {
-        let mut request = super::create_request_body(CompletionRequest {
-            preamble: None,
+    fn build_with(
+        preamble: Option<&str>,
+        additional: Option<serde_json::Value>,
+    ) -> Result<GenerateContentRequest, CompletionError> {
+        super::create_request_body(CompletionRequest {
+            preamble: preamble.map(str::to_owned),
             chat_history: vec![Message::User {
                 content: vec![UserContent::text("hi")],
             }],
@@ -4231,21 +4251,91 @@ mod cached_content_request_tests {
             temperature: None,
             max_tokens: None,
             tool_choice: None,
-            additional_params: Some(serde_json::json!({
-                "cachedContent": "cachedContents/smuggled"
-            })),
+            additional_params: additional,
             model: None,
             output_schema: None,
             record_telemetry_content: false,
         })
-        .expect("request should build");
+    }
+
+    /// The route a caller reaches without ever touching the typed API.
+    ///
+    /// `additional_params` is `#[serde(flatten)]`, and flattened fields
+    /// serialize *after* the named ones — so a handle set this way used to
+    /// overwrite the typed field and, worse, skip the conflict validation
+    /// entirely, because that only inspects the typed fields. Validation now
+    /// happens where the request is built, so every route reaches it.
+    #[test]
+    fn a_handle_set_only_through_additional_params_is_still_validated() {
+        let error = build_with(
+            Some("you are terse"),
+            Some(serde_json::json!({"cachedContent": "cachedContents/smuggled"})),
+        )
+        .expect_err("a preamble alongside a cache handle must be refused however it was set");
+        let message = error.to_string();
+        assert!(message.contains("system instruction"), "{message}");
+        assert!(message.contains("cachedContents/smuggled"), "{message}");
+    }
+
+    /// The same route with nothing to conflict with lands in the *typed* field,
+    /// so it can no longer be overwritten by the flattened copy.
+    #[test]
+    fn a_clean_handle_from_additional_params_is_lifted_into_the_typed_field() {
+        let request = build_with(
+            None,
+            Some(serde_json::json!({"cachedContent": "cachedContents/lifted", "topK": 5})),
+        )
+        .expect("a clean request should build");
+
+        assert_eq!(
+            request.cached_content.as_deref(),
+            Some("cachedContents/lifted")
+        );
+        let body = serde_json::to_value(&request).expect("serialize");
+        assert_eq!(
+            body.get("cachedContent").and_then(|value| value.as_str()),
+            Some("cachedContents/lifted")
+        );
+        // And the unrelated key still flattens through.
+        assert_eq!(body.get("topK").and_then(|value| value.as_u64()), Some(5));
+    }
+
+    /// Two different handles is an ambiguity, not a precedence puzzle.
+    #[test]
+    fn setting_the_handle_twice_with_different_values_is_refused() {
+        let mut request = build_with(
+            None,
+            Some(serde_json::json!({"cachedContent": "cachedContents/from_params"})),
+        )
+        .expect("a clean request should build");
 
         let error = request
-            .with_cached_content("cachedContents/typed")
-            .expect_err("setting the handle both ways is ambiguous and must be refused");
+            .with_cached_content("cachedContents/from_builder")
+            .expect_err("two different handles cannot both win");
         let message = error.to_string();
-        assert!(message.contains("additional_params"), "{message}");
-        assert!(message.contains("cachedContents/smuggled"), "{message}");
+        assert!(message.contains("from_params"), "{message}");
+        assert!(message.contains("from_builder"), "{message}");
+    }
+
+    /// Setting the same handle twice is harmless and must not error.
+    #[test]
+    fn setting_the_same_handle_twice_is_accepted() {
+        let mut request = build_with(
+            None,
+            Some(serde_json::json!({"cachedContent": "cachedContents/same"})),
+        )
+        .expect("a clean request should build");
+        request
+            .with_cached_content("cachedContents/same")
+            .expect("the same handle twice is not ambiguous");
+    }
+
+    /// A non-string handle is a caller error, caught before the wire.
+    #[test]
+    fn a_non_string_handle_in_additional_params_is_refused() {
+        let error = build_with(None, Some(serde_json::json!({"cachedContent": 42})))
+            .expect_err("a numeric handle should be refused");
+        assert!(error.to_string().contains("should be a string"), "{error}");
     }
 
     /// Unrelated `additional_params` keys must still flatten alongside the

@@ -664,9 +664,15 @@ async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
                 .get(&cache.name)
                 .await
                 .expect_err("a deleted handle should not resolve");
+            let CachedContentError::Expired { name, message } = &error else {
+                panic!("a handle that is gone should report Expired, not a bare status: {error:?}");
+            };
+            assert_eq!(*name, cache.name);
             assert!(
-                matches!(&error, CachedContentError::Expired { name, .. } if *name == cache.name),
-                "a handle that is gone should report Expired, not a bare status: {error:?}"
+                message.contains("not found") || message.contains("permission"),
+                "Expired should carry the provider's own message; Google's own text conflates \
+                 \"not found\" and \"permission denied\" here, which is exactly why the \
+                 message has to survive: {message}"
             );
 
             // The message has to name the handle — a run juggling several caches

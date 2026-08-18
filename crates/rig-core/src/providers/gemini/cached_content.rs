@@ -159,6 +159,14 @@ impl CacheExpiry {
 
 /// A cached content to create.
 ///
+/// Not `Clone`, deliberately. An earlier revision held `serde_json::Value` for
+/// `tools`/`tool_config` specifically to stay cloneable, on the theory that a
+/// "one cache, many callers" shape would want it. It does not: what gets shared
+/// is the [`CachedContent`] *handle* the create returns, which is cheap and
+/// `Clone`, not the request that made it. Holding the typed values instead buys
+/// a builder whose methods all return `Self` rather than two of nine returning
+/// `Result` for an implementation detail.
+///
 /// Every field is private and reachable only through the builder. That is what
 /// makes [`CacheExpiry`]'s guarantee real: with public `ttl` and `expire_time`,
 /// `NewCachedContent { ttl: Some(..), expire_time: Some(..), ..Default::default() }`

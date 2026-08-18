@@ -1,21 +1,30 @@
-//! The `cachedContents` create matrix — every shape rig can build.
+//! The `cachedContents` create matrix.
 //!
-//! One cell per combination of the five dimensions that change the create body:
-//! payload (system instruction / contents / both), tool count (none / one /
-//! three), tool choice (absent / auto), display name (absent / present), and
-//! expiry (relative TTL / absolute timestamp / provider default).
+//! Five dimensions change the create body: payload (system instruction /
+//! contents / both), tool count (none / one / three), tool choice (absent /
+//! auto), display name (absent / present), and expiry (relative TTL / absolute
+//! timestamp / provider default). Their full product is 108 combinations.
 //!
-//! The full Cartesian product is 108 cells. That is affordable because each one
-//! creates a cache just over the 1,024-token minimum and deletes it immediately,
-//! so the whole matrix is a few hundred thousand input tokens on Flash and
-//! essentially no storage.
+//! **All 108 are asserted, and only 8 are recorded.** That split is deliberate,
+//! and it took recording all 108 to see why: Gemini's create *response* carries
+//! only `name`, `model`, `displayName`, `createTime`, `updateTime`, `expireTime`
+//! and `usageMetadata`. It never echoes `tools` or `toolConfig`. So a recorded
+//! cell cannot tell whether the tools it asked for were sent at all — the cache
+//! could discard them entirely and all 72 tool-bearing fixtures would still have
+//! passed. What those cells actually pinned was the *request* body, through the
+//! cassette matcher.
 //!
-//! Each cell asserts the same invariants — the handle's shape, the model
-//! binding, the stored token count against the documented minimum, and that an
-//! expiry came back — so a provider change to any of them fails loudly across
-//! the whole matrix rather than in one hand-picked scenario.
+//! So the request body is pinned directly instead, by
+//! [`every_create_combination_serializes_as_expected`], which covers all 108
+//! combinations for free and does assert the tool count — verified by dropping
+//! the tools and watching it fail, which the fixtures did not. The 8 recorded
+//! cells cover one arm of each dimension, keeping the provider's *acceptance* of
+//! each shape under test, plus the edge cells below which pin behaviour no
+//! serialization test could reach.
 //!
-//! Every cell deletes what it created, including on the failure path, because
+//! That is 164 KB instead of 1.3 MB, for strictly more coverage.
+//!
+//! Every recorded cell deletes what it created, on the failure path too, because
 //! storage bills until it does.
 //!
 //! Behaviours pinned here were measured against the live API first:
@@ -189,6 +198,105 @@ fn check(created: &CachedContent, cell: Cell) -> Result<(), String> {
     Ok(())
 }
 
+/// The create matrix, asserted on the serialized request body — all 108
+/// combinations, no network.
+///
+/// This replaced 108 recorded cells, and asserts strictly more than they did.
+/// Gemini's create *response* carries only `name`, `model`, `displayName`,
+/// `createTime`, `updateTime`, `expireTime` and `usageMetadata` — it never
+/// echoes `tools` or `toolConfig`. So a recorded cell could not tell whether the
+/// tools it asked for were sent at all: the cache could discard them entirely
+/// and all 72 tool-bearing fixtures would still have passed. What those cells
+/// really pinned was the request body, via the cassette matcher — and that is
+/// exactly what this asserts, for free, without 1.3 MB of near-identical YAML.
+///
+/// Eight representative cells remain recorded, one per arm of each dimension,
+/// to keep the provider's *acceptance* of each shape under test.
+#[test]
+fn every_create_combination_serializes_as_expected() {
+    let mut checked = 0usize;
+
+    for payload in ["sys", "contents", "both"] {
+        for tools in [0usize, 1, 3] {
+            for tool_config in [false, true] {
+                for display_name in [false, true] {
+                    for expiry in ["ttl", "abs", "default"] {
+                        let cell = Cell {
+                            payload,
+                            tools,
+                            tool_config,
+                            display_name,
+                            expiry,
+                        };
+                        let body = serde_json::to_value(build(cell)).expect("serialize");
+                        let object = body.as_object().expect("object");
+                        let label = format!(
+                            "{payload}/{tools}tools/cfg={tool_config}/name={display_name}/{expiry}"
+                        );
+
+                        assert_eq!(
+                            object.get("model").and_then(|v| v.as_str()),
+                            Some("models/gemini-2.5-flash"),
+                            "{label}: the model must be qualified — Gemini 400s a bare id"
+                        );
+
+                        assert_eq!(
+                            object.contains_key("systemInstruction"),
+                            payload != "contents",
+                            "{label}: systemInstruction presence"
+                        );
+                        assert_eq!(
+                            object.contains_key("contents"),
+                            payload != "sys",
+                            "{label}: contents presence"
+                        );
+
+                        // The dimension the recorded cells were blind to.
+                        match object.get("tools") {
+                            None => assert_eq!(tools, 0, "{label}: tools missing"),
+                            Some(value) => assert_eq!(
+                                value.as_array().expect("tools array").len(),
+                                tools,
+                                "{label}: tool count on the wire"
+                            ),
+                        }
+                        assert_eq!(
+                            object.contains_key("toolConfig"),
+                            tool_config,
+                            "{label}: toolConfig presence"
+                        );
+                        assert_eq!(
+                            object.contains_key("displayName"),
+                            display_name,
+                            "{label}: displayName presence"
+                        );
+
+                        // Expiry is a `oneof` on the wire: Gemini answers a body
+                        // carrying both with a 400, so exactly one may appear.
+                        assert_eq!(
+                            object.contains_key("ttl"),
+                            expiry == "ttl",
+                            "{label}: ttl presence"
+                        );
+                        assert_eq!(
+                            object.contains_key("expireTime"),
+                            expiry == "abs",
+                            "{label}: expireTime presence"
+                        );
+
+                        checked += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    assert_eq!(
+        checked, 108,
+        "the serialization matrix should be exhaustive"
+    );
+}
+
 #[tokio::test]
 async fn sys_notools_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
@@ -274,174 +382,6 @@ async fn sys_notools_nocfg_named_ttl() {
 }
 
 #[tokio::test]
-async fn sys_notools_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_autocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn sys_onetool_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/sys_onetool_nocfg_noname_ttl",
@@ -454,363 +394,6 @@ async fn sys_onetool_nocfg_noname_ttl() {
                     tool_config: false,
                     display_name: false,
                     expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_nocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_autocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_onetool_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_onetool_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_nocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_nocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
                 },
             )
             .await
@@ -841,111 +424,6 @@ async fn sys_threetools_autocfg_noname_ttl() {
 }
 
 #[tokio::test]
-async fn sys_threetools_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_threetools_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_threetools_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn contents_notools_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/contents_notools_nocfg_noname_ttl",
@@ -967,741 +445,6 @@ async fn contents_notools_nocfg_noname_ttl() {
 }
 
 #[tokio::test]
-async fn contents_notools_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_nocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_autocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_notools_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_notools_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_nocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_nocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_autocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_onetool_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_onetool_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_nocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_nocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_autocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn contents_threetools_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/contents_threetools_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "contents",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn both_notools_nocfg_noname_ttl() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/both_notools_nocfg_noname_ttl",
@@ -1714,741 +457,6 @@ async fn both_notools_nocfg_noname_ttl() {
                     tool_config: false,
                     display_name: false,
                     expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_nocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_autocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_notools_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_notools_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 0,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_nocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_nocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_autocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_onetool_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_onetool_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 1,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_nocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_nocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_nocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_nocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_nocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_nocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_nocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_autocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_autocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_autocfg_noname_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_autocfg_noname_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_autocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_autocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_autocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_autocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "ttl",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_autocfg_named_abs() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_autocfg_named_abs",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "abs",
-                },
-            )
-            .await
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn both_threetools_autocfg_named_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/both_threetools_autocfg_named_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "both",
-                    tools: 3,
-                    tool_config: true,
-                    display_name: true,
-                    expiry: "default",
                 },
             )
             .await
@@ -2513,13 +521,19 @@ async fn an_expiry_in_the_past_is_accepted_by_the_provider() {
                 .await
                 .expect("gemini accepts an expiry in the past");
 
-            assert_eq!(
-                created.expire_time.as_deref(),
-                Some("2020-01-01T00:00:00Z"),
-                "the past timestamp should be echoed back verbatim"
-            );
+            let outcome = (created.expire_time.as_deref() == Some("2020-01-01T00:00:00Z"))
+                .then_some(())
+                .ok_or_else(|| {
+                    format!(
+                        "the past timestamp should be echoed back verbatim, got {:?}",
+                        created.expire_time
+                    )
+                });
 
+            // Delete before asserting: a failed assertion in record mode would
+            // otherwise leave a billed cache behind.
             let _ = client.cached_contents().delete(&created.name).await;
+            outcome.unwrap_or_else(|failure| panic!("{failure}"));
         },
     )
     .await;
@@ -2544,13 +558,19 @@ async fn omitting_expiry_defaults_to_one_hour() {
             // Compare the hour fields rather than parsing RFC 3339: the default
             // is one hour, and both stamps are same-day UTC.
             let hour = |stamp: &str| stamp[11..13].parse::<i32>().expect("hour");
-            assert_eq!(
-                (hour(expire_time) - hour(create_time)).rem_euclid(24),
-                1,
-                "the documented default is one hour: created {create_time}, expires {expire_time}"
-            );
+            let gap = (hour(expire_time) - hour(create_time)).rem_euclid(24);
+            let failure = (gap != 1).then(|| {
+                format!(
+                    "the documented default is one hour: created {create_time}, expires \
+                     {expire_time}"
+                )
+            });
 
+            // Delete before asserting, so a failure does not leak a billed cache.
             let _ = client.cached_contents().delete(&created.name).await;
+            if let Some(failure) = failure {
+                panic!("{failure}");
+            }
         },
     )
     .await;
@@ -2631,9 +651,15 @@ async fn deleting_twice_reports_the_second_as_expired() {
                 .delete(&created.name)
                 .await
                 .expect_err("a second delete should not silently succeed");
+            let CachedContentError::Expired { name, message } = &error else {
+                panic!("a handle that is already gone should report Expired: {error:?}");
+            };
+            assert_eq!(*name, created.name);
             assert!(
-                matches!(&error, CachedContentError::Expired { name, .. } if *name == created.name),
-                "a handle that is already gone should report Expired: {error:?}"
+                !message.is_empty(),
+                "Expired should carry the provider's own message — a 403 also covers a disabled \
+                 key or a project without the API enabled, and the message is the only text that \
+                 says which"
             );
         },
     )
@@ -2661,9 +687,11 @@ async fn update_expiry_accepts_an_absolute_timestamp() {
                 .update_expiry(&created.name, CacheExpiry::expire_time(ABSOLUTE_EXPIRY))
                 .await
                 .expect("updating to an absolute expiry should succeed");
-            assert_eq!(updated.expire_time.as_deref(), Some(ABSOLUTE_EXPIRY));
+            let observed = updated.expire_time.clone();
 
+            // Delete before asserting, so a failure does not leak a billed cache.
             let _ = caches.delete(&created.name).await;
+            assert_eq!(observed.as_deref(), Some(ABSOLUTE_EXPIRY));
         },
     )
     .await;
