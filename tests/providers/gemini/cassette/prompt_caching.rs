@@ -499,7 +499,7 @@ fn user(text: &str) -> rig::message::Message {
 /// A prompt under the model's documented minimum must not cache.
 ///
 /// The cell that gives every other cell's padding its meaning. If Gemini cached
-/// a 300-token prefix, the 1,024-token floor in `GEMINI_CACHE_SUPPORT` would be
+/// a 205-token prefix, the 1,024-token floor in `GEMINI_CACHE_SUPPORT` would be
 /// superstition and the padding in every other probe would be proving nothing.
 #[tokio::test]
 async fn a_prefix_below_the_minimum_does_not_cache() {
@@ -629,6 +629,51 @@ async fn changing_the_system_instruction_misses() {
                 "a changed system instruction is a different prefix and must not hit the previous \
                  entry. usage: {:?}",
                 after.usage
+            );
+        },
+    )
+    .await;
+}
+
+/// A handle that no longer exists must surface as
+/// [`CachedContentError::Expired`], not as a raw status code.
+///
+/// This variant exists because it is the one failure a caller is expected to
+/// *handle* rather than propagate: a cache that lapsed mid-run is recreated. It
+/// was argued for in the design and then shipped untested, which is exactly the
+/// shape of thing that is quietly broken.
+///
+/// Deleting a cache reaches the same state as a lapsed TTL without waiting for
+/// one — Gemini answers a handle that is gone with 403 or 404 depending on how
+/// long ago it went, and collapsing both is the point of the variant.
+#[tokio::test]
+async fn a_deleted_handle_reports_expired_rather_than_a_status_code() {
+    use rig::providers::gemini::cached_content::CachedContentError;
+
+    with_gemini_prompt_caching_cassette(
+        "prompt_caching/explicit_cache_expired",
+        |client| async move {
+            let caches = client.cached_contents();
+            let cache = create_probe_cache(&client, "rig-expired").await;
+            caches
+                .delete(&cache.name)
+                .await
+                .expect("delete should succeed");
+
+            let error = caches
+                .get(&cache.name)
+                .await
+                .expect_err("a deleted handle should not resolve");
+            assert!(
+                matches!(&error, CachedContentError::Expired { name } if *name == cache.name),
+                "a handle that is gone should report Expired, not a bare status: {error:?}"
+            );
+
+            // The message has to name the handle — a run juggling several caches
+            // needs to know which one lapsed.
+            assert!(
+                error.to_string().contains(&cache.name),
+                "the error should name the handle: {error}"
             );
         },
     )
