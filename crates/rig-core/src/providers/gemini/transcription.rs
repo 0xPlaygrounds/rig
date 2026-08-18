@@ -85,6 +85,7 @@ where
             tools: None,
             tool_config: None,
             system_instruction,
+            cached_content: None,
             additional_params: None,
         };
 

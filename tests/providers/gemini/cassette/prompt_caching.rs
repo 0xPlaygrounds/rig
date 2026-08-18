@@ -57,8 +57,8 @@ use rig::providers::gemini;
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
     assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
-    assert_prefix_stable, observation_from_completion_calls, report_and_assert_live,
-    run_cache_probe, run_cache_probe_streaming,
+    assert_cache_key_stable, assert_prefix_stable, observation_from_completion_calls,
+    report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
 use super::super::support::with_gemini_prompt_caching_cassette;
@@ -181,4 +181,226 @@ async fn live_cache_economics() {
     let _warm_up = run_cache_probe(&model, &probe()).await;
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(&observation, &GEMINI_CACHE_SUPPORT, "live_cache_economics");
+}
+
+// ---------------------------------------------------------------------------
+// Explicit context caching (`cachedContents`)
+// ---------------------------------------------------------------------------
+//
+// A different feature from the implicit caching every cell above measures, and
+// the reason rig grew a `cachedContents` client. Measured live on
+// gemini-2.5-flash over one 18.5k-token corpus, the same day these fixtures were
+// recorded:
+//
+//   implicit: 0% cached on five consecutive turns; 99.6% only on a sixth request
+//   explicit: 100.0% on turn one, and 100.0% again from an unrelated conversation
+//
+// Implicit caching keys on a prefix the provider has seen before, so a fresh
+// conversation starts cold. Explicit caching keys on a handle, so it does not.
+
+use rig::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
+use std::time::Duration;
+
+/// Explicit caching should serve essentially the whole prefix from the first
+/// request — a far higher bar than implicit caching's 0.75 floor, and the reason
+/// the feature is worth its storage cost.
+const GEMINI_EXPLICIT_SUPPORT: CacheSupport = CacheSupport {
+    cache_key_field: Some("cachedContent"),
+    hit_ratio_floor: 0.95,
+    ..GEMINI_CACHE_SUPPORT
+};
+
+/// Corpus held by the cache. Deterministic and committed, like all probe
+/// padding — a nonce would churn the fixture and break body matching.
+fn cached_corpus() -> String {
+    crate::cache_conformance::cache_padding(240)
+}
+
+async fn create_probe_cache(
+    client: &gemini::Client,
+    display_name: &str,
+) -> rig::providers::gemini::cached_content::CachedContent {
+    client
+        .cached_contents()
+        .create(
+            NewCachedContent::new(CACHE_MODEL)
+                .system_instruction(format!(
+                    "You are a deterministic cassette test assistant.\n{}",
+                    cached_corpus()
+                ))
+                .display_name(display_name)
+                .expiry(CacheExpiry::ttl(Duration::from_secs(600))),
+        )
+        .await
+        .expect("creating a gemini cached content should succeed")
+}
+
+/// The whole resource lifecycle, in one recording.
+#[tokio::test]
+async fn explicit_cache_lifecycle() {
+    with_gemini_prompt_caching_cassette(
+        "prompt_caching/explicit_cache_lifecycle",
+        |client| async move {
+            let caches = client.cached_contents();
+            let created = create_probe_cache(&client, "rig-lifecycle").await;
+
+            assert!(
+                created.name.starts_with("cachedContents/"),
+                "a handle should be `cachedContents/<id>`, got {:?}",
+                created.name
+            );
+            assert_eq!(
+                created.model,
+                format!("models/{CACHE_MODEL}"),
+                "the cache is bound to the model it was created for"
+            );
+            let stored = created
+                .usage_metadata
+                .as_ref()
+                .map(|usage| usage.total_token_count)
+                .unwrap_or_default();
+            assert!(
+                stored >= GEMINI_CACHE_SUPPORT.min_cacheable_tokens as u64,
+                "a cache holding {stored} tokens is below the {}-token minimum and would cache \
+                 nothing",
+                GEMINI_CACHE_SUPPORT.min_cacheable_tokens
+            );
+
+            let fetched = caches.get(&created.name).await.expect("get should succeed");
+            assert_eq!(fetched.name, created.name);
+
+            let listed = caches.list().await.expect("list should succeed");
+            assert!(
+                listed.iter().any(|entry| entry.name == created.name),
+                "the cache just created should appear in the listing"
+            );
+
+            // Expiry is the only mutable part of the resource.
+            let extended = caches
+                .update_expiry(&created.name, CacheExpiry::ttl(Duration::from_secs(900)))
+                .await
+                .expect("update should succeed");
+            assert_eq!(extended.name, created.name);
+            assert!(extended.expire_time.is_some());
+
+            caches
+                .delete(&created.name)
+                .await
+                .expect("delete should succeed — storage bills until it lands");
+        },
+    )
+    .await;
+}
+
+/// The headline: explicit caching serves the prefix from turn one.
+#[tokio::test]
+async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
+    with_gemini_prompt_caching_cassette(
+        "prompt_caching/explicit_cache_hit_ratio",
+        |client| async move {
+            let cache = create_probe_cache(&client, "rig-hit-ratio").await;
+            let model = client
+                .completion_model(CACHE_MODEL)
+                .with_cached_content(cache.name.clone());
+
+            // `bare()`: the cache owns the system instruction and tools, and a
+            // request that also sends its own is rejected — by rig, before it
+            // reaches Gemini.
+            let observation = run_cache_probe(&model, &probe().bare()).await;
+            assert_cache_conformance(
+                &observation,
+                &GEMINI_EXPLICIT_SUPPORT,
+                "explicit cache probe",
+            );
+
+            // Unlike implicit caching, turn 1 already hits — there is no warm-up.
+            assert!(
+                observation.turns[0].cached_input_tokens > 0,
+                "explicit caching should hit on the very first request; that is the property \
+                 implicit caching does not have.\n{}",
+                observation.report(&GEMINI_EXPLICIT_SUPPORT)
+            );
+
+            client
+                .cached_contents()
+                .delete(&cache.name)
+                .await
+                .expect("delete should succeed");
+        },
+    )
+    .await;
+
+    assert_prefix_stable("gemini", "prompt_caching/explicit_cache_hit_ratio");
+    assert_cache_key_stable(
+        "gemini",
+        "prompt_caching/explicit_cache_hit_ratio",
+        &GEMINI_EXPLICIT_SUPPORT,
+    );
+}
+
+/// One cache, two conversations that share nothing else.
+///
+/// This is the property implicit caching structurally cannot have: it keys on a
+/// prefix the provider has already seen, so a conversation that opens with
+/// different words starts cold. A handle does not care.
+#[tokio::test]
+async fn explicit_cache_hits_across_unrelated_conversations() {
+    with_gemini_prompt_caching_cassette(
+        "prompt_caching/explicit_cache_across_conversations",
+        |client| async move {
+            let cache = create_probe_cache(&client, "rig-cross-conversation").await;
+            let model = client
+                .completion_model(CACHE_MODEL)
+                .with_cached_content(cache.name.clone());
+
+            let mut reads = Vec::new();
+            for prompt in [
+                "Reply with exactly: alpha",
+                "Say only the word beta, nothing else",
+            ] {
+                let request = rig::completion::CompletionRequest {
+                    preamble: None,
+                    chat_history: vec![rig::message::Message::User {
+                        content: vec![rig::message::UserContent::text(prompt)],
+                    }],
+                    documents: vec![],
+                    tools: vec![],
+                    temperature: Some(0.0),
+                    max_tokens: Some(16),
+                    tool_choice: None,
+                    additional_params: Some(serde_json::json!({
+                        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+                    })),
+                    model: None,
+                    output_schema: None,
+                    record_telemetry_content: false,
+                };
+                let response = rig::completion::CompletionModel::completion(&model, request)
+                    .await
+                    .expect("a cached-content request should succeed");
+                reads.push((
+                    response.usage.input_tokens,
+                    response.usage.cached_input_tokens,
+                ));
+            }
+
+            for (index, (prompt_tokens, cached)) in reads.iter().enumerate() {
+                let ratio = *cached as f64 / *prompt_tokens as f64;
+                assert!(
+                    ratio >= GEMINI_EXPLICIT_SUPPORT.hit_ratio_floor,
+                    "conversation {} read {cached} of {prompt_tokens} prompt tokens ({:.1}%); a \
+                     cache handle should not care that the conversations are unrelated",
+                    index + 1,
+                    ratio * 100.0
+                );
+            }
+
+            client
+                .cached_contents()
+                .delete(&cache.name)
+                .await
+                .expect("delete should succeed");
+        },
+    )
+    .await;
 }

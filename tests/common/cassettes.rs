@@ -2219,7 +2219,59 @@ impl CassetteScrubber {
         }
         let scrubbed = self.scrub_grounding_redirects(&scrubbed);
         let scrubbed = self.scrub_aws_account_ids(&scrubbed);
+        let scrubbed = self.scrub_resource_names(&scrubbed);
         self.scrub_generated_tokens(&scrubbed)
+    }
+
+    /// Scrub server-assigned resource handles of the form `collection/<id>`.
+    ///
+    /// The generated-token machinery cannot reach these: it keys on a prefix and
+    /// then consumes `is_token_char`, which excludes `/`, so a `TokenPrefix` of
+    /// `"cachedContents/"` would match the prefix and then stop the token at the
+    /// slash. Gemini's explicit context cache hands back exactly that shape
+    /// (`cachedContents/n3v1qk0nqz9k`), the id is account-scoped, and it appears
+    /// in request bodies, request *paths* and response bodies alike — so it
+    /// needs a rule of its own or it goes into a fixture verbatim.
+    fn scrub_resource_names(&mut self, text: &str) -> String {
+        const RESOURCE_COLLECTIONS: &[&str] = &["cachedContents/"];
+
+        let mut output = String::with_capacity(text.len());
+        let mut index = 0;
+
+        while index < text.len() {
+            if !text.is_char_boundary(index) {
+                index += 1;
+                continue;
+            }
+
+            let matched = RESOURCE_COLLECTIONS
+                .iter()
+                .find(|collection| text[index..].starts_with(**collection));
+
+            if let Some(collection) = matched {
+                let id_start = index + collection.len();
+                let id_end = token_end(text, id_start);
+                let id = &text[id_start..id_end];
+                // A bare `cachedContents` path segment with no id (the
+                // collection endpoint itself) must survive untouched, or the
+                // recorded request path stops matching on replay.
+                if !id.is_empty() && !is_redacted_placeholder(id) {
+                    output.push_str(collection);
+                    output.push_str(&self.placeholder(id, "cached-"));
+                    index = id_end;
+                    continue;
+                }
+            }
+
+            let ch = text[index..]
+                .chars()
+                .next()
+                .expect("index should be on a char boundary");
+            output.push(ch);
+            index += ch.len_utf8();
+        }
+
+        output
     }
 
     /// Replace the account-id segment of every ARN.
@@ -3780,4 +3832,54 @@ pub(crate) fn owned_headers(headers: &http_client::HeaderMap) -> Vec<(String, St
                 .map(|value| (name.as_str().to_string(), value.to_string()))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod cached_content_scrub_tests {
+    use super::*;
+
+    fn scrub(text: &str) -> String {
+        CassetteScrubber::new(CassettePolicy::default()).scrub_text(text)
+    }
+
+    /// The handle is account-scoped and server-generated, and it rides in
+    /// request bodies, request paths and response bodies alike.
+    #[test]
+    fn a_cached_content_handle_is_placeholdered() {
+        let scrubbed = scrub(r#"{"cachedContent":"cachedContents/n3v1qk0nqz9k"}"#);
+        assert!(!scrubbed.contains("n3v1qk0nqz9k"), "{scrubbed}");
+        assert!(scrubbed.contains("cachedContents/"), "{scrubbed}");
+    }
+
+    /// Equal originals must map to equal placeholders, or a request body and the
+    /// path it was sent to stop agreeing and replay cannot match.
+    #[test]
+    fn the_same_handle_scrubs_to_the_same_placeholder() {
+        let scrubbed = scrub(
+            "/v1beta/cachedContents/abc123def and {\"cachedContent\":\"cachedContents/abc123def\"}",
+        );
+        let placeholders: Vec<&str> = scrubbed
+            .match_indices("cachedContents/")
+            .map(|(i, _)| {
+                let rest = &scrubbed[i + "cachedContents/".len()..];
+                let end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+                    .unwrap_or(rest.len());
+                &rest[..end]
+            })
+            .collect();
+        assert_eq!(placeholders.len(), 2, "{scrubbed}");
+        assert_eq!(placeholders[0], placeholders[1], "{scrubbed}");
+        assert!(!placeholders[0].contains("abc123def"), "{scrubbed}");
+    }
+
+    /// The collection endpoint has no id; scrubbing it would break the recorded
+    /// request path.
+    #[test]
+    fn the_bare_collection_path_is_untouched() {
+        assert_eq!(
+            scrub("/v1beta/cachedContents?pageSize=1000"),
+            "/v1beta/cachedContents?pageSize=1000"
+        );
+    }
 }

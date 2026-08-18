@@ -411,7 +411,10 @@ where
             completion_request.record_telemetry_content,
         )
         .build();
-        let request = create_request_body(completion_request)?;
+        let mut request = create_request_body(completion_request)?;
+        if let Some(name) = self.cached_content.as_deref() {
+            request.with_cached_content(name)?;
+        }
 
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Streaming,
