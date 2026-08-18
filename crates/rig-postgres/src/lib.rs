@@ -47,6 +47,20 @@ pub enum PgVectorDistanceFunction {
     Jaccard,
 }
 
+impl PgVectorDistanceFunction {
+    /// Higher-is-better similarity derived from this operator's distance, so a
+    /// [`VectorSearchRequest`] threshold can be applied as a minimum similarity
+    /// while search results keep reporting the raw distance.
+    fn similarity_expression(&self, embedding: &str, query: &str) -> String {
+        match self {
+            Self::Cosine | Self::Jaccard => format!("1 - ({embedding} {self} {query})"),
+            Self::L2 | Self::InnerProduct | Self::L1 | Self::Hamming => {
+                format!("-({embedding} {self} {query})")
+            }
+        }
+    }
+}
+
 impl Display for PgVectorDistanceFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -284,27 +298,16 @@ where
     ) -> (String, Vec<serde_json::Value>) {
         let document = if with_document { ", document" } else { "" };
 
-        let thresh = req
-            .threshold()
-            .map(|t| PgSearchFilter::gt("distance", t.into()));
-        let filter = match (thresh, req.filter()) {
-            (Some(thresh), Some(filt)) => Some(thresh.and(filt.clone())),
-            (Some(thresh), _) => Some(thresh),
-            (_, Some(filt)) => Some(filt.clone()),
-            _ => None,
-        };
-        let (where_clause, params) = match filter {
-            Some(f) => {
-                let (expr, params) = f.into_clause();
-                (String::from("WHERE") + &expr, params)
-            }
-            None => (Default::default(), Default::default()),
+        let (filter_clause, mut params) = match req.filter() {
+            Some(filter) => filter.clone().into_clause(),
+            None => Default::default(),
         };
 
         let mut counter = 3;
-        let mut buf = String::with_capacity(where_clause.len() * 2);
+        let mut conditions = Vec::new();
+        let mut buf = String::with_capacity(filter_clause.len() * 2);
 
-        for c in where_clause.chars() {
+        for c in filter_clause.chars() {
             buf.push(c);
 
             if c == '$' {
@@ -312,8 +315,23 @@ where
                 counter += 1;
             }
         }
+        if !buf.is_empty() {
+            conditions.push(buf);
+        }
 
-        let where_clause = buf;
+        if let Some(threshold) = req.threshold() {
+            let similarity = self
+                .distance_function
+                .similarity_expression("embedding", "$1");
+            conditions.push(format!("{similarity} >= ${counter}"));
+            params.push(threshold.into());
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE ({})", conditions.join(") AND ("))
+        };
 
         let query = format!(
             "
