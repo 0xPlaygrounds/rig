@@ -404,3 +404,60 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
     )
     .await;
 }
+
+/// `cacheTokensDetails` is parsed and then not surfaced in the normalized
+/// `Usage` — and that is correct, which is worth pinning rather than assuming.
+///
+/// Gemini reports a per-modality breakdown of *what* it cached
+/// (`[{"modality":"TEXT","tokenCount":3660}]`). Rig's normalized `Usage` has no
+/// modality concept, so there is nowhere for it to go and no way to add one
+/// without inventing a cross-provider abstraction that only Gemini populates.
+///
+/// It is not lost, though: the field lives on `GenerateContentResponse`, which
+/// `raw_completion` hands back — rig's documented escape hatch for
+/// provider-specific fields. This cell asserts that path stays open, and that
+/// the breakdown agrees with the aggregate rig *does* normalize, so the two can
+/// never silently disagree.
+#[test]
+fn cache_tokens_details_are_populated_and_agree_with_the_aggregate() {
+    let interactions =
+        crate::cassettes::recorded_interaction_bodies("gemini", "prompt_caching/blocking_probe");
+
+    let mut checked = 0usize;
+    for (_, response) in &interactions {
+        let Ok(body) = serde_json::from_str::<serde_json::Value>(response) else {
+            continue;
+        };
+        let Some(usage) = body.get("usageMetadata") else {
+            continue;
+        };
+        let Some(aggregate) = usage
+            .get("cachedContentTokenCount")
+            .and_then(serde_json::Value::as_u64)
+            .filter(|count| *count > 0)
+        else {
+            continue;
+        };
+
+        let details = usage
+            .get("cacheTokensDetails")
+            .and_then(serde_json::Value::as_array)
+            .expect("a turn reporting cached tokens should report their modality breakdown");
+        let summed: u64 = details
+            .iter()
+            .filter_map(|entry| entry.get("tokenCount").and_then(serde_json::Value::as_u64))
+            .sum();
+
+        assert_eq!(
+            summed, aggregate,
+            "the per-modality breakdown should account for the aggregate rig normalizes: \
+             {details:?} vs {aggregate}"
+        );
+        checked += 1;
+    }
+
+    assert!(
+        checked > 0,
+        "no recorded turn reported cached tokens, so this check proved nothing"
+    );
+}

@@ -147,10 +147,19 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
                 input_tokens: usage.prompt_token_count as u64,
                 output_tokens: usage.candidates_token_count as u64,
                 total_tokens: usage.total_token_count as u64,
+                // `prompt_token_count` is documented as "still the total
+                // effective prompt size... including the number of tokens in the
+                // cached content", so the cached count is a *subset* of the
+                // input count, matching the Gemini surface.
                 cached_input_tokens: usage.cached_content_token_count as u64,
+                // Vertex reports no cache-write counter.
                 cache_creation_input_tokens: 0,
                 tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
+                // Vertex reports `thoughts_token_count`, and rig has a field for
+                // it. Hardcoding zero here silently discarded the thinking spend
+                // on every Vertex response — on the sibling Gemini surface it is
+                // routinely the largest component of the bill.
+                reasoning_tokens: usage.thoughts_token_count as u64,
             })
             .unwrap_or_default();
 
@@ -565,6 +574,42 @@ mod tests {
         assert_eq!(
             restored.identity().response_id.as_deref(),
             Some("resp-vertex-1")
+        );
+    }
+}
+
+#[cfg(test)]
+mod vertex_usage_mapping_tests {
+    use super::*;
+
+    /// Vertex reports `thoughts_token_count` and rig has a field for it, but the
+    /// mapping hardcoded `reasoning_tokens: 0` — so the thinking spend, which on
+    /// the sibling Gemini surface is routinely the largest component of the
+    /// bill, was discarded on every Vertex response.
+    #[test]
+    fn thinking_tokens_are_not_discarded() {
+        let usage_metadata = vertexai::model::generate_content_response::UsageMetadata::new()
+            .set_prompt_token_count(14)
+            .set_candidates_token_count(34)
+            .set_thoughts_token_count(222)
+            .set_total_token_count(270)
+            .set_cached_content_token_count(9);
+
+        let usage = Usage {
+            input_tokens: usage_metadata.prompt_token_count as u64,
+            output_tokens: usage_metadata.candidates_token_count as u64,
+            total_tokens: usage_metadata.total_token_count as u64,
+            cached_input_tokens: usage_metadata.cached_content_token_count as u64,
+            cache_creation_input_tokens: 0,
+            tool_use_prompt_tokens: 0,
+            reasoning_tokens: usage_metadata.thoughts_token_count as u64,
+        };
+
+        assert_eq!(usage.reasoning_tokens, 222);
+        assert_eq!(usage.cached_input_tokens, 9);
+        assert_eq!(
+            usage.input_tokens + usage.output_tokens + usage.reasoning_tokens,
+            usage.total_tokens
         );
     }
 }
